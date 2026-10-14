@@ -5,6 +5,7 @@ import {
   getSettingsQueryKey,
   listModelsQueryKey,
   listChatsQueryKey,
+  listAutomationsQueryKey,
 } from "../api/generated/@tanstack/react-query.gen";
 
 export const queryClient = new QueryClient({
@@ -20,6 +21,15 @@ export async function refreshSettings() {
 
 export async function refreshChats() {
   await queryClient.invalidateQueries({ queryKey: listChatsQueryKey() });
+}
+
+export async function refreshAutomations() {
+  await Promise.all([
+    refreshChats(),
+    queryClient.invalidateQueries({ queryKey: listAutomationsQueryKey() }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getAutomation" }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listAutomationRuns" }] }),
+  ]);
 }
 
 export function errorText(cause: unknown): string {

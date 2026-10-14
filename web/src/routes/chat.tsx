@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { ArrowDown, ArrowUpRight, Check, Plus, Sparkles, Send } from "lucide-react";
+import { ArrowDown, ArrowUpRight, Check, Plus, Sparkles, Send, Clock } from "lucide-react";
 import type { Settings, ChatEvent, UserItem, MessageInput } from "../api/generated/types.gen";
 import {
   getSettingsOptions,
@@ -321,6 +321,16 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
               <div className="mb-8 flex items-center gap-2 text-xs text-ink-2">
                 {chat.data?.channel === "telegram" ? <Send className="size-3.5" /> : null}
                 <h1 className="truncate">{chat.data?.title}</h1>
+                {chat.data?.automationId ? (
+                  <Link
+                    to="/automations/$automationId"
+                    params={{ automationId: chat.data.automationId }}
+                    className="ml-auto inline-flex shrink-0 items-center gap-1 text-ink-2 hover:text-ink"
+                  >
+                    <Clock className="size-3.5" />
+                    Automation
+                  </Link>
+                ) : null}
               </div>
               {connection !== "ready" ? (
                 <Alert className="mb-6">

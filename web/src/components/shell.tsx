@@ -1,7 +1,19 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, MessageSquare, Send, Settings, Menu, Monitor, Sun, Moon } from "lucide-react";
+import {
+  Plus,
+  MessageSquare,
+  Send,
+  Settings,
+  Menu,
+  Monitor,
+  Sun,
+  Moon,
+  Clock,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import { listChatsOptions } from "../api/generated/@tanstack/react-query.gen";
 import type { Chat } from "../api/generated/types.gen";
 import { Button } from "./ui/button";
@@ -9,6 +21,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Failure } from "./feedback";
 import { Skeleton } from "./ui/skeleton";
 import { cn } from "../lib/utils";
+import { unreadAutomationChats } from "../lib/automations";
 
 type Theme = "system" | "light" | "dark";
 
@@ -108,7 +121,30 @@ function Sidebar({
     refetchIntervalInBackground: false,
   });
 
-  const groups = groupChats(chats.data?.chats ?? [], new Date(chats.dataUpdatedAt));
+  const allChats = chats.data?.chats ?? [];
+
+  const groups = groupChats(
+    allChats.filter((chat) => chat.channel !== "automation"),
+    new Date(chats.dataUpdatedAt),
+  );
+
+  const automationChats = allChats
+    .filter((chat) => chat.channel === "automation")
+    .toSorted((a, b) => b.updatedAt - a.updatedAt);
+
+  const [runsOpen, setRunsOpen] = useState(false);
+  const seen = Number(localStorage.getItem("dex-automations-seen")) || 0;
+  const activeAutomationChat = automationChats.some((chat) => path === `/c/${chat.id}`);
+  const open = runsOpen || activeAutomationChat;
+  const unread = unreadAutomationChats(automationChats, seen);
+  // The runs that start while the group is open are seen too.
+  useEffect(() => {
+    if (!open) return;
+    const markSeen = () => localStorage.setItem("dex-automations-seen", String(Date.now()));
+    markSeen();
+
+    return markSeen;
+  }, [open]);
 
   return (
     <div className="flex h-full flex-col px-3">
@@ -173,8 +209,57 @@ function Sidebar({
             ) : null,
           )
         )}
+        {automationChats.length ? (
+          <section className="mb-5">
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls="automation-chats"
+              onClick={() => setRunsOpen(!open)}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-ink-2 hover:bg-hover"
+            >
+              {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+              Automation runs
+              {!open && unread > 0 ? (
+                <span className="ml-auto rounded-full bg-ink px-1.5 py-0.5 text-[10px] text-page">
+                  {unread}
+                </span>
+              ) : null}
+            </button>
+            <div id="automation-chats" hidden={!open}>
+              {automationChats.map((chat) => (
+                <Link
+                  key={chat.id}
+                  onClick={onNavigate}
+                  to="/c/$chatId"
+                  params={{ chatId: String(chat.id) }}
+                  title={chat.title}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] text-ink-2 hover:bg-hover",
+                    path === `/c/${chat.id}` && "bg-surface font-medium text-ink shadow-xs",
+                  )}
+                >
+                  <Clock className="size-3.5 shrink-0" />
+                  <span className="truncate">{chat.title}</span>
+                  {chat.busy ? <span className="busy-dot ml-auto shrink-0" aria-label="Running" /> : null}
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
       <div className="flex flex-col gap-2 border-t border-line py-4">
+        <Link
+          onClick={onNavigate}
+          to="/automations"
+          className={cn(
+            "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-ink-2 hover:bg-hover",
+            path.startsWith("/automations") && "bg-hover text-ink",
+          )}
+        >
+          <Clock className="size-4" />
+          Automations
+        </Link>
         <Link
           onClick={onNavigate}
           to="/settings/$section"

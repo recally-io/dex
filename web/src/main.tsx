@@ -12,6 +12,7 @@ import {
 import { errorText, queryClient } from "./lib/queries";
 import { Shell } from "./components/shell";
 import { ChatPage } from "./routes/chat";
+import { AutomationsPage, AutomationPage } from "./routes/automations";
 import { SettingsPage } from "./routes/settings";
 import { TooltipProvider } from "./components/ui/tooltip";
 import "./styles.css";
@@ -64,8 +65,26 @@ const defaultSettings = createRoute({
   },
 });
 
+const automations = createRoute({
+  getParentRoute: () => root,
+  path: "/automations",
+  component: AutomationsPage,
+});
+
+const automation = createRoute({
+  getParentRoute: () => root,
+  path: "/automations/$automationId",
+  component: AutomationRoute,
+});
+
+function AutomationRoute() {
+  const { automationId } = automation.useParams();
+
+  return <AutomationPage key={automationId} automationId={automationId} />;
+}
+
 const router = createRouter({
-  routeTree: root.addChildren([home, chat, settings, defaultSettings]),
+  routeTree: root.addChildren([home, chat, settings, defaultSettings, automations, automation]),
   defaultErrorComponent: ({ error, reset }) => (
     <div className="p-10">
       <h1 className="mb-3 font-semibold">Could not open this page</h1>
