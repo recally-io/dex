@@ -92,6 +92,7 @@ export default function LoadingState({
 
   const labelEl = (
     <span
+      role="status"
       className="bg-clip-text text-[13px] font-medium text-transparent"
       style={{
         backgroundImage:
@@ -107,7 +108,7 @@ export default function LoadingState({
 
   if (surfer) {
     return (
-      <div role="status" className="flex w-fit flex-col items-start">
+      <div className="flex w-fit flex-col items-start">
         <div className="flex items-center gap-2.5">
           <LoaderGrid {...PATTERNS.Drive} />
           {labelEl}
@@ -145,7 +146,7 @@ export default function LoadingState({
   }
 
   return (
-    <div role="status" className="flex w-fit items-center gap-2.5">
+    <div className="flex w-fit items-center gap-2.5">
       <LoaderGrid delays={delays} dur={dur} round={round} />
       {labelEl}
       {elapsedEl}

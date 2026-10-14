@@ -30,7 +30,13 @@ export function ModelPicker({
 
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(true)} disabled={disabled}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="min-w-0 max-w-full"
+        onClick={() => setOpen(true)}
+        disabled={disabled}
+      >
         <span className="max-w-48 truncate">{modelId || "Choose a model"}</span>
         <ChevronDown className="size-3.5" />
       </Button>

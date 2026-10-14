@@ -3,7 +3,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import {
   getSettingsQueryKey,
-  listModelsQueryKey,
+  listModelsOptions,
   listChatsQueryKey,
   listAutomationsQueryKey,
 } from "../api/generated/@tanstack/react-query.gen";
@@ -15,7 +15,7 @@ export const queryClient = new QueryClient({
 export async function refreshSettings() {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: getSettingsQueryKey() }),
-    queryClient.invalidateQueries({ queryKey: listModelsQueryKey() }),
+    queryClient.fetchQuery({ ...listModelsOptions(), staleTime: 0 }),
   ]);
 }
 

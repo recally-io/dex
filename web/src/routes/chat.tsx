@@ -1,7 +1,21 @@
 import { useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { ArrowDown, ArrowUpRight, Check, Plus, Sparkles, Send, Clock } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUpRight,
+  Check,
+  Plus,
+  Sparkles,
+  Send,
+  Clock,
+  Code2,
+  CalendarDays,
+  Workflow,
+  FileText,
+  ArrowRight,
+  MessageSquare,
+} from "lucide-react";
 import type { Settings, ChatEvent, UserItem, MessageInput } from "../api/generated/types.gen";
 import {
   getSettingsOptions,
@@ -21,6 +35,9 @@ import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
 import { Alert, AlertTitle, AlertDescription } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
+import { Button as BeautifulButton } from "../components/atoms/Button";
+import { ValuePill } from "../components/atoms/ValuePill";
+import LoadingState from "../components/primitives/LoadingState";
 
 declare module "@tanstack/history" {
   interface HistoryState {
@@ -298,7 +315,38 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col bg-page">
+      <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-line bg-surface/70 px-5 md:px-8">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-ink text-base font-semibold text-page shadow-btn">
+            d
+          </span>
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-semibold">
+              {chatId ? chat.data?.title || "Agent chat" : "New conversation"}
+            </h1>
+            <p className="mt-0.5 truncate text-xs text-ink-2">
+              {chat.data?.channel === "telegram" ? "Telegram conversation" : "Your personal workspace"}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <ValuePill tone={state.running ? "orange" : connection === "ready" ? "green" : "neutral"}>
+            {state.running ? "Working" : connection === "ready" ? "Ready" : "Reconnecting"}
+          </ValuePill>
+          {chatId ? (
+            <BeautifulButton
+              variant="quiet"
+              size="xs"
+              onClick={() => void navigate({ to: "/" })}
+              aria-label="New conversation"
+            >
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">New chat</span>
+            </BeautifulButton>
+          ) : null}
+        </div>
+      </header>
       <div
         ref={scroller}
         className="min-h-0 flex-1 overflow-y-auto px-5"
@@ -311,7 +359,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
           }
         }}
       >
-        <div className="mx-auto max-w-[720px] pb-8 pt-6 md:pt-10">
+        <div className="mx-auto max-w-[800px] pb-10 pt-6 md:pt-8">
           {chatId && chat.isPending ? (
             <Loading />
           ) : chatId && chat.isError ? (
@@ -348,7 +396,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
                   </AlertDescription>
                 </Alert>
               ) : null}
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-7">
                 {items.map((item, index) => (
                   <TranscriptItem
                     key={item.id}
@@ -361,43 +409,86 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
                   />
                 ))}
                 {state.retry ? <RetryNotice retry={state.retry} /> : null}
+                {state.running &&
+                !state.retry &&
+                !items.some((item) => item.kind === "tool" && item.status === "running") &&
+                items.at(-1)?.kind !== "assistant" &&
+                items.at(-1)?.kind !== "thinking" ? (
+                  <div className="rounded-xl border border-line bg-surface p-4 shadow-card">
+                    <LoadingState label="dex is working" />
+                  </div>
+                ) : null}
                 {!items.length && connection === "ready" ? (
                   <p className="py-12 text-center text-sm text-ink-2">No messages yet.</p>
                 ) : null}
               </div>
             </>
           ) : (
-            <div className="flex min-h-[45dvh] flex-col justify-center">
-              <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-ink text-xl font-semibold text-page">
-                d
+            <div className="flex min-h-[48dvh] flex-col justify-center py-5 md:py-10">
+              <div className="mb-6 flex items-center gap-2 text-xs font-medium text-ink-2">
+                <Sparkles className="size-4 text-brand" />A workspace for your ideas
               </div>
-              <p className="mb-2 text-xs font-medium tracking-widest text-ink-2 uppercase">
-                Your local agent
+              <h1 className="max-w-lg text-4xl font-semibold leading-tight tracking-tight md:text-5xl">
+                What would you like
+                <br />
+                <span className="text-ink-3">to work on?</span>
+              </h1>
+              <p className="mt-5 max-w-md text-sm leading-6 text-ink-2">
+                Explore a project, work through a task, or follow a thought. dex keeps the conversation and
+                the work in one place.
               </p>
-              <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">What can we work on?</h1>
-              <p className="mt-4 text-ink-2">A thought, a task, a question. Start here.</p>
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              <div className="mt-9 grid gap-3 sm:grid-cols-2">
                 {[
-                  "Explore this project and explain how it works",
-                  "Help me plan my next week",
-                  "Find ways to simplify my workflow",
-                  "Review a document and suggest changes",
-                ].map((text) => (
+                  {
+                    icon: Code2,
+                    title: "Understand a project",
+                    detail: "Find the structure and the next step",
+                    prompt: "Explore this project and explain how it works",
+                  },
+                  {
+                    icon: CalendarDays,
+                    title: "Make a plan",
+                    detail: "Turn a busy week into a clear plan",
+                    prompt: "Help me plan my next week",
+                  },
+                  {
+                    icon: Workflow,
+                    title: "Simplify a workflow",
+                    detail: "Find the steps you can remove",
+                    prompt: "Find ways to simplify my workflow",
+                  },
+                  {
+                    icon: FileText,
+                    title: "Review a document",
+                    detail: "Get another view of your draft",
+                    prompt: "Review a document and suggest changes",
+                  },
+                ].map(({ icon: Icon, title, detail, prompt }) => (
                   <button
-                    key={text}
-                    className="surface flex items-start gap-3 p-4 text-left text-sm leading-relaxed text-ink-2 transition-shadow hover:shadow-raised"
-                    onClick={() => setDraft(text)}
+                    key={title}
+                    className="group flex items-center gap-3 rounded-[14px] border border-line bg-surface p-4 text-left shadow-card transition-colors hover:border-line-strong hover:bg-inset focus-visible:outline-2 focus-visible:outline-brand"
+                    onClick={() => setDraft(prompt)}
                   >
-                    <Sparkles className="mt-0.5 size-4 shrink-0 text-ink-3" />
-                    {text}
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-field text-ink-2">
+                      <Icon className="size-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium">{title}</span>
+                      <span className="mt-1 block text-xs text-ink-2">{detail}</span>
+                    </span>
+                    <ArrowRight className="size-4 text-ink-3 transition-transform group-hover:translate-x-0.5" />
                   </button>
                 ))}
+              </div>
+              <div className="mt-6 flex items-center gap-2 text-xs text-ink-3">
+                <MessageSquare className="size-3.5" />
+                Start with a prompt below. Your conversation stays here.
               </div>
             </div>
           )}
         </div>
       </div>
-      <div className="relative mx-auto w-full max-w-[760px] px-5 pb-5 pt-3">
+      <div className="relative mx-auto w-full max-w-[840px] px-5 pb-5 pt-3">
         {jump ? (
           <Button
             variant="outline"
