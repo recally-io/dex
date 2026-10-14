@@ -20,6 +20,7 @@ import (
 	"github.com/vaayne/dex/internal/db/sqlc"
 	"github.com/vaayne/dex/internal/dream"
 	"github.com/vaayne/dex/internal/live"
+	"github.com/vaayne/dex/internal/scheduler"
 	"github.com/vaayne/dex/internal/server"
 	"github.com/vaayne/dex/internal/settings"
 	"github.com/vaayne/dex/internal/telegram"
@@ -50,6 +51,7 @@ type App struct {
 	db      *sql.DB
 	handler http.Handler
 	bots    *bots
+	jobs    *scheduler.Scheduler
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 }
@@ -73,6 +75,10 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	path, err := worker.Install(cfg.CacheDir, workerbin.Gzip)
+	if err != nil {
+		return nil, errors.Join(err, conn.Close())
+	}
+	jobs, err := scheduler.New()
 	if err != nil {
 		return nil, errors.Join(err, conn.Close())
 	}
@@ -115,13 +121,19 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 
-	a := &App{db: conn, bots: bots, cancel: cancel, handler: server.New(server.Config{
+	a := &App{db: conn, bots: bots, jobs: jobs, cancel: cancel, handler: server.New(server.Config{
 		Chats: chats, Settings: prefs, Live: hub, AgentID: DefaultAgentID, DataDir: cfg.DataDir, Version: cfg.Version,
 	})}
 	a.wg.Go(func() { _ = w.Run(runCtx) })
 	a.wg.Go(func() { chats.Run(runCtx) })
-	dreamer := dream.New(q, chats, DefaultAgentID, cmp.Or(cfg.DreamEvery, 24*time.Hour), time.Now)
-	a.wg.Go(func() { dreamer.Run(runCtx) })
+	every := cmp.Or(cfg.DreamEvery, 24*time.Hour)
+	dreamer := dream.New(q, chats, DefaultAgentID, every, time.Now)
+	if err := jobs.Every("dream", min(every, time.Hour), dreamer.Check); err != nil {
+		cancel()
+		a.wg.Wait()
+		return nil, errors.Join(err, conn.Close())
+	}
+	jobs.Start()
 	bots.Set(tg) //nolint:contextcheck // the bot runs until Close, not for the life of ctx
 	return a, nil
 }
@@ -133,9 +145,10 @@ func (a *App) Handler() http.Handler { return a.handler }
 // database.
 func (a *App) Close() error {
 	a.cancel()
+	err := a.jobs.Close()
 	a.bots.Set(nil)
 	a.wg.Wait()
-	return a.db.Close()
+	return errors.Join(err, a.db.Close())
 }
 
 // bots runs the Telegram bot of the current settings, if any.

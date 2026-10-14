@@ -24,7 +24,7 @@ import type { ConfigureResult, ModelInfo, ProviderInfo, ProviderSettings } from 
  * and the custom providers from the settings. Control gives the worker no provider environment
  * variables. With `DEX_FAKE_MODEL=1`, `faux/echo` and `faux/shout` answer "<model ID>: <last user
  * text>", and `faux/bash` runs the last user text with the bash tool and answers "bash: <output>".
- * In a dream, `faux/bash` appends the dream's chat headings to dreams.md in the memory repo.
+ * In a dream, `faux/bash` appends the dream's JSON records to dreams.md in the memory repo.
  * `faux/memory` answers "memory: <the memory section of its system prompt>". Tests use them so they
  * need no provider credentials.
  */
@@ -223,8 +223,8 @@ function memorySection(transcript: TranscriptContext): string {
 
 /** The command that faux/bash runs for a user message. */
 function bashCommand(text: string): string {
-	if (!text.startsWith("# Dreaming")) return text;
-	const headings = text.split("\n").filter((line) => line.startsWith("### "));
-	const quoted = headings.map((line) => `'${line.replaceAll("'", "'\\''")}'`).join(" ");
+	if (!text.startsWith("Chats since the previous dream")) return text;
+	const records = text.split("\n").filter((line) => line.startsWith("{"));
+	const quoted = records.map((line) => `'${line.replaceAll("'", "'\\''")}'`).join(" ");
 	return `printf '%s\\n' ${quoted} >> "$DEX_DATA_DIR/memory/dreams.md" && echo dreamed`;
 }

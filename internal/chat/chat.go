@@ -14,6 +14,7 @@ import (
 	"uuid"
 
 	"github.com/vaayne/dex/internal/db/sqlc"
+	"github.com/vaayne/dex/internal/dream"
 	"github.com/vaayne/dex/internal/worker"
 )
 
@@ -46,10 +47,6 @@ var ErrNoModel = errors.New("the agent has no model; choose one in Settings")
 
 // ErrNotFound means that the chat does not exist.
 var ErrNotFound = errors.New("chat not found")
-
-// DreamChannel starts the channel key of a dream. Dreams are chats that the chat list and the API
-// do not show.
-const DreamChannel = "dream:"
 
 // The chat list shows titles of at most this many characters.
 const titleLength = 60
@@ -244,7 +241,11 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 		return ErrNoModel
 	}
 	model := worker.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}
-	conversation, err := s.workerConversation(ctx, p.ConversationID, agent, model)
+	instructions := agent.Instructions
+	if strings.HasPrefix(p.ChannelKey, dream.Channel) {
+		instructions = dream.Instructions(instructions)
+	}
+	conversation, err := s.workerConversation(ctx, p.ConversationID, agent.ID, model, instructions)
 	if err != nil {
 		return err
 	}
@@ -253,7 +254,7 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 		AgentID:        p.AgentID,
 		ConversationID: conversation,
 		Model:          model,
-		Instructions:   agent.Instructions,
+		Instructions:   instructions,
 		RequestID:      p.ID,
 		Content:        p.Content,
 		Source:         source(p),
@@ -263,7 +264,7 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 // source names a submission's chat in the memory: dex:chat/<chat ID>, or dex:dream/<dream ID> for a
 // dream, whose entries cite the chats that it read.
 func source(p sqlc.ListPendingSubmissionsRow) string {
-	if id, ok := strings.CutPrefix(p.ChannelKey, DreamChannel); ok {
+	if id, ok := strings.CutPrefix(p.ChannelKey, dream.Channel); ok {
 		return "dex:dream/" + id
 	}
 	return fmt.Sprintf("dex:chat/%d", p.ConversationID)
@@ -304,7 +305,7 @@ func (s *Service) signal(chatID int64) {
 
 // workerConversation returns the worker's ID of the conversation, and creates the worker's
 // conversation on first use.
-func (s *Service) workerConversation(ctx context.Context, id int64, agent sqlc.Agent, model worker.ModelRef) (int64, error) {
+func (s *Service) workerConversation(ctx context.Context, id int64, agentID string, model worker.ModelRef, instructions string) (int64, error) {
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
 	conv, err := s.q.GetConversation(ctx, id)
@@ -318,7 +319,7 @@ func (s *Service) workerConversation(ctx context.Context, id int64, agent sqlc.A
 	// harmless; the next message creates another one.
 	var created worker.CreateConversationResult
 	err = s.worker.Call(ctx, "createConversation", worker.CreateConversationParams{
-		AgentID: agent.ID, Model: model, Instructions: agent.Instructions,
+		AgentID: agentID, Model: model, Instructions: instructions,
 	}, &created)
 	if err != nil {
 		return 0, fmt.Errorf("create worker conversation: %w", err)

@@ -20,8 +20,8 @@ Read this before you write or change a test.
   use pi-ai's faux provider (`DEX_FAKE_MODEL=1`; models `faux/echo` and
   `faux/shout` answer `echo: <message>` and `shout: <message>`, and
   `faux/bash` runs the message with the bash tool and answers
-  `bash: <output>`; in a dream, `faux/bash` appends the dream's chat
-  headings to `dreams.md` in the memory repo; `faux/memory` answers
+  `bash: <output>`; in a dream, `faux/bash` appends the dream's JSON
+  records to `dreams.md` in the memory repo; `faux/memory` answers
   `memory: <MEMORY.md section of the system prompt>`). A test with the faux provider does not prove that a real
   provider works; say so when you report.
 - **Controlled time.** Do not use fixed sleeps. Poll the observable condition

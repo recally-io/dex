@@ -97,7 +97,8 @@ export class MemoryRepo {
 					"memory-rules",
 					(input) => {
 						const from = source(input.conversationId);
-						return from === undefined
+						// A dream cites the chats that it reads, which its instructions name.
+						return from === undefined || from.startsWith("dex:dream/")
 							? rules
 							: `${rules}\n\nFor entries that you learn in this chat, use \`source: ${from}\`.`;
 					},

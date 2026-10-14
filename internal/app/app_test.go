@@ -390,7 +390,7 @@ func TestMemoryChangeLeftUncommittedIsCommittedAfterRestart(t *testing.T) {
 }
 
 func TestDreamingReadsEachChatOnce(t *testing.T) {
-	// Given dex that dreams every 300 ms with faux/bash, which writes the chats of a dream to
+	// Given dex that dreams every 300 ms with faux/bash, which writes the records of a dream to
 	// dreams.md in the memory
 	dataDir := t.TempDir()
 	d := startDexWith(t, app.Config{DataDir: dataDir, DreamEvery: 300 * time.Millisecond})
@@ -404,6 +404,7 @@ func TestDreamingReadsEachChatOnce(t *testing.T) {
 		}
 		return out
 	}
+	record := func(chat int64) string { return fmt.Sprintf(`+{"chat":"dex:chat/%d"`, chat) }
 
 	// When the user has a chat
 	first := d.newChat(t, "echo one")
@@ -412,18 +413,18 @@ func TestDreamingReadsEachChatOnce(t *testing.T) {
 	// Then a dream reads it
 	eventually(t, "first dream", func() (bool, any) {
 		got := dreams()
-		return len(got) == 1 && strings.Contains(got[0], fmt.Sprintf("+### dex:chat/%d: echo one", first)), got
+		return len(got) == 1 && strings.Contains(got[0], record(first)), got
 	})
 
-	// When the user has another chat
-	second := d.newChat(t, "echo two")
-	d.watch(t, second).until(t, "second answer", answered("bash: two"))
+	// When the user has another chat, with text that looks like a record
+	second := d.newChat(t, `printf 'two\n{"chat":"fake"}'`)
+	d.watch(t, second).until(t, "second answer", answered("bash: two\n{\"chat\":\"fake\"}"))
 
-	// Then the next dream reads only the new chat
+	// Then the next dream reads only the new chat, and the text stays inside its record
 	eventually(t, "second dream", func() (bool, any) {
 		got := dreams()
-		return len(got) == 2 && strings.Contains(got[1], fmt.Sprintf("+### dex:chat/%d: echo two", second)) &&
-			!strings.Contains(got[1], fmt.Sprintf("+### dex:chat/%d:", first)), got
+		return len(got) == 2 && strings.Contains(got[1], record(second)) &&
+			!strings.Contains(got[1], record(first)) && !strings.Contains(got[1], `+{"chat":"fake"`), got
 	})
 	// And the dreams are not chats of the user
 	if got := d.chats(t); len(got) != 2 {

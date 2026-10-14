@@ -16,6 +16,7 @@ data.
 | `internal/api`       | Generated from `api/openapi.yaml` (`mise run generate:api`)      |
 | `internal/live`      | Chat event streams (SSE): worker watches plus control's messages |
 | `internal/dream`     | Dreaming: hidden chats that consolidate the memory repo          |
+| `internal/scheduler` | Control's job schedule (gocron); jobs check durable state        |
 | `internal/telegram`  | Telegram bot: long polling, user allowlist, reply delivery       |
 | `internal/settings`  | Settings from the web UI: validate, save, apply to worker or bot |
 | `web`                | The web UI: React (Vite+), built into `web/dist`, embedded       |
