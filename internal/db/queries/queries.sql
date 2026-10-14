@@ -170,3 +170,68 @@ WHERE
     AND (s.settled_at > @after_settled_at OR (s.settled_at = @after_settled_at AND s.id > @after_id))
 ORDER BY s.settled_at, s.id
 LIMIT @max_rows;
+
+-- name: CreateAutomation :exec
+INSERT INTO automations (
+    id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: UpdateAutomation :execrows
+UPDATE automations SET
+    name = ?, prompt = ?, schedule = ?, time_zone = ?, session = ?, enabled = ?, next_due_at = ?,
+    updated_at = ?
+WHERE id = ? AND agent_id = ?;
+
+-- name: GetAutomation :one
+SELECT * FROM automations WHERE id = ? AND agent_id = ?;
+
+-- name: ListAutomations :many
+SELECT * FROM automations WHERE agent_id = ? ORDER BY created_at, id;
+
+-- name: ListDueAutomations :many
+SELECT * FROM automations WHERE enabled = 1 AND next_due_at <= ? ORDER BY next_due_at;
+
+-- name: SetAutomationNextDue :exec
+UPDATE automations SET next_due_at = ? WHERE id = ?;
+
+-- name: DeleteAutomationRuns :exec
+DELETE FROM automation_runs WHERE automation_id = ?;
+
+-- name: DeleteAutomation :exec
+DELETE FROM automations WHERE id = ? AND agent_id = ?;
+
+-- name: CreateAutomationRun :execrows
+-- A run for a scheduled time that has a run already is not stored again.
+INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT DO NOTHING;
+
+-- name: FailAutomationRun :exec
+UPDATE automation_runs SET status = 'failed', reason = ? WHERE id = ?;
+
+-- name: ListAutomationRuns :many
+-- The newest runs of an automation, with the message of each started run.
+SELECT
+    r.id,
+    r.due_at,
+    r.status,
+    r.reason,
+    r.created_at,
+    s.status AS message_status,
+    s.reason AS message_reason,
+    s.conversation_id AS chat_id
+FROM automation_runs r
+LEFT JOIN submissions s ON s.id = r.id
+WHERE r.automation_id = ?
+ORDER BY r.created_at DESC, r.id DESC
+LIMIT ?;
+
+-- name: CountAutomationPending :one
+-- The messages without an answer in the chats of an automation: automation:<id> and
+-- automation:<id>:<run id>.
+SELECT count(*) FROM submissions s
+JOIN conversations c ON c.id = s.conversation_id
+WHERE
+    s.status = 'pending'
+    AND (c.channel_key = 'automation:' || CAST(@automation_id AS TEXT)
+        OR c.channel_key LIKE 'automation:' || CAST(@automation_id AS TEXT) || ':%');

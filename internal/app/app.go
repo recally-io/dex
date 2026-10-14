@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vaayne/dex/internal/automation"
 	"github.com/vaayne/dex/internal/chat"
 	"github.com/vaayne/dex/internal/db"
 	"github.com/vaayne/dex/internal/db/sqlc"
@@ -44,6 +45,8 @@ type Config struct {
 	Version string
 	// DreamEvery is the shortest time between two dreams; zero means 24 hours.
 	DreamEvery time.Duration
+	// AutomationCheck is the time between two checks for due automations; zero means 1 minute.
+	AutomationCheck time.Duration
 }
 
 // App is a running control process.
@@ -121,14 +124,19 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 
+	automations := automation.New(q, chats, DefaultAgentID, time.Now)
 	a := &App{db: conn, bots: bots, jobs: jobs, cancel: cancel, handler: server.New(server.Config{
-		Chats: chats, Settings: prefs, Live: hub, AgentID: DefaultAgentID, DataDir: cfg.DataDir, Version: cfg.Version,
+		Chats: chats, Automations: automations, Settings: prefs, Live: hub, AgentID: DefaultAgentID, DataDir: cfg.DataDir, Version: cfg.Version,
 	})}
 	a.wg.Go(func() { _ = w.Run(runCtx) })
 	a.wg.Go(func() { chats.Run(runCtx) })
 	every := cmp.Or(cfg.DreamEvery, 24*time.Hour)
 	dreamer := dream.New(q, chats, DefaultAgentID, every, time.Now)
-	if err := jobs.Every("dream", min(every, time.Hour), dreamer.Check); err != nil {
+	err = errors.Join(
+		jobs.Every("dream", min(every, time.Hour), dreamer.Check),
+		jobs.Every("automations", cmp.Or(cfg.AutomationCheck, time.Minute), automations.Check),
+	)
+	if err != nil {
 		cancel()
 		a.wg.Wait()
 		return nil, errors.Join(err, conn.Close())

@@ -2,6 +2,7 @@
 package chat
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -94,9 +95,10 @@ func (s *Service) Run(ctx context.Context) {
 }
 
 // Post stores the message id with content on channelKey and returns the chat ID. It does not wait
-// for the answer. When the agent has no model, it stores nothing and returns ErrNoModel. A message
-// with an ID that exists already is not stored again.
-func (s *Service) Post(ctx context.Context, agentID, channelKey, id, content string) (int64, error) {
+// for the answer. A new chat gets the title title, or the start of content when title is empty.
+// When the agent has no model, it stores nothing and returns ErrNoModel. A message with an ID that
+// exists already is not stored again.
+func (s *Service) Post(ctx context.Context, agentID, channelKey, title, id, content string) (int64, error) {
 	agent, err := s.q.GetAgent(ctx, agentID)
 	if err != nil {
 		return 0, err
@@ -104,7 +106,7 @@ func (s *Service) Post(ctx context.Context, agentID, channelKey, id, content str
 	if agent.ModelID == "" {
 		return 0, ErrNoModel
 	}
-	return s.enqueue(ctx, id, agentID, channelKey, "", content)
+	return s.enqueue(ctx, id, agentID, channelKey, "", title, content)
 }
 
 // Submit stores content as a message to agentID on channelKey and returns without waiting; the
@@ -112,13 +114,13 @@ func (s *Service) Post(ctx context.Context, agentID, channelKey, id, content str
 // same sourceKey exists, Submit does nothing, so a channel that delivers a message twice gets one
 // answer.
 func (s *Service) Submit(ctx context.Context, agentID, channelKey, sourceKey, content string) error {
-	_, err := s.enqueue(ctx, uuid.NewV7().String(), agentID, channelKey, sourceKey, content)
+	_, err := s.enqueue(ctx, uuid.NewV7().String(), agentID, channelKey, sourceKey, "", content)
 	return err
 }
 
-func (s *Service) enqueue(ctx context.Context, id, agentID, channelKey, sourceKey, content string) (int64, error) {
+func (s *Service) enqueue(ctx context.Context, id, agentID, channelKey, sourceKey, chatTitle, content string) (int64, error) {
 	conv, err := s.q.EnsureConversation(ctx, sqlc.EnsureConversationParams{
-		AgentID: agentID, ChannelKey: channelKey, Title: title(content), CreatedAt: s.now().UnixMilli(),
+		AgentID: agentID, ChannelKey: channelKey, Title: cmp.Or(chatTitle, title(content)), CreatedAt: s.now().UnixMilli(),
 	})
 	if err != nil {
 		return 0, err

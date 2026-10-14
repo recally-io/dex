@@ -43,7 +43,7 @@ const Header = "Chats since the previous dream, one JSON record per message, old
 
 // Poster stores a message in a chat and delivers it to the worker.
 type Poster interface {
-	Post(ctx context.Context, agentID, channelKey, id, content string) (int64, error)
+	Post(ctx context.Context, agentID, channelKey, title, id, content string) (int64, error)
 }
 
 // Dreamer starts the dreams of one agent.
@@ -124,7 +124,7 @@ func (d *Dreamer) start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = d.chats.Post(ctx, d.agentID, Channel+id, id, text)
+	_, err = d.chats.Post(ctx, d.agentID, Channel+id, "", id, text)
 	return err
 }
 

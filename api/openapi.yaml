@@ -72,6 +72,7 @@ paths:
         Stores a message in a web chat and returns. A message with an ID that
         exists already is not stored again. The answer comes through the
         event stream. 409 when the agent has no model; 403 for a Telegram chat.
+        Web and automation chats take messages.
       requestBody:
         required: true
         content:
@@ -231,8 +232,133 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/automations:
+    get:
+      operationId: listAutomations
+      description: All automations of the default agent, oldest first.
+      responses:
+        "200":
+          description: The automations.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationList" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAutomation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutomationInput" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/automations/preview:
+    post:
+      operationId: previewSchedule
+      description: The next times of a schedule, as the scheduler computes them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScheduleInput" }
+      responses:
+        "200":
+          description: The next times.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SchedulePreview" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/automations/{automationId}:
+    parameters:
+      - $ref: "#/components/parameters/AutomationId"
+    get:
+      operationId: getAutomation
+      responses:
+        "200":
+          description: The automation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateAutomation
+      description: >
+        Changes the automation. The next run is computed again from now, so a
+        change never runs a past time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutomationInput" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteAutomation
+      description: Removes the automation and its run history. Its chats stay.
+      responses:
+        "200":
+          description: Removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/automations/{automationId}/run:
+    parameters:
+      - $ref: "#/components/parameters/AutomationId"
+    post:
+      operationId: runAutomation
+      description: >
+        Runs the automation now, outside its schedule. The run is skipped when
+        the agent has no model or the previous run is still busy.
+      responses:
+        "202":
+          description: The run, started or skipped.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationRun" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/automations/{automationId}/runs:
+    parameters:
+      - $ref: "#/components/parameters/AutomationId"
+    get:
+      operationId: listAutomationRuns
+      description: The last 50 runs, newest first.
+      responses:
+        "200":
+          description: The runs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationRunList" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
 components:
   parameters:
+    AutomationId:
+      name: automationId
+      in: path
+      required: true
+      schema: { type: string }
     ChatId:
       name: chatId
       in: path
@@ -274,8 +400,11 @@ components:
         id: { type: integer, format: int64 }
         channel:
           type: string
-          enum: [web, telegram]
+          enum: [web, telegram, automation]
           description: Telegram chats are read-only in the web UI.
+        automationId:
+          type: string
+          description: The automation that created the chat.
         title: { type: string }
         createdAt: { type: integer, format: int64 }
         updatedAt:
@@ -315,6 +444,106 @@ components:
       required: [submissionId]
       properties:
         submissionId: { type: string }
+
+    # Automations
+
+    Schedule:
+      type: object
+      required: [kind]
+      description: >
+        every: each `minutes` minutes. daily: each day at `time`. weekly: at
+        `time` on `days`. once: at `at`. Times are in the automation's time
+        zone.
+      properties:
+        kind: { type: string, enum: [every, daily, weekly, once] }
+        minutes: { type: integer, minimum: 5, maximum: 10080 }
+        time: { type: string, description: "HH:MM, 24 h", example: "09:00" }
+        days:
+          type: array
+          description: ISO weekdays, 1 is Monday.
+          items: { type: integer, minimum: 1, maximum: 7 }
+        at: { type: integer, format: int64 }
+
+    ScheduleInput:
+      type: object
+      required: [schedule, timeZone]
+      properties:
+        schedule: { $ref: "#/components/schemas/Schedule" }
+        timeZone: {
+          type: string,
+          description: An IANA time zone,
+          such as Asia/Shanghai.,
+        }
+
+    SchedulePreview:
+      type: object
+      required: [nextRuns]
+      properties:
+        nextRuns:
+          type: array
+          description: At most 3 times; empty when the schedule has no future time.
+          items: { type: integer, format: int64 }
+
+    AutomationInput:
+      type: object
+      required: [name, prompt, schedule, timeZone, session, enabled]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        prompt: { type: string, minLength: 1, maxLength: 32000 }
+        schedule: { $ref: "#/components/schemas/Schedule" }
+        timeZone: { type: string }
+        session:
+          type: string
+          enum: [new, reuse]
+          description: >
+            new: each run starts a new chat. reuse: all runs use one chat; a
+            run is skipped while that chat is busy.
+        enabled: { type: boolean }
+
+    Automation:
+      allOf:
+        - $ref: "#/components/schemas/AutomationInput"
+        - type: object
+          required: [id, nextRuns, createdAt, updatedAt]
+          properties:
+            id: { type: string }
+            nextRuns:
+              type: array
+              description: At most 3 times; empty when disabled or done.
+              items: { type: integer, format: int64 }
+            lastRun: { $ref: "#/components/schemas/AutomationRun" }
+            createdAt: { type: integer, format: int64 }
+            updatedAt: { type: integer, format: int64 }
+
+    AutomationList:
+      type: object
+      required: [automations]
+      properties:
+        automations:
+          type: array
+          items: { $ref: "#/components/schemas/Automation" }
+
+    AutomationRun:
+      type: object
+      required: [id, status, createdAt]
+      properties:
+        id: { type: string }
+        dueAt:
+          type: integer
+          format: int64
+          description: The scheduled time; absent for a run that the user started.
+        createdAt: { type: integer, format: int64 }
+        status: { type: string, enum: [running, done, failed, skipped] }
+        reason: { type: string }
+        chatId: { type: integer, format: int64 }
+
+    AutomationRunList:
+      type: object
+      required: [runs]
+      properties:
+        runs:
+          type: array
+          items: { $ref: "#/components/schemas/AutomationRun" }
 
     # Transcript
 

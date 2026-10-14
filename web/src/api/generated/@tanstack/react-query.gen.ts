@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, createChat, deleteProvider, deleteTelegram, getChat, getHealth, getSettings, listChats, listModels, type Options, sendMessage, setAgent, setProvider, setTelegram } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, CreateChatData, CreateChatError, CreateChatResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, GetChatData, GetChatError, GetChatResponse, GetHealthData, GetHealthResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse } from '../types.gen';
+import { abortChat, createAutomation, createChat, deleteAutomation, deleteProvider, deleteTelegram, getAutomation, getChat, getHealth, getSettings, listAutomationRuns, listAutomations, listChats, listModels, type Options, previewSchedule, runAutomation, sendMessage, setAgent, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatResponse, GetHealthData, GetHealthResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -106,7 +106,7 @@ export const getChatOptions = (options: Options<GetChatData>) => queryOptions<Ge
 });
 
 /**
- * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model; 403 for a Telegram chat.
+ * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model; 403 for a Telegram chat. Web and automation chats take messages.
  *
  */
 export const sendMessageMutation = (options?: Partial<Options<SendMessageData>>): UseMutationOptions<SendMessageResponse, SendMessageError, Options<SendMessageData>> => {
@@ -257,3 +257,138 @@ export const setTelegramMutation = (options?: Partial<Options<SetTelegramData>>)
     };
     return mutationOptions;
 };
+
+export const listAutomationsQueryKey = (options?: Options<ListAutomationsData>) => createQueryKey('listAutomations', options);
+
+/**
+ * All automations of the default agent, oldest first.
+ */
+export const listAutomationsOptions = (options?: Options<ListAutomationsData>) => queryOptions<ListAutomationsResponse, ListAutomationsError, ListAutomationsResponse, ReturnType<typeof listAutomationsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listAutomations({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listAutomationsQueryKey(options)
+});
+
+export const createAutomationMutation = (options?: Partial<Options<CreateAutomationData>>): UseMutationOptions<CreateAutomationResponse, CreateAutomationError, Options<CreateAutomationData>> => {
+    const mutationOptions: UseMutationOptions<CreateAutomationResponse, CreateAutomationError, Options<CreateAutomationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createAutomation({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * The next times of a schedule, as the scheduler computes them.
+ */
+export const previewScheduleMutation = (options?: Partial<Options<PreviewScheduleData>>): UseMutationOptions<PreviewScheduleResponse, PreviewScheduleError, Options<PreviewScheduleData>> => {
+    const mutationOptions: UseMutationOptions<PreviewScheduleResponse, PreviewScheduleError, Options<PreviewScheduleData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await previewSchedule({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Removes the automation and its run history. Its chats stay.
+ */
+export const deleteAutomationMutation = (options?: Partial<Options<DeleteAutomationData>>): UseMutationOptions<DeleteAutomationResponse, DeleteAutomationError, Options<DeleteAutomationData>> => {
+    const mutationOptions: UseMutationOptions<DeleteAutomationResponse, DeleteAutomationError, Options<DeleteAutomationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteAutomation({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getAutomationQueryKey = (options: Options<GetAutomationData>) => createQueryKey('getAutomation', options);
+
+export const getAutomationOptions = (options: Options<GetAutomationData>) => queryOptions<GetAutomationResponse, GetAutomationError, GetAutomationResponse, ReturnType<typeof getAutomationQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getAutomation({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getAutomationQueryKey(options)
+});
+
+/**
+ * Changes the automation. The next run is computed again from now, so a change never runs a past time.
+ *
+ */
+export const updateAutomationMutation = (options?: Partial<Options<UpdateAutomationData>>): UseMutationOptions<UpdateAutomationResponse, UpdateAutomationError, Options<UpdateAutomationData>> => {
+    const mutationOptions: UseMutationOptions<UpdateAutomationResponse, UpdateAutomationError, Options<UpdateAutomationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await updateAutomation({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Runs the automation now, outside its schedule. The run is skipped when the agent has no model or the previous run is still busy.
+ *
+ */
+export const runAutomationMutation = (options?: Partial<Options<RunAutomationData>>): UseMutationOptions<RunAutomationResponse, RunAutomationError, Options<RunAutomationData>> => {
+    const mutationOptions: UseMutationOptions<RunAutomationResponse, RunAutomationError, Options<RunAutomationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await runAutomation({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listAutomationRunsQueryKey = (options: Options<ListAutomationRunsData>) => createQueryKey('listAutomationRuns', options);
+
+/**
+ * The last 50 runs, newest first.
+ */
+export const listAutomationRunsOptions = (options: Options<ListAutomationRunsData>) => queryOptions<ListAutomationRunsResponse, ListAutomationRunsError, ListAutomationRunsResponse, ReturnType<typeof listAutomationRunsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listAutomationRuns({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listAutomationRunsQueryKey(options)
+});

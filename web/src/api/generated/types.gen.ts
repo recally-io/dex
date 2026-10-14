@@ -26,7 +26,11 @@ export type Chat = {
     /**
      * Telegram chats are read-only in the web UI.
      */
-    channel: 'web' | 'telegram';
+    channel: 'web' | 'telegram' | 'automation';
+    /**
+     * The automation that created the chat.
+     */
+    automationId?: string;
     title: string;
     createdAt: number;
     /**
@@ -58,6 +62,83 @@ export type CreatedChat = {
 
 export type SentMessage = {
     submissionId: string;
+};
+
+/**
+ * every: each `minutes` minutes. daily: each day at `time`. weekly: at `time` on `days`. once: at `at`. Times are in the automation's time zone.
+ *
+ */
+export type Schedule = {
+    kind: 'every' | 'daily' | 'weekly' | 'once';
+    minutes?: number;
+    /**
+     * HH:MM, 24 h
+     */
+    time?: string;
+    /**
+     * ISO weekdays, 1 is Monday.
+     */
+    days?: Array<number>;
+    at?: number;
+};
+
+export type ScheduleInput = {
+    schedule: Schedule;
+    /**
+     * An IANA time zone
+     */
+    timeZone: string;
+};
+
+export type SchedulePreview = {
+    /**
+     * At most 3 times; empty when the schedule has no future time.
+     */
+    nextRuns: Array<number>;
+};
+
+export type AutomationInput = {
+    name: string;
+    prompt: string;
+    schedule: Schedule;
+    timeZone: string;
+    /**
+     * new: each run starts a new chat. reuse: all runs use one chat; a run is skipped while that chat is busy.
+     *
+     */
+    session: 'new' | 'reuse';
+    enabled: boolean;
+};
+
+export type Automation = AutomationInput & {
+    id: string;
+    /**
+     * At most 3 times; empty when disabled or done.
+     */
+    nextRuns: Array<number>;
+    lastRun?: AutomationRun;
+    createdAt: number;
+    updatedAt: number;
+};
+
+export type AutomationList = {
+    automations: Array<Automation>;
+};
+
+export type AutomationRun = {
+    id: string;
+    /**
+     * The scheduled time; absent for a run that the user started.
+     */
+    dueAt?: number;
+    createdAt: number;
+    status: 'running' | 'done' | 'failed' | 'skipped';
+    reason?: string;
+    chatId?: number;
+};
+
+export type AutomationRunList = {
+    runs: Array<AutomationRun>;
 };
 
 export type Item = ({
@@ -279,6 +360,8 @@ export type TelegramInput = {
     token: string;
     allowedUsers: Array<number>;
 };
+
+export type AutomationId = string;
 
 export type ChatId = number;
 
@@ -678,3 +761,241 @@ export type SetTelegramResponses = {
 };
 
 export type SetTelegramResponse = SetTelegramResponses[keyof SetTelegramResponses];
+
+export type ListAutomationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/automations';
+};
+
+export type ListAutomationsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListAutomationsError = ListAutomationsErrors[keyof ListAutomationsErrors];
+
+export type ListAutomationsResponses = {
+    /**
+     * The automations.
+     */
+    200: AutomationList;
+};
+
+export type ListAutomationsResponse = ListAutomationsResponses[keyof ListAutomationsResponses];
+
+export type CreateAutomationData = {
+    body: AutomationInput;
+    path?: never;
+    query?: never;
+    url: '/api/automations';
+};
+
+export type CreateAutomationErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateAutomationError = CreateAutomationErrors[keyof CreateAutomationErrors];
+
+export type CreateAutomationResponses = {
+    /**
+     * Created.
+     */
+    201: Automation;
+};
+
+export type CreateAutomationResponse = CreateAutomationResponses[keyof CreateAutomationResponses];
+
+export type PreviewScheduleData = {
+    body: ScheduleInput;
+    path?: never;
+    query?: never;
+    url: '/api/automations/preview';
+};
+
+export type PreviewScheduleErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type PreviewScheduleError = PreviewScheduleErrors[keyof PreviewScheduleErrors];
+
+export type PreviewScheduleResponses = {
+    /**
+     * The next times.
+     */
+    200: SchedulePreview;
+};
+
+export type PreviewScheduleResponse = PreviewScheduleResponses[keyof PreviewScheduleResponses];
+
+export type DeleteAutomationData = {
+    body?: never;
+    path: {
+        automationId: string;
+    };
+    query?: never;
+    url: '/api/automations/{automationId}';
+};
+
+export type DeleteAutomationErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteAutomationError = DeleteAutomationErrors[keyof DeleteAutomationErrors];
+
+export type DeleteAutomationResponses = {
+    /**
+     * Removed.
+     */
+    200: Ok;
+};
+
+export type DeleteAutomationResponse = DeleteAutomationResponses[keyof DeleteAutomationResponses];
+
+export type GetAutomationData = {
+    body?: never;
+    path: {
+        automationId: string;
+    };
+    query?: never;
+    url: '/api/automations/{automationId}';
+};
+
+export type GetAutomationErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetAutomationError = GetAutomationErrors[keyof GetAutomationErrors];
+
+export type GetAutomationResponses = {
+    /**
+     * The automation.
+     */
+    200: Automation;
+};
+
+export type GetAutomationResponse = GetAutomationResponses[keyof GetAutomationResponses];
+
+export type UpdateAutomationData = {
+    body: AutomationInput;
+    path: {
+        automationId: string;
+    };
+    query?: never;
+    url: '/api/automations/{automationId}';
+};
+
+export type UpdateAutomationErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type UpdateAutomationError = UpdateAutomationErrors[keyof UpdateAutomationErrors];
+
+export type UpdateAutomationResponses = {
+    /**
+     * Saved.
+     */
+    200: Automation;
+};
+
+export type UpdateAutomationResponse = UpdateAutomationResponses[keyof UpdateAutomationResponses];
+
+export type RunAutomationData = {
+    body?: never;
+    path: {
+        automationId: string;
+    };
+    query?: never;
+    url: '/api/automations/{automationId}/run';
+};
+
+export type RunAutomationErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type RunAutomationError = RunAutomationErrors[keyof RunAutomationErrors];
+
+export type RunAutomationResponses = {
+    /**
+     * The run, started or skipped.
+     */
+    202: AutomationRun;
+};
+
+export type RunAutomationResponse = RunAutomationResponses[keyof RunAutomationResponses];
+
+export type ListAutomationRunsData = {
+    body?: never;
+    path: {
+        automationId: string;
+    };
+    query?: never;
+    url: '/api/automations/{automationId}/runs';
+};
+
+export type ListAutomationRunsErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListAutomationRunsError = ListAutomationRunsErrors[keyof ListAutomationRunsErrors];
+
+export type ListAutomationRunsResponses = {
+    /**
+     * The runs.
+     */
+    200: AutomationRunList;
+};
+
+export type ListAutomationRunsResponse = ListAutomationRunsResponses[keyof ListAutomationRunsResponses];

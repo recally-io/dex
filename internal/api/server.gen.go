@@ -47,15 +47,78 @@ func (e AssistantItemKind) Valid() bool {
 	}
 }
 
+// Defines values for AutomationSession.
+const (
+	AutomationSessionNew   AutomationSession = "new"
+	AutomationSessionReuse AutomationSession = "reuse"
+)
+
+// Valid indicates whether the value is a known member of the AutomationSession enum.
+func (e AutomationSession) Valid() bool {
+	switch e {
+	case AutomationSessionNew:
+		return true
+	case AutomationSessionReuse:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AutomationInputSession.
+const (
+	AutomationInputSessionNew   AutomationInputSession = "new"
+	AutomationInputSessionReuse AutomationInputSession = "reuse"
+)
+
+// Valid indicates whether the value is a known member of the AutomationInputSession enum.
+func (e AutomationInputSession) Valid() bool {
+	switch e {
+	case AutomationInputSessionNew:
+		return true
+	case AutomationInputSessionReuse:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AutomationRunStatus.
+const (
+	AutomationRunStatusDone    AutomationRunStatus = "done"
+	AutomationRunStatusFailed  AutomationRunStatus = "failed"
+	AutomationRunStatusRunning AutomationRunStatus = "running"
+	AutomationRunStatusSkipped AutomationRunStatus = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the AutomationRunStatus enum.
+func (e AutomationRunStatus) Valid() bool {
+	switch e {
+	case AutomationRunStatusDone:
+		return true
+	case AutomationRunStatusFailed:
+		return true
+	case AutomationRunStatusRunning:
+		return true
+	case AutomationRunStatusSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChatChannel.
 const (
-	ChatChannelTelegram ChatChannel = "telegram"
-	ChatChannelWeb      ChatChannel = "web"
+	ChatChannelAutomation ChatChannel = "automation"
+	ChatChannelTelegram   ChatChannel = "telegram"
+	ChatChannelWeb        ChatChannel = "web"
 )
 
 // Valid indicates whether the value is a known member of the ChatChannel enum.
 func (e ChatChannel) Valid() bool {
 	switch e {
+	case ChatChannelAutomation:
+		return true
 	case ChatChannelTelegram:
 		return true
 	case ChatChannelWeb:
@@ -134,6 +197,30 @@ const (
 func (e RunEventType) Valid() bool {
 	switch e {
 	case Run:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ScheduleKind.
+const (
+	Daily  ScheduleKind = "daily"
+	Every  ScheduleKind = "every"
+	Once   ScheduleKind = "once"
+	Weekly ScheduleKind = "weekly"
+)
+
+// Valid indicates whether the value is a known member of the ScheduleKind enum.
+func (e ScheduleKind) Valid() bool {
+	switch e {
+	case Daily:
+		return true
+	case Every:
+		return true
+	case Once:
+		return true
+	case Weekly:
 		return true
 	default:
 		return false
@@ -256,8 +343,77 @@ type AssistantItem struct {
 // AssistantItemKind defines model for AssistantItem.Kind.
 type AssistantItemKind string
 
+// Automation defines model for Automation.
+type Automation struct {
+	CreatedAt int64          `json:"createdAt"`
+	Enabled   bool           `json:"enabled"`
+	Id        string         `json:"id"`
+	LastRun   *AutomationRun `json:"lastRun,omitempty"`
+	Name      string         `json:"name"`
+
+	// NextRuns At most 3 times; empty when disabled or done.
+	NextRuns []int64 `json:"nextRuns"`
+	Prompt   string  `json:"prompt"`
+
+	// Schedule every: each `minutes` minutes. daily: each day at `time`. weekly: at `time` on `days`. once: at `at`. Times are in the automation's time zone.
+	Schedule Schedule `json:"schedule"`
+
+	// Session new: each run starts a new chat. reuse: all runs use one chat; a run is skipped while that chat is busy.
+	Session   AutomationSession `json:"session"`
+	TimeZone  string            `json:"timeZone"`
+	UpdatedAt int64             `json:"updatedAt"`
+}
+
+// AutomationSession new: each run starts a new chat. reuse: all runs use one chat; a run is skipped while that chat is busy.
+type AutomationSession string
+
+// AutomationInput defines model for AutomationInput.
+type AutomationInput struct {
+	Enabled bool   `json:"enabled"`
+	Name    string `json:"name"`
+	Prompt  string `json:"prompt"`
+
+	// Schedule every: each `minutes` minutes. daily: each day at `time`. weekly: at `time` on `days`. once: at `at`. Times are in the automation's time zone.
+	Schedule Schedule `json:"schedule"`
+
+	// Session new: each run starts a new chat. reuse: all runs use one chat; a run is skipped while that chat is busy.
+	Session  AutomationInputSession `json:"session"`
+	TimeZone string                 `json:"timeZone"`
+}
+
+// AutomationInputSession new: each run starts a new chat. reuse: all runs use one chat; a run is skipped while that chat is busy.
+type AutomationInputSession string
+
+// AutomationList defines model for AutomationList.
+type AutomationList struct {
+	Automations []Automation `json:"automations"`
+}
+
+// AutomationRun defines model for AutomationRun.
+type AutomationRun struct {
+	ChatId    *int64 `json:"chatId,omitempty"`
+	CreatedAt int64  `json:"createdAt"`
+
+	// DueAt The scheduled time; absent for a run that the user started.
+	DueAt  *int64              `json:"dueAt,omitempty"`
+	Id     string              `json:"id"`
+	Reason *string             `json:"reason,omitempty"`
+	Status AutomationRunStatus `json:"status"`
+}
+
+// AutomationRunStatus defines model for AutomationRun.Status.
+type AutomationRunStatus string
+
+// AutomationRunList defines model for AutomationRunList.
+type AutomationRunList struct {
+	Runs []AutomationRun `json:"runs"`
+}
+
 // Chat defines model for Chat.
 type Chat struct {
+	// AutomationId The automation that created the chat.
+	AutomationId *string `json:"automationId,omitempty"`
+
 	// Busy True while a message of the chat has no answer yet.
 	Busy bool `json:"busy"`
 
@@ -414,6 +570,39 @@ type RunEvent struct {
 // RunEventType defines model for RunEvent.Type.
 type RunEventType string
 
+// Schedule every: each `minutes` minutes. daily: each day at `time`. weekly: at `time` on `days`. once: at `at`. Times are in the automation's time zone.
+type Schedule struct {
+	At *int64 `json:"at,omitempty"`
+
+	// Days ISO weekdays, 1 is Monday.
+	Days    *[]int       `json:"days,omitempty"`
+	Kind    ScheduleKind `json:"kind"`
+	Minutes *int         `json:"minutes,omitempty"`
+
+	// Time HH:MM, 24 h
+	//
+	// Example: 09:00
+	Time *string `json:"time,omitempty"`
+}
+
+// ScheduleKind defines model for Schedule.Kind.
+type ScheduleKind string
+
+// ScheduleInput defines model for ScheduleInput.
+type ScheduleInput struct {
+	// Schedule every: each `minutes` minutes. daily: each day at `time`. weekly: at `time` on `days`. once: at `at`. Times are in the automation's time zone.
+	Schedule Schedule `json:"schedule"`
+
+	// TimeZone An IANA time zone
+	TimeZone string `json:"timeZone"`
+}
+
+// SchedulePreview defines model for SchedulePreview.
+type SchedulePreview struct {
+	// NextRuns At most 3 times; empty when the schedule has no future time.
+	NextRuns []int64 `json:"nextRuns"`
+}
+
 // SentMessage defines model for SentMessage.
 type SentMessage struct {
 	SubmissionId string `json:"submissionId"`
@@ -513,8 +702,20 @@ type UserItem struct {
 // UserItemKind defines model for UserItem.Kind.
 type UserItemKind string
 
+// AutomationId defines model for AutomationId.
+type AutomationId = string
+
 // ChatId defines model for ChatId.
 type ChatId = int64
+
+// CreateAutomationJSONRequestBody defines body for CreateAutomation for application/json ContentType.
+type CreateAutomationJSONRequestBody = AutomationInput
+
+// PreviewScheduleJSONRequestBody defines body for PreviewSchedule for application/json ContentType.
+type PreviewScheduleJSONRequestBody = ScheduleInput
+
+// UpdateAutomationJSONRequestBody defines body for UpdateAutomation for application/json ContentType.
+type UpdateAutomationJSONRequestBody = AutomationInput
 
 // CreateChatJSONRequestBody defines body for CreateChat for application/json ContentType.
 type CreateChatJSONRequestBody = MessageInput
@@ -916,6 +1117,30 @@ func (t *Item) UnmarshalJSON(b []byte) error {
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
+	// (GET /api/automations)
+	ListAutomations(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/automations)
+	CreateAutomation(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/automations/preview)
+	PreviewSchedule(w http.ResponseWriter, r *http.Request)
+
+	// (DELETE /api/automations/{automationId})
+	DeleteAutomation(w http.ResponseWriter, r *http.Request, automationId AutomationId)
+
+	// (GET /api/automations/{automationId})
+	GetAutomation(w http.ResponseWriter, r *http.Request, automationId AutomationId)
+
+	// (PUT /api/automations/{automationId})
+	UpdateAutomation(w http.ResponseWriter, r *http.Request, automationId AutomationId)
+
+	// (POST /api/automations/{automationId}/run)
+	RunAutomation(w http.ResponseWriter, r *http.Request, automationId AutomationId)
+
+	// (GET /api/automations/{automationId}/runs)
+	ListAutomationRuns(w http.ResponseWriter, r *http.Request, automationId AutomationId)
+
 	// (GET /api/chats)
 	ListChats(w http.ResponseWriter, r *http.Request)
 
@@ -967,6 +1192,178 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListAutomations operation middleware
+func (siw *ServerInterfaceWrapper) ListAutomations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAutomations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAutomation operation middleware
+func (siw *ServerInterfaceWrapper) CreateAutomation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAutomation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewSchedule operation middleware
+func (siw *ServerInterfaceWrapper) PreviewSchedule(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewSchedule(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAutomation operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAutomation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "automationId" -------------
+	var automationId AutomationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "automationId", r.PathValue("automationId"), &automationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "automationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAutomation(w, r, automationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAutomation operation middleware
+func (siw *ServerInterfaceWrapper) GetAutomation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "automationId" -------------
+	var automationId AutomationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "automationId", r.PathValue("automationId"), &automationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "automationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAutomation(w, r, automationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAutomation operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAutomation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "automationId" -------------
+	var automationId AutomationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "automationId", r.PathValue("automationId"), &automationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "automationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAutomation(w, r, automationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RunAutomation operation middleware
+func (siw *ServerInterfaceWrapper) RunAutomation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "automationId" -------------
+	var automationId AutomationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "automationId", r.PathValue("automationId"), &automationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "automationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RunAutomation(w, r, automationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAutomationRuns operation middleware
+func (siw *ServerInterfaceWrapper) ListAutomationRuns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "automationId" -------------
+	var automationId AutomationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "automationId", r.PathValue("automationId"), &automationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "automationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAutomationRuns(w, r, automationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListChats operation middleware
 func (siw *ServerInterfaceWrapper) ListChats(w http.ResponseWriter, r *http.Request) {
@@ -1370,11 +1767,429 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.SetProvider)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/telegram", wrapper.DeleteTelegram)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/telegram", wrapper.SetTelegram)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/automations", wrapper.ListAutomations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/automations", wrapper.CreateAutomation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/automations/preview", wrapper.PreviewSchedule)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/automations/{automationId}", wrapper.DeleteAutomation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/automations/{automationId}", wrapper.GetAutomation)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/automations/{automationId}", wrapper.UpdateAutomation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/automations/{automationId}/run", wrapper.RunAutomation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/automations/{automationId}/runs", wrapper.ListAutomationRuns)
 
 	return m
 }
 
 type ErrorJSONResponse Error
+
+type ListAutomationsRequestObject struct {
+}
+
+type ListAutomationsResponseObject interface {
+	VisitListAutomationsResponse(w http.ResponseWriter) error
+}
+
+type ListAutomations200JSONResponse AutomationList
+
+func (response ListAutomations200JSONResponse) VisitListAutomationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAutomationsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListAutomationsdefaultJSONResponse) VisitListAutomationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAutomationRequestObject struct {
+	Body *CreateAutomationJSONRequestBody
+}
+
+type CreateAutomationResponseObject interface {
+	VisitCreateAutomationResponse(w http.ResponseWriter) error
+}
+
+type CreateAutomation201JSONResponse Automation
+
+func (response CreateAutomation201JSONResponse) VisitCreateAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAutomation400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CreateAutomation400JSONResponse) VisitCreateAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAutomationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateAutomationdefaultJSONResponse) VisitCreateAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewScheduleRequestObject struct {
+	Body *PreviewScheduleJSONRequestBody
+}
+
+type PreviewScheduleResponseObject interface {
+	VisitPreviewScheduleResponse(w http.ResponseWriter) error
+}
+
+type PreviewSchedule200JSONResponse SchedulePreview
+
+func (response PreviewSchedule200JSONResponse) VisitPreviewScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewSchedule400JSONResponse struct{ ErrorJSONResponse }
+
+func (response PreviewSchedule400JSONResponse) VisitPreviewScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewScheduledefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response PreviewScheduledefaultJSONResponse) VisitPreviewScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAutomationRequestObject struct {
+	AutomationId AutomationId `json:"automationId"`
+}
+
+type DeleteAutomationResponseObject interface {
+	VisitDeleteAutomationResponse(w http.ResponseWriter) error
+}
+
+type DeleteAutomation200JSONResponse Ok
+
+func (response DeleteAutomation200JSONResponse) VisitDeleteAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAutomationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteAutomationdefaultJSONResponse) VisitDeleteAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAutomationRequestObject struct {
+	AutomationId AutomationId `json:"automationId"`
+}
+
+type GetAutomationResponseObject interface {
+	VisitGetAutomationResponse(w http.ResponseWriter) error
+}
+
+type GetAutomation200JSONResponse Automation
+
+func (response GetAutomation200JSONResponse) VisitGetAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAutomation404JSONResponse struct{ ErrorJSONResponse }
+
+func (response GetAutomation404JSONResponse) VisitGetAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAutomationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetAutomationdefaultJSONResponse) VisitGetAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAutomationRequestObject struct {
+	AutomationId AutomationId `json:"automationId"`
+	Body         *UpdateAutomationJSONRequestBody
+}
+
+type UpdateAutomationResponseObject interface {
+	VisitUpdateAutomationResponse(w http.ResponseWriter) error
+}
+
+type UpdateAutomation200JSONResponse Automation
+
+func (response UpdateAutomation200JSONResponse) VisitUpdateAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAutomation400JSONResponse struct{ ErrorJSONResponse }
+
+func (response UpdateAutomation400JSONResponse) VisitUpdateAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAutomation404JSONResponse Error
+
+func (response UpdateAutomation404JSONResponse) VisitUpdateAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAutomationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateAutomationdefaultJSONResponse) VisitUpdateAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunAutomationRequestObject struct {
+	AutomationId AutomationId `json:"automationId"`
+}
+
+type RunAutomationResponseObject interface {
+	VisitRunAutomationResponse(w http.ResponseWriter) error
+}
+
+type RunAutomation202JSONResponse AutomationRun
+
+func (response RunAutomation202JSONResponse) VisitRunAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunAutomation404JSONResponse struct{ ErrorJSONResponse }
+
+func (response RunAutomation404JSONResponse) VisitRunAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunAutomationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RunAutomationdefaultJSONResponse) VisitRunAutomationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAutomationRunsRequestObject struct {
+	AutomationId AutomationId `json:"automationId"`
+}
+
+type ListAutomationRunsResponseObject interface {
+	VisitListAutomationRunsResponse(w http.ResponseWriter) error
+}
+
+type ListAutomationRuns200JSONResponse AutomationRunList
+
+func (response ListAutomationRuns200JSONResponse) VisitListAutomationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAutomationRuns404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListAutomationRuns404JSONResponse) VisitListAutomationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAutomationRunsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListAutomationRunsdefaultJSONResponse) VisitListAutomationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type ListChatsRequestObject struct {
 }
@@ -2085,6 +2900,30 @@ func (response SetTelegramdefaultJSONResponse) VisitSetTelegramResponse(w http.R
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
+	// (GET /api/automations)
+	ListAutomations(ctx context.Context, request ListAutomationsRequestObject) (ListAutomationsResponseObject, error)
+
+	// (POST /api/automations)
+	CreateAutomation(ctx context.Context, request CreateAutomationRequestObject) (CreateAutomationResponseObject, error)
+
+	// (POST /api/automations/preview)
+	PreviewSchedule(ctx context.Context, request PreviewScheduleRequestObject) (PreviewScheduleResponseObject, error)
+
+	// (DELETE /api/automations/{automationId})
+	DeleteAutomation(ctx context.Context, request DeleteAutomationRequestObject) (DeleteAutomationResponseObject, error)
+
+	// (GET /api/automations/{automationId})
+	GetAutomation(ctx context.Context, request GetAutomationRequestObject) (GetAutomationResponseObject, error)
+
+	// (PUT /api/automations/{automationId})
+	UpdateAutomation(ctx context.Context, request UpdateAutomationRequestObject) (UpdateAutomationResponseObject, error)
+
+	// (POST /api/automations/{automationId}/run)
+	RunAutomation(ctx context.Context, request RunAutomationRequestObject) (RunAutomationResponseObject, error)
+
+	// (GET /api/automations/{automationId}/runs)
+	ListAutomationRuns(ctx context.Context, request ListAutomationRunsRequestObject) (ListAutomationRunsResponseObject, error)
+
 	// (GET /api/chats)
 	ListChats(ctx context.Context, request ListChatsRequestObject) (ListChatsResponseObject, error)
 
@@ -2165,6 +3004,229 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListAutomations operation middleware
+func (sh *strictHandler) ListAutomations(w http.ResponseWriter, r *http.Request) {
+	var request ListAutomationsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAutomations(ctx, request.(ListAutomationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAutomations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAutomationsResponseObject); ok {
+		if err := validResponse.VisitListAutomationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAutomation operation middleware
+func (sh *strictHandler) CreateAutomation(w http.ResponseWriter, r *http.Request) {
+	var request CreateAutomationRequestObject
+
+	var body CreateAutomationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAutomation(ctx, request.(CreateAutomationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAutomation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAutomationResponseObject); ok {
+		if err := validResponse.VisitCreateAutomationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PreviewSchedule operation middleware
+func (sh *strictHandler) PreviewSchedule(w http.ResponseWriter, r *http.Request) {
+	var request PreviewScheduleRequestObject
+
+	var body PreviewScheduleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewSchedule(ctx, request.(PreviewScheduleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewSchedule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PreviewScheduleResponseObject); ok {
+		if err := validResponse.VisitPreviewScheduleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAutomation operation middleware
+func (sh *strictHandler) DeleteAutomation(w http.ResponseWriter, r *http.Request, automationId AutomationId) {
+	var request DeleteAutomationRequestObject
+
+	request.AutomationId = automationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAutomation(ctx, request.(DeleteAutomationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAutomation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAutomationResponseObject); ok {
+		if err := validResponse.VisitDeleteAutomationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAutomation operation middleware
+func (sh *strictHandler) GetAutomation(w http.ResponseWriter, r *http.Request, automationId AutomationId) {
+	var request GetAutomationRequestObject
+
+	request.AutomationId = automationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAutomation(ctx, request.(GetAutomationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAutomation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAutomationResponseObject); ok {
+		if err := validResponse.VisitGetAutomationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAutomation operation middleware
+func (sh *strictHandler) UpdateAutomation(w http.ResponseWriter, r *http.Request, automationId AutomationId) {
+	var request UpdateAutomationRequestObject
+
+	request.AutomationId = automationId
+
+	var body UpdateAutomationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAutomation(ctx, request.(UpdateAutomationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAutomation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAutomationResponseObject); ok {
+		if err := validResponse.VisitUpdateAutomationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RunAutomation operation middleware
+func (sh *strictHandler) RunAutomation(w http.ResponseWriter, r *http.Request, automationId AutomationId) {
+	var request RunAutomationRequestObject
+
+	request.AutomationId = automationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RunAutomation(ctx, request.(RunAutomationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RunAutomation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RunAutomationResponseObject); ok {
+		if err := validResponse.VisitRunAutomationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAutomationRuns operation middleware
+func (sh *strictHandler) ListAutomationRuns(w http.ResponseWriter, r *http.Request, automationId AutomationId) {
+	var request ListAutomationRunsRequestObject
+
+	request.AutomationId = automationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAutomationRuns(ctx, request.(ListAutomationRunsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAutomationRuns")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAutomationRunsResponseObject); ok {
+		if err := validResponse.VisitListAutomationRunsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // ListChats operation middleware

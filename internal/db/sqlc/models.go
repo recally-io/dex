@@ -17,6 +17,29 @@ type Agent struct {
 	CreatedAt     int64  `json:"created_at"`
 }
 
+type Automation struct {
+	ID        string        `json:"id"`
+	AgentID   string        `json:"agent_id"`
+	Name      string        `json:"name"`
+	Prompt    string        `json:"prompt"`
+	Schedule  string        `json:"schedule"`
+	TimeZone  string        `json:"time_zone"`
+	Session   string        `json:"session"`
+	Enabled   int64         `json:"enabled"`
+	NextDueAt sql.NullInt64 `json:"next_due_at"`
+	CreatedAt int64         `json:"created_at"`
+	UpdatedAt int64         `json:"updated_at"`
+}
+
+type AutomationRun struct {
+	ID           string         `json:"id"`
+	AutomationID string         `json:"automation_id"`
+	DueAt        sql.NullInt64  `json:"due_at"`
+	Status       string         `json:"status"`
+	Reason       sql.NullString `json:"reason"`
+	CreatedAt    int64          `json:"created_at"`
+}
+
 type Conversation struct {
 	ID                   int64         `json:"id"`
 	AgentID              string        `json:"agent_id"`

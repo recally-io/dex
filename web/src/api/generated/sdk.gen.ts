@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortChatData, AbortChatErrors, AbortChatResponses, CreateChatData, CreateChatErrors, CreateChatResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, GetChatData, GetChatErrors, GetChatResponses, GetHealthData, GetHealthResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetAgentData, SetAgentErrors, SetAgentResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
+import type { AbortChatData, AbortChatErrors, AbortChatResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChatData, GetChatErrors, GetChatResponses, GetHealthData, GetHealthResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetAgentData, SetAgentErrors, SetAgentResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -41,7 +41,7 @@ export const createChat = <ThrowOnError extends boolean = false>(options: Option
 export const getChat = <ThrowOnError extends boolean = false>(options: Options<GetChatData, ThrowOnError>): RequestResult<GetChatResponses, GetChatErrors, ThrowOnError> => (options.client ?? client).get<GetChatResponses, GetChatErrors, ThrowOnError>({ url: '/api/chats/{chatId}', ...options });
 
 /**
- * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model; 403 for a Telegram chat.
+ * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model; 403 for a Telegram chat. Web and automation chats take messages.
  *
  */
 export const sendMessage = <ThrowOnError extends boolean = false>(options: Options<SendMessageData, ThrowOnError>): RequestResult<SendMessageResponses, SendMessageErrors, ThrowOnError> => (options.client ?? client).post<SendMessageResponses, SendMessageErrors, ThrowOnError>({
@@ -116,3 +116,60 @@ export const setTelegram = <ThrowOnError extends boolean = false>(options: Optio
         ...options.headers
     }
 });
+
+/**
+ * All automations of the default agent, oldest first.
+ */
+export const listAutomations = <ThrowOnError extends boolean = false>(options?: Options<ListAutomationsData, ThrowOnError>): RequestResult<ListAutomationsResponses, ListAutomationsErrors, ThrowOnError> => (options?.client ?? client).get<ListAutomationsResponses, ListAutomationsErrors, ThrowOnError>({ url: '/api/automations', ...options });
+
+export const createAutomation = <ThrowOnError extends boolean = false>(options: Options<CreateAutomationData, ThrowOnError>): RequestResult<CreateAutomationResponses, CreateAutomationErrors, ThrowOnError> => (options.client ?? client).post<CreateAutomationResponses, CreateAutomationErrors, ThrowOnError>({
+    url: '/api/automations',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * The next times of a schedule, as the scheduler computes them.
+ */
+export const previewSchedule = <ThrowOnError extends boolean = false>(options: Options<PreviewScheduleData, ThrowOnError>): RequestResult<PreviewScheduleResponses, PreviewScheduleErrors, ThrowOnError> => (options.client ?? client).post<PreviewScheduleResponses, PreviewScheduleErrors, ThrowOnError>({
+    url: '/api/automations/preview',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Removes the automation and its run history. Its chats stay.
+ */
+export const deleteAutomation = <ThrowOnError extends boolean = false>(options: Options<DeleteAutomationData, ThrowOnError>): RequestResult<DeleteAutomationResponses, DeleteAutomationErrors, ThrowOnError> => (options.client ?? client).delete<DeleteAutomationResponses, DeleteAutomationErrors, ThrowOnError>({ url: '/api/automations/{automationId}', ...options });
+
+export const getAutomation = <ThrowOnError extends boolean = false>(options: Options<GetAutomationData, ThrowOnError>): RequestResult<GetAutomationResponses, GetAutomationErrors, ThrowOnError> => (options.client ?? client).get<GetAutomationResponses, GetAutomationErrors, ThrowOnError>({ url: '/api/automations/{automationId}', ...options });
+
+/**
+ * Changes the automation. The next run is computed again from now, so a change never runs a past time.
+ *
+ */
+export const updateAutomation = <ThrowOnError extends boolean = false>(options: Options<UpdateAutomationData, ThrowOnError>): RequestResult<UpdateAutomationResponses, UpdateAutomationErrors, ThrowOnError> => (options.client ?? client).put<UpdateAutomationResponses, UpdateAutomationErrors, ThrowOnError>({
+    url: '/api/automations/{automationId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Runs the automation now, outside its schedule. The run is skipped when the agent has no model or the previous run is still busy.
+ *
+ */
+export const runAutomation = <ThrowOnError extends boolean = false>(options: Options<RunAutomationData, ThrowOnError>): RequestResult<RunAutomationResponses, RunAutomationErrors, ThrowOnError> => (options.client ?? client).post<RunAutomationResponses, RunAutomationErrors, ThrowOnError>({ url: '/api/automations/{automationId}/run', ...options });
+
+/**
+ * The last 50 runs, newest first.
+ */
+export const listAutomationRuns = <ThrowOnError extends boolean = false>(options: Options<ListAutomationRunsData, ThrowOnError>): RequestResult<ListAutomationRunsResponses, ListAutomationRunsErrors, ThrowOnError> => (options.client ?? client).get<ListAutomationRunsResponses, ListAutomationRunsErrors, ThrowOnError>({ url: '/api/automations/{automationId}/runs', ...options });

@@ -12,6 +12,7 @@ import (
 	"uuid"
 
 	"github.com/vaayne/dex/internal/api"
+	"github.com/vaayne/dex/internal/automation"
 	"github.com/vaayne/dex/internal/chat"
 	"github.com/vaayne/dex/internal/live"
 	"github.com/vaayne/dex/internal/settings"
@@ -20,12 +21,13 @@ import (
 
 // Config holds what the handler serves.
 type Config struct {
-	Chats    *chat.Service
-	Settings *settings.Service
-	Live     *live.Hub
-	AgentID  string
-	DataDir  string
-	Version  string
+	Chats       *chat.Service
+	Automations *automation.Service
+	Settings    *settings.Service
+	Live        *live.Hub
+	AgentID     string
+	DataDir     string
+	Version     string
 }
 
 // The longest message, in characters, as in the contract.
@@ -49,11 +51,11 @@ func New(cfg Config) http.Handler {
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			status := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, settings.ErrInvalid), errors.Is(err, errInvalid):
+			case errors.Is(err, settings.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, errReadOnly):
 				status = http.StatusForbidden
-			case errors.Is(err, chat.ErrNotFound):
+			case errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound):
 				status = http.StatusNotFound
 			case errors.Is(err, chat.ErrNoModel):
 				status = http.StatusConflict
@@ -89,13 +91,16 @@ func (h *handler) GetHealth(context.Context, api.GetHealthRequestObject) (api.Ge
 }
 
 func chatView(c chat.Chat) api.Chat {
-	channel := api.ChatChannelWeb
+	out := api.Chat{
+		Id: c.ID, Channel: api.ChatChannelWeb, Title: c.Title, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Busy: c.Busy,
+	}
 	if strings.HasPrefix(c.ChannelKey, "telegram:") {
-		channel = api.ChatChannelTelegram
+		out.Channel = api.ChatChannelTelegram
 	}
-	return api.Chat{
-		Id: c.ID, Channel: channel, Title: c.Title, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Busy: c.Busy,
+	if id, ok := automation.ChatAutomation(c.ChannelKey); ok {
+		out.Channel, out.AutomationId = api.ChatChannelAutomation, &id
 	}
+	return out
 }
 
 func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (api.ListChatsResponseObject, error) {
@@ -140,7 +145,7 @@ func (h *handler) CreateChat(ctx context.Context, req api.CreateChatRequestObjec
 		return nil, err
 	}
 	// The channel key comes from the message ID, so a retried request finds the same chat.
-	chatID, err := h.Chats.Post(ctx, h.AgentID, "web:"+id, id, text)
+	chatID, err := h.Chats.Post(ctx, h.AgentID, "web:"+id, "", id, text)
 	if err != nil {
 		return nil, err
 	}
@@ -160,10 +165,10 @@ func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObj
 	if err != nil {
 		return nil, err
 	}
-	if !strings.HasPrefix(c.ChannelKey, "web:") {
+	if strings.HasPrefix(c.ChannelKey, "telegram:") {
 		return nil, errReadOnly
 	}
-	if _, err := h.Chats.Post(ctx, h.AgentID, c.ChannelKey, id, text); err != nil {
+	if _, err := h.Chats.Post(ctx, h.AgentID, c.ChannelKey, "", id, text); err != nil {
 		return nil, err
 	}
 	return api.SendMessage202JSONResponse{SubmissionId: id}, nil

@@ -10,6 +10,24 @@ import (
 	"database/sql"
 )
 
+const countAutomationPending = `-- name: CountAutomationPending :one
+SELECT count(*) FROM submissions s
+JOIN conversations c ON c.id = s.conversation_id
+WHERE
+    s.status = 'pending'
+    AND (c.channel_key = 'automation:' || CAST(?1 AS TEXT)
+        OR c.channel_key LIKE 'automation:' || CAST(?1 AS TEXT) || ':%')
+`
+
+// The messages without an answer in the chats of an automation: automation:<id> and
+// automation:<id>:<run id>.
+func (q *Queries) CountAutomationPending(ctx context.Context, automationID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countAutomationPending, automationID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAgentIfMissing = `-- name: CreateAgentIfMissing :exec
 INSERT INTO agents (id, name, model_provider, model_id, created_at)
 VALUES (?, ?, '', '', ?)
@@ -25,6 +43,74 @@ type CreateAgentIfMissingParams struct {
 func (q *Queries) CreateAgentIfMissing(ctx context.Context, arg CreateAgentIfMissingParams) error {
 	_, err := q.db.ExecContext(ctx, createAgentIfMissing, arg.ID, arg.Name, arg.CreatedAt)
 	return err
+}
+
+const createAutomation = `-- name: CreateAutomation :exec
+INSERT INTO automations (
+    id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type CreateAutomationParams struct {
+	ID        string        `json:"id"`
+	AgentID   string        `json:"agent_id"`
+	Name      string        `json:"name"`
+	Prompt    string        `json:"prompt"`
+	Schedule  string        `json:"schedule"`
+	TimeZone  string        `json:"time_zone"`
+	Session   string        `json:"session"`
+	Enabled   int64         `json:"enabled"`
+	NextDueAt sql.NullInt64 `json:"next_due_at"`
+	CreatedAt int64         `json:"created_at"`
+	UpdatedAt int64         `json:"updated_at"`
+}
+
+func (q *Queries) CreateAutomation(ctx context.Context, arg CreateAutomationParams) error {
+	_, err := q.db.ExecContext(ctx, createAutomation,
+		arg.ID,
+		arg.AgentID,
+		arg.Name,
+		arg.Prompt,
+		arg.Schedule,
+		arg.TimeZone,
+		arg.Session,
+		arg.Enabled,
+		arg.NextDueAt,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
+const createAutomationRun = `-- name: CreateAutomationRun :execrows
+INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT DO NOTHING
+`
+
+type CreateAutomationRunParams struct {
+	ID           string         `json:"id"`
+	AutomationID string         `json:"automation_id"`
+	DueAt        sql.NullInt64  `json:"due_at"`
+	Status       string         `json:"status"`
+	Reason       sql.NullString `json:"reason"`
+	CreatedAt    int64          `json:"created_at"`
+}
+
+// A run for a scheduled time that has a run already is not stored again.
+func (q *Queries) CreateAutomationRun(ctx context.Context, arg CreateAutomationRunParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, createAutomationRun,
+		arg.ID,
+		arg.AutomationID,
+		arg.DueAt,
+		arg.Status,
+		arg.Reason,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const createDream = `-- name: CreateDream :exec
@@ -78,6 +164,29 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const deleteAutomation = `-- name: DeleteAutomation :exec
+DELETE FROM automations WHERE id = ? AND agent_id = ?
+`
+
+type DeleteAutomationParams struct {
+	ID      string `json:"id"`
+	AgentID string `json:"agent_id"`
+}
+
+func (q *Queries) DeleteAutomation(ctx context.Context, arg DeleteAutomationParams) error {
+	_, err := q.db.ExecContext(ctx, deleteAutomation, arg.ID, arg.AgentID)
+	return err
+}
+
+const deleteAutomationRuns = `-- name: DeleteAutomationRuns :exec
+DELETE FROM automation_runs WHERE automation_id = ?
+`
+
+func (q *Queries) DeleteAutomationRuns(ctx context.Context, automationID string) error {
+	_, err := q.db.ExecContext(ctx, deleteAutomationRuns, automationID)
+	return err
 }
 
 const deleteProvider = `-- name: DeleteProvider :exec
@@ -156,6 +265,20 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 	return i, err
 }
 
+const failAutomationRun = `-- name: FailAutomationRun :exec
+UPDATE automation_runs SET status = 'failed', reason = ? WHERE id = ?
+`
+
+type FailAutomationRunParams struct {
+	Reason sql.NullString `json:"reason"`
+	ID     string         `json:"id"`
+}
+
+func (q *Queries) FailAutomationRun(ctx context.Context, arg FailAutomationRunParams) error {
+	_, err := q.db.ExecContext(ctx, failAutomationRun, arg.Reason, arg.ID)
+	return err
+}
+
 const getAgent = `-- name: GetAgent :one
 SELECT id, name, model_provider, model_id, instructions, created_at FROM agents WHERE id = ?
 `
@@ -170,6 +293,34 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
 		&i.ModelID,
 		&i.Instructions,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getAutomation = `-- name: GetAutomation :one
+SELECT id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at FROM automations WHERE id = ? AND agent_id = ?
+`
+
+type GetAutomationParams struct {
+	ID      string `json:"id"`
+	AgentID string `json:"agent_id"`
+}
+
+func (q *Queries) GetAutomation(ctx context.Context, arg GetAutomationParams) (Automation, error) {
+	row := q.db.QueryRowContext(ctx, getAutomation, arg.ID, arg.AgentID)
+	var i Automation
+	err := row.Scan(
+		&i.ID,
+		&i.AgentID,
+		&i.Name,
+		&i.Prompt,
+		&i.Schedule,
+		&i.TimeZone,
+		&i.Session,
+		&i.Enabled,
+		&i.NextDueAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -347,6 +498,111 @@ func (q *Queries) LatestDream(ctx context.Context, agentID string) (LatestDreamR
 	return i, err
 }
 
+const listAutomationRuns = `-- name: ListAutomationRuns :many
+SELECT
+    r.id,
+    r.due_at,
+    r.status,
+    r.reason,
+    r.created_at,
+    s.status AS message_status,
+    s.reason AS message_reason,
+    s.conversation_id AS chat_id
+FROM automation_runs r
+LEFT JOIN submissions s ON s.id = r.id
+WHERE r.automation_id = ?
+ORDER BY r.created_at DESC, r.id DESC
+LIMIT ?
+`
+
+type ListAutomationRunsParams struct {
+	AutomationID string `json:"automation_id"`
+	Limit        int64  `json:"limit"`
+}
+
+type ListAutomationRunsRow struct {
+	ID            string         `json:"id"`
+	DueAt         sql.NullInt64  `json:"due_at"`
+	Status        string         `json:"status"`
+	Reason        sql.NullString `json:"reason"`
+	CreatedAt     int64          `json:"created_at"`
+	MessageStatus sql.NullString `json:"message_status"`
+	MessageReason sql.NullString `json:"message_reason"`
+	ChatID        sql.NullInt64  `json:"chat_id"`
+}
+
+// The newest runs of an automation, with the message of each started run.
+func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRunsParams) ([]ListAutomationRunsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAutomationRuns, arg.AutomationID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAutomationRunsRow{}
+	for rows.Next() {
+		var i ListAutomationRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DueAt,
+			&i.Status,
+			&i.Reason,
+			&i.CreatedAt,
+			&i.MessageStatus,
+			&i.MessageReason,
+			&i.ChatID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAutomations = `-- name: ListAutomations :many
+SELECT id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at FROM automations WHERE agent_id = ? ORDER BY created_at, id
+`
+
+func (q *Queries) ListAutomations(ctx context.Context, agentID string) ([]Automation, error) {
+	rows, err := q.db.QueryContext(ctx, listAutomations, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Automation{}
+	for rows.Next() {
+		var i Automation
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.Name,
+			&i.Prompt,
+			&i.Schedule,
+			&i.TimeZone,
+			&i.Session,
+			&i.Enabled,
+			&i.NextDueAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listChats = `-- name: ListChats :many
 SELECT
     c.id,
@@ -467,6 +723,45 @@ func (q *Queries) ListDreamInput(ctx context.Context, arg ListDreamInputParams) 
 			&i.SettledAt,
 			&i.ChatID,
 			&i.Title,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDueAutomations = `-- name: ListDueAutomations :many
+SELECT id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at FROM automations WHERE enabled = 1 AND next_due_at <= ? ORDER BY next_due_at
+`
+
+func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt64) ([]Automation, error) {
+	rows, err := q.db.QueryContext(ctx, listDueAutomations, nextDueAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Automation{}
+	for rows.Next() {
+		var i Automation
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.Name,
+			&i.Prompt,
+			&i.Schedule,
+			&i.TimeZone,
+			&i.Session,
+			&i.Enabled,
+			&i.NextDueAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -610,6 +905,20 @@ func (q *Queries) ListProviders(ctx context.Context) ([]Provider, error) {
 	return items, nil
 }
 
+const setAutomationNextDue = `-- name: SetAutomationNextDue :exec
+UPDATE automations SET next_due_at = ? WHERE id = ?
+`
+
+type SetAutomationNextDueParams struct {
+	NextDueAt sql.NullInt64 `json:"next_due_at"`
+	ID        string        `json:"id"`
+}
+
+func (q *Queries) SetAutomationNextDue(ctx context.Context, arg SetAutomationNextDueParams) error {
+	_, err := q.db.ExecContext(ctx, setAutomationNextDue, arg.NextDueAt, arg.ID)
+	return err
+}
+
 const setTelegramSettings = `-- name: SetTelegramSettings :exec
 INSERT INTO telegram_settings (id, token, allowed_users)
 VALUES (1, ?, ?)
@@ -686,6 +995,45 @@ func (q *Queries) UpdateAgentSettings(ctx context.Context, arg UpdateAgentSettin
 		arg.ID,
 	)
 	return err
+}
+
+const updateAutomation = `-- name: UpdateAutomation :execrows
+UPDATE automations SET
+    name = ?, prompt = ?, schedule = ?, time_zone = ?, session = ?, enabled = ?, next_due_at = ?,
+    updated_at = ?
+WHERE id = ? AND agent_id = ?
+`
+
+type UpdateAutomationParams struct {
+	Name      string        `json:"name"`
+	Prompt    string        `json:"prompt"`
+	Schedule  string        `json:"schedule"`
+	TimeZone  string        `json:"time_zone"`
+	Session   string        `json:"session"`
+	Enabled   int64         `json:"enabled"`
+	NextDueAt sql.NullInt64 `json:"next_due_at"`
+	UpdatedAt int64         `json:"updated_at"`
+	ID        string        `json:"id"`
+	AgentID   string        `json:"agent_id"`
+}
+
+func (q *Queries) UpdateAutomation(ctx context.Context, arg UpdateAutomationParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateAutomation,
+		arg.Name,
+		arg.Prompt,
+		arg.Schedule,
+		arg.TimeZone,
+		arg.Session,
+		arg.Enabled,
+		arg.NextDueAt,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.AgentID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const upsertProvider = `-- name: UpsertProvider :exec
