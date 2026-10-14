@@ -22,5 +22,10 @@ trap 'rm -rf "$out"' EXIT
 	--no-compile-autoload-dotenv --no-compile-autoload-bunfig \
 	--outfile "$out/dex-worker")
 
+# Apple silicon runs only signed code. Sign the worker ad hoc, as the Go linker signs dex.
+if [ "$goos" = darwin ] && command -v codesign >/dev/null; then
+	codesign --force --sign - "$out/dex-worker"
+fi
+
 # -n keeps the archive free of the file name and time, so equal input gives equal bytes.
 gzip -9 -n -c "$out/dex-worker" >internal/workerbin/dex-worker.gz

@@ -5,19 +5,25 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # The release workflow runs the checks before it builds.
+  workflow_call:
 
 permissions:
   contents: read
 
-# A new push cancels a running PR check. A running main check finishes.
+# A new push cancels a running PR check. A running main check finishes. The group does not use
+# github.workflow, which is the caller's name in a called workflow: the same group as the caller
+# would make the call wait for itself.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: check-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# The jobs run the steps of `mise run check` in parallel. Keep them equal to the list in mise.toml.
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  lint:
+    name: Lint and drift
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: jdx/mise-action@v5.1.2
@@ -25,5 +31,51 @@ jobs:
           install: true
           cache: true
       - run: mise run install
-      - run: mise run check
+      - run: prek validate-config prek.toml
+      - run: dprint check
+      - run: mise run check:testpolicy
+      - run: mise run check:db-drift
+      - run: mise run check:api-drift
+      - run: mise run check:web-dist
       - run: git diff --check
+
+  worker:
+    name: Worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.1.2
+        with:
+          install: true
+          cache: true
+      - run: mise run install:worker
+      - run: mise run check:worker
+
+  web:
+    name: Web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.1.2
+        with:
+          install: true
+          cache: true
+      - run: mise run install:web
+      - run: mise run check:web
+
+  go:
+    name: Go lint and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.1.2
+        with:
+          install: true
+          cache: true
+      - run: go mod download
+      # The Go tests run the embedded worker, which build:worker compiles.
+      - run: mise run install:worker
+      - run: mise run check:go

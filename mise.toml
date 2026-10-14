@@ -24,6 +24,7 @@ run = "bun install --frozen-lockfile"
 description = "Format all files"
 run = ["dprint fmt", "golangci-lint fmt", "cd worker && vp fmt", "cd web && vp fmt"]
 
+# .github/workflows/check.yml runs these steps in parallel jobs; keep both lists equal.
 [tasks.check]
 description = "Check formatting, lint, types, tests, and builds"
 run = [
