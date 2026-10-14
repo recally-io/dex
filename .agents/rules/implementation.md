@@ -5,23 +5,24 @@ data.
 
 ## Modules
 
-| Path                 | Owns                                                             |
-| -------------------- | ---------------------------------------------------------------- |
-| `cmd/dex`            | Process entry: data directory, address, HTTP server              |
-| `internal/app`       | Wiring: database, worker process, chat service, HTTP handler     |
-| `internal/chat`      | Messages as durable submissions; replay after a worker restart   |
-| `internal/worker`    | Worker binary install, child process, protocol client            |
-| `internal/db`        | `control.sqlite`, goose migrations, sqlc queries                 |
-| `internal/server`    | HTTP API handlers of `api/openapi.yaml`, the web UI at `/`       |
-| `internal/api`       | Generated from `api/openapi.yaml` (`mise run generate:api`)      |
-| `internal/live`      | Chat event streams (SSE): worker watches plus control's messages |
-| `internal/dream`     | Dreaming: hidden chats that consolidate the memory repo          |
-| `internal/scheduler` | Control's job schedule (gocron); jobs check durable state        |
-| `internal/telegram`  | Telegram bot: long polling, user allowlist, reply delivery       |
-| `internal/settings`  | Settings from the web UI: validate, save, apply to worker or bot |
-| `web`                | The web UI: React (Vite+), built into `web/dist`, embedded       |
-| `worker`             | The Bun worker: one pi-durable Harness per agent                 |
-| `internal/workerbin` | The compiled worker, gzipped, embedded (`mise run build:worker`) |
+| Path                  | Owns                                                             |
+| --------------------- | ---------------------------------------------------------------- |
+| `cmd/dex`             | Process entry: data directory, address, HTTP server              |
+| `internal/app`        | Wiring: database, worker process, chat service, HTTP handler     |
+| `internal/chat`       | Messages as durable submissions; replay after a worker restart   |
+| `internal/worker`     | Worker binary install, child process, protocol client            |
+| `internal/db`         | `control.sqlite`, goose migrations, sqlc queries                 |
+| `internal/server`     | HTTP API handlers of `api/openapi.yaml`, the web UI at `/`       |
+| `internal/api`        | Generated from `api/openapi.yaml` (`mise run generate:api`)      |
+| `internal/live`       | Chat event streams (SSE): worker watches plus control's messages |
+| `internal/dream`      | Dreaming: hidden chats that consolidate the memory repo          |
+| `internal/scheduler`  | Control's job schedule (gocron); jobs check durable state        |
+| `internal/automation` | Automations: prompts on a schedule, their runs and chats         |
+| `internal/telegram`   | Telegram bot: long polling, user allowlist, reply delivery       |
+| `internal/settings`   | Settings from the web UI: validate, save, apply to worker or bot |
+| `web`                 | The web UI: React (Vite+), built into `web/dist`, embedded       |
+| `worker`              | The Bun worker: one pi-durable Harness per agent                 |
+| `internal/workerbin`  | The compiled worker, gzipped, embedded (`mise run build:worker`) |
 
 ## Rules
 

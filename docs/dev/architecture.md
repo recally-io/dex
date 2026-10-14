@@ -64,6 +64,17 @@ share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
   `dreams` table records the last message that each dream read; the next dream
   starts after the newest done dream.
 
+## Automations
+
+An automation runs a prompt on a schedule; see
+[ADR 0005](decisions/0005-automations.md).
+[`automation.Service`](../../internal/automation/automation.go) stores
+automations and their runs in `control.sqlite`. The scheduler calls its
+`Check` every minute. `Check` posts the prompt of each automation whose
+`next_due_at` has come, as a message to its chat (`automation:<id>`, or
+`automation:<id>:<run id>` for a new chat each run), and moves `next_due_at`
+past now. The message uses the normal durable delivery.
+
 ## Settings
 
 The web UI edits all settings; see [ADR 0002](decisions/0002-settings-in-control-db.md).
@@ -217,6 +228,9 @@ so dex needs no public URL.
   again.
 - **Dream fails or stops.** Its message becomes `unanswered`, and the next
   dream, 24 h later, reads the same messages again.
+- **dex not running at an automation's time.** The next check runs the newest
+  missed time when it is at most 1 h old; otherwise it records that time as
+  skipped. It ignores the older missed times.
 - **Telegram API error.** The bot retries `getUpdates` after 5 s, from the
   first update that it did not store. A `sendMessage` that fails is logged,
   and the answer stays only in `control.sqlite`. A crash after a submission
