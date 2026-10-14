@@ -83,11 +83,18 @@ To release:
 2. Run `git tag v0.1.0` and `git push origin v0.1.0`. A tag with a hyphen,
    such as `v0.1.0-rc.1`, makes a prerelease.
 
-[Release](../../.github/workflows/release.yml) runs Check, builds `dex` on
-Linux and macOS, x64 and arm64, each on its own platform, and starts each
-binary as a smoke test. Then it publishes a GitHub release with one
+[Release](../../.github/workflows/release.yml) runs Check, then
+[GoReleaser](../../.goreleaser.yaml) on macOS. GoReleaser builds `dex` for
+Linux and macOS, x64 and arm64, and uploads a draft release with one
 `dex_<tag>_<os>_<arch>.tar.gz` for each platform, `checksums.txt`, and notes
-from the commits. dex reads its version from the tag.
+from the pull requests. Before each Go build, a hook compiles the worker for
+that platform. Then each binary starts on its own platform as a smoke test.
+When all smoke tests pass, the workflow publishes the draft. dex reads its
+version from the tag.
+
+To try the build on your machine, run
+`goreleaser release --snapshot --clean --parallelism 1`. The output goes to
+`dist/`.
 
 The macOS binaries are signed ad hoc, not notarized. macOS blocks a binary
 from a browser download; run `xattr -d com.apple.quarantine dex` first.

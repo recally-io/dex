@@ -9,6 +9,7 @@ prek = "0.5.5"
 "aqua:sqlc-dev/sqlc" = "1.31.1"
 "aqua:pressly/goose" = "3.29.0"
 "npm:@markdown-viewer/documd" = "5.3.2"
+goreleaser = "2.18.3"
 
 [tasks.install]
 description = "Install project dependencies from the lockfiles"

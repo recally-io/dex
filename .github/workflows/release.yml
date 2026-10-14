@@ -21,25 +21,14 @@ jobs:
   check:
     uses: ./.github/workflows/check.yml
 
-  build:
-    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+  goreleaser:
+    name: GoReleaser
     needs: check
-    # Each target builds on its own platform, so the smoke test can run the binary, and the macOS
-    # worker gets its ad-hoc signature from codesign.
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          - { runner: ubuntu-24.04, goos: linux, goarch: amd64 }
-          - { runner: ubuntu-24.04-arm, goos: linux, goarch: arm64 }
-          - { runner: macos-26, goos: darwin, goarch: arm64 }
-          - { runner: macos-26-intel, goos: darwin, goarch: amd64 }
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
-    env:
-      GOOS: ${{ matrix.goos }}
-      GOARCH: ${{ matrix.goarch }}
-      CGO_ENABLED: "0"
+    # macOS, because codesign must sign the darwin workers. Bun and Go cross-compile the rest.
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       # Go reads the version from the tag; that needs the tags and a clean tree.
       - uses: actions/checkout@v7.0.1
@@ -50,12 +39,41 @@ jobs:
           install: true
           cache: true
       - run: mise run install:worker
-      - run: mise run build:worker
-      - run: go build -trimpath -o dist/dex ./cmd/dex
+      # The release is a draft until the smoke tests pass.
+      - run: goreleaser release --clean --parallelism 1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  smoke:
+    name: Smoke ${{ matrix.target }}
+    needs: goreleaser
+    # Each binary runs on its own platform.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, target: linux_amd64 }
+          - { runner: ubuntu-24.04-arm, target: linux_arm64 }
+          - { runner: macos-26, target: darwin_arm64 }
+          - { runner: macos-26-intel, target: darwin_amd64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    # Only a token with write access can read a draft release.
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern "dex_${GITHUB_REF_NAME}_${{ matrix.target }}.tar.gz" --pattern checksums.txt
+          grep "_${{ matrix.target }}.tar.gz" checksums.txt | shasum -a 256 -c
+          tar -xzf dex_*.tar.gz
       - name: Smoke test
         run: |
           data="$(mktemp -d)"
-          DEX_ADDR=127.0.0.1:18787 DEX_DATA_DIR="$data" ./dist/dex &
+          DEX_ADDR=127.0.0.1:18787 DEX_DATA_DIR="$data" ./dex &
           pid=$!
           trap 'kill "$pid"' EXIT
           for _ in $(seq 100); do
@@ -68,36 +86,15 @@ jobs:
           curl -fsS http://127.0.0.1:18787/api/models | jq -e .models
           page="$(curl -fsS http://127.0.0.1:18787/)"
           grep -q '<div id="root">' <<<"$page"
-      - name: Package
-        run: |
-          name="dex_${GITHUB_REF_NAME}_${GOOS}_${GOARCH}"
-          mkdir -p "pkg/$name"
-          cp dist/dex README.md "pkg/$name/"
-          tar -C pkg -czf "$name.tar.gz" "$name"
-      - uses: actions/upload-artifact@v7.0.2
-        with:
-          name: dex_${{ matrix.goos }}_${{ matrix.goarch }}
-          path: dex_*.tar.gz
-          if-no-files-found: error
 
-  release:
+  publish:
     name: Publish
-    needs: build
+    needs: smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8.0.2
-        with:
-          path: dist
-          merge-multiple: true
-      - run: (cd dist && sha256sum dex_*.tar.gz >checksums.txt)
-      - name: Create the release
+      - run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          flags=()
-          [[ "$GITHUB_REF_NAME" == *-* ]] && flags+=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
-            --verify-tag --generate-notes "${flags[@]}"
