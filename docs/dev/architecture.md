@@ -27,9 +27,35 @@ process. See [ADR 0001](decisions/0001-embedded-bun-worker.md).
 | Agents, chats, submissions, settings | control             | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/)) |
 | Transcripts, runs, tool calls, usage | worker (pi-durable) | `<data dir>/agents/<id>/state.sqlite`                                     |
 | Agent files                          | the agent's tools   | `<data dir>/agents/<id>/workspace/`                                       |
+| Memory (git repo)                    | the agent's tools   | `<data dir>/memory/`                                                      |
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). pi-durable allows one
 process per storage, so only the worker opens an agent directory.
+
+## Memory
+
+The memory is a git repo in the
+[Agent Memory Repo](https://github.com/AgentMemoryRepo/agentmemoryrepo) format
+at `<data dir>/memory/`. It belongs to the user, so all agents and channels
+share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
+
+- **Read.** The [`memory` extension](../../worker/src/memory.ts) adds two
+  system prompt sections: the memory rules (the repo path, the entry format,
+  and the chat's `source`), and `MEMORY.md`. They render before each model
+  request, so a change applies from the next request, also inside a run.
+  pi-durable sends a section again only when its text changed. The agent
+  finds the other files with grep and the `[[path]]` links.
+- **Write.** The agent changes the files with its edit and write tools,
+  without approval. It does not run git. When a submission settles, the
+  worker commits all changes as `Update memory from <source>`. The source is
+  `dex:chat/<chat ID>`, or `dex:dream/<dream ID>`.
+- **Dream.** [`dream.Dreamer`](../../internal/dream/dream.go) checks every hour.
+  When the agent has a model, no message is pending, the last dream is 24 h
+  old, and chats have new settled messages, it starts a dream: a hidden chat
+  (channel key `dream:<id>`) whose message holds those messages, oldest first,
+  up to 500 messages or 100,000 characters. The agent adds what repeats across
+  chats and cleans up the memory. The `dreams` table records the last message
+  that each dream read; the next dream starts after the newest done dream.
 
 ## Settings
 
@@ -69,17 +95,17 @@ writes one JSON response or event per line to its stdout. Logs go to stderr.
 The types are in [`worker/src/protocol.ts`](../../worker/src/protocol.ts) and
 [`internal/worker/protocol.go`](../../internal/worker/protocol.go).
 
-| Method               | Params                                                                       | Result                    |
-| -------------------- | ---------------------------------------------------------------------------- | ------------------------- |
-| `ping`               | none                                                                         | `{}`                      |
-| `createConversation` | `agentId`, `model`, `instructions`                                           | `conversationId`          |
-| `submit`             | `agentId`, `conversationId`, `model`, `instructions`, `requestId`, `content` | `submissionId`            |
-| `configure`          | `providers`: `id`, `name`, `api`, `baseUrl`, `apiKey`, `models`              | `errors` per provider     |
-| `listProviders`      | none                                                                         | built-in `providers`      |
-| `listModels`         | none                                                                         | `models` with credentials |
-| `watch`              | `watchId`, `agentId`, `conversationId`                                       | `{}` after the snapshot   |
-| `unwatch`            | `watchId`                                                                    | `{}`                      |
-| `abort`              | `agentId`, `conversationId`                                                  | `{}`                      |
+| Method               | Params                                                                                 | Result                    |
+| -------------------- | -------------------------------------------------------------------------------------- | ------------------------- |
+| `ping`               | none                                                                                   | `{}`                      |
+| `createConversation` | `agentId`, `model`, `instructions`                                                     | `conversationId`          |
+| `submit`             | `agentId`, `conversationId`, `model`, `instructions`, `requestId`, `content`, `source` | `submissionId`            |
+| `configure`          | `providers`: `id`, `name`, `api`, `baseUrl`, `apiKey`, `models`                        | `errors` per provider     |
+| `listProviders`      | none                                                                                   | built-in `providers`      |
+| `listModels`         | none                                                                                   | `models` with credentials |
+| `watch`              | `watchId`, `agentId`, `conversationId`                                                 | `{}` after the snapshot   |
+| `unwatch`            | `watchId`                                                                              | `{}`                      |
+| `abort`              | `agentId`, `conversationId`                                                            | `{}`                      |
 
 The worker runs the submits of one conversation in order. When `model` or
 `instructions` differ from the conversation's, it changes the conversation
@@ -179,6 +205,11 @@ so dex needs no public URL.
 - **Model or tool error.** The submission becomes `unanswered` with a reason.
   The transcript shows an error item. A tool call that ended without a result
   shows as failed.
+- **Crash between a memory edit and its commit.** The worker commits the
+  change as `Recover uncommitted memory changes` when it opens the memory
+  again.
+- **Dream fails or stops.** Its message becomes `unanswered`, and the next
+  dream, 24 h later, reads the same messages again.
 - **Telegram API error.** The bot retries `getUpdates` after 5 s, from the
   first update that it did not store. A `sendMessage` that fails is logged,
   and the answer stays only in `control.sqlite`. A crash after a submission
@@ -198,6 +229,11 @@ cannot send messages or change settings.
 data directory is created with mode 0700. The API never returns a key or a
 token.
 
+Every chat reads the memory, including Telegram chats of each allowed user.
+A memory entry can carry a prompt injection from a web page or a file to
+later chats; the rules tell the agent that memory is data, not instructions,
+and git history shows each change.
+
 Control does not log the Telegram token; Bot API errors drop the request URL,
 which holds the token. The worker gets only the environment variables that
 [`app.WorkerEnv`](../../internal/app/app.go) selects. It runs with its working
@@ -206,4 +242,7 @@ directory in the cache directory, and it does not load `.env` or `bunfig.toml`.
 ## Limits
 
 - Harnesses stay open until shutdown.
+- The memory repo is local; dex does not pull or push. Two chats that change
+  the memory at the same time can land in one commit, under the source of
+  the chat that settles first.
 - The chat list polls every 3 s; it has no event stream.
