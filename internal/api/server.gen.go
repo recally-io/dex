@@ -15,6 +15,8 @@ import (
 	"net/http"
 
 	"github.com/oapi-codegen/runtime"
+	"github.com/vaayne/dex/internal/automation"
+	"github.com/vaayne/dex/internal/settings"
 )
 
 // Defines values for AppendEventType.
@@ -41,66 +43,6 @@ const (
 func (e AssistantItemKind) Valid() bool {
 	switch e {
 	case Assistant:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for AutomationSession.
-const (
-	AutomationSessionNew   AutomationSession = "new"
-	AutomationSessionReuse AutomationSession = "reuse"
-)
-
-// Valid indicates whether the value is a known member of the AutomationSession enum.
-func (e AutomationSession) Valid() bool {
-	switch e {
-	case AutomationSessionNew:
-		return true
-	case AutomationSessionReuse:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for AutomationInputSession.
-const (
-	AutomationInputSessionNew   AutomationInputSession = "new"
-	AutomationInputSessionReuse AutomationInputSession = "reuse"
-)
-
-// Valid indicates whether the value is a known member of the AutomationInputSession enum.
-func (e AutomationInputSession) Valid() bool {
-	switch e {
-	case AutomationInputSessionNew:
-		return true
-	case AutomationInputSessionReuse:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for AutomationRunStatus.
-const (
-	AutomationRunStatusDone    AutomationRunStatus = "done"
-	AutomationRunStatusFailed  AutomationRunStatus = "failed"
-	AutomationRunStatusRunning AutomationRunStatus = "running"
-	AutomationRunStatusSkipped AutomationRunStatus = "skipped"
-)
-
-// Valid indicates whether the value is a known member of the AutomationRunStatus enum.
-func (e AutomationRunStatus) Valid() bool {
-	switch e {
-	case AutomationRunStatusDone:
-		return true
-	case AutomationRunStatusFailed:
-		return true
-	case AutomationRunStatusRunning:
-		return true
-	case AutomationRunStatusSkipped:
 		return true
 	default:
 		return false
@@ -203,30 +145,6 @@ func (e RunEventType) Valid() bool {
 	}
 }
 
-// Defines values for ScheduleKind.
-const (
-	Daily  ScheduleKind = "daily"
-	Every  ScheduleKind = "every"
-	Once   ScheduleKind = "once"
-	Weekly ScheduleKind = "weekly"
-)
-
-// Valid indicates whether the value is a known member of the ScheduleKind enum.
-func (e ScheduleKind) Valid() bool {
-	switch e {
-	case Daily:
-		return true
-	case Every:
-		return true
-	case Once:
-		return true
-	case Weekly:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for SnapshotEventType.
 const (
 	Snapshot SnapshotEventType = "snapshot"
@@ -309,13 +227,7 @@ func (e UserItemKind) Valid() bool {
 }
 
 // Agent defines model for Agent.
-type Agent struct {
-	Instructions string `json:"instructions"`
-
-	// ModelId Empty when no model is chosen.
-	ModelId  string `json:"modelId"`
-	Provider string `json:"provider"`
-}
+type Agent = settings.Agent
 
 // AppendEvent Appends text to the text of the item with this ID.
 type AppendEvent struct {
@@ -344,45 +256,10 @@ type AssistantItem struct {
 type AssistantItemKind string
 
 // Automation defines model for Automation.
-type Automation struct {
-	CreatedAt int64          `json:"createdAt"`
-	Enabled   bool           `json:"enabled"`
-	Id        string         `json:"id"`
-	LastRun   *AutomationRun `json:"lastRun,omitempty"`
-	Name      string         `json:"name"`
-
-	// NextRuns At most 3 times; empty when disabled or done.
-	NextRuns []int64 `json:"nextRuns"`
-	Prompt   string  `json:"prompt"`
-
-	// Schedule every: each `minutes` minutes. daily: each day at `time`. weekly: at `time` on `days`. once: at `at`. Times are in the automation's time zone.
-	Schedule Schedule `json:"schedule"`
-
-	// Session new: each run starts a new chat. reuse: all runs use one chat; a run is skipped while that chat is busy.
-	Session   AutomationSession `json:"session"`
-	TimeZone  string            `json:"timeZone"`
-	UpdatedAt int64             `json:"updatedAt"`
-}
-
-// AutomationSession new: each run starts a new chat. reuse: all runs use one chat; a run is skipped while that chat is busy.
-type AutomationSession string
+type Automation = automation.Automation
 
 // AutomationInput defines model for AutomationInput.
-type AutomationInput struct {
-	Enabled bool   `json:"enabled"`
-	Name    string `json:"name"`
-	Prompt  string `json:"prompt"`
-
-	// Schedule every: each `minutes` minutes. daily: each day at `time`. weekly: at `time` on `days`. once: at `at`. Times are in the automation's time zone.
-	Schedule Schedule `json:"schedule"`
-
-	// Session new: each run starts a new chat. reuse: all runs use one chat; a run is skipped while that chat is busy.
-	Session  AutomationInputSession `json:"session"`
-	TimeZone string                 `json:"timeZone"`
-}
-
-// AutomationInputSession new: each run starts a new chat. reuse: all runs use one chat; a run is skipped while that chat is busy.
-type AutomationInputSession string
+type AutomationInput = automation.Input
 
 // AutomationList defines model for AutomationList.
 type AutomationList struct {
@@ -390,19 +267,7 @@ type AutomationList struct {
 }
 
 // AutomationRun defines model for AutomationRun.
-type AutomationRun struct {
-	ChatId    *int64 `json:"chatId,omitempty"`
-	CreatedAt int64  `json:"createdAt"`
-
-	// DueAt The scheduled time; absent for a run that the user started.
-	DueAt  *int64              `json:"dueAt,omitempty"`
-	Id     string              `json:"id"`
-	Reason *string             `json:"reason,omitempty"`
-	Status AutomationRunStatus `json:"status"`
-}
-
-// AutomationRunStatus defines model for AutomationRun.Status.
-type AutomationRunStatus string
+type AutomationRun = automation.Run
 
 // AutomationRunList defines model for AutomationRunList.
 type AutomationRunList struct {
@@ -571,22 +436,7 @@ type RunEvent struct {
 type RunEventType string
 
 // Schedule every: each `minutes` minutes. daily: each day at `time`. weekly: at `time` on `days`. once: at `at`. Times are in the automation's time zone.
-type Schedule struct {
-	At *int64 `json:"at,omitempty"`
-
-	// Days ISO weekdays, 1 is Monday.
-	Days    *[]int       `json:"days,omitempty"`
-	Kind    ScheduleKind `json:"kind"`
-	Minutes *int         `json:"minutes,omitempty"`
-
-	// Time HH:MM, 24 h
-	//
-	// Example: 09:00
-	Time *string `json:"time,omitempty"`
-}
-
-// ScheduleKind defines model for Schedule.Kind.
-type ScheduleKind string
+type Schedule = automation.Schedule
 
 // ScheduleInput defines model for ScheduleInput.
 type ScheduleInput struct {

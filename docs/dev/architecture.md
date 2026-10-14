@@ -3,6 +3,16 @@
 This document is for developers who change dex. It describes the subsystems,
 their sources of truth, the message flow, and the failure behavior.
 
+## Runtime overview
+
+![Runtime boundaries and data owners](../../assets/architecture.png)
+
+Source: [architecture.puml](../../assets/src/architecture.puml).
+
+Control stores messages before delivery. The worker owns agent execution and
+storage. The browser receives a transcript through control. Both processes
+ship in one binary; they do not share database access.
+
 ## Processes
 
 dex is one binary with two processes:
@@ -267,3 +277,34 @@ directory in the cache directory, and it does not load `.env` or `bunfig.toml`.
   the memory at the same time can land in one commit, under the source of
   the chat that settles first.
 - The chat list polls every 3 s; it has no event stream.
+
+## Simplification review
+
+The control and worker boundary has two data owners. Control owns message
+admission and channels. pi-durable owns execution and transcript history.
+Combining their storage would make control depend on pi-durable internals.
+Keep this boundary.
+
+The API uses the automation service types and `settings.Agent` through
+OpenAPI `x-go-type` declarations. The generated API depends on those services;
+the services do not depend on HTTP types. This removes a second model and the
+field conversion layer. The Go JSON tags must match the OpenAPI schema. HTTP
+tests check empty arrays and optional fields at this boundary.
+
+Provider responses keep their own API type. The service's provider input can
+hold an API key. The response type cannot hold that key. Keep this conversion
+as the boundary that prevents secrets from reaching the browser.
+
+Keep the delivery queue. A pending submission can be waiting for delivery or
+waiting for an answer. A loop that scans pending rows would resend messages
+that the worker already accepted. Avoiding those repeats would need another
+state or cursor.
+
+Keep the live hub's merge state. It joins the worker's transcript with queued
+or failed messages that only control has. Each browser stream has its own
+watch and snapshot. The `seen` and `extra` maps prevent duplicate items and
+unchanged updates.
+
+The tests cover separate behavior and failure cases. Keep restart, duplicate
+message, multiple browser streams, model errors, tool results, and DST cases.
+Do not remove these cases to reduce the test file size. The schedule iterator tests cover time arithmetic in isolation.

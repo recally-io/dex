@@ -3,6 +3,7 @@ package app_test
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -90,7 +91,7 @@ func TestUserAutomationRunsAtItsTimeInANewChat(t *testing.T) {
 	// And a once automation has no next run
 	var after automationInfo
 	d.must(t, http.MethodGet, "/api/automations/"+a.ID, nil, &after)
-	if len(after.NextRuns) != 0 {
+	if after.NextRuns == nil || len(after.NextRuns) != 0 {
 		t.Fatalf("next runs = %v", after.NextRuns)
 	}
 }
@@ -161,5 +162,46 @@ func TestInvalidAutomationsAreRefused(t *testing.T) {
 		if status, raw := d.call(t, http.MethodPost, "/api/automations", body); status != http.StatusBadRequest {
 			t.Errorf("%s: %d %s", name, status, raw)
 		}
+	}
+}
+
+func TestUserAutomationResponsesKeepTheirFields(t *testing.T) {
+	// Given dex and the four schedule kinds
+	d := startDex(t, t.TempDir(), "")
+	for _, schedule := range []map[string]any{
+		{"kind": "every", "minutes": float64(5)},
+		{"kind": "daily", "time": "09:00"},
+		{"kind": "weekly", "time": "09:00", "days": []any{float64(1), float64(5)}},
+		{"kind": "once", "at": float64(time.Now().Add(time.Hour).UnixMilli())},
+	} {
+		t.Run(schedule["kind"].(string), func(t *testing.T) {
+			// When the user creates a disabled automation
+			var a map[string]any
+			d.must(t, http.MethodPost, "/api/automations", map[string]any{
+				"name": "Check", "prompt": "check", "schedule": schedule, "timeZone": "Asia/Shanghai",
+				"session": "new", "enabled": false,
+			}, &a, http.StatusCreated)
+			// Then the HTTP JSON uses the same schedule fields and an empty array of future times
+			if !reflect.DeepEqual(a["schedule"], schedule) {
+				t.Fatalf("schedule = %v, want %v", a["schedule"], schedule)
+			}
+			if times, ok := a["nextRuns"].([]any); !ok || len(times) != 0 {
+				t.Fatalf("nextRuns = %#v", a["nextRuns"])
+			}
+			if _, ok := a["lastRun"]; ok {
+				t.Fatalf("lastRun before a run = %v", a["lastRun"])
+			}
+			// And a manual run skipped without a model omits absent IDs and times
+			var run map[string]any
+			d.must(t, http.MethodPost, "/api/automations/"+a["id"].(string)+"/run", nil, &run, http.StatusAccepted)
+			if run["status"] != "skipped" || run["reason"] != "the agent has no model" {
+				t.Fatalf("run = %v", run)
+			}
+			for _, field := range []string{"dueAt", "chatId"} {
+				if _, ok := run[field]; ok {
+					t.Fatalf("unexpected %s: %v", field, run)
+				}
+			}
+		})
 	}
 }

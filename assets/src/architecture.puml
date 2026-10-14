@@ -1,0 +1,91 @@
+@startuml
+skinparam RectangleBackgroundColor #eef2fb
+skinparam RectangleBorderColor #5b6b8c
+skinparam RectangleFontColor #1f2937
+skinparam ComponentBackgroundColor #eef2fb
+skinparam ComponentBorderColor #5b6b8c
+skinparam ComponentFontColor #1f2937
+skinparam ClassBackgroundColor #eef2fb
+skinparam ClassBorderColor #5b6b8c
+skinparam ClassFontColor #1f2937
+skinparam UsecaseBackgroundColor #eef2fb
+skinparam UsecaseBorderColor #5b6b8c
+skinparam UsecaseFontColor #1f2937
+skinparam DatabaseBackgroundColor #eef2fb
+skinparam DatabaseBorderColor #5b6b8c
+skinparam DatabaseFontColor #1f2937
+skinparam NodeBackgroundColor #eef2fb
+skinparam NodeBorderColor #5b6b8c
+skinparam NodeFontColor #1f2937
+skinparam ActorBackgroundColor #eef2fb
+skinparam ActorBorderColor #5b6b8c
+skinparam ActorFontColor #1f2937
+skinparam StateBackgroundColor #eef2fb
+skinparam StateBorderColor #5b6b8c
+skinparam StateFontColor #1f2937
+skinparam ArtifactBackgroundColor #eef2fb
+skinparam ArtifactBorderColor #5b6b8c
+skinparam ArtifactFontColor #1f2937
+skinparam CloudBackgroundColor #eef2fb
+skinparam CloudBorderColor #5b6b8c
+skinparam CloudFontColor #1f2937
+skinparam FolderBackgroundColor #eef2fb
+skinparam FolderBorderColor #5b6b8c
+skinparam FolderFontColor #1f2937
+skinparam PackageBackgroundColor #eef2fb
+skinparam PackageBorderColor #5b6b8c
+skinparam DefaultFontColor #1f2937
+skinparam ArrowColor #5b6b8c
+skinparam ArrowFontColor #1f2937
+skinparam NoteBackgroundColor #dfe5fb
+skinparam NoteBorderColor #5b6b8c
+skinparam NoteFontColor #1f2937
+skinparam stereotypeABackgroundColor #d9e3f4
+skinparam stereotypeABorderColor #5b6b8c
+skinparam stereotypeCBackgroundColor #d9e3f4
+skinparam stereotypeCBorderColor #5b6b8c
+skinparam stereotypeEBackgroundColor #d9e3f4
+skinparam stereotypeEBorderColor #5b6b8c
+skinparam stereotypeIBackgroundColor #d9e3f4
+skinparam stereotypeIBorderColor #5b6b8c
+skinparam BackgroundColor #ffffff
+title dex: runtime boundaries and data owners
+top to bottom direction
+rectangle "Browser
+React UI" as browser
+rectangle "Telegram Bot API" as telegram
+rectangle "Go control
+HTTP + SSE + Telegram
+Durable submissions + settings
+Dream and automation checks
+Worker process management" as control
+rectangle "Bun worker
+One pi-durable Harness per agent
+Models + tools + ChatView
+Memory extension" as worker
+database "control.sqlite
+Chats, submissions, settings
+Automations and dream boundaries" as cdb
+database "agents/<id>/state.sqlite
+Runs, transcripts, tool calls" as adb
+folder "Local agent files
+agents/<id>/workspace
+memory/ (shared Git repo)" as files
+rectangle "Model providers" as models
+browser --> control : HTTP commands
+control --> browser : SSE transcript
+telegram <--> control : Long poll + replies
+control --> cdb : Control owns this data
+control <--> worker : stdin/stdout NDJSON\nRequests + settled/chat events
+worker --> adb : Worker owns this data
+worker --> files : Tools + memory commits
+worker --> models : Model requests
+note bottom of control
+  Stores a submission before delivery.
+  Replays pending submissions after a worker restart.
+end note
+note bottom of worker
+  Deduplicates submissions by request ID.
+  Only this process opens agent storage.
+end note
+@enduml

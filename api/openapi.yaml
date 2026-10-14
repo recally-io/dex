@@ -448,6 +448,9 @@ components:
     # Automations
 
     Schedule:
+      x-go-type: automation.Schedule
+      x-go-type-import:
+        path: github.com/vaayne/dex/internal/automation
       type: object
       required: [kind]
       description: >
@@ -485,6 +488,9 @@ components:
           items: { type: integer, format: int64 }
 
     AutomationInput:
+      x-go-type: automation.Input
+      x-go-type-import:
+        path: github.com/vaayne/dex/internal/automation
       type: object
       required: [name, prompt, schedule, timeZone, session, enabled]
       properties:
@@ -501,6 +507,9 @@ components:
         enabled: { type: boolean }
 
     Automation:
+      x-go-type: automation.Automation
+      x-go-type-import:
+        path: github.com/vaayne/dex/internal/automation
       allOf:
         - $ref: "#/components/schemas/AutomationInput"
         - type: object
@@ -524,6 +533,9 @@ components:
           items: { $ref: "#/components/schemas/Automation" }
 
     AutomationRun:
+      x-go-type: automation.Run
+      x-go-type-import:
+        path: github.com/vaayne/dex/internal/automation
       type: object
       required: [id, status, createdAt]
       properties:
@@ -715,6 +727,9 @@ components:
         telegram: { $ref: "#/components/schemas/Telegram" }
 
     Agent:
+      x-go-type: settings.Agent
+      x-go-type-import:
+        path: github.com/vaayne/dex/internal/settings
       type: object
       required: [provider, modelId, instructions]
       properties:

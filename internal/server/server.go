@@ -195,7 +195,7 @@ func (h *handler) GetSettings(ctx context.Context, _ api.GetSettingsRequestObjec
 		return nil, err
 	}
 	out := api.GetSettings200JSONResponse{
-		Agent:     api.Agent{Provider: s.Agent.Provider, ModelId: s.Agent.ModelID, Instructions: s.Agent.Instructions},
+		Agent:     s.Agent,
 		Providers: make([]api.Provider, len(s.Providers)),
 		Builtins:  make([]api.ProviderInfo, len(s.Builtins)),
 		Apis:      s.APIs,
@@ -241,9 +241,7 @@ func (h *handler) SetAgent(ctx context.Context, req api.SetAgentRequestObject) (
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	err := h.Settings.SetAgent(ctx, settings.Agent{
-		Provider: req.Body.Provider, ModelID: req.Body.ModelId, Instructions: req.Body.Instructions,
-	})
+	err := h.Settings.SetAgent(ctx, *req.Body)
 	if err != nil {
 		return nil, err
 	}
