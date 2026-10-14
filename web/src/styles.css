@@ -1,4 +1,7 @@
 @import "./styles/shadcn.css";
+@import "./app/beautifui/foundation.css";
+@import "./app/beautifui/records-table.css";
+@import "./app/beautifui/sidebar-nav.css";
 
 /* Tokens from slev12397/beautiful-ui app/globals.css, retrieved 2026-10-14. */
 :root {
