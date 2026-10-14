@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# documd renders the diagrams of the docs; CI does not need it. mise refuses to install it,
+# because the package has fewer weekly downloads than mise's supply-chain threshold.
+env:
+  MISE_DISABLE_TOOLS: npm:@markdown-viewer/documd
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 

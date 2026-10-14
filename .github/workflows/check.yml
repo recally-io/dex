@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
 
+# documd renders the diagrams of the docs; CI does not need it. mise refuses to install it,
+# because the package has fewer weekly downloads than mise's supply-chain threshold.
+env:
+  MISE_DISABLE_TOOLS: npm:@markdown-viewer/documd
+
 # A new push cancels a running PR check. A running main check finishes. The group does not use
 # github.workflow, which is the caller's name in a called workflow: the same group as the caller
 # would make the call wait for itself.
