@@ -16,14 +16,18 @@ to read in an afternoon.
 - One `dex` binary. The host needs no other runtime.
 - All settings in the web UI: providers, the agent's model and instructions,
   and Telegram. dex needs no configuration file or environment variable.
+  The web UI has these pages: Agent, Providers, Channels, Automations, and
+  About. The Extensions and Secrets pages and the Slack, Feishu, and WeChat
+  channels show that dex does not support them yet.
 - Agents with a model, instructions, and a workspace directory.
 - Durable conversations: a crash or a restart does not lose a message or a
   started run.
 - Entry points: the web UI and Telegram.
 - Timers: scheduled messages to an agent.
 
-Status: the web UI, Telegram, durable messages, and the worker are done.
-Timers are next.
+Status: the web UI, Telegram, durable messages, timers, and the worker are
+done. Skills, MCP servers, named secrets, and other chat channels are not
+started.
 
 ## Non-goals
 

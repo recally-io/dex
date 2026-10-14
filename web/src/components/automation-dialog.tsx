@@ -14,40 +14,9 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Failure } from "./feedback";
-
-export function EnabledSwitch({
-  enabled,
-  disabled,
-  label,
-  onChange,
-}: {
-  enabled: boolean;
-  disabled?: boolean;
-  label: string;
-  onChange: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={enabled}
-      aria-label={label}
-      disabled={disabled}
-      onClick={onChange}
-      className={cn(
-        "relative h-6 w-10 shrink-0 rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50",
-        enabled ? "bg-ink" : "bg-hover",
-      )}
-    >
-      <span
-        className={cn(
-          "absolute top-1 size-4 rounded-full bg-page transition-transform",
-          enabled ? "left-1 translate-x-4" : "left-1",
-        )}
-      />
-    </button>
-  );
-}
+import { Field } from "./page";
+import { Switch } from "./ui/switch";
+import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 
 function localDateTime(at: number) {
   const date = new Date(at);
@@ -156,20 +125,21 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             else create.mutate({ body });
           }}
         >
-          <label className="flex flex-col gap-2">
-            Name
-            <Input required value={name} onChange={(e) => setName(e.target.value)} />
-          </label>
-          <label className="flex flex-col gap-2">
-            Prompt
-            <Textarea
-              required
-              rows={4}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Tell the agent what to do."
-            />
-          </label>
+          <Field label="Name">
+            {({ id }) => <Input id={id} required value={name} onChange={(e) => setName(e.target.value)} />}
+          </Field>
+          <Field label="Prompt">
+            {({ id }) => (
+              <Textarea
+                id={id}
+                required
+                rows={4}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Tell the agent what to do."
+              />
+            )}
+          </Field>
           <fieldset className="flex flex-col gap-3">
             <legend className="mb-2">Schedule</legend>
             <div className="flex gap-1 rounded-lg bg-inset p-1" role="group" aria-label="Schedule type">
@@ -187,31 +157,45 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
               ))}
             </div>
             {kind === "every" ? (
-              <label className="flex flex-col gap-2">
-                Minutes between runs
-                <Input
-                  type="number"
-                  min={5}
-                  step={1}
-                  required
-                  value={Number.isNaN(minutes) ? "" : minutes}
-                  onChange={(e) => setMinutes(e.target.valueAsNumber)}
-                />
-                <span className="text-xs text-ink-2">Minimum: 5 minutes.</span>
-              </label>
+              <Field label="Minutes between runs" hint="Minimum: 5 minutes.">
+                {({ id, describedBy }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    type="number"
+                    min={5}
+                    step={1}
+                    required
+                    value={Number.isNaN(minutes) ? "" : minutes}
+                    onChange={(e) => setMinutes(e.target.valueAsNumber)}
+                  />
+                )}
+              </Field>
             ) : kind === "once" ? (
-              <label className="flex flex-col gap-2">
-                Date and time
-                <Input type="datetime-local" required value={at} onChange={(e) => setAt(e.target.value)} />
-                <span className="text-xs text-ink-2">
-                  Enter the time in your browser time zone: {browserZone}.
-                </span>
-              </label>
+              <Field label="Date and time" hint={`Enter the time in your browser time zone: ${browserZone}.`}>
+                {({ id, describedBy }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    type="datetime-local"
+                    required
+                    value={at}
+                    onChange={(e) => setAt(e.target.value)}
+                  />
+                )}
+              </Field>
             ) : (
-              <label className="flex flex-col gap-2">
-                Time
-                <Input type="time" required value={time} onChange={(e) => setTime(e.target.value)} />
-              </label>
+              <Field label="Time">
+                {({ id }) => (
+                  <Input
+                    id={id}
+                    type="time"
+                    required
+                    value={time}
+                    onChange={(e) => setTime(e.target.value)}
+                  />
+                )}
+              </Field>
             )}
             {kind === "weekly" ? (
               <div className="flex flex-wrap gap-1" role="group" aria-label="Days of the week">
@@ -236,25 +220,29 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
               </div>
             ) : null}
           </fieldset>
-          <label className="flex flex-col gap-2">
-            Time zone
-            <select
-              value={timeZone}
-              onChange={(e) => setTimeZone(e.target.value)}
-              className="h-9 rounded-lg border border-line bg-surface px-3"
-            >
-              {zones.map((zone) => (
-                <option key={zone}>{zone}</option>
-              ))}
-            </select>
-          </label>
+          <Field label="Time zone">
+            {({ id }) => (
+              <NativeSelect
+                id={id}
+                className="w-full"
+                value={timeZone}
+                onChange={(e) => setTimeZone(e.target.value)}
+              >
+                {zones.map((zone) => (
+                  <NativeSelectOption key={zone} value={zone}>
+                    {zone}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            )}
+          </Field>
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-2">Run in</legend>
             {(["new", "reuse"] as const).map((value) => (
               <label
                 key={value}
                 className={cn(
-                  "surface flex cursor-pointer items-start gap-3 p-3",
+                  "flex cursor-pointer items-start gap-3 rounded-xl border border-line p-3 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ink",
                   session === value && "border-ink",
                 )}
               >
@@ -284,14 +272,10 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
               </p>
             ) : null}
           </fieldset>
-          <div className="flex items-center justify-between">
+          <label className="flex items-center justify-between">
             <span>Enabled</span>
-            <EnabledSwitch
-              enabled={enabled}
-              label="Enable automation"
-              onChange={() => setEnabled(!enabled)}
-            />
-          </div>
+            <Switch checked={enabled} onCheckedChange={setEnabled} />
+          </label>
           <section className="rounded-lg bg-inset p-3" aria-live="polite">
             <h3 className="mb-2 font-medium">Next runs · {timeZone}</h3>
             {!validSchedule ? (

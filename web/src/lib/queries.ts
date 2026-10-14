@@ -12,10 +12,12 @@ export const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 1000 }, mutations: { retry: false } },
 });
 
+// Refreshes after a settings write. A failed read stays in its query for the UI to show; it does
+// not reject, so a successful write is not reported as a failed one.
 export async function refreshSettings() {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: getSettingsQueryKey() }),
-    queryClient.fetchQuery({ ...listModelsOptions(), staleTime: 0 }),
+    queryClient.prefetchQuery({ ...listModelsOptions(), staleTime: 0 }),
   ]);
 }
 

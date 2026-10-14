@@ -1,10 +1,20 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
+import type { ReactNode } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Failure } from "./feedback";
 
 export function Confirm({
   title,
   description,
+  children,
+  confirmLabel = "Confirm",
   onCancel,
   onConfirm,
   pending,
@@ -12,6 +22,8 @@ export function Confirm({
 }: {
   title: string;
   description: string;
+  children?: ReactNode;
+  confirmLabel?: string;
   onCancel: () => void;
   onConfirm: () => void;
   pending: boolean;
@@ -24,20 +36,21 @@ export function Confirm({
         if (!open && !pending) onCancel();
       }}
     >
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="pr-8">{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        {error ? <Failure title="Could not complete this action" error={error} retry={onConfirm} /> : null}
-        <div className="flex justify-end gap-2">
+        {children}
+        {error ? <Failure title="Could not complete this action" error={error} /> : null}
+        <DialogFooter>
           <Button variant="outline" onClick={onCancel} disabled={pending}>
             Cancel
           </Button>
           <Button variant="destructive" onClick={onConfirm} disabled={pending}>
-            {pending ? "Please wait…" : "Confirm"}
+            {pending ? "Please wait…" : confirmLabel}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

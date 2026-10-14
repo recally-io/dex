@@ -20,7 +20,7 @@ dex is one binary with two processes:
 | Process | Code                                              | Responsibilities                                                                 | Does not                              |
 | ------- | ------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------- |
 | control | Go: `cmd/dex`, `internal/`                        | HTTP API and web UI, chat channels, timers, `control.sqlite`, the worker process | run agents or call models             |
-| web UI  | React: `web/`, built into `web/dist` and embedded | chats, live transcript, settings, in the browser                                 | hold state that the API does not have |
+| web UI  | React: `web/`, built into `web/dist` and embedded | chats, live transcript, settings pages, in the browser                           | hold state that the API does not have |
 | worker  | TypeScript on Bun: `worker/`                      | one pi-durable Harness per agent, model calls, tool calls                        | know about channels or time           |
 
 `mise run build:worker` compiles the worker with `bun build --compile` into one

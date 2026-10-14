@@ -1,36 +1,44 @@
-import { useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowUp, Square } from "lucide-react";
-import type { Agent } from "../api/generated/types.gen";
+import { ArrowUp, ChevronDown, Square } from "lucide-react";
+import type { AgentModel } from "../lib/agent";
 import { Button } from "./atoms/Button";
 import { ChatComposerInput } from "./primitives/ChatComposer";
 import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip";
-import { ModelPicker } from "./model-picker";
+import { ModelDialog } from "./model-dialog";
 
 export function Composer({
-  agent,
+  model,
+  hasProvider,
   running,
   disabledReason,
   pending,
   onSend,
   onStop,
-  onModel,
   text,
   onTextChange,
+  autoFocus = false,
+  readOnly = false,
 }: {
-  agent: Agent;
+  model: AgentModel;
+  hasProvider: boolean;
   running: boolean;
   disabledReason?: string;
   pending: boolean;
   onSend: (text: string) => Promise<void>;
   onStop: () => void;
-  onModel: (provider: string, id: string) => void;
   text: string;
   onTextChange: (text: string) => void;
+  autoFocus?: boolean;
+  readOnly?: boolean;
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
   const descriptionId = useId();
+  const [picker, setPicker] = useState(false);
+  useEffect(() => {
+    if (autoFocus) area.current?.focus();
+  }, [autoFocus]);
 
   async function send() {
     if (!text.trim() || disabledReason || pending) return;
@@ -50,12 +58,18 @@ export function Composer({
           footer={
             <>
               <div className="min-w-0">
-                <ModelPicker
-                  provider={agent.provider}
-                  modelId={agent.modelId}
-                  onSelect={onModel}
-                  disabled={pending}
-                />
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="quiet"
+                  aria-haspopup="dialog"
+                  aria-label={`Agent model: ${model.label}. Change model`}
+                  onClick={() => setPicker(true)}
+                  className={`max-w-full ${model.ok ? "" : "text-orange"}`}
+                >
+                  <span className="truncate">{model.label}</span>
+                  <ChevronDown aria-hidden className="size-3.5 shrink-0" />
+                </Button>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {running ? (
@@ -67,7 +81,8 @@ export function Composer({
                           variant="secondary"
                           aria-label="Stop run"
                           className="size-9 rounded-control p-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-                          disabled={pending || !!disabledReason}
+                          // A missing model blocks new messages, not stopping the current run.
+                          disabled={pending || readOnly}
                           onClick={onStop}
                         />
                       }
@@ -105,7 +120,7 @@ export function Composer({
             rows={2}
             className="block max-h-50 min-h-20 w-full resize-none border-0 bg-transparent p-0 text-sm leading-6 text-ink outline-none placeholder:text-ink-3 disabled:cursor-not-allowed disabled:opacity-60"
             maxLength={32000}
-            placeholder={disabledReason === "Reply in Telegram" ? "Reply in Telegram" : "Message dex…"}
+            placeholder={readOnly ? "Reply in Telegram" : running ? "Queue a follow-up…" : "Message dex…"}
             aria-label="Message dex"
             aria-describedby={descriptionId}
             value={text}
@@ -133,16 +148,23 @@ export function Composer({
         </ChatComposerInput>
       </form>
       <p id={descriptionId} className="mt-3 text-center text-xs text-ink-2">
-        {disabledReason || "Tools run on this computer. Review commands and results."}
-        {!agent.modelId ? (
+        {disabledReason || "Tools run on this computer without a sandbox. Review commands and results."}
+        {!model.ok && !readOnly ? (
           <>
             {" "}
-            <Link className="text-brand underline" to="/settings/$section" params={{ section: "model" }}>
-              Choose a model
-            </Link>
+            {hasProvider ? (
+              <button type="button" className="text-brand underline" onClick={() => setPicker(true)}>
+                Choose a model
+              </button>
+            ) : (
+              <Link className="text-brand underline" to="/providers">
+                Add a provider
+              </Link>
+            )}
           </>
         ) : null}
       </p>
+      <ModelDialog open={picker} onOpenChange={setPicker} />
     </div>
   );
 }

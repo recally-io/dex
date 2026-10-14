@@ -19,6 +19,17 @@ Run `mise run check:web` to check types, lint, format, and the event reducer.
 Git does not track `dist/`. Build and Go check tasks generate the embedded UI.
 Run `mise run build:web` to build it separately.
 
+## Pages
+
+Each page in `src/routes/` reads the API only. The app keeps no settings in
+`localStorage`; it stores only the theme and the automation unread marker
+there. The unsaved agent instructions are in memory (`src/lib/app-state.tsx`),
+so a draft stays when the user opens another page, and a reload discards it.
+`src/lib/agent.ts` runs agent saves one at a time. Each save reads the saved
+agent first, so a model change does not overwrite the instructions.
+
+The old `/settings/<section>` addresses redirect to the new pages.
+
 ## Components and theme
 
 The shadcn components use Base UI and the `base-nova` style.
