@@ -45,32 +45,32 @@ type Poster interface {
 
 // Input is what the user sets.
 type Input struct {
-	Name     string
-	Prompt   string
-	Schedule Schedule
-	TimeZone string
-	Session  string // new or reuse
-	Enabled  bool
+	Name     string   `json:"name"`
+	Prompt   string   `json:"prompt"`
+	Schedule Schedule `json:"schedule"`
+	TimeZone string   `json:"timeZone"`
+	Session  string   `json:"session"` // new or reuse
+	Enabled  bool     `json:"enabled"`
 }
 
 // Automation is an automation with its next times and its last run.
 type Automation struct {
 	Input
-	ID        string
-	NextRuns  []int64 // at most 3, Unix milliseconds
-	LastRun   *Run
-	CreatedAt int64
-	UpdatedAt int64
+	ID        string  `json:"id"`
+	NextRuns  []int64 `json:"nextRuns"` // at most 3, Unix milliseconds
+	LastRun   *Run    `json:"lastRun,omitempty"`
+	CreatedAt int64   `json:"createdAt"`
+	UpdatedAt int64   `json:"updatedAt"`
 }
 
 // Run is one run of an automation.
 type Run struct {
-	ID        string
-	DueAt     int64 // 0 for a run that the user started
-	CreatedAt int64
-	Status    string // running, done, failed, or skipped
-	Reason    string
-	ChatID    int64 // 0 when the run has no message
+	ID        string `json:"id"`
+	DueAt     int64  `json:"dueAt,omitzero"` // 0 for a run that the user started
+	CreatedAt int64  `json:"createdAt"`
+	Status    string `json:"status"` // running, done, failed, or skipped
+	Reason    string `json:"reason,omitempty"`
+	ChatID    int64  `json:"chatId,omitzero"` // 0 when the run has no message
 }
 
 // Service manages the automations of one agent.
@@ -268,7 +268,7 @@ func (s *Service) List(ctx context.Context) ([]Automation, error) {
 func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, error) {
 	a := Automation{
 		Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1,
-		ID: row.ID, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		ID: row.ID, NextRuns: []int64{}, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if err := json.Unmarshal([]byte(row.Schedule), &a.Schedule); err != nil {
 		return a, fmt.Errorf("automation %s: %w", row.ID, err)
