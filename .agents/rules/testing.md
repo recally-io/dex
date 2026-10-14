@@ -15,9 +15,10 @@ Read this before you write or change a test.
   in the PR.
 - **No mocks.** Tests run the real embedded worker, a real SQLite database, and
   a real HTTP server. `mise run check:testpolicy` rejects mock libraries.
-- **Fakes only at system boundaries.** Model providers are the boundary. Tests
-  use pi-ai's faux provider (`DEX_FAKE_MODEL=1`, model `faux/echo`, answers
-  `echo: <message>`). A test with the faux provider does not prove that a real
+- **Fakes only at system boundaries.** Model providers and the Telegram Bot API
+  are the boundaries; `internal/app/telegram_test.go` has a fake Bot API. Tests
+  use pi-ai's faux provider (`DEX_FAKE_MODEL=1`; models `faux/echo` and
+  `faux/shout` answer `echo: <message>` and `shout: <message>`). A test with the faux provider does not prove that a real
   provider works; say so when you report.
 - **Controlled time.** Do not use fixed sleeps. Poll the observable condition
   with a deadline, and fail with the last observed state.

@@ -1,5 +1,6 @@
 // Command dex runs the dex control process: the HTTP API and web UI, with the embedded agent
-// worker as a child process.
+// worker as a child process. All settings are in the web UI; the optional environment variables
+// are DEX_DATA_DIR (default ~/.dex) and DEX_ADDR (default 127.0.0.1:8787).
 package main
 
 import (
@@ -12,12 +13,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/vaayne/dex/internal/app"
-	"github.com/vaayne/dex/internal/worker"
 )
 
 func main() {
@@ -39,17 +38,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	// DEX_MODEL is "<provider>/<model ID>"; the model ID may contain "/".
-	provider, modelID, ok := strings.Cut(os.Getenv("DEX_MODEL"), "/")
-	if !ok || provider == "" || modelID == "" {
-		return errors.New(`set DEX_MODEL to "<provider>/<model ID>", for example "openai-compatible/codex/gpt-6-luna"`)
-	}
 	addr := cmp.Or(os.Getenv("DEX_ADDR"), "127.0.0.1:8787")
 
 	a, err := app.Start(ctx, app.Config{
 		DataDir:   cmp.Or(os.Getenv("DEX_DATA_DIR"), filepath.Join(home, ".dex")),
 		CacheDir:  filepath.Join(cache, "dex"),
-		Model:     worker.ModelRef{Provider: provider, ModelID: modelID},
 		WorkerEnv: app.WorkerEnv(os.Environ()),
 	})
 	if err != nil {

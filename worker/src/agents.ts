@@ -36,6 +36,8 @@ export class Agents {
 	readonly #models: Models;
 	readonly #emit: (event: SettledEvent) => void;
 	readonly #harnesses = new Map<string, Promise<Harness>>();
+	// The tail of each conversation's submit chain; see #serial.
+	readonly #chains = new Map<string, Promise<unknown>>();
 
 	constructor(dataDir: string, models: Models, emit: (event: SettledEvent) => void) {
 		this.#dataDir = dataDir;
@@ -62,12 +64,36 @@ export class Agents {
 		const id = params.conversationId as ConversationId;
 		const conversation = await harness.conversation(id, context);
 		if (conversation === undefined) throw new Error(`unknown conversation: ${params.conversationId}`);
-		const submission = await conversation.submit(
-			{ type: "input", content: params.content, requestId: params.requestId },
-			context,
-		);
-		void this.#settle(params, conversation, submission);
-		return { submissionId: submission.id };
+		// configure() and submit() are separate commits. Without the chain, two submits with
+		// different settings could interleave, and a message could run with the other one's settings.
+		return this.#serial(`${params.agentId}/${params.conversationId}`, async () => {
+			const agent = await conversation.agent(context);
+			const instructions = params.instructions === "" ? undefined : params.instructions;
+			if (
+				agent.model?.provider !== params.model.provider ||
+				agent.model.modelId !== params.model.modelId ||
+				agent.instructions !== instructions
+			) {
+				// A run in progress keeps its settings until its next turn.
+				await conversation.configure({ model: params.model, instructions: instructions ?? null }, context);
+			}
+			const submission = await conversation.submit(
+				{ type: "input", content: params.content, requestId: params.requestId },
+				context,
+			);
+			void this.#settle(params, conversation, submission);
+			return { submissionId: submission.id };
+		});
+	}
+
+	#serial<T>(key: string, task: () => Promise<T>): Promise<T> {
+		const result = (this.#chains.get(key) ?? Promise.resolve()).then(task);
+		const tail = result.catch(() => undefined);
+		this.#chains.set(key, tail);
+		void tail.then(() => {
+			if (this.#chains.get(key) === tail) this.#chains.delete(key);
+		});
+		return result;
 	}
 
 	async close(): Promise<void> {

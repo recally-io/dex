@@ -10,25 +10,66 @@ import (
 	"database/sql"
 )
 
-const createSubmission = `-- name: CreateSubmission :exec
-INSERT INTO submissions (id, conversation_id, content, status, created_at)
-VALUES (?, ?, ?, 'pending', ?)
+const createAgentIfMissing = `-- name: CreateAgentIfMissing :exec
+INSERT INTO agents (id, name, model_provider, model_id, created_at)
+VALUES (?, ?, '', '', ?)
+ON CONFLICT (id) DO NOTHING
+`
+
+type CreateAgentIfMissingParams struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+func (q *Queries) CreateAgentIfMissing(ctx context.Context, arg CreateAgentIfMissingParams) error {
+	_, err := q.db.ExecContext(ctx, createAgentIfMissing, arg.ID, arg.Name, arg.CreatedAt)
+	return err
+}
+
+const createSubmission = `-- name: CreateSubmission :execrows
+INSERT INTO submissions (id, conversation_id, content, source_key, status, created_at)
+VALUES (?, ?, ?, ?, 'pending', ?)
+ON CONFLICT (source_key) DO NOTHING
 `
 
 type CreateSubmissionParams struct {
-	ID             string `json:"id"`
-	ConversationID int64  `json:"conversation_id"`
-	Content        string `json:"content"`
-	CreatedAt      int64  `json:"created_at"`
+	ID             string         `json:"id"`
+	ConversationID int64          `json:"conversation_id"`
+	Content        string         `json:"content"`
+	SourceKey      sql.NullString `json:"source_key"`
+	CreatedAt      int64          `json:"created_at"`
 }
 
-func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionParams) error {
-	_, err := q.db.ExecContext(ctx, createSubmission,
+func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, createSubmission,
 		arg.ID,
 		arg.ConversationID,
 		arg.Content,
+		arg.SourceKey,
 		arg.CreatedAt,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteProvider = `-- name: DeleteProvider :exec
+DELETE FROM providers WHERE id = ?
+`
+
+func (q *Queries) DeleteProvider(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteProvider, id)
+	return err
+}
+
+const deleteTelegramSettings = `-- name: DeleteTelegramSettings :exec
+DELETE FROM telegram_settings WHERE id = 1
+`
+
+func (q *Queries) DeleteTelegramSettings(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteTelegramSettings)
 	return err
 }
 
@@ -76,8 +117,44 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
 	return i, err
 }
 
+const getConversation = `-- name: GetConversation :one
+SELECT id, agent_id, channel_key, worker_conversation_id, created_at FROM conversations WHERE id = ?
+`
+
+func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
+	row := q.db.QueryRowContext(ctx, getConversation, id)
+	var i Conversation
+	err := row.Scan(
+		&i.ID,
+		&i.AgentID,
+		&i.ChannelKey,
+		&i.WorkerConversationID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getProvider = `-- name: GetProvider :one
+SELECT id, name, api, base_url, api_key, models, created_at FROM providers WHERE id = ?
+`
+
+func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) {
+	row := q.db.QueryRowContext(ctx, getProvider, id)
+	var i Provider
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Api,
+		&i.BaseUrl,
+		&i.ApiKey,
+		&i.Models,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -92,7 +169,49 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.Reason,
 		&i.CreatedAt,
 		&i.SettledAt,
+		&i.SourceKey,
 	)
+	return i, err
+}
+
+const getSubmissionReply = `-- name: GetSubmissionReply :one
+SELECT
+    s.status,
+    s.answer,
+    s.reason,
+    c.channel_key
+FROM submissions s
+JOIN conversations c ON c.id = s.conversation_id
+WHERE s.id = ?
+`
+
+type GetSubmissionReplyRow struct {
+	Status     string         `json:"status"`
+	Answer     sql.NullString `json:"answer"`
+	Reason     sql.NullString `json:"reason"`
+	ChannelKey string         `json:"channel_key"`
+}
+
+func (q *Queries) GetSubmissionReply(ctx context.Context, id string) (GetSubmissionReplyRow, error) {
+	row := q.db.QueryRowContext(ctx, getSubmissionReply, id)
+	var i GetSubmissionReplyRow
+	err := row.Scan(
+		&i.Status,
+		&i.Answer,
+		&i.Reason,
+		&i.ChannelKey,
+	)
+	return i, err
+}
+
+const getTelegramSettings = `-- name: GetTelegramSettings :one
+SELECT id, token, allowed_users FROM telegram_settings WHERE id = 1
+`
+
+func (q *Queries) GetTelegramSettings(ctx context.Context) (TelegramSetting, error) {
+	row := q.db.QueryRowContext(ctx, getTelegramSettings)
+	var i TelegramSetting
+	err := row.Scan(&i.ID, &i.Token, &i.AllowedUsers)
 	return i, err
 }
 
@@ -100,19 +219,19 @@ const listPendingSubmissions = `-- name: ListPendingSubmissions :many
 SELECT
     s.id,
     s.content,
-    c.agent_id,
-    c.worker_conversation_id
+    s.conversation_id,
+    c.agent_id
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status = 'pending' AND c.worker_conversation_id IS NOT NULL
+WHERE s.status = 'pending'
 ORDER BY s.created_at
 `
 
 type ListPendingSubmissionsRow struct {
-	ID                   string        `json:"id"`
-	Content              string        `json:"content"`
-	AgentID              string        `json:"agent_id"`
-	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
+	ID             string `json:"id"`
+	Content        string `json:"content"`
+	ConversationID int64  `json:"conversation_id"`
+	AgentID        string `json:"agent_id"`
 }
 
 func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubmissionsRow, error) {
@@ -127,8 +246,8 @@ func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubm
 		if err := rows.Scan(
 			&i.ID,
 			&i.Content,
+			&i.ConversationID,
 			&i.AgentID,
-			&i.WorkerConversationID,
 		); err != nil {
 			return nil, err
 		}
@@ -141,6 +260,57 @@ func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubm
 		return nil, err
 	}
 	return items, nil
+}
+
+const listProviders = `-- name: ListProviders :many
+SELECT id, name, api, base_url, api_key, models, created_at FROM providers ORDER BY created_at
+`
+
+func (q *Queries) ListProviders(ctx context.Context) ([]Provider, error) {
+	rows, err := q.db.QueryContext(ctx, listProviders)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Provider{}
+	for rows.Next() {
+		var i Provider
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Api,
+			&i.BaseUrl,
+			&i.ApiKey,
+			&i.Models,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setTelegramSettings = `-- name: SetTelegramSettings :exec
+INSERT INTO telegram_settings (id, token, allowed_users)
+VALUES (1, ?, ?)
+ON CONFLICT (id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users
+`
+
+type SetTelegramSettingsParams struct {
+	Token        string `json:"token"`
+	AllowedUsers string `json:"allowed_users"`
+}
+
+func (q *Queries) SetTelegramSettings(ctx context.Context, arg SetTelegramSettingsParams) error {
+	_, err := q.db.ExecContext(ctx, setTelegramSettings, arg.Token, arg.AllowedUsers)
+	return err
 }
 
 const setWorkerConversation = `-- name: SetWorkerConversation :exec
@@ -157,7 +327,7 @@ func (q *Queries) SetWorkerConversation(ctx context.Context, arg SetWorkerConver
 	return err
 }
 
-const settleSubmission = `-- name: SettleSubmission :exec
+const settleSubmission = `-- name: SettleSubmission :execrows
 UPDATE submissions SET status = ?, answer = ?, reason = ?, settled_at = ?
 WHERE id = ? AND status = 'pending'
 `
@@ -170,43 +340,70 @@ type SettleSubmissionParams struct {
 	ID        string         `json:"id"`
 }
 
-func (q *Queries) SettleSubmission(ctx context.Context, arg SettleSubmissionParams) error {
-	_, err := q.db.ExecContext(ctx, settleSubmission,
+func (q *Queries) SettleSubmission(ctx context.Context, arg SettleSubmissionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, settleSubmission,
 		arg.Status,
 		arg.Answer,
 		arg.Reason,
 		arg.SettledAt,
 		arg.ID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
-const upsertAgent = `-- name: UpsertAgent :exec
-INSERT INTO agents (id, name, model_provider, model_id, instructions, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT (id) DO UPDATE SET
-    name = excluded.name,
-    model_provider = excluded.model_provider,
-    model_id = excluded.model_id,
-    instructions = excluded.instructions
+const updateAgentSettings = `-- name: UpdateAgentSettings :exec
+UPDATE agents SET model_provider = ?, model_id = ?, instructions = ? WHERE id = ?
 `
 
-type UpsertAgentParams struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
+type UpdateAgentSettingsParams struct {
 	ModelProvider string `json:"model_provider"`
 	ModelID       string `json:"model_id"`
 	Instructions  string `json:"instructions"`
-	CreatedAt     int64  `json:"created_at"`
+	ID            string `json:"id"`
 }
 
-func (q *Queries) UpsertAgent(ctx context.Context, arg UpsertAgentParams) error {
-	_, err := q.db.ExecContext(ctx, upsertAgent,
-		arg.ID,
-		arg.Name,
+func (q *Queries) UpdateAgentSettings(ctx context.Context, arg UpdateAgentSettingsParams) error {
+	_, err := q.db.ExecContext(ctx, updateAgentSettings,
 		arg.ModelProvider,
 		arg.ModelID,
 		arg.Instructions,
+		arg.ID,
+	)
+	return err
+}
+
+const upsertProvider = `-- name: UpsertProvider :exec
+INSERT INTO providers (id, name, api, base_url, api_key, models, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (id) DO UPDATE SET
+    name = excluded.name,
+    api = excluded.api,
+    base_url = excluded.base_url,
+    api_key = excluded.api_key,
+    models = excluded.models
+`
+
+type UpsertProviderParams struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Api       string `json:"api"`
+	BaseUrl   string `json:"base_url"`
+	ApiKey    string `json:"api_key"`
+	Models    string `json:"models"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+func (q *Queries) UpsertProvider(ctx context.Context, arg UpsertProviderParams) error {
+	_, err := q.db.ExecContext(ctx, upsertProvider,
+		arg.ID,
+		arg.Name,
+		arg.Api,
+		arg.BaseUrl,
+		arg.ApiKey,
+		arg.Models,
 		arg.CreatedAt,
 	)
 	return err

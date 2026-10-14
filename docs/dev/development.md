@@ -14,15 +14,27 @@ Check: `mise run check` passes.
 
 ## Run
 
-1. Run `cp .env.example .env`.
-2. Set `DEX_MODEL` to `<provider>/<model ID>`. For an OpenAI-compatible
-   gateway, set `OPENAI_BASE_URL` and `OPENAI_API_KEY`, and use the provider
-   `openai-compatible`.
-3. Run `mise run dev:server`.
+1. Run `mise run dev:server`.
+2. Open <http://127.0.0.1:8787/#settings>.
+3. Add a provider: a built-in one with its API key, or a custom one with its
+   API (OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages), base
+   URL, and key. Add more providers if you want.
+4. Choose a model and save.
 
-Check: <http://127.0.0.1:8787> answers a message.
+Check: the Chat page answers a message.
 
-Other providers read their usual variables, for example `ANTHROPIC_API_KEY`.
+To use Telegram:
+
+1. Create a bot with [@BotFather](https://t.me/BotFather).
+2. Send a message to [@userinfobot](https://t.me/userinfobot) to get your user
+   ID.
+3. In Settings, enter the bot token and your user ID, and save.
+
+Check: the bot answers a message from an allowed user.
+
+The optional environment variables are `DEX_DATA_DIR` (default `~/.dex`) and
+`DEX_ADDR` (default `127.0.0.1:8787`). Use a separate `DEX_DATA_DIR` to try
+settings without changing your own.
 
 ## Tasks
 
@@ -40,7 +52,8 @@ Run `mise tasks` for the full list. The main tasks:
 ## Tests
 
 The rules are in [testing](../../.agents/rules/testing.md). The Go tests in
-`internal/app` run the real embedded worker with the faux model, so run
+`internal/app` run the real embedded worker with the faux model, and a fake
+Telegram Bot API server, so run
 `mise run build:worker` after a worker change. `check:go` does that for you.
 
 ## Debug

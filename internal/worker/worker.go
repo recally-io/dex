@@ -27,10 +27,16 @@ type Config struct {
 	Env  []string // the complete environment; the process inherits nothing else
 	// OnSettled receives each settled event, in order, on the goroutine that reads stdout.
 	OnSettled func(context.Context, Settled)
-	// OnStart runs on its own goroutine after each process start, for example to replay
-	// submissions that the previous process did not settle.
+	// Init runs after each process start, before Call can reach the process, for example to load
+	// credentials. call sends a request to the new process.
+	Init func(ctx context.Context, call CallFunc)
+	// OnStart runs on its own goroutine after Init, for example to replay submissions that the
+	// previous process did not settle.
 	OnStart func(ctx context.Context)
 }
+
+// CallFunc sends one request to the worker and decodes its result into result.
+type CallFunc func(ctx context.Context, method string, params, result any) error
 
 // Worker keeps one worker process running and restarts it when it exits.
 type Worker struct {
@@ -89,14 +95,23 @@ func (w *Worker) runOnce(ctx context.Context) error {
 	}
 
 	p := &process{stdin: stdin, pending: map[int64]chan incoming{}, done: make(chan struct{})}
+	readErr := make(chan error, 1)
+	go func() {
+		err := p.read(ctx, stdout, w.cfg.OnSettled)
+		close(p.done)
+		readErr <- err
+	}()
+	if w.cfg.Init != nil {
+		w.cfg.Init(ctx, p.call)
+	}
+	// When the process exited during Init, Call fails with ErrUnavailable until setProc(nil).
 	w.setProc(p)
 	if w.cfg.OnStart != nil {
 		go w.cfg.OnStart(ctx)
 	}
-	readErr := p.read(ctx, stdout, w.cfg.OnSettled)
+	err = <-readErr
 	w.setProc(nil)
-	close(p.done)
-	return errors.Join(cmd.Wait(), readErr)
+	return errors.Join(cmd.Wait(), err)
 }
 
 func (w *Worker) setProc(p *process) {

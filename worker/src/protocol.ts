@@ -19,9 +19,11 @@ export type Event = {
 	readonly params: unknown;
 };
 
+const ModelRef = Type.Object({ provider: Type.String(), modelId: Type.String() });
+
 export const CreateConversationParams = Type.Object({
 	agentId: Type.String(),
-	model: Type.Object({ provider: Type.String(), modelId: Type.String() }),
+	model: ModelRef,
 	instructions: Type.Optional(Type.String()),
 });
 export type CreateConversationParams = Static<typeof CreateConversationParams>;
@@ -33,6 +35,12 @@ export type CreateConversationResult = {
 export const SubmitParams = Type.Object({
 	agentId: Type.String(),
 	conversationId: Type.Number(),
+	/**
+	 * The agent's current settings. When they differ from the conversation's, the worker changes the
+	 * conversation before it submits, so a settings change applies to existing chats.
+	 */
+	model: ModelRef,
+	instructions: Type.String(),
 	/**
 	 * Control's submission ID. pi-durable deduplicates on it within the conversation, so a replay
 	 * after a crash is safe.
@@ -53,4 +61,45 @@ export type SettledEvent = {
 	readonly status: "done" | "unanswered";
 	readonly answer?: string;
 	readonly reason?: string;
+};
+
+/**
+ * One provider from the settings. `api` is "" for a pi-ai built-in provider, which uses only
+ * `apiKey`. Otherwise it names the API of a custom provider at `baseUrl`; `models` lists its model
+ * IDs, or is empty to list them from the endpoint.
+ */
+export const ProviderSettings = Type.Object({
+	id: Type.String(),
+	name: Type.String(),
+	api: Type.Union([
+		Type.Literal(""),
+		Type.Literal("openai-completions"),
+		Type.Literal("openai-responses"),
+		Type.Literal("anthropic-messages"),
+	]),
+	baseUrl: Type.String(),
+	apiKey: Type.String(),
+	models: Type.Array(Type.String()),
+});
+export type ProviderSettings = Static<typeof ProviderSettings>;
+
+export const ConfigureParams = Type.Object({ providers: Type.Array(ProviderSettings) });
+export type ConfigureParams = Static<typeof ConfigureParams>;
+
+export type ConfigureResult = {
+	/** Provider ID → why its model list failed. */
+	readonly errors: Readonly<Record<string, string>>;
+};
+
+export type ProviderInfo = {
+	readonly id: string;
+	readonly name: string;
+	/** "settings", the environment variable that holds the key, or undefined when none is set. */
+	readonly source?: string | undefined;
+};
+
+export type ModelInfo = {
+	readonly provider: string;
+	readonly id: string;
+	readonly name: string;
 };

@@ -1,8 +1,15 @@
 import { createInterface } from "node:readline";
 import { Value } from "typebox/value";
 import { Agents } from "./agents.ts";
-import { createModels } from "./models.ts";
-import { CreateConversationParams, type Event, Request, type Response, SubmitParams } from "./protocol.ts";
+import { Catalog } from "./models.ts";
+import {
+	ConfigureParams,
+	CreateConversationParams,
+	type Event,
+	Request,
+	type Response,
+	SubmitParams,
+} from "./protocol.ts";
 
 // stdout carries the protocol. Send every console method that writes to stdout to stderr, so a
 // library log line cannot corrupt the stream.
@@ -20,9 +27,8 @@ function write(message: Response | Event): void {
 	process.stdout.write(`${JSON.stringify(message)}\n`);
 }
 
-const agents = new Agents(dataDir, await createModels(process.env), (params) =>
-	write({ event: "settled", params }),
-);
+const catalog = new Catalog(process.env);
+const agents = new Agents(dataDir, catalog.models, (params) => write({ event: "settled", params }));
 
 async function handle(request: Request): Promise<unknown> {
 	switch (request.method) {
@@ -32,6 +38,12 @@ async function handle(request: Request): Promise<unknown> {
 			return agents.createConversation(Value.Parse(CreateConversationParams, request.params));
 		case "submit":
 			return agents.submit(Value.Parse(SubmitParams, request.params));
+		case "configure":
+			return catalog.configure(Value.Parse(ConfigureParams, request.params).providers);
+		case "listProviders":
+			return { providers: await catalog.builtins() };
+		case "listModels":
+			return { models: await catalog.available() };
 		default:
 			throw new Error(`unknown method: ${request.method}`);
 	}

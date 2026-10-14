@@ -23,12 +23,43 @@ process. See [ADR 0001](decisions/0001-embedded-bun-worker.md).
 
 | Data                                 | Owner               | Location                                                                  |
 | ------------------------------------ | ------------------- | ------------------------------------------------------------------------- |
-| Agents, chats, submissions           | control             | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/)) |
+| Agents, chats, submissions, settings | control             | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/)) |
 | Transcripts, runs, tool calls, usage | worker (pi-durable) | `<data dir>/agents/<id>/state.sqlite`                                     |
 | Agent files                          | the agent's tools   | `<data dir>/agents/<id>/workspace/`                                       |
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). pi-durable allows one
 process per storage, so only the worker opens an agent directory.
+
+## Settings
+
+The web UI edits all settings; see [ADR 0002](decisions/0002-settings-in-control-db.md).
+[`settings.Service`](../../internal/settings/settings.go) validates a change,
+saves it in `control.sqlite`, and then applies it:
+
+| Setting                       | Table               | Applied by                                                         |
+| ----------------------------- | ------------------- | ------------------------------------------------------------------ |
+| Agent model, instructions     | `agents`            | the next `submit` of each chat; the worker calls `configure` on it |
+| Providers                     | `providers`         | `configure` to the worker, and again after each worker start       |
+| Telegram token, allowed users | `telegram_settings` | a restart of the bot                                               |
+
+The user adds any number of providers, and then chooses one model from all of
+their models. A provider is one of:
+
+- **Built-in**: a pi-ai provider (Anthropic, OpenAI, OpenRouter, and more) with
+  an API key.
+- **Custom**: an ID, a base URL, an optional API key, and one of the APIs
+  `openai-completions`, `openai-responses`, or `anthropic-messages`. Its
+  models are the listed model IDs, or else the ones that the endpoint's
+  `/models` (OpenAI) or `/v1/models` (Anthropic) returns. A custom provider
+  without a key sends the key `none`, for local servers.
+
+The worker keeps the providers only in memory (built-in keys in pi-ai's
+`InMemoryCredentialStore`) and gets no provider environment variables. When a
+custom provider's model list fails, the provider stays saved and the API
+returns the reason. When a change is saved but the
+worker cannot apply it, the API returns an error; the next worker start
+applies it. The agent has no model until the user chooses one; a message
+before that is `unanswered`.
 
 ## Worker protocol
 
@@ -37,11 +68,18 @@ writes one JSON response or event per line to its stdout. Logs go to stderr.
 The types are in [`worker/src/protocol.ts`](../../worker/src/protocol.ts) and
 [`internal/worker/protocol.go`](../../internal/worker/protocol.go).
 
-| Method               | Params                                              | Result           |
-| -------------------- | --------------------------------------------------- | ---------------- |
-| `ping`               | none                                                | `{}`             |
-| `createConversation` | `agentId`, `model`, `instructions`                  | `conversationId` |
-| `submit`             | `agentId`, `conversationId`, `requestId`, `content` | `submissionId`   |
+| Method               | Params                                                                       | Result                    |
+| -------------------- | ---------------------------------------------------------------------------- | ------------------------- |
+| `ping`               | none                                                                         | `{}`                      |
+| `createConversation` | `agentId`, `model`, `instructions`                                           | `conversationId`          |
+| `submit`             | `agentId`, `conversationId`, `model`, `instructions`, `requestId`, `content` | `submissionId`            |
+| `configure`          | `providers`: `id`, `name`, `api`, `baseUrl`, `apiKey`, `models`              | `errors` per provider     |
+| `listProviders`      | none                                                                         | built-in `providers`      |
+| `listModels`         | none                                                                         | `models` with credentials |
+
+The worker runs the submits of one conversation in order. When `model` or
+`instructions` differ from the conversation's, it changes the conversation
+first; a run in progress keeps its settings until its next turn.
 
 Event `settled`: `requestId`, `status` (`done` or `unanswered`), `answer` or
 `reason`. The worker sends it when a submission has its final answer.
@@ -62,6 +100,22 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
 4. The worker runs the model and the tools, then sends `settled`. Control
    marks the submission `done` or `unanswered` and returns the answer.
 
+## Telegram
+
+[`telegram.Bot`](../../internal/telegram/telegram.go) is on when the settings
+have a bot token. It reads messages with `getUpdates` long polling,
+so dex needs no public URL.
+
+- Each Telegram chat is one conversation of the default agent, with the
+  channel key `telegram:<chat id>`.
+- The bot ignores every user who is not in the allowed users.
+- The bot stores each message with `chat.Service.Submit`, which does not wait.
+  The source key `telegram:<bot id>:<update id>` is unique, so a message that Telegram
+  delivers again gets no second answer.
+- When a submission settles, `chat.Service` calls its notify function once.
+  The bot sends the answer to the chat, cut into parts of 4096 UTF-16 code
+  units. A message that a restart replays gets its answer too.
+
 ## Failure behavior
 
 - **Worker exits.** [`worker.Worker.Run`](../../internal/worker/worker.go)
@@ -74,15 +128,27 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
 - **Crash between `createConversation` and storing its ID.** The worker keeps
   an empty conversation. The next message creates a new one.
 - **Model or tool error.** The submission becomes `unanswered` with a reason.
+- **Telegram API error.** The bot retries `getUpdates` after 5 s, from the
+  first update that it did not store. A `sendMessage` that fails is logged,
+  and the answer stays only in `control.sqlite`. A crash after a submission
+  settles and before `sendMessage` also loses the Telegram reply.
 
 ## Security
 
 Agent tools (`read`, `write`, `edit`, `bash`) run on the host without a
 sandbox, inside the agent workspace. The HTTP server listens on
 `127.0.0.1:8787` by default and has no authentication. Do not expose it to a
-network. A chat channel must allow only known user IDs.
+network. A chat channel must allow only known user IDs: the settings refuse a
+Telegram bot without allowed users. The API refuses cross-site writes
+(`http.CrossOriginProtection`), so another web page in the user's browser
+cannot send messages or change settings.
 
-The worker gets only the environment variables that
+`control.sqlite` holds provider keys and the Telegram token as plain text. The
+data directory is created with mode 0700. The API never returns a key or a
+token.
+
+Control does not log the Telegram token; Bot API errors drop the request URL,
+which holds the token. The worker gets only the environment variables that
 [`app.WorkerEnv`](../../internal/app/app.go) selects. It runs with its working
 directory in the cache directory, and it does not load `.env` or `bunfig.toml`.
 

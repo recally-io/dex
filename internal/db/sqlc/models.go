@@ -25,6 +25,16 @@ type Conversation struct {
 	CreatedAt            int64         `json:"created_at"`
 }
 
+type Provider struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Api       string `json:"api"`
+	BaseUrl   string `json:"base_url"`
+	ApiKey    string `json:"api_key"`
+	Models    string `json:"models"`
+	CreatedAt int64  `json:"created_at"`
+}
+
 type Submission struct {
 	ID             string         `json:"id"`
 	ConversationID int64          `json:"conversation_id"`
@@ -34,4 +44,11 @@ type Submission struct {
 	Reason         sql.NullString `json:"reason"`
 	CreatedAt      int64          `json:"created_at"`
 	SettledAt      sql.NullInt64  `json:"settled_at"`
+	SourceKey      sql.NullString `json:"source_key"`
+}
+
+type TelegramSetting struct {
+	ID           int64  `json:"id"`
+	Token        string `json:"token"`
+	AllowedUsers string `json:"allowed_users"`
 }

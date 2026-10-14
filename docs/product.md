@@ -14,14 +14,16 @@ to read in an afternoon.
 ## Scope
 
 - One `dex` binary. The host needs no other runtime.
+- All settings in the web UI: providers, the agent's model and instructions,
+  and Telegram. dex needs no configuration file or environment variable.
 - Agents with a model, instructions, and a workspace directory.
 - Durable conversations: a crash or a restart does not lose a message or a
   started run.
 - Entry points: the web UI and Telegram.
 - Timers: scheduled messages to an agent.
 
-Status: the web UI, durable messages, and the worker are done. Telegram and
-timers are next.
+Status: the web UI, Telegram, durable messages, and the worker are done.
+Timers are next.
 
 ## Non-goals
 

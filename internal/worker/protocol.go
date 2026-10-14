@@ -23,12 +23,15 @@ type CreateConversationResult struct {
 	ConversationID int64 `json:"conversationId"`
 }
 
-// SubmitParams are the params of the submit method.
+// SubmitParams are the params of the submit method. Model and Instructions are the agent's current
+// settings; the worker applies them to the conversation when they changed.
 type SubmitParams struct {
-	AgentID        string `json:"agentId"`
-	ConversationID int64  `json:"conversationId"`
-	RequestID      string `json:"requestId"`
-	Content        string `json:"content"`
+	AgentID        string   `json:"agentId"`
+	ConversationID int64    `json:"conversationId"`
+	Model          ModelRef `json:"model"`
+	Instructions   string   `json:"instructions"`
+	RequestID      string   `json:"requestId"`
+	Content        string   `json:"content"`
 }
 
 // SubmitResult is the result of the submit method.
@@ -44,6 +47,54 @@ type Settled struct {
 	Status         string `json:"status"` // "done" or "unanswered"
 	Answer         string `json:"answer,omitempty"`
 	Reason         string `json:"reason,omitempty"`
+}
+
+// ConfigureParams are the params of the configure method. They replace all providers.
+type ConfigureParams struct {
+	Providers []ProviderSettings `json:"providers"`
+}
+
+// ProviderSettings is one provider from the settings. API is "" for a pi-ai built-in provider,
+// which uses only APIKey. Otherwise it names the API of a custom provider at BaseURL; Models lists
+// its model IDs, or is empty to list them from the endpoint.
+type ProviderSettings struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	API     string   `json:"api"`
+	BaseURL string   `json:"baseUrl"`
+	APIKey  string   `json:"apiKey"`
+	Models  []string `json:"models"`
+}
+
+// ConfigureResult is the result of the configure method: provider ID → why its model list failed.
+type ConfigureResult struct {
+	Errors map[string]string `json:"errors"`
+}
+
+// ProviderInfo is one built-in provider in the result of the listProviders method.
+type ProviderInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// "settings", another credential source, or empty when the provider has no credentials.
+	Source string `json:"source,omitempty"`
+}
+
+// ListProvidersResult is the result of the listProviders method.
+type ListProvidersResult struct {
+	Providers []ProviderInfo `json:"providers"`
+}
+
+// ModelInfo is one model in the result of the listModels method.
+type ModelInfo struct {
+	Provider string `json:"provider"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+}
+
+// ListModelsResult is the result of the listModels method: the models of the providers that have
+// credentials.
+type ListModelsResult struct {
+	Models []ModelInfo `json:"models"`
 }
 
 type request struct {

@@ -14,7 +14,7 @@ Read this before you report work as complete.
 `check:go` rebuilds the worker binary first, because the Go tests run it.
 
 A change to a provider or to model handling also needs a manual run against a
-real provider (`mise run dev:server` with `.env`), because the tests use the
+real provider (`mise run dev:server`, with a key in Settings), because the tests use the
 faux provider. Report that run, or report that you did not do it.
 
 Report each check that you ran with its result, and each check that you did

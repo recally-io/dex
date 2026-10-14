@@ -1,15 +1,15 @@
 # dex
 
 dex is a small, self-hosted agent host. One Go binary runs a control process
-(HTTP API, web UI, and later chat channels) and an embedded Bun worker that
+(HTTP API, web UI, and Telegram) and an embedded Bun worker that
 runs the agents on [pi-durable](https://www.npmjs.com/package/@earendil-works/pi-durable).
 The agent state stays in local directories. The host needs no Node or Bun.
 
 ## Quick start
 
 1. Run `mise install && mise run install`.
-2. Run `cp .env.example .env`, and set `DEX_MODEL` and the provider variables.
-3. Run `mise run dev:server`, then open <http://127.0.0.1:8787>.
+2. Run `mise run dev:server`, then open <http://127.0.0.1:8787>.
+3. In Settings, add a provider's API key, then choose a model.
 
 `mise run build` writes a single binary to `bin/dex`.
 

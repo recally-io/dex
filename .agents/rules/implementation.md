@@ -7,12 +7,14 @@ data.
 
 | Path                 | Owns                                                             |
 | -------------------- | ---------------------------------------------------------------- |
-| `cmd/dex`            | Process entry: configuration from the environment, HTTP server   |
+| `cmd/dex`            | Process entry: data directory, address, HTTP server              |
 | `internal/app`       | Wiring: database, worker process, chat service, HTTP handler     |
 | `internal/chat`      | Messages as durable submissions; replay after a worker restart   |
 | `internal/worker`    | Worker binary install, child process, protocol client            |
 | `internal/db`        | `control.sqlite`, goose migrations, sqlc queries                 |
 | `internal/server`    | HTTP API under `/api/`, the web UI at `/`                        |
+| `internal/telegram`  | Telegram bot: long polling, user allowlist, reply delivery       |
+| `internal/settings`  | Settings from the web UI: validate, save, apply to worker or bot |
 | `web`                | The web UI: one HTML file, embedded                              |
 | `worker`             | The Bun worker: one pi-durable Harness per agent                 |
 | `internal/workerbin` | The compiled worker, gzipped, embedded (`mise run build:worker`) |
@@ -32,6 +34,9 @@ data.
   `worker/src/agents.ts` and `worker/src/models.ts`.
 - A new dependency needs the user's approval. Prefer the standard library,
   then a dependency the repository already has.
+- Settings live only in `control.sqlite` and change only through
+  `internal/settings`. Do not add an environment variable or a file for a
+  setting. The worker gets provider credentials only through `configure`.
 - Do not edit generated code: `internal/db/sqlc/`. Run `mise run generate:db`.
 - A fix covers every entry point with the same failure mechanism. Search for
   the pattern, and re-check the callers, the stored data, and the tests that
