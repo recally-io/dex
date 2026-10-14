@@ -38,7 +38,7 @@ jobs:
         with:
           install: true
           cache: true
-      - run: mise run install:worker
+      - run: mise run install
       # The release is a draft until the smoke tests pass.
       - run: goreleaser release --clean --parallelism 1
         env:

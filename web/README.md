@@ -1,6 +1,7 @@
 # Web UI
 
-The Go binary embeds the files in `dist/`. Commit the build with its source.
+The Go binary embeds the files in `dist/`. Build tasks generate these files;
+Git does not track them.
 The browser uses the API contract in [api/openapi.yaml](../api/openapi.yaml).
 Do not edit the generated client in `src/api/generated/`.
 
@@ -15,8 +16,8 @@ Set `DEX_API_URL` when the backend uses another address.
 
 After an API change, run `mise run generate:api-web`.
 Run `mise run check:web` to check types, lint, format, and the event reducer.
-Run `mise run build:web` before you commit.
-Run `mise run check:web-dist` to check that the build matches its source.
+Git does not track `dist/`. Build and Go check tasks generate the embedded UI.
+Run `mise run build:web` to build it separately.
 
 ## Components and theme
 

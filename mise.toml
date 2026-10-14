@@ -36,7 +36,6 @@ run = [
   "mise run check:api-drift",
   "mise run check:worker",
   "mise run check:web",
-  "mise run check:web-dist",
   "mise run check:go",
 ]
 

@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Rebuild the web UI and check the committed assets"
-#MISE dir="web"
-set -euo pipefail
-build_dir=$(mktemp -d)
-trap 'rm -rf "$build_dir"' EXIT
-bunx --no-install vp build --outDir "$build_dir" --emptyOutDir
-diff -r dist "$build_dir"

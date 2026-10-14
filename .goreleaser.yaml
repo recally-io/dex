@@ -1,6 +1,10 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
 
+before:
+  hooks:
+    - mise run build:web
+
 # Run with --parallelism 1: each target writes its own worker to the same embedded file
 # before its Go build.
 builds:

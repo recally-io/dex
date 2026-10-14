@@ -26,8 +26,8 @@ writes it.
 
 To change the web UI with hot reload, run `mise run dev:server` and
 `mise run dev:web` in two terminals, and open the address that `dev:web`
-shows. It sends `/api/` to the server on port 8787. Run `mise run build:web`
-before you commit, because the binary embeds `web/dist`.
+shows. It sends `/api/` to the server on port 8787. The binary embeds
+`web/dist`. Build and Go check tasks generate it; Git does not track it.
 
 To try the UI without a provider, start the server with `DEX_FAKE_MODEL=1`
 and choose `faux/echo`, or `faux/bash` to see tool calls.
@@ -60,7 +60,6 @@ Run `mise tasks` for the full list. The main tasks:
 | `generate:api`    | Regenerates the Go server and the TS client from `api/openapi.yaml` |
 | `build:web`       | Builds the web UI into `web/dist`                                   |
 | `check:web`       | `tsc`, `vp lint`, `vp fmt --check`, `vp test` in `web/`             |
-| `check:web-dist`  | Fails when `web/dist` differs from a new build                      |
 | `check:api-drift` | Fails when the generated API code differs from the contract         |
 
 ## Tests
@@ -87,8 +86,9 @@ To release:
 [GoReleaser](../../.goreleaser.yaml) on macOS. GoReleaser builds `dex` for
 Linux and macOS, x64 and arm64, and uploads a draft release with one
 `dex_<tag>_<os>_<arch>.tar.gz` for each platform, `checksums.txt`, and notes
-from the pull requests. Before each Go build, a hook compiles the worker for
-that platform. Then each binary starts on its own platform as a smoke test.
+from the pull requests. GoReleaser builds the web UI once. Before each Go
+build, a hook compiles the worker for that platform. Then each binary starts
+on its own platform as a smoke test.
 When all smoke tests pass, the workflow publishes the draft. dex reads its
 version from the tag.
 

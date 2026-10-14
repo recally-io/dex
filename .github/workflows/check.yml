@@ -41,7 +41,6 @@ jobs:
       - run: mise run check:testpolicy
       - run: mise run check:db-drift
       - run: mise run check:api-drift
-      - run: mise run check:web-dist
       - run: git diff --check
 
   worker:
@@ -81,6 +80,6 @@ jobs:
           install: true
           cache: true
       - run: go mod download
-      # The Go tests run the embedded worker, which build:worker compiles.
-      - run: mise run install:worker
+      # Go builds embed both the worker and the web UI.
+      - run: mise run install
       - run: mise run check:go
