@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Type-check, lint, format-check, and test the Bun worker"
+#MISE dir="worker"
+set -euo pipefail
+
+tsc --noEmit -p .
+vp lint
+vp fmt --check
+bun test

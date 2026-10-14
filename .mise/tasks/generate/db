@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Generate internal/db/sqlc from the migrations and queries"
+set -euo pipefail
+
+sqlc generate

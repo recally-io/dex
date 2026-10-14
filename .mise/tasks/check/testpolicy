@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Fail when a Go test imports a mock library (tests use real dependencies)"
+set -euo pipefail
+
+pattern='"(github.com/stretchr/testify/mock|go.uber.org/mock|github.com/golang/mock)'
+if grep -rEn --include='*_test.go' "$pattern" --exclude-dir=node_modules .; then
+	echo "Tests must not use mock libraries. See .agents/rules/testing.md." >&2
+	exit 1
+fi

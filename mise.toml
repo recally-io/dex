@@ -1,0 +1,45 @@
+[tools]
+go = "1.27.2"
+golangci-lint = "2.14.0"
+bun = "1.4.3"
+# Development only: the vp (Vite+) launcher runs on Node. dex itself needs no Node.
+node = "26.11.1"
+dprint = "0.63.0"
+prek = "0.5.5"
+"aqua:sqlc-dev/sqlc" = "1.31.1"
+"aqua:pressly/goose" = "3.29.0"
+"npm:@markdown-viewer/documd" = "5.3.2"
+
+[tasks.install]
+description = "Install project dependencies from the lockfiles"
+depends = ["install:worker"]
+run = "go mod download"
+
+[tasks."install:worker"]
+description = "Install the worker's npm dependencies from bun.lock"
+dir = "worker"
+run = "bun install --frozen-lockfile"
+
+[tasks.format]
+description = "Format all files"
+run = ["dprint fmt", "golangci-lint fmt", "cd worker && vp fmt"]
+
+[tasks.check]
+description = "Check formatting, lint, types, tests, and builds"
+run = [
+  "prek validate-config prek.toml",
+  "dprint check",
+  "mise run check:testpolicy",
+  "mise run check:db-drift",
+  "mise run check:worker",
+  "mise run check:go",
+]
+
+[tasks.build]
+description = "Build bin/dex for this platform, with the worker embedded"
+depends = ["build:worker"]
+run = "go build -o bin/dex ./cmd/dex"
+
+[tasks."hooks:install"]
+description = "Install the prek-managed pre-commit hook"
+run = "prek install"

@@ -1,0 +1,12 @@
+#!/bin/bash
+#MISE description="Install the pinned upstream agent skills into .agents/skills"
+set -euo pipefail
+
+# Upstream skills are not committed; .agents/skills/.gitignore lists them.
+# To update one, change its pin here and run this task again.
+install() {
+	gh skill install "$1" "$2" --pin "$3" --dir .agents/skills --force
+}
+
+install JetBrains/go-modern-guidelines use-modern-go v0.1.1
+install markdown-viewer/skills documd-visuals 2672b6920f6c055caf72a916b414ede62ecbfc2e

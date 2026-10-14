@@ -1,0 +1,53 @@
+@startuml
+skinparam DefaultFontColor #1f2937
+skinparam ArrowColor #5b6b8c
+skinparam ArrowFontColor #1f2937
+skinparam ParticipantBackgroundColor #eef2fb
+skinparam ParticipantBorderColor #5b6b8c
+skinparam ActorBackgroundColor #eef2fb
+skinparam ActorBorderColor #5b6b8c
+skinparam DatabaseBackgroundColor #eef2fb
+skinparam DatabaseBorderColor #5b6b8c
+skinparam NoteBackgroundColor #dfe5fb
+skinparam NoteBorderColor #5b6b8c
+skinparam SequenceLifeLineBorderColor #5b6b8c
+skinparam SequenceGroupBorderColor #5b6b8c
+skinparam SequenceGroupBackgroundColor #dfe5fb
+autonumber
+title dex: one message, from the web UI to the model and back
+
+actor "User" as user
+participant "control (Go)\nHTTP + chat" as control
+database "control.sqlite" as cdb
+participant "worker (Bun)\nstdio NDJSON" as worker
+database "agent state.sqlite" as adb
+participant "Model provider" as model
+
+user -> control : POST /api/chat
+control -> cdb : ensure conversation;\ninsert submission (pending)
+opt first message of the chat
+  control -> worker : createConversation
+  worker -> adb : commit conversation
+  control -> cdb : store worker conversation ID
+end
+control -> worker : submit (requestId = submission ID)
+worker -> adb : commit input (durable)
+worker --> control : submissionId
+worker -> model : generate (tool calls run in agents/<id>/workspace)
+model --> worker : answer
+worker -> adb : commit answer
+worker --> control : event settled
+control -> cdb : submission done + answer
+control --> user : 200 {answer}
+
+group worker exits before it settles
+  control -> control : restart worker (backoff 1 s to 30 s)
+  control -> cdb : list pending submissions
+  control -> worker : submit again, same requestId
+  note right of worker
+    pi-durable finds the same submission
+    and resumes it from its last checkpoint
+  end note
+  worker --> control : event settled
+end
+@enduml

@@ -1,0 +1,8 @@
+# Build output. internal/workerbin/dex-worker.gz is built per platform by `mise run build:worker`.
+/bin/
+/internal/workerbin/dex-worker.gz
+node_modules/
+
+.env
+.local/
+.DS_Store

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Run dex locally with the variables from .env"
+#MISE depends=["build:worker"]
+set -euo pipefail
+
+if [[ -f .env ]]; then
+	set -a
+	. ./.env
+	set +a
+fi
+go run ./cmd/dex "$@"

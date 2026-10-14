@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Lint, build, and test the Go code (builds the worker first, for go:embed)"
+#MISE depends=["build:worker"]
+set -euo pipefail
+
+golangci-lint fmt --diff
+golangci-lint run
+go build ./...
+go test -race ./...
