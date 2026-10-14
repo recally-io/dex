@@ -15,13 +15,22 @@ Check: `mise run check` passes.
 ## Run
 
 1. Run `mise run dev:server`.
-2. Open <http://127.0.0.1:8787/#settings>.
+2. Open <http://127.0.0.1:8787>. The setup checklist shows.
 3. Add a provider: a built-in one with its API key, or a custom one with its
    API (OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages), base
    URL, and key. Add more providers if you want.
-4. Choose a model and save.
+4. Choose a model.
 
-Check: the Chat page answers a message.
+Check: a new chat answers a message, and the answer appears while the model
+writes it.
+
+To change the web UI with hot reload, run `mise run dev:server` and
+`mise run dev:web` in two terminals, and open the address that `dev:web`
+shows. It sends `/api/` to the server on port 8787. Run `mise run build:web`
+before you commit, because the binary embeds `web/dist`.
+
+To try the UI without a provider, start the server with `DEX_FAKE_MODEL=1`
+and choose `faux/echo`, or `faux/bash` to see tool calls.
 
 To use Telegram:
 
@@ -40,14 +49,19 @@ settings without changing your own.
 
 Run `mise tasks` for the full list. The main tasks:
 
-| Task           | What it does                                                      |
-| -------------- | ----------------------------------------------------------------- |
-| `build`        | Builds `bin/dex` for this platform                                |
-| `build:worker` | Compiles the worker and writes `internal/workerbin/dex-worker.gz` |
-| `check`        | All checks; the pre-commit hook and CI run it                     |
-| `check:go`     | golangci-lint, `go build`, `go test -race`                        |
-| `check:worker` | `tsc`, `vp lint`, `vp fmt --check`, `bun test`                    |
-| `generate:db`  | Regenerates `internal/db/sqlc`                                    |
+| Task              | What it does                                                        |
+| ----------------- | ------------------------------------------------------------------- |
+| `build`           | Builds `bin/dex` for this platform                                  |
+| `build:worker`    | Compiles the worker and writes `internal/workerbin/dex-worker.gz`   |
+| `check`           | All checks; the pre-commit hook and CI run it                       |
+| `check:go`        | golangci-lint, `go build`, `go test -race`                          |
+| `check:worker`    | `tsc`, `vp lint`, `vp fmt --check`, `bun test`                      |
+| `generate:db`     | Regenerates `internal/db/sqlc`                                      |
+| `generate:api`    | Regenerates the Go server and the TS client from `api/openapi.yaml` |
+| `build:web`       | Builds the web UI into `web/dist`                                   |
+| `check:web`       | `tsc`, `vp lint`, `vp fmt --check`, `vp test` in `web/`             |
+| `check:web-dist`  | Fails when `web/dist` differs from a new build                      |
+| `check:api-drift` | Fails when the generated API code differs from the contract         |
 
 ## Tests
 

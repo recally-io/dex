@@ -7,10 +7,11 @@ their sources of truth, the message flow, and the failure behavior.
 
 dex is one binary with two processes:
 
-| Process | Code                         | Responsibilities                                                                 | Does not                    |
-| ------- | ---------------------------- | -------------------------------------------------------------------------------- | --------------------------- |
-| control | Go: `cmd/dex`, `internal/`   | HTTP API and web UI, chat channels, timers, `control.sqlite`, the worker process | run agents or call models   |
-| worker  | TypeScript on Bun: `worker/` | one pi-durable Harness per agent, model calls, tool calls                        | know about channels or time |
+| Process | Code                                              | Responsibilities                                                                 | Does not                              |
+| ------- | ------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------- |
+| control | Go: `cmd/dex`, `internal/`                        | HTTP API and web UI, chat channels, timers, `control.sqlite`, the worker process | run agents or call models             |
+| web UI  | React: `web/`, built into `web/dist` and embedded | chats, live transcript, settings, in the browser                                 | hold state that the API does not have |
+| worker  | TypeScript on Bun: `worker/`                      | one pi-durable Harness per agent, model calls, tool calls                        | know about channels or time           |
 
 `mise run build:worker` compiles the worker with `bun build --compile` into one
 executable (about 60 MB, Bun runtime included) and gzips it (about 30 MB) into
@@ -76,6 +77,9 @@ The types are in [`worker/src/protocol.ts`](../../worker/src/protocol.ts) and
 | `configure`          | `providers`: `id`, `name`, `api`, `baseUrl`, `apiKey`, `models`              | `errors` per provider     |
 | `listProviders`      | none                                                                         | built-in `providers`      |
 | `listModels`         | none                                                                         | `models` with credentials |
+| `watch`              | `watchId`, `agentId`, `conversationId`                                       | `{}` after the snapshot   |
+| `unwatch`            | `watchId`                                                                    | `{}`                      |
+| `abort`              | `agentId`, `conversationId`                                                  | `{}`                      |
 
 The worker runs the submits of one conversation in order. When `model` or
 `instructions` differ from the conversation's, it changes the conversation
@@ -84,21 +88,63 @@ first; a run in progress keeps its settings until its next turn.
 Event `settled`: `requestId`, `status` (`done` or `unanswered`), `answer` or
 `reason`. The worker sends it when a submission has its final answer.
 
+Event `chat`: `watchId` and `events`, the chat events of one commit, or `end`
+when the watch stopped. The first event of a watch is a snapshot. The worker
+places each message as an entry of kind `dex.user` with control's submission
+ID, so the user item in the transcript has the ID that the browser sent.
+
 ## Message flow
 
 ![Message flow](../../assets/message-flow.png)
 
 Source: [message-flow.puml](../../assets/src/message-flow.puml)
 
-1. [`chat.Service.Send`](../../internal/chat/chat.go) finds or creates the
-   conversation for the channel key (for example `web:default`), and stores
-   the message as a `pending` submission.
-2. On the first message of a chat, control calls `createConversation` and
-   stores the worker's conversation ID.
+1. The browser sends `POST /api/chats` (new chat) or
+   `POST /api/chats/{id}/messages` with a UUID that it makes.
+   [`chat.Service.Post`](../../internal/chat/chat.go) refuses the message when
+   the agent has no model. Otherwise it finds or creates the conversation for
+   the channel key (`web:<first message ID>`), stores the message as a
+   `pending` submission with that UUID as its ID, and returns `202`. A
+   retried request with the same UUID stores nothing.
+2. `chat.Service.Run` delivers stored submissions in order. On the first
+   message of a chat, it calls `createConversation` and stores the worker's
+   conversation ID.
 3. Control calls `submit` with the submission ID as `requestId`. pi-durable
    commits the input before it answers.
-4. The worker runs the model and the tools, then sends `settled`. Control
-   marks the submission `done` or `unanswered` and returns the answer.
+4. The worker runs the model and the tools. The browser sees the run through
+   the chat's event stream (next section).
+5. The worker sends `settled`. Control marks the submission `done` or
+   `unanswered`, and a Telegram chat gets the answer.
+
+## Live transcript
+
+The contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas `Item`
+and `ChatEvent`. See [ADR 0003](decisions/0003-web-ui-stack-and-live-transcript.md).
+
+```
+browser ──EventSource──▶ control  GET /api/chats/{id}/events
+                           │ watch / unwatch, one watch ID per stream
+                           ▼
+                         worker  watchEvents() and ChatView (worker/src/view.ts)
+                           │ event chat {watchId, events}
+                           ▼
+                         control (internal/live) adds control's messages and writes SSE
+```
+
+- [`ChatView`](../../worker/src/view.ts) keeps the raw pi-durable state,
+  renders all items from it, and diffs the new items against the old ones. It
+  sends `append` when only text was added, `item` for any other change, and a
+  `snapshot` when an item was removed or pi-durable sent a snapshot.
+- Each stream has its own worker watch, so each browser tab gets its own
+  snapshot. The first event of a stream is a snapshot, so a reconnect needs no
+  replay.
+- [`live.Hub`](../../internal/live/live.go) adds the messages that only
+  `control.sqlite` has: a `pending` message that the worker has not placed yet
+  (a queued user item), and an `unanswered` message that the worker never
+  placed (a user item and an error item).
+- The worker's reader never waits for a stream. A stream that is 256 inputs
+  behind is closed, and the browser reconnects.
+- A stream sends a comment line every 15 s.
 
 ## Telegram
 
@@ -107,7 +153,8 @@ have a bot token. It reads messages with `getUpdates` long polling,
 so dex needs no public URL.
 
 - Each Telegram chat is one conversation of the default agent, with the
-  channel key `telegram:<chat id>`.
+  channel key `telegram:<chat id>`. The web UI shows it, but cannot send to
+  it (403).
 - The bot ignores every user who is not in the allowed users.
 - The bot stores each message with `chat.Service.Submit`, which does not wait.
   The source key `telegram:<bot id>:<update id>` is unique, so a message that Telegram
@@ -127,7 +174,11 @@ so dex needs no public URL.
   start replays them.
 - **Crash between `createConversation` and storing its ID.** The worker keeps
   an empty conversation. The next message creates a new one.
+- **Worker exits while a browser watches.** Control closes every event
+  stream. The browser reconnects and gets a new snapshot after the restart.
 - **Model or tool error.** The submission becomes `unanswered` with a reason.
+  The transcript shows an error item. A tool call that ended without a result
+  shows as failed.
 - **Telegram API error.** The bot retries `getUpdates` after 5 s, from the
   first update that it did not store. A `sendMessage` that fails is logged,
   and the answer stays only in `control.sqlite`. A crash after a submission
@@ -155,5 +206,4 @@ directory in the cache directory, and it does not load `.env` or `bunfig.toml`.
 ## Limits
 
 - Harnesses stay open until shutdown.
-- A change to an agent's model applies only to new conversations.
-- The web UI waits for the full answer; it does not stream.
+- The chat list polls every 3 s; it has no event stream.

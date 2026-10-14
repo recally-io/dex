@@ -18,7 +18,9 @@ Read this before you write or change a test.
 - **Fakes only at system boundaries.** Model providers and the Telegram Bot API
   are the boundaries; `internal/app/telegram_test.go` has a fake Bot API. Tests
   use pi-ai's faux provider (`DEX_FAKE_MODEL=1`; models `faux/echo` and
-  `faux/shout` answer `echo: <message>` and `shout: <message>`). A test with the faux provider does not prove that a real
+  `faux/shout` answer `echo: <message>` and `shout: <message>`, and
+  `faux/bash` runs the message with the bash tool and answers
+  `bash: <output>`). A test with the faux provider does not prove that a real
   provider works; say so when you report.
 - **Controlled time.** Do not use fixed sleeps. Poll the observable condition
   with a deadline, and fail with the last observed state.
@@ -28,11 +30,11 @@ Read this before you write or change a test.
 
 ## Tiers
 
-| Tier   | Scope                                         | Task                        |
-| ------ | --------------------------------------------- | --------------------------- |
-| E2E    | Control with the real worker, through HTTP    | `check:go` (`internal/app`) |
-| Worker | pi-durable storage conformance on Bun         | `check:worker` (`bun test`) |
-| Manual | A real provider through `mise run dev:server` | On demand, with credentials |
+| Tier   | Scope                                                         | Task                        |
+| ------ | ------------------------------------------------------------- | --------------------------- |
+| E2E    | Control with the real worker, through HTTP                    | `check:go` (`internal/app`) |
+| Worker | pi-durable storage conformance on Bun; chat view golden cases | `check:worker` (`bun test`) |
+| Manual | A real provider through `mise run dev:server`                 | On demand, with credentials |
 
 Coverage: no gate exists yet. Review untested branches in the diff.
 

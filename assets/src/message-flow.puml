@@ -16,31 +16,39 @@ skinparam SequenceGroupBackgroundColor #dfe5fb
 autonumber
 title dex: one message, from the web UI to the model and back
 
-actor "User" as user
-participant "control (Go)\nHTTP + chat" as control
+actor "Browser" as user
+participant "control (Go)\nHTTP + chat + live" as control
 database "control.sqlite" as cdb
 participant "worker (Bun)\nstdio NDJSON" as worker
 database "agent state.sqlite" as adb
 participant "Model provider" as model
 
-user -> control : POST /api/chat
-control -> cdb : ensure conversation;\ninsert submission (pending)
+user -> control : GET /api/chats/{id}/events (SSE)
+control -> worker : watch (watchId)
+worker --> control : event chat: snapshot
+control --> user : snapshot (+ control's queued messages)
+user -> control : POST /api/chats/{id}/messages {id: UUID, text}
+control -> cdb : insert submission (pending, ID = UUID)
+control --> user : 202
+control --> user : item: user message, queued
 opt first message of the chat
   control -> worker : createConversation
   worker -> adb : commit conversation
   control -> cdb : store worker conversation ID
 end
-control -> worker : submit (requestId = submission ID)
-worker -> adb : commit input (durable)
+control -> worker : submit (requestId = UUID)
+worker -> adb : commit input as dex.user entry (durable)
 worker --> control : submissionId
 worker -> model : generate (tool calls run in agents/<id>/workspace)
-model --> worker : answer
+model --> worker : text deltas, tool calls
+worker --> control : event chat: item / append / run
+control --> user : the same events
 worker -> adb : commit answer
 worker --> control : event settled
 control -> cdb : submission done + answer
-control --> user : 200 {answer}
 
 group worker exits before it settles
+  control --> user : close the stream; the browser reconnects
   control -> control : restart worker (backoff 1 s to 30 s)
   control -> cdb : list pending submissions
   control -> worker : submit again, same requestId
