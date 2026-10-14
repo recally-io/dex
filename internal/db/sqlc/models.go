@@ -23,6 +23,7 @@ type Conversation struct {
 	ChannelKey           string        `json:"channel_key"`
 	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
 	CreatedAt            int64         `json:"created_at"`
+	Title                string        `json:"title"`
 }
 
 type Provider struct {

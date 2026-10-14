@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Fail when the generated API code differs from what api/openapi.yaml gives"
+set -euo pipefail
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+# The output in the config wins over -o, so generate from a copy of the config.
+sed "s|^output: .*|output: $tmp/server.gen.go|" api/oapi-codegen.yaml >"$tmp/config.yaml"
+go tool oapi-codegen -config "$tmp/config.yaml" api/openapi.yaml
+diff internal/api/server.gen.go "$tmp/server.gen.go"
+(cd web && bunx --no-install openapi-ts --output "$tmp/web")
+diff -r web/src/api/generated "$tmp/web"

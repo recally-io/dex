@@ -1,10 +1,12 @@
 package app_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json/v2"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,14 +16,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/vaayne/dex/internal/app"
 	"github.com/vaayne/dex/internal/db/sqlc"
 )
 
 // These tests run the real embedded worker with pi-ai's faux provider: model faux/echo answers
-// "echo: <message>", and faux/shout answers "shout: <message>". They do not prove that a real
-// provider works.
+// "echo: <message>", faux/shout answers "shout: <message>", and faux/bash runs the message with
+// the bash tool and answers "bash: <output>". They do not prove that a real provider works.
 
 type dex struct {
 	app *app.App
@@ -47,6 +50,7 @@ func startDex(t *testing.T, dataDir, telegramURL string) *dex {
 }
 
 func (d *dex) stop() {
+	d.srv.CloseClientConnections()
 	d.srv.Close()
 	_ = d.app.Close()
 }
@@ -66,6 +70,9 @@ func (d *dex) call(t *testing.T, method, path string, body any) (int, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := d.srv.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -78,11 +85,12 @@ func (d *dex) call(t *testing.T, method, path string, body any) (int, string) {
 	return resp.StatusCode, string(raw)
 }
 
-// must sends a request that must succeed, and decodes the response into out when out is not nil.
-func (d *dex) must(t *testing.T, method, path string, body, out any) {
+// must sends a request that must get status want, and decodes the response into out when out is
+// not nil.
+func (d *dex) must(t *testing.T, method, path string, body, out any, want ...int) {
 	t.Helper()
 	status, raw := d.call(t, method, path, body)
-	if status != http.StatusOK {
+	if status != cmpOr(want, http.StatusOK) {
 		t.Fatalf("%s %s: %d %s", method, path, status, raw)
 	}
 	if out != nil {
@@ -92,58 +100,343 @@ func (d *dex) must(t *testing.T, method, path string, body, out any) {
 	}
 }
 
+func cmpOr(want []int, def int) int {
+	if len(want) > 0 {
+		return want[0]
+	}
+	return def
+}
+
 func (d *dex) setModel(t *testing.T, modelID string) {
 	t.Helper()
-	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"provider": "faux", "modelId": modelID}, nil)
+	d.must(t, http.MethodPut, "/api/settings/agent",
+		map[string]string{"provider": "faux", "modelId": modelID, "instructions": ""}, nil)
 }
 
-func (d *dex) chat(t *testing.T, message string) map[string]string {
+type chatInfo struct {
+	ID      int64  `json:"id"`
+	Channel string `json:"channel"`
+	Title   string `json:"title"`
+	Busy    bool   `json:"busy"`
+}
+
+// newChat starts a web chat with text and returns its ID.
+func (d *dex) newChat(t *testing.T, text string) int64 {
 	t.Helper()
-	var reply map[string]string
-	d.must(t, http.MethodPost, "/api/chat", map[string]string{"message": message}, &reply)
-	return reply
+	var created struct {
+		Chat chatInfo `json:"chat"`
+	}
+	d.must(t, http.MethodPost, "/api/chats", map[string]string{"id": uuid.NewV7().String(), "text": text}, &created,
+		http.StatusAccepted)
+	return created.Chat.ID
 }
 
-func TestUserGetsAnswerFromAgent(t *testing.T) {
-	// Given a running dex with a model
+// send sends text to chat id and returns the message ID.
+func (d *dex) send(t *testing.T, chatID int64, text string) string {
+	t.Helper()
+	id := uuid.NewV7().String()
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/messages", chatID), map[string]string{"id": id, "text": text},
+		nil, http.StatusAccepted)
+	return id
+}
+
+func (d *dex) chats(t *testing.T) []chatInfo {
+	t.Helper()
+	var list struct {
+		Chats []chatInfo `json:"chats"`
+	}
+	d.must(t, http.MethodGet, "/api/chats", nil, &list)
+	return list.Chats
+}
+
+// item is a transcript item of the chat event stream.
+type item struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Text   string `json:"text"`
+	Queued bool   `json:"queued"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Output string `json:"output"`
+	Reason string `json:"reason"`
+}
+
+// transcript applies chat events as the web UI does: a snapshot replaces all, an item replaces the
+// item with its ID or is added, and an append adds text to an item.
+type transcript struct {
+	items     []item
+	running   bool
+	snapshots int
+}
+
+type chatEvent struct {
+	Type    string `json:"type"`
+	Items   []item `json:"items"`
+	Item    item   `json:"item"`
+	ID      string `json:"id"`
+	Text    string `json:"text"`
+	Running bool   `json:"running"`
+}
+
+func (tr *transcript) apply(ev chatEvent) {
+	switch ev.Type {
+	case "snapshot":
+		tr.items, tr.running = ev.Items, ev.Running
+		tr.snapshots++
+	case "item":
+		if i := slices.IndexFunc(tr.items, func(it item) bool { return it.ID == ev.Item.ID }); i >= 0 {
+			tr.items[i] = ev.Item
+		} else {
+			tr.items = append(tr.items, ev.Item)
+		}
+	case "append":
+		if i := slices.IndexFunc(tr.items, func(it item) bool { return it.ID == ev.ID }); i >= 0 {
+			tr.items[i].Text += ev.Text
+		}
+	case "run":
+		tr.running = ev.Running
+	}
+}
+
+// watcher reads the event stream of one chat.
+type watcher struct {
+	events chan chatEvent
+	cancel context.CancelFunc
+	tr     transcript
+}
+
+func (d *dex) watch(t *testing.T, chatID int64) *watcher {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/chats/%d/events", d.srv.URL, chatID), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := d.srv.Client().Do(req) //nolint:bodyclose // the reader goroutine closes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("watch: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	w := &watcher{events: make(chan chatEvent, 1024), cancel: cancel}
+	t.Cleanup(cancel)
+	go func() {
+		defer resp.Body.Close()
+		defer close(w.events)
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(nil, 16<<20)
+		var typ string
+		for scanner.Scan() {
+			line := scanner.Text()
+			switch {
+			case strings.HasPrefix(line, "event: "):
+				typ = strings.TrimPrefix(line, "event: ")
+			case strings.HasPrefix(line, "data: "):
+				var ev chatEvent
+				if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev); err != nil || ev.Type != typ {
+					t.Errorf("bad event %q %q: %v", typ, line, err)
+					return
+				}
+				w.events <- ev
+			}
+		}
+	}()
+	return w
+}
+
+// until applies events until cond holds, and fails with the last transcript after 30 s.
+func (w *watcher) until(t *testing.T, what string, cond func(*transcript) bool) {
+	t.Helper()
+	deadline := time.After(30 * time.Second)
+	for !cond(&w.tr) {
+		select {
+		case ev, ok := <-w.events:
+			if !ok {
+				t.Fatalf("stream ended before %s; transcript: %+v", what, w.tr)
+			}
+			w.tr.apply(ev)
+		case <-deadline:
+			t.Fatalf("no %s after 30 s; transcript: %+v", what, w.tr)
+		}
+	}
+}
+
+// answered holds when the run is over and the last item is an answer with text.
+func answered(text string) func(*transcript) bool {
+	return func(tr *transcript) bool {
+		n := len(tr.items)
+		return !tr.running && n > 0 && tr.items[n-1].Kind == "assistant" && tr.items[n-1].Text == text
+	}
+}
+
+func TestUserGetsStreamedAnswerFromAgent(t *testing.T) {
+	// Given a running dex with a model, and a new chat
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
+	chatID := d.newChat(t, "hello")
 
-	// When the user sends two messages in the web chat
-	first := d.chat(t, "hello")
-	second := d.chat(t, "again")
+	// When the user watches the chat
+	w := d.watch(t, chatID)
 
-	// Then each message gets the agent's answer
-	if first["status"] != "done" || first["answer"] != "echo: hello" {
-		t.Fatalf("first reply = %v", first)
+	// Then the answer arrives, after the user's message
+	w.until(t, "first answer", answered("echo: hello"))
+	if first := w.tr.items[0]; first.Kind != "user" || first.Text != "hello" {
+		t.Fatalf("items = %+v", w.tr.items)
 	}
-	if second["status"] != "done" || second["answer"] != "echo: again" {
-		t.Fatalf("second reply = %v", second)
+
+	// When the user sends another message
+	id := d.send(t, chatID, "again")
+
+	// Then it shows with the client's ID, and its answer arrives
+	w.until(t, "second answer", answered("echo: again"))
+	if !slices.ContainsFunc(w.tr.items, func(it item) bool { return it.ID == id && it.Kind == "user" && !it.Queued }) {
+		t.Fatalf("no user item %s: %+v", id, w.tr.items)
+	}
+	// The chat list learns of the answer when control records it, after the stream shows it.
+	eventually(t, "chat not busy", func() (bool, any) {
+		got := d.chats(t)
+		return len(got) == 1 && got[0].Title == "hello" && got[0].Channel == "web" && !got[0].Busy, got
+	})
+}
+
+// eventually polls cond until it holds, and fails with the last observed state after 30 s.
+func eventually(t *testing.T, what string, cond func() (bool, any)) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		ok, state := cond()
+		if ok {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no %s after 30 s; last: %+v", what, state)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
-func TestUserChoosesModelInSettings(t *testing.T) {
+func TestReloadShowsTheWholeChat(t *testing.T) {
+	// Given a chat with two answers
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "echo")
+	chatID := d.newChat(t, "one")
+	d.watch(t, chatID).until(t, "answer", answered("echo: one"))
+	d.send(t, chatID, "two")
+	first := d.watch(t, chatID)
+	first.until(t, "answer", answered("echo: two"))
+
+	// When the user opens the chat in a second tab, and closes the first tab
+	second := d.watch(t, chatID)
+	second.until(t, "snapshot", func(tr *transcript) bool { return tr.snapshots == 1 })
+	first.cancel()
+
+	// Then the second tab has the whole chat in its first event, and it gets the next answer
+	texts := []string{}
+	for _, it := range second.tr.items {
+		texts = append(texts, it.Text)
+	}
+	if !slices.Equal(texts, []string{"one", "echo: one", "two", "echo: two"}) {
+		t.Fatalf("snapshot texts = %q", texts)
+	}
+	d.send(t, chatID, "three")
+	second.until(t, "answer in the second tab", answered("echo: three"))
+}
+
+func TestToolCallsAreShownAndRunCanBeStopped(t *testing.T) {
+	// Given the faux/bash model, which runs the message as a bash command
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "bash")
+
+	// When the user asks for a command
+	chatID := d.newChat(t, "echo tool-output")
+	w := d.watch(t, chatID)
+
+	// Then the tool call shows with its output, and then the answer
+	w.until(t, "answer", answered("bash: tool-output"))
+	if !slices.ContainsFunc(w.tr.items, func(it item) bool {
+		return it.Kind == "tool" && it.Name == "bash" && it.Status == "done" && strings.Contains(it.Output, "tool-output")
+	}) {
+		t.Fatalf("no done bash item: %+v", w.tr.items)
+	}
+
+	// When a command runs long, and the user stops the run
+	d.send(t, chatID, "sleep 60")
+	w.until(t, "running tool", func(tr *transcript) bool {
+		return slices.ContainsFunc(tr.items, func(it item) bool { return it.Kind == "tool" && it.Status == "running" })
+	})
+	// and the user sends one more message, which waits for the run
+	queued := d.send(t, chatID, "echo later")
+	w.until(t, "queued message", func(tr *transcript) bool {
+		return slices.ContainsFunc(tr.items, func(it item) bool { return it.ID == queued && it.Queued })
+	})
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/abort", chatID), nil, nil)
+
+	// Then the queued message shows as stopped
+	w.until(t, "withdrawn message", func(tr *transcript) bool {
+		return slices.ContainsFunc(tr.items, func(it item) bool { return it.ID == queued+":error" && it.Kind == "error" })
+	})
+
+	// And the run ends without an answer to the long command
+	w.until(t, "stopped run", func(tr *transcript) bool {
+		return !tr.running && !slices.ContainsFunc(tr.items, func(it item) bool { return it.Kind == "tool" && it.Status == "running" })
+	})
+	if slices.ContainsFunc(w.tr.items, func(it item) bool {
+		return it.Kind == "assistant" && strings.Contains(it.Text, "bash: ") && it.Text != "bash: tool-output"
+	}) {
+		t.Fatalf("the stopped command got an answer: %+v", w.tr.items)
+	}
+}
+
+func TestUserMustChooseModelBeforeChatting(t *testing.T) {
 	// Given a dex that starts for the first time, without settings
 	d := startDex(t, t.TempDir(), "")
 
-	// When the user sends a message
-	before := d.chat(t, "hello")
+	// When the user starts a chat
+	status, raw := d.call(t, http.MethodPost, "/api/chats", map[string]string{"id": uuid.NewV7().String(), "text": "hello"})
 
-	// Then the reply tells the user to choose a model
-	if before["status"] != "unanswered" || !strings.Contains(before["reason"], "choose one in Settings") {
-		t.Fatalf("reply without a model = %v", before)
+	// Then dex refuses it, tells the user to choose a model, and stores nothing
+	if status != http.StatusConflict || !strings.Contains(raw, "choose one in Settings") {
+		t.Fatalf("POST without a model: %d %s", status, raw)
+	}
+	if got := d.chats(t); len(got) != 0 {
+		t.Fatalf("chats = %+v", got)
 	}
 
-	// When the user picks a model from the model list and sends a message
+	// When the user picks a model from the model list and starts a chat
 	if got := d.models(t); !slices.Contains(got, "faux/echo") {
 		t.Fatalf("models = %q", got)
 	}
 	d.setModel(t, "echo")
-	after := d.chat(t, "hello")
+	chatID := d.newChat(t, "hello")
 
 	// Then the agent answers
-	if after["answer"] != "echo: hello" {
-		t.Fatalf("reply with a model = %v", after)
+	d.watch(t, chatID).until(t, "answer", answered("echo: hello"))
+}
+
+func TestRetriedMessageIsStoredOnce(t *testing.T) {
+	// Given a chat
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "echo")
+	first := map[string]string{"id": uuid.NewV7().String(), "text": "hi"}
+	d.must(t, http.MethodPost, "/api/chats", first, nil, http.StatusAccepted)
+
+	// When the browser sends the same requests again, for example after a network error
+	d.must(t, http.MethodPost, "/api/chats", first, nil, http.StatusAccepted)
+	chatID := d.chats(t)[0].ID
+	again := map[string]string{"id": uuid.NewV7().String(), "text": "again"}
+	path := fmt.Sprintf("/api/chats/%d/messages", chatID)
+	d.must(t, http.MethodPost, path, again, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, path, again, nil, http.StatusAccepted)
+
+	// Then dex has one chat with two messages and two answers
+	w := d.watch(t, chatID)
+	w.until(t, "answer", answered("echo: again"))
+	if got := d.chats(t); len(got) != 1 {
+		t.Fatalf("chats = %+v", got)
+	}
+	if len(w.tr.items) != 4 {
+		t.Fatalf("items = %+v", w.tr.items)
 	}
 }
 
@@ -151,16 +444,16 @@ func TestModelChangeAppliesToExistingChat(t *testing.T) {
 	// Given a chat with the echo model
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
-	d.chat(t, "hi")
+	chatID := d.newChat(t, "hi")
+	w := d.watch(t, chatID)
+	w.until(t, "answer", answered("echo: hi"))
 
 	// When the user changes the model in the settings and sends another message in the same chat
 	d.setModel(t, "shout")
-	reply := d.chat(t, "again")
+	d.send(t, chatID, "again")
 
 	// Then the new model answers
-	if reply["answer"] != "shout: again" {
-		t.Fatalf("reply = %v", reply)
-	}
+	w.until(t, "answer", answered("shout: again"))
 }
 
 func TestUserProviderKeyIsSavedAndNeverShown(t *testing.T) {
@@ -180,11 +473,31 @@ func TestUserProviderKeyIsSavedAndNeverShown(t *testing.T) {
 	if strings.Contains(raw, secret) {
 		t.Fatal("GET /api/settings returned the API key")
 	}
-	if !strings.Contains(raw, `{"id":"anthropic","name":"Anthropic","source":"settings"}`) {
+	var s struct {
+		Builtins []struct {
+			ID     string `json:"id"`
+			Source string `json:"source"`
+		} `json:"builtins"`
+		Providers []struct {
+			ID         string `json:"id"`
+			Name       string `json:"name"`
+			KeySet     bool   `json:"keySet"`
+			ModelCount int    `json:"modelCount"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal([]byte(raw), &s); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(s.Builtins, func(b struct {
+		ID     string `json:"id"`
+		Source string `json:"source"`
+	}) bool {
+		return b.ID == "anthropic" && b.Source == "settings"
+	}) {
 		t.Fatalf("the worker has no key for anthropic: %s", raw)
 	}
-	if !strings.Contains(raw, `"id":"anthropic","name":"Anthropic","api":"","baseUrl":"","keySet":true`) {
-		t.Fatalf("anthropic is not in the added providers: %s", raw)
+	if len(s.Providers) != 1 || s.Providers[0].Name != "Anthropic" || !s.Providers[0].KeySet || s.Providers[0].ModelCount == 0 {
+		t.Fatalf("providers = %+v", s.Providers)
 	}
 }
 
@@ -212,9 +525,12 @@ func TestUserAddsCustomProviders(t *testing.T) {
 
 	// When the user adds three custom providers: two that list their models, and one with fixed
 	// models and no key
+	var gw struct {
+		ModelCount int `json:"modelCount"`
+	}
 	d.must(t, http.MethodPut, "/api/settings/providers/gw", map[string]any{
 		"api": "openai-completions", "name": "Gateway", "baseUrl": openai + "/v1", "apiKey": "k1",
-	}, nil)
+	}, &gw)
 	d.must(t, http.MethodPut, "/api/settings/providers/ant", map[string]any{
 		"api": "anthropic-messages", "baseUrl": anthropic, "apiKey": "k2",
 	}, nil)
@@ -223,11 +539,14 @@ func TestUserAddsCustomProviders(t *testing.T) {
 	}, nil)
 
 	// Then the model list has the models of all three, and the agent can use one
+	if gw.ModelCount != 1 {
+		t.Fatalf("gw model count = %d", gw.ModelCount)
+	}
 	want := []string{"gw/gw-model", "ant/claude-x", "local/m1", "local/m2"}
 	if got := d.models(t); !containsAll(got, want) {
 		t.Fatalf("models = %q, want %q in them", got, want)
 	}
-	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"provider": "local", "modelId": "m2"}, nil)
+	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"provider": "local", "modelId": "m2", "instructions": ""}, nil)
 
 	// When the user removes the gateway
 	d.must(t, http.MethodDelete, "/api/settings/providers/gw", nil, nil)
@@ -245,18 +564,20 @@ func TestProviderWhoseModelListFailsIsSavedWithAnError(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 
 	// When the user adds it with a wrong key
-	status, raw := d.call(t, http.MethodPut, "/api/settings/providers/gw", map[string]any{
-		"api": "openai-completions", "baseUrl": url + "/v1", "apiKey": "wrong",
-	})
-
-	// Then dex reports why, and keeps the provider so the user can fix the key
-	if status != http.StatusInternalServerError || !strings.Contains(raw, "listing the models failed") ||
-		!strings.Contains(raw, "HTTP 401") {
-		t.Fatalf("PUT: %d %s", status, raw)
+	var saved struct {
+		Error string `json:"error"`
 	}
-	_, raw = d.call(t, http.MethodGet, "/api/settings", nil)
-	if !strings.Contains(raw, `"id":"gw"`) {
-		t.Fatalf("the provider is not saved: %s", raw)
+	d.must(t, http.MethodPut, "/api/settings/providers/gw", map[string]any{
+		"api": "openai-completions", "baseUrl": url + "/v1", "apiKey": "wrong",
+	}, &saved)
+
+	// Then dex saves it, so the user can fix the key, and reports why it has no models, also later
+	if !strings.Contains(saved.Error, "HTTP 401") {
+		t.Fatalf("PUT error = %q", saved.Error)
+	}
+	_, raw := d.call(t, http.MethodGet, "/api/settings", nil)
+	if !strings.Contains(raw, `"id":"gw"`) || !strings.Contains(raw, "HTTP 401") {
+		t.Fatalf("settings: %s", raw)
 	}
 }
 
@@ -285,27 +606,36 @@ func containsAll(have, want []string) bool {
 	return true
 }
 
-func TestInvalidSettingsAreRefused(t *testing.T) {
+func TestInvalidRequestsAreRefused(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "echo")
 	for _, c := range []struct {
-		name, path string
-		body       any
+		name, method, path string
+		body               any
+		status             int
 	}{
-		{"unknown model", "/api/settings/agent", map[string]string{"provider": "faux", "modelId": "nope"}},
-		{"unknown built-in provider", "/api/settings/providers/nope", map[string]string{"api": "", "apiKey": "k"}},
-		{"unknown API", "/api/settings/providers/x", map[string]string{"api": "bogus", "baseUrl": "http://127.0.0.1:1"}},
-		{"custom ID of a built-in provider", "/api/settings/providers/anthropic",
-			map[string]string{"api": "anthropic-messages", "baseUrl": "http://127.0.0.1:1"}},
-		{"custom ID with capitals", "/api/settings/providers/MyGW",
-			map[string]string{"api": "openai-completions", "baseUrl": "http://127.0.0.1:1/v1"}},
-		{"base URL with a password", "/api/settings/providers/gw",
-			map[string]string{"api": "openai-completions", "baseUrl": "http://user:pw@127.0.0.1:1/v1"}},
-		{"Telegram without allowed users", "/api/settings/telegram",
-			map[string]any{"token": "123:abc", "allowedUsers": []int64{}}},
-		{"bad Telegram token", "/api/settings/telegram", map[string]any{"token": "abc", "allowedUsers": []int64{1}}},
+		{"unknown model", http.MethodPut, "/api/settings/agent", map[string]string{"provider": "faux", "modelId": "nope"}, 400},
+		{"unknown built-in provider", http.MethodPut, "/api/settings/providers/nope", map[string]string{"api": "", "apiKey": "k"}, 400},
+		{"unknown API", http.MethodPut, "/api/settings/providers/x", map[string]string{"api": "bogus", "baseUrl": "http://127.0.0.1:1"}, 400},
+		{"custom ID of a built-in provider", http.MethodPut, "/api/settings/providers/anthropic",
+			map[string]string{"api": "anthropic-messages", "baseUrl": "http://127.0.0.1:1"}, 400},
+		{"custom ID with capitals", http.MethodPut, "/api/settings/providers/MyGW",
+			map[string]string{"api": "openai-completions", "baseUrl": "http://127.0.0.1:1/v1"}, 400},
+		{"base URL with a password", http.MethodPut, "/api/settings/providers/gw",
+			map[string]string{"api": "openai-completions", "baseUrl": "http://user:pw@127.0.0.1:1/v1"}, 400},
+		{"Telegram without allowed users", http.MethodPut, "/api/settings/telegram",
+			map[string]any{"token": "123:abc", "allowedUsers": []int64{}}, 400},
+		{"bad Telegram token", http.MethodPut, "/api/settings/telegram", map[string]any{"token": "abc", "allowedUsers": []int64{1}}, 400},
+		{"message ID that is not a UUID", http.MethodPost, "/api/chats", map[string]string{"id": "1", "text": "hi"}, 400},
+		{"empty message", http.MethodPost, "/api/chats", map[string]string{"id": uuid.NewV7().String(), "text": "  "}, 400},
+		{"body that is not JSON", http.MethodPost, "/api/chats", "hi", 400},
+		{"message to a chat that does not exist", http.MethodPost, "/api/chats/999/messages",
+			map[string]string{"id": uuid.NewV7().String(), "text": "hi"}, 404},
+		{"events of a chat that does not exist", http.MethodGet, "/api/chats/999/events", nil, 404},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			if status, raw := d.call(t, http.MethodPut, c.path, c.body); status != http.StatusBadRequest {
+			status, raw := d.call(t, c.method, c.path, c.body)
+			if status != c.status || !strings.Contains(raw, `"error":`) {
 				t.Fatalf("status = %d %s", status, raw)
 			}
 		})
@@ -317,11 +647,12 @@ func TestCrossSiteWriteIsRefused(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 
 	// When another web site in the user's browser posts a message to dex
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/chat",
-		strings.NewReader(`{"message":"rm -rf"}`))
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/chats",
+		strings.NewReader(`{"id":"0199e1c2-0000-7000-8000-000000000001","text":"rm -rf"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Sec-Fetch-Site", "cross-site")
 	resp, err := d.srv.Client().Do(req)
 	if err != nil {
@@ -342,7 +673,8 @@ func TestUserMessageLeftPendingIsAnsweredAfterRestart(t *testing.T) {
 	// answered, as after a crash
 	d := startDex(t, dataDir, "")
 	d.setModel(t, "echo")
-	d.chat(t, "hello")
+	chatID := d.newChat(t, "hello")
+	d.watch(t, chatID).until(t, "answer", answered("echo: hello"))
 	d.stop()
 	conn, err := sql.Open("sqlite", filepath.Join(dataDir, "control.sqlite"))
 	if err != nil {
@@ -350,36 +682,22 @@ func TestUserMessageLeftPendingIsAnsweredAfterRestart(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	q := sqlc.New(conn)
-	const pendingID = "0199e1c2-0000-7000-8000-000000000001"
+	pendingID := uuid.NewV7().String()
 	_, err = q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-		ID: pendingID, ConversationID: 1, Content: "are you there", CreatedAt: time.Now().UnixMilli(),
+		ID: pendingID, ConversationID: chatID, Content: "are you there", CreatedAt: time.Now().UnixMilli(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// When dex starts again
-	startDex(t, dataDir, "")
+	// When dex starts again and the user opens the chat
+	d = startDex(t, dataDir, "")
+	w := d.watch(t, chatID)
 
 	// Then the worker answers the pending message
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-	var last sqlc.Submission
-	for {
-		last, err = q.GetSubmission(ctx, pendingID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if last.Status != "pending" {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatalf("submission still pending: %+v", last)
-		case <-time.After(50 * time.Millisecond):
-		}
-	}
-	if last.Status != "done" || last.Answer.String != "echo: are you there" {
-		t.Fatalf("submission = %+v", last)
-	}
+	w.until(t, "answer", answered("echo: are you there"))
+	eventually(t, "settled submission", func() (bool, any) {
+		last, err := q.GetSubmission(t.Context(), pendingID)
+		return err == nil && last.Status == "done" && last.Answer.String == "echo: are you there", last
+	})
 }

@@ -27,6 +27,11 @@ type Config struct {
 	Env  []string // the complete environment; the process inherits nothing else
 	// OnSettled receives each settled event, in order, on the goroutine that reads stdout.
 	OnSettled func(context.Context, Settled)
+	// OnChat receives each chat event of a watch, in order, on the goroutine that reads stdout. It
+	// must not block.
+	OnChat func(ChatStream)
+	// OnExit runs after each process exit. The watches of the process are gone.
+	OnExit func()
 	// Init runs after each process start, before Call can reach the process, for example to load
 	// credentials. call sends a request to the new process.
 	Init func(ctx context.Context, call CallFunc)
@@ -97,7 +102,7 @@ func (w *Worker) runOnce(ctx context.Context) error {
 	p := &process{stdin: stdin, pending: map[int64]chan incoming{}, done: make(chan struct{})}
 	readErr := make(chan error, 1)
 	go func() {
-		err := p.read(ctx, stdout, w.cfg.OnSettled)
+		err := p.read(ctx, stdout, w.cfg)
 		close(p.done)
 		readErr <- err
 	}()
@@ -111,6 +116,9 @@ func (w *Worker) runOnce(ctx context.Context) error {
 	}
 	err = <-readErr
 	w.setProc(nil)
+	if w.cfg.OnExit != nil {
+		w.cfg.OnExit()
+	}
 	return errors.Join(cmd.Wait(), err)
 }
 
@@ -190,7 +198,7 @@ func (p *process) call(ctx context.Context, method string, params, result any) e
 	}
 }
 
-func (p *process) read(ctx context.Context, stdout io.Reader, onSettled func(context.Context, Settled)) error {
+func (p *process) read(ctx context.Context, stdout io.Reader, cfg Config) error {
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(nil, 64<<20) // one line holds a whole answer
 	for scanner.Scan() {
@@ -206,8 +214,17 @@ func (p *process) read(ctx context.Context, stdout io.Reader, onSettled func(con
 				slog.Error("bad settled event", "err", err)
 				continue
 			}
-			if onSettled != nil {
-				onSettled(ctx, settled)
+			if cfg.OnSettled != nil {
+				cfg.OnSettled(ctx, settled)
+			}
+		case msg.Event == "chat":
+			var stream ChatStream
+			if err := json.Unmarshal(msg.Params, &stream); err != nil {
+				slog.Error("bad chat event", "err", err)
+				continue
+			}
+			if cfg.OnChat != nil {
+				cfg.OnChat(stream)
 			}
 		case msg.Event != "":
 			slog.Warn("unknown worker event", "event", msg.Event)

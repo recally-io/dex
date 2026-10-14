@@ -1,5 +1,4 @@
-// Package chat turns a user message on a channel into a durable submission and waits for the
-// worker's answer.
+// Package chat stores user messages as durable submissions and delivers them to the worker.
 package chat
 
 import (
@@ -8,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 	"uuid"
 
 	"github.com/vaayne/dex/internal/db/sqlc"
@@ -28,51 +29,81 @@ type Reply struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// Chat is one conversation on one channel.
+type Chat struct {
+	ID         int64
+	ChannelKey string
+	Title      string
+	CreatedAt  int64
+	UpdatedAt  int64 // time of the last message
+	Busy       bool  // a message has no answer yet
+	// WorkerConversationID is 0 until the worker has the conversation.
+	WorkerConversationID int64
+}
+
+// ErrNoModel means that the agent has no model yet; the user chooses one in the settings.
+var ErrNoModel = errors.New("the agent has no model; choose one in Settings")
+
+// ErrNotFound means that the chat does not exist.
+var ErrNotFound = errors.New("chat not found")
+
+// The chat list shows titles of at most this many characters.
+const titleLength = 60
+
 // Service sends messages to agents. A message is stored as a pending submission before the worker
 // sees it, so it survives a worker crash: Replay sends it again after the restart, and pi-durable
 // deduplicates on the submission ID.
 type Service struct {
-	q      *sqlc.Queries
-	worker Caller
-	now    func() time.Time
-	notify func(ctx context.Context, channelKey string, reply Reply)
+	q       *sqlc.Queries
+	worker  Caller
+	now     func() time.Time
+	notify  func(ctx context.Context, channelKey string, reply Reply)
+	changed func(chatID int64)
+
+	// Stored submissions wait here for Run, which delivers them in order.
+	queue chan sqlc.ListPendingSubmissionsRow
 
 	// Serializes worker conversation creation, so two first messages of one chat create one worker
 	// conversation. Global lock; per conversation if throughput matters.
 	createMu sync.Mutex
-
-	mu      sync.Mutex
-	waiters map[string]chan struct{} // submission ID → closed when settled
 }
 
 // New returns a Service. Connect the worker's settled events to HandleSettled and its start to
-// Replay. notify, if not nil, receives each reply once, when its submission settles. It runs on the
-// goroutine that reads the worker, so it must not block for long.
-func New(q *sqlc.Queries, w Caller, now func() time.Time, notify func(ctx context.Context, channelKey string, reply Reply)) *Service {
-	return &Service{q: q, worker: w, now: now, notify: notify, waiters: map[string]chan struct{}{}}
+// Replay, and run Run. notify, if not nil, receives each reply once, when its submission settles.
+// changed, if not nil, learns that a chat has a new message, a settled message, or a worker
+// conversation. Both run on the goroutine that reads the worker, so they must not block.
+func New(q *sqlc.Queries, w Caller, now func() time.Time, notify func(ctx context.Context, channelKey string, reply Reply), changed func(chatID int64)) *Service {
+	return &Service{
+		q: q, worker: w, now: now, notify: notify, changed: changed,
+		queue: make(chan sqlc.ListPendingSubmissionsRow, 1024),
+	}
 }
 
-// Send stores content as a message to agentID on channelKey and waits for the answer until ctx is
-// done. When the worker exits before it accepts the message, Send keeps waiting, because Replay
-// sends the message again after the restart.
-func (s *Service) Send(ctx context.Context, agentID, channelKey, content string) (Reply, error) {
-	id := uuid.NewV7().String()
-	// Register before submitting, so an early settled event is not lost.
-	settled := s.wait(id)
-	defer s.forget(id)
-	if err := s.enqueue(ctx, id, agentID, channelKey, "", content); err != nil {
-		return Reply{}, err
+// Run delivers stored submissions to the worker, one at a time and in order, until ctx is done.
+// One queue for all chats; one per chat if a slow delivery delays other chats.
+func (s *Service) Run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case p := <-s.queue:
+			s.deliver(ctx, p)
+		}
 	}
-	select {
-	case <-ctx.Done():
-		return Reply{}, ctx.Err()
-	case <-settled:
-	}
-	sub, err := s.q.GetSubmission(ctx, id)
+}
+
+// Post stores the message id with content on channelKey and returns the chat ID. It does not wait
+// for the answer. When the agent has no model, it stores nothing and returns ErrNoModel. A message
+// with an ID that exists already is not stored again.
+func (s *Service) Post(ctx context.Context, agentID, channelKey, id, content string) (int64, error) {
+	agent, err := s.q.GetAgent(ctx, agentID)
 	if err != nil {
-		return Reply{}, err
+		return 0, err
 	}
-	return Reply{Status: sub.Status, Answer: sub.Answer.String, Reason: sub.Reason.String}, nil
+	if agent.ModelID == "" {
+		return 0, ErrNoModel
+	}
+	return s.enqueue(ctx, id, agentID, channelKey, "", content)
 }
 
 // Submit stores content as a message to agentID on channelKey and returns without waiting; the
@@ -80,18 +111,16 @@ func (s *Service) Send(ctx context.Context, agentID, channelKey, content string)
 // same sourceKey exists, Submit does nothing, so a channel that delivers a message twice gets one
 // answer.
 func (s *Service) Submit(ctx context.Context, agentID, channelKey, sourceKey, content string) error {
-	return s.enqueue(ctx, uuid.NewV7().String(), agentID, channelKey, sourceKey, content)
+	_, err := s.enqueue(ctx, uuid.NewV7().String(), agentID, channelKey, sourceKey, content)
+	return err
 }
 
-// errNoModel means that the agent has no model yet; the user chooses one in the settings.
-var errNoModel = errors.New("the agent has no model; choose one in Settings")
-
-func (s *Service) enqueue(ctx context.Context, id, agentID, channelKey, sourceKey, content string) error {
+func (s *Service) enqueue(ctx context.Context, id, agentID, channelKey, sourceKey, content string) (int64, error) {
 	conv, err := s.q.EnsureConversation(ctx, sqlc.EnsureConversationParams{
-		AgentID: agentID, ChannelKey: channelKey, CreatedAt: s.now().UnixMilli(),
+		AgentID: agentID, ChannelKey: channelKey, Title: title(content), CreatedAt: s.now().UnixMilli(),
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	created, err := s.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 		ID:             id,
@@ -101,13 +130,71 @@ func (s *Service) enqueue(ctx context.Context, id, agentID, channelKey, sourceKe
 		CreatedAt:      s.now().UnixMilli(),
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if created == 0 {
-		return nil // the channel delivered this message before
+		return conv.ID, nil // the channel delivered this message before
 	}
-	s.deliver(ctx, sqlc.ListPendingSubmissionsRow{ID: id, Content: content, ConversationID: conv.ID, AgentID: agentID})
-	return nil
+	s.signal(conv.ID)
+	select {
+	case s.queue <- sqlc.ListPendingSubmissionsRow{ID: id, Content: content, ConversationID: conv.ID, AgentID: agentID}:
+	case <-ctx.Done():
+		// The message is stored; the next Replay delivers it.
+		return conv.ID, nil
+	}
+	return conv.ID, nil
+}
+
+func title(content string) string {
+	t := strings.Join(strings.Fields(content), " ")
+	if utf8.RuneCountInString(t) <= titleLength {
+		return t
+	}
+	return string([]rune(t)[:titleLength-1]) + "…"
+}
+
+// List returns the chats of agentID, newest activity first.
+func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
+	rows, err := s.q.ListChats(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	chats := make([]Chat, len(rows))
+	for i, r := range rows {
+		chats[i] = Chat{
+			ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+			Busy: r.Pending > 0,
+		}
+	}
+	return chats, nil
+}
+
+// Get returns chat id of agentID, or ErrNotFound.
+func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, error) {
+	r, err := s.q.GetChat(ctx, sqlc.GetChatParams{ID: id, AgentID: agentID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return Chat{}, ErrNotFound
+	}
+	if err != nil {
+		return Chat{}, err
+	}
+	return Chat{
+		ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		Busy: r.Pending > 0, WorkerConversationID: r.WorkerConversationID.Int64,
+	}, nil
+}
+
+// Abort stops the run of chat id and withdraws its queued messages. The worker settles each of them
+// as unanswered.
+func (s *Service) Abort(ctx context.Context, agentID string, id int64) error {
+	c, err := s.Get(ctx, agentID, id)
+	if err != nil {
+		return err
+	}
+	if c.WorkerConversationID == 0 {
+		return nil
+	}
+	return s.worker.Call(ctx, "abort", worker.AbortParams{AgentID: agentID, ConversationID: c.WorkerConversationID}, &struct{}{})
 }
 
 // deliver sends a stored submission to the worker. When the worker exits first, the submission
@@ -115,20 +202,20 @@ func (s *Service) enqueue(ctx context.Context, id, agentID, channelKey, sourceKe
 func (s *Service) deliver(ctx context.Context, p sqlc.ListPendingSubmissionsRow) {
 	err := s.submit(ctx, p)
 	switch {
-	case errors.Is(err, worker.ErrUnavailable):
+	case errors.Is(err, worker.ErrUnavailable), ctx.Err() != nil:
 		slog.Warn("worker exited; the message waits for replay", "submission", p.ID)
 	case err != nil:
 		s.settle(ctx, worker.Settled{RequestID: p.ID, Status: "unanswered", Reason: err.Error()})
 	}
 }
 
-// HandleSettled records a settled event from the worker and wakes the waiting Send. When the
-// record fails, the submission stays pending and the next worker start replays it.
+// HandleSettled records a settled event from the worker. When the record fails, the submission
+// stays pending and the next worker start replays it.
 func (s *Service) HandleSettled(ctx context.Context, event worker.Settled) {
 	s.settle(ctx, event)
 }
 
-// Replay sends every pending submission to the worker again. Run it after each worker start.
+// Replay queues every pending submission for delivery again. Run it after each worker start.
 func (s *Service) Replay(ctx context.Context) {
 	pending, err := s.q.ListPendingSubmissions(ctx)
 	if err != nil {
@@ -136,7 +223,11 @@ func (s *Service) Replay(ctx context.Context) {
 		return
 	}
 	for _, p := range pending {
-		s.deliver(ctx, p)
+		select {
+		case s.queue <- p:
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
@@ -146,7 +237,7 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 		return fmt.Errorf("agent %s: %w", p.AgentID, err)
 	}
 	if agent.ModelID == "" {
-		return errNoModel
+		return ErrNoModel
 	}
 	model := worker.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}
 	conversation, err := s.workerConversation(ctx, p.ConversationID, agent, model)
@@ -177,14 +268,7 @@ func (s *Service) settle(ctx context.Context, event worker.Settled) {
 	if err != nil {
 		slog.Error("settle submission", "submission", event.RequestID, "err", err)
 	}
-	s.mu.Lock()
-	if ch, ok := s.waiters[event.RequestID]; ok {
-		close(ch)
-		delete(s.waiters, event.RequestID)
-	}
-	s.mu.Unlock()
-
-	if changed == 0 || s.notify == nil {
+	if changed == 0 {
 		return
 	}
 	row, err := s.q.GetSubmissionReply(ctx, event.RequestID)
@@ -192,21 +276,16 @@ func (s *Service) settle(ctx context.Context, event worker.Settled) {
 		slog.Error("read settled submission", "submission", event.RequestID, "err", err)
 		return
 	}
-	s.notify(ctx, row.ChannelKey, Reply{Status: row.Status, Answer: row.Answer.String, Reason: row.Reason.String})
+	s.signal(row.ConversationID)
+	if s.notify != nil {
+		s.notify(ctx, row.ChannelKey, Reply{Status: row.Status, Answer: row.Answer.String, Reason: row.Reason.String})
+	}
 }
 
-func (s *Service) wait(id string) <-chan struct{} {
-	ch := make(chan struct{})
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.waiters[id] = ch
-	return ch
-}
-
-func (s *Service) forget(id string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.waiters, id)
+func (s *Service) signal(chatID int64) {
+	if s.changed != nil {
+		s.changed(chatID)
+	}
 }
 
 // workerConversation returns the worker's ID of the conversation, and creates the worker's
@@ -234,5 +313,8 @@ func (s *Service) workerConversation(ctx context.Context, id int64, agent sqlc.A
 		WorkerConversationID: sql.NullInt64{Int64: created.ConversationID, Valid: true},
 		ID:                   id,
 	})
+	if err == nil {
+		s.signal(id)
+	}
 	return created.ConversationID, err
 }

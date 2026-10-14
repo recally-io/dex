@@ -30,7 +30,7 @@ func (q *Queries) CreateAgentIfMissing(ctx context.Context, arg CreateAgentIfMis
 const createSubmission = `-- name: CreateSubmission :execrows
 INSERT INTO submissions (id, conversation_id, content, source_key, status, created_at)
 VALUES (?, ?, ?, ?, 'pending', ?)
-ON CONFLICT (source_key) DO NOTHING
+ON CONFLICT DO NOTHING
 `
 
 type CreateSubmissionParams struct {
@@ -41,6 +41,7 @@ type CreateSubmissionParams struct {
 	CreatedAt      int64          `json:"created_at"`
 }
 
+// A message whose ID or source key exists already is not stored again.
 func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, createSubmission,
 		arg.ID,
@@ -74,20 +75,27 @@ func (q *Queries) DeleteTelegramSettings(ctx context.Context) error {
 }
 
 const ensureConversation = `-- name: EnsureConversation :one
-INSERT INTO conversations (agent_id, channel_key, created_at)
-VALUES (?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, created_at)
+VALUES (?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, worker_conversation_id, created_at
+RETURNING id, agent_id, channel_key, worker_conversation_id, created_at, title
 `
 
 type EnsureConversationParams struct {
 	AgentID    string `json:"agent_id"`
 	ChannelKey string `json:"channel_key"`
+	Title      string `json:"title"`
 	CreatedAt  int64  `json:"created_at"`
 }
 
+// The title is set only when the conversation is created.
 func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversationParams) (Conversation, error) {
-	row := q.db.QueryRowContext(ctx, ensureConversation, arg.AgentID, arg.ChannelKey, arg.CreatedAt)
+	row := q.db.QueryRowContext(ctx, ensureConversation,
+		arg.AgentID,
+		arg.ChannelKey,
+		arg.Title,
+		arg.CreatedAt,
+	)
 	var i Conversation
 	err := row.Scan(
 		&i.ID,
@@ -95,6 +103,7 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		&i.ChannelKey,
 		&i.WorkerConversationID,
 		&i.CreatedAt,
+		&i.Title,
 	)
 	return i, err
 }
@@ -117,8 +126,53 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
 	return i, err
 }
 
+const getChat = `-- name: GetChat :one
+SELECT
+    c.id,
+    c.channel_key,
+    c.title,
+    c.created_at,
+    c.worker_conversation_id,
+    CAST(coalesce(max(s.created_at), c.created_at) AS INTEGER) AS updated_at,
+    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
+FROM conversations c
+LEFT JOIN submissions s ON s.conversation_id = c.id
+WHERE c.id = ? AND c.agent_id = ?
+GROUP BY c.id
+`
+
+type GetChatParams struct {
+	ID      int64  `json:"id"`
+	AgentID string `json:"agent_id"`
+}
+
+type GetChatRow struct {
+	ID                   int64         `json:"id"`
+	ChannelKey           string        `json:"channel_key"`
+	Title                string        `json:"title"`
+	CreatedAt            int64         `json:"created_at"`
+	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
+	UpdatedAt            int64         `json:"updated_at"`
+	Pending              int64         `json:"pending"`
+}
+
+func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, error) {
+	row := q.db.QueryRowContext(ctx, getChat, arg.ID, arg.AgentID)
+	var i GetChatRow
+	err := row.Scan(
+		&i.ID,
+		&i.ChannelKey,
+		&i.Title,
+		&i.CreatedAt,
+		&i.WorkerConversationID,
+		&i.UpdatedAt,
+		&i.Pending,
+	)
+	return i, err
+}
+
 const getConversation = `-- name: GetConversation :one
-SELECT id, agent_id, channel_key, worker_conversation_id, created_at FROM conversations WHERE id = ?
+SELECT id, agent_id, channel_key, worker_conversation_id, created_at, title FROM conversations WHERE id = ?
 `
 
 func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
@@ -130,6 +184,7 @@ func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, 
 		&i.ChannelKey,
 		&i.WorkerConversationID,
 		&i.CreatedAt,
+		&i.Title,
 	)
 	return i, err
 }
@@ -179,17 +234,19 @@ SELECT
     s.status,
     s.answer,
     s.reason,
-    c.channel_key
+    c.channel_key,
+    c.id AS conversation_id
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.id = ?
 `
 
 type GetSubmissionReplyRow struct {
-	Status     string         `json:"status"`
-	Answer     sql.NullString `json:"answer"`
-	Reason     sql.NullString `json:"reason"`
-	ChannelKey string         `json:"channel_key"`
+	Status         string         `json:"status"`
+	Answer         sql.NullString `json:"answer"`
+	Reason         sql.NullString `json:"reason"`
+	ChannelKey     string         `json:"channel_key"`
+	ConversationID int64          `json:"conversation_id"`
 }
 
 func (q *Queries) GetSubmissionReply(ctx context.Context, id string) (GetSubmissionReplyRow, error) {
@@ -200,6 +257,7 @@ func (q *Queries) GetSubmissionReply(ctx context.Context, id string) (GetSubmiss
 		&i.Answer,
 		&i.Reason,
 		&i.ChannelKey,
+		&i.ConversationID,
 	)
 	return i, err
 }
@@ -213,6 +271,104 @@ func (q *Queries) GetTelegramSettings(ctx context.Context) (TelegramSetting, err
 	var i TelegramSetting
 	err := row.Scan(&i.ID, &i.Token, &i.AllowedUsers)
 	return i, err
+}
+
+const listChats = `-- name: ListChats :many
+SELECT
+    c.id,
+    c.channel_key,
+    c.title,
+    c.created_at,
+    CAST(coalesce(max(s.created_at), c.created_at) AS INTEGER) AS updated_at,
+    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
+FROM conversations c
+LEFT JOIN submissions s ON s.conversation_id = c.id
+WHERE c.agent_id = ?
+GROUP BY c.id
+ORDER BY updated_at DESC, c.id DESC
+`
+
+type ListChatsRow struct {
+	ID         int64  `json:"id"`
+	ChannelKey string `json:"channel_key"`
+	Title      string `json:"title"`
+	CreatedAt  int64  `json:"created_at"`
+	UpdatedAt  int64  `json:"updated_at"`
+	Pending    int64  `json:"pending"`
+}
+
+func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listChats, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListChatsRow{}
+	for rows.Next() {
+		var i ListChatsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ChannelKey,
+			&i.Title,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Pending,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenSubmissions = `-- name: ListOpenSubmissions :many
+SELECT id, content, status, reason, created_at FROM submissions
+WHERE conversation_id = ? AND status != 'done'
+ORDER BY created_at
+`
+
+type ListOpenSubmissionsRow struct {
+	ID        string         `json:"id"`
+	Content   string         `json:"content"`
+	Status    string         `json:"status"`
+	Reason    sql.NullString `json:"reason"`
+	CreatedAt int64          `json:"created_at"`
+}
+
+// The messages of a chat that have no answer: pending, or unanswered with a reason.
+func (q *Queries) ListOpenSubmissions(ctx context.Context, conversationID int64) ([]ListOpenSubmissionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOpenSubmissions, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOpenSubmissionsRow{}
+	for rows.Next() {
+		var i ListOpenSubmissionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Content,
+			&i.Status,
+			&i.Reason,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listPendingSubmissions = `-- name: ListPendingSubmissions :many

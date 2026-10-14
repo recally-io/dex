@@ -17,6 +17,7 @@ import (
 	"github.com/vaayne/dex/internal/chat"
 	"github.com/vaayne/dex/internal/db"
 	"github.com/vaayne/dex/internal/db/sqlc"
+	"github.com/vaayne/dex/internal/live"
 	"github.com/vaayne/dex/internal/server"
 	"github.com/vaayne/dex/internal/settings"
 	"github.com/vaayne/dex/internal/telegram"
@@ -36,6 +37,8 @@ type Config struct {
 	WorkerEnv []string
 	// TelegramAPIURL replaces https://api.telegram.org, for example for a local Bot API server.
 	TelegramAPIURL string
+	// Version is the version that GET /api/health reports.
+	Version string
 }
 
 // App is a running control process.
@@ -74,6 +77,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	var (
 		chats *chat.Service
 		prefs *settings.Service
+		hub   *live.Hub
 		bots  = &bots{ctx: runCtx}
 	)
 	w := worker.New(worker.Config{
@@ -81,6 +85,8 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		Dir:       cfg.CacheDir,
 		Env:       append(cfg.WorkerEnv, "DEX_DATA_DIR="+cfg.DataDir),
 		OnSettled: func(ctx context.Context, s worker.Settled) { chats.HandleSettled(ctx, s) },
+		OnChat:    func(ev worker.ChatStream) { hub.HandleChat(ev) },
+		OnExit:    func() { hub.WorkerExited() },
 		Init: func(ctx context.Context, call worker.CallFunc) {
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
@@ -95,7 +101,8 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		},
 		OnStart: func(ctx context.Context) { chats.Replay(ctx) },
 	})
-	chats = chat.New(q, w, time.Now, bots.Deliver)
+	chats = chat.New(q, w, time.Now, bots.Deliver, func(id int64) { hub.Changed(id) })
+	hub = live.New(q, chats, w, DefaultAgentID)
 	bots.chats = chats
 	prefs = settings.New(q, w.Call, DefaultAgentID, cfg.TelegramAPIURL, bots.Set)
 	tg, err := prefs.TelegramConfig(ctx)
@@ -104,8 +111,11 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 
-	a := &App{db: conn, handler: server.New(chats, prefs, DefaultAgentID), bots: bots, cancel: cancel}
+	a := &App{db: conn, bots: bots, cancel: cancel, handler: server.New(server.Config{
+		Chats: chats, Settings: prefs, Live: hub, AgentID: DefaultAgentID, DataDir: cfg.DataDir, Version: cfg.Version,
+	})}
 	a.wg.Go(func() { _ = w.Run(runCtx) })
+	a.wg.Go(func() { chats.Run(runCtx) })
 	bots.Set(tg) //nolint:contextcheck // the bot runs until Close, not for the life of ctx
 	return a, nil
 }

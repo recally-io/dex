@@ -64,6 +64,10 @@ type Provider struct {
 	APIKey  string   `json:"apiKey,omitempty"`
 	KeySet  bool     `json:"keySet"`
 	Models  []string `json:"models"`
+	// ModelCount is the number of models that the worker has for the provider.
+	ModelCount int `json:"modelCount"`
+	// Error is why the worker could not list the provider's models, or empty.
+	Error string `json:"error,omitempty"`
 }
 
 // Telegram describes the bot without its token.
@@ -83,6 +87,9 @@ type Service struct {
 
 	// Serializes changes, so the worker and the bot always get the newest saved settings.
 	mu sync.Mutex
+
+	errMu sync.Mutex
+	errs  map[string]string // from the last ApplyProviders: provider ID → why its model list failed
 }
 
 // New returns a Service for agentID. onTelegram receives the new bot configuration after each
@@ -105,11 +112,13 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 	if err != nil {
 		return Settings{}, err
 	}
+	models, err := s.Models(ctx)
+	if err != nil {
+		return Settings{}, err
+	}
 	providers := make([]Provider, len(rows))
 	for i, r := range rows {
-		providers[i] = Provider{
-			ID: r.ID, Name: r.Name, API: r.Api, BaseURL: r.BaseUrl, KeySet: r.ApiKey != "", Models: splitModels(r.Models),
-		}
+		providers[i] = s.provider(r, models)
 		// pi-ai owns the names of built-in providers.
 		if j := slices.IndexFunc(builtins, func(b worker.ProviderInfo) bool { return b.ID == r.ID }); r.Api == "" && j >= 0 {
 			providers[i].Name = builtins[j].Name
@@ -129,6 +138,23 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 		APIs:      APIs,
 		Telegram:  tg,
 	}, nil
+}
+
+// provider returns the view of a saved provider, with its model count and its last error.
+func (s *Service) provider(r sqlc.Provider, models []worker.ModelInfo) Provider {
+	s.errMu.Lock()
+	msg := s.errs[r.ID]
+	s.errMu.Unlock()
+	count := 0
+	for _, m := range models {
+		if m.Provider == r.ID {
+			count++
+		}
+	}
+	return Provider{
+		ID: r.ID, Name: r.Name, API: r.Api, BaseURL: r.BaseUrl, KeySet: r.ApiKey != "", Models: splitModels(r.Models),
+		ModelCount: count, Error: msg,
+	}
 }
 
 func (s *Service) builtins(ctx context.Context) ([]worker.ProviderInfo, error) {
@@ -171,34 +197,34 @@ func (s *Service) SetAgent(ctx context.Context, a Agent) error {
 	})
 }
 
-// SetProvider adds provider p or changes it, and gives all providers to the worker. An empty
-// APIKey keeps the saved key. When the worker cannot list the models of p, p stays saved and
-// SetProvider returns the reason.
-func (s *Service) SetProvider(ctx context.Context, p Provider) error {
+// SetProvider adds provider p or changes it, gives all providers to the worker, and returns the
+// saved provider. An empty APIKey keeps the saved key. When the worker cannot list the models of
+// p, p stays saved and the returned provider has the reason in Error.
+func (s *Service) SetProvider(ctx context.Context, p Provider) (Provider, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	builtins, err := s.builtins(ctx)
 	if err != nil {
-		return err
+		return Provider{}, err
 	}
 	i := slices.IndexFunc(builtins, func(b worker.ProviderInfo) bool { return b.ID == p.ID })
 	if p.API == "" {
 		if i < 0 {
-			return fmt.Errorf("%w: unknown built-in provider %q", ErrInvalid, p.ID)
+			return Provider{}, fmt.Errorf("%w: unknown built-in provider %q", ErrInvalid, p.ID)
 		}
 		p.Name, p.BaseURL, p.Models = builtins[i].Name, "", nil
 	} else {
 		if _, ok := APIs[p.API]; !ok {
-			return fmt.Errorf("%w: unknown API %q", ErrInvalid, p.API)
+			return Provider{}, fmt.Errorf("%w: unknown API %q", ErrInvalid, p.API)
 		}
 		if !customID.MatchString(p.ID) {
-			return fmt.Errorf("%w: the ID must be 1 to 40 lowercase letters, digits, or hyphens", ErrInvalid)
+			return Provider{}, fmt.Errorf("%w: the ID must be 1 to 40 lowercase letters, digits, or hyphens", ErrInvalid)
 		}
 		if i >= 0 {
-			return fmt.Errorf("%w: %q is a built-in provider; choose another ID", ErrInvalid, p.ID)
+			return Provider{}, fmt.Errorf("%w: %q is a built-in provider; choose another ID", ErrInvalid, p.ID)
 		}
 		if err := checkBaseURL(p.BaseURL); err != nil {
-			return err
+			return Provider{}, err
 		}
 		p.Name = cmp.Or(p.Name, p.ID)
 	}
@@ -208,27 +234,27 @@ func (s *Service) SetProvider(ctx context.Context, p Provider) error {
 	case errors.Is(err, sql.ErrNoRows):
 		saved.CreatedAt = time.Now().UnixMilli()
 	case err != nil:
-		return err
+		return Provider{}, err
 	}
 	p.APIKey = cmp.Or(p.APIKey, saved.ApiKey)
 	if p.API == "" && p.APIKey == "" {
-		return fmt.Errorf("%w: enter an API key", ErrInvalid)
+		return Provider{}, fmt.Errorf("%w: enter an API key", ErrInvalid)
 	}
-	err = s.q.UpsertProvider(ctx, sqlc.UpsertProviderParams{
+	row := sqlc.UpsertProviderParams{
 		ID: p.ID, Name: p.Name, Api: p.API, BaseUrl: p.BaseURL, ApiKey: p.APIKey,
 		Models: strings.Join(cleanModels(p.Models), ","), CreatedAt: saved.CreatedAt,
-	})
+	}
+	if err := s.q.UpsertProvider(ctx, row); err != nil {
+		return Provider{}, err
+	}
+	if _, err := s.ApplyProviders(ctx, s.worker); err != nil {
+		return Provider{}, fmt.Errorf("saved, but the worker did not apply it: %w", err)
+	}
+	models, err := s.Models(ctx)
 	if err != nil {
-		return err
+		return Provider{}, err
 	}
-	errs, err := s.ApplyProviders(ctx, s.worker)
-	if err != nil {
-		return fmt.Errorf("saved, but the worker did not apply it: %w", err)
-	}
-	if msg, ok := errs[p.ID]; ok {
-		return fmt.Errorf("saved, but listing the models failed: %s", msg)
-	}
-	return nil
+	return s.provider(sqlc.Provider(row), models), nil
 }
 
 // DeleteProvider removes provider id.
@@ -261,6 +287,9 @@ func (s *Service) ApplyProviders(ctx context.Context, call worker.CallFunc) (map
 	if err := call(ctx, "configure", params, &result); err != nil {
 		return nil, err
 	}
+	s.errMu.Lock()
+	s.errs = result.Errors
+	s.errMu.Unlock()
 	return result.Errors, nil
 }
 

@@ -10,8 +10,9 @@ UPDATE agents SET model_provider = ?, model_id = ?, instructions = ? WHERE id = 
 SELECT * FROM agents WHERE id = ?;
 
 -- name: EnsureConversation :one
-INSERT INTO conversations (agent_id, channel_key, created_at)
-VALUES (?, ?, ?)
+-- The title is set only when the conversation is created.
+INSERT INTO conversations (agent_id, channel_key, title, created_at)
+VALUES (?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
 RETURNING *;
 
@@ -22,9 +23,10 @@ SELECT * FROM conversations WHERE id = ?;
 UPDATE conversations SET worker_conversation_id = ? WHERE id = ?;
 
 -- name: CreateSubmission :execrows
+-- A message whose ID or source key exists already is not stored again.
 INSERT INTO submissions (id, conversation_id, content, source_key, status, created_at)
 VALUES (?, ?, ?, ?, 'pending', ?)
-ON CONFLICT (source_key) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- name: GetSubmission :one
 SELECT * FROM submissions WHERE id = ?;
@@ -38,7 +40,8 @@ SELECT
     s.status,
     s.answer,
     s.reason,
-    c.channel_key
+    c.channel_key,
+    c.id AS conversation_id
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.id = ?;
@@ -53,6 +56,40 @@ FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending'
 ORDER BY s.created_at;
+
+-- name: ListChats :many
+SELECT
+    c.id,
+    c.channel_key,
+    c.title,
+    c.created_at,
+    CAST(coalesce(max(s.created_at), c.created_at) AS INTEGER) AS updated_at,
+    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
+FROM conversations c
+LEFT JOIN submissions s ON s.conversation_id = c.id
+WHERE c.agent_id = ?
+GROUP BY c.id
+ORDER BY updated_at DESC, c.id DESC;
+
+-- name: GetChat :one
+SELECT
+    c.id,
+    c.channel_key,
+    c.title,
+    c.created_at,
+    c.worker_conversation_id,
+    CAST(coalesce(max(s.created_at), c.created_at) AS INTEGER) AS updated_at,
+    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
+FROM conversations c
+LEFT JOIN submissions s ON s.conversation_id = c.id
+WHERE c.id = ? AND c.agent_id = ?
+GROUP BY c.id;
+
+-- name: ListOpenSubmissions :many
+-- The messages of a chat that have no answer: pending, or unanswered with a reason.
+SELECT id, content, status, reason, created_at FROM submissions
+WHERE conversation_id = ? AND status != 'done'
+ORDER BY created_at;
 
 -- name: ListProviders :many
 SELECT * FROM providers ORDER BY created_at;

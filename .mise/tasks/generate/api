@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Generate the Go server and the web client from api/openapi.yaml"
+set -euo pipefail
+
+go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+(cd web && bunx --no-install openapi-ts)

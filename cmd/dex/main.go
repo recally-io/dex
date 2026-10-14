@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -44,6 +45,7 @@ func run() error {
 		DataDir:   cmp.Or(os.Getenv("DEX_DATA_DIR"), filepath.Join(home, ".dex")),
 		CacheDir:  filepath.Join(cache, "dex"),
 		WorkerEnv: app.WorkerEnv(os.Environ()),
+		Version:   version(),
 	})
 	if err != nil {
 		return err
@@ -62,4 +64,12 @@ func run() error {
 		err = srv.Shutdown(shutdown)
 	}
 	return errors.Join(err, a.Close())
+}
+
+// version is the module version of the build, or "dev" for a build from a checkout.
+func version() string {
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return "dev"
 }

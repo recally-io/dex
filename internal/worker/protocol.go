@@ -49,6 +49,34 @@ type Settled struct {
 	Reason         string `json:"reason,omitempty"`
 }
 
+// WatchParams are the params of the watch method. The worker sends the chat events of the
+// conversation with WatchID; the first is a snapshot, sent before the result.
+type WatchParams struct {
+	WatchID        string `json:"watchId"`
+	AgentID        string `json:"agentId"`
+	ConversationID int64  `json:"conversationId"`
+}
+
+// UnwatchParams are the params of the unwatch method.
+type UnwatchParams struct {
+	WatchID string `json:"watchId"`
+}
+
+// AbortParams are the params of the abort method, which stops the conversation's run and
+// withdraws its queued messages.
+type AbortParams struct {
+	AgentID        string `json:"agentId"`
+	ConversationID int64  `json:"conversationId"`
+}
+
+// ChatStream is the chat event of a watch: Events holds the ChatEvent objects of api/openapi.yaml
+// from one commit, or End is true when the watch stopped.
+type ChatStream struct {
+	WatchID string           `json:"watchId"`
+	Events  []jsontext.Value `json:"events"`
+	End     bool             `json:"end"`
+}
+
 // ConfigureParams are the params of the configure method. They replace all providers.
 type ConfigureParams struct {
 	Providers []ProviderSettings `json:"providers"`

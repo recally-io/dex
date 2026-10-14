@@ -31,6 +31,7 @@ run = [
   "dprint check",
   "mise run check:testpolicy",
   "mise run check:db-drift",
+  "mise run check:api-drift",
   "mise run check:worker",
   "mise run check:web",
   "mise run check:web-dist",

@@ -1,0 +1,6 @@
+package: api
+output: internal/api/server.gen.go
+generate:
+  std-http-server: true
+  strict-server: true
+  models: true

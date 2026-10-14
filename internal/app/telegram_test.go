@@ -3,6 +3,7 @@ package app_test
 import (
 	"database/sql"
 	"encoding/json/v2"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"uuid"
 )
 
 // fakeTelegram is a Bot API server. Telegram is a system boundary, so the tests use a fake instead
@@ -103,17 +105,18 @@ func (f *fakeTelegram) next(t *testing.T) sentMessage {
 }
 
 // startTelegram starts dex with the echo model, and turns Telegram on in the settings.
-func startTelegram(t *testing.T, f *fakeTelegram, dataDir string, allowed ...int64) {
+func startTelegram(t *testing.T, f *fakeTelegram, dataDir string, allowed ...int64) *dex {
 	t.Helper()
 	d := startDex(t, dataDir, f.srv.URL)
 	d.setModel(t, "echo")
 	d.must(t, http.MethodPut, "/api/settings/telegram", map[string]any{"token": fakeToken, "allowedUsers": allowed}, nil)
+	return d
 }
 
 func TestUserGetsAnswerInTelegram(t *testing.T) {
 	// Given dex with a Telegram bot that user 42 can use
 	f := newFakeTelegram(t)
-	startTelegram(t, f, t.TempDir(), 42)
+	d := startTelegram(t, f, t.TempDir(), 42)
 
 	// When user 42 sends a message in chat 7
 	f.message(1, 42, 7, "hi")
@@ -121,6 +124,18 @@ func TestUserGetsAnswerInTelegram(t *testing.T) {
 	// Then the bot sends the agent's answer to chat 7
 	if got := f.next(t); got != (sentMessage{ChatID: 7, Text: "echo: hi"}) {
 		t.Fatalf("sent = %+v", got)
+	}
+
+	// And the web UI shows the chat, but cannot write to it
+	chats := d.chats(t)
+	if len(chats) != 1 || chats[0].Channel != "telegram" || chats[0].Title != "hi" {
+		t.Fatalf("chats = %+v", chats)
+	}
+	d.watch(t, chats[0].ID).until(t, "answer", answered("echo: hi"))
+	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/messages", chats[0].ID),
+		map[string]string{"id": uuid.NewV7().String(), "text": "from the web"})
+	if status != http.StatusForbidden {
+		t.Fatalf("web message to a Telegram chat: %d %s", status, raw)
 	}
 }
 
