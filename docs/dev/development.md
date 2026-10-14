@@ -53,7 +53,7 @@ Run `mise tasks` for the full list. The main tasks:
 | ----------------- | ------------------------------------------------------------------- |
 | `build`           | Builds `bin/dex` for this platform                                  |
 | `build:worker`    | Compiles the worker and writes `internal/workerbin/dex-worker.gz`   |
-| `check`           | All checks; the pre-commit hook and CI run it                       |
+| `check`           | All checks; the pre-commit hook runs it, CI runs its steps in jobs  |
 | `check:go`        | golangci-lint, `go build`, `go test -race`                          |
 | `check:worker`    | `tsc`, `vp lint`, `vp fmt --check`, `bun test`                      |
 | `generate:db`     | Regenerates `internal/db/sqlc`                                      |
@@ -69,6 +69,28 @@ The rules are in [testing](../../.agents/rules/testing.md). The Go tests in
 `internal/app` run the real embedded worker with the faux model, and a fake
 Telegram Bot API server, so run
 `mise run build:worker` after a worker change. `check:go` does that for you.
+
+## CI and releases
+
+[Check](../../.github/workflows/check.yml) runs on each push to `main` and
+each pull request. Its jobs run the steps of `mise run check` in parallel:
+lint and drift, worker, web, and Go lint and tests. When you add a step to
+`check` in `mise.toml`, add it to the workflow too.
+
+To release:
+
+1. Make sure that Check passes on `main`.
+2. Run `git tag v0.1.0` and `git push origin v0.1.0`. A tag with a hyphen,
+   such as `v0.1.0-rc.1`, makes a prerelease.
+
+[Release](../../.github/workflows/release.yml) runs Check, builds `dex` on
+Linux and macOS, x64 and arm64, each on its own platform, and starts each
+binary as a smoke test. Then it publishes a GitHub release with one
+`dex_<tag>_<os>_<arch>.tar.gz` for each platform, `checksums.txt`, and notes
+from the commits. dex reads its version from the tag.
+
+The macOS binaries are signed ad hoc, not notarized. macOS blocks a binary
+from a browser download; run `xattr -d com.apple.quarantine dex` first.
 
 ## Debug
 
