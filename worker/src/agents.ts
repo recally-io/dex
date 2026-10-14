@@ -9,16 +9,23 @@ import {
 	createRegistry,
 	Harness,
 	type Submission,
+	watchEvents,
+	type AgentEventStream,
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
+import { ChatView, USER_ENTRY } from "./view.ts";
 import type {
+	AbortParams,
+	ChatStreamEvent,
 	CreateConversationParams,
 	CreateConversationResult,
 	SettledEvent,
 	SubmitParams,
 	SubmitResult,
+	UnwatchParams,
+	WatchParams,
 } from "./protocol.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -35,14 +42,22 @@ export class Agents {
 	readonly #dataDir: string;
 	readonly #models: Models;
 	readonly #emit: (event: SettledEvent) => void;
+	readonly #emitChat: (event: ChatStreamEvent) => void;
+	readonly #watches = new Map<string, AgentEventStream>();
 	readonly #harnesses = new Map<string, Promise<Harness>>();
 	// The tail of each conversation's submit chain; see #serial.
 	readonly #chains = new Map<string, Promise<unknown>>();
 
-	constructor(dataDir: string, models: Models, emit: (event: SettledEvent) => void) {
+	constructor(
+		dataDir: string,
+		models: Models,
+		emit: (event: SettledEvent) => void,
+		emitChat: (event: ChatStreamEvent) => void,
+	) {
 		this.#dataDir = dataDir;
 		this.#models = models;
 		this.#emit = emit;
+		this.#emitChat = emitChat;
 	}
 
 	async createConversation(params: CreateConversationParams): Promise<CreateConversationResult> {
@@ -58,12 +73,7 @@ export class Agents {
 	}
 
 	async submit(params: SubmitParams): Promise<SubmitResult> {
-		const harness = await this.#harness(params.agentId);
-		// The ID came from this worker's own createConversation; pi-durable brands IDs only at its own boundaries.
-		// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-		const id = params.conversationId as ConversationId;
-		const conversation = await harness.conversation(id, context);
-		if (conversation === undefined) throw new Error(`unknown conversation: ${params.conversationId}`);
+		const conversation = await this.#conversation(params.agentId, params.conversationId);
 		// configure() and submit() are separate commits. Without the chain, two submits with
 		// different settings could interleave, and a message could run with the other one's settings.
 		return this.#serial(`${params.agentId}/${params.conversationId}`, async () => {
@@ -78,12 +88,70 @@ export class Agents {
 				await conversation.configure({ model: params.model, instructions: instructions ?? null }, context);
 			}
 			const submission = await conversation.submit(
-				{ type: "input", content: params.content, requestId: params.requestId },
+				{
+					type: "input",
+					content: params.content,
+					requestId: params.requestId,
+					// The chat view shows the message with control's ID, so the UI can match it.
+					entry: { kind: USER_ENTRY, data: { requestId: params.requestId } },
+				},
 				context,
 			);
 			void this.#settle(params, conversation, submission);
 			return { submissionId: submission.id };
 		});
+	}
+
+	/**
+	 * Starts a watch of a conversation's chat events. The first event is a snapshot. The worker sends
+	 * it before this method returns.
+	 */
+	async watch(params: WatchParams): Promise<Record<string, never>> {
+		if (this.#watches.has(params.watchId)) throw new Error(`duplicate watch ID: ${params.watchId}`);
+		const conversation = await this.#conversation(params.agentId, params.conversationId);
+		const stream = await watchEvents(await this.#harness(params.agentId), conversation.id, context);
+		this.#watches.set(params.watchId, stream);
+		const view = new ChatView();
+		this.#emitChat({ watchId: params.watchId, events: [view.snapshot(stream.snapshot)] });
+		stream.start(async (events) => {
+			const changes = view.apply(events);
+			if (changes.length > 0) this.#emitChat({ watchId: params.watchId, events: changes });
+		});
+		void stream.closed.then(
+			() => this.#endWatch(params.watchId, stream),
+			(error: unknown) => {
+				console.error(`watch ${params.watchId}:`, error);
+				this.#endWatch(params.watchId, stream);
+			},
+		);
+		return {};
+	}
+
+	async unwatch(params: UnwatchParams): Promise<Record<string, never>> {
+		await this.#watches.get(params.watchId)?.stop();
+		return {};
+	}
+
+	#endWatch(watchId: string, stream: AgentEventStream): void {
+		if (this.#watches.get(watchId) !== stream) return;
+		this.#watches.delete(watchId);
+		this.#emitChat({ watchId, end: true });
+	}
+
+	/** Stops the conversation's run and withdraws its queued messages. */
+	async abort(params: AbortParams): Promise<Record<string, never>> {
+		const conversation = await this.#conversation(params.agentId, params.conversationId);
+		await conversation.abort(context);
+		return {};
+	}
+
+	async #conversation(agentId: string, conversationId: number): Promise<Conversation> {
+		const harness = await this.#harness(agentId);
+		// The ID came from this worker's own createConversation; pi-durable brands IDs only at its own boundaries.
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+		const conversation = await harness.conversation(conversationId as ConversationId, context);
+		if (conversation === undefined) throw new Error(`unknown conversation: ${conversationId}`);
+		return conversation;
 	}
 
 	#serial<T>(key: string, task: () => Promise<T>): Promise<T> {
@@ -97,6 +165,7 @@ export class Agents {
 	}
 
 	async close(): Promise<void> {
+		await Promise.all([...this.#watches.values()].map((stream) => stream.stop()));
 		const opening = [...this.#harnesses.values()];
 		this.#harnesses.clear();
 		await Promise.all(

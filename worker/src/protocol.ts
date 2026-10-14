@@ -2,6 +2,7 @@
 // stdin (requests) and stdout (responses and events). Keep it in sync with
 // internal/worker/protocol.go.
 import Type, { type Static } from "typebox";
+import type { ChatEvent } from "./view.ts";
 
 export const Request = Type.Object({
 	id: Type.Number(),
@@ -53,6 +54,28 @@ export type SubmitParams = Static<typeof SubmitParams>;
 export type SubmitResult = {
 	readonly submissionId: number;
 };
+
+export const WatchParams = Type.Object({
+	/** Control's ID for this watch; the worker's chat events carry it. */
+	watchId: Type.String(),
+	agentId: Type.String(),
+	conversationId: Type.Number(),
+});
+export type WatchParams = Static<typeof WatchParams>;
+
+export const UnwatchParams = Type.Object({ watchId: Type.String() });
+export type UnwatchParams = Static<typeof UnwatchParams>;
+
+export const AbortParams = Type.Object({ agentId: Type.String(), conversationId: Type.Number() });
+export type AbortParams = Static<typeof AbortParams>;
+
+/**
+ * The event of a watch: the chat events of one commit (the first is a snapshot), or `end` when the
+ * watch stopped. The chat events are the ChatEvent schema of api/openapi.yaml.
+ */
+export type ChatStreamEvent =
+	| { readonly watchId: string; readonly events: readonly ChatEvent[] }
+	| { readonly watchId: string; readonly end: true };
 
 export type SettledEvent = {
 	readonly agentId: string;

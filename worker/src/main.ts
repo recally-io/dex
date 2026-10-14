@@ -3,12 +3,15 @@ import { Value } from "typebox/value";
 import { Agents } from "./agents.ts";
 import { Catalog } from "./models.ts";
 import {
+	AbortParams,
 	ConfigureParams,
 	CreateConversationParams,
 	type Event,
 	Request,
 	type Response,
 	SubmitParams,
+	UnwatchParams,
+	WatchParams,
 } from "./protocol.ts";
 
 // stdout carries the protocol. Send every console method that writes to stdout to stderr, so a
@@ -28,7 +31,12 @@ function write(message: Response | Event): void {
 }
 
 const catalog = new Catalog(process.env);
-const agents = new Agents(dataDir, catalog.models, (params) => write({ event: "settled", params }));
+const agents = new Agents(
+	dataDir,
+	catalog.models,
+	(params) => write({ event: "settled", params }),
+	(params) => write({ event: "chat", params }),
+);
 
 async function handle(request: Request): Promise<unknown> {
 	switch (request.method) {
@@ -38,6 +46,12 @@ async function handle(request: Request): Promise<unknown> {
 			return agents.createConversation(Value.Parse(CreateConversationParams, request.params));
 		case "submit":
 			return agents.submit(Value.Parse(SubmitParams, request.params));
+		case "watch":
+			return agents.watch(Value.Parse(WatchParams, request.params));
+		case "unwatch":
+			return agents.unwatch(Value.Parse(UnwatchParams, request.params));
+		case "abort":
+			return agents.abort(Value.Parse(AbortParams, request.params));
 		case "configure":
 			return catalog.configure(Value.Parse(ConfigureParams, request.params).providers);
 		case "listProviders":

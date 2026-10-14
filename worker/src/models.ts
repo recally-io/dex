@@ -13,6 +13,7 @@ import {
 	type FauxResponseFactory,
 	fauxAssistantMessage,
 	fauxProvider,
+	fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import Type from "typebox";
 import { Value } from "typebox/value";
@@ -22,7 +23,8 @@ import type { ConfigureResult, ModelInfo, ProviderInfo, ProviderSettings } from 
  * The models the agents can use: all pi-ai built-in providers with an API key from the settings,
  * and the custom providers from the settings. Control gives the worker no provider environment
  * variables. With `DEX_FAKE_MODEL=1`, `faux/echo` and `faux/shout` answer "<model ID>: <last user
- * text>"; tests use them so they need no provider credentials.
+ * text>", and `faux/bash` runs the last user text with the bash tool and answers "bash: <output>";
+ * tests use them so they need no provider credentials.
  */
 export class Catalog {
 	readonly models: MutableModels;
@@ -32,11 +34,24 @@ export class Catalog {
 	constructor(env: NodeJS.ProcessEnv) {
 		this.models = builtinModels({ credentials: this.#credentials });
 		if (env["DEX_FAKE_MODEL"] === "1") {
-			const faux = fauxProvider({ provider: "faux", models: [{ id: "echo" }, { id: "shout" }] });
+			const faux = fauxProvider({
+				provider: "faux",
+				models: [{ id: "echo" }, { id: "shout" }, { id: "bash" }],
+				// Streams the answer in small parts, as a real provider does.
+				tokensPerSecond: 200,
+			});
 			// Each call consumes one scripted response, so the factory queues the next one.
 			const reply: FauxResponseFactory = (transcript, _options, _state, model) => {
 				faux.appendResponses([reply]);
-				return fauxAssistantMessage(`${model.id}: ${lastUserText(transcript)}`);
+				if (model.id !== "bash") return fauxAssistantMessage(`${model.id}: ${lastUserText(transcript)}`);
+				const last = transcript.messages.at(-1);
+				if (last?.role === "toolResult") {
+					const output = last.content.map((block) => (block.type === "text" ? block.text : "")).join("");
+					return fauxAssistantMessage(`bash: ${output.trim()}`);
+				}
+				return fauxAssistantMessage(fauxToolCall("bash", { command: lastUserText(transcript) }), {
+					stopReason: "toolUse",
+				});
 			};
 			faux.setResponses([reply]);
 			this.models.setProvider(faux.provider);
