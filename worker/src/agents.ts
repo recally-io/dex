@@ -15,6 +15,7 @@ import {
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
+import { MemoryRepo } from "./memory.ts";
 import { ChatView, USER_ENTRY } from "./view.ts";
 import type {
 	AbortParams,
@@ -43,6 +44,10 @@ export class Agents {
 	readonly #models: Models;
 	readonly #emit: (event: SettledEvent) => void;
 	readonly #emitChat: (event: ChatStreamEvent) => void;
+	readonly #memory: MemoryRepo;
+	// The source of each conversation, by "<agent>/<conversation>", from its last submit. A run that
+	// resumes after a restart has none until control submits to it again.
+	readonly #sources = new Map<string, string>();
 	readonly #watches = new Map<string, AgentEventStream>();
 	readonly #harnesses = new Map<string, Promise<Harness>>();
 	// The tail of each conversation's submit chain; see #serial.
@@ -58,6 +63,7 @@ export class Agents {
 		this.#models = models;
 		this.#emit = emit;
 		this.#emitChat = emitChat;
+		this.#memory = new MemoryRepo(join(dataDir, "memory"));
 	}
 
 	async createConversation(params: CreateConversationParams): Promise<CreateConversationResult> {
@@ -76,7 +82,9 @@ export class Agents {
 		const conversation = await this.#conversation(params.agentId, params.conversationId);
 		// configure() and submit() are separate commits. Without the chain, two submits with
 		// different settings could interleave, and a message could run with the other one's settings.
-		return this.#serial(`${params.agentId}/${params.conversationId}`, async () => {
+		const key = `${params.agentId}/${params.conversationId}`;
+		this.#sources.set(key, params.source);
+		return this.#serial(key, async () => {
 			const agent = await conversation.agent(context);
 			const instructions = params.instructions === "" ? undefined : params.instructions;
 			if (
@@ -192,6 +200,10 @@ export class Agents {
 		} catch (error) {
 			this.#emit({ ...base, status: "unanswered", reason: String(error) });
 		}
+		// A stopped or failed run can also have changed the memory.
+		await this.#memory
+			.commit(`Update memory from ${params.source}`)
+			.catch((error: unknown) => console.error("commit memory:", error));
 	}
 
 	#harness(agentId: string): Promise<Harness> {
@@ -212,6 +224,8 @@ export class Agents {
 		await mkdir(workspace, { recursive: true });
 		const registry = createRegistry();
 		registry.install(CodingTools);
+		await this.#memory.open();
+		registry.install(this.#memory.extension((id) => this.#sources.get(`${agentId}/${id}`)));
 		const harness = await Harness.open(
 			await openNodeSqliteStorage(join(dir, "state.sqlite")),
 			{

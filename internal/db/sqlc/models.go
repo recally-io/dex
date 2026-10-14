@@ -26,6 +26,14 @@ type Conversation struct {
 	Title                string        `json:"title"`
 }
 
+type Dream struct {
+	ID               string `json:"id"`
+	AgentID          string `json:"agent_id"`
+	ThroughSettledAt int64  `json:"through_settled_at"`
+	ThroughID        string `json:"through_id"`
+	CreatedAt        int64  `json:"created_at"`
+}
+
 type Provider struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`

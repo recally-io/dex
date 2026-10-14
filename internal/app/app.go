@@ -3,6 +3,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -17,6 +18,7 @@ import (
 	"github.com/vaayne/dex/internal/chat"
 	"github.com/vaayne/dex/internal/db"
 	"github.com/vaayne/dex/internal/db/sqlc"
+	"github.com/vaayne/dex/internal/dream"
 	"github.com/vaayne/dex/internal/live"
 	"github.com/vaayne/dex/internal/server"
 	"github.com/vaayne/dex/internal/settings"
@@ -39,6 +41,8 @@ type Config struct {
 	TelegramAPIURL string
 	// Version is the version that GET /api/health reports.
 	Version string
+	// DreamEvery is the shortest time between two dreams; zero means 24 hours.
+	DreamEvery time.Duration
 }
 
 // App is a running control process.
@@ -116,6 +120,8 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	})}
 	a.wg.Go(func() { _ = w.Run(runCtx) })
 	a.wg.Go(func() { chats.Run(runCtx) })
+	dreamer := dream.New(q, chats, DefaultAgentID, cmp.Or(cfg.DreamEvery, 24*time.Hour), time.Now)
+	a.wg.Go(func() { dreamer.Run(runCtx) })
 	bots.Set(tg) //nolint:contextcheck // the bot runs until Close, not for the life of ctx
 	return a, nil
 }

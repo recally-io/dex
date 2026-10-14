@@ -48,6 +48,8 @@ export const SubmitParams = Type.Object({
 	 */
 	requestId: Type.String(),
 	content: Type.String(),
+	/** Where memory entries from this conversation come from, such as `dex:chat/12`. */
+	source: Type.String(),
 });
 export type SubmitParams = Static<typeof SubmitParams>;
 

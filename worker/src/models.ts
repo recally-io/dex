@@ -23,8 +23,10 @@ import type { ConfigureResult, ModelInfo, ProviderInfo, ProviderSettings } from 
  * The models the agents can use: all pi-ai built-in providers with an API key from the settings,
  * and the custom providers from the settings. Control gives the worker no provider environment
  * variables. With `DEX_FAKE_MODEL=1`, `faux/echo` and `faux/shout` answer "<model ID>: <last user
- * text>", and `faux/bash` runs the last user text with the bash tool and answers "bash: <output>";
- * tests use them so they need no provider credentials.
+ * text>", and `faux/bash` runs the last user text with the bash tool and answers "bash: <output>".
+ * In a dream, `faux/bash` appends the dream's chat headings to dreams.md in the memory repo.
+ * `faux/memory` answers "memory: <the memory section of its system prompt>". Tests use them so they
+ * need no provider credentials.
  */
 export class Catalog {
 	readonly models: MutableModels;
@@ -36,22 +38,27 @@ export class Catalog {
 		if (env["DEX_FAKE_MODEL"] === "1") {
 			const faux = fauxProvider({
 				provider: "faux",
-				models: [{ id: "echo" }, { id: "shout" }, { id: "bash" }],
+				models: [{ id: "echo" }, { id: "shout" }, { id: "bash" }, { id: "memory" }],
 				// Streams the answer in small parts, as a real provider does.
 				tokensPerSecond: 200,
 			});
 			// Each call consumes one scripted response, so the factory queues the next one.
 			const reply: FauxResponseFactory = (transcript, _options, _state, model) => {
 				faux.appendResponses([reply]);
+				if (model.id === "memory") return fauxAssistantMessage(`memory: ${memorySection(transcript)}`);
 				if (model.id !== "bash") return fauxAssistantMessage(`${model.id}: ${lastUserText(transcript)}`);
-				const last = transcript.messages.at(-1);
+				// A tool that changes a memory file adds a system message after its result.
+				const last = transcript.messages.findLast((message) => message.role !== "system");
 				if (last?.role === "toolResult") {
 					const output = last.content.map((block) => (block.type === "text" ? block.text : "")).join("");
 					return fauxAssistantMessage(`bash: ${output.trim()}`);
 				}
-				return fauxAssistantMessage(fauxToolCall("bash", { command: lastUserText(transcript) }), {
-					stopReason: "toolUse",
-				});
+				return fauxAssistantMessage(
+					fauxToolCall("bash", { command: bashCommand(lastUserText(transcript)) }),
+					{
+						stopReason: "toolUse",
+					},
+				);
 			};
 			faux.setResponses([reply]);
 			this.models.setProvider(faux.provider);
@@ -201,4 +208,23 @@ function lastUserText(transcript: TranscriptContext): string {
 	if (user === undefined) return "";
 	if (typeof user.content === "string") return user.content;
 	return user.content.map((block) => (block.type === "text" ? block.text : "")).join("");
+}
+
+/** The memory section of the system prompt: the last system message that sets it wins. */
+function memorySection(transcript: TranscriptContext): string {
+	let text = "";
+	for (const message of transcript.messages) {
+		if (message.role !== "system") continue;
+		const value = message.sections?.["memory"];
+		if (value !== undefined) text = value ?? "";
+	}
+	return text;
+}
+
+/** The command that faux/bash runs for a user message. */
+function bashCommand(text: string): string {
+	if (!text.startsWith("# Dreaming")) return text;
+	const headings = text.split("\n").filter((line) => line.startsWith("### "));
+	const quoted = headings.map((line) => `'${line.replaceAll("'", "'\\''")}'`).join(" ");
+	return `printf '%s\\n' ${quoted} >> "$DEX_DATA_DIR/memory/dreams.md" && echo dreamed`;
 }

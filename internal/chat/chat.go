@@ -47,6 +47,10 @@ var ErrNoModel = errors.New("the agent has no model; choose one in Settings")
 // ErrNotFound means that the chat does not exist.
 var ErrNotFound = errors.New("chat not found")
 
+// DreamChannel starts the channel key of a dream. Dreams are chats that the chat list and the API
+// do not show.
+const DreamChannel = "dream:"
+
 // The chat list shows titles of at most this many characters.
 const titleLength = 60
 
@@ -137,7 +141,7 @@ func (s *Service) enqueue(ctx context.Context, id, agentID, channelKey, sourceKe
 	}
 	s.signal(conv.ID)
 	select {
-	case s.queue <- sqlc.ListPendingSubmissionsRow{ID: id, Content: content, ConversationID: conv.ID, AgentID: agentID}:
+	case s.queue <- sqlc.ListPendingSubmissionsRow{ID: id, Content: content, ConversationID: conv.ID, AgentID: agentID, ChannelKey: channelKey}:
 	case <-ctx.Done():
 		// The message is stored; the next Replay delivers it.
 		return conv.ID, nil
@@ -252,7 +256,17 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 		Instructions:   agent.Instructions,
 		RequestID:      p.ID,
 		Content:        p.Content,
+		Source:         source(p),
 	}, &result)
+}
+
+// source names a submission's chat in the memory: dex:chat/<chat ID>, or dex:dream/<dream ID> for a
+// dream, whose entries cite the chats that it read.
+func source(p sqlc.ListPendingSubmissionsRow) string {
+	if id, ok := strings.CutPrefix(p.ChannelKey, DreamChannel); ok {
+		return "dex:dream/" + id
+	}
+	return fmt.Sprintf("dex:chat/%d", p.ConversationID)
 }
 
 func (s *Service) settle(ctx context.Context, event worker.Settled) {

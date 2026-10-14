@@ -27,6 +27,30 @@ func (q *Queries) CreateAgentIfMissing(ctx context.Context, arg CreateAgentIfMis
 	return err
 }
 
+const createDream = `-- name: CreateDream :exec
+INSERT INTO dreams (id, agent_id, through_settled_at, through_id, created_at)
+VALUES (?, ?, ?, ?, ?)
+`
+
+type CreateDreamParams struct {
+	ID               string `json:"id"`
+	AgentID          string `json:"agent_id"`
+	ThroughSettledAt int64  `json:"through_settled_at"`
+	ThroughID        string `json:"through_id"`
+	CreatedAt        int64  `json:"created_at"`
+}
+
+func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error {
+	_, err := q.db.ExecContext(ctx, createDream,
+		arg.ID,
+		arg.AgentID,
+		arg.ThroughSettledAt,
+		arg.ThroughID,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const createSubmission = `-- name: CreateSubmission :execrows
 INSERT INTO submissions (id, conversation_id, content, source_key, status, created_at)
 VALUES (?, ?, ?, ?, 'pending', ?)
@@ -72,6 +96,30 @@ DELETE FROM telegram_settings WHERE id = 1
 func (q *Queries) DeleteTelegramSettings(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, deleteTelegramSettings)
 	return err
+}
+
+const dreamBoundary = `-- name: DreamBoundary :one
+SELECT
+    d.through_settled_at,
+    d.through_id
+FROM dreams d
+JOIN submissions s ON s.id = d.id
+WHERE d.agent_id = ? AND s.status = 'done'
+ORDER BY d.created_at DESC, d.id DESC
+LIMIT 1
+`
+
+type DreamBoundaryRow struct {
+	ThroughSettledAt int64  `json:"through_settled_at"`
+	ThroughID        string `json:"through_id"`
+}
+
+// Where the newest done dream of an agent stopped reading.
+func (q *Queries) DreamBoundary(ctx context.Context, agentID string) (DreamBoundaryRow, error) {
+	row := q.db.QueryRowContext(ctx, dreamBoundary, agentID)
+	var i DreamBoundaryRow
+	err := row.Scan(&i.ThroughSettledAt, &i.ThroughID)
+	return i, err
 }
 
 const ensureConversation = `-- name: EnsureConversation :one
@@ -137,7 +185,7 @@ SELECT
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE c.id = ? AND c.agent_id = ?
+WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id
 `
 
@@ -273,6 +321,32 @@ func (q *Queries) GetTelegramSettings(ctx context.Context) (TelegramSetting, err
 	return i, err
 }
 
+const latestDream = `-- name: LatestDream :one
+SELECT
+    d.id,
+    d.created_at,
+    s.status
+FROM dreams d
+LEFT JOIN submissions s ON s.id = d.id
+WHERE d.agent_id = ?
+ORDER BY d.created_at DESC, d.id DESC
+LIMIT 1
+`
+
+type LatestDreamRow struct {
+	ID        string         `json:"id"`
+	CreatedAt int64          `json:"created_at"`
+	Status    sql.NullString `json:"status"`
+}
+
+// The newest dream of an agent. status is NULL when its message was never stored.
+func (q *Queries) LatestDream(ctx context.Context, agentID string) (LatestDreamRow, error) {
+	row := q.db.QueryRowContext(ctx, latestDream, agentID)
+	var i LatestDreamRow
+	err := row.Scan(&i.ID, &i.CreatedAt, &i.Status)
+	return i, err
+}
+
 const listChats = `-- name: ListChats :many
 SELECT
     c.id,
@@ -283,7 +357,7 @@ SELECT
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE c.agent_id = ?
+WHERE c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id
 ORDER BY updated_at DESC, c.id DESC
 `
@@ -313,6 +387,86 @@ func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Pending,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDreamInput = `-- name: ListDreamInput :many
+SELECT
+    s.id,
+    s.content,
+    s.status,
+    s.answer,
+    s.reason,
+    s.created_at,
+    CAST(s.settled_at AS INTEGER) AS settled_at,
+    c.id AS chat_id,
+    c.title
+FROM submissions s
+JOIN conversations c ON c.id = s.conversation_id
+WHERE
+    c.agent_id = ?1
+    AND c.channel_key NOT LIKE 'dream:%'
+    AND s.status != 'pending'
+    AND (s.settled_at > ?2 OR (s.settled_at = ?2 AND s.id > ?3))
+ORDER BY s.settled_at, s.id
+LIMIT ?4
+`
+
+type ListDreamInputParams struct {
+	AgentID        string        `json:"agent_id"`
+	AfterSettledAt sql.NullInt64 `json:"after_settled_at"`
+	AfterID        string        `json:"after_id"`
+	MaxRows        int64         `json:"max_rows"`
+}
+
+type ListDreamInputRow struct {
+	ID        string         `json:"id"`
+	Content   string         `json:"content"`
+	Status    string         `json:"status"`
+	Answer    sql.NullString `json:"answer"`
+	Reason    sql.NullString `json:"reason"`
+	CreatedAt int64          `json:"created_at"`
+	SettledAt int64          `json:"settled_at"`
+	ChatID    int64          `json:"chat_id"`
+	Title     string         `json:"title"`
+}
+
+// The settled messages of an agent's chats after a dream boundary, oldest first.
+func (q *Queries) ListDreamInput(ctx context.Context, arg ListDreamInputParams) ([]ListDreamInputRow, error) {
+	rows, err := q.db.QueryContext(ctx, listDreamInput,
+		arg.AgentID,
+		arg.AfterSettledAt,
+		arg.AfterID,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDreamInputRow{}
+	for rows.Next() {
+		var i ListDreamInputRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Content,
+			&i.Status,
+			&i.Answer,
+			&i.Reason,
+			&i.CreatedAt,
+			&i.SettledAt,
+			&i.ChatID,
+			&i.Title,
 		); err != nil {
 			return nil, err
 		}
@@ -376,7 +530,8 @@ SELECT
     s.id,
     s.content,
     s.conversation_id,
-    c.agent_id
+    c.agent_id,
+    c.channel_key
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending'
@@ -388,6 +543,7 @@ type ListPendingSubmissionsRow struct {
 	Content        string `json:"content"`
 	ConversationID int64  `json:"conversation_id"`
 	AgentID        string `json:"agent_id"`
+	ChannelKey     string `json:"channel_key"`
 }
 
 func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubmissionsRow, error) {
@@ -404,6 +560,7 @@ func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubm
 			&i.Content,
 			&i.ConversationID,
 			&i.AgentID,
+			&i.ChannelKey,
 		); err != nil {
 			return nil, err
 		}

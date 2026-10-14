@@ -51,7 +51,8 @@ SELECT
     s.id,
     s.content,
     s.conversation_id,
-    c.agent_id
+    c.agent_id,
+    c.channel_key
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending'
@@ -67,7 +68,7 @@ SELECT
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE c.agent_id = ?
+WHERE c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id
 ORDER BY updated_at DESC, c.id DESC;
 
@@ -82,7 +83,7 @@ SELECT
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE c.id = ? AND c.agent_id = ?
+WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id;
 
 -- name: ListOpenSubmissions :many
@@ -120,3 +121,52 @@ ON CONFLICT (id) DO UPDATE SET token = excluded.token, allowed_users = excluded.
 
 -- name: DeleteTelegramSettings :exec
 DELETE FROM telegram_settings WHERE id = 1;
+
+-- name: CreateDream :exec
+INSERT INTO dreams (id, agent_id, through_settled_at, through_id, created_at)
+VALUES (?, ?, ?, ?, ?);
+
+-- name: LatestDream :one
+-- The newest dream of an agent. status is NULL when its message was never stored.
+SELECT
+    d.id,
+    d.created_at,
+    s.status
+FROM dreams d
+LEFT JOIN submissions s ON s.id = d.id
+WHERE d.agent_id = ?
+ORDER BY d.created_at DESC, d.id DESC
+LIMIT 1;
+
+-- name: DreamBoundary :one
+-- Where the newest done dream of an agent stopped reading.
+SELECT
+    d.through_settled_at,
+    d.through_id
+FROM dreams d
+JOIN submissions s ON s.id = d.id
+WHERE d.agent_id = ? AND s.status = 'done'
+ORDER BY d.created_at DESC, d.id DESC
+LIMIT 1;
+
+-- name: ListDreamInput :many
+-- The settled messages of an agent's chats after a dream boundary, oldest first.
+SELECT
+    s.id,
+    s.content,
+    s.status,
+    s.answer,
+    s.reason,
+    s.created_at,
+    CAST(s.settled_at AS INTEGER) AS settled_at,
+    c.id AS chat_id,
+    c.title
+FROM submissions s
+JOIN conversations c ON c.id = s.conversation_id
+WHERE
+    c.agent_id = @agent_id
+    AND c.channel_key NOT LIKE 'dream:%'
+    AND s.status != 'pending'
+    AND (s.settled_at > @after_settled_at OR (s.settled_at = @after_settled_at AND s.id > @after_id))
+ORDER BY s.settled_at, s.id
+LIMIT @max_rows;

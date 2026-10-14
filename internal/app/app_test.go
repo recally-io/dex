@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -35,12 +36,15 @@ type dex struct {
 // API URL, or empty.
 func startDex(t *testing.T, dataDir, telegramURL string) *dex {
 	t.Helper()
-	a, err := app.Start(t.Context(), app.Config{
-		DataDir:        dataDir,
-		CacheDir:       t.TempDir(),
-		WorkerEnv:      []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "DEX_FAKE_MODEL=1"},
-		TelegramAPIURL: telegramURL,
-	})
+	return startDexWith(t, app.Config{DataDir: dataDir, TelegramAPIURL: telegramURL})
+}
+
+// startDexWith starts dex with cfg, a cache directory, and the test worker environment.
+func startDexWith(t *testing.T, cfg app.Config) *dex {
+	t.Helper()
+	cfg.CacheDir = t.TempDir()
+	cfg.WorkerEnv = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "DEX_FAKE_MODEL=1"}
+	a, err := app.Start(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,6 +302,133 @@ func TestUserGetsStreamedAnswerFromAgent(t *testing.T) {
 		got := d.chats(t)
 		return len(got) == 1 && got[0].Title == "hello" && got[0].Channel == "web" && !got[0].Busy, got
 	})
+}
+
+// answeredWith holds when the run is over and the last item is an answer that contains text.
+func answeredWith(text string) func(*transcript) bool {
+	return func(tr *transcript) bool {
+		n := len(tr.items)
+		return !tr.running && n > 0 && tr.items[n-1].Kind == "assistant" && strings.Contains(tr.items[n-1].Text, text)
+	}
+}
+
+func TestAgentRemembersAcrossChats(t *testing.T) {
+	// Given a new dex: the user's memory repo has the default MEMORY.md
+	dataDir := t.TempDir()
+	repo := filepath.Join(dataDir, "memory")
+	d := startDex(t, dataDir, "")
+	d.setModel(t, "memory")
+	recall := d.newChat(t, "what do you know?")
+	r := d.watch(t, recall)
+	r.until(t, "default memory", answeredWith("## Index"))
+
+	// When the agent saves an entry in another chat
+	d.setModel(t, "bash")
+	entry := "- The user drinks green tea [added: 2026-10-14]"
+	write := d.newChat(t, fmt.Sprintf("printf '%%s\\n' '%s' >> %s && echo saved", entry, filepath.Join(repo, "MEMORY.md")))
+	d.watch(t, write).until(t, "memory write", answered("bash: saved"))
+
+	// Then the first chat knows the entry from its next message, without a restart
+	d.setModel(t, "memory")
+	d.send(t, recall, "and now?")
+	r.until(t, "remembered entry", answeredWith(entry))
+
+	// And a new chat knows it too
+	d.watch(t, d.newChat(t, "hello")).until(t, "entry in new chat", answeredWith(entry))
+
+	// And the change is in the repo's history
+	eventually(t, "memory commit", func() (bool, any) {
+		log := gitLog(t, dataDir)
+		want := fmt.Sprintf("Update memory from dex:chat/%d", write)
+		return slices.ContainsFunc(log, func(c string) bool {
+			return strings.HasPrefix(c, want+"\n") && strings.Contains(c, "+"+entry)
+		}), log
+	})
+}
+
+// gitLog returns the commits of the memory repo in dataDir, oldest first, each as its subject and
+// its patch.
+func gitLog(t *testing.T, dataDir string) []string {
+	t.Helper()
+	out, err := exec.CommandContext(t.Context(), "git", "-C", filepath.Join(dataDir, "memory"), "log", "--reverse", "-p", "--format=%x00%s").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Split(strings.TrimPrefix(string(out), "\x00"), "\x00")
+}
+
+func TestMemoryChangeLeftUncommittedIsCommittedAfterRestart(t *testing.T) {
+	// Given a memory change that has no commit, as after a crash between an edit and its commit
+	dataDir := t.TempDir()
+	d := startDex(t, dataDir, "")
+	d.setModel(t, "echo")
+	d.watch(t, d.newChat(t, "hello")).until(t, "answer", answered("echo: hello"))
+	d.stop()
+	entry := "- Saved before the crash"
+	f, err := os.OpenFile(filepath.Join(dataDir, "memory", "MEMORY.md"), os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fmt.Fprintln(f, entry); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// When dex starts again and the agent opens the memory
+	d = startDex(t, dataDir, "")
+	d.watch(t, d.newChat(t, "again")).until(t, "answer", answered("echo: again"))
+
+	// Then the change is committed
+	log := gitLog(t, dataDir)
+	if !slices.ContainsFunc(log, func(c string) bool {
+		return strings.HasPrefix(c, "Recover uncommitted memory changes\n") && strings.Contains(c, "+"+entry)
+	}) {
+		t.Fatalf("no recovery commit: %q", log)
+	}
+}
+
+func TestDreamingReadsEachChatOnce(t *testing.T) {
+	// Given dex that dreams every 300 ms with faux/bash, which writes the chats of a dream to
+	// dreams.md in the memory
+	dataDir := t.TempDir()
+	d := startDexWith(t, app.Config{DataDir: dataDir, DreamEvery: 300 * time.Millisecond})
+	d.setModel(t, "bash")
+	dreams := func() []string {
+		var out []string
+		for _, c := range gitLog(t, dataDir) {
+			if strings.HasPrefix(c, "Update memory from dex:dream/") {
+				out = append(out, c)
+			}
+		}
+		return out
+	}
+
+	// When the user has a chat
+	first := d.newChat(t, "echo one")
+	d.watch(t, first).until(t, "first answer", answered("bash: one"))
+
+	// Then a dream reads it
+	eventually(t, "first dream", func() (bool, any) {
+		got := dreams()
+		return len(got) == 1 && strings.Contains(got[0], fmt.Sprintf("+### dex:chat/%d: echo one", first)), got
+	})
+
+	// When the user has another chat
+	second := d.newChat(t, "echo two")
+	d.watch(t, second).until(t, "second answer", answered("bash: two"))
+
+	// Then the next dream reads only the new chat
+	eventually(t, "second dream", func() (bool, any) {
+		got := dreams()
+		return len(got) == 2 && strings.Contains(got[1], fmt.Sprintf("+### dex:chat/%d: echo two", second)) &&
+			!strings.Contains(got[1], fmt.Sprintf("+### dex:chat/%d:", first)), got
+	})
+	// And the dreams are not chats of the user
+	if got := d.chats(t); len(got) != 2 {
+		t.Fatalf("chats = %+v", got)
+	}
 }
 
 // eventually polls cond until it holds, and fails with the last observed state after 30 s.

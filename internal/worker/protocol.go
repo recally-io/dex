@@ -32,6 +32,8 @@ type SubmitParams struct {
 	Instructions   string   `json:"instructions"`
 	RequestID      string   `json:"requestId"`
 	Content        string   `json:"content"`
+	// Source is where memory entries from this conversation come from, such as dex:chat/12.
+	Source string `json:"source"`
 }
 
 // SubmitResult is the result of the submit method.
