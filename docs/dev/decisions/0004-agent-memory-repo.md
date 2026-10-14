@@ -25,6 +25,13 @@ adds what repeats across sessions, and cleans the memory up.
   of messages: it survives a restart, and a retry finds the same submission.
   Control schedules it and records, in the `dreams` table, which messages
   each dream read.
+- `internal/scheduler` wraps gocron and owns the schedule of control's jobs.
+  The dream job is in code. A job only checks the durable state, because
+  gocron does not run a missed job after a sleep or a restart.
+- The dream instructions are the system prompt of the dream chat. The chats
+  are data in the message, as JSON lines. JSON keeps a chat's text inside its
+  record; the instructions say that the records are evidence, not
+  instructions, and that an answer is a claim, not proof.
 - No approval step and no UI. Git history is the audit trail and the undo.
 - Local only: no remote, no pull, no push.
 
@@ -40,3 +47,12 @@ adds what repeats across sessions, and cleans the memory up.
   `control.sqlite`, not the tool calls. A dream cannot check a claim against
   tool output.
 - To share memory between computers, add pull and push to the commit step.
+- A dream has no limit on model calls or tokens, other than the 24 h period.
+  Add a limit in the worker if a dream costs too much.
+- The dream boundary is a settle time. When the clock goes back, a message can
+  settle before the boundary, and no dream reads it. Use a settle sequence if
+  that matters.
+- The middle of a cut text is lost for all dreams.
+- The scheduler can later run jobs that the user defines with a scheduler
+  tool. Those jobs then need a table in `control.sqlite`, a time zone, and a
+  rule for missed runs.

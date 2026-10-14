@@ -49,13 +49,20 @@ share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
   without approval. It does not run git. When a submission settles, the
   worker commits all changes as `Update memory from <source>`. The source is
   `dex:chat/<chat ID>`, or `dex:dream/<dream ID>`.
-- **Dream.** [`dream.Dreamer`](../../internal/dream/dream.go) checks every hour.
-  When the agent has a model, no message is pending, the last dream is 24 h
-  old, and chats have new settled messages, it starts a dream: a hidden chat
-  (channel key `dream:<id>`) whose message holds those messages, oldest first,
-  up to 500 messages or 100,000 characters. The agent adds what repeats across
-  chats and cleans up the memory. The `dreams` table records the last message
-  that each dream read; the next dream starts after the newest done dream.
+- **Dream.** The [scheduler](../../internal/scheduler/scheduler.go), a
+  wrapper of gocron, runs [`dream.Dreamer`](../../internal/dream/dream.go)
+  at start and then every hour. The schedule only causes a check; the
+  `dreams` table decides. When the agent has a model, no message is pending,
+  the last dream started 24 h ago or more, and the oldest settled message that
+  no dream read is 24 h old or more, the check starts a dream. A dream is a
+  hidden chat (channel key `dream:<id>`). Its system prompt holds the dream
+  instructions and the privacy and language parts of the agent instructions.
+  Its message holds the new messages as JSON lines, in settle order, with
+  local times: up to 500 messages or 100,000 bytes. A text longer than 4,000
+  characters keeps its first 3,000 and last 1,000 characters and is marked as
+  cut. The agent adds what repeats across chats and cleans up the memory. The
+  `dreams` table records the last message that each dream read; the next dream
+  starts after the newest done dream.
 
 ## Settings
 
