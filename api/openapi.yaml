@@ -1,0 +1,573 @@
+openapi: 3.0.3
+info:
+  title: dex
+  version: 0.1.0
+  description: >
+    The HTTP API of dex control. The web UI is its only client. The API has no
+    authentication and listens on 127.0.0.1; it refuses cross-site writes.
+    Times are Unix milliseconds.
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      responses:
+        "200":
+          description: dex is running.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /api/chats:
+    get:
+      operationId: listChats
+      description: All chats of the default agent, newest activity first.
+      responses:
+        "200":
+          description: The chats.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatList" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createChat
+      description: >
+        Creates a web chat and sends its first message. The title is the start
+        of the message. Returns when the message is stored; the answer comes
+        through the chat's event stream.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessageInput" }
+      responses:
+        "202":
+          description: The chat exists and the message is stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreatedChat" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/chats/{chatId}:
+    parameters:
+      - $ref: "#/components/parameters/ChatId"
+    get:
+      operationId: getChat
+      responses:
+        "200":
+          description: The chat.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chat" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/chats/{chatId}/messages:
+    parameters:
+      - $ref: "#/components/parameters/ChatId"
+    post:
+      operationId: sendMessage
+      description: >
+        Stores a message in a web chat and returns. A message with an ID that
+        exists already is not stored again. The answer comes through the
+        event stream. 409 when the agent has no model; 403 for a Telegram chat.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessageInput" }
+      responses:
+        "202":
+          description: The message is stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SentMessage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/chats/{chatId}/abort:
+    parameters:
+      - $ref: "#/components/parameters/ChatId"
+    post:
+      operationId: abortChat
+      description: >
+        Stops the run of the chat and withdraws its queued messages. The
+        current tool call stops first.
+      responses:
+        "200":
+          description: The run is stopped, or no run was active.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/chats/{chatId}/events:
+    parameters:
+      - $ref: "#/components/parameters/ChatId"
+    get:
+      operationId: watchChat
+      description: >
+        Server-sent events. Each event has `event: <type>` and one `data:` line
+        with a ChatEvent as JSON. The first event is a snapshot; a later
+        snapshot replaces all state. A comment line comes every 15 s. The
+        server closes the stream when the worker restarts or when the client
+        is too slow; the client reconnects and gets a new snapshot.
+      responses:
+        "200":
+          description: The event stream.
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/ChatEvent" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/settings:
+    get:
+      operationId: getSettings
+      responses:
+        "200":
+          description: All settings, without secrets.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/models:
+    get:
+      operationId: listModels
+      description: The models of the providers that have credentials.
+      responses:
+        "200":
+          description: The models.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelList" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/settings/agent:
+    put:
+      operationId: setAgent
+      description: >
+        Changes the model and the instructions. Each chat uses them from its
+        next message. An empty modelId clears the model.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Agent" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/settings/providers/{providerId}:
+    parameters:
+      - name: providerId
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      operationId: setProvider
+      description: >
+        Adds or changes a provider. An empty apiKey keeps the saved key. When
+        the model list of a custom provider fails, the provider is saved and
+        the response has the reason in `error`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderInput" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Provider" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteProvider
+      responses:
+        "200":
+          description: Removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/settings/telegram:
+    put:
+      operationId: setTelegram
+      description: Saves the bot and restarts it. An empty token keeps the saved token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TelegramInput" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteTelegram
+      description: Turns Telegram off and forgets the token.
+      responses:
+        "200":
+          description: Removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        default: { $ref: "#/components/responses/Error" }
+
+components:
+  parameters:
+    ChatId:
+      name: chatId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+
+  responses:
+    Error:
+      description: The request failed.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, description: A message for the user. }
+
+    Ok:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok] }
+
+    Health:
+      type: object
+      required: [status, version, dataDir]
+      properties:
+        status: { type: string, enum: [ok] }
+        version: { type: string }
+        dataDir: { type: string }
+
+    Chat:
+      type: object
+      required: [id, channel, title, createdAt, updatedAt, busy]
+      properties:
+        id: { type: integer, format: int64 }
+        channel:
+          type: string
+          enum: [web, telegram]
+          description: Telegram chats are read-only in the web UI.
+        title: { type: string }
+        createdAt: { type: integer, format: int64 }
+        updatedAt:
+          type: integer
+          format: int64
+          description: Time of the last message.
+        busy:
+          type: boolean
+          description: True while a message of the chat has no answer yet.
+
+    ChatList:
+      type: object
+      required: [chats]
+      properties:
+        chats:
+          type: array
+          items: { $ref: "#/components/schemas/Chat" }
+
+    MessageInput:
+      type: object
+      required: [id, text]
+      properties:
+        id:
+          type: string
+          description: A new UUID from the client. A retried request uses the same ID.
+        text: { type: string, minLength: 1, maxLength: 32000 }
+
+    CreatedChat:
+      type: object
+      required: [chat, submissionId]
+      properties:
+        chat: { $ref: "#/components/schemas/Chat" }
+        submissionId: { type: string }
+
+    SentMessage:
+      type: object
+      required: [submissionId]
+      properties:
+        submissionId: { type: string }
+
+    # Transcript
+
+    Item:
+      oneOf:
+        - $ref: "#/components/schemas/UserItem"
+        - $ref: "#/components/schemas/ThinkingItem"
+        - $ref: "#/components/schemas/ToolItem"
+        - $ref: "#/components/schemas/AssistantItem"
+        - $ref: "#/components/schemas/ErrorItem"
+      discriminator:
+        propertyName: kind
+        mapping:
+          user: "#/components/schemas/UserItem"
+          thinking: "#/components/schemas/ThinkingItem"
+          tool: "#/components/schemas/ToolItem"
+          assistant: "#/components/schemas/AssistantItem"
+          error: "#/components/schemas/ErrorItem"
+
+    UserItem:
+      type: object
+      required: [kind, id, text]
+      properties:
+        kind: { type: string, enum: [user] }
+        id: { type: string }
+        text: { type: string }
+        at: { type: integer, format: int64 }
+        queued:
+          type: boolean
+          description: True while the message waits for the agent.
+
+    ThinkingItem:
+      type: object
+      required: [kind, id, text]
+      properties:
+        kind: { type: string, enum: [thinking] }
+        id: { type: string }
+        text:
+          type: string
+          description: Empty when the provider redacted it.
+
+    ToolItem:
+      type: object
+      required: [kind, id, name, args, output, status]
+      properties:
+        kind: { type: string, enum: [tool] }
+        id: { type: string, description: The tool call ID. }
+        name: { type: string }
+        args:
+          type: object
+          additionalProperties: true
+        output: { type: string }
+        status:
+          type: string
+          enum: [running, done, error]
+          description: A call that ended without a result is an error.
+        durationMs: { type: integer, format: int64 }
+
+    AssistantItem:
+      type: object
+      required: [kind, id, text]
+      properties:
+        kind: { type: string, enum: [assistant] }
+        id: { type: string }
+        text: { type: string, description: Markdown. }
+        model: { type: string, description: "<provider>/<model id>" }
+        usage: { $ref: "#/components/schemas/Usage" }
+
+    ErrorItem:
+      type: object
+      required: [kind, id, reason]
+      properties:
+        kind: { type: string, enum: [error] }
+        id: { type: string }
+        reason: { type: string }
+        aborted:
+          type: boolean
+          description: True when the user stopped the run.
+
+    Usage:
+      type: object
+      required: [input, output]
+      properties:
+        input: { type: integer }
+        output: { type: integer }
+
+    Retry:
+      type: object
+      required: [attempt, at, reason]
+      properties:
+        attempt: { type: integer }
+        at:
+          type: integer
+          format: int64
+          description: Time of the next attempt.
+        reason: { type: string }
+
+    # Events
+
+    ChatEvent:
+      oneOf:
+        - $ref: "#/components/schemas/SnapshotEvent"
+        - $ref: "#/components/schemas/ItemEvent"
+        - $ref: "#/components/schemas/AppendEvent"
+        - $ref: "#/components/schemas/RunEvent"
+      discriminator:
+        propertyName: type
+        mapping:
+          snapshot: "#/components/schemas/SnapshotEvent"
+          item: "#/components/schemas/ItemEvent"
+          append: "#/components/schemas/AppendEvent"
+          run: "#/components/schemas/RunEvent"
+
+    SnapshotEvent:
+      type: object
+      required: [type, items, running]
+      properties:
+        type: { type: string, enum: [snapshot] }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Item" }
+        running: { type: boolean }
+        retry: { $ref: "#/components/schemas/Retry" }
+
+    ItemEvent:
+      type: object
+      required: [type, item]
+      description: Adds the item, or replaces the item with the same ID.
+      properties:
+        type: { type: string, enum: [item] }
+        item: { $ref: "#/components/schemas/Item" }
+
+    AppendEvent:
+      type: object
+      required: [type, id, text]
+      description: Appends text to the text of the item with this ID.
+      properties:
+        type: { type: string, enum: [append] }
+        id: { type: string }
+        text: { type: string }
+
+    RunEvent:
+      type: object
+      required: [type, running]
+      properties:
+        type: { type: string, enum: [run] }
+        running: { type: boolean }
+        retry: { $ref: "#/components/schemas/Retry" }
+
+    # Settings
+
+    Settings:
+      type: object
+      required: [agent, providers, builtins, apis, telegram]
+      properties:
+        agent: { $ref: "#/components/schemas/Agent" }
+        providers:
+          type: array
+          description: The providers that the user added, in the order of addition.
+          items: { $ref: "#/components/schemas/Provider" }
+        builtins:
+          type: array
+          description: All pi-ai built-in providers that take an API key.
+          items: { $ref: "#/components/schemas/ProviderInfo" }
+        apis:
+          type: object
+          description: The APIs of custom providers, ID → name.
+          additionalProperties: { type: string }
+        telegram: { $ref: "#/components/schemas/Telegram" }
+
+    Agent:
+      type: object
+      required: [provider, modelId, instructions]
+      properties:
+        provider: { type: string }
+        modelId: { type: string, description: Empty when no model is chosen. }
+        instructions: { type: string }
+
+    Provider:
+      type: object
+      required: [id, name, api, baseUrl, keySet, models]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        api: { type: string, description: Empty for a built-in provider. }
+        baseUrl: { type: string }
+        keySet: { type: boolean }
+        models:
+          type: array
+          description: Fixed model IDs; empty means the endpoint lists them.
+          items: { type: string }
+        modelCount:
+          type: integer
+          description: The number of models that the worker has for it.
+        error:
+          type: string
+          description: Why the worker could not list its models.
+
+    ProviderInput:
+      type: object
+      required: [api]
+      properties:
+        api: { type: string }
+        name: { type: string }
+        baseUrl: { type: string }
+        apiKey:
+          type: string
+          description: Write-only. Empty keeps the saved key.
+        models:
+          type: array
+          items: { type: string }
+
+    ProviderInfo:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        source: { type: string }
+
+    ModelList:
+      type: object
+      required: [models]
+      properties:
+        models:
+          type: array
+          items: { $ref: "#/components/schemas/Model" }
+
+    Model:
+      type: object
+      required: [provider, id, name]
+      properties:
+        provider: { type: string }
+        id: { type: string }
+        name: { type: string }
+
+    Telegram:
+      type: object
+      required: [enabled, allowedUsers]
+      properties:
+        enabled: { type: boolean }
+        botId: { type: string }
+        allowedUsers:
+          type: array
+          items: { type: integer, format: int64 }
+
+    TelegramInput:
+      type: object
+      required: [token, allowedUsers]
+      properties:
+        token:
+          type: string
+          description: Write-only. Empty keeps the saved token.
+        allowedUsers:
+          type: array
+          items: { type: integer, format: int64 }

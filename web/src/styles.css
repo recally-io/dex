@@ -1,0 +1,295 @@
+@import "./styles/shadcn.css";
+
+/* Tokens from slev12397/beautiful-ui app/globals.css, retrieved 2026-10-14. */
+:root {
+  /* surfaces — cool, blue-tinted neutrals */
+  --page: oklch(0.985 0.001 286.376);
+  --canvas: oklch(0.961 0.002 247.84);
+  --surface: oklch(1 0 0);
+  --inset: oklch(0.979 0.002 247.839);
+  --hover: oklch(0.97 0.002 247.839);
+  --hover-2: oklch(0.933 0.003 247.86);
+
+  /* ink ramp */
+  --ink: oklch(0.247 0.006 258.361);
+  --ink-2: oklch(0.506 0.01 264.477);
+  --ink-3: oklch(0.695 0.009 264.505);
+
+  /* borders — solid and crisp, not alpha */
+  --line: oklch(0.946 0.003 264.542);
+  --line-strong: oklch(0.912 0.005 258.326);
+  --line-soft: oklch(0.966 0.002 264.542);
+  --grid-line: color-mix(in srgb, var(--line) 78%, transparent);
+  --field: oklch(0.961 0.001 286.375);
+  --stripe: oklch(0.405 0 0 / 0.075);
+  --stripe-bg: oklch(0.97 0 0);
+
+  /* accent */
+  --brand: oklch(0.626 0.205 254.947);
+  --brand-ink: oklch(0.556 0.187 255.617);
+  --brand-tint: oklch(0.96 0.019 252.878);
+
+  /* semantic */
+  --green: oklch(0.603 0.155 150.883);
+  --green-tint: oklch(0.958 0.017 159.118);
+  --orange: oklch(0.689 0.179 49.902);
+  --orange-tint: oklch(0.964 0.021 67.581);
+  --red: oklch(0.621 0.192 23.042);
+  --red-tint: oklch(0.956 0.017 17.462);
+
+  /* chart overlays — neutral system colors with enough contrast on either theme */
+  --tooltip-bg: oklch(0.272 0.008 264.435);
+  --tooltip-fg: oklch(0.976 0.002 247.839);
+  --tooltip-muted: oklch(0.731 0.008 260.731);
+  --tooltip-border: oklch(0.356 0.007 264.474);
+
+  /* shadows — our solid hairline ring + shadow-plugin's smooth layered stacks
+   * (--shadow-xs…lg come from shadow-plugin/unprefixed) so every surface reads
+   * consistently across the app. */
+  --shadow-hairline: 0 0 0 1px var(--line);
+  --shadow-btn: 0 0 0 1px var(--line-strong), var(--shadow-xs);
+  --shadow-card: 0 0 0 1px var(--line), var(--shadow-sm);
+  --shadow-raised: 0 0 0 1px var(--line), var(--shadow-md);
+  --shadow-overlay: 0 0 0 1px var(--line), var(--shadow-lg);
+  --shadow-inset-field: inset 0 1px 2px oklch(0 0 0 / 0.12);
+}
+.dark {
+  --page: oklch(0.209 0.004 264.477);
+  --canvas: oklch(0.231 0.004 264.487);
+  --surface: oklch(0.26 0.006 271.191);
+  --inset: oklch(0.243 0.004 264.492);
+  --hover: oklch(0.289 0.006 271.22);
+  --hover-2: oklch(0.318 0.007 274.747);
+
+  --ink: oklch(0.964 0.002 247.839);
+  --ink-2: oklch(0.731 0.008 260.731);
+  --ink-3: oklch(0.541 0.01 264.484);
+
+  --line: oklch(0.308 0.006 258.354);
+  --line-strong: oklch(0.356 0.007 264.474);
+  --line-soft: oklch(0.278 0.006 258.354);
+  --field: oklch(0.293 0.006 271.223);
+  --stripe: oklch(1 0 0 / 0.055);
+  --stripe-bg: oklch(0.226 0.004 264.485);
+
+  --brand: oklch(0.68 0.173 253.301);
+  --brand-ink: oklch(0.788 0.113 248.33);
+  --brand-tint: oklch(0.68 0.173 253.301 / 0.16);
+
+  --green: oklch(0.705 0.154 153.814);
+  --green-tint: oklch(0.705 0.154 153.814 / 0.14);
+  --orange: oklch(0.746 0.156 55.642);
+  --orange-tint: oklch(0.746 0.156 55.642 / 0.14);
+  --red: oklch(0.666 0.18 21.433);
+  --red-tint: oklch(0.666 0.18 21.433 / 0.14);
+
+  --tooltip-bg: oklch(0.182 0.004 264.459);
+  --tooltip-fg: oklch(0.964 0.002 247.839);
+  --tooltip-muted: oklch(0.731 0.008 260.731);
+  --tooltip-border: oklch(0.308 0.006 258.354);
+
+  --shadow-hairline: 0 0 0 1px var(--line);
+  /* Elevation rings go to a subtle *light* hairline in dark mode: the ring
+   * paints over the surface behind the element, so a low-alpha white edge
+   * dissolves into the shadow as one continuous stroke (per smooth-shadow-ring),
+   * graduated by how far the surface floats. */
+  --shadow-btn: 0 0 0 1px oklch(1 0 0 / 0.1), 0 1px 2px oklch(0 0 0 / 0.3);
+  --shadow-card: 0 0 0 1px oklch(1 0 0 / 0.11), 0 1px 2px oklch(0 0 0 / 0.2), 0 2px 6px oklch(0 0 0 / 0.2);
+  --shadow-raised: 0 0 0 1px oklch(1 0 0 / 0.13), 0 2px 10px oklch(0 0 0 / 0.22);
+  --shadow-overlay: 0 0 0 1px oklch(1 0 0 / 0.15), 0 8px 28px oklch(0 0 0 / 0.34);
+  --shadow-inset-field: inset 0 1px 2px oklch(0 0 0 / 0.4);
+}
+
+:root {
+  --background: var(--page);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: white;
+  --secondary: var(--hover);
+  --secondary-foreground: var(--ink);
+  --muted: var(--inset);
+  --muted-foreground: var(--ink-2);
+  --accent: var(--hover);
+  --accent-foreground: var(--ink);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--brand);
+  --destructive: var(--red);
+  --sidebar: var(--canvas);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: white;
+  --sidebar-accent: var(--hover);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--brand);
+  --chart-1: var(--brand);
+  --chart-2: var(--green);
+  --chart-3: var(--orange);
+  --chart-4: var(--ink-2);
+  --chart-5: var(--ink-3);
+  --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.03);
+  --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.03), 0 3px 8px oklch(0 0 0 / 0.025);
+  --shadow-md: 0 2px 8px oklch(0 0 0 / 0.04), 0 8px 24px oklch(0 0 0 / 0.04);
+  --shadow-lg: 0 4px 12px oklch(0 0 0 / 0.04), 0 12px 32px oklch(0 0 0 / 0.06);
+}
+@theme inline {
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  --color-page: var(--page);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-inset: var(--inset);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-hover: var(--hover);
+  --color-field: var(--field);
+  --color-brand: var(--brand);
+  --color-brand-tint: var(--brand-tint);
+  --color-green: var(--green);
+  --color-red: var(--red);
+  --color-orange: var(--orange);
+  --radius-chip: 6px;
+  --radius-control: 8px;
+  --radius-card: 10px;
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  font-size: 14px;
+}
+button,
+a,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+button:not(:disabled),
+summary {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+.surface {
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  border-radius: 12px;
+}
+.prose {
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.prose p,
+.prose ul,
+.prose ol,
+.prose pre,
+.prose table {
+  margin: 0 0 1em;
+}
+.prose h1,
+.prose h2,
+.prose h3 {
+  font-weight: 600;
+  margin: 1.2em 0 0.5em;
+}
+.prose h1 {
+  font-size: 1.5em;
+}
+.prose h2 {
+  font-size: 1.25em;
+}
+.prose ul {
+  list-style: disc;
+  padding-left: 1.5em;
+}
+.prose ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+}
+.prose a {
+  color: var(--brand);
+  text-decoration: underline;
+}
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--inset);
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.prose pre code {
+  padding: 0;
+  background: none;
+}
+.prose blockquote {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 1em;
+  color: var(--ink-2);
+}
+.prose table {
+  display: block;
+  overflow-x: auto;
+}
+.prose th,
+.prose td {
+  padding: 0.4em 0.8em;
+  border: 1px solid var(--line);
+}
+@keyframes shimmer-text {
+  to {
+    background-position: -200% 0;
+  }
+}
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+.busy-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+.stream-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  background: var(--brand);
+  vertical-align: -0.15em;
+}
+.stream-tail {
+  filter: blur(0.35px);
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* The registry code block uses this color name for syntax tokens. */
+.prose,
+details {
+  --accent-ink: var(--brand-ink);
+}
+.prose [class*="max-w-105"],
+details [class*="max-w-105"] {
+  max-width: none;
+}

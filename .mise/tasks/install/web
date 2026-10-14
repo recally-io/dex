@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Install web dependencies from bun.lock"
+#MISE dir="web"
+set -euo pipefail
+bun install --frozen-lockfile
+# Keep Go package discovery out of npm dependencies that contain Go examples.
+printf 'module dex-web-dependencies\n' > node_modules/go.mod

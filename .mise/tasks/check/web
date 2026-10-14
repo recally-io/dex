@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Check web types, lint, format, and reducer tests"
+#MISE dir="web"
+set -euo pipefail
+bunx --no-install tsc --noEmit
+vp lint
+vp fmt --check
+vp test run

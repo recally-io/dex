@@ -12,7 +12,7 @@ prek = "0.5.5"
 
 [tasks.install]
 description = "Install project dependencies from the lockfiles"
-depends = ["install:worker"]
+depends = ["install:worker", "install:web"]
 run = "go mod download"
 
 [tasks."install:worker"]
@@ -22,7 +22,7 @@ run = "bun install --frozen-lockfile"
 
 [tasks.format]
 description = "Format all files"
-run = ["dprint fmt", "golangci-lint fmt", "cd worker && vp fmt"]
+run = ["dprint fmt", "golangci-lint fmt", "cd worker && vp fmt", "cd web && vp fmt"]
 
 [tasks.check]
 description = "Check formatting, lint, types, tests, and builds"
@@ -32,14 +32,31 @@ run = [
   "mise run check:testpolicy",
   "mise run check:db-drift",
   "mise run check:worker",
+  "mise run check:web",
+  "mise run check:web-dist",
   "mise run check:go",
 ]
 
 [tasks.build]
 description = "Build bin/dex for this platform, with the worker embedded"
-depends = ["build:worker"]
+depends = ["build:worker", "build:web"]
 run = "go build -o bin/dex ./cmd/dex"
 
 [tasks."hooks:install"]
 description = "Install the prek-managed pre-commit hook"
 run = "prek install"
+
+[tasks."build:web"]
+description = "Build the embedded web UI"
+dir = "web"
+run = "vp build"
+
+[tasks."generate:api-web"]
+description = "Generate the web API client from OpenAPI"
+dir = "web"
+run = "bunx --no-install openapi-ts"
+
+[tasks."dev:web"]
+description = "Start the web UI with the local API proxy"
+dir = "web"
+run = "vp dev"

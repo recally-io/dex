@@ -89,10 +89,7 @@ func New(chats *chat.Service, cfg *settings.Service, agentID string) http.Handle
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(web.Index)
-	})
+	mux.Handle("/", web.Handler())
 	return http.NewCrossOriginProtection().Handler(mux)
 }
 
