@@ -3,6 +3,7 @@ package app_test
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -110,6 +111,12 @@ func TestUserAutomationReusesItsChatAndSkipsWhileBusy(t *testing.T) {
 		t.Fatalf("runs = %+v, %+v", first, second)
 	}
 	d.watch(t, first.ChatID).until(t, "first answer", answered("bash: checked"))
+	// The chat stays busy until the worker settles the submission, a moment after the answer.
+	eventually(t, "done first run", func() (bool, any) {
+		runs := d.runs(t, a.ID)
+		i := slices.IndexFunc(runs, func(r runInfo) bool { return r.ID == first.ID })
+		return i >= 0 && runs[i].Status == "done", runs
+	})
 
 	// When the user runs it again
 	third := d.runNow(t, a.ID)
