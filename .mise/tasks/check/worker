@@ -4,6 +4,6 @@
 set -euo pipefail
 
 tsc --noEmit -p .
-vp lint
-vp fmt --check
+bunx --no-install vp lint
+bunx --no-install vp fmt --check
 bun test

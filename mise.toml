@@ -22,7 +22,7 @@ run = "bun install --frozen-lockfile"
 
 [tasks.format]
 description = "Format all files"
-run = ["dprint fmt", "golangci-lint fmt", "cd worker && vp fmt", "cd web && vp fmt"]
+run = ["dprint fmt", "golangci-lint fmt", "cd worker && bunx --no-install vp fmt", "cd web && bunx --no-install vp fmt"]
 
 # .github/workflows/check.yml runs these steps in parallel jobs; keep both lists equal.
 [tasks.check]
@@ -51,7 +51,7 @@ run = "prek install"
 [tasks."build:web"]
 description = "Build the embedded web UI"
 dir = "web"
-run = "vp build"
+run = "bunx --no-install vp build"
 
 [tasks."generate:api-web"]
 description = "Generate the web API client from OpenAPI"
@@ -61,4 +61,4 @@ run = "bunx --no-install openapi-ts"
 [tasks."dev:web"]
 description = "Start the web UI with the local API proxy"
 dir = "web"
-run = "vp dev"
+run = "bunx --no-install vp dev"

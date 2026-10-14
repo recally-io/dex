@@ -3,6 +3,6 @@
 #MISE dir="web"
 set -euo pipefail
 bunx --no-install tsc --noEmit
-vp lint
-vp fmt --check
-vp test run
+bunx --no-install vp lint
+bunx --no-install vp fmt --check
+bunx --no-install vp test run

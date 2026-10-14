@@ -4,5 +4,5 @@
 set -euo pipefail
 build_dir=$(mktemp -d)
 trap 'rm -rf "$build_dir"' EXIT
-vp build --outDir "$build_dir" --emptyOutDir
+bunx --no-install vp build --outDir "$build_dir" --emptyOutDir
 diff -r dist "$build_dir"
