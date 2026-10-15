@@ -1,7 +1,16 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { defineExtension, defineTool, type Extension, section } from "@earendil-works/pi-durable";
-import { McpClient, StdioTransport, StreamableHttpTransport, toLlmContent } from "@earendil-works/pi-mcp";
+import {
+	McpAuthRequiredError,
+	McpClient,
+	McpError,
+	McpHttpError,
+	McpTimeoutError,
+	StdioTransport,
+	StreamableHttpTransport,
+	toLlmContent,
+} from "@earendil-works/pi-mcp";
 import Type, { type Static } from "typebox";
 import { Value } from "typebox/value";
 import type { Extensions, McpServerInfo, Scope, SkillInfo } from "./protocol.ts";
@@ -101,7 +110,17 @@ export class AgentExtensions {
 			),
 		);
 		const clients = servers.flatMap((s) => (s?.client === undefined ? [] : [s.client]));
-		const tools = servers.flatMap((s) => s?.tools ?? []);
+		// Server "a" with tool "b__c" and server "a__b" with tool "c" have the same tool name. The
+		// first server in name order keeps it.
+		const names = new Set<string>();
+		const tools = servers.flatMap((s) => {
+			const kept = (s?.tools ?? []).filter((tool) => !names.has(tool.name));
+			const lost = (s?.tools ?? []).filter((tool) => !kept.includes(tool));
+			if (s !== undefined && lost.length > 0)
+				s.info.error = `tools with a name that another server uses: ${lost.map((tool) => tool.name).join(", ")}`;
+			for (const tool of kept) names.add(tool.name);
+			return kept;
+		});
 		const info = this.#info(
 			scan,
 			scan.servers.map((entry, i) => servers[i]?.info ?? serverInfo(entry, "disabled")),
@@ -161,21 +180,22 @@ export class AgentExtensions {
 
 	async #connect(entry: ServerEntry) {
 		const { name, server } = entry;
-		if (!("url" in server) && !("command" in server))
-			throw new Error("a server without a command or URL is off");
-		const transport =
-			server.type === "http"
-				? new StreamableHttpTransport({ url: server.url, headers: server.headers ?? {} })
-				: new StdioTransport({
-						command: server.command,
-						args: server.args ?? [],
-						// The worker environment has no credentials; a server gets its own in `env`.
-						env: server.env ?? {},
-						cwd: resolve(this.#workspace, server.cwd ?? "."),
-						stderr: "pipe",
-					});
 		const client = new McpClient({ name: "dex", version: "1", requestTimeoutMs: CONNECT_TIMEOUT_MS });
+		let transport: StdioTransport | StreamableHttpTransport | undefined;
 		try {
+			if (!("url" in server) && !("command" in server))
+				throw new Error("a server without a command or URL is off");
+			transport =
+				server.type === "http"
+					? new StreamableHttpTransport({ url: server.url, headers: server.headers ?? {} })
+					: new StdioTransport({
+							command: server.command,
+							args: server.args ?? [],
+							// The worker environment has no credentials; a server gets its own in `env`.
+							env: server.env ?? {},
+							cwd: resolve(this.#workspace, server.cwd ?? "."),
+							stderr: "pipe",
+						});
 			await client.connect(transport);
 			const listed = await client.listTools();
 			const skipped: string[] = [];
@@ -219,9 +239,12 @@ export class AgentExtensions {
 			return { client, tools, info };
 		} catch (error) {
 			await client.close().catch(() => undefined);
-			const stderr = transport instanceof StdioTransport ? transport.stderr.trim().slice(-500) : "";
+			// The details stay in the log of this computer. The API gets only the category, because a
+			// raw error or the server's stderr can hold the command, URL, headers or environment.
+			const stderr = transport instanceof StdioTransport ? transport.stderr.trim().slice(-2000) : "";
+			console.error(`MCP server ${name}: ${errorText(error)}${stderr === "" ? "" : `\n${stderr}`}`);
 			const info = serverInfo(entry, "failed");
-			info.error = stderr === "" ? errorText(error) : `${errorText(error)}\n${stderr}`;
+			info.error = `${failure(error)}; see the dex log for details`;
 			return { client: undefined, tools: [], info };
 		}
 	}
@@ -292,7 +315,13 @@ async function readSkills(dir: string, scope: Scope, errors: string[]): Promise<
 function parseSkill(text: string, dirName: string): string {
 	const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
 	if (match === null) throw new Error("SKILL.md must start with YAML front matter between --- lines");
-	const meta: unknown = Bun.YAML.parse(match[1] ?? "");
+	let meta: unknown;
+	try {
+		meta = Bun.YAML.parse(match[1] ?? "");
+	} catch {
+		// The parser's message can quote the text.
+		throw new Error("the front matter is not valid YAML");
+	}
 	// 1024 is the Agent Skills limit; the prompt lists every description.
 	if (!Value.Check(SkillMeta, meta))
 		throw new Error("the front matter needs a description of 1 to 1024 characters, and a name that is text");
@@ -314,8 +343,9 @@ async function readMcp(path: string, errors: string[]): Promise<Record<string, S
 	let data: unknown;
 	try {
 		data = JSON.parse(text);
-	} catch (error) {
-		errors.push(`${path}: ${errorText(error)}`);
+	} catch {
+		// The parser's message can quote the text, which can hold a credential.
+		errors.push(`${path}: the file is not valid JSON`);
 		return undefined;
 	}
 	if (!Value.Check(McpFile, data)) {
@@ -342,6 +372,18 @@ function skillsText(skills: readonly SkillInfo[]): string | undefined {
 		"",
 		...usable.map((skill) => `- ${skill.name}: ${skill.description} (${skill.path})`),
 	].join("\n");
+}
+
+/** A failure of a server connection, as a category without values from the configuration. */
+function failure(error: unknown): string {
+	if (error instanceof McpAuthRequiredError)
+		return "the server requires authorization, and dex does not support OAuth";
+	if (error instanceof McpHttpError) return `the server answered with HTTP status ${error.status}`;
+	if (error instanceof McpTimeoutError) return `the server did not answer in ${CONNECT_TIMEOUT_MS / 1000} s`;
+	if (error instanceof McpError) return "the server refused the connection";
+	if (errorCode(error) === "ENOENT") return "the command does not exist";
+	if (error instanceof TypeError && /url/i.test(error.message)) return "the URL is not valid";
+	return "the connection failed";
 }
 
 function errorCode(error: unknown): unknown {

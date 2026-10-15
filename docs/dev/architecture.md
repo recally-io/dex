@@ -107,7 +107,9 @@ worker also installs `tool_search`.
 `GET /api/extensions` shows the loaded catalog. Before the agent opens, it
 shows what the files declare, with the servers `idle`; it never starts a
 server. `POST /api/extensions/reload` loads the files again and closes the old
-servers after the new catalog is installed.
+servers after the new catalog is installed. It is refused while the worker has
+a request or a run in progress, and the worker holds new requests until the
+reload ends, so no call starts on a server that the reload closes.
 
 ## Automations
 
@@ -339,7 +341,9 @@ file does not run in the dex origin.
 An MCP server from an mcp.json file runs as the user, without a sandbox, and
 gets the worker environment plus its own `env`. mcp.json holds headers and
 environment values as plain text; the API returns no command, URL, header or
-environment value.
+environment value. A server that fails shows only a category of the error,
+such as an HTTP status. The full error and the server's stderr go to the
+worker log.
 
 Every chat reads the memory, including Telegram chats of each allowed user.
 A memory entry can carry a prompt injection from a web page or a file to

@@ -37,14 +37,17 @@ only source of settings. Extension files are an exception to it.
 - MCP tools keep pi-durable's default replay policy, `unsafe`. After a
   restart, an interrupted call gets an error result; dex does not send it
   again, because the call can have changed data on the server.
-- Reload is explicit. It is refused while the agent has unfinished work, and
-  when a file is not valid; the agent then keeps its loaded extensions.
+- Reload is explicit. It is refused while the agent has unfinished work or
+  the worker has a request in progress, and when a file is not valid; the
+  agent then keeps its loaded extensions. During a reload, the worker holds
+  new requests.
 
 ## Consequences
 
 - An edit to a file applies after a reload or a restart.
 - mcp.json holds headers and environment values as plain text. The API does
-  not return commands, URLs, headers or environment values.
+  not return commands, URLs, headers, environment values or raw errors; the
+  details of a failure go to the worker log.
 - An MCP server runs as the user, without a sandbox. A user who can chat with
   the agent can make it write an mcp.json file, because the agent tools have
   no sandbox either.

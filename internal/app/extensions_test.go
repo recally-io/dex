@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/mcptest"
@@ -59,6 +60,19 @@ func (d *dex) extensions(t *testing.T) extensions {
 	var out extensions
 	d.must(t, http.MethodGet, "/api/extensions", nil, &out)
 	return out
+}
+
+// reload reloads the extensions. It tries again while the worker is busy, because a run can hold
+// the worker for a moment after its answer.
+func (d *dex) reload(t *testing.T) (int, string) {
+	t.Helper()
+	var status int
+	var body string
+	eventually(t, "reload", func() (bool, any) {
+		status, body = d.call(t, http.MethodPost, "/api/extensions/reload", nil)
+		return status != http.StatusConflict, body
+	})
+	return status, body
 }
 
 func writeFile(t *testing.T, path, text string) {
@@ -252,14 +266,9 @@ func TestUserReloadsExtensionsWhenTheAgentIsIdle(t *testing.T) {
 	moreDir := t.TempDir()
 	writeMCP(t, agentMCP, map[string]any{"files": stdioServer(t, filesDir), "more": stdioServer(t, moreDir)})
 	var got extensions
-	eventually(t, "reload", func() (bool, any) {
-		// The chat list can show the run as over before the worker drops its last task.
-		status, body := d.call(t, http.MethodPost, "/api/extensions/reload", nil)
-		if status == http.StatusOK {
-			return json.Unmarshal([]byte(body), &got) == nil, body
-		}
-		return false, body
-	})
+	if status, body := d.reload(t); status != http.StatusOK || json.Unmarshal([]byte(body), &got) != nil {
+		t.Fatalf("reload: %d %s", status, body)
+	}
 
 	// Then the new skill and server are there, and the next run uses the server
 	if len(got.Skills) != 1 || got.Skills[0].Name != "plan" || got.server("more").State != "connected" {
@@ -270,7 +279,7 @@ func TestUserReloadsExtensionsWhenTheAgentIsIdle(t *testing.T) {
 
 	// When mcp.json is not valid and the user reloads
 	writeFile(t, agentMCP, `{"mcpServers": {"files": {"args": []}}}`)
-	status, body = d.call(t, http.MethodPost, "/api/extensions/reload", nil)
+	status, body = d.reload(t)
 
 	// Then dex refuses with the file, and the agent keeps its servers
 	if status != http.StatusBadRequest || !strings.Contains(body, agentMCP) {
@@ -305,5 +314,160 @@ func TestInterruptedMCPCallIsNotRepeatedAfterRestart(t *testing.T) {
 	w.until(t, "answer", answeredWith("tool error: "))
 	if notes := readNotes(t, filesDir); notes != "started crash\n" {
 		t.Fatalf("notes = %q", notes)
+	}
+}
+
+func TestMessageDuringReloadWaitsForTheNewServer(t *testing.T) {
+	// Given an agent whose files server has answered
+	dataDir, home, oldDir, newDir := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	agentMCP := filepath.Join(dataDir, "agents", app.DefaultAgentID, "mcp.json")
+	writeMCP(t, agentMCP, map[string]any{"files": stdioServer(t, oldDir)})
+	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
+	d.setModel(t, "tool")
+	chatID := d.newChat(t, `mcp__files__append {"text":"one"}`)
+	w := d.watch(t, chatID)
+	w.until(t, "answer", answered("tool: appended 1"))
+	d.send(t, chatID, `mcp__files__read {}`)
+	w.until(t, "read answer", answered("tool: one"))
+
+	// When files moves to a server that starts only after a file exists, and the user reloads
+	slow := stdioServer(t, newDir)
+	slow["args"] = []string{"-c", `touch "$DEX_TEST_MCP_DIR/waiting"
+while [ ! -f "$DEX_TEST_MCP_DIR/start" ]; do sleep 0.05; done
+exec "$0"`, slow["command"].(string)}
+	slow["command"] = "/bin/sh"
+	slow["env"].(map[string]string)["PATH"] = "/bin:/usr/bin"
+	writeMCP(t, agentMCP, map[string]any{"files": slow})
+	reloaded := make(chan int, 1)
+	go func() {
+		for {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/extensions/reload", nil)
+			if err != nil {
+				reloaded <- 0
+				return
+			}
+			resp, err := d.srv.Client().Do(req)
+			if err != nil {
+				reloaded <- 0
+				return
+			}
+			resp.Body.Close()
+			// The run can still hold the worker for a moment after its answer.
+			if resp.StatusCode != http.StatusConflict {
+				reloaded <- resp.StatusCode
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}()
+	eventually(t, "slow server start", func() (bool, any) {
+		_, err := os.Stat(filepath.Join(newDir, "waiting"))
+		return err == nil, err
+	})
+
+	// And the user sends a message before the new server answers
+	d.send(t, chatID, `mcp__files__append {"text":"two"}`)
+	// Without the hold, the run calls the old server in this time.
+	time.Sleep(time.Second)
+	writeFile(t, filepath.Join(newDir, "start"), "")
+
+	// Then the reload ends, and the message reaches the new server and not the old one
+	if status := <-reloaded; status != http.StatusOK {
+		t.Fatalf("reload: %d", status)
+	}
+	w.until(t, "new server answer", answered("tool: appended 1"))
+	if readNotes(t, oldDir) != "one\n" || readNotes(t, newDir) != "two\n" {
+		t.Fatalf("notes: old %q, new %q", readNotes(t, oldDir), readNotes(t, newDir))
+	}
+}
+
+func TestExtensionsDoNotShowSecretsOfTheFiles(t *testing.T) {
+	// Given servers that fail with secrets in their URL, headers, arguments, environment and output,
+	// and a skill with a secret in front matter that is not valid
+	dataDir, home, filesDir := t.TempDir(), t.TempDir(), t.TempDir()
+	denied := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "SECRET-BODY", http.StatusInternalServerError)
+	}))
+	t.Cleanup(denied.Close)
+	writeMCP(t, filepath.Join(home, ".agents", "mcp.json"), map[string]any{
+		"files":  stdioServer(t, filesDir),
+		"badurl": map[string]any{"type": "http", "url": "SECRET-URL"},
+		"denied": map[string]any{
+			"type": "http", "url": denied.URL + "/mcp?token=SECRET-QUERY",
+			"headers": map[string]string{"Authorization": "Bearer SECRET-HEADER"},
+		},
+		"crash": map[string]any{
+			"command": "/bin/sh", "args": []string{"-c", `echo "$TOKEN $0" >&2; exit 1`, "SECRET-ARG"},
+			"env": map[string]string{"TOKEN": "SECRET-ENV"},
+		},
+	})
+	writeSkill(t, filepath.Join(home, ".agents", "skills"), "leaky", "description: [SECRET-YAML")
+	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
+	d.setModel(t, "tool")
+
+	// When the agent starts, and the user opens and reloads the extensions
+	w := d.watch(t, d.newChat(t, `mcp__files__append {"text":"one"}`))
+	w.until(t, "answer", answered("tool: appended 1"))
+	_, opened := d.call(t, http.MethodGet, "/api/extensions", nil)
+	status, reloaded := d.reload(t)
+
+	// Then each failure has a category, and no response has a secret
+	got := d.extensions(t)
+	for name, want := range map[string]string{
+		"badurl": "the URL is not valid",
+		"denied": "HTTP status 500",
+		"crash":  "the connection failed",
+	} {
+		if s := got.server(name); s.State != "failed" || !strings.Contains(s.Error, want) {
+			t.Errorf("%s = %+v, want an error with %q", name, s, want)
+		}
+	}
+	if got.server("files").State != "connected" || len(got.Skills) != 1 || got.Skills[0].Error == "" {
+		t.Fatalf("extensions = %+v", got)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("reload: %d %s", status, reloaded)
+	}
+	for _, body := range []string{opened, reloaded} {
+		if strings.Contains(body, "SECRET") {
+			t.Fatalf("a response has a secret: %s", body)
+		}
+	}
+
+	// When the agent mcp.json is not valid JSON and the user reloads
+	agentMCP := filepath.Join(dataDir, "agents", app.DefaultAgentID, "mcp.json")
+	writeFile(t, agentMCP, `{"mcpServers": {"x": SECRET-JSON}}`)
+	status, body := d.reload(t)
+
+	// Then dex refuses without the text of the file
+	if status != http.StatusBadRequest || !strings.Contains(body, agentMCP) || strings.Contains(body, "SECRET") {
+		t.Fatalf("reload: %d %s", status, body)
+	}
+}
+
+func TestFirstServerKeepsAToolNameThatTwoServersHave(t *testing.T) {
+	// Given server "a" with tool "b__append", and server "a__b" with tool "append": both are
+	// mcp__a__b__append
+	dataDir, home, aDir, abDir := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	a := stdioServer(t, aDir)
+	a["env"].(map[string]string)["DEX_TEST_MCP_PREFIX"] = "b__"
+	writeMCP(t, filepath.Join(home, ".agents", "mcp.json"), map[string]any{"a": a, "a__b": stdioServer(t, abDir)})
+	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
+	d.setModel(t, "tool")
+
+	// When the agent calls the tool
+	w := d.watch(t, d.newChat(t, `mcp__a__b__append {"text":"one"}`))
+
+	// Then server "a" gets the call, and server "a__b" shows the tools that it lost
+	w.until(t, "answer", answered("tool: appended 1"))
+	if readNotes(t, aDir) != "one\n" || readNotes(t, abDir) != "" {
+		t.Fatalf("notes: a %q, a__b %q", readNotes(t, aDir), readNotes(t, abDir))
+	}
+	got := d.extensions(t)
+	if s := got.server("a__b"); s.State != "connected" || !strings.Contains(s.Error, "mcp__a__b__append") {
+		t.Fatalf("a__b = %+v", s)
+	}
+	if s := got.server("a"); s.Error != "" {
+		t.Fatalf("a = %+v", s)
 	}
 }

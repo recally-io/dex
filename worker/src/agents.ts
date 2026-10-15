@@ -71,10 +71,13 @@ export class Agents {
 	#checking = false;
 	#operations = 0;
 	#gateUntil = 0;
+	// A reload holds every new request until it ends, so no call starts on a client that it closes.
+	#reloading: Promise<unknown> | undefined;
 	readonly #gateWaiters = new Set<() => void>();
 
 	async quiesce(params: QuiesceParams): Promise<QuiesceResult> {
 		if (this.#checking) return { busy: true, reason: "maintenance check is pending" };
+		if (this.#reloading !== undefined) return { busy: true, reason: "an extension reload is pending" };
 		// Close admission before the first await. Existing operations remain counted.
 		this.#gateUntil = params.expiresAt;
 		this.#checking = true;
@@ -106,8 +109,13 @@ export class Agents {
 	}
 
 	async #admit<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-		while (this.#gateUntil > Date.now()) {
+		while (this.#gateUntil > Date.now() || this.#reloading !== undefined) {
 			signal?.throwIfAborted();
+			if (this.#reloading !== undefined) {
+				// oxlint-disable-next-line no-await-in-loop
+				await this.#reloading;
+				continue;
+			}
 			const expiresAt = this.#gateUntil;
 			// Each wake must recheck a lease that another updater can renew.
 			// oxlint-disable-next-line no-await-in-loop
@@ -281,14 +289,31 @@ export class Agents {
 	}
 
 	/** Reads the extension files again and reconnects the MCP servers, only when the agent is idle. */
-	reloadExtensions(params: AgentParams): Promise<ReloadResult> {
-		return this.#admit(() => this.#serial(`reload/${params.agentId}`, () => this.#reload(params.agentId)));
+	async reloadExtensions(params: AgentParams): Promise<ReloadResult> {
+		// A request in progress could use the catalog that the reload closes.
+		if (
+			this.#checking ||
+			this.#reloading !== undefined ||
+			this.#gateUntil > Date.now() ||
+			this.#operations > 0
+		)
+			return { status: "busy", reason: "the agent has unfinished work or requests; reload when it is done" };
+		const reload = this.#reload(params.agentId);
+		this.#reloading = reload.catch(() => undefined);
+		try {
+			return await reload;
+		} finally {
+			this.#reloading = undefined;
+		}
 	}
 
 	async #reload(agentId: string): Promise<ReloadResult> {
+		const opened = this.#agents.has(agentId);
 		const harness = await this.#harness(agentId);
 		const state = this.#agents.get(agentId);
 		if (state === undefined) throw new Error(`agent ${agentId} is not open`);
+		// The open has just read the files.
+		if (!opened) return reloadResult(state.loaded);
 		// A run that changes its tools between two turns could call a tool of the new server with the
 		// arguments that it planned for the old one.
 		const { tasks, submissions } = await harness.inspect(context);
@@ -297,13 +322,18 @@ export class Agents {
 		const next = await state.files.load();
 		if (next.info.errors.length > 0) {
 			await next.close();
-			return { status: "invalid", reason: next.info.errors.join("\n") };
+			return reloadResult(next);
 		}
 		const previous = state.loaded;
-		install(state.registry, next);
+		try {
+			install(state.registry, next);
+		} catch (error) {
+			await next.close();
+			throw error;
+		}
 		state.loaded = next;
 		await previous.close();
-		return { status: "loaded", extensions: next.info };
+		return reloadResult(next);
 	}
 
 	#files(agentId: string): AgentExtensions {
@@ -390,10 +420,10 @@ export class Agents {
 		// A run that resumes after a restart needs its MCP tools, so they load before resume().
 		const files = this.#files(agentId);
 		const loaded = await files.load();
-		install(registry, loaded);
 		for (const error of loaded.info.errors) console.error(`agent ${agentId} extensions:`, error);
 		let harness: Harness;
 		try {
+			install(registry, loaded);
 			harness = await Harness.open(
 				await openNodeSqliteStorage(join(dir, "state.sqlite")),
 				{
@@ -419,6 +449,13 @@ function install(registry: Registry, loaded: Loaded): void {
 	registry.install(loaded.extension);
 	if (loaded.hasTools) registry.install(ToolSearch);
 	else registry.uninstall(ToolSearch);
+}
+
+function reloadResult(loaded: Loaded): ReloadResult {
+	const { errors } = loaded.info;
+	return errors.length > 0
+		? { status: "invalid", reason: errors.join("\n") }
+		: { status: "loaded", extensions: loaded.info };
 }
 
 function answerText(message: Message | undefined): string {

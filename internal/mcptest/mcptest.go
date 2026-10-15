@@ -23,7 +23,9 @@ type object = map[string]any
 
 // Server serves tools that operate on files in Dir.
 type Server struct {
-	Dir      string
+	Dir string
+	// Prefix starts each tool name, so that two servers can have tools with the same full name.
+	Prefix   string
 	mu       sync.Mutex
 	sessions map[string]*session
 }
@@ -150,7 +152,7 @@ func (s *Server) dispatch(ctx context.Context, p *session, req request) object {
 		default:
 			return rpcError(req.ID, -32602, "invalid cursor")
 		}
-		tools := toolList()
+		tools := toolList(s.Prefix)
 		end := min(offset+2, len(tools))
 		page := object{"tools": tools[offset:end]}
 		if end < len(tools) {
@@ -165,6 +167,11 @@ func (s *Server) dispatch(ctx context.Context, p *session, req request) object {
 		if err := json.Unmarshal(req.Params, &params); err != nil {
 			return rpcError(req.ID, -32602, err.Error())
 		}
+		name, ok := strings.CutPrefix(params.Name, s.Prefix)
+		if !ok {
+			return rpcError(req.ID, -32602, "unknown tool")
+		}
+		params.Name = name
 		switch params.Name {
 		case "append", "read", "fail", "slow_echo", "wait":
 		default:
@@ -195,7 +202,7 @@ func cursor(offset int) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("tools:%d", offset)))
 }
 
-func toolList() []object {
+func toolList(prefix string) []object {
 	tools := make([]object, 0, 5)
 	for _, name := range []string{"append", "read", "fail", "slow_echo", "wait"} {
 		schema := object{"type": "object", "properties": object{}}
@@ -207,7 +214,7 @@ func toolList() []object {
 			schema["properties"] = object{key: object{"type": "string"}}
 			schema["required"] = []string{key}
 		}
-		tools = append(tools, object{"name": name, "inputSchema": schema})
+		tools = append(tools, object{"name": prefix + name, "inputSchema": schema})
 	}
 	return tools
 }
