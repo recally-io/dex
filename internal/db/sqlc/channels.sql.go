@@ -10,15 +10,6 @@ import (
 	"database/sql"
 )
 
-const advanceChannelCommandReply = `-- name: AdvanceChannelCommandReply :exec
-UPDATE channel_commands SET delivered_parts = delivered_parts + 1 WHERE source_key = ?
-`
-
-func (q *Queries) AdvanceChannelCommandReply(ctx context.Context, sourceKey string) error {
-	_, err := q.db.ExecContext(ctx, advanceChannelCommandReply, sourceKey)
-	return err
-}
-
 const advanceChannelReply = `-- name: AdvanceChannelReply :exec
 UPDATE submissions SET delivered_parts = delivered_parts + 1 WHERE id = ?
 `
@@ -54,7 +45,7 @@ func (q *Queries) CountChannelPending(ctx context.Context, peer string) (int64, 
 	return count, err
 }
 
-const createChannelCommand = `-- name: CreateChannelCommand :execrows
+const createChannelCommand = `-- name: CreateChannelCommand :exec
 INSERT INTO channel_commands (source_key, peer, channel_key, command) VALUES (?, ?, ?, ?)
 ON CONFLICT DO NOTHING
 `
@@ -66,17 +57,14 @@ type CreateChannelCommandParams struct {
 	Command    string `json:"command"`
 }
 
-func (q *Queries) CreateChannelCommand(ctx context.Context, arg CreateChannelCommandParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, createChannelCommand,
+func (q *Queries) CreateChannelCommand(ctx context.Context, arg CreateChannelCommandParams) error {
+	_, err := q.db.ExecContext(ctx, createChannelCommand,
 		arg.SourceKey,
 		arg.Peer,
 		arg.ChannelKey,
 		arg.Command,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+	return err
 }
 
 const ensureChannelPeer = `-- name: EnsureChannelPeer :one
@@ -97,7 +85,7 @@ func (q *Queries) EnsureChannelPeer(ctx context.Context, arg EnsureChannelPeerPa
 }
 
 const getChannelCommand = `-- name: GetChannelCommand :one
-SELECT source_key, peer, channel_key, command, answer, completed, delivered_parts, delivered_at FROM channel_commands WHERE source_key = ?
+SELECT source_key, peer, channel_key, command, answer, completed, delivered_at FROM channel_commands WHERE source_key = ?
 `
 
 func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (ChannelCommand, error) {
@@ -110,21 +98,9 @@ func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (Chan
 		&i.Command,
 		&i.Answer,
 		&i.Completed,
-		&i.DeliveredParts,
 		&i.DeliveredAt,
 	)
 	return i, err
-}
-
-const getChannelPeer = `-- name: GetChannelPeer :one
-SELECT channel_key FROM channel_peers WHERE peer = ?
-`
-
-func (q *Queries) GetChannelPeer(ctx context.Context, peer string) (string, error) {
-	row := q.db.QueryRowContext(ctx, getChannelPeer, peer)
-	var channel_key string
-	err := row.Scan(&channel_key)
-	return channel_key, err
 }
 
 const getSubmissionBySource = `-- name: GetSubmissionBySource :one
@@ -139,7 +115,7 @@ func (q *Queries) GetSubmissionBySource(ctx context.Context, sourceKey sql.NullS
 }
 
 const listChannelCommandReplies = `-- name: ListChannelCommandReplies :many
-SELECT source_key, peer, channel_key, command, answer, completed, delivered_parts, delivered_at FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
+SELECT source_key, peer, channel_key, command, answer, completed, delivered_at FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
 AND peer LIKE ?1 || '%' ORDER BY rowid
 `
 
@@ -159,7 +135,6 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, prefix sql.Null
 			&i.Command,
 			&i.Answer,
 			&i.Completed,
-			&i.DeliveredParts,
 			&i.DeliveredAt,
 		); err != nil {
 			return nil, err
@@ -176,7 +151,7 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, prefix sql.Null
 }
 
 const listChannelCommands = `-- name: ListChannelCommands :many
-SELECT source_key, peer, channel_key, command, answer, completed, delivered_parts, delivered_at FROM channel_commands WHERE completed = 0
+SELECT source_key, peer, channel_key, command, answer, completed, delivered_at FROM channel_commands WHERE completed = 0
 `
 
 func (q *Queries) ListChannelCommands(ctx context.Context) ([]ChannelCommand, error) {
@@ -195,7 +170,6 @@ func (q *Queries) ListChannelCommands(ctx context.Context) ([]ChannelCommand, er
 			&i.Command,
 			&i.Answer,
 			&i.Completed,
-			&i.DeliveredParts,
 			&i.DeliveredAt,
 		); err != nil {
 			return nil, err
@@ -299,9 +273,9 @@ func (q *Queries) SetChannelPeer(ctx context.Context, arg SetChannelPeerParams) 
 	return err
 }
 
-const stopChatSubmissions = `-- name: StopChatSubmissions :many
+const stopChatSubmissions = `-- name: StopChatSubmissions :execrows
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = ?1
-WHERE conversation_id = ?2 AND status = 'pending' RETURNING id
+WHERE conversation_id = ?2 AND status = 'pending'
 `
 
 type StopChatSubmissionsParams struct {
@@ -309,25 +283,10 @@ type StopChatSubmissionsParams struct {
 	ConversationID int64         `json:"conversation_id"`
 }
 
-func (q *Queries) StopChatSubmissions(ctx context.Context, arg StopChatSubmissionsParams) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, stopChatSubmissions, arg.SettledAt, arg.ConversationID)
+func (q *Queries) StopChatSubmissions(ctx context.Context, arg StopChatSubmissionsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, stopChatSubmissions, arg.SettledAt, arg.ConversationID)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	return result.RowsAffected()
 }
