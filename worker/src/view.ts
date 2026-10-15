@@ -7,14 +7,25 @@
 // items from it with one function, and diffs the new items against the old ones.
 import type { AgentEvent, EntryRecord, SnapshotEvent } from "@earendil-works/pi-durable";
 import type { AssistantMessage, Message, ToolResultMessage } from "@earendil-works/pi-ai";
+import type { Attachment } from "./protocol.ts";
 
-/** The kind of the entry that a dex user message is placed as. Its data holds control's ID. */
+/**
+ * The kind of the entry that a dex user message is placed as. Its data holds control's ID and the
+ * attachments.
+ */
 export const USER_ENTRY = "dex.user";
+
+/** The text of a user message for the model: the user's text, then the paths of the attachments. */
+export function messageText(text: string, attachments: readonly Attachment[]): string {
+	if (attachments.length === 0) return text;
+	const list = `Attached files:\n${attachments.map((a) => `- ${a.path}`).join("\n")}`;
+	return text === "" ? list : `${text}\n\n${list}`;
+}
 
 export type Retry = { readonly attempt: number; readonly at: number; readonly reason: string };
 
 export type Item =
-	| { kind: "user"; id: string; text: string; at?: number }
+	| { kind: "user"; id: string; text: string; at?: number; attachments?: Attachment[] }
 	| { kind: "thinking"; id: string; text: string }
 	| {
 			kind: "tool";
@@ -221,7 +232,7 @@ export function render(state: State): Item[] {
 		const message = entry.model?.[0];
 		if (message === undefined) return;
 		if (message.role === "user" && (entry.kind === USER_ENTRY || entry.kind === "pi.user")) {
-			items.push({ kind: "user", id: userID(entry), text: userText(message), at: message.timestamp });
+			items.push(userItem(entry, message));
 		} else if (message.role === "assistant") {
 			// The tools of the newest assistant message of a run in progress can still run.
 			const live = state.running && state.partial === undefined && index === lastAssistant;
@@ -235,13 +246,23 @@ export function render(state: State): Item[] {
 	return items;
 }
 
-function userID(entry: EntryRecord): string {
-	const data = entry.data;
-	if (entry.kind === USER_ENTRY && typeof data === "object" && data !== null && !Array.isArray(data)) {
-		const id = (data as Record<string, unknown>)["requestId"];
-		if (typeof id === "string") return id;
-	}
-	return `e${entry.id}`;
+/** The user item shows the user's text and the attachments, not the paths that the model got. */
+function userItem(entry: EntryRecord, message: Extract<Message, { role: "user" }>): Item {
+	const text = userText(message);
+	const data = entry.kind === USER_ENTRY ? userData(entry.data) : undefined;
+	const item: Item = { kind: "user", id: data?.requestId ?? `e${entry.id}`, text, at: message.timestamp };
+	const attachments = data?.attachments ?? [];
+	if (attachments.length === 0) return item;
+	const list = messageText("", attachments);
+	return { ...item, text: text.endsWith(list) ? text.slice(0, -list.length).trimEnd() : text, attachments };
+}
+
+type UserData = { requestId?: string; attachments?: Attachment[] };
+
+// The worker wrote this data in submit(); entries from before attachments have only requestId.
+function userData(data: unknown): UserData | undefined {
+	if (typeof data !== "object" || data === null || Array.isArray(data)) return undefined;
+	return data;
 }
 
 function userText(message: Extract<Message, { role: "user" }>): string {

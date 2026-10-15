@@ -52,17 +52,27 @@ function search(list: Group[], query: string): Group[] {
   });
 }
 
+/** The model of one chat. null follows the agent's model; save reports its own success. */
+export type ModelOverride = {
+  value: { provider: string; modelId: string } | null;
+  defaultName: string;
+  save: (model: Model | null) => Promise<void>;
+};
+
 // An anchored, non-modal model list. A click on a model saves it at once; the list stays open
-// with the error when the save fails.
-export function ModelPicker({ trigger }: { trigger: ReactElement }) {
+// with the error when the save fails. Without override, the list sets the agent's model.
+export function ModelPicker({ trigger, override }: { trigger: ReactElement; override?: ModelOverride }) {
   const { notify } = useApp();
   const [open, setOpen] = useState(false);
 
   const save = useMutation({
-    mutationFn: (model: Model) => saveModel(model.provider, model.id),
+    mutationFn: (model: Model | null) =>
+      override ? override.save(model) : model ? saveModel(model.provider, model.id) : Promise.resolve(),
     onSuccess: (_, model) => {
       setOpen(false);
-      notify(`The agent model is now ${model.name}. It applies from the next message.`);
+
+      if (!override && model)
+        notify(`The agent model is now ${model.name}. It applies from the next message.`);
     },
   });
 
@@ -81,12 +91,13 @@ export function ModelPicker({ trigger }: { trigger: ReactElement }) {
       <Popover.Portal>
         <Popover.Positioner align="start" sideOffset={6} collisionPadding={8} className="z-40">
           <Popover.Popup
-            aria-label="Agent model"
+            aria-label={override ? "Chat model" : "Agent model"}
             // The search takes focus when it mounts, also after the models load.
             initialFocus={false}
             className="flex max-h-[min(420px,var(--available-height))] w-[352px] max-w-[calc(100vw-1rem)] origin-(--transform-origin) animate-[pop-in_180ms_var(--ease-out-strong)_both] flex-col overflow-hidden rounded-[12px] bg-surface shadow-raised outline-none"
           >
             <ModelList
+              override={override}
               pending={save.isPending ? save.variables : undefined}
               error={save.isError ? save.error : undefined}
               onPick={(model, current) => {
@@ -103,14 +114,17 @@ export function ModelPicker({ trigger }: { trigger: ReactElement }) {
 }
 
 function ModelList({
+  override,
   pending,
   error,
   onPick,
   onLeave,
 }: {
-  pending?: Model;
+  override?: ModelOverride;
+  // undefined: no save runs; null: the save of "Use default" runs.
+  pending?: Model | null;
   error?: unknown;
-  onPick: (model: Model, current: boolean) => void;
+  onPick: (model: Model | null, current: boolean) => void;
   onLeave: () => void;
 }) {
   const settings = useQuery(getSettingsOptions());
@@ -118,9 +132,11 @@ function ModelList({
   const { draft } = useApp();
   const [query, setQuery] = useState("");
   const agent = settings.data?.agent;
-  const current = agent?.modelId ? `${agent.provider}/${agent.modelId}` : "";
+  const chosen = override ? override.value : agent?.modelId ? agent : null;
+  const current = chosen ? `${chosen.provider}/${chosen.modelId}` : "";
   const all = models.data?.models ?? [];
-  const dirty = draft !== null && draft !== agent?.instructions;
+  const dirty = !override && draft !== null && draft !== agent?.instructions;
+  const busy = pending !== undefined;
 
   if (settings.isPending || models.isPending)
     return (
@@ -171,6 +187,20 @@ function ModelList({
         />
       </div>
       <Command.List className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
+        {override && !query.trim() ? (
+          <Command.Item
+            value="default"
+            data-checked={!current}
+            disabled={busy}
+            onSelect={() => onPick(null, !current)}
+            className="mb-1 flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-hover"
+          >
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink">
+              Use default ({override.defaultName})
+            </span>
+            <Mark checked={!current} saving={pending === null} />
+          </Command.Item>
+        ) : null}
         {!shown.length ? (
           <p role="status" className="px-3 py-6 text-center text-[12.5px] text-ink-3">
             No models match “{query.trim()}”.
@@ -206,7 +236,7 @@ function ModelList({
                       key={value}
                       value={value}
                       data-checked={checked}
-                      disabled={!!pending}
+                      disabled={busy}
                       onSelect={() => onPick(m, checked)}
                       className="flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-hover"
                     >
@@ -216,28 +246,7 @@ function ModelList({
                       <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink-3" title={m.id}>
                         {m.id}
                       </span>
-                      {checked ? <span className="sr-only">(current)</span> : null}
-                      {saving ? (
-                        <>
-                          <Spinner />
-                          <span className="sr-only">Saving</span>
-                        </>
-                      ) : (
-                        <svg
-                          width="13"
-                          height="13"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden
-                          className={`shrink-0 text-ink ${checked ? "" : "invisible"}`}
-                        >
-                          <path d="M20 6L9 17l-5-5" />
-                        </svg>
-                      )}
+                      <Mark checked={checked} saving={saving} />
                     </Command.Item>
                   );
                 })
@@ -257,5 +266,34 @@ function ModelList({
         </div>
       ) : null}
     </Command>
+  );
+}
+
+export function Mark({ checked, saving }: { checked: boolean; saving: boolean }) {
+  return (
+    <>
+      {checked ? <span className="sr-only">(current)</span> : null}
+      {saving ? (
+        <>
+          <Spinner />
+          <span className="sr-only">Saving</span>
+        </>
+      ) : (
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          className={`shrink-0 text-ink ${checked ? "" : "invisible"}`}
+        >
+          <path d="M20 6L9 17l-5-5" />
+        </svg>
+      )}
+    </>
   );
 }

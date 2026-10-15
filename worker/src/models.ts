@@ -1,5 +1,6 @@
 import {
 	createProvider,
+	getSupportedThinkingLevels,
 	InMemoryCredentialStore,
 	type Model,
 	type MutableModels,
@@ -25,8 +26,9 @@ import type { ConfigureResult, ModelInfo, ProviderInfo, ProviderSettings } from 
  * variables. With `DEX_FAKE_MODEL=1`, `faux/echo` and `faux/shout` answer "<model ID>: <last user
  * text>", and `faux/bash` runs the last user text with the bash tool and answers "bash: <output>".
  * In a dream, `faux/bash` appends the dream's JSON records to dreams.md in the memory repo.
- * `faux/memory` answers "memory: <the memory section of its system prompt>". Tests use them so they
- * need no provider credentials.
+ * `faux/memory` answers "memory: <the memory section of its system prompt>". `faux/think` is a
+ * reasoning model; it answers "think <thinking level that pi-ai sent>: <last user text>". Tests use
+ * them so they need no provider credentials.
  */
 export class Catalog {
 	readonly models: MutableModels;
@@ -38,14 +40,23 @@ export class Catalog {
 		if (env["DEX_FAKE_MODEL"] === "1") {
 			const faux = fauxProvider({
 				provider: "faux",
-				models: [{ id: "echo" }, { id: "shout" }, { id: "bash" }, { id: "memory" }],
+				models: [
+					{ id: "echo" },
+					{ id: "shout" },
+					{ id: "bash" },
+					{ id: "memory" },
+					{ id: "think", reasoning: true },
+				],
 				// Streams the answer in small parts, as a real provider does.
 				tokensPerSecond: 200,
 			});
 			// Each call consumes one scripted response, so the factory queues the next one.
-			const reply: FauxResponseFactory = (transcript, _options, _state, model) => {
+			const reply: FauxResponseFactory = (transcript, options, _state, model) => {
 				faux.appendResponses([reply]);
 				if (model.id === "memory") return fauxAssistantMessage(`memory: ${memorySection(transcript)}`);
+				if (model.id === "think") {
+					return fauxAssistantMessage(`think ${options?.reasoning ?? "off"}: ${lastUserText(transcript)}`);
+				}
 				if (model.id !== "bash") return fauxAssistantMessage(`${model.id}: ${lastUserText(transcript)}`);
 				// A tool that changes a memory file adds a system message after its result.
 				const last = transcript.messages.findLast((message) => message.role !== "system");
@@ -108,7 +119,14 @@ export class Catalog {
 	/** The chat models of the providers that have credentials. */
 	async available(): Promise<ModelInfo[]> {
 		const models = await this.models.getAvailable();
-		return models.map((m) => ({ provider: m.provider, id: m.id, name: m.name }));
+		return models.map((m) => ({
+			provider: m.provider,
+			id: m.id,
+			name: m.name,
+			reasoning: m.reasoning,
+			input: m.input,
+			thinkingLevels: getSupportedThinkingLevels(m),
+		}));
 	}
 }
 

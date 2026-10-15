@@ -13,9 +13,10 @@ type ModelRef struct {
 
 // CreateConversationParams are the params of the createConversation method.
 type CreateConversationParams struct {
-	AgentID      string   `json:"agentId"`
-	Model        ModelRef `json:"model"`
-	Instructions string   `json:"instructions,omitempty"`
+	AgentID       string   `json:"agentId"`
+	Model         ModelRef `json:"model"`
+	ThinkingLevel string   `json:"thinkingLevel"`
+	Instructions  string   `json:"instructions,omitempty"`
 }
 
 // CreateConversationResult is the result of the createConversation method.
@@ -23,17 +24,31 @@ type CreateConversationResult struct {
 	ConversationID int64 `json:"conversationId"`
 }
 
-// SubmitParams are the params of the submit method. Model and Instructions are the agent's current
-// settings; the worker applies them to the conversation when they changed.
+// SubmitParams are the params of the submit method. Model, ThinkingLevel and Instructions are the
+// chat's current settings; the worker applies them to the conversation when they changed.
 type SubmitParams struct {
 	AgentID        string   `json:"agentId"`
 	ConversationID int64    `json:"conversationId"`
 	Model          ModelRef `json:"model"`
-	Instructions   string   `json:"instructions"`
-	RequestID      string   `json:"requestId"`
-	Content        string   `json:"content"`
+	// ThinkingLevel is a pi-ai ModelThinkingLevel, such as "off" or "high".
+	ThinkingLevel string `json:"thinkingLevel"`
+	Instructions  string `json:"instructions"`
+	RequestID     string `json:"requestId"`
+	// Content is the user's text. The worker adds the paths of the attachments for the model.
+	Content     string       `json:"content"`
+	Attachments []Attachment `json:"attachments"`
 	// Source is where memory entries from this conversation come from, such as dex:chat/12.
 	Source string `json:"source"`
+}
+
+// Attachment is a file that the user attached to a message. Path is relative to the agent
+// workspace: uploads/<ID>/<Name>.
+type Attachment struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	MimeType string `json:"mimeType"`
+	Path     string `json:"path"`
 }
 
 // SubmitResult is the result of the submit method.
@@ -114,11 +129,15 @@ type ListProvidersResult struct {
 	Providers []ProviderInfo `json:"providers"`
 }
 
-// ModelInfo is one model in the result of the listModels method.
+// ModelInfo is one model in the result of the listModels method. Reasoning and Input are pi-ai's
+// model fields; ThinkingLevels is pi-ai's getSupportedThinkingLevels of the model.
 type ModelInfo struct {
-	Provider string `json:"provider"`
-	ID       string `json:"id"`
-	Name     string `json:"name"`
+	Provider       string   `json:"provider"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Reasoning      bool     `json:"reasoning"`
+	Input          []string `json:"input"`
+	ThinkingLevels []string `json:"thinkingLevels"`
 }
 
 // ListModelsResult is the result of the listModels method: the models of the providers that have

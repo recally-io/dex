@@ -3,9 +3,10 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Settings } from "../api/generated/types.gen";
 import { getHealthOptions, getSettingsOptions } from "../api/generated/@tanstack/react-query.gen";
-import { saveAgent, useAgentModel } from "../lib/agent";
+import { saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { ModelPicker } from "../components/model-picker";
+import { ThinkingPicker } from "../components/thinking-picker";
 import { Failure, Loading, Spinner } from "../components/feedback";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { Textarea } from "../components/form";
@@ -42,7 +43,7 @@ export function AgentPage() {
   return (
     <FramedPage
       title="Agent"
-      description="dex has one agent. Every chat, channel and automation uses this model and these instructions."
+      description="dex has one agent. Every chat, channel and automation uses these settings. A web chat can choose its own model and thinking level."
       badge={
         model && !model.ok ? (
           <StatusPill tone="orange" className="h-5 px-2 text-[11.5px]">
@@ -84,7 +85,11 @@ function Agent({ settings }: { settings: Settings }) {
 
   return (
     <>
-      <Section n={1} title="Model" caption="A change applies from the next message.">
+      <Section
+        n={1}
+        title="Model"
+        caption="The default of every chat. A change applies from the next message."
+      >
         <Panel>
           <div className="flex flex-wrap items-center gap-3 px-4 py-3.5">
             <div className="min-w-0 flex-1">
@@ -120,6 +125,54 @@ function Agent({ settings }: { settings: Settings }) {
                 </Button>
               }
             />
+          </div>
+          <div className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-3.5">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[14px] font-medium text-ink">
+                Thinking: {thinkingNames[settings.agent.thinkingLevel]}
+              </p>
+              <p className="mt-0.5 text-[12.5px] text-ink-3">
+                {!model?.model
+                  ? "Choose an available model to set the thinking level."
+                  : model.model.reasoning
+                    ? "The provider uses the nearest level that the model supports."
+                    : `${model.model.name} does not support thinking.`}
+              </p>
+            </div>
+            {model?.model?.reasoning ? (
+              <ThinkingPicker
+                value={settings.agent.thinkingLevel}
+                levels={model.model.thinkingLevels}
+                save={async (level) => {
+                  if (!level) return;
+                  await saveAgent((agent) => ({ ...agent, thinkingLevel: level }));
+                  notify(`Thinking is now ${thinkingNames[level]}. It applies from the next message.`);
+                }}
+                trigger={
+                  <Button variant="secondary" size="sm">
+                    Change thinking
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                      className="text-ink-3"
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </Button>
+                }
+              />
+            ) : (
+              <Button variant="secondary" size="sm" disabled>
+                Change thinking
+              </Button>
+            )}
           </div>
           {!model?.ok && settings.agent.modelId ? (
             <div className="border-t border-line px-4 py-3">

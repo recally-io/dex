@@ -37,6 +37,7 @@ process. See [ADR 0001](decisions/0001-embedded-bun-worker.md).
 | Agents, chats, submissions, settings | control             | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/)) |
 | Transcripts, runs, tool calls, usage | worker (pi-durable) | `<data dir>/agents/<id>/state.sqlite`                                     |
 | Agent files                          | the agent's tools   | `<data dir>/agents/<id>/workspace/`                                       |
+| Uploaded files                       | control             | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`             |
 | Memory (git repo)                    | the agent's tools   | `<data dir>/memory/`                                                      |
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). pi-durable allows one
@@ -91,11 +92,23 @@ The web UI edits all settings; see [ADR 0002](decisions/0002-settings-in-control
 [`settings.Service`](../../internal/settings/settings.go) validates a change,
 saves it in `control.sqlite`, and then applies it:
 
-| Setting                       | Table               | Applied by                                                         |
-| ----------------------------- | ------------------- | ------------------------------------------------------------------ |
-| Agent model, instructions     | `agents`            | the next `submit` of each chat; the worker calls `configure` on it |
-| Providers                     | `providers`         | `configure` to the worker, and again after each worker start       |
-| Telegram token, allowed users | `telegram_settings` | a restart of the bot                                               |
+| Setting                                   | Table               | Applied by                                                         |
+| ----------------------------------------- | ------------------- | ------------------------------------------------------------------ |
+| Agent model, thinking level, instructions | `agents`            | the next `submit` of each chat; the worker calls `configure` on it |
+| Chat model, chat thinking level           | `conversations`     | the next `submit` of that chat                                     |
+| Providers                                 | `providers`         | `configure` to the worker, and again after each worker start       |
+| Telegram token, allowed users             | `telegram_settings` | a restart of the bot                                               |
+
+The agent's model and thinking level are the defaults. A web chat can
+override the model, the thinking level, or both (`PUT
+/api/chats/{id}/settings`, or `settings` in `POST /api/chats`). An empty value
+follows the agent, so a later change of the agent applies to that chat.
+`chat.Service` resolves the values at each `submit`. Telegram chats cannot
+change their settings (403). An automation chat can; an automation that
+reuses its chat then runs with the chat's settings. The thinking levels and
+the `reasoning` and `input` of a model come from pi-ai
+(`getSupportedThinkingLevels`); pi-ai sends the nearest level that the model
+supports, and `off` to a model without reasoning.
 
 The user adds any number of providers, and then chooses one model from all of
 their models. A provider is one of:
@@ -123,21 +136,22 @@ writes one JSON response or event per line to its stdout. Logs go to stderr.
 The types are in [`worker/src/protocol.ts`](../../worker/src/protocol.ts) and
 [`internal/worker/protocol.go`](../../internal/worker/protocol.go).
 
-| Method               | Params                                                                                 | Result                    |
-| -------------------- | -------------------------------------------------------------------------------------- | ------------------------- |
-| `ping`               | none                                                                                   | `{}`                      |
-| `createConversation` | `agentId`, `model`, `instructions`                                                     | `conversationId`          |
-| `submit`             | `agentId`, `conversationId`, `model`, `instructions`, `requestId`, `content`, `source` | `submissionId`            |
-| `configure`          | `providers`: `id`, `name`, `api`, `baseUrl`, `apiKey`, `models`                        | `errors` per provider     |
-| `listProviders`      | none                                                                                   | built-in `providers`      |
-| `listModels`         | none                                                                                   | `models` with credentials |
-| `watch`              | `watchId`, `agentId`, `conversationId`                                                 | `{}` after the snapshot   |
-| `unwatch`            | `watchId`                                                                              | `{}`                      |
-| `abort`              | `agentId`, `conversationId`                                                            | `{}`                      |
+| Method               | Params                                                                                                                 | Result                    |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `ping`               | none                                                                                                                   | `{}`                      |
+| `createConversation` | `agentId`, `model`, `thinkingLevel`, `instructions`                                                                    | `conversationId`          |
+| `submit`             | `agentId`, `conversationId`, `model`, `thinkingLevel`, `instructions`, `requestId`, `content`, `attachments`, `source` | `submissionId`            |
+| `configure`          | `providers`: `id`, `name`, `api`, `baseUrl`, `apiKey`, `models`                                                        | `errors` per provider     |
+| `listProviders`      | none                                                                                                                   | built-in `providers`      |
+| `listModels`         | none                                                                                                                   | `models` with credentials |
+| `watch`              | `watchId`, `agentId`, `conversationId`                                                                                 | `{}` after the snapshot   |
+| `unwatch`            | `watchId`                                                                                                              | `{}`                      |
+| `abort`              | `agentId`, `conversationId`                                                                                            | `{}`                      |
 
-The worker runs the submits of one conversation in order. When `model` or
-`instructions` differ from the conversation's, it changes the conversation
-first; a run in progress keeps its settings until its next turn.
+The worker runs the submits of one conversation in order. When `model`,
+`thinkingLevel` or `instructions` differ from the conversation's, it changes
+the conversation first; a run in progress keeps its settings until its next
+turn.
 
 Event `settled`: `requestId`, `status` (`done` or `unanswered`), `answer` or
 `reason`. The worker sends it when a submission has its final answer.
@@ -155,8 +169,9 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
 
 1. The browser sends `POST /api/chats` (new chat) or
    `POST /api/chats/{id}/messages` with a UUID that it makes.
-   [`chat.Service.Post`](../../internal/chat/chat.go) refuses the message when
-   the agent has no model. Otherwise it finds or creates the conversation for
+   [`chat.Service.Send`](../../internal/chat/chat.go) refuses the message when
+   neither the chat nor the agent has a model. Otherwise it finds or creates
+   the conversation for
    the channel key (`web:<first message ID>`), stores the message as a
    `pending` submission with that UUID as its ID, and returns `202`. A
    retried request with the same UUID stores nothing.
@@ -170,7 +185,22 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
 5. The worker sends `settled`. Control marks the submission `done` or
    `unanswered`, and a Telegram chat gets the answer.
 
-## Live transcript
+## Attachments
+
+1. The browser sends each file as `POST /api/uploads` (multipart, one file,
+   at most 20 MB). [`upload.Store`](../../internal/upload/upload.go) writes
+   it to `workspace/uploads/<UUIDv7>/<name>` and returns its ID, name, size,
+   type (from the content) and workspace path. The directory is the only
+   record of an upload.
+2. A message carries at most 10 upload IDs. Control checks each ID and stores
+   the attachments as JSON with the submission, so a replay sends the same
+   list.
+3. The worker gives the model the text and then `Attached files:` with one
+   workspace path per line. The model reads a file with the read tool, which
+   also prepares images for a model with image input. The `dex.user` entry
+   keeps the attachments, so the transcript shows the files and the text
+   without the list.
+4. `GET /api/uploads/{id}` serves a file for the transcript.
 
 The contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas `Item`
 and `ChatEvent`. See [ADR 0003](decisions/0003-web-ui-stack-and-live-transcript.md).
@@ -260,6 +290,14 @@ cannot send messages or change settings.
 data directory is created with mode 0700. The API never returns a key or a
 token.
 
+Uploads: a file name with a path, a control character, or more than 255
+bytes is refused. An upload ID must be a UUID in its normal form, so it
+cannot leave the uploads directory. `GET /api/uploads/{id}` sends PNG, JPEG,
+GIF and WebP inline with their type, and every other file as
+`application/octet-stream` with `Content-Disposition: attachment`. All
+responses have `X-Content-Type-Options: nosniff`, so an uploaded HTML or SVG
+file does not run in the dex origin.
+
 Every chat reads the memory, including Telegram chats of each allowed user.
 A memory entry can carry a prompt injection from a web page or a file to
 later chats; the rules tell the agent that memory is data, not instructions,
@@ -277,6 +315,10 @@ directory in the cache directory, and it does not load `.env` or `bunfig.toml`.
   the memory at the same time can land in one commit, under the source of
   the chat that settles first.
 - The chat list polls every 3 s; it has no event stream.
+- dex does not delete uploads. A file that the user removes before sending,
+  or that a message never uses, stays in `workspace/uploads/`. The files are
+  in the agent workspace, so the agent's tools can change or delete them; the
+  transcript then shows the changed file, or a broken link.
 
 ## Simplification review
 

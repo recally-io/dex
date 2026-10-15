@@ -5,8 +5,12 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
+	"mime"
 	"net/http"
+	"slices"
 	"strings"
 	"unicode/utf8"
 	"uuid"
@@ -16,6 +20,7 @@ import (
 	"github.com/vaayne/dex/internal/chat"
 	"github.com/vaayne/dex/internal/live"
 	"github.com/vaayne/dex/internal/settings"
+	"github.com/vaayne/dex/internal/upload"
 	"github.com/vaayne/dex/web"
 )
 
@@ -25,13 +30,17 @@ type Config struct {
 	Automations *automation.Service
 	Settings    *settings.Service
 	Live        *live.Hub
+	Uploads     *upload.Store
 	AgentID     string
 	DataDir     string
 	Version     string
 }
 
-// The longest message, in characters, as in the contract.
-const maxMessage = 32000
+// The longest message, in characters, and the most attachments of one message, as in the contract.
+const (
+	maxMessage     = 32000
+	maxAttachments = 10
+)
 
 // errInvalid is a request that the handler refuses with 400.
 var errInvalid = errors.New("invalid request")
@@ -51,11 +60,14 @@ func New(cfg Config) http.Handler {
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			status := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, settings.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid):
+			case errors.Is(err, settings.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
+				errors.Is(err, upload.ErrInvalidName):
 				status = http.StatusBadRequest
+			case errors.Is(err, upload.ErrTooLarge):
+				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, errReadOnly):
 				status = http.StatusForbidden
-			case errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound):
+			case errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound):
 				status = http.StatusNotFound
 			case errors.Is(err, chat.ErrNoModel):
 				status = http.StatusConflict
@@ -70,8 +82,17 @@ func New(cfg Config) http.Handler {
 		writeError(w, http.StatusNotFound, "not found")
 	})
 	mux.Handle("/", web.Handler())
-	// The longest message is 32000 characters of up to 4 bytes.
-	return http.NewCrossOriginProtection().Handler(http.MaxBytesHandler(mux, 256<<10))
+	// The longest message is 32000 characters of up to 4 bytes. An upload has room for its
+	// multipart headers.
+	small, uploads := http.MaxBytesHandler(mux, 256<<10), http.MaxBytesHandler(mux, upload.MaxSize+64<<10)
+	limited := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/uploads" {
+			uploads.ServeHTTP(w, r)
+		} else {
+			small.ServeHTTP(w, r)
+		}
+	})
+	return http.NewCrossOriginProtection().Handler(limited)
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
@@ -93,6 +114,7 @@ func (h *handler) GetHealth(context.Context, api.GetHealthRequestObject) (api.Ge
 func chatView(c chat.Chat) api.Chat {
 	out := api.Chat{
 		Id: c.ID, Channel: api.ChatChannelWeb, Title: c.Title, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Busy: c.Busy,
+		Settings: c.Settings,
 	}
 	if strings.HasPrefix(c.ChannelKey, "telegram:") {
 		out.Channel = api.ChatChannelTelegram
@@ -123,29 +145,57 @@ func (h *handler) GetChat(ctx context.Context, req api.GetChatRequestObject) (ap
 	return api.GetChat200JSONResponse(chatView(c)), nil
 }
 
-// message validates a message from the client and returns its ID and text.
-func message(in *api.MessageInput) (string, string, error) {
-	if in == nil {
-		return "", "", errInvalid
-	}
+// message validates a message from the client. The text can be empty when the message has an
+// attachment.
+func (h *handler) message(in api.MessageInput) (chat.Message, error) {
 	id, err := uuid.Parse(in.Id)
 	if err != nil {
-		return "", "", errors.Join(errInvalid, errors.New("the message ID must be a UUID"))
+		return chat.Message{}, errors.Join(errInvalid, errors.New("the message ID must be a UUID"))
 	}
-	text := strings.TrimSpace(in.Text)
-	if text == "" || utf8.RuneCountInString(text) > maxMessage {
-		return "", "", errors.Join(errInvalid, errors.New("the message must have 1 to 32000 characters"))
+	var ids []string
+	if in.Attachments != nil {
+		ids = *in.Attachments
 	}
-	return id.String(), text, nil
+	if len(ids) > maxAttachments {
+		return chat.Message{}, errors.Join(errInvalid, errors.New("a message can have at most 10 attachments"))
+	}
+	m := chat.Message{ID: id.String(), Content: strings.TrimSpace(in.Text)}
+	if (m.Content == "" && len(ids) == 0) || utf8.RuneCountInString(m.Content) > maxMessage {
+		return chat.Message{}, errors.Join(errInvalid, errors.New("the message must have 1 to 32000 characters"))
+	}
+	for i, uploadID := range ids {
+		if slices.Contains(ids[:i], uploadID) {
+			return chat.Message{}, errors.Join(errInvalid, fmt.Errorf("the attachment %q is in the message twice", uploadID))
+		}
+		a, err := h.Uploads.Get(uploadID)
+		if errors.Is(err, upload.ErrNotFound) {
+			return chat.Message{}, errors.Join(errInvalid, fmt.Errorf("no upload %q; upload the file again", uploadID))
+		}
+		if err != nil {
+			return chat.Message{}, err
+		}
+		m.Attachments = append(m.Attachments, a)
+	}
+	return m, nil
 }
 
 func (h *handler) CreateChat(ctx context.Context, req api.CreateChatRequestObject) (api.CreateChatResponseObject, error) {
-	id, text, err := message(req.Body)
+	if req.Body == nil {
+		return nil, errInvalid
+	}
+	b := req.Body
+	m, err := h.message(api.MessageInput{Id: b.Id, Text: b.Text, Attachments: b.Attachments})
 	if err != nil {
 		return nil, err
 	}
+	if b.Settings != nil {
+		if err := h.Settings.CheckChat(ctx, *b.Settings); err != nil {
+			return nil, err
+		}
+		m.Settings = *b.Settings
+	}
 	// The channel key comes from the message ID, so a retried request finds the same chat.
-	chatID, err := h.Chats.Post(ctx, h.AgentID, "web:"+id, "", id, text)
+	chatID, err := h.Chats.Send(ctx, h.AgentID, "web:"+m.ID, m)
 	if err != nil {
 		return nil, err
 	}
@@ -153,25 +203,110 @@ func (h *handler) CreateChat(ctx context.Context, req api.CreateChatRequestObjec
 	if err != nil {
 		return nil, err
 	}
-	return api.CreateChat202JSONResponse{Chat: chatView(c), SubmissionId: id}, nil
+	return api.CreateChat202JSONResponse{Chat: chatView(c), SubmissionId: m.ID}, nil
 }
 
 func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObject) (api.SendMessageResponseObject, error) {
-	id, text, err := message(req.Body)
+	if req.Body == nil {
+		return nil, errInvalid
+	}
+	m, err := h.message(*req.Body)
 	if err != nil {
+		return nil, err
+	}
+	c, err := h.writableChat(ctx, req.ChatId)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := h.Chats.Send(ctx, h.AgentID, c.ChannelKey, m); err != nil {
+		return nil, err
+	}
+	return api.SendMessage202JSONResponse{SubmissionId: m.ID}, nil
+}
+
+// writableChat returns chat id, or errReadOnly for a chat that the web UI cannot write to.
+func (h *handler) writableChat(ctx context.Context, id int64) (chat.Chat, error) {
+	c, err := h.Chats.Get(ctx, h.AgentID, id)
+	if err != nil {
+		return chat.Chat{}, err
+	}
+	if strings.HasPrefix(c.ChannelKey, "telegram:") {
+		return chat.Chat{}, errReadOnly
+	}
+	return c, nil
+}
+
+func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRequestObject) (api.SetChatSettingsResponseObject, error) {
+	if req.Body == nil {
+		return nil, errInvalid
+	}
+	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+		return nil, err
+	}
+	if err := h.Settings.SetChat(ctx, req.ChatId, *req.Body); err != nil {
 		return nil, err
 	}
 	c, err := h.Chats.Get(ctx, h.AgentID, req.ChatId)
 	if err != nil {
 		return nil, err
 	}
-	if strings.HasPrefix(c.ChannelKey, "telegram:") {
-		return nil, errReadOnly
+	return api.SetChatSettings200JSONResponse(chatView(c)), nil
+}
+
+// CreateUpload stores the first part named file. The browser sends the file's base name.
+func (h *handler) CreateUpload(_ context.Context, req api.CreateUploadRequestObject) (api.CreateUploadResponseObject, error) {
+	for {
+		part, err := req.Body.NextPart()
+		if errors.Is(err, io.EOF) {
+			return nil, errors.Join(errInvalid, errors.New("the request has no file"))
+		}
+		if err != nil {
+			return nil, uploadError(err)
+		}
+		if part.FormName() != "file" {
+			continue
+		}
+		// Part.FileName drops the directories of the name; the raw parameter shows them, so a name
+		// with a path is refused, not changed.
+		_, params, err := mime.ParseMediaType(part.Header.Get("Content-Disposition"))
+		if err != nil {
+			return nil, errors.Join(errInvalid, err)
+		}
+		a, err := h.Uploads.Save(params["filename"], part)
+		if err != nil {
+			return nil, uploadError(err)
+		}
+		return api.CreateUpload201JSONResponse(a), nil
 	}
-	if _, err := h.Chats.Post(ctx, h.AgentID, c.ChannelKey, "", id, text); err != nil {
+}
+
+// uploadError reports a body that is larger than the server reads as a file that is too large.
+func uploadError(err error) error {
+	if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+		return upload.ErrTooLarge
+	}
+	return err
+}
+
+// Images that browsers show inline. Other types, SVG too, can run scripts in a browser, so they come
+// only as downloads.
+var inlineTypes = []string{"image/png", "image/jpeg", "image/gif", "image/webp"}
+
+func (h *handler) GetUpload(_ context.Context, req api.GetUploadRequestObject) (api.GetUploadResponseObject, error) {
+	f, a, err := h.Uploads.Open(req.UploadId)
+	if err != nil {
 		return nil, err
 	}
-	return api.SendMessage202JSONResponse{SubmissionId: id}, nil
+	contentType, disposition := "application/octet-stream", "attachment"
+	if slices.Contains(inlineTypes, a.MimeType) {
+		contentType, disposition = a.MimeType, "inline"
+	}
+	disposition = mime.FormatMediaType(disposition, map[string]string{"filename": a.Name})
+	nosniff := "nosniff"
+	return api.GetUpload200AsteriskResponse{
+		Body: f, ContentType: contentType, ContentLength: a.Size,
+		Headers: api.GetUpload200ResponseHeaders{ContentDisposition: &disposition, XContentTypeOptions: &nosniff},
+	}, nil
 }
 
 func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject) (api.AbortChatResponseObject, error) {
@@ -218,6 +353,15 @@ func providerView(p settings.Provider) api.Provider {
 	}
 }
 
+// convert converts the strings of pi-ai enums to their API types.
+func convert[T ~string](values []string) []T {
+	out := make([]T, len(values))
+	for i, v := range values {
+		out[i] = T(v)
+	}
+	return out
+}
+
 func optional(s string) *string {
 	if s == "" {
 		return nil
@@ -232,7 +376,10 @@ func (h *handler) ListModels(ctx context.Context, _ api.ListModelsRequestObject)
 	}
 	out := api.ListModels200JSONResponse{Models: make([]api.Model, len(models))}
 	for i, m := range models {
-		out.Models[i] = api.Model{Provider: m.Provider, Id: m.ID, Name: m.Name}
+		out.Models[i] = api.Model{
+			Provider: m.Provider, Id: m.ID, Name: m.Name, Reasoning: m.Reasoning,
+			Input: convert[api.ModelInput](m.Input), ThinkingLevels: convert[api.ThinkingLevel](m.ThinkingLevels),
+		}
 	}
 	return out, nil
 }

@@ -12,11 +12,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/vaayne/dex/internal/automation"
+	"github.com/vaayne/dex/internal/chat"
 	"github.com/vaayne/dex/internal/settings"
+	"github.com/vaayne/dex/internal/worker"
 )
 
 // Defines values for AppendEventType.
@@ -115,6 +119,24 @@ func (e ItemEventType) Valid() bool {
 	}
 }
 
+// Defines values for ModelInput.
+const (
+	Image ModelInput = "image"
+	Text  ModelInput = "text"
+)
+
+// Valid indicates whether the value is a known member of the ModelInput enum.
+func (e ModelInput) Valid() bool {
+	switch e {
+	case Image:
+		return true
+	case Text:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OkStatus.
 const (
 	OkStatusOk OkStatus = "ok"
@@ -169,6 +191,39 @@ const (
 func (e ThinkingItemKind) Valid() bool {
 	switch e {
 	case Thinking:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ThinkingLevel.
+const (
+	High    ThinkingLevel = "high"
+	Low     ThinkingLevel = "low"
+	Max     ThinkingLevel = "max"
+	Medium  ThinkingLevel = "medium"
+	Minimal ThinkingLevel = "minimal"
+	Off     ThinkingLevel = "off"
+	Xhigh   ThinkingLevel = "xhigh"
+)
+
+// Valid indicates whether the value is a known member of the ThinkingLevel enum.
+func (e ThinkingLevel) Valid() bool {
+	switch e {
+	case High:
+		return true
+	case Low:
+		return true
+	case Max:
+		return true
+	case Medium:
+		return true
+	case Minimal:
+		return true
+	case Off:
+		return true
+	case Xhigh:
 		return true
 	default:
 		return false
@@ -255,6 +310,9 @@ type AssistantItem struct {
 // AssistantItemKind defines model for AssistantItem.Kind.
 type AssistantItemKind string
 
+// Attachment defines model for Attachment.
+type Attachment = worker.Attachment
+
 // Automation defines model for Automation.
 type Automation = automation.Automation
 
@@ -286,7 +344,10 @@ type Chat struct {
 	Channel   ChatChannel `json:"channel"`
 	CreatedAt int64       `json:"createdAt"`
 	Id        int64       `json:"id"`
-	Title     string      `json:"title"`
+
+	// Settings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
+	Settings ChatSettings `json:"settings"`
+	Title    string       `json:"title"`
 
 	// UpdatedAt Time of the last message.
 	UpdatedAt int64 `json:"updatedAt"`
@@ -304,6 +365,9 @@ type ChatEvent struct {
 type ChatList struct {
 	Chats []Chat `json:"chats"`
 }
+
+// ChatSettings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
+type ChatSettings = chat.Settings
 
 // CreatedChat defines model for CreatedChat.
 type CreatedChat struct {
@@ -355,21 +419,53 @@ type ItemEventType string
 
 // MessageInput defines model for MessageInput.
 type MessageInput struct {
+	// Attachments Upload IDs from POST /api/uploads, at most 10.
+	Attachments *[]string `json:"attachments,omitempty"`
+
 	// Id A new UUID from the client. A retried request uses the same ID.
-	Id   string `json:"id"`
+	Id string `json:"id"`
+
+	// Text 1 to 32000 characters. It can be empty when the message has an attachment.
 	Text string `json:"text"`
 }
 
 // Model defines model for Model.
 type Model struct {
-	Id       string `json:"id"`
-	Name     string `json:"name"`
-	Provider string `json:"provider"`
+	Id string `json:"id"`
+
+	// Input pi-ai's Model.input.
+	Input    []ModelInput `json:"input"`
+	Name     string       `json:"name"`
+	Provider string       `json:"provider"`
+
+	// Reasoning pi-ai's Model.reasoning. False means the model does not think.
+	Reasoning bool `json:"reasoning"`
+
+	// ThinkingLevels pi-ai's getSupportedThinkingLevels(model).
+	ThinkingLevels []ThinkingLevel `json:"thinkingLevels"`
 }
+
+// ModelInput defines model for Model.Input.
+type ModelInput string
 
 // ModelList defines model for ModelList.
 type ModelList struct {
 	Models []Model `json:"models"`
+}
+
+// NewChat defines model for NewChat.
+type NewChat struct {
+	// Attachments Upload IDs from POST /api/uploads, at most 10.
+	Attachments *[]string `json:"attachments,omitempty"`
+
+	// Id A new UUID from the client. A retried request uses the same ID.
+	Id string `json:"id"`
+
+	// Settings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
+	Settings *ChatSettings `json:"settings,omitempty"`
+
+	// Text 1 to 32000 characters. It can be empty when the message has an attachment.
+	Text string `json:"text"`
 }
 
 // Ok defines model for Ok.
@@ -511,6 +607,9 @@ type ThinkingItem struct {
 // ThinkingItemKind defines model for ThinkingItem.Kind.
 type ThinkingItemKind string
 
+// ThinkingLevel pi-ai's ModelThinkingLevel. pi-ai sends the nearest level that the model supports.
+type ThinkingLevel string
+
 // ToolItem defines model for ToolItem.
 type ToolItem struct {
 	Args       map[string]interface{} `json:"args"`
@@ -540,9 +639,10 @@ type Usage struct {
 
 // UserItem defines model for UserItem.
 type UserItem struct {
-	At   *int64       `json:"at,omitempty"`
-	Id   string       `json:"id"`
-	Kind UserItemKind `json:"kind"`
+	At          *int64        `json:"at,omitempty"`
+	Attachments *[]Attachment `json:"attachments,omitempty"`
+	Id          string        `json:"id"`
+	Kind        UserItemKind  `json:"kind"`
 
 	// Queued True while the message waits for the agent.
 	Queued *bool  `json:"queued,omitempty"`
@@ -558,6 +658,11 @@ type AutomationId = string
 // ChatId defines model for ChatId.
 type ChatId = int64
 
+// CreateUploadMultipartBody defines parameters for CreateUpload.
+type CreateUploadMultipartBody struct {
+	File openapi_types.File `json:"file"`
+}
+
 // CreateAutomationJSONRequestBody defines body for CreateAutomation for application/json ContentType.
 type CreateAutomationJSONRequestBody = AutomationInput
 
@@ -568,10 +673,13 @@ type PreviewScheduleJSONRequestBody = ScheduleInput
 type UpdateAutomationJSONRequestBody = AutomationInput
 
 // CreateChatJSONRequestBody defines body for CreateChat for application/json ContentType.
-type CreateChatJSONRequestBody = MessageInput
+type CreateChatJSONRequestBody = NewChat
 
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = MessageInput
+
+// SetChatSettingsJSONRequestBody defines body for SetChatSettings for application/json ContentType.
+type SetChatSettingsJSONRequestBody = ChatSettings
 
 // SetAgentJSONRequestBody defines body for SetAgent for application/json ContentType.
 type SetAgentJSONRequestBody = Agent
@@ -581,6 +689,9 @@ type SetProviderJSONRequestBody = ProviderInput
 
 // SetTelegramJSONRequestBody defines body for SetTelegram for application/json ContentType.
 type SetTelegramJSONRequestBody = TelegramInput
+
+// CreateUploadMultipartRequestBody defines body for CreateUpload for multipart/form-data ContentType.
+type CreateUploadMultipartRequestBody CreateUploadMultipartBody
 
 // AsSnapshotEvent returns the union data inside the ChatEvent as a SnapshotEvent
 func (t ChatEvent) AsSnapshotEvent() (SnapshotEvent, error) {
@@ -1009,6 +1120,9 @@ type ServerInterface interface {
 	// (POST /api/chats/{chatId}/messages)
 	SendMessage(w http.ResponseWriter, r *http.Request, chatId ChatId)
 
+	// (PUT /api/chats/{chatId}/settings)
+	SetChatSettings(w http.ResponseWriter, r *http.Request, chatId ChatId)
+
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
 
@@ -1032,6 +1146,12 @@ type ServerInterface interface {
 
 	// (PUT /api/settings/telegram)
 	SetTelegram(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/uploads)
+	CreateUpload(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/uploads/{uploadId})
+	GetUpload(w http.ResponseWriter, r *http.Request, uploadId string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1347,6 +1467,32 @@ func (siw *ServerInterfaceWrapper) SendMessage(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// SetChatSettings operation middleware
+func (siw *ServerInterfaceWrapper) SetChatSettings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetChatSettings(w, r, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -1483,6 +1629,46 @@ func (siw *ServerInterfaceWrapper) SetTelegram(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// CreateUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreateUpload(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateUpload(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUpload operation middleware
+func (siw *ServerInterfaceWrapper) GetUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "uploadId" -------------
+	var uploadId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uploadId", r.PathValue("uploadId"), &uploadId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uploadId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUpload(w, r, uploadId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1607,9 +1793,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats", wrapper.ListChats)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/chats", wrapper.CreateChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats/{chatId}", wrapper.GetChat)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/chats/{chatId}/settings", wrapper.SetChatSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/chats/{chatId}/messages", wrapper.SendMessage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/chats/{chatId}/abort", wrapper.AbortChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats/{chatId}/events", wrapper.WatchChat)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/uploads", wrapper.CreateUpload)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/uploads/{uploadId}", wrapper.GetUpload)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings", wrapper.GetSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/models", wrapper.ListModels)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/agent", wrapper.SetAgent)
@@ -2413,6 +2602,88 @@ func (response SendMessagedefaultJSONResponse) VisitSendMessageResponse(w http.R
 	return err
 }
 
+type SetChatSettingsRequestObject struct {
+	ChatId ChatId `json:"chatId"`
+	Body   *SetChatSettingsJSONRequestBody
+}
+
+type SetChatSettingsResponseObject interface {
+	VisitSetChatSettingsResponse(w http.ResponseWriter) error
+}
+
+type SetChatSettings200JSONResponse Chat
+
+func (response SetChatSettings200JSONResponse) VisitSetChatSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatSettings400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SetChatSettings400JSONResponse) VisitSetChatSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatSettings403JSONResponse Error
+
+func (response SetChatSettings403JSONResponse) VisitSetChatSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatSettings404JSONResponse Error
+
+func (response SetChatSettings404JSONResponse) VisitSetChatSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatSettingsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetChatSettingsdefaultJSONResponse) VisitSetChatSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetHealthRequestObject struct {
 }
 
@@ -2747,6 +3018,145 @@ func (response SetTelegramdefaultJSONResponse) VisitSetTelegramResponse(w http.R
 	return err
 }
 
+type CreateUploadRequestObject struct {
+	Body *multipart.Reader
+}
+
+type CreateUploadResponseObject interface {
+	VisitCreateUploadResponse(w http.ResponseWriter) error
+}
+
+type CreateUpload201JSONResponse Attachment
+
+func (response CreateUpload201JSONResponse) VisitCreateUploadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateUpload400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CreateUpload400JSONResponse) VisitCreateUploadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateUpload413JSONResponse Error
+
+func (response CreateUpload413JSONResponse) VisitCreateUploadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateUploaddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateUploaddefaultJSONResponse) VisitCreateUploadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUploadRequestObject struct {
+	UploadId string `json:"uploadId"`
+}
+
+type GetUploadResponseObject interface {
+	VisitGetUploadResponse(w http.ResponseWriter) error
+}
+
+type GetUpload200ResponseHeaders struct {
+	ContentDisposition  *string
+	XContentTypeOptions *string
+}
+
+type GetUpload200AsteriskResponse struct {
+	Body          io.Reader
+	Headers       GetUpload200ResponseHeaders
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetUpload200AsteriskResponse) VisitGetUploadResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	if response.Headers.XContentTypeOptions != nil {
+		w.Header().Set("X-Content-Type-Options", fmt.Sprint(*response.Headers.XContentTypeOptions))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetUpload404JSONResponse struct{ ErrorJSONResponse }
+
+func (response GetUpload404JSONResponse) VisitGetUploadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUploaddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetUploaddefaultJSONResponse) VisitGetUploadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
@@ -2792,6 +3202,9 @@ type StrictServerInterface interface {
 	// (POST /api/chats/{chatId}/messages)
 	SendMessage(ctx context.Context, request SendMessageRequestObject) (SendMessageResponseObject, error)
 
+	// (PUT /api/chats/{chatId}/settings)
+	SetChatSettings(ctx context.Context, request SetChatSettingsRequestObject) (SetChatSettingsResponseObject, error)
+
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
 
@@ -2815,6 +3228,12 @@ type StrictServerInterface interface {
 
 	// (PUT /api/settings/telegram)
 	SetTelegram(ctx context.Context, request SetTelegramRequestObject) (SetTelegramResponseObject, error)
+
+	// (POST /api/uploads)
+	CreateUpload(ctx context.Context, request CreateUploadRequestObject) (CreateUploadResponseObject, error)
+
+	// (GET /api/uploads/{uploadId})
+	GetUpload(ctx context.Context, request GetUploadRequestObject) (GetUploadResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -3245,6 +3664,39 @@ func (sh *strictHandler) SendMessage(w http.ResponseWriter, r *http.Request, cha
 	}
 }
 
+// SetChatSettings operation middleware
+func (sh *strictHandler) SetChatSettings(w http.ResponseWriter, r *http.Request, chatId ChatId) {
+	var request SetChatSettingsRequestObject
+
+	request.ChatId = chatId
+
+	var body SetChatSettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetChatSettings(ctx, request.(SetChatSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetChatSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetChatSettingsResponseObject); ok {
+		if err := validResponse.VisitSetChatSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHealth operation middleware
 func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	var request GetHealthRequestObject
@@ -3455,6 +3907,63 @@ func (sh *strictHandler) SetTelegram(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetTelegramResponseObject); ok {
 		if err := validResponse.VisitSetTelegramResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateUpload operation middleware
+func (sh *strictHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
+	var request CreateUploadRequestObject
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateUpload(ctx, request.(CreateUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateUploadResponseObject); ok {
+		if err := validResponse.VisitCreateUploadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUpload operation middleware
+func (sh *strictHandler) GetUpload(w http.ResponseWriter, r *http.Request, uploadId string) {
+	var request GetUploadRequestObject
+
+	request.UploadId = uploadId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUpload(ctx, request.(GetUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUploadResponseObject); ok {
+		if err := validResponse.VisitGetUploadResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

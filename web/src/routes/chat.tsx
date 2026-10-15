@@ -8,8 +8,10 @@ import { IconLock } from "@central-icons-react/round-outlined-radius-2-stroke-2/
 import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
 import { IconSidebarSimpleRightWide } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconSidebarSimpleRightWide";
 import type {
+  Attachment,
   Settings,
   ChatEvent,
+  ChatSettings,
   Item,
   ToolItem,
   UserItem,
@@ -29,10 +31,12 @@ import {
 } from "../api/generated/@tanstack/react-query.gen";
 import { applyChatEvent, emptyChatState } from "../lib/chat-state";
 import { queryClient, refreshChats } from "../lib/queries";
-import { useAgentModel } from "../lib/agent";
+import { agentModel, chatModel, saveChatSettings, thinkingNames } from "../lib/agent";
+import { useAttachments } from "../lib/attachments";
 import { useApp } from "../lib/app-state";
 import { blocks, describeTool, touchesMemory } from "../lib/tools";
 import { Composer } from "../components/composer";
+import { ChatControls, type SaveChatSettings } from "../components/chat-settings";
 import { RetryNotice, ToolStep, TranscriptItem, type ToolFocus } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
@@ -86,7 +90,7 @@ function Setup({ settings }: { settings: Settings }) {
       <Section
         n={2}
         title="Choose the agent model"
-        caption="One model answers every chat."
+        caption="The default model of every chat."
         action={settings.agent.modelId ? <Done /> : null}
       >
         <Panel className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
@@ -260,7 +264,8 @@ function ContextPane({
   onClose: () => void;
   onFocusTool: (id: string) => void;
 }) {
-  const model = useAgentModel(settings) ?? { label: "", ok: false };
+  const models = useQuery(listModelsOptions());
+  const { model, thinkingLevel, overrides } = chatModel(settings.agent, chat.settings, models.data?.models);
   const { draft } = useApp();
 
   const automation = useQuery({
@@ -302,7 +307,11 @@ function ContextPane({
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="flex flex-col gap-7">
           <div>
-            <Heading n={1} title="Agent" detail="the same for every chat" />
+            <Heading
+              n={1}
+              title="Agent"
+              detail={overrides ? "this chat overrides the default" : "the default for every chat"}
+            />
             <div className="overflow-hidden rounded-card bg-surface shadow-card">
               <CardBar
                 meta={
@@ -317,7 +326,15 @@ function ContextPane({
                 <div className="flex justify-between gap-3">
                   <dt className="text-ink-3">Model ID</dt>
                   <dd className="min-w-0 truncate font-mono text-[11.5px] text-ink-2">
-                    {settings.agent.provider}/{settings.agent.modelId}
+                    {chat.settings.modelId
+                      ? `${chat.settings.provider}/${chat.settings.modelId}`
+                      : `${settings.agent.provider}/${settings.agent.modelId}`}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-ink-3">Thinking</dt>
+                  <dd className="text-ink-2">
+                    {model.model && !model.model.reasoning ? "Off" : thinkingNames[thinkingLevel]}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
@@ -487,10 +504,19 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
   const composerBox = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const snapshotSeen = useRef(false);
-  const failedMessage = useRef<MessageInput | null>(null);
+  const failedMessage = useRef<{ body: MessageInput; attachments: Attachment[] } | null>(null);
   const create = useMutation(createChatMutation());
   const send = useMutation(sendMessageMutation());
-  const model = useAgentModel(settings) ?? { label: "", ok: false };
+  const models = useQuery(listModelsOptions());
+  const files = useAttachments();
+  // A new chat keeps its settings here until POST /api/chats stores them with the chat.
+  const [picks, setPicks] = useState<ChatSettings>({});
+  const chatSettings = chatId ? (chat.data?.settings ?? {}) : picks;
+  const { model } = chatModel(settings.agent, chatSettings, models.data?.models);
+
+  const saveSettings: SaveChatSettings = chatId
+    ? (change) => saveChatSettings(chatId, change)
+    : async (change) => setPicks(change);
 
   const abort = useMutation({
     ...abortChatMutation(),
@@ -609,34 +635,41 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
   const pending = create.isPending || send.isPending || abort.isPending;
   const error = create.error ?? send.error ?? abort.error;
 
-  async function sendText(text: string) {
-    // A transport retry keeps its ID. A retry of a failed agent turn gets a new ID.
-    const body =
-      failedMessage.current?.text === text ? failedMessage.current : { id: crypto.randomUUID(), text };
+  async function sendText(text: string, attachments: Attachment[]) {
+    const ids = attachments.map((a) => a.id);
+    const failed = failedMessage.current?.body;
 
-    failedMessage.current = body;
+    // A transport retry keeps its ID. A retry of a failed agent turn gets a new ID.
+    const body: MessageInput =
+      failed?.text === text && failed.attachments?.join() === ids.join()
+        ? failed
+        : { id: crypto.randomUUID(), text, attachments: ids };
+
+    failedMessage.current = { body, attachments };
+    const local: UserItem = { kind: "user", id: body.id, text, attachments, queued: true };
 
     if (chatId) {
-      setQueued((previous) => [...previous, { kind: "user", ...body, queued: true }]);
+      setQueued((previous) => [...previous, local]);
 
       try {
         await send.mutateAsync({ path: { chatId }, body });
         failedMessage.current = null;
         setDraft((current) => (current.trim() === text ? "" : current));
+        files.sent(ids);
         await refreshChats();
       } catch (cause) {
         setQueued((previous) => previous.filter((item) => item.id !== body.id));
         throw cause;
       }
     } else {
-      const result = await create.mutateAsync({ body });
+      const result = await create.mutateAsync({ body: { ...body, settings: picks } });
       failedMessage.current = null;
       await refreshChats();
       queryClient.setQueryData(getChatQueryKey({ path: { chatId: result.chat.id } }), result.chat);
       await navigate({
         to: "/c/$chatId",
         params: { chatId: String(result.chat.id) },
-        state: { firstMessage: { kind: "user", ...body, queued: true } },
+        state: { firstMessage: local },
       });
     }
   }
@@ -646,7 +679,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
 
     if (previous?.kind === "user") {
       failedMessage.current = null;
-      void sendText(previous.text).catch(() => {});
+      void sendText(previous.text, previous.attachments ?? []).catch(() => {});
     }
   }
 
@@ -661,22 +694,51 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
             error={error}
             retry={() => {
               if ((create.isError || send.isError) && failedMessage.current)
-                void sendText(failedMessage.current.text).catch(() => {});
+                void sendText(failedMessage.current.body.text, failedMessage.current.attachments).catch(
+                  () => {},
+                );
               else if (abort.isError && chatId) abort.mutate({ path: { chatId } });
             }}
           />
         </div>
       ) : null}
       <Composer
-        model={model}
-        hasProvider={settings.providers.length > 0}
+        controls={
+          telegram ? null : <ChatControls agent={settings.agent} value={chatSettings} save={saveSettings} />
+        }
+        fix={
+          model.ok ? null : settings.providers.length ? (
+            <ModelPicker
+              override={
+                chatSettings.modelId
+                  ? {
+                      value: { provider: chatSettings.provider ?? "", modelId: chatSettings.modelId },
+                      defaultName: agentModel(settings.agent, models.data?.models).label,
+                      save: (m) =>
+                        saveSettings((saved) => ({ ...saved, provider: m?.provider, modelId: m?.id })),
+                    }
+                  : undefined
+              }
+              trigger={
+                <button type="button" className="font-medium text-accent-ink underline">
+                  Choose a model
+                </button>
+              }
+            />
+          ) : (
+            <Link className="font-medium text-accent-ink underline" to="/providers">
+              Add a provider
+            </Link>
+          )
+        }
+        files={telegram ? undefined : files}
         running={running}
         pending={pending}
         disabledReason={reason}
         readOnly={telegram}
         placeholder={chatId ? "Reply" : "Message dex"}
         autoFocus={!chatId || !!firstMessage}
-        onSend={sendText}
+        onSend={(text) => sendText(text, files.ready)}
         onStop={() => {
           if (chatId) abort.mutate({ path: { chatId } });
         }}

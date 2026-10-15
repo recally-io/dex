@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, createAutomation, createChat, deleteAutomation, deleteProvider, deleteTelegram, getAutomation, getChat, getHealth, getSettings, listAutomationRuns, listAutomations, listChats, listModels, type Options, previewSchedule, runAutomation, sendMessage, setAgent, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatResponse, GetHealthData, GetHealthResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
+import { abortChat, createAutomation, createChat, createUpload, deleteAutomation, deleteProvider, deleteTelegram, getAutomation, getChat, getHealth, getSettings, getUpload, listAutomationRuns, listAutomations, listChats, listModels, type Options, previewSchedule, runAutomation, sendMessage, setAgent, setChatSettings, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatResponse, GetHealthData, GetHealthResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -73,7 +73,7 @@ export const listChatsOptions = (options?: Options<ListChatsData>) => queryOptio
 });
 
 /**
- * Creates a web chat and sends its first message. The title is the start of the message. Returns when the message is stored; the answer comes through the chat's event stream.
+ * Creates a web chat and sends its first message. The title is the start of the message, or the name of its first attachment. The settings of the new chat override the agent's. Returns when the message is stored; the answer comes through the chat's event stream.
  *
  */
 export const createChatMutation = (options?: Partial<Options<CreateChatData>>): UseMutationOptions<CreateChatResponse, CreateChatError, Options<CreateChatData>> => {
@@ -104,6 +104,24 @@ export const getChatOptions = (options: Options<GetChatData>) => queryOptions<Ge
     },
     queryKey: getChatQueryKey(options)
 });
+
+/**
+ * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message. 403 for a Telegram chat.
+ *
+ */
+export const setChatSettingsMutation = (options?: Partial<Options<SetChatSettingsData>>): UseMutationOptions<SetChatSettingsResponse, SetChatSettingsError, Options<SetChatSettingsData>> => {
+    const mutationOptions: UseMutationOptions<SetChatSettingsResponse, SetChatSettingsError, Options<SetChatSettingsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await setChatSettings({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 /**
  * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model; 403 for a Telegram chat. Web and automation chats take messages.
@@ -141,6 +159,43 @@ export const abortChatMutation = (options?: Partial<Options<AbortChatData>>): Us
     return mutationOptions;
 };
 
+/**
+ * Stores one file for a later message, in the agent workspace at `uploads/<id>/<name>`. The agent reads it with its tools. The largest file is 20 MB.
+ *
+ */
+export const createUploadMutation = (options?: Partial<Options<CreateUploadData>>): UseMutationOptions<CreateUploadResponse, CreateUploadError, Options<CreateUploadData>> => {
+    const mutationOptions: UseMutationOptions<CreateUploadResponse, CreateUploadError, Options<CreateUploadData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createUpload({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getUploadQueryKey = (options: Options<GetUploadData>) => createQueryKey('getUpload', options);
+
+/**
+ * The file of an upload. PNG, JPEG, GIF and WebP images come inline with their type; all other files come as a download of type application/octet-stream.
+ *
+ */
+export const getUploadOptions = (options: Options<GetUploadData>) => queryOptions<GetUploadResponse, GetUploadError, GetUploadResponse, ReturnType<typeof getUploadQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getUpload({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getUploadQueryKey(options)
+});
+
 export const getSettingsQueryKey = (options?: Options<GetSettingsData>) => createQueryKey('getSettings', options);
 
 export const getSettingsOptions = (options?: Options<GetSettingsData>) => queryOptions<GetSettingsResponse, GetSettingsError, GetSettingsResponse, ReturnType<typeof getSettingsQueryKey>>({
@@ -175,7 +230,7 @@ export const listModelsOptions = (options?: Options<ListModelsData>) => queryOpt
 });
 
 /**
- * Changes the model and the instructions. Each chat uses them from its next message. An empty modelId clears the model.
+ * Changes the default model, thinking level and instructions. Each chat uses them from its next message, except the settings that the chat overrides. An empty modelId clears the model.
  *
  */
 export const setAgentMutation = (options?: Partial<Options<SetAgentData>>): UseMutationOptions<SetAgentResponse, SetAgentError, Options<SetAgentData>> => {

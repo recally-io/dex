@@ -342,7 +342,15 @@ func (h *Hub) extraItems(ctx context.Context, s *stream) ([]extraItem, error) {
 		}
 		at := sub.CreatedAt
 		queued := sub.Status == "pending"
-		user, err := json.Marshal(api.UserItem{Kind: api.User, Id: sub.ID, Text: sub.Content, At: &at, Queued: &queued})
+		item := api.UserItem{Kind: api.User, Id: sub.ID, Text: sub.Content, At: &at, Queued: &queued}
+		var attachments []worker.Attachment
+		if err := json.Unmarshal([]byte(sub.Attachments), &attachments); err != nil {
+			return nil, fmt.Errorf("submission %s attachments: %w", sub.ID, err)
+		}
+		if len(attachments) > 0 {
+			item.Attachments = &attachments
+		}
+		user, err := json.Marshal(item)
 		if err != nil {
 			return nil, err
 		}

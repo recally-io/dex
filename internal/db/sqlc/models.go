@@ -15,6 +15,7 @@ type Agent struct {
 	ModelID       string `json:"model_id"`
 	Instructions  string `json:"instructions"`
 	CreatedAt     int64  `json:"created_at"`
+	ThinkingLevel string `json:"thinking_level"`
 }
 
 type Automation struct {
@@ -47,6 +48,9 @@ type Conversation struct {
 	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
 	CreatedAt            int64         `json:"created_at"`
 	Title                string        `json:"title"`
+	ModelProvider        string        `json:"model_provider"`
+	ModelID              string        `json:"model_id"`
+	ThinkingLevel        string        `json:"thinking_level"`
 }
 
 type Dream struct {
@@ -77,6 +81,7 @@ type Submission struct {
 	CreatedAt      int64          `json:"created_at"`
 	SettledAt      sql.NullInt64  `json:"settled_at"`
 	SourceKey      sql.NullString `json:"source_key"`
+	Attachments    string         `json:"attachments"`
 }
 
 type TelegramSetting struct {

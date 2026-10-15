@@ -16,7 +16,7 @@ import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
 import { MemoryRepo } from "./memory.ts";
-import { ChatView, USER_ENTRY } from "./view.ts";
+import { ChatView, messageText, USER_ENTRY } from "./view.ts";
 import type {
 	AbortParams,
 	ChatStreamEvent,
@@ -71,7 +71,11 @@ export class Agents {
 		const conversation = await harness.createConversation(
 			{
 				ownership: { kind: "ownerless" },
-				agent: { model: params.model, instructions: params.instructions },
+				agent: {
+					model: params.model,
+					thinkingLevel: params.thinkingLevel,
+					instructions: params.instructions,
+				},
 			},
 			context,
 		);
@@ -90,18 +94,26 @@ export class Agents {
 			if (
 				agent.model?.provider !== params.model.provider ||
 				agent.model.modelId !== params.model.modelId ||
+				agent.thinkingLevel !== params.thinkingLevel ||
 				agent.instructions !== instructions
 			) {
 				// A run in progress keeps its settings until its next turn.
-				await conversation.configure({ model: params.model, instructions: instructions ?? null }, context);
+				await conversation.configure(
+					{ model: params.model, thinkingLevel: params.thinkingLevel, instructions: instructions ?? null },
+					context,
+				);
 			}
 			const submission = await conversation.submit(
 				{
 					type: "input",
-					content: params.content,
+					// The model gets the paths; its tools read the files.
+					content: messageText(params.content, params.attachments),
 					requestId: params.requestId,
-					// The chat view shows the message with control's ID, so the UI can match it.
-					entry: { kind: USER_ENTRY, data: { requestId: params.requestId } },
+					// The chat view shows the message with control's ID and its attachments.
+					entry: {
+						kind: USER_ENTRY,
+						data: { requestId: params.requestId, attachments: params.attachments },
+					},
 				},
 				context,
 			);

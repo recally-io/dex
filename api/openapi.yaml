@@ -32,13 +32,14 @@ paths:
       operationId: createChat
       description: >
         Creates a web chat and sends its first message. The title is the start
-        of the message. Returns when the message is stored; the answer comes
-        through the chat's event stream.
+        of the message, or the name of its first attachment. The settings of
+        the new chat override the agent's. Returns when the message is stored;
+        the answer comes through the chat's event stream.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/MessageInput" }
+            schema: { $ref: "#/components/schemas/NewChat" }
       responses:
         "202":
           description: The chat exists and the message is stored.
@@ -60,6 +61,31 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Chat" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/chats/{chatId}/settings:
+    parameters:
+      - $ref: "#/components/parameters/ChatId"
+    put:
+      operationId: setChatSettings
+      description: >
+        Sets the model and the thinking level of one chat. An absent field
+        follows the agent's setting. They apply from the next message. 403 for
+        a Telegram chat.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChatSettings" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chat" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
@@ -126,6 +152,58 @@ paths:
               schema: { $ref: "#/components/schemas/ChatEvent" }
         "404": { $ref: "#/components/responses/Error" }
 
+  /api/uploads:
+    post:
+      operationId: createUpload
+      description: >
+        Stores one file for a later message, in the agent workspace at
+        `uploads/<id>/<name>`. The agent reads it with its tools. The largest
+        file is 20 MB.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201":
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Attachment" }
+        "400": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/uploads/{uploadId}:
+    parameters:
+      - name: uploadId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getUpload
+      description: >
+        The file of an upload. PNG, JPEG, GIF and WebP images come inline with
+        their type; all other files come as a download of type
+        application/octet-stream.
+      responses:
+        "200":
+          description: The file.
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+            X-Content-Type-Options:
+              schema: { type: string, enum: [nosniff] }
+          content:
+            "*/*":
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/settings:
     get:
       operationId: getSettings
@@ -153,8 +231,9 @@ paths:
     put:
       operationId: setAgent
       description: >
-        Changes the model and the instructions. Each chat uses them from its
-        next message. An empty modelId clears the model.
+        Changes the default model, thinking level and instructions. Each chat
+        uses them from its next message, except the settings that the chat
+        overrides. An empty modelId clears the model.
       requestBody:
         required: true
         content:
@@ -395,7 +474,7 @@ components:
 
     Chat:
       type: object
-      required: [id, channel, title, createdAt, updatedAt, busy]
+      required: [id, channel, title, createdAt, updatedAt, busy, settings]
       properties:
         id: { type: integer, format: int64 }
         channel:
@@ -414,6 +493,20 @@ components:
         busy:
           type: boolean
           description: True while a message of the chat has no answer yet.
+        settings: { $ref: "#/components/schemas/ChatSettings" }
+
+    ChatSettings:
+      x-go-type: chat.Settings
+      x-go-type-import:
+        path: github.com/vaayne/dex/internal/chat
+      type: object
+      description: >
+        The settings that a chat overrides. An absent field follows the
+        agent's setting. provider and modelId are both present or both absent.
+      properties:
+        provider: { type: string }
+        modelId: { type: string }
+        thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
 
     ChatList:
       type: object
@@ -430,7 +523,39 @@ components:
         id:
           type: string
           description: A new UUID from the client. A retried request uses the same ID.
-        text: { type: string, minLength: 1, maxLength: 32000 }
+        text:
+          type: string
+          maxLength: 32000
+          description: >
+            1 to 32000 characters. It can be empty when the message has an
+            attachment.
+        attachments:
+          type: array
+          maxItems: 10
+          description: Upload IDs from POST /api/uploads, at most 10.
+          items: { type: string }
+
+    NewChat:
+      allOf:
+        - $ref: "#/components/schemas/MessageInput"
+        - type: object
+          properties:
+            settings: { $ref: "#/components/schemas/ChatSettings" }
+
+    Attachment:
+      x-go-type: worker.Attachment
+      x-go-type-import:
+        path: github.com/vaayne/dex/internal/worker
+      type: object
+      required: [id, name, size, mimeType, path]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        size: { type: integer, format: int64, description: Bytes. }
+        mimeType: { type: string }
+        path:
+          type: string
+          description: The path in the agent workspace, uploads/<id>/<name>.
 
     CreatedChat:
       type: object
@@ -586,6 +711,9 @@ components:
         queued:
           type: boolean
           description: True while the message waits for the agent.
+        attachments:
+          type: array
+          items: { $ref: "#/components/schemas/Attachment" }
 
     ThinkingItem:
       type: object
@@ -731,11 +859,19 @@ components:
       x-go-type-import:
         path: github.com/vaayne/dex/internal/settings
       type: object
-      required: [provider, modelId, instructions]
+      required: [provider, modelId, thinkingLevel, instructions]
       properties:
         provider: { type: string }
         modelId: { type: string, description: Empty when no model is chosen. }
+        thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
         instructions: { type: string }
+
+    ThinkingLevel:
+      type: string
+      description: >
+        pi-ai's ModelThinkingLevel. pi-ai sends the nearest level that the
+        model supports.
+      enum: [off, minimal, low, medium, high, xhigh, max]
 
     Provider:
       type: object
@@ -789,11 +925,22 @@ components:
 
     Model:
       type: object
-      required: [provider, id, name]
+      required: [provider, id, name, reasoning, input, thinkingLevels]
       properties:
         provider: { type: string }
         id: { type: string }
         name: { type: string }
+        reasoning:
+          type: boolean
+          description: pi-ai's Model.reasoning. False means the model does not think.
+        input:
+          type: array
+          description: pi-ai's Model.input.
+          items: { type: string, enum: [text, image] }
+        thinkingLevels:
+          type: array
+          description: pi-ai's getSupportedThinkingLevels(model).
+          items: { $ref: "#/components/schemas/ThinkingLevel" }
 
     Telegram:
       type: object
