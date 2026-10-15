@@ -5,6 +5,7 @@ import { IconBrowserTabs } from "@central-icons-react/round-outlined-radius-2-st
 import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
 import type { Settings } from "../api/generated/types.gen";
 import {
+  createTelegramPairingMutation,
   deleteTelegramMutation,
   getSettingsOptions,
   listChatsOptions,
@@ -86,6 +87,8 @@ function Boundary() {
 }
 
 export function ChannelsPage() {
+  useQuery({ ...getSettingsOptions(), refetchInterval: 2000 });
+
   return (
     <FramedPage
       title="Channels"
@@ -114,7 +117,7 @@ export function ChannelsPage() {
                       text={
                         tg.enabled
                           ? `Bot ${tg.botId ?? "unknown"} · ${tg.allowedUsers.length} allowed ${tg.allowedUsers.length === 1 ? "user" : "users"}. Read-only on the web`
-                          : "Talk to dex from a Telegram bot. Needs a bot token and allowed user IDs."
+                          : "Talk to dex from a Telegram bot. Connect a bot, then pair your Telegram account."
                       }
                       status={
                         <StatusPill tone={tg.status.state === "running" ? "green" : "neutral"}>
@@ -206,7 +209,7 @@ function WebChannel() {
 }
 
 function TelegramChannel() {
-  const saved = useQuery(getSettingsOptions());
+  const saved = useQuery({ ...getSettingsOptions(), refetchInterval: 2000 });
   const chats = useQuery(listChatsOptions());
   const telegramChats = chats.data?.chats.filter((c) => c.channel === "telegram").length;
 
@@ -214,7 +217,13 @@ function TelegramChannel() {
     <FramedPage
       eyebrow={<Crumb />}
       title="Telegram"
-      badge={saved.data ? <OnOff on={saved.data.telegram.enabled} /> : null}
+      badge={
+        saved.data ? (
+          <StatusPill tone={saved.data.telegram.status.state === "running" ? "green" : "neutral"}>
+            {saved.data.telegram.status.state}
+          </StatusPill>
+        ) : null
+      }
       description="Talk to dex from your phone. Only the users that you allow can use the bot."
     >
       <WithSettings>
@@ -229,6 +238,7 @@ function Telegram({ settings, telegramChats }: { settings: Settings; telegramCha
   const telegram = settings.telegram;
   const [edit, setEdit] = useState(false);
   const [off, setOff] = useState(false);
+  const pairing = useMutation(createTelegramPairingMutation());
 
   const deletion = useMutation({
     ...deleteTelegramMutation(),
@@ -269,7 +279,7 @@ function Telegram({ settings, telegramChats }: { settings: Settings; telegramCha
                 [
                   "Allowed user IDs",
                   <span key="users" className="font-mono text-[12px] text-ink-2 tabular-nums">
-                    {telegram.allowedUsers.join(", ")}
+                    {telegram.allowedUsers.join(", ") || "None. Pair your account below."}
                   </span>,
                 ],
                 [
@@ -289,10 +299,8 @@ function Telegram({ settings, telegramChats }: { settings: Settings; telegramCha
                 In Telegram, open <Mono>@BotFather</Mono> and send <Mono>/newbot</Mono>.
               </li>
               <li>Copy the token that BotFather gives you.</li>
-              <li>
-                Get your user ID, for example from <Mono>@userinfobot</Mono>.
-              </li>
-              <li>Select Connect bot and enter the token and your ID.</li>
+              <li>Select Connect bot and enter the token.</li>
+              <li>Create a pairing link, then open the link in Telegram and select Start.</li>
             </ol>
           </Panel>
         )}
@@ -302,11 +310,42 @@ function Telegram({ settings, telegramChats }: { settings: Settings; telegramCha
             {telegram.status.reason ?? "Send the bot a message to check reply delivery."}
           </Note>
         </div>
+        {telegram.enabled ? (
+          <div className="mt-3 flex flex-col items-start gap-3">
+            <Note>
+              {telegram.allowedUsers.length === 0
+                ? "Pair your account to start. The bot ignores messages until an owner is paired."
+                : "Only share a pairing link with a person who can use the full agent."}
+            </Note>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={pairing.isPending}
+              onClick={() => pairing.mutate({})}
+            >
+              {pairing.isPending ? "Creating link…" : "Create owner pairing link"}
+            </Button>
+            {pairing.data ? (
+              <Note>
+                <a className="underline" href={pairing.data.url} target="_blank" rel="noreferrer">
+                  Open Telegram and select Start
+                </a>
+                . This link works once and expires at{" "}
+                {new Date(pairing.data.expiresAt * 1000).toLocaleTimeString()}. A new link cancels the
+                previous link.
+              </Note>
+            ) : null}
+            {pairing.isError ? <Failure title="Pairing link failed" error={pairing.error} /> : null}
+          </div>
+        ) : null}
       </Section>
       <Section n={2} title="How chats work" caption="Telegram chats are read-only here.">
         <Panel className="px-4 py-3.5">
           <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] text-ink-2 marker:text-ink-3">
-            <li>Each Telegram chat becomes one dex chat, marked with the Telegram origin.</li>
+            <li>
+              Each private Telegram chat becomes a dex chat. /new starts a separate chat and keeps the old
+              chat.
+            </li>
             <li>dex replies in Telegram. On the web, you can read these chats with their tool calls.</li>
             <li>dex ignores messages from user IDs that are not allowed.</li>
             <li>The agent, its tools and its memory are the same as on the web.</li>
@@ -331,7 +370,13 @@ function Telegram({ settings, telegramChats }: { settings: Settings; telegramCha
           </Button>
         </Section>
       ) : null}
-      {edit ? <TelegramDialog settings={settings} onClose={() => setEdit(false)} /> : null}
+      {edit ? (
+        <TelegramDialog
+          settings={settings}
+          onClose={() => setEdit(false)}
+          onNeedsPairing={() => pairing.mutate({})}
+        />
+      ) : null}
       {off ? (
         <Confirm
           title="Turn off Telegram?"
@@ -350,7 +395,7 @@ function Telegram({ settings, telegramChats }: { settings: Settings; telegramCha
 function parseUsers(text: string) {
   const fields = text.split(/[\s,]+/).filter(Boolean);
 
-  if (!fields.length) return { users: [], error: "Add at least one user ID. dex ignores everyone else." };
+  if (!fields.length) return { users: [], error: "" };
 
   if (fields.some((field) => !/^[1-9]\d{0,15}$/.test(field) || !Number.isSafeInteger(Number(field))))
     return { users: [], error: "A Telegram user ID is a positive number." };
@@ -360,7 +405,15 @@ function parseUsers(text: string) {
   return { users: fields.map(Number), error: "" };
 }
 
-function TelegramDialog({ settings, onClose }: { settings: Settings; onClose: () => void }) {
+function TelegramDialog({
+  settings,
+  onClose,
+  onNeedsPairing,
+}: {
+  settings: Settings;
+  onClose: () => void;
+  onNeedsPairing: () => void;
+}) {
   const { notify } = useApp();
   const saved = settings.telegram.enabled;
   const [token, setToken] = useState("");
@@ -372,9 +425,12 @@ function TelegramDialog({ settings, onClose }: { settings: Settings; onClose: ()
 
   const save = useMutation({
     ...setTelegramMutation(),
-    onSuccess: async () => {
+    onSuccess: async (_, variables) => {
       await refreshSettings();
       onClose();
+
+      if (variables.body.allowedUsers.length === 0) onNeedsPairing();
+
       notify("Telegram saved. dex restarted the bot.");
     },
     // The typed token is dropped; enter it again to retry.
@@ -391,7 +447,7 @@ function TelegramDialog({ settings, onClose }: { settings: Settings; onClose: ()
   return (
     <Modal
       title={saved ? "Edit Telegram" : "Connect Telegram"}
-      description="Create a bot with @BotFather. Message @userinfobot to find your user ID. dex saves the bot and restarts it."
+      description="Create a bot with @BotFather. Save the token, then use a pairing link to allow your account."
       pending={save.isPending}
       onClose={onClose}
       footer={
@@ -447,24 +503,27 @@ function TelegramDialog({ settings, onClose }: { settings: Settings; onClose: ()
             )}
           </Field>
         )}
-        <Field
-          label="Allowed user IDs"
-          hint="One per line, or separated with commas. dex ignores messages from all other users."
-          error={tried ? parsed.error : undefined}
-        >
-          {({ id, describedBy, invalid }) => (
-            <Textarea
-              id={id}
-              inputMode="numeric"
-              rows={3}
-              className="font-mono tabular-nums"
-              aria-describedby={describedBy}
-              aria-invalid={invalid}
-              value={users}
-              onChange={(e) => setUsers(e.target.value)}
-            />
-          )}
-        </Field>
+        <details>
+          <summary className="cursor-pointer text-[13px] text-ink-2">Advanced: enter user IDs</summary>
+          <Field
+            label="Allowed user IDs"
+            hint="Optional. Use a pairing link if you do not know your ID. One ID per line, or separated with commas."
+            error={tried ? parsed.error : undefined}
+          >
+            {({ id, describedBy, invalid }) => (
+              <Textarea
+                id={id}
+                inputMode="numeric"
+                rows={3}
+                className="font-mono tabular-nums"
+                aria-describedby={describedBy}
+                aria-invalid={invalid}
+                value={users}
+                onChange={(e) => setUsers(e.target.value)}
+              />
+            )}
+          </Field>
+        </details>
         <button type="submit" hidden />
       </form>
       {save.isError ? (

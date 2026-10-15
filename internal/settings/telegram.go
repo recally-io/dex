@@ -1,0 +1,58 @@
+package settings
+
+import (
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/telegram"
+)
+
+// CreateTelegramPairing replaces the previous link. The code grants host access.
+func (s *Service) CreateTelegramPairing(ctx context.Context) (string, int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg, err := s.TelegramConfig(ctx)
+	if err != nil {
+		return "", 0, err
+	}
+	if cfg == nil {
+		return "", 0, fmt.Errorf("%w: connect a Telegram bot first", ErrInvalid)
+	}
+	username, err := telegram.Username(ctx, *cfg)
+	if err != nil {
+		return "", 0, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	code := make([]byte, 24)
+	if _, err = rand.Read(code); err != nil {
+		return "", 0, err
+	}
+	value := hex.EncodeToString(code)
+	expires := time.Now().Add(10 * time.Minute).Unix()
+	if err = s.q.SetTelegramPairing(ctx, sqlc.SetTelegramPairingParams{PairingCode: value, PairingExpires: expires}); err != nil {
+		return "", 0, err
+	}
+	return "https://t.me/" + username + "?start=" + value, expires, nil
+}
+
+func (s *Service) pairTelegram(token string) func(context.Context, string, int64) ([]int64, error) {
+	return func(ctx context.Context, code string, user int64) ([]int64, error) {
+		if user <= 0 {
+			return nil, nil
+		}
+		users, err := s.q.PairTelegramOwner(ctx, sqlc.PairTelegramOwnerParams{Token: token, Code: code, UserID: strconv.FormatInt(user, 10), Now: time.Now().Unix()})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		return parseUsers(users)
+	}
+}

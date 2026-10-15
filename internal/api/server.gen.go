@@ -1307,6 +1307,9 @@ type ServerInterface interface {
 	// (PUT /api/settings/telegram)
 	SetTelegram(w http.ResponseWriter, r *http.Request)
 
+	// (POST /api/settings/telegram/pairing)
+	CreateTelegramPairing(w http.ResponseWriter, r *http.Request)
+
 	// (POST /api/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request)
 
@@ -1859,6 +1862,20 @@ func (siw *ServerInterfaceWrapper) SetTelegram(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// CreateTelegramPairing operation middleware
+func (siw *ServerInterfaceWrapper) CreateTelegramPairing(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTelegramPairing(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateUpload operation middleware
 func (siw *ServerInterfaceWrapper) CreateUpload(w http.ResponseWriter, r *http.Request) {
 
@@ -2039,6 +2056,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/agent", wrapper.SetAgent)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.DeleteProvider)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.SetProvider)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/telegram/pairing", wrapper.CreateTelegramPairing)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/telegram", wrapper.DeleteTelegram)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/telegram", wrapper.SetTelegram)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/automations", wrapper.ListAutomations)
@@ -3516,6 +3534,58 @@ func (response SetTelegramdefaultJSONResponse) VisitSetTelegramResponse(w http.R
 	return err
 }
 
+type CreateTelegramPairingRequestObject struct {
+}
+
+type CreateTelegramPairingResponseObject interface {
+	VisitCreateTelegramPairingResponse(w http.ResponseWriter) error
+}
+
+type CreateTelegramPairing200JSONResponse struct {
+	ExpiresAt int64  `json:"expiresAt"`
+	Url       string `json:"url"`
+}
+
+func (response CreateTelegramPairing200JSONResponse) VisitCreateTelegramPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTelegramPairing400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CreateTelegramPairing400JSONResponse) VisitCreateTelegramPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTelegramPairing500JSONResponse Error
+
+func (response CreateTelegramPairing500JSONResponse) VisitCreateTelegramPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateUploadRequestObject struct {
 	Body *multipart.Reader
 }
@@ -3741,6 +3811,9 @@ type StrictServerInterface interface {
 
 	// (PUT /api/settings/telegram)
 	SetTelegram(ctx context.Context, request SetTelegramRequestObject) (SetTelegramResponseObject, error)
+
+	// (POST /api/settings/telegram/pairing)
+	CreateTelegramPairing(ctx context.Context, request CreateTelegramPairingRequestObject) (CreateTelegramPairingResponseObject, error)
 
 	// (POST /api/uploads)
 	CreateUpload(ctx context.Context, request CreateUploadRequestObject) (CreateUploadResponseObject, error)
@@ -4547,6 +4620,30 @@ func (sh *strictHandler) SetTelegram(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetTelegramResponseObject); ok {
 		if err := validResponse.VisitSetTelegramResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTelegramPairing operation middleware
+func (sh *strictHandler) CreateTelegramPairing(w http.ResponseWriter, r *http.Request) {
+	var request CreateTelegramPairingRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTelegramPairing(ctx, request.(CreateTelegramPairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTelegramPairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTelegramPairingResponseObject); ok {
+		if err := validResponse.VisitCreateTelegramPairingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

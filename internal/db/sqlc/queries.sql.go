@@ -535,13 +535,19 @@ func (q *Queries) GetSubmissionReply(ctx context.Context, id string) (GetSubmiss
 }
 
 const getTelegramSettings = `-- name: GetTelegramSettings :one
-SELECT id, token, allowed_users FROM telegram_settings WHERE id = 1
+SELECT id, token, allowed_users, pairing_code, pairing_expires FROM telegram_settings WHERE id = 1
 `
 
 func (q *Queries) GetTelegramSettings(ctx context.Context) (TelegramSetting, error) {
 	row := q.db.QueryRowContext(ctx, getTelegramSettings)
 	var i TelegramSetting
-	err := row.Scan(&i.ID, &i.Token, &i.AllowedUsers)
+	err := row.Scan(
+		&i.ID,
+		&i.Token,
+		&i.AllowedUsers,
+		&i.PairingCode,
+		&i.PairingExpires,
+	)
 	return i, err
 }
 
@@ -992,6 +998,36 @@ func (q *Queries) ListProviders(ctx context.Context) ([]Provider, error) {
 	return items, nil
 }
 
+const pairTelegramOwner = `-- name: PairTelegramOwner :one
+UPDATE telegram_settings
+SET allowed_users = CASE WHEN instr(',' || allowed_users || ',', ',' || CAST(?1 AS TEXT) || ',') > 0 THEN allowed_users
+    WHEN allowed_users = '' THEN CAST(?1 AS TEXT)
+    ELSE allowed_users || ',' || CAST(?1 AS TEXT) END,
+    pairing_code = '', pairing_expires = 0
+WHERE id = 1 AND token = ?2 AND pairing_code = ?3
+    AND pairing_code <> '' AND pairing_expires > ?4
+RETURNING allowed_users
+`
+
+type PairTelegramOwnerParams struct {
+	UserID string `json:"user_id"`
+	Token  string `json:"token"`
+	Code   string `json:"code"`
+	Now    int64  `json:"now"`
+}
+
+func (q *Queries) PairTelegramOwner(ctx context.Context, arg PairTelegramOwnerParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, pairTelegramOwner,
+		arg.UserID,
+		arg.Token,
+		arg.Code,
+		arg.Now,
+	)
+	var allowed_users string
+	err := row.Scan(&allowed_users)
+	return allowed_users, err
+}
+
 const setAutomationNextDue = `-- name: SetAutomationNextDue :exec
 UPDATE automations SET next_due_at = ? WHERE id = ?
 `
@@ -1030,10 +1066,24 @@ func (q *Queries) SetConversationSettings(ctx context.Context, arg SetConversati
 	return err
 }
 
+const setTelegramPairing = `-- name: SetTelegramPairing :exec
+UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE id = 1
+`
+
+type SetTelegramPairingParams struct {
+	PairingCode    string `json:"pairing_code"`
+	PairingExpires int64  `json:"pairing_expires"`
+}
+
+func (q *Queries) SetTelegramPairing(ctx context.Context, arg SetTelegramPairingParams) error {
+	_, err := q.db.ExecContext(ctx, setTelegramPairing, arg.PairingCode, arg.PairingExpires)
+	return err
+}
+
 const setTelegramSettings = `-- name: SetTelegramSettings :exec
 INSERT INTO telegram_settings (id, token, allowed_users)
 VALUES (1, ?, ?)
-ON CONFLICT (id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users
+ON CONFLICT (id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, pairing_code = '', pairing_expires = 0
 `
 
 type SetTelegramSettingsParams struct {

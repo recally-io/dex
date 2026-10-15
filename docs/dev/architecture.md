@@ -272,10 +272,30 @@ browser ──EventSource──▶ control  GET /api/chats/{id}/events
 have a bot token. It reads messages with `getUpdates` long polling,
 so dex needs no public URL.
 
-- The bot ignores users outside the saved allowlist.
+- Only private chats can enter the agent. The bot ignores users outside the
+  saved allowlist. A saved token with no allowed users waits for owner pairing.
+- The Channels page creates a link with the bot username from `getMe` and a
+  random code. The code expires after 10 minutes. `telegram_settings` stores
+  the code and expiry. One SQLite update adds the owner and clears the code.
+  Invalid or expired codes create no user or chat. A new link or settings
+  change cancels the previous code. Manual user-ID entry remains available.
+- The bot registers `/new`, `/stop`, and `/help` with `setMyCommands`.
+  The channel manager owns command execution and deduplication.
 - Each update has a stable source key: `telegram:<bot id>:<update id>`.
   A repeated update does not create another submission.
-- Replies use parts of at most 4096 UTF-16 code units.
+- Goldmark parses Markdown into Telegram HTML. The sender splits at block
+  boundaries and closes code tags in each part. Each part has at most 4096
+  UTF-16 code units, including markup. A rejected HTML part retries as plain
+  text. A 429 response retries once when `retry_after` is at most 5 seconds.
+- Each pending submission has a worker watch through `live.Hub`. The bot
+  updates a private draft at most once per second. If drafts fail, the bot
+  sends one preview and edits it. Typing refreshes every 4 seconds. Previews
+  are best effort. The final reply uses the durable sender.
+- Photos use the largest size. Documents and photos pass through
+  `upload.Store`, with a 20 MB limit. Captions become message text. The agent
+  and web transcript use the same upload record.
+- `getMe` checks the token at start. Poll errors and recovery update runtime
+  status on the Channels page. Tokens do not appear in status reasons.
 
 ## Shared channels
 

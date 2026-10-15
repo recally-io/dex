@@ -108,7 +108,9 @@ type Submission struct {
 }
 
 type TelegramSetting struct {
-	ID           int64  `json:"id"`
-	Token        string `json:"token"`
-	AllowedUsers string `json:"allowed_users"`
+	ID             int64  `json:"id"`
+	Token          string `json:"token"`
+	AllowedUsers   string `json:"allowed_users"`
+	PairingCode    string `json:"pairing_code"`
+	PairingExpires int64  `json:"pairing_expires"`
 }

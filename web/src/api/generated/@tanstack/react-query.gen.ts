@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acquireMaintenance, createAutomation, createChat, createSession, createUpload, deleteAutomation, deleteProvider, deleteTelegram, getAutomation, getChat, getExtensions, getHealth, getSettings, getUpload, listAutomationRuns, listAutomations, listChats, listModels, type Options, previewSchedule, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setAgent, setChatSettings, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetHealthData, GetHealthResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteProvider, deleteTelegram, getAutomation, getChat, getExtensions, getHealth, getSettings, getUpload, listAutomationRuns, listAutomations, listChats, listModels, type Options, previewSchedule, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setAgent, setChatSettings, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetHealthData, GetHealthResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
 
 /**
  * Exchanges the access token for the session cookie.
@@ -354,6 +354,23 @@ export const setProviderMutation = (options?: Partial<Options<SetProviderData>>)
     const mutationOptions: UseMutationOptions<SetProviderResponse, SetProviderError, Options<SetProviderData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await setProvider({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Creates a single-use owner pairing link. The link expires in 10 minutes.
+ */
+export const createTelegramPairingMutation = (options?: Partial<Options<CreateTelegramPairingData>>): UseMutationOptions<CreateTelegramPairingResponse, CreateTelegramPairingError, Options<CreateTelegramPairingData>> => {
+    const mutationOptions: UseMutationOptions<CreateTelegramPairingResponse, CreateTelegramPairingError, Options<CreateTelegramPairingData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createTelegramPairing({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

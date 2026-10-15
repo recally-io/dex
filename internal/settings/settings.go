@@ -385,7 +385,7 @@ func (s *Service) TelegramConfig(ctx context.Context) (*telegram.Config, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &telegram.Config{Token: row.Token, AllowedUsers: users, APIURL: s.apiURL}, nil
+	return &telegram.Config{Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(row.Token)}, nil
 }
 
 // SetTelegram saves the bot configuration and restarts the bot. An empty token keeps the saved
@@ -403,6 +403,7 @@ func (s *Service) SetTelegram(ctx context.Context, token string, allowedUsers []
 		}
 	}
 	cfg := telegram.Config{Token: strings.TrimSpace(token), AllowedUsers: allowedUsers, APIURL: s.apiURL}
+	cfg.Pair = s.pairTelegram(cfg.Token)
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
@@ -432,7 +433,10 @@ func (s *Service) DeleteTelegram(ctx context.Context) error {
 }
 
 func parseUsers(s string) ([]int64, error) {
-	var users []int64
+	users := []int64{}
+	if s == "" {
+		return users, nil
+	}
 	for field := range strings.SplitSeq(s, ",") {
 		id, err := strconv.ParseInt(field, 10, 64)
 		if err != nil {
