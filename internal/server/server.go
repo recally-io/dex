@@ -184,6 +184,12 @@ func chatView(c chat.Chat) api.Chat {
 	if strings.HasPrefix(c.ChannelKey, "telegram:") {
 		out.Channel = api.ChatChannelTelegram
 	}
+	if strings.HasPrefix(c.ChannelKey, "wechat:") {
+		out.Channel = api.ChatChannelWechat
+	}
+	if strings.HasPrefix(c.ChannelKey, "feishu:") {
+		out.Channel = api.ChatChannelFeishu
+	}
 	if id, ok := automation.ChatAutomation(c.ChannelKey); ok {
 		out.Channel, out.AutomationId = api.ChatChannelAutomation, &id
 	}
@@ -295,7 +301,7 @@ func (h *handler) writableChat(ctx context.Context, id int64) (chat.Chat, error)
 	if err != nil {
 		return chat.Chat{}, err
 	}
-	if strings.HasPrefix(c.ChannelKey, "telegram:") {
+	if !strings.HasPrefix(c.ChannelKey, "web:") && !strings.HasPrefix(c.ChannelKey, "automation:") {
 		return chat.Chat{}, errReadOnly
 	}
 	return c, nil
@@ -399,7 +405,7 @@ func (h *handler) GetSettings(ctx context.Context, _ api.GetSettingsRequestObjec
 		Providers: make([]api.Provider, len(s.Providers)),
 		Builtins:  make([]api.ProviderInfo, len(s.Builtins)),
 		Apis:      s.APIs,
-		Telegram:  api.Telegram{Enabled: s.Telegram.Enabled, AllowedUsers: s.Telegram.AllowedUsers},
+		Telegram:  api.Telegram{Enabled: s.Telegram.Enabled, AllowedUsers: s.Telegram.AllowedUsers, Status: s.Telegram.Status},
 	}
 	for i, p := range s.Providers {
 		out.Providers[i] = providerView(p)

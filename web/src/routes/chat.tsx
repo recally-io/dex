@@ -170,10 +170,10 @@ export function ChatPage({ chatId }: { chatId?: number }) {
 }
 
 function OriginPill({ chat }: { chat: ChatInfo }) {
-  if (chat.channel === "telegram")
+  if (!["web", "automation"].includes(chat.channel))
     return (
       <StatusPill dot={false} className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
-        <IconPaperPlane size={11} /> Telegram · read-only
+        <IconPaperPlane size={11} /> {chat.channel} · read-only
       </StatusPill>
     );
 
@@ -367,12 +367,13 @@ function ContextPane({
           <div>
             <Heading n={2} title="Channel" />
             <div className="rounded-card bg-surface px-3 py-2.5 text-[12.5px] leading-relaxed text-ink-2 shadow-card">
-              {chat.channel === "telegram" ? (
+              {!["web", "automation"].includes(chat.channel) ? (
                 <>
                   <span className="mb-1 flex items-center gap-1.5 font-medium text-ink">
-                    <IconPaperPlane size={13} /> Telegram
+                    <IconPaperPlane size={13} /> {chat.channel}
                   </span>
-                  dex replies in Telegram. The web shows the same transcript and memory, read-only.
+                  dex replies in the original channel. The web shows the same transcript and memory,
+                  read-only.
                 </>
               ) : chat.channel === "automation" ? (
                 <>
@@ -631,10 +632,10 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     return () => observer.disconnect();
   }, []);
 
-  const telegram = chat.data?.channel === "telegram";
+  const readOnly = !!chat.data && !["web", "automation"].includes(chat.data.channel);
 
-  const reason = telegram
-    ? "Reply in Telegram. Telegram chats are read-only on the web."
+  const reason = readOnly
+    ? "Reply in the original channel. This chat is read-only on the web."
     : !model.ok
       ? "Choose an available model before you send."
       : chatId && connection !== "ready"
@@ -713,14 +714,14 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
       ) : null}
       <Composer
         controls={
-          telegram ? null : <ChatControls agent={settings.agent} value={chatSettings} save={saveSettings} />
+          readOnly ? null : <ChatControls agent={settings.agent} value={chatSettings} save={saveSettings} />
         }
         fix={
           model.ok ? null : settings.providers.length ? (
             <ModelPicker
               // Telegram chats follow the agent's model, so there the picker sets it.
               override={
-                telegram
+                readOnly
                   ? undefined
                   : chatModelOverride(settings.agent, chatSettings, models.data?.models, saveSettings)
               }
@@ -736,11 +737,11 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
             </Link>
           )
         }
-        files={telegram ? undefined : files}
+        files={readOnly ? undefined : files}
         running={running}
         pending={pending}
         disabledReason={reason}
-        readOnly={telegram}
+        readOnly={readOnly}
         placeholder={chatId ? "Reply" : "Message dex"}
         autoFocus={!chatId || !!firstMessage}
         onSend={(text) => sendText(text, files.ready)}
@@ -769,12 +770,12 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
       </div>
     ) : (
       <>
-        {telegram ? (
+        {readOnly ? (
           <div className="flex items-start gap-2.5 rounded-card bg-inset px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2 shadow-hairline">
             <IconLock size={14} className="mt-0.5 shrink-0" />
             <p>
-              This chat came from Telegram. dex replies in Telegram. The web shows the same transcript and the
-              same memory, but you cannot post here.
+              dex replies in the original channel. The web shows the same transcript and the same memory, but
+              you cannot post here.
             </p>
           </div>
         ) : null}

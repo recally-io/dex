@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/automation"
+	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -58,7 +59,7 @@ type Config struct {
 type App struct {
 	db      *sql.DB
 	handler http.Handler
-	bots    *bots
+	bots    *channel.Manager
 	jobs    *scheduler.Scheduler
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
@@ -96,7 +97,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		chats *chat.Service
 		prefs *settings.Service
 		hub   *live.Hub
-		bots  = &bots{ctx: runCtx}
+		bots  *channel.Manager
 	)
 	w := worker.New(worker.Config{
 		Path:      path,
@@ -123,10 +124,19 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		},
 		OnStart: func(ctx context.Context) { chats.Replay(ctx) },
 	})
-	chats = chat.New(q, w, time.Now, bots.Deliver, func(id int64) { hub.Changed(id) })
+	chats = chat.New(q, w, time.Now, func(ctx context.Context, key string, reply chat.Reply) { bots.Notify(ctx, key, reply) }, func(id int64) { hub.Changed(id) })
 	hub = live.New(q, chats, w, DefaultAgentID)
-	bots.chats = chats
-	prefs = settings.New(q, w.Call, DefaultAgentID, cfg.TelegramAPIURL, bots.Set)
+	bots = channel.New(runCtx, conn, chats, DefaultAgentID)
+	prefs = settings.New(q, w.Call, DefaultAgentID, cfg.TelegramAPIURL, func(cfg *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
+
+		if cfg == nil {
+			bots.Set("telegram", nil)
+			return
+		}
+		cfg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
+		bots.Set("telegram", telegram.New(*cfg, bots, DefaultAgentID))
+	})
+	prefs.ChannelStatus = bots.Status
 	tg, err := prefs.TelegramConfig(ctx)
 	if err != nil {
 		cancel()
@@ -166,7 +176,10 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	jobs.Start()
-	bots.Set(tg) //nolint:contextcheck // the bot runs until Close, not for the life of ctx
+	if tg != nil {
+		tg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
+		bots.Set("telegram", telegram.New(*tg, bots, DefaultAgentID)) //nolint:contextcheck // the bot uses the manager lifetime
+	}
 	return a, nil
 }
 
@@ -178,58 +191,9 @@ func (a *App) Handler() http.Handler { return a.handler }
 func (a *App) Close() error {
 	a.cancel()
 	err := a.jobs.Close()
-	a.bots.Set(nil)
+	a.bots.Close()
 	a.wg.Wait()
 	return errors.Join(err, a.db.Close())
-}
-
-// bots runs the Telegram bot of the current settings, if any.
-type bots struct {
-	ctx   context.Context
-	chats telegram.Submitter
-
-	mu   sync.Mutex
-	bot  *telegram.Bot
-	stop func() // stops bot and waits for it
-}
-
-// Set stops the running bot and starts one for cfg, or none when cfg is nil. The callers serialize
-// Set: the settings service holds its lock, and Start and Close run alone.
-func (b *bots) Set(cfg *telegram.Config) {
-	b.mu.Lock()
-	stop := b.stop
-	b.bot, b.stop = nil, nil
-	b.mu.Unlock()
-	// Wait outside the lock: the old bot can wait for the worker, whose reader calls Deliver.
-	if stop != nil {
-		stop()
-	}
-	if cfg == nil {
-		return
-	}
-	ctx, cancel := context.WithCancel(b.ctx)
-	bot := telegram.New(*cfg, b.chats, DefaultAgentID)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		_ = bot.Run(ctx)
-	}()
-	b.mu.Lock()
-	b.bot, b.stop = bot, func() { cancel(); <-done }
-	b.mu.Unlock()
-}
-
-// Deliver sends a reply through the running bot. Without a bot, a Telegram reply stays only in
-// control.sqlite.
-func (b *bots) Deliver(ctx context.Context, channelKey string, reply chat.Reply) {
-	b.mu.Lock()
-	bot := b.bot
-	b.mu.Unlock()
-	if bot != nil {
-		bot.Deliver(ctx, channelKey, reply)
-	} else if strings.HasPrefix(channelKey, "telegram:") {
-		slog.Warn("telegram is off; the reply was not sent", "channel", channelKey)
-	}
 }
 
 // WorkerEnv selects the variables of environ that the worker needs: the basic process variables

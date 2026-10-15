@@ -572,8 +572,8 @@ components:
         id: { type: integer, format: int64 }
         channel:
           type: string
-          enum: [web, telegram, automation]
-          description: Telegram chats are read-only in the web UI.
+          enum: [web, telegram, wechat, feishu, automation]
+          description: External channel chats are read-only in the web UI.
         automationId:
           type: string
           description: The automation that created the chat.
@@ -1109,13 +1109,24 @@ components:
 
     Telegram:
       type: object
-      required: [enabled, allowedUsers]
+      required: [enabled, allowedUsers, status]
       properties:
         enabled: { type: boolean }
         botId: { type: string }
+        status: { $ref: "#/components/schemas/ChannelStatus" }
         allowedUsers:
           type: array
           items: { type: integer, format: int64 }
+
+    ChannelStatus:
+      x-go-type: channel.Status
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/channel
+      type: object
+      required: [state]
+      properties:
+        state: { type: string, enum: [off, running, error, needs_login] }
+        reason: { type: string }
 
     TelegramInput:
       type: object

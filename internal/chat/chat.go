@@ -88,7 +88,8 @@ type Service struct {
 
 	// Serializes worker conversation creation, so two first messages of one chat create one worker
 	// conversation. Global lock; per conversation if throughput matters.
-	createMu sync.Mutex
+	createMu   sync.Mutex
+	deliveryMu sync.Mutex // orders submit admission with abort
 
 	maintenanceMu sync.Mutex
 	leaseUntil    atomic.Int64
@@ -115,6 +116,13 @@ func (s *Service) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case p := <-s.queue:
+			for s.leaseUntil.Load() > s.now().UnixMilli() {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(50 * time.Millisecond):
+				}
+			}
 			s.deliver(ctx, p)
 		}
 	}
@@ -156,6 +164,13 @@ func (s *Service) Send(ctx context.Context, agentID, channelKey string, m Messag
 // answer.
 func (s *Service) Submit(ctx context.Context, agentID, channelKey, sourceKey, content string) error {
 	_, err := s.enqueue(ctx, agentID, channelKey, sourceKey, Message{ID: uuid.NewV7().String(), Content: content})
+	return err
+}
+
+// SubmitMessage stores a channel update with its attachments and source identity.
+func (s *Service) SubmitMessage(ctx context.Context, agentID, channelKey, sourceKey string, m Message) error {
+	m.ID = uuid.NewV7().String()
+	_, err := s.enqueue(ctx, agentID, channelKey, sourceKey, m)
 	return err
 }
 
@@ -243,12 +258,25 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	}, nil
 }
 
-// Abort stops the run of chat id and withdraws its queued messages. The worker settles each of them
-// as unanswered.
+// Abort settles pending messages as unanswered and aborts the worker run.
+// Queued messages cannot enter the worker after this change.
 func (s *Service) Abort(ctx context.Context, agentID string, id int64) error {
+	s.deliveryMu.Lock()
 	c, err := s.Get(ctx, agentID, id)
 	if err != nil {
+		s.deliveryMu.Unlock()
 		return err
+	}
+	ids, err := s.q.StopChatSubmissions(ctx, sqlc.StopChatSubmissionsParams{ConversationID: id, SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+	s.deliveryMu.Unlock()
+	if err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		s.signal(id)
+		if s.notify != nil {
+			s.notify(ctx, c.ChannelKey, Reply{Status: "unanswered", Reason: "stopped"})
+		}
 	}
 	if c.WorkerConversationID == 0 {
 		return nil
@@ -322,6 +350,15 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 	conversation, err := s.workerConversation(ctx, p.ConversationID, settings)
 	if err != nil {
 		return err
+	}
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	current, err := s.q.GetSubmission(ctx, p.ID)
+	if err != nil {
+		return err
+	}
+	if current.Status != "pending" {
+		return nil
 	}
 	var result worker.SubmitResult
 	return s.worker.Call(ctx, "submit", worker.SubmitParams{

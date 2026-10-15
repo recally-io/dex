@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"uuid"
@@ -19,8 +20,12 @@ import (
 // of the real service. getUpdates returns every queued update with an ID at or above the offset,
 // as Telegram does.
 type fakeTelegram struct {
-	srv  *httptest.Server
-	sent chan sentMessage
+	failAfter atomic.Int64
+	sendCount atomic.Int64
+	failSend  atomic.Bool
+	attempted chan struct{}
+	srv       *httptest.Server
+	sent      chan sentMessage
 
 	mu      sync.Mutex
 	updates []map[string]any
@@ -35,7 +40,7 @@ const fakeToken = "123:secret"
 
 func newFakeTelegram(t *testing.T) *fakeTelegram {
 	t.Helper()
-	f := &fakeTelegram{sent: make(chan sentMessage, 16)}
+	f := &fakeTelegram{sent: make(chan sentMessage, 16), attempted: make(chan struct{}, 16)}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -85,6 +90,15 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		result = updates
 	case "sendMessage":
+		select {
+		case f.attempted <- struct{}{}:
+		default:
+		}
+		n := f.sendCount.Add(1)
+		if f.failSend.Load() || (f.failAfter.Load() > 0 && n > f.failAfter.Load()) {
+			_ = json.MarshalWrite(w, map[string]any{"ok": false, "description": "temporary failure"})
+			return
+		}
 		var m sentMessage
 		_ = json.UnmarshalRead(r.Body, &m)
 		f.sent <- m

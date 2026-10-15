@@ -15,7 +15,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf16"
 
@@ -34,6 +33,7 @@ type Config struct {
 	// users, because agent tools run on the host.
 	AllowedUsers []int64
 	APIURL       string // default https://api.telegram.org
+	Report       func(state, reason string)
 }
 
 // Validate reports a token that is not "<bot ID>:<secret>", and an empty allowlist.
@@ -65,16 +65,9 @@ type Bot struct {
 	chats   Submitter
 	agentID string
 	client  *http.Client
-	out     chan outgoing
-	done    chan struct{} // closed when Run returns
 }
 
-type outgoing struct {
-	chatID int64
-	text   string
-}
-
-// New returns a Bot. Run starts it. Connect the chat service's notify to Deliver.
+// New returns a Bot. Register it with the channel manager to start it.
 func New(cfg Config, chats Submitter, agentID string) *Bot {
 	if cfg.APIURL == "" {
 		cfg.APIURL = "https://api.telegram.org"
@@ -84,17 +77,11 @@ func New(cfg Config, chats Submitter, agentID string) *Bot {
 		chats:   chats,
 		agentID: agentID,
 		client:  &http.Client{Timeout: 90 * time.Second}, // above the 30 s long poll
-		out:     make(chan outgoing, 64),
-		done:    make(chan struct{}),
 	}
 }
 
-// Run receives messages and sends replies until ctx is done.
+// Run receives messages until ctx is done. The channel manager sends replies.
 func (b *Bot) Run(ctx context.Context) error {
-	defer close(b.done)
-	var wg sync.WaitGroup
-	wg.Go(func() { b.send(ctx) })
-	defer wg.Wait()
 
 	// Telegram sends an update again until a getUpdates call with a higher offset confirms it. After
 	// a restart the offset is 0, so the last batch comes again; Submit ignores the repeats.
@@ -113,7 +100,13 @@ func (b *Bot) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil //nolint:nilerr // an error after cancel is the requested stop
 		}
+		if err == nil && b.cfg.Report != nil {
+			b.cfg.Report("running", "")
+		}
 		if err != nil {
+			if b.cfg.Report != nil {
+				b.cfg.Report("error", "Telegram polling failed")
+			}
 			slog.Error("telegram: receive", "err", err)
 			select {
 			case <-ctx.Done():
@@ -124,18 +117,8 @@ func (b *Bot) Run(ctx context.Context) error {
 	}
 }
 
-// Deliver queues a reply for a Telegram channel and ignores other channels. It blocks only when
-// 64 replies wait to be sent. After Run returns, it drops the reply.
-func (b *Bot) Deliver(ctx context.Context, channelKey string, reply chat.Reply) {
-	id, ok := strings.CutPrefix(channelKey, channelPrefix)
-	if !ok {
-		return
-	}
-	chatID, err := strconv.ParseInt(id, 10, 64)
-	if err != nil {
-		slog.Error("telegram: bad channel key", "channel", channelKey)
-		return
-	}
+// Parts renders the outcome and splits it at Telegram's UTF-16 limit.
+func (b *Bot) Parts(reply chat.Reply) []string {
 	text := reply.Answer
 	if reply.Status != "done" {
 		text = "No answer: " + reply.Reason
@@ -143,12 +126,20 @@ func (b *Bot) Deliver(ctx context.Context, channelKey string, reply chat.Reply) 
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
 	}
-	select {
-	case b.out <- outgoing{chatID: chatID, text: text}:
-	case <-b.done:
-		slog.Warn("telegram: the bot stopped; dropped a reply", "chat", chatID)
-	case <-ctx.Done():
+	return split(text, maxMessageLen)
+}
+
+// Send confirms one part. The channel manager records its progress.
+func (b *Bot) Send(ctx context.Context, peer, text string) error {
+	id, ok := strings.CutPrefix(peer, channelPrefix)
+	if !ok {
+		return errors.New("invalid Telegram peer")
 	}
+	chatID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return err
+	}
+	return b.call(ctx, "sendMessage", map[string]any{"chat_id": chatID, "text": text}, nil)
 }
 
 func (b *Bot) receive(ctx context.Context, u update) error {
@@ -166,24 +157,6 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		channelPrefix+strconv.FormatInt(m.Chat.ID, 10),
 		channelPrefix+b.cfg.botID()+":"+strconv.FormatInt(u.UpdateID, 10),
 		m.Text)
-}
-
-// send sends queued replies in order. A reply that fails is logged and dropped.
-func (b *Bot) send(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case msg := <-b.out:
-			for _, part := range split(msg.text, maxMessageLen) {
-				err := b.call(ctx, "sendMessage", map[string]any{"chat_id": msg.chatID, "text": part}, nil)
-				if err != nil {
-					slog.Error("telegram: send reply", "chat", msg.chatID, "err", err)
-					break
-				}
-			}
-		}
-	}
 }
 
 func (b *Bot) call(ctx context.Context, method string, params, result any) error {

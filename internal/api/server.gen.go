@@ -18,6 +18,7 @@ import (
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/recally-io/dex/internal/automation"
+	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/worker"
@@ -56,8 +57,10 @@ func (e AssistantItemKind) Valid() bool {
 // Defines values for ChatChannel.
 const (
 	ChatChannelAutomation ChatChannel = "automation"
+	ChatChannelFeishu     ChatChannel = "feishu"
 	ChatChannelTelegram   ChatChannel = "telegram"
 	ChatChannelWeb        ChatChannel = "web"
+	ChatChannelWechat     ChatChannel = "wechat"
 )
 
 // Valid indicates whether the value is a known member of the ChatChannel enum.
@@ -65,9 +68,13 @@ func (e ChatChannel) Valid() bool {
 	switch e {
 	case ChatChannelAutomation:
 		return true
+	case ChatChannelFeishu:
+		return true
 	case ChatChannelTelegram:
 		return true
 	case ChatChannelWeb:
+		return true
+	case ChatChannelWechat:
 		return true
 	default:
 		return false
@@ -392,6 +399,9 @@ type AutomationRunList struct {
 	Runs []AutomationRun `json:"runs"`
 }
 
+// ChannelStatus defines model for ChannelStatus.
+type ChannelStatus = channel.Status
+
 // Chat defines model for Chat.
 type Chat struct {
 	// AutomationId The automation that created the chat.
@@ -400,7 +410,7 @@ type Chat struct {
 	// Busy True while a message of the chat has no answer yet.
 	Busy bool `json:"busy"`
 
-	// Channel Telegram chats are read-only in the web UI.
+	// Channel External channel chats are read-only in the web UI.
 	Channel   ChatChannel `json:"channel"`
 	CreatedAt int64       `json:"createdAt"`
 	Id        int64       `json:"id"`
@@ -413,7 +423,7 @@ type Chat struct {
 	UpdatedAt int64 `json:"updatedAt"`
 }
 
-// ChatChannel Telegram chats are read-only in the web UI.
+// ChatChannel External channel chats are read-only in the web UI.
 type ChatChannel string
 
 // ChatEvent defines model for ChatEvent.
@@ -713,9 +723,10 @@ type SnapshotEventType string
 
 // Telegram defines model for Telegram.
 type Telegram struct {
-	AllowedUsers []int64 `json:"allowedUsers"`
-	BotId        *string `json:"botId,omitempty"`
-	Enabled      bool    `json:"enabled"`
+	AllowedUsers []int64       `json:"allowedUsers"`
+	BotId        *string       `json:"botId,omitempty"`
+	Enabled      bool          `json:"enabled"`
+	Status       ChannelStatus `json:"status"`
 }
 
 // TelegramInput defines model for TelegramInput.

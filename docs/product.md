@@ -26,7 +26,11 @@ to read in an afternoon.
 - Agents with a model, instructions, and a workspace directory.
 - Durable conversations: a crash or a restart does not lose a message or a
   started run.
-- Entry points: the web UI and Telegram.
+- Entry points: the web UI and Telegram. External channel chats are read-only
+  on the web. `/new` starts another chat. `/stop` stops pending work. `/help`
+  lists commands. Reply delivery resumes after a restart and skips confirmed
+  parts. A crash after remote success can duplicate one part. The Channels
+  page shows each bot's runtime status.
 - In a web chat, the user can attach files and images (at most 10 per
   message, 20 MB each). The agent reads them with its tools. A web chat can
   also use its own model and thinking level instead of the agent's. Telegram

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"uuid"
@@ -30,8 +31,9 @@ import (
 // <message>". They do not prove that a real provider works.
 
 type dex struct {
-	app *app.App
-	srv *httptest.Server
+	stopOnce sync.Once
+	app      *app.App
+	srv      *httptest.Server
 }
 
 // cacheDir is shared by all tests. Install skips a worker that is already in it; unpacking the
@@ -87,9 +89,11 @@ func startDexHome(t *testing.T, cfg app.Config, home string) *dex {
 }
 
 func (d *dex) stop() {
-	d.srv.CloseClientConnections()
-	d.srv.Close()
-	_ = d.app.Close()
+	d.stopOnce.Do(func() {
+		d.srv.CloseClientConnections()
+		d.srv.Close()
+		_ = d.app.Close()
+	})
 }
 
 // call sends a JSON request and returns the status and the body.

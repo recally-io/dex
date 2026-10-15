@@ -46,6 +46,22 @@ type AutomationRun struct {
 	CreatedAt    int64          `json:"created_at"`
 }
 
+type ChannelCommand struct {
+	SourceKey      string        `json:"source_key"`
+	Peer           string        `json:"peer"`
+	ChannelKey     string        `json:"channel_key"`
+	Command        string        `json:"command"`
+	Answer         string        `json:"answer"`
+	Completed      int64         `json:"completed"`
+	DeliveredParts int64         `json:"delivered_parts"`
+	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
+}
+
+type ChannelPeer struct {
+	Peer       string `json:"peer"`
+	ChannelKey string `json:"channel_key"`
+}
+
 type Conversation struct {
 	ID                   int64         `json:"id"`
 	AgentID              string        `json:"agent_id"`
@@ -87,6 +103,8 @@ type Submission struct {
 	SettledAt      sql.NullInt64  `json:"settled_at"`
 	SourceKey      sql.NullString `json:"source_key"`
 	Attachments    string         `json:"attachments"`
+	DeliveredAt    sql.NullInt64  `json:"delivered_at"`
+	DeliveredParts int64          `json:"delivered_parts"`
 }
 
 type TelegramSetting struct {
