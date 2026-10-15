@@ -89,7 +89,7 @@ type Service struct {
 	// Serializes worker conversation creation, so two first messages of one chat create one worker
 	// conversation. Global lock; per conversation if throughput matters.
 	createMu   sync.Mutex
-	deliveryMu sync.Mutex // orders submit admission with abort
+	deliveryMu sync.Mutex // orders quiesce, confirmed leases, submit, and abort
 
 	maintenanceMu sync.Mutex
 	leaseUntil    atomic.Int64
@@ -116,13 +116,6 @@ func (s *Service) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case p := <-s.queue:
-			for s.leaseUntil.Load() > s.now().UnixMilli() {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(50 * time.Millisecond):
-				}
-			}
 			s.deliver(ctx, p)
 		}
 	}
@@ -253,13 +246,12 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 // Queued messages cannot enter the worker after this change.
 func (s *Service) Abort(ctx context.Context, agentID string, id int64) error {
 	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
 	c, err := s.Get(ctx, agentID, id)
 	if err != nil {
-		s.deliveryMu.Unlock()
 		return err
 	}
 	count, err := s.q.StopChatSubmissions(ctx, sqlc.StopChatSubmissionsParams{ConversationID: id, SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
-	s.deliveryMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -344,7 +336,19 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 	if err != nil {
 		return err
 	}
-	s.deliveryMu.Lock()
+	for {
+		s.deliveryMu.Lock()
+		if s.leaseUntil.Load() <= s.now().UnixMilli() {
+			break
+		}
+		// Abort and lease renewal must remain available while this submission waits.
+		s.deliveryMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
 	defer s.deliveryMu.Unlock()
 	current, err := s.q.GetSubmission(ctx, p.ID)
 	if err != nil {
