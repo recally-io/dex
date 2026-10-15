@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"unicode"
 	"uuid"
@@ -31,14 +30,40 @@ var (
 	ErrInvalidName = errors.New("invalid file name")
 )
 
-// Store keeps the uploads of one agent workspace.
+// Store keeps the uploads of one agent.
 type Store struct {
-	dir string // <workspace>/uploads
+	agentDir string // <data>/agents/<agent>, the parent of the workspace
 }
 
-// New returns the Store of the agent workspace workspace.
-func New(workspace string) *Store {
-	return &Store{dir: filepath.Join(workspace, "uploads")}
+// New returns the Store of the agent with the directory agentDir.
+func New(agentDir string) *Store {
+	return &Store{agentDir: agentDir}
+}
+
+// uploadsDir is the uploads directory, relative to the agent directory.
+const uploadsDir = "workspace/uploads"
+
+// uploads opens the uploads directory, and makes it first when create is true. The agent's tools
+// can write in the workspace, also a symlink in the place of the uploads directory. The root at
+// the agent directory refuses each symlink that leads out of it.
+func (s *Store) uploads(create bool) (*os.Root, error) {
+	// The worker makes the agent directory when it first runs the agent.
+	if create {
+		if err := os.MkdirAll(s.agentDir, 0o700); err != nil {
+			return nil, err
+		}
+	}
+	agent, err := os.OpenRoot(s.agentDir)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = agent.Close() }()
+	if create {
+		if err := agent.MkdirAll(uploadsDir, 0o700); err != nil {
+			return nil, err
+		}
+	}
+	return agent.OpenRoot(uploadsDir)
 }
 
 // Save stores the file name with the content of r as a new upload.
@@ -46,27 +71,30 @@ func (s *Store) Save(name string, r io.Reader) (worker.Attachment, error) {
 	if err := checkName(name); err != nil {
 		return worker.Attachment{}, err
 	}
-	if err := os.MkdirAll(s.dir, 0o700); err != nil {
-		return worker.Attachment{}, err
-	}
-	// The file is complete before its directory exists, so Get never sees a part of a file.
-	tmp, err := os.CreateTemp(s.dir, ".upload-*")
+	root, err := s.uploads(true)
 	if err != nil {
 		return worker.Attachment{}, err
 	}
-	defer func() { _ = os.Remove(tmp.Name()) }()
-	size, err := io.Copy(tmp, io.LimitReader(r, MaxSize+1))
-	if err = errors.Join(err, tmp.Close()); err != nil {
+	defer func() { _ = root.Close() }()
+	id := uuid.NewV7().String()
+	// The file is complete before its directory exists, so Get never sees a part of a file.
+	tmp := ".upload-" + id
+	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return worker.Attachment{}, err
+	}
+	defer func() { _ = root.Remove(tmp) }()
+	size, err := io.Copy(f, io.LimitReader(r, MaxSize+1))
+	if err = errors.Join(err, f.Close()); err != nil {
 		return worker.Attachment{}, err
 	}
 	if size > MaxSize {
 		return worker.Attachment{}, ErrTooLarge
 	}
-	id := uuid.NewV7().String()
-	if err := os.Mkdir(filepath.Join(s.dir, id), 0o700); err != nil {
+	if err := root.Mkdir(id, 0o700); err != nil {
 		return worker.Attachment{}, err
 	}
-	if err := os.Rename(tmp.Name(), filepath.Join(s.dir, id, name)); err != nil {
+	if err := root.Rename(tmp, path.Join(id, name)); err != nil {
 		return worker.Attachment{}, err
 	}
 	return s.Get(id)
@@ -104,14 +132,10 @@ func (s *Store) Open(id string) (*os.File, worker.Attachment, error) {
 	if u, err := uuid.Parse(id); err != nil || u.String() != id {
 		return nil, worker.Attachment{}, ErrNotFound
 	}
-	// The agent's tools can write in the workspace. The root keeps a symlink that they put in the
-	// uploads directory from opening a file outside it.
-	root, err := os.OpenRoot(s.dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, worker.Attachment{}, ErrNotFound
-	}
+	root, err := s.uploads(false)
 	if err != nil {
-		return nil, worker.Attachment{}, err
+		// Also no uploads directory yet, or a symlink that leads out of the agent directory.
+		return nil, worker.Attachment{}, fmt.Errorf("%w: %w", ErrNotFound, err)
 	}
 	defer func() { _ = root.Close() }()
 	entries, err := fs.ReadDir(root.FS(), id)

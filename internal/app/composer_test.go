@@ -358,6 +358,30 @@ func TestUploadIsServedSafely(t *testing.T) {
 			t.Fatalf("GET %s: %d %s", id, status, body)
 		}
 	}
+
+	// A symlink in the place of the uploads directory leads neither reads nor writes out of it.
+	outsideID := uuid.NewV7().String()
+	if err := os.Mkdir(filepath.Join(outside, outsideID), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, outsideID, "secret.txt"), []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(uploads); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, uploads); err != nil {
+		t.Fatal(err)
+	}
+	if status, _, body := d.getUpload(t, outsideID); status != http.StatusNotFound {
+		t.Fatalf("GET through a replaced uploads directory: %d %s", status, body)
+	}
+	if status, body := d.upload(t, "file", "a.txt", []byte("a")); status == http.StatusCreated {
+		t.Fatalf("POST through a replaced uploads directory: %d %s", status, body)
+	}
+	if entries, err := os.ReadDir(outside); err != nil || len(entries) != 2 {
+		t.Fatalf("outside directory changed: %v %v", entries, err)
+	}
 }
 
 func TestInvalidUploadsAndAttachmentsAreRefused(t *testing.T) {

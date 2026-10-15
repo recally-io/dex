@@ -31,12 +31,12 @@ import {
 } from "../api/generated/@tanstack/react-query.gen";
 import { applyChatEvent, emptyChatState } from "../lib/chat-state";
 import { queryClient, refreshChats } from "../lib/queries";
-import { agentModel, chatModel, saveChatSettings, thinkingNames } from "../lib/agent";
+import { chatModel, saveChatSettings, thinkingNames } from "../lib/agent";
 import { useAttachments } from "../lib/attachments";
 import { useApp } from "../lib/app-state";
 import { blocks, describeTool, touchesMemory } from "../lib/tools";
 import { Composer } from "../components/composer";
-import { ChatControls, type SaveChatSettings } from "../components/chat-settings";
+import { ChatControls, chatModelOverride, type SaveChatSettings } from "../components/chat-settings";
 import { RetryNotice, ToolStep, TranscriptItem, type ToolFocus } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
@@ -713,15 +713,11 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
         fix={
           model.ok ? null : settings.providers.length ? (
             <ModelPicker
+              // Telegram chats follow the agent's model, so there the picker sets it.
               override={
-                chatSettings.modelId
-                  ? {
-                      value: { provider: chatSettings.provider ?? "", modelId: chatSettings.modelId },
-                      defaultName: agentModel(settings.agent, models.data?.models).label,
-                      save: (m) =>
-                        saveSettings((saved) => ({ ...saved, provider: m?.provider, modelId: m?.id })),
-                    }
-                  : undefined
+                telegram
+                  ? undefined
+                  : chatModelOverride(settings.agent, chatSettings, models.data?.models, saveSettings)
               }
               trigger={
                 <button type="button" className="font-medium text-accent-ink underline">
