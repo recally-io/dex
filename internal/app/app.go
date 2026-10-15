@@ -1,5 +1,5 @@
 // Package app wires control: the database, the worker process, the chat service, the HTTP
-// handler, and the Telegram bot.
+// handler, and channel bots.
 package app
 
 import (
@@ -27,6 +27,7 @@ import (
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/telegram"
 	"github.com/recally-io/dex/internal/upload"
+	"github.com/recally-io/dex/internal/wechat"
 	"github.com/recally-io/dex/internal/worker"
 	"github.com/recally-io/dex/internal/workerbin"
 )
@@ -43,6 +44,10 @@ type Config struct {
 	WorkerEnv []string
 	// TelegramAPIURL replaces https://api.telegram.org, for example for a local Bot API server.
 	TelegramAPIURL string
+	// Wechat API and CDN overrides connect integration tests to local HTTP servers.
+	WechatAPIURL     string
+	WechatCDNURL     string
+	WechatHTTPClient *http.Client
 	// Version is the version that GET /api/health reports.
 	Version string
 	// DreamEvery is the shortest time between two dreams; zero means 24 hours.
@@ -66,7 +71,7 @@ type App struct {
 }
 
 // Start opens the database, makes sure the default agent exists, and starts the worker and, when
-// the settings turn it on, the Telegram bot. The agent has no model until the user chooses one in
+// the settings turn them on, channel bots. The agent has no model until the user chooses one in
 // the settings.
 func Start(ctx context.Context, cfg Config) (*App, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
@@ -137,6 +142,21 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		bots.Set("telegram", telegram.New(*cfg, bots))
 	})
 	prefs.ChannelStatus = bots.Status
+	uploads := upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID))
+	wxOptions := wechat.Options{APIURL: cfg.WechatAPIURL, CDNURL: cfg.WechatCDNURL, HTTPClient: cfg.WechatHTTPClient, Version: cfg.Version}
+	prefs.ConfigureWechat(wxOptions, conn, func(cfg *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
+		if cfg == nil {
+			bots.Set("wechat", nil)
+			return
+		}
+		bots.Set("wechat", wechat.New(*cfg, wxOptions, q, bots, uploads))
+	})
+	wx, err := prefs.WechatConfig(ctx)
+	if err != nil {
+		cancel()
+		return nil, errors.Join(err, conn.Close())
+	}
+
 	tg, err := prefs.TelegramConfig(ctx)
 	if err != nil {
 		cancel()
@@ -160,7 +180,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		RestartWorker: w.Restart,
 		Chats:         chats, Automations: automations, Settings: prefs, Live: hub, AgentID: DefaultAgentID, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 		// The worker runs the agent's tools in this workspace.
-		Uploads: upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID)),
+		Uploads: uploads,
 	})}
 	a.wg.Go(func() { _ = w.Run(runCtx) })
 	a.wg.Go(func() { chats.Run(runCtx) })
@@ -179,6 +199,9 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	if tg != nil {
 		tg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
 		bots.Set("telegram", telegram.New(*tg, bots)) //nolint:contextcheck // the bot uses the manager lifetime
+	}
+	if wx != nil {
+		bots.Set("wechat", wechat.New(*wx, wxOptions, q, bots, uploads)) //nolint:contextcheck // bot lifetime belongs to the manager
 	}
 	return a, nil
 }
