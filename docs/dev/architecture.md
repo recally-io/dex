@@ -68,11 +68,14 @@ and the [service commands](../../README.md#run-and-manage-dex).
 
 ## Maintenance gate
 
-All tool execution enters through `chat.Service.Run`, including automations,
+New control submissions enter through `chat.Service.Run`, including automations,
 dreams, web chats, and Telegram chats. Before dispatch, the service registers
 the submission under the same lock that grants a maintenance lease. The
 submission stays active until settled processing finishes. An active submission
-makes acquire return 409 and holds no gate. Acquire also checks worker ping.
+makes acquire return 409 and holds no gate. Worker `quiesce` closes admission
+before checking active RPC operations, pending settle and memory commits, and
+pi-durable `Harness.inspect()` for unfinished tasks and submissions. This
+includes persisted work resumed by a watch, without a control dispatch.
 
 A successful POST to `/api/maintenance` holds dispatch for two minutes. The
 client supplies a UUID lease ID. The same ID renews it; another ID cannot
@@ -80,7 +83,10 @@ release it. New messages and scheduled work are stored while dispatch waits.
 DELETE releases the gate. Expiry releases dispatch if the updater dies;
 a process restart also clears the lease and replays pending work. Replacement
 and restart have a 90-second deadline, within the lease. Cross-site write
-protection applies to both maintenance endpoints.
+protection applies to both maintenance endpoints. New worker operations,
+including watches, wait before opening a harness while the lease is held.
+Worker initialization restores a live lease before replay or watches can run.
+See [ADR 0007](decisions/0007-worker-quiescence.md).
 
 ## Sources of truth
 

@@ -4,7 +4,6 @@ package update
 import (
 	"archive/tar"
 	"bytes"
-	"cmp"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -25,6 +24,7 @@ import (
 	"uuid"
 
 	"github.com/vaayne/dex/internal/service"
+	"golang.org/x/mod/semver"
 )
 
 // 256 MiB bounds download and extraction memory; raise when a release needs more.
@@ -406,13 +406,11 @@ func (u *Updater) stage(ctx context.Context, r release) (string, error) {
 	}
 	verify, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	//nolint:gosec // G204: run the checksum-verified staged release, without a shell.
-	b, err := exec.CommandContext(verify, stage, "version").Output()
+	version, err := service.BinaryVersion(verify, stage)
 	if err != nil {
 		return "", fmt.Errorf("staged executable did not run: %w", err)
 	}
-	fields := strings.Fields(string(b))
-	if len(fields) < 2 || fields[0] != "dex" || fields[1] != r.Tag {
+	if version != r.Tag {
 		return "", errors.New("staged executable reported an unexpected version")
 	}
 	keep = true
@@ -493,103 +491,24 @@ func maintenance(ctx context.Context, c service.Config, id, method string) error
 	return nil
 }
 
-// compare implements SemVer ordering without a dependency. Build metadata does not affect order.
+// compare requires complete release versions; x/mod accepts shortened versions too.
 func compare(a, b string) (int, error) {
-	parse := func(raw string) ([3]string, []string, error) {
-		var nums [3]string
-		raw = strings.TrimPrefix(raw, "v")
-		core, metadata, hasMetadata := strings.Cut(raw, "+")
-		if hasMetadata && !identifiers(metadata) {
-			return nums, nil, errors.New("invalid version metadata")
+	normalize := func(tag string) (string, error) {
+		tag = "v" + strings.TrimPrefix(tag, "v")
+		core, _, _ := strings.Cut(tag, "+")
+		core, _, _ = strings.Cut(core, "-")
+		if len(strings.Split(core, ".")) != 3 || !semver.IsValid(tag) {
+			return "", errors.New("version must be a release SemVer tag with three components")
 		}
-		core, pre, hasPre := strings.Cut(core, "-")
-		parts := strings.Split(core, ".")
-		if len(parts) != 3 {
-			return nums, nil, errors.New("version must be a release SemVer tag")
-		}
-		for i, part := range parts {
-			if !numeric(part) || len(part) > 1 && part[0] == '0' {
-				return nums, nil, errors.New("invalid release version")
-			}
-			nums[i] = part
-		}
-		var prerelease []string
-		if hasPre {
-			if !identifiers(pre) {
-				return nums, nil, errors.New("invalid prerelease version")
-			}
-			prerelease = strings.Split(pre, ".")
-			for _, part := range prerelease {
-				if numeric(part) && len(part) > 1 && part[0] == '0' {
-					return nums, nil, errors.New("prerelease numbers must not have leading zeroes")
-				}
-			}
-		}
-		return nums, prerelease, nil
+		return tag, nil
 	}
-	an, ap, err := parse(a)
+	a, err := normalize(a)
 	if err != nil {
 		return 0, err
 	}
-	bn, bp, err := parse(b)
+	b, err = normalize(b)
 	if err != nil {
 		return 0, err
 	}
-	for i := range 3 {
-		if order := compareNumber(an[i], bn[i]); order != 0 {
-			return order, nil
-		}
-	}
-	if len(ap) == 0 && len(bp) > 0 {
-		return 1, nil
-	}
-	if len(bp) == 0 && len(ap) > 0 {
-		return -1, nil
-	}
-	for i := range min(len(ap), len(bp)) {
-		if ap[i] == bp[i] {
-			continue
-		}
-		switch {
-		case numeric(ap[i]) && numeric(bp[i]):
-			return compareNumber(ap[i], bp[i]), nil
-		case numeric(ap[i]):
-			return -1, nil
-		case numeric(bp[i]):
-			return 1, nil
-		default:
-			return strings.Compare(ap[i], bp[i]), nil
-		}
-	}
-	return cmp.Compare(len(ap), len(bp)), nil
-}
-func numeric(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
-}
-func compareNumber(a, b string) int {
-	if len(a) != len(b) {
-		return cmp.Compare(len(a), len(b))
-	}
-	return strings.Compare(a, b)
-}
-func identifiers(value string) bool {
-	for part := range strings.SplitSeq(value, ".") {
-		if part == "" {
-			return false
-		}
-		for _, r := range part {
-			if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' {
-				return false
-			}
-		}
-	}
-	return true
+	return semver.Compare(a, b), nil
 }

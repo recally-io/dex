@@ -158,3 +158,10 @@ export type ModelInfo = {
 	readonly input: readonly ModelInputModality[];
 	readonly thinkingLevels: readonly ModelThinkingLevel[];
 };
+
+/** Worker admission lease. Expiry also releases requests waiting to open a harness. */
+export const QuiesceParams = Type.Object({ leaseId: Type.String(), expiresAt: Type.Number() });
+export type QuiesceParams = Static<typeof QuiesceParams>;
+export type QuiesceResult = { readonly busy: boolean; readonly reason?: string };
+export const ResumeParams = Type.Object({ leaseId: Type.String() });
+export type ResumeParams = Static<typeof ResumeParams>;

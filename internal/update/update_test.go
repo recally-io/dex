@@ -311,7 +311,7 @@ func TestUserReleaseOrderDoesNotOverflow(t *testing.T) {
 	if got, err := compare(a, b); err != nil || got >= 0 {
 		t.Fatalf("numeric prerelease order: %d %v", got, err)
 	}
-	for _, tag := range []string{"v1.0.0-rc.01", "v1.0.0+", "v1.0.0+bad/metadata", "v01.0.0"} {
+	for _, tag := range []string{"v1", "v1.2", "v1.2+metadata", "v1.0.0-rc.01", "v1.0.0+", "v1.0.0+bad/metadata", "v01.0.0"} {
 		if _, err := compare(tag, "v1.0.0"); err == nil {
 			t.Fatalf("accepted invalid SemVer %q", tag)
 		}

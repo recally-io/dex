@@ -162,3 +162,18 @@ type incoming struct {
 	Event  string         `json:"event"`
 	Params jsontext.Value `json:"params"`
 }
+
+// QuiesceParams closes worker admission before checking all unfinished work.
+type QuiesceParams struct {
+	LeaseID   string `json:"leaseId"`
+	ExpiresAt int64  `json:"expiresAt"`
+}
+type QuiesceResult struct {
+	Busy   bool   `json:"busy"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// ResumeParams releases the matching worker lease.
+type ResumeParams struct {
+	LeaseID string `json:"leaseId"`
+}

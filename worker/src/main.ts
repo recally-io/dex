@@ -12,6 +12,8 @@ import {
 	SubmitParams,
 	UnwatchParams,
 	WatchParams,
+	QuiesceParams,
+	ResumeParams,
 } from "./protocol.ts";
 
 // stdout carries the protocol. Send every console method that writes to stdout to stderr, so a
@@ -40,6 +42,10 @@ const agents = new Agents(
 
 async function handle(request: Request): Promise<unknown> {
 	switch (request.method) {
+		case "quiesce":
+			return agents.quiesce(Value.Parse(QuiesceParams, request.params));
+		case "resume":
+			return agents.resume(Value.Parse(ResumeParams, request.params));
 		case "ping":
 			return {};
 		case "createConversation":

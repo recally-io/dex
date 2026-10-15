@@ -4,44 +4,85 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/vaayne/dex/internal/worker"
 )
 
 var ErrMaintenanceBusy = errors.New("maintenance is busy")
 
-// AcquireMaintenance closes dispatch atomically with checking outstanding submissions.
-// A failed acquire holds no gate. A successful lease expires if its owner dies.
+// AcquireMaintenance closes control dispatch, then atomically closes worker admission
+// and checks durable work. A failed acquire holds no gate. Both leases expire.
 func (s *Service) AcquireMaintenance(ctx context.Context, id string) error {
-	// Do not hold the dispatch lock while the worker reader processes events.
-	if err := s.worker.Call(ctx, "ping", struct{}{}, &struct{}{}); err != nil {
-		return errors.Join(ErrMaintenanceBusy, err)
-	}
+	s.maintenanceMu.Lock()
+	defer s.maintenanceMu.Unlock()
 	s.dispatchMu.Lock()
-	defer s.dispatchMu.Unlock()
 	if s.leaseID != "" && s.now().Before(s.leaseUntil) && s.leaseID != id {
+		s.dispatchMu.Unlock()
 		return errors.Join(ErrMaintenanceBusy, errors.New("another updater holds the lease"))
 	}
 	if len(s.active) > 0 {
+		s.dispatchMu.Unlock()
 		return errors.Join(ErrMaintenanceBusy, errors.New("a submission is dispatched or running"))
 	}
-	// Every dispatch reserves its submission under this lock before calling the worker.
 	s.leaseID = id
 	s.leaseUntil = s.now().Add(2 * time.Minute)
+	params := worker.QuiesceParams{LeaseID: id, ExpiresAt: s.leaseUntil.UnixMilli()}
+	s.dispatchMu.Unlock()
+	// The stdout reader processes settled events under dispatchMu. Do not hold it here.
+	var result worker.QuiesceResult
+	err := s.worker.Call(ctx, "quiesce", params, &result)
+	if err == nil && !result.Busy {
+		return nil
+	}
+	release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	_ = s.worker.Call(release, "resume", worker.ResumeParams{LeaseID: id}, &struct{}{})
+	s.clearMaintenance()
+	return errors.Join(ErrMaintenanceBusy, err, errors.New(result.Reason))
+}
+
+func (s *Service) ReleaseMaintenance(ctx context.Context, id string) error {
+	s.maintenanceMu.Lock()
+	defer s.maintenanceMu.Unlock()
+	s.dispatchMu.Lock()
+	other := s.leaseID != "" && s.now().Before(s.leaseUntil) && s.leaseID != id
+	s.dispatchMu.Unlock()
+	if other {
+		return ErrMaintenanceBusy
+	}
+	if err := s.worker.Call(ctx, "resume", worker.ResumeParams{LeaseID: id}, &struct{}{}); err != nil {
+		return err
+	}
+	s.clearMaintenance()
 	return nil
 }
 
-func (s *Service) ReleaseMaintenance(id string) error {
+// RestoreMaintenance runs before a new worker is exposed to watches or replay.
+func (s *Service) RestoreMaintenance(ctx context.Context, call worker.CallFunc) error {
+	s.dispatchMu.Lock()
+	params := worker.QuiesceParams{LeaseID: s.leaseID, ExpiresAt: s.leaseUntil.UnixMilli()}
+	s.dispatchMu.Unlock()
+	if params.LeaseID == "" || params.ExpiresAt <= s.now().UnixMilli() {
+		return nil
+	}
+	var result worker.QuiesceResult
+	if err := call(ctx, "quiesce", params, &result); err != nil {
+		return err
+	}
+	if result.Busy {
+		return errors.Join(ErrMaintenanceBusy, errors.New(result.Reason))
+	}
+	return nil
+}
+func (s *Service) clearMaintenance() {
 	s.dispatchMu.Lock()
 	defer s.dispatchMu.Unlock()
-	if s.leaseID != "" && s.now().Before(s.leaseUntil) && s.leaseID != id {
-		return ErrMaintenanceBusy
-	}
 	s.leaseID = ""
 	s.leaseUntil = time.Time{}
 	select {
 	case s.dispatchWake <- struct{}{}:
 	default:
 	}
-	return nil
 }
 func (s *Service) beginDispatch(ctx context.Context, id string) bool {
 	for {

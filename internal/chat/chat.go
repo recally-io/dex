@@ -89,11 +89,12 @@ type Service struct {
 	// conversation. Global lock; per conversation if throughput matters.
 	createMu sync.Mutex
 
-	dispatchMu   sync.Mutex
-	active       map[string]bool
-	leaseID      string
-	leaseUntil   time.Time
-	dispatchWake chan struct{}
+	maintenanceMu sync.Mutex
+	dispatchMu    sync.Mutex
+	active        map[string]bool
+	leaseID       string
+	leaseUntil    time.Time
+	dispatchWake  chan struct{}
 }
 
 // New returns a Service. Connect the worker's settled events to HandleSettled and its start to

@@ -37,7 +37,7 @@ type Status struct {
 
 func Probe(ctx context.Context, c Config) (Health, error) {
 	var h Health
-	client := &http.Client{Timeout: time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 	defer client.CloseIdleConnections()
 	//nolint:gosec // G704: Config.Validate limits this readiness probe to loopback.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL()+"/api/health", nil)
@@ -149,4 +149,20 @@ func (m Manager) Status(ctx context.Context) (Status, error) {
 		s.Running = s.Running && probeErr == nil
 	}
 	return s, nil
+}
+
+// BinaryVersion runs the installed or staged dex and reads its version.
+func BinaryVersion(ctx context.Context, path string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	//nolint:gosec // G204: execute the user's installed dex, without a shell.
+	b, err := exec.CommandContext(ctx, path, "version").Output()
+	if err != nil {
+		return "", err
+	}
+	fields := strings.Fields(string(b))
+	if len(fields) < 2 || fields[0] != "dex" {
+		return "", errors.New("installed executable did not report a dex version")
+	}
+	return fields[1], nil
 }

@@ -126,11 +126,11 @@ func (h *handler) AcquireMaintenance(ctx context.Context, req api.AcquireMainten
 	}
 	return api.AcquireMaintenance200JSONResponse(ok), nil
 }
-func (h *handler) ReleaseMaintenance(_ context.Context, req api.ReleaseMaintenanceRequestObject) (api.ReleaseMaintenanceResponseObject, error) {
+func (h *handler) ReleaseMaintenance(ctx context.Context, req api.ReleaseMaintenanceRequestObject) (api.ReleaseMaintenanceResponseObject, error) {
 	if req.Body == nil || req.Body.LeaseId.String() == "00000000-0000-0000-0000-000000000000" {
 		return nil, errInvalid
 	}
-	if err := h.Chats.ReleaseMaintenance(req.Body.LeaseId.String()); err != nil {
+	if err := h.Chats.ReleaseMaintenance(ctx, req.Body.LeaseId.String()); err != nil {
 		return nil, err
 	}
 	return api.ReleaseMaintenance200JSONResponse(ok), nil

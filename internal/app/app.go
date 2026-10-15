@@ -101,9 +101,12 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		OnSettled: func(ctx context.Context, s worker.Settled) { chats.HandleSettled(ctx, s) },
 		OnChat:    func(ev worker.ChatStream) { hub.HandleChat(ev) },
 		OnExit:    func() { hub.WorkerExited() },
-		Init: func(ctx context.Context, call worker.CallFunc) {
+		Init: func(ctx context.Context, call worker.CallFunc) error {
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
+			if err := chats.RestoreMaintenance(ctx, call); err != nil {
+				return err
+			}
 			// The worker still runs; requests to providers without credentials fail.
 			errs, err := prefs.ApplyProviders(ctx, call)
 			if err != nil {
@@ -112,6 +115,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 			for id, msg := range errs {
 				slog.Error("list the models of a provider", "provider", id, "err", msg)
 			}
+			return nil
 		},
 		OnStart: func(ctx context.Context) { chats.Replay(ctx) },
 	})

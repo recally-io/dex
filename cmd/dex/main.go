@@ -12,11 +12,9 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/vaayne/dex/internal/app"
@@ -36,10 +34,7 @@ func main() {
 	}
 }
 
-func serve(cfg service.Config) error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
+func serve(ctx context.Context, cfg service.Config) error {
 	cache, err := os.UserCacheDir()
 	if err != nil {
 		return err
@@ -69,11 +64,11 @@ func serve(cfg service.Config) error {
 	select {
 	case err = <-errc:
 	case <-ctx.Done():
-		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 		err = srv.Shutdown(shutdown)
 	}
-	return errors.Join(err, a.Close())
+	return errors.Join(err, a.Close()) //nolint:contextcheck // Close cancels the app-owned context and waits for cleanup.
 }
 
 var buildVersion string

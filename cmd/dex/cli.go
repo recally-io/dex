@@ -101,7 +101,7 @@ func dispatch(args []string) error {
 		if err != nil {
 			return err
 		}
-		return serve(c)
+		return serve(ctx, c)
 	case "service":
 		return serviceCommand(ctx, args)
 	case "update":
@@ -287,7 +287,7 @@ func serviceCommand(ctx context.Context, args []string) error {
 			return err
 		}
 		// The stored executable can differ from the CLI used for this command.
-		v, err := binaryVersion(ctx, c.Executable)
+		v, err := service.BinaryVersion(ctx, c.Executable)
 		if err != nil {
 			return err
 		}
@@ -299,20 +299,6 @@ func serviceCommand(ctx context.Context, args []string) error {
 		fmt.Fprintln(os.Stderr, "Usage: dex service install|uninstall|start|stop|restart|status|logs [options]")
 		return fmt.Errorf("%w: unknown service command %q", errUsage, action)
 	}
-}
-func binaryVersion(ctx context.Context, path string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	//nolint:gosec // G204: execute the user's installed dex, without a shell.
-	b, err := exec.CommandContext(ctx, path, "version").Output()
-	if err != nil {
-		return "", err
-	}
-	fields := strings.Fields(string(b))
-	if len(fields) < 2 || fields[0] != "dex" {
-		return "", errors.New("installed executable did not report a dex version")
-	}
-	return fields[1], nil
 }
 func printLinger(ctx context.Context) {
 	//nolint:gosec // G204: fixed command and numeric current-user ID, without a shell.
