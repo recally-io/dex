@@ -1148,6 +1148,38 @@ export type SetProviderResponses = {
 
 export type SetProviderResponse = SetProviderResponses[keyof SetProviderResponses];
 
+export type CreateTelegramPairingData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/telegram/pairing';
+};
+
+export type CreateTelegramPairingErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    500: Error;
+};
+
+export type CreateTelegramPairingError = CreateTelegramPairingErrors[keyof CreateTelegramPairingErrors];
+
+export type CreateTelegramPairingResponses = {
+    /**
+     * Pairing link
+     */
+    200: {
+        url: string;
+        expiresAt: number;
+    };
+};
+
+export type CreateTelegramPairingResponse = CreateTelegramPairingResponses[keyof CreateTelegramPairingResponses];
+
 export type BeginWechatLoginData = {
     body?: never;
     path?: never;

@@ -362,6 +362,24 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/settings/telegram/pairing:
+    post:
+      operationId: createTelegramPairing
+      description: Creates a single-use owner pairing link. The link expires in 10 minutes.
+      responses:
+        "200":
+          description: Pairing link
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, expiresAt]
+                properties:
+                  url: { type: string }
+                  expiresAt: { type: integer, format: int64 }
+        "400": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+
   /api/settings/wechat/login:
     post:
       operationId: beginWechatLogin

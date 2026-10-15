@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -136,16 +137,40 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	chats = chat.New(q, w, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
 	hub = live.New(q, chats, w, DefaultAgentID)
 	bots = channel.New(runCtx, conn, chats, DefaultAgentID)
-	prefs = settings.New(q, w.Call, DefaultAgentID, cfg.TelegramAPIURL, func(cfg *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
+	uploads := upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID))
+	setTelegram := func(cfg *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
 
 		if cfg == nil {
 			bots.Set("telegram", nil)
 			return
 		}
+		cfg.Uploads = uploads
+		cfg.Seen = func(ctx context.Context, source string) (bool, error) {
+			_, err := q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
+			if errors.Is(err, sql.ErrNoRows) {
+				return false, nil
+			}
+			return err == nil, err
+		}
+		cfg.Watch = func(ctx context.Context, source string) (string, io.ReadCloser, error) {
+			id, err := q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
+			if err != nil {
+				return "", nil, err
+			}
+			sub, err := q.GetSubmission(ctx, id)
+			if err != nil {
+				return "", nil, err
+			}
+			if sub.Status != "pending" {
+				return "", nil, nil
+			}
+			stream, err := hub.Open(ctx, sub.ConversationID)
+			return id, stream, err
+		}
 		cfg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
 		bots.Set("telegram", telegram.New(*cfg, bots))
-	})
-	uploads := upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID))
+	}
+	prefs = settings.New(q, w.Call, DefaultAgentID, cfg.TelegramAPIURL, setTelegram)
 	setFeishu := func(config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
 		if config == nil {
 			bots.Set("feishu", nil)
@@ -215,8 +240,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	jobs.Start()
 	setFeishu(fs)
 	if tg != nil {
-		tg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
-		bots.Set("telegram", telegram.New(*tg, bots)) //nolint:contextcheck // the bot uses the manager lifetime
+		setTelegram(tg)
 	}
 	if wx != nil {
 		bots.Set("wechat", wechat.New(*wx, wxOptions, q, bots, uploads)) //nolint:contextcheck // bot lifetime belongs to the manager

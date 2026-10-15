@@ -26,6 +26,12 @@ to read in an afternoon.
 - Agents with a model, instructions, and a workspace directory.
 - Durable conversations: a crash or a restart does not lose a message or a
   started run.
+- Telegram setup: save a bot token, then open a single-use pairing link to
+  allow the owner's account while the bot has no owner. Links expire after
+  10 minutes. A paired bot cannot create another pairing link. Manual user-ID
+  entry is an advanced option. The bot ignores other users and group chats.
+  Earlier versions accepted group messages from allowed users. The bot now
+  ignores all non-private chats, including messages from allowed users.
 - Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. External channel chats are read-only
   on the web. `/new` starts another chat. `/stop` stops pending work. `/help`
   lists commands. Reply delivery resumes after a restart and skips confirmed
@@ -34,8 +40,13 @@ to read in an afternoon.
 - In a web chat, the user can attach files and images (at most 10 per
   message, 20 MB each). The agent reads them with its tools. A web chat can
   also use its own model and thinking level instead of the agent's. Telegram
-  chats and automations use the agent's settings and take no files. WeChat
-  accepts images and files with the same limits. It uses voice transcription
+  chats and automations use the agent's settings. Telegram accepts photos and
+  documents up to 20 MB, with caption text. Telegram replies show progress,
+  code blocks, and basic text formatting. Final-send failures, including flood
+  limits, use durable retries with a delay from 5 to 60 seconds. Polling can
+  recover from transient startup failures. Permanently rejected setup or
+  attachment replies do not block later messages.
+  WeChat accepts images and files with the same limits. It uses voice transcription
   as text and shows a placeholder for videos.
 - WeChat setup: scan a QR code and confirm on the phone. Only that owner
   can send private messages to the agent. QR status polling stops when the page

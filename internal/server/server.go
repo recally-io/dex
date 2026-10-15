@@ -520,6 +520,14 @@ func (h *handler) DeleteTelegram(ctx context.Context, _ api.DeleteTelegramReques
 	return api.DeleteTelegram200JSONResponse(ok), nil
 }
 
+func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegramPairingRequestObject) (api.CreateTelegramPairingResponseObject, error) {
+	link, expires, err := h.Settings.CreateTelegramPairing(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return api.CreateTelegramPairing200JSONResponse{Url: link, ExpiresAt: expires}, nil
+}
+
 func (h *handler) BeginWechatLogin(ctx context.Context, _ api.BeginWechatLoginRequestObject) (api.BeginWechatLoginResponseObject, error) {
 	view, err := h.Settings.BeginWechatLogin(ctx)
 	if err != nil {
