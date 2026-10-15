@@ -294,6 +294,8 @@ remain writable.
 `/new` rotation commit in one transaction. `/stop` settles queued submissions
 as unanswered with reason `stopped`, prevents later admission, and aborts the
 worker run. An interrupted stop can run again; abort is safe to repeat.
+If abort fails, control logs the error and completes the command with a failure
+answer. The platform can then receive more messages and deliver other replies.
 
 Each platform has one durable sender. Notify only wakes this sender. At start
 and after a failed send, the same sender reads settled, undelivered submissions.

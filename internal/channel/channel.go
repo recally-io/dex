@@ -219,16 +219,17 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	case "/new":
 		answer = "Started a new chat."
 	case "/stop":
+		answer = "Stopped the current answer."
 		conv, err := m.q.GetConversationByKey(ctx, sqlc.GetConversationByKeyParams{AgentID: m.agentID, ChannelKey: c.ChannelKey})
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		if err == nil {
 			if err = m.chats.Abort(ctx, m.agentID, conv.ID); err != nil {
-				return err
+				slog.Warn("channel: could not stop the current answer", "source", c.SourceKey, "err", err)
+				answer = "Could not stop the current answer."
 			}
 		}
-		answer = "Stopped the current answer."
 	}
 	if err := m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{Answer: answer, SourceKey: c.SourceKey}); err != nil {
 		return err

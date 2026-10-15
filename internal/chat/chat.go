@@ -269,7 +269,7 @@ func (s *Service) Abort(ctx context.Context, agentID string, id int64) error {
 			s.notify(c.ChannelKey)
 		}
 	}
-	// A held maintenance lease proves the worker has no active run. Its abort call also waits
+	// A confirmed maintenance lease proves the worker has no active run. Its abort call also waits
 	// for admission, so only control's queue needs to be withdrawn while the lease is held.
 	if c.WorkerConversationID == 0 || s.leaseUntil.Load() > s.now().UnixMilli() {
 		return nil
