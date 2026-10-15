@@ -21,6 +21,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
+	"github.com/recally-io/dex/internal/feishu"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/scheduler"
 	"github.com/recally-io/dex/internal/server"
@@ -43,6 +44,9 @@ type Config struct {
 	WorkerEnv []string
 	// TelegramAPIURL replaces https://api.telegram.org, for example for a local Bot API server.
 	TelegramAPIURL string
+	// FeishuAPIURL and FeishuAccountsURL replace the platform boundaries in tests.
+	FeishuAPIURL      string
+	FeishuAccountsURL string
 	// Version is the version that GET /api/health reports.
 	Version string
 	// DreamEvery is the shortest time between two dreams; zero means 24 hours.
@@ -136,8 +140,22 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		cfg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
 		bots.Set("telegram", telegram.New(*cfg, bots, DefaultAgentID))
 	})
+	uploads := upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID))
+	setFeishu := func(config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
+		if config == nil {
+			bots.Set("feishu", nil)
+			return
+		}
+		bots.Set("feishu", feishu.New(*config, bots, q, hub, uploads, prefs.PairFeishu))
+	}
+	prefs.ConfigureFeishu(cfg.FeishuAPIURL, cfg.FeishuAccountsURL, setFeishu)
 	prefs.ChannelStatus = bots.Status
 	tg, err := prefs.TelegramConfig(ctx)
+	if err != nil {
+		cancel()
+		return nil, errors.Join(err, conn.Close())
+	}
+	fs, err := prefs.FeishuConfig(ctx)
 	if err != nil {
 		cancel()
 		return nil, errors.Join(err, conn.Close())
@@ -160,7 +178,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		RestartWorker: w.Restart,
 		Chats:         chats, Automations: automations, Settings: prefs, Live: hub, AgentID: DefaultAgentID, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 		// The worker runs the agent's tools in this workspace.
-		Uploads: upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID)),
+		Uploads: uploads,
 	})}
 	a.wg.Go(func() { _ = w.Run(runCtx) })
 	a.wg.Go(func() { chats.Run(runCtx) })
@@ -176,6 +194,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	jobs.Start()
+	setFeishu(fs)
 	if tg != nil {
 		tg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
 		bots.Set("telegram", telegram.New(*tg, bots, DefaultAgentID)) //nolint:contextcheck // the bot uses the manager lifetime

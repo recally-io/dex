@@ -482,6 +482,31 @@ type Extensions struct {
 	Skills  []Skill     `json:"skills"`
 }
 
+// Feishu defines model for Feishu.
+type Feishu = settings.Feishu
+
+// FeishuBrand defines model for FeishuBrand.
+type FeishuBrand struct {
+	Brand string `json:"brand"`
+}
+
+// FeishuInput defines model for FeishuInput.
+type FeishuInput struct {
+	AppId string `json:"appId"`
+
+	// AppSecret Write-only. Empty keeps the secret for the same App ID and brand.
+	AppSecret string `json:"appSecret"`
+	Brand     string `json:"brand"`
+}
+
+// FeishuPoll defines model for FeishuPoll.
+type FeishuPoll struct {
+	Session string `json:"session"`
+}
+
+// FeishuSetup defines model for FeishuSetup.
+type FeishuSetup = settings.FeishuSetup
+
 // Health defines model for Health.
 type Health struct {
 	DataDir     string       `json:"dataDir"`
@@ -828,6 +853,15 @@ type CreateSessionJSONRequestBody = NewSession
 
 // SetAgentJSONRequestBody defines body for SetAgent for application/json ContentType.
 type SetAgentJSONRequestBody = Agent
+
+// SetFeishuJSONRequestBody defines body for SetFeishu for application/json ContentType.
+type SetFeishuJSONRequestBody = FeishuInput
+
+// BeginFeishuJSONRequestBody defines body for BeginFeishu for application/json ContentType.
+type BeginFeishuJSONRequestBody = FeishuBrand
+
+// PollFeishuJSONRequestBody defines body for PollFeishu for application/json ContentType.
+type PollFeishuJSONRequestBody = FeishuPoll
 
 // SetProviderJSONRequestBody defines body for SetProvider for application/json ContentType.
 type SetProviderJSONRequestBody = ProviderInput
@@ -1294,6 +1328,21 @@ type ServerInterface interface {
 
 	// (PUT /api/settings/agent)
 	SetAgent(w http.ResponseWriter, r *http.Request)
+
+	// (DELETE /api/settings/feishu)
+	DeleteFeishu(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/settings/feishu)
+	GetFeishu(w http.ResponseWriter, r *http.Request)
+
+	// (PUT /api/settings/feishu)
+	SetFeishu(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/settings/feishu/registration)
+	BeginFeishu(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/settings/feishu/registration/poll)
+	PollFeishu(w http.ResponseWriter, r *http.Request)
 
 	// (DELETE /api/settings/providers/{providerId})
 	DeleteProvider(w http.ResponseWriter, r *http.Request, providerId string)
@@ -1779,6 +1828,76 @@ func (siw *ServerInterfaceWrapper) SetAgent(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteFeishu operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFeishu(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFeishu(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFeishu operation middleware
+func (siw *ServerInterfaceWrapper) GetFeishu(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFeishu(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetFeishu operation middleware
+func (siw *ServerInterfaceWrapper) SetFeishu(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetFeishu(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginFeishu operation middleware
+func (siw *ServerInterfaceWrapper) BeginFeishu(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginFeishu(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PollFeishu operation middleware
+func (siw *ServerInterfaceWrapper) PollFeishu(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PollFeishu(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteProvider operation middleware
 func (siw *ServerInterfaceWrapper) DeleteProvider(w http.ResponseWriter, r *http.Request) {
 
@@ -2041,6 +2160,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.SetProvider)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/telegram", wrapper.DeleteTelegram)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/telegram", wrapper.SetTelegram)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/feishu", wrapper.DeleteFeishu)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/feishu", wrapper.GetFeishu)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/feishu", wrapper.SetFeishu)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/feishu/registration", wrapper.BeginFeishu)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/feishu/registration/poll", wrapper.PollFeishu)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/automations", wrapper.ListAutomations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/automations", wrapper.CreateAutomation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/automations/preview", wrapper.PreviewSchedule)
@@ -3332,6 +3456,199 @@ func (response SetAgentdefaultJSONResponse) VisitSetAgentResponse(w http.Respons
 	return err
 }
 
+type DeleteFeishuRequestObject struct {
+}
+
+type DeleteFeishuResponseObject interface {
+	VisitDeleteFeishuResponse(w http.ResponseWriter) error
+}
+
+type DeleteFeishu200JSONResponse Ok
+
+func (response DeleteFeishu200JSONResponse) VisitDeleteFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFeishudefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteFeishudefaultJSONResponse) VisitDeleteFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeishuRequestObject struct {
+}
+
+type GetFeishuResponseObject interface {
+	VisitGetFeishuResponse(w http.ResponseWriter) error
+}
+
+type GetFeishu200JSONResponse Feishu
+
+func (response GetFeishu200JSONResponse) VisitGetFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeishudefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetFeishudefaultJSONResponse) VisitGetFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFeishuRequestObject struct {
+	Body *SetFeishuJSONRequestBody
+}
+
+type SetFeishuResponseObject interface {
+	VisitSetFeishuResponse(w http.ResponseWriter) error
+}
+
+type SetFeishu200JSONResponse FeishuSetup
+
+func (response SetFeishu200JSONResponse) VisitSetFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFeishudefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetFeishudefaultJSONResponse) VisitSetFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginFeishuRequestObject struct {
+	Body *BeginFeishuJSONRequestBody
+}
+
+type BeginFeishuResponseObject interface {
+	VisitBeginFeishuResponse(w http.ResponseWriter) error
+}
+
+type BeginFeishu200JSONResponse FeishuSetup
+
+func (response BeginFeishu200JSONResponse) VisitBeginFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginFeishudefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginFeishudefaultJSONResponse) VisitBeginFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollFeishuRequestObject struct {
+	Body *PollFeishuJSONRequestBody
+}
+
+type PollFeishuResponseObject interface {
+	VisitPollFeishuResponse(w http.ResponseWriter) error
+}
+
+type PollFeishu200JSONResponse FeishuSetup
+
+func (response PollFeishu200JSONResponse) VisitPollFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollFeishudefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response PollFeishudefaultJSONResponse) VisitPollFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteProviderRequestObject struct {
 	ProviderId string `json:"providerId"`
 }
@@ -3729,6 +4046,21 @@ type StrictServerInterface interface {
 
 	// (PUT /api/settings/agent)
 	SetAgent(ctx context.Context, request SetAgentRequestObject) (SetAgentResponseObject, error)
+
+	// (DELETE /api/settings/feishu)
+	DeleteFeishu(ctx context.Context, request DeleteFeishuRequestObject) (DeleteFeishuResponseObject, error)
+
+	// (GET /api/settings/feishu)
+	GetFeishu(ctx context.Context, request GetFeishuRequestObject) (GetFeishuResponseObject, error)
+
+	// (PUT /api/settings/feishu)
+	SetFeishu(ctx context.Context, request SetFeishuRequestObject) (SetFeishuResponseObject, error)
+
+	// (POST /api/settings/feishu/registration)
+	BeginFeishu(ctx context.Context, request BeginFeishuRequestObject) (BeginFeishuResponseObject, error)
+
+	// (POST /api/settings/feishu/registration/poll)
+	PollFeishu(ctx context.Context, request PollFeishuRequestObject) (PollFeishuResponseObject, error)
 
 	// (DELETE /api/settings/providers/{providerId})
 	DeleteProvider(ctx context.Context, request DeleteProviderRequestObject) (DeleteProviderResponseObject, error)
@@ -4433,6 +4765,147 @@ func (sh *strictHandler) SetAgent(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetAgentResponseObject); ok {
 		if err := validResponse.VisitSetAgentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteFeishu operation middleware
+func (sh *strictHandler) DeleteFeishu(w http.ResponseWriter, r *http.Request) {
+	var request DeleteFeishuRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteFeishu(ctx, request.(DeleteFeishuRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteFeishu")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteFeishuResponseObject); ok {
+		if err := validResponse.VisitDeleteFeishuResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFeishu operation middleware
+func (sh *strictHandler) GetFeishu(w http.ResponseWriter, r *http.Request) {
+	var request GetFeishuRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFeishu(ctx, request.(GetFeishuRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFeishu")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFeishuResponseObject); ok {
+		if err := validResponse.VisitGetFeishuResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetFeishu operation middleware
+func (sh *strictHandler) SetFeishu(w http.ResponseWriter, r *http.Request) {
+	var request SetFeishuRequestObject
+
+	var body SetFeishuJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetFeishu(ctx, request.(SetFeishuRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetFeishu")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetFeishuResponseObject); ok {
+		if err := validResponse.VisitSetFeishuResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginFeishu operation middleware
+func (sh *strictHandler) BeginFeishu(w http.ResponseWriter, r *http.Request) {
+	var request BeginFeishuRequestObject
+
+	var body BeginFeishuJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginFeishu(ctx, request.(BeginFeishuRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginFeishu")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginFeishuResponseObject); ok {
+		if err := validResponse.VisitBeginFeishuResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PollFeishu operation middleware
+func (sh *strictHandler) PollFeishu(w http.ResponseWriter, r *http.Request) {
+	var request PollFeishuRequestObject
+
+	var body PollFeishuJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PollFeishu(ctx, request.(PollFeishuRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PollFeishu")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PollFeishuResponseObject); ok {
+		if err := validResponse.VisitPollFeishuResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

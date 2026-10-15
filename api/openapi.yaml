@@ -390,6 +390,72 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/settings/feishu:
+    get:
+      operationId: getFeishu
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Feishu" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setFeishu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeishuInput" }
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeishuSetup" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteFeishu
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/settings/feishu/registration:
+    post:
+      operationId: beginFeishu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeishuBrand" }
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeishuSetup" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/settings/feishu/registration/poll:
+    post:
+      operationId: pollFeishu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeishuPoll" }
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeishuSetup" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/automations:
     get:
       operationId: listAutomations
@@ -1138,3 +1204,53 @@ components:
         allowedUsers:
           type: array
           items: { type: integer, format: int64 }
+
+    Feishu:
+      x-go-type: settings.Feishu
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/settings
+      type: object
+      required: [enabled, appId, brand, paired, status, error]
+      properties:
+        enabled: { type: boolean }
+        appId: { type: string }
+        brand: { type: string }
+        paired: { type: boolean }
+        status: { type: string }
+        error: { type: string }
+
+    FeishuSetup:
+      x-go-type: settings.FeishuSetup
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/settings
+      type: object
+      required: [session, qrUrl, interval, expiresIn, status, pairingCode]
+      properties:
+        session: { type: string }
+        qrUrl: { type: string }
+        interval: { type: integer }
+        expiresIn: { type: integer }
+        status: { type: string }
+        pairingCode: { type: string }
+
+    FeishuInput:
+      type: object
+      required: [appId, appSecret, brand]
+      properties:
+        appId: { type: string }
+        appSecret:
+          type: string
+          description: Write-only. Empty keeps the secret for the same App ID and brand.
+        brand: { type: string }
+
+    FeishuBrand:
+      type: object
+      required: [brand]
+      properties:
+        brand: { type: string }
+
+    FeishuPoll:
+      type: object
+      required: [session]
+      properties:
+        session: { type: string }

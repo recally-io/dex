@@ -19,11 +19,11 @@ import { Field, Input, SavedSecret, Textarea } from "../components/form";
 import { Facts, FramedPage, Mono, Note, NotAvailable, Panel, Section } from "../components/page";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
+import { FeishuChannel } from "./feishu";
 import { WithSettings } from "./agent";
 
 const unsupported = [
   { name: "Slack", text: "dex cannot connect to Slack in this version." },
-  { name: "Feishu / Lark", text: "dex cannot connect to Feishu or Lark in this version." },
   { name: "WeChat", text: "dex cannot connect to WeChat in this version." },
 ];
 
@@ -42,7 +42,7 @@ function ChannelRow({
   text,
   status,
 }: {
-  channel?: "web" | "telegram";
+  channel?: "web" | "telegram" | "feishu";
   icon: ReactNode;
   name: string;
   text: string;
@@ -122,6 +122,13 @@ export function ChannelsPage() {
                         </StatusPill>
                       }
                     />
+                    <ChannelRow
+                      channel="feishu"
+                      icon={<IconPaperPlane size={16} />}
+                      name="Feishu / Lark"
+                      text="Private chat with the paired owner. Create an app with a QR code."
+                      status={<span className="text-[12px] text-ink-3">Configure</span>}
+                    />
                   </div>
                 </Panel>
               </Section>
@@ -170,8 +177,8 @@ function Crumb() {
   );
 }
 
-export function ChannelPage({ channel }: { channel: "web" | "telegram" }) {
-  return channel === "web" ? <WebChannel /> : <TelegramChannel />;
+export function ChannelPage({ channel }: { channel: "web" | "telegram" | "feishu" }) {
+  return channel === "web" ? <WebChannel /> : channel === "feishu" ? <FeishuChannel /> : <TelegramChannel />;
 }
 
 function WebChannel() {

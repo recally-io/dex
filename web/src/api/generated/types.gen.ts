@@ -500,6 +500,41 @@ export type TelegramInput = {
     allowedUsers: Array<number>;
 };
 
+export type Feishu = {
+    enabled: boolean;
+    appId: string;
+    brand: string;
+    paired: boolean;
+    status: string;
+    error: string;
+};
+
+export type FeishuSetup = {
+    session: string;
+    qrUrl: string;
+    interval: number;
+    expiresIn: number;
+    status: string;
+    pairingCode: string;
+};
+
+export type FeishuInput = {
+    appId: string;
+    /**
+     * Write-only. Empty keeps the secret for the same App ID and brand.
+     */
+    appSecret: string;
+    brand: string;
+};
+
+export type FeishuBrand = {
+    brand: string;
+};
+
+export type FeishuPoll = {
+    session: string;
+};
+
 export type AutomationId = string;
 
 export type ChatId = number;
@@ -1150,6 +1185,131 @@ export type SetTelegramResponses = {
 };
 
 export type SetTelegramResponse = SetTelegramResponses[keyof SetTelegramResponses];
+
+export type DeleteFeishuData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/feishu';
+};
+
+export type DeleteFeishuErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteFeishuError = DeleteFeishuErrors[keyof DeleteFeishuErrors];
+
+export type DeleteFeishuResponses = {
+    /**
+     * Success.
+     */
+    200: Ok;
+};
+
+export type DeleteFeishuResponse = DeleteFeishuResponses[keyof DeleteFeishuResponses];
+
+export type GetFeishuData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/feishu';
+};
+
+export type GetFeishuErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetFeishuError = GetFeishuErrors[keyof GetFeishuErrors];
+
+export type GetFeishuResponses = {
+    /**
+     * Success.
+     */
+    200: Feishu;
+};
+
+export type GetFeishuResponse = GetFeishuResponses[keyof GetFeishuResponses];
+
+export type SetFeishuData = {
+    body: FeishuInput;
+    path?: never;
+    query?: never;
+    url: '/api/settings/feishu';
+};
+
+export type SetFeishuErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetFeishuError = SetFeishuErrors[keyof SetFeishuErrors];
+
+export type SetFeishuResponses = {
+    /**
+     * Success.
+     */
+    200: FeishuSetup;
+};
+
+export type SetFeishuResponse = SetFeishuResponses[keyof SetFeishuResponses];
+
+export type BeginFeishuData = {
+    body: FeishuBrand;
+    path?: never;
+    query?: never;
+    url: '/api/settings/feishu/registration';
+};
+
+export type BeginFeishuErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type BeginFeishuError = BeginFeishuErrors[keyof BeginFeishuErrors];
+
+export type BeginFeishuResponses = {
+    /**
+     * Success.
+     */
+    200: FeishuSetup;
+};
+
+export type BeginFeishuResponse = BeginFeishuResponses[keyof BeginFeishuResponses];
+
+export type PollFeishuData = {
+    body: FeishuPoll;
+    path?: never;
+    query?: never;
+    url: '/api/settings/feishu/registration/poll';
+};
+
+export type PollFeishuErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type PollFeishuError = PollFeishuErrors[keyof PollFeishuErrors];
+
+export type PollFeishuResponses = {
+    /**
+     * Success.
+     */
+    200: FeishuSetup;
+};
+
+export type PollFeishuResponse = PollFeishuResponses[keyof PollFeishuResponses];
 
 export type ListAutomationsData = {
     body?: never;
