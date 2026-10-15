@@ -18,10 +18,10 @@ to read in an afternoon.
   starts at login. Optional daily updates wait until agent work is idle.
   Listening addresses are limited to loopback.
 - Agent settings in the web UI: providers, the agent's model, thinking level
-  and instructions, and Telegram. dex needs no configuration file for agent settings. The CLI manages
+  and instructions, Telegram, and WeChat. dex needs no configuration file for agent settings. The CLI manages
   the service address, data directory, and update policy.
   The web UI has these pages: Agent, Providers, Channels, Automations, and
-  About. The Extensions and Secrets pages and the Slack, Feishu, and WeChat
+  About. The Extensions and Secrets pages and the Slack and Feishu
   channels show that dex does not support them yet.
 - Agents with a model, instructions, and a workspace directory.
 - Durable conversations: a crash or a restart does not lose a message or a
@@ -32,7 +32,7 @@ to read in an afternoon.
   entry is an advanced option. The bot ignores other users and group chats.
   Earlier versions accepted group messages from allowed users. The bot now
   ignores all non-private chats, including messages from allowed users.
-- Entry points: the web UI and Telegram. External channel chats are read-only
+- Entry points: the web UI, Telegram, and WeChat. External channel chats are read-only
   on the web. `/new` starts another chat. `/stop` stops pending work. `/help`
   lists commands. Reply delivery resumes after a restart and skips confirmed
   parts. A crash after remote success can duplicate one part. The Channels
@@ -46,9 +46,20 @@ to read in an afternoon.
   limits, use durable retries with a delay from 5 to 60 seconds. Polling can
   recover from transient startup failures. Permanently rejected setup or
   attachment replies do not block later messages.
+  WeChat accepts images and files with the same limits. It uses voice transcription
+  as text and shows a placeholder for videos.
+- WeChat setup: scan a QR code and confirm on the phone. Only that owner
+  can send private messages to the agent. QR status polling stops when the page
+  closes. Remote QR expiry permits at most three replacements per attempt;
+  there is no fixed five-minute login deadline. Local activation must succeed
+  before the page reports a connection. A failed save can retry the same
+  confirmation. A stale login asks for a new scan. Its one-hour API cooldown
+  survives a restart; a successful new login clears it. Temporary receive or
+  storage failures retry without a settings change. CDN 408 and 429 retain the
+  message for retry. A replay does not download admitted attachments again.
 - Timers: scheduled messages to an agent.
 
-Status: the web UI, Telegram, durable messages, timers, and the worker are
+Status: the web UI, Telegram, WeChat, durable messages, timers, and the worker are
 done. Skills, MCP servers, named secrets, and other chat channels are not
 started.
 

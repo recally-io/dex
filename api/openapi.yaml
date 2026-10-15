@@ -379,6 +379,55 @@ paths:
                   expiresAt: { type: integer, format: int64 }
         "400": { $ref: "#/components/responses/Error" }
         "500": { $ref: "#/components/responses/Error" }
+
+  /api/settings/wechat/login:
+    post:
+      operationId: beginWechatLogin
+      description: Starts QR login. The person who confirms becomes the only allowed sender.
+      responses:
+        "200":
+          description: QR login state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WechatLogin" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/settings/wechat/login/{loginId}/poll:
+    post:
+      operationId: pollWechatLogin
+      description: Polls for up to 35 seconds. Saves credentials only after confirmed login.
+      parameters:
+        - in: path
+          name: loginId
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                verifyCode: { type: string, pattern: "^[0-9]{1,16}$" }
+      responses:
+        "200":
+          description: Current login state, with a new QR code when refreshed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WechatLogin" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/settings/wechat:
+    delete:
+      operationId: deleteWechat
+      description: Stops WeChat and forgets its credentials. Past chats stay read-only.
+      responses:
+        "200":
+          description: WeChat is off.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/settings/telegram:
     put:
       operationId: setTelegram
@@ -947,7 +996,7 @@ components:
 
     Settings:
       type: object
-      required: [agent, providers, builtins, apis, telegram]
+      required: [agent, providers, builtins, apis, telegram, wechat]
       properties:
         agent: { $ref: "#/components/schemas/Agent" }
         providers:
@@ -963,6 +1012,7 @@ components:
           description: The APIs of custom providers, ID → name.
           additionalProperties: { type: string }
         telegram: { $ref: "#/components/schemas/Telegram" }
+        wechat: { $ref: "#/components/schemas/Wechat" }
 
     Agent:
       x-go-type: settings.Agent
@@ -1123,6 +1173,42 @@ components:
           description: The MCP tool names. The agent gets each tool as mcp__<server>__<tool>.
           items: { type: string }
         error: { type: string }
+
+    Wechat:
+      x-go-type: settings.Wechat
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/settings
+      type: object
+      required: [enabled, status]
+      properties:
+        enabled: { type: boolean }
+        botId: { type: string }
+        owner: { type: string }
+        status: { $ref: "#/components/schemas/ChannelStatus" }
+
+    WechatLogin:
+      x-go-type: wechat.LoginView
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/wechat
+      type: object
+      required: [id, status, qrContent, active]
+      properties:
+        id: { type: string }
+        status:
+          type: string
+          enum: [
+            wait,
+            scaned,
+            need_verifycode,
+            verify_code_blocked,
+            scaned_but_redirect,
+            expired,
+            binded_redirect,
+            confirmed,
+          ]
+        qrContent: { type: string }
+        active: { type: boolean }
+        reason: { type: string }
 
     Telegram:
       type: object

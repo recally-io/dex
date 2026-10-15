@@ -55,7 +55,7 @@ const (
 var errInvalid = errors.New("invalid request")
 
 // errReadOnly is a message to a chat that the web UI cannot write to.
-var errReadOnly = errors.New("this chat is read-only here; reply in Telegram")
+var errReadOnly = errors.New("this chat is read-only here; reply in the original channel")
 
 // New returns the handler for the API under /api/ and the web UI at /. The API requires
 // cfg.Token when it is set. It refuses cross-site writes, so a web page in the user's browser
@@ -402,6 +402,7 @@ func (h *handler) GetSettings(ctx context.Context, _ api.GetSettingsRequestObjec
 	}
 	out := api.GetSettings200JSONResponse{
 		Agent:     s.Agent,
+		Wechat:    s.Wechat,
 		Providers: make([]api.Provider, len(s.Providers)),
 		Builtins:  make([]api.ProviderInfo, len(s.Builtins)),
 		Apis:      s.APIs,
@@ -525,4 +526,31 @@ func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegra
 		return nil, err
 	}
 	return api.CreateTelegramPairing200JSONResponse{Url: link, ExpiresAt: expires}, nil
+}
+
+func (h *handler) BeginWechatLogin(ctx context.Context, _ api.BeginWechatLoginRequestObject) (api.BeginWechatLoginResponseObject, error) {
+	view, err := h.Settings.BeginWechatLogin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return api.BeginWechatLogin200JSONResponse(view), nil
+}
+
+func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRequestObject) (api.PollWechatLoginResponseObject, error) {
+	code := ""
+	if req.Body != nil {
+		code = deref(req.Body.VerifyCode)
+	}
+	view, err := h.Settings.PollWechatLogin(ctx, req.LoginId, code)
+	if err != nil {
+		return nil, err
+	}
+	return api.PollWechatLogin200JSONResponse(view), nil
+}
+
+func (h *handler) DeleteWechat(ctx context.Context, _ api.DeleteWechatRequestObject) (api.DeleteWechatResponseObject, error) {
+	if err := h.Settings.DeleteWechat(ctx); err != nil {
+		return nil, err
+	}
+	return api.DeleteWechat200JSONResponse(ok), nil
 }

@@ -116,6 +116,19 @@ func checkName(name string) error {
 	return nil
 }
 
+// Remove deletes an upload that no admitted submission owns.
+func (s *Store) Remove(id string) error {
+	if u, err := uuid.Parse(id); err != nil || u.String() != id {
+		return ErrNotFound
+	}
+	root, err := s.uploads(false)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	return root.RemoveAll(id)
+}
+
 // Get returns the upload id, or ErrNotFound.
 func (s *Store) Get(id string) (worker.Attachment, error) {
 	f, a, err := s.Open(id)

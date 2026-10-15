@@ -113,3 +113,20 @@ type TelegramSetting struct {
 	PairingCode    string `json:"pairing_code"`
 	PairingExpires int64  `json:"pairing_expires"`
 }
+
+type WechatRuntime struct {
+	BotID            string `json:"bot_id"`
+	Owner            string `json:"owner"`
+	Cursor           string `json:"cursor"`
+	ContextToken     string `json:"context_token"`
+	ContextMessageID string `json:"context_message_id"`
+	PauseUntil       int64  `json:"pause_until"`
+}
+
+type WechatSetting struct {
+	ID      int64  `json:"id"`
+	Token   string `json:"token"`
+	BaseUrl string `json:"base_url"`
+	BotID   string `json:"bot_id"`
+	Owner   string `json:"owner"`
+}
