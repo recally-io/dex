@@ -2,12 +2,14 @@ package app_test
 
 import (
 	"database/sql"
+	"net"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/recally-io/dex/internal/app"
+	"github.com/recally-io/dex/internal/service"
 	"github.com/recally-io/dex/internal/settings"
 )
 
@@ -150,5 +152,28 @@ func TestStoredTokenOfAnOlderDatabaseIsEmpty(t *testing.T) {
 	// Then the CLI reads no token and does not change the database.
 	if token, err := settings.StoredToken(t.Context(), dir); err != nil || token != "" {
 		t.Fatalf("older schema: %q %v", token, err)
+	}
+}
+
+func TestUserUpdaterHoldsMaintenanceOnANetworkHost(t *testing.T) {
+	// Given a service on a wildcard host, which requires the stored token.
+	dataDir := t.TempDir()
+	d := startDexWith(t, app.Config{DataDir: dataDir, RequireToken: true})
+	c := service.Config{Host: "0.0.0.0", Port: d.srv.Listener.Addr().(*net.TCPAddr).Port, DataDir: dataDir}
+
+	// When a local client acquires and releases maintenance, then the stored token admits it.
+	for _, method := range []string{http.MethodPost, http.MethodDelete} {
+		req, err := service.Request(t.Context(), c, method, "/api/maintenance")
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := service.LoopbackClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s /api/maintenance: %d", method, resp.StatusCode)
+		}
 	}
 }

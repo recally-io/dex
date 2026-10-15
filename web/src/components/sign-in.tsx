@@ -31,7 +31,11 @@ export function SignIn() {
       title="Sign in to dex"
       description="This dex accepts network connections, so it requires its access token."
     >
-      <Section n={1} title="Access token" caption="On the dex host, run dex token to print it.">
+      <Section
+        n={1}
+        title="Access token"
+        caption="On the dex host, run dex token to print it. If you started dex with DEX_TOKEN, use that token."
+      >
         <form className="flex flex-col gap-3" onSubmit={(event) => void submit(event)}>
           <Field label="Token" error={error || undefined}>
             {({ id, describedBy, invalid }) => (

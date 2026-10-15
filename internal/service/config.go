@@ -84,15 +84,19 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// Loopback reports whether only this machine can reach the host. Validate guarantees an IP.
-func (c Config) Loopback() bool { return netip.MustParseAddr(c.Host).IsLoopback() }
+// Loopback reports whether only this machine can reach the host. The empty Config of a missing
+// service has no host and is not loopback.
+func (c Config) Loopback() bool {
+	ip, err := netip.ParseAddr(c.Host)
+	return err == nil && ip.IsLoopback()
+}
 
 func (c Config) Addr() string { return net.JoinHostPort(c.Host, strconv.Itoa(c.Port)) }
 
 // URL is the address that a local client uses. A wildcard host accepts loopback connections.
 func (c Config) URL() string {
 	host := c.Host
-	switch ip := netip.MustParseAddr(host); {
+	switch ip, _ := netip.ParseAddr(host); {
 	case ip.IsUnspecified() && ip.Is4():
 		host = "127.0.0.1"
 	case ip.IsUnspecified():

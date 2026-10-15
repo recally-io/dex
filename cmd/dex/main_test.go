@@ -97,6 +97,17 @@ func TestUserTokenSelection(t *testing.T) {
 	}
 }
 
+func TestUserStatusWithoutAService(t *testing.T) {
+	// Given no installed service, when the user asks for its status, then dex reports it.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	for _, args := range [][]string{{"service", "status"}, {"service", "status", "--json"}} {
+		if err := dispatch(args); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+	}
+}
+
 func TestUserReinstallKeepsStoredOptions(t *testing.T) {
 	// Given an installed definition with non-default data and update channel.
 	t.Setenv("HOME", t.TempDir())
