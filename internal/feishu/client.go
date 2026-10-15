@@ -27,11 +27,12 @@ type Config struct {
 
 // Client owns the platform token cache and REST requests.
 type Client struct {
-	cfg     Config
-	http    *http.Client
-	mu      sync.Mutex
-	token   string
-	expires time.Time
+	resourceTimeout time.Duration
+	cfg             Config
+	http            *http.Client
+	mu              sync.Mutex
+	token           string
+	expires         time.Time
 }
 
 // NewClient creates a client without making a request.
@@ -44,7 +45,7 @@ func NewClient(cfg Config) *Client {
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert // dex does not replace the standard transport.
 	transport.ResponseHeaderTimeout = 30 * time.Second
-	return &Client{cfg: cfg, http: &http.Client{Transport: transport}}
+	return &Client{cfg: cfg, http: &http.Client{Transport: transport}, resourceTimeout: 5 * time.Minute}
 }
 
 // APIError contains only codes, so a platform response cannot disclose credentials.
@@ -229,9 +230,25 @@ func (c *Client) Patch(ctx context.Context, id, content string) error {
 
 // Download streams one message resource to the caller. The caller closes the body.
 func (c *Client) Download(ctx context.Context, messageID, key, kind string) (io.ReadCloser, error) {
+	// Bound the full resource read, including error bodies, without the REST 30-second limit.
+	ctx, cancel := context.WithTimeout(ctx, c.resourceTimeout)
 	path := "/open-apis/im/v1/messages/" + url.PathEscape(messageID) + "/resources/" + url.PathEscape(key) + "?type=" + url.QueryEscape(kind)
 	result, err := c.authorized(ctx, http.MethodGet, path, nil, true)
-	return result.body, err
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	return &resourceBody{ReadCloser: result.body, cancel: cancel}, nil
+}
+
+type resourceBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *resourceBody) Close() error {
+	defer b.cancel()
+	return b.ReadCloser.Close()
 }
 
 // TextContent encodes the platform's text content field.

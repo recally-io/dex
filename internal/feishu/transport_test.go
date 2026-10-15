@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -235,7 +236,7 @@ func TestUserDownloadHeaderWaitIsBounded(t *testing.T) {
 	}))
 	defer server.Close()
 	client := NewClient(Config{APIURL: server.URL})
-	// Shorten only the platform header boundary; body streaming has no client timeout.
+	// Shorten the header timeout without changing the resource read deadline.
 	client.http.Transport.(*http.Transport).ResponseHeaderTimeout = 10 * time.Millisecond
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
@@ -246,5 +247,165 @@ func TestUserDownloadHeaderWaitIsBounded(t *testing.T) {
 	}
 	if gets.Load() != 3 || ctx.Err() != nil {
 		t.Fatalf("gets=%d context=%v", gets.Load(), ctx.Err())
+	}
+}
+
+func TestUserReconnectsAfterResourceStalls(t *testing.T) {
+	// Given a resource that sends headers and then stalls, and a socket that closes.
+	started := make(chan struct{})
+	closed := make(chan struct{})
+	resourceStarted := sync.OnceFunc(func() { close(started) })
+	var connections atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/callback/ws/endpoint":
+			_ = json.MarshalWrite(w, map[string]any{"code": 0, "data": map[string]any{"URL": "ws://" + r.Host + "/ws?service_id=7", "ClientConfig": connectionConfig{ReconnectCount: -1, ReconnectInterval: 1, PingInterval: 1}}})
+		case strings.Contains(r.URL.Path, "tenant_access_token"):
+			_, _ = w.Write([]byte(`{"code":0,"tenant_access_token":"test-token","expire":7200}`))
+		case strings.Contains(r.URL.Path, "/resources/"):
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
+			resourceStarted()
+			<-r.Context().Done()
+		case r.URL.Path == "/ws":
+			conn, err := websocket.Accept(w, r, nil)
+			if err != nil {
+				return
+			}
+			defer func() { _ = conn.CloseNow() }()
+			if connections.Add(1) != 1 {
+				_, _, _ = conn.Read(r.Context())
+				return
+			}
+			event := frame{seq: 1, service: 7, method: 1, headers: []header{{"type", "event"}}, payload: []byte(`{"message":"file"}`)}
+			if err := conn.Write(r.Context(), websocket.MessageBinary, event.marshal()); err != nil {
+				return
+			}
+			select {
+			case <-started:
+				_ = conn.CloseNow()
+				close(closed)
+			case <-r.Context().Done():
+			}
+		}
+	}))
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	client := NewClient(Config{APIURL: server.URL})
+	go func() {
+		defer close(done)
+		_ = client.Listen(ctx, func(eventCtx context.Context, _ []byte) error {
+			body, err := client.Download(eventCtx, "message", "key", "file")
+			if err != nil {
+				return err
+			}
+			defer func() { _ = body.Close() }()
+			_, err = io.Copy(io.Discard, body)
+			return err
+		}, func(error) {})
+	}()
+	defer func() { cancel(); <-done; server.Close() }()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("test did not close the socket after resource headers")
+	}
+	// When the socket is closed, its stalled admission must not prevent reconnect.
+	timer := time.NewTimer(6 * time.Second)
+	defer timer.Stop()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for connections.Load() < 2 {
+		select {
+		case <-ticker.C:
+		case <-timer.C:
+			t.Fatalf("resource body blocked reconnect after socket close: connections=%d (heartbeat=1s)", connections.Load())
+		}
+	}
+}
+
+func TestUserPongIntervalChange(t *testing.T) {
+	for _, healthy := range []bool{true, false} {
+		t.Run(fmt.Sprintf("healthy=%t", healthy), func(t *testing.T) {
+			// Given a server that changes the ping interval from 120 seconds to 1 second.
+			var connections, pings atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/callback/ws/endpoint" {
+					_ = json.MarshalWrite(w, map[string]any{"code": 0, "data": map[string]any{"URL": "ws://" + r.Host + "/ws?service_id=7", "ClientConfig": connectionConfig{ReconnectCount: -1, ReconnectInterval: 1, PingInterval: 120}}})
+					return
+				}
+				conn, err := websocket.Accept(w, r, nil)
+				if err != nil {
+					return
+				}
+				defer func() { _ = conn.CloseNow() }()
+				connections.Add(1)
+				for {
+					_, b, err := conn.Read(r.Context())
+					if err != nil {
+						return
+					}
+					f, err := parseFrame(b)
+					if err != nil {
+						return
+					}
+					if f.get("type") != "ping" {
+						continue
+					}
+					pingCount := pings.Add(1)
+					if !healthy && pingCount > 1 {
+						continue
+					}
+					payload, _ := json.Marshal(connectionConfig{ReconnectCount: -1, ReconnectInterval: 1, PingInterval: 1})
+					pong := frame{service: 7, headers: []header{{"type", "pong"}}, payload: payload}
+					if err := conn.Write(r.Context(), websocket.MessageBinary, pong.marshal()); err != nil {
+						return
+					}
+				}
+			}))
+			defer server.Close()
+			ctx, cancel := context.WithTimeout(t.Context(), 3500*time.Millisecond)
+			defer cancel()
+			// When the interval changes, only a silent socket must reconnect.
+			_ = NewClient(Config{APIURL: server.URL}).Listen(ctx, func(context.Context, []byte) error { return nil }, func(error) {})
+			t.Logf("connections=%d, pings=%d", connections.Load(), pings.Load())
+			if healthy && (connections.Load() != 1 || pings.Load() < 3) {
+				t.Fatalf("healthy socket was replaced after the pong shortened PingInterval: connections=%d", connections.Load())
+			}
+			if !healthy && connections.Load() < 2 {
+				t.Fatalf("silent socket stayed connected: connections=%d", connections.Load())
+			}
+		})
+	}
+}
+
+func TestUserStalledResourceReadIsBounded(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			// Given a resource whose success or error body stops after the headers.
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.Contains(r.URL.Path, "tenant_access_token") {
+					_, _ = w.Write([]byte(`{"code":0,"tenant_access_token":"token","expire":7200}`))
+					return
+				}
+				w.WriteHeader(status)
+				w.(http.Flusher).Flush()
+				<-r.Context().Done()
+			}))
+			defer server.Close()
+			client := NewClient(Config{APIURL: server.URL})
+			client.resourceTimeout = 50 * time.Millisecond
+			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+			defer cancel()
+			// When the resource deadline passes, then both read paths return without caller cancellation.
+			body, err := client.Download(ctx, "message", "key", "file")
+			if err == nil {
+				_, err = io.ReadAll(body)
+				_ = body.Close()
+			}
+			if !errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+				t.Fatalf("resource error=%v caller error=%v", err, ctx.Err())
+			}
+		})
 	}
 }

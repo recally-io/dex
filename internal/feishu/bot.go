@@ -46,7 +46,9 @@ func New(cfg Config, manager *channel.Manager, q *sqlc.Queries, hub EventStreams
 // Run receives events until the manager cancels it.
 func (b *Bot) Run(ctx context.Context) error {
 	defer b.wg.Wait()
-	return b.client.Listen(ctx, b.receive, func(err error) {
+	return b.client.Listen(ctx, func(session context.Context, data []byte) error {
+		return b.receive(session, ctx, data)
+	}, func(err error) {
 		state, reason := "running", ""
 		b.mu.Lock()
 		owner := b.cfg.OwnerID
@@ -62,7 +64,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	})
 }
 
-func (b *Bot) receive(ctx context.Context, data []byte) error {
+func (b *Bot) receive(ctx, previewCtx context.Context, data []byte) error {
 	m, err := ParseMessage(data)
 	if err != nil {
 		slog.Warn("feishu: ignored invalid message")
@@ -154,7 +156,7 @@ func (b *Bot) receive(ctx context.Context, data []byte) error {
 	// Final delivery takes the same lock, so a fast answer cannot pass this preview.
 	p := &preview{}
 	b.previews[id] = p
-	streamCtx, cancel := context.WithCancel(ctx)
+	streamCtx, cancel := context.WithCancel(previewCtx)
 	p.cancel = cancel
 	b.wg.Go(func() { b.stream(streamCtx, id, row.ConversationID, m.Sender, p) })
 	return nil
@@ -185,10 +187,15 @@ func (b *Bot) Send(ctx context.Context, peer, id string, part int, text string) 
 	if p != nil && part == 0 {
 		p.cancel()
 		if p.messageID != "" {
-			if err := b.client.Patch(ctx, p.messageID, card); err == nil {
+			err := b.client.Patch(ctx, p.messageID, card)
+			if err == nil {
 				delete(b.previews, id)
 				b.manager.Report("feishu", channel.Status{State: "running"})
 				return nil
+			}
+			if !permanentAPIError(err) {
+				b.manager.Report("feishu", channel.Status{State: "error", Reason: err.Error()})
+				return err
 			}
 		}
 	}

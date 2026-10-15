@@ -103,20 +103,28 @@ func (c *Client) connection(ctx context.Context, handle func(context.Context, []
 	defer cancel()
 	// The ping worker reads configuration under this lock; the reader owns fragment state.
 	var mu sync.Mutex
+	intervalChanged := make(chan struct{}, 1)
 	var wg sync.WaitGroup
 	wg.Go(func() {
+		timer := time.NewTimer(0)
+		defer timer.Stop()
 		for {
+			select {
+			case <-session.Done():
+				return
+			case <-timer.C:
+				ping := frame{service: service, headers: []header{{"type", "ping"}}}
+				if err := conn.Write(session, websocket.MessageBinary, ping.marshal()); err != nil {
+					cancel()
+					return
+				}
+			case <-intervalChanged:
+				// Apply pong timing to the next ping as well as the read deadline.
+			}
 			mu.Lock()
 			interval := max(1, conf.PingInterval)
 			mu.Unlock()
-			ping := frame{service: service, headers: []header{{"type", "ping"}}}
-			if err := conn.Write(session, websocket.MessageBinary, ping.marshal()); err != nil {
-				cancel()
-				return
-			}
-			if pause(session, time.Duration(interval)*time.Second) != nil {
-				return
-			}
+			timer.Reset(time.Duration(interval) * time.Second)
 		}
 	})
 	defer func() { cancel(); wg.Wait() }()
@@ -145,8 +153,15 @@ func (c *Client) connection(ctx context.Context, handle func(context.Context, []
 					return err
 				}
 				mu.Lock()
+				changed := max(1, conf.PingInterval) != max(1, next.PingInterval)
 				*conf = next
 				mu.Unlock()
+				if changed {
+					select {
+					case intervalChanged <- struct{}{}:
+					default:
+					}
+				}
 			}
 			continue
 		}
@@ -210,7 +225,7 @@ func (c *Client) connection(ctx context.Context, handle func(context.Context, []
 			delete(pending, id)
 		}
 		code := 200
-		if err := handle(ctx, payload); err != nil {
+		if err := handle(session, payload); err != nil {
 			code = 500
 		}
 		f.payload = []byte(fmt.Sprintf(`{"code":%d}`, code))

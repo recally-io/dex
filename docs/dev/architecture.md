@@ -323,7 +323,8 @@ Startup failures report an error and retry with the REST backoff, up to
 even if the server sends a finite `ReconnectCount`. After a disconnect, the
 first reconnect waits only for the server's jitter. Later failures use the
 server's reconnect interval. A socket with no data for two ping intervals
-reconnects.
+reconnects. A pong that changes the ping interval also resets the next ping.
+The ping timer and read deadline use the same interval.
 Fragment buffers expire after 5 seconds. One connection allows at most 64
 fragmented events, 256 fragments per event, and 4 MB per event.
 
@@ -356,13 +357,15 @@ no preview exists. It uses the submission ID and part index for stable send
 UUIDs. Each text part is at most 4000 UTF-8 bytes. A card rejected with HTTP
 400 or an HTTP success status and code `230001` falls back to plain text.
 Temporary or uncertain send
-failures keep the card format and stable identity for retry. A successful
+failures keep the card format and stable identity for retry. An uncertain final
+patch keeps the preview ID, so durable delivery retries the same card. A successful
 final patch restores `running` status.
 Network failures, server errors and rate limits get at most
 3 attempts per token. JSON calls and downloads share authorization and one
 token refresh. A token rejection can therefore cause up to 6 API attempts,
 plus token requests. Downloads wait at most 30 seconds for response headers;
-the caller's context controls the streamed body. JSON responses remain
+each complete download has a 5-minute deadline, including error body reads.
+Admission and downloads use the socket session context. JSON responses remain
 bounded to 4 MB and download error responses to 1 MB. Retry delays are
 200 ms and 800 ms; `Retry-After`
 can extend a delay to at most 2 seconds. Reply delivery remains at least once.
