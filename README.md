@@ -7,11 +7,16 @@ The agent state stays in local directories. The host needs no Node or Bun.
 
 ## Quick start
 
-Put the release binary `dex` in a permanent location on your PATH. Then run:
+Install the latest release on macOS or Linux, x64 or arm64:
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/recally-io/dex/main/install.sh | sh
 dex service install
 ```
+
+The script checks the archive against `checksums.txt` and installs `dex` to
+`~/.local/bin`. Set `DEX_INSTALL_DIR` for another directory, or `DEX_VERSION`
+for a tag such as `v0.1.0`. Use a permanent directory: the service runs dex from it.
 
 The command starts dex now and at login. Open <http://127.0.0.1:8787>.
 On the Providers page, add a provider. On the Agent page, choose a model.
