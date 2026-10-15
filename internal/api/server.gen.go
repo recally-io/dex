@@ -1145,9 +1145,6 @@ type ServerInterface interface {
 	// (GET /api/models)
 	ListModels(w http.ResponseWriter, r *http.Request)
 
-	// (GET /api/session)
-	GetSession(w http.ResponseWriter, r *http.Request)
-
 	// (POST /api/session)
 	CreateSession(w http.ResponseWriter, r *http.Request)
 
@@ -1571,20 +1568,6 @@ func (siw *ServerInterfaceWrapper) ListModels(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
-// GetSession operation middleware
-func (siw *ServerInterfaceWrapper) GetSession(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetSession(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // CreateSession operation middleware
 func (siw *ServerInterfaceWrapper) CreateSession(w http.ResponseWriter, r *http.Request) {
 
@@ -1867,7 +1850,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/session", wrapper.GetSession)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/session", wrapper.CreateSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/maintenance", wrapper.ReleaseMaintenance)
@@ -2929,35 +2911,6 @@ func (response ListModelsdefaultJSONResponse) VisitListModelsResponse(w http.Res
 	return err
 }
 
-type GetSessionRequestObject struct {
-}
-
-type GetSessionResponseObject interface {
-	VisitGetSessionResponse(w http.ResponseWriter) error
-}
-
-type GetSession204Response struct {
-}
-
-func (response GetSession204Response) VisitGetSessionResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type GetSession401JSONResponse struct{ ErrorJSONResponse }
-
-func (response GetSession401JSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type CreateSessionRequestObject struct {
 	Body *CreateSessionJSONRequestBody
 }
@@ -3486,9 +3439,6 @@ type StrictServerInterface interface {
 
 	// (GET /api/models)
 	ListModels(ctx context.Context, request ListModelsRequestObject) (ListModelsResponseObject, error)
-
-	// (GET /api/session)
-	GetSession(ctx context.Context, request GetSessionRequestObject) (GetSessionResponseObject, error)
 
 	// (POST /api/session)
 	CreateSession(ctx context.Context, request CreateSessionRequestObject) (CreateSessionResponseObject, error)
@@ -4068,30 +4018,6 @@ func (sh *strictHandler) ListModels(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListModelsResponseObject); ok {
 		if err := validResponse.VisitListModelsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetSession operation middleware
-func (sh *strictHandler) GetSession(w http.ResponseWriter, r *http.Request) {
-	var request GetSessionRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetSession(ctx, request.(GetSessionRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetSession")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetSessionResponseObject); ok {
-		if err := validResponse.VisitGetSessionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

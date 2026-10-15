@@ -3,8 +3,25 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acquireMaintenance, createAutomation, createChat, createSession, createUpload, deleteAutomation, deleteProvider, deleteTelegram, getAutomation, getChat, getHealth, getSession, getSettings, getUpload, listAutomationRuns, listAutomations, listChats, listModels, type Options, previewSchedule, releaseMaintenance, runAutomation, sendMessage, setAgent, setChatSettings, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatResponse, GetHealthData, GetHealthResponse, GetSessionData, GetSessionError, GetSessionResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, createAutomation, createChat, createSession, createUpload, deleteAutomation, deleteProvider, deleteTelegram, getAutomation, getChat, getHealth, getSettings, getUpload, listAutomationRuns, listAutomations, listChats, listModels, type Options, previewSchedule, releaseMaintenance, runAutomation, sendMessage, setAgent, setChatSettings, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatResponse, GetHealthData, GetHealthResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
+
+/**
+ * Exchanges the access token for the session cookie.
+ */
+export const createSessionMutation = (options?: Partial<Options<CreateSessionData>>): UseMutationOptions<CreateSessionResponse, CreateSessionError, Options<CreateSessionData>> => {
+    const mutationOptions: UseMutationOptions<CreateSessionResponse, CreateSessionError, Options<CreateSessionData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createSession({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -37,41 +54,6 @@ const createQueryKey = <TOptions extends Options>(id: string, options?: TOptions
         params.query = options.query;
     }
     return [params];
-};
-
-export const getSessionQueryKey = (options?: Options<GetSessionData>) => createQueryKey('getSession', options);
-
-/**
- * Reports whether the request is authenticated. The web UI shows the sign-in form on 401.
- */
-export const getSessionOptions = (options?: Options<GetSessionData>) => queryOptions<GetSessionResponse, GetSessionError, GetSessionResponse, ReturnType<typeof getSessionQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await getSession({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: getSessionQueryKey(options)
-});
-
-/**
- * Exchanges the access token for the session cookie.
- */
-export const createSessionMutation = (options?: Partial<Options<CreateSessionData>>): UseMutationOptions<CreateSessionResponse, CreateSessionError, Options<CreateSessionData>> => {
-    const mutationOptions: UseMutationOptions<CreateSessionResponse, CreateSessionError, Options<CreateSessionData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await createSession({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
 };
 
 export const getHealthQueryKey = (options?: Options<GetHealthData>) => createQueryKey('getHealth', options);

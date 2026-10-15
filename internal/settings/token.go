@@ -7,12 +7,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	_ "modernc.org/sqlite" // registers the "sqlite" driver
 )
 
 // CheckToken accepts 32 to 256 base64url characters. The length is a floor, not proof of entropy:
@@ -47,9 +48,13 @@ func StoredToken(ctx context.Context, dataDir string) (string, error) {
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}
-	conn, err := db.OpenReadOnly(ctx, path)
+	// Read-only and without migrations, so the CLI can read while a server of another version
+	// runs. The URI is escaped, because SQLite reads "?" and "#" in a path as URI syntax. Not
+	// immutable: the server writes the file at the same time.
+	u := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro&_pragma=busy_timeout(5000)"}
+	conn, err := sql.Open("sqlite", u.String())
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("open %s: %w", path, err)
 	}
 	defer conn.Close() //nolint:errcheck // a read-only connection has nothing to flush
 	var tables int

@@ -41,6 +41,10 @@ credential. dex serves plain HTTP and has no user accounts.
 - Rotation, logout, and server-side sessions are deferred. To rotate today,
   the user must delete the row and restart dex. Add a rotate command when a
   token leaks in practice.
+- A service definition from v0.1.0 has no `--stored-token`, and an update
+  does not rewrite definitions. If the service manager passes DEX_TOKEN, as
+  after `launchctl setenv` or `systemctl --user set-environment`, the updated
+  service uses it. Run `dex service install` after the update.
 - Cookies do not separate ports. Two dex instances on one host name share the
   `dex_session` cookie name, and the last sign-in wins.
 - The web UI builds UUIDs from `crypto.getRandomValues`, because

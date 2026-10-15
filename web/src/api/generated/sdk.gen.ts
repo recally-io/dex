@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChatData, GetChatErrors, GetChatResponses, GetHealthData, GetHealthResponses, GetSessionData, GetSessionErrors, GetSessionResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetUploadData, GetUploadErrors, GetUploadResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetAgentData, SetAgentErrors, SetAgentResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
+import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChatData, GetChatErrors, GetChatResponses, GetHealthData, GetHealthResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetUploadData, GetUploadErrors, GetUploadResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetAgentData, SetAgentErrors, SetAgentResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,19 +17,6 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
-
-/**
- * Reports whether the request is authenticated. The web UI shows the sign-in form on 401.
- */
-export const getSession = <ThrowOnError extends boolean = false>(options?: Options<GetSessionData, ThrowOnError>): RequestResult<GetSessionResponses, GetSessionErrors, ThrowOnError> => (options?.client ?? client).get<GetSessionResponses, GetSessionErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/session',
-    ...options
-});
 
 /**
  * Exchanges the access token for the session cookie.

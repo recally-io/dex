@@ -41,10 +41,6 @@ func authorized(r *http.Request, token string) bool {
 	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
 }
 
-func (h *handler) GetSession(context.Context, api.GetSessionRequestObject) (api.GetSessionResponseObject, error) {
-	return api.GetSession204Response{}, nil // requireToken refused an unauthorized request
-}
-
 func (h *handler) CreateSession(_ context.Context, req api.CreateSessionRequestObject) (api.CreateSessionResponseObject, error) {
 	if h.Token == "" {
 		return api.CreateSession204Response{}, nil

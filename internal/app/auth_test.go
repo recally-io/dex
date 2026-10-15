@@ -42,12 +42,13 @@ func (d *dex) request(t *testing.T, method, path, body string, header map[string
 }
 
 func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
-	// Given dex on a host that is not loopback, which requires the stored token.
-	dataDir := t.TempDir()
+	// Given dex on a host that is not loopback, which requires the stored token. The CLI reads
+	// the token through a file: URI, which must escape the space.
+	dataDir := filepath.Join(t.TempDir(), "data dir")
 	d := startDexWith(t, app.Config{DataDir: dataDir, RequireToken: true})
 
 	// When a client has no token, then the API refuses it, health included.
-	for _, path := range []string{"/api/chats", "/api/health", "/api/session", "/api/uploads/x", "/api/chats/1/events"} {
+	for _, path := range []string{"/api/chats", "/api/health", "/api/uploads/x", "/api/chats/1/events"} {
 		if resp := d.request(t, http.MethodGet, path, "", nil); resp.StatusCode != http.StatusUnauthorized {
 			t.Fatalf("GET %s without a token: %d", path, resp.StatusCode)
 		}
@@ -85,7 +86,7 @@ func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
 		t.Fatalf("session cookie: %+v", c)
 	}
 	session := map[string]string{"Cookie": c.String()}
-	for _, path := range []string{"/api/chats", "/api/session"} {
+	for _, path := range []string{"/api/chats", "/api/health"} {
 		if resp := d.request(t, http.MethodGet, path, "", session); resp.StatusCode/100 != 2 {
 			t.Fatalf("GET %s with the cookie: %d", path, resp.StatusCode)
 		}

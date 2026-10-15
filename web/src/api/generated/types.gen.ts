@@ -430,31 +430,6 @@ export type AutomationId = string;
 
 export type ChatId = number;
 
-export type GetSessionData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/session';
-};
-
-export type GetSessionErrors = {
-    /**
-     * The request failed.
-     */
-    401: Error;
-};
-
-export type GetSessionError = GetSessionErrors[keyof GetSessionErrors];
-
-export type GetSessionResponses = {
-    /**
-     * The request is authenticated, or dex needs no token.
-     */
-    204: void;
-};
-
-export type GetSessionResponse = GetSessionResponses[keyof GetSessionResponses];
-
 export type CreateSessionData = {
     body: NewSession;
     path?: never;

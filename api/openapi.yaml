@@ -13,13 +13,6 @@ security:
   - session: []
 paths:
   /api/session:
-    get:
-      operationId: getSession
-      description: Reports whether the request is authenticated. The web UI shows the sign-in form on 401.
-      responses:
-        "204":
-          description: The request is authenticated, or dex needs no token.
-        "401": { $ref: "#/components/responses/Error" }
     post:
       operationId: createSession
       description: Exchanges the access token for the session cookie.
