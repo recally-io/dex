@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Plus, RefreshCw } from "lucide-react";
 import type { Provider, Settings } from "../api/generated/types.gen";
 import {
   deleteProviderMutation,
@@ -12,67 +11,47 @@ import { saveAgent } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { ProviderDialog } from "../components/provider-dialog";
 import { Confirm } from "../components/confirm";
-import { Failure } from "../components/feedback";
-import { Card, Empty, Note, Page, PageHeader } from "../components/page";
-import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
-import { Button } from "../components/ui/button";
-import { NativeSelect, NativeSelectOption } from "../components/ui/native-select";
-import { Button as Pill } from "../components/atoms/Button";
-import { ValuePill } from "../components/atoms/ValuePill";
-import { cn } from "../lib/utils";
-import { ModelChain, WithSettings } from "./agent";
+import { Failure, Spinner } from "../components/feedback";
+import { Field, Select } from "../components/form";
+import { Empty, Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
+import { Button } from "../components/atoms/Button";
+import { StatusPill } from "../components/atoms/StatusPill";
+import { WithSettings } from "./agent";
 
 export function ProvidersPage() {
   const [dialog, setDialog] = useState<Provider | "new" | null>(null);
   const [remove, setRemove] = useState<Provider | null>(null);
 
   return (
-    <Page>
-      <PageHeader
-        title="Providers"
-        description="A provider is a saved connection to a model service. Its models become available to the agent."
-        actions={
-          <Pill variant="primary" size="sm" onClick={() => setDialog("new")}>
-            <Plus aria-hidden className="size-3.5" /> Add provider
-          </Pill>
-        }
-      />
+    <FramedPage
+      title="Providers"
+      description="A provider is a saved connection to a model service. The agent model comes from one of them."
+      actions={
+        <Button size="sm" variant="primary" onClick={() => setDialog("new")}>
+          Add provider
+        </Button>
+      }
+    >
       <WithSettings>
         {(settings) => (
           <>
-            <div className="mb-6">
-              <ModelChain settings={settings} />
-            </div>
-            <div className="mb-6">
-              <Note>
-                <strong className="text-ink">Saved is not the same as working.</strong> dex saves a provider
-                first, then lists its models. A failed listing keeps the provider saved and shows the error on
-                its card. A listed model can still fail when the agent calls it.
-              </Note>
-            </div>
-            {!settings.providers.length ? (
-              <Empty
-                title="No providers yet"
-                body="Add a built-in service such as Anthropic, or a custom endpoint such as LM Studio on this computer."
-                action={
-                  <Pill variant="primary" size="sm" onClick={() => setDialog("new")}>
-                    Add provider
-                  </Pill>
-                }
-              />
-            ) : (
-              <div className="flex flex-col gap-4">
-                {settings.providers.map((p) => (
-                  <ProviderCard
-                    key={p.id}
-                    provider={p}
-                    settings={settings}
-                    onEdit={() => setDialog(p)}
-                    onRemove={() => setRemove(p)}
-                  />
-                ))}
-              </div>
-            )}
+            <Connections
+              settings={settings}
+              onAdd={() => setDialog("new")}
+              onEdit={setDialog}
+              onRemove={setRemove}
+            />
+            <Section n={2} title="Keys" caption="Write-only.">
+              <Panel>
+                <Facts
+                  rows={[
+                    ["Where keys are stored", <Mono key="s">control.sqlite in the data directory</Mono>],
+                    ["Shown in the web", "Never. Only whether a key is saved"],
+                    ["To change a key", "Edit the provider and replace the key"],
+                  ]}
+                />
+              </Panel>
+            </Section>
             {dialog ? (
               <ProviderDialog
                 settings={settings}
@@ -86,7 +65,70 @@ export function ProvidersPage() {
           </>
         )}
       </WithSettings>
-    </Page>
+    </FramedPage>
+  );
+}
+
+function Connections({
+  settings,
+  onAdd,
+  onEdit,
+  onRemove,
+}: {
+  settings: Settings;
+  onAdd: () => void;
+  onEdit: (provider: Provider) => void;
+  onRemove: (provider: Provider) => void;
+}) {
+  const models = useQuery(listModelsOptions());
+  const failed = settings.providers.filter((p) => p.error).length;
+  const count = models.data?.models.length;
+
+  return (
+    <Section
+      n={1}
+      title="Connections"
+      caption={
+        settings.providers.length
+          ? `${settings.providers.length} saved${count === undefined ? "" : ` · ${count} models`}`
+          : undefined
+      }
+      action={
+        failed ? (
+          <StatusPill tone="red" className="h-5 px-2 text-[11.5px]">
+            {failed} {failed === 1 ? "needs" : "need"} attention
+          </StatusPill>
+        ) : null
+      }
+    >
+      {settings.providers.length ? (
+        <div className="flex flex-col gap-3">
+          {settings.providers.map((p) => (
+            <ProviderCard
+              key={p.id}
+              provider={p}
+              settings={settings}
+              onEdit={() => onEdit(p)}
+              onRemove={() => onRemove(p)}
+            />
+          ))}
+          <Note>
+            <strong className="font-medium text-ink">Saved is not the same as working.</strong> dex saves a
+            provider first, then lists its models. A failed listing keeps the provider saved and shows the
+            error on its card. A listed model can still fail when the agent calls it.
+          </Note>
+        </div>
+      ) : (
+        <Empty title="No providers yet">
+          <p>
+            Add a built-in service such as Anthropic, or a custom endpoint such as LM Studio on this computer.
+          </p>
+          <Button size="sm" variant="primary" className="mt-3" onClick={onAdd}>
+            Add provider
+          </Button>
+        </Empty>
+      )}
+    </Section>
   );
 }
 
@@ -119,108 +161,115 @@ function ProviderCard({
     },
   });
 
+  const rows: [string, ReactNode][] = [
+    ["Connection", p.api ? `${settings.apis[p.api] ?? p.api} · custom` : "Built-in"],
+  ];
+
+  if (p.baseUrl) rows.push(["Base URL", <Mono key="u">{p.baseUrl}</Mono>]);
+  rows.push(
+    [
+      "API key",
+      p.keySet ? (
+        <span key="k" className="text-ink-2">
+          Saved · write-only
+        </span>
+      ) : (
+        <span key="k" className={p.api ? "text-ink-3" : "text-orange"}>
+          {p.api ? "None · dex sends “none”" : "Missing"}
+        </span>
+      ),
+    ],
+    [
+      "Models",
+      p.error ? (
+        <span key="m" className="text-red">
+          Listing failed
+        </span>
+      ) : (
+        <span key="m" className="font-mono text-[12px] tabular-nums">
+          {own?.length ?? p.modelCount ?? 0} {p.models.length ? "fixed" : "listed"}
+        </span>
+      ),
+    ],
+  );
+
   return (
-    <Card>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h2 className="text-base font-semibold">{p.name}</h2>
-          <span className="font-mono text-xs text-ink-3">{p.id}</span>
-          <ValuePill>{p.api ? "Custom" : "Built-in"}</ValuePill>
-          {inUse ? <ValuePill tone="green">Agent uses {settings.agent.modelId}</ValuePill> : null}
+    <Panel>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <h3 className="text-[14px] font-medium text-ink">{p.name}</h3>
+          <Mono className="text-[11.5px] text-ink-3">{p.id}</Mono>
+          {inUse ? (
+            <StatusPill tone="accent" className="h-5 px-2 text-[11px]">
+              Agent model
+            </StatusPill>
+          ) : null}
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={onEdit} aria-label={`Edit ${p.name}`}>
-            Edit
-          </Button>
-          <Button variant="ghost" size="sm" onClick={onRemove} aria-label={`Remove ${p.name}`}>
-            Remove
-          </Button>
-        </div>
+        <Button size="xs" variant="quiet" onClick={onEdit} aria-label={`Edit ${p.name}`}>
+          Edit
+        </Button>
+        <Button
+          size="xs"
+          variant="quiet"
+          className="text-red"
+          onClick={onRemove}
+          aria-label={`Remove ${p.name}`}
+        >
+          Remove
+        </Button>
       </div>
-
-      <dl className="mt-4 grid gap-3 text-[13px] sm:grid-cols-3">
-        <div className="rounded-lg bg-inset px-3 py-2">
-          <dt className="text-xs text-ink-3">Saved connection</dt>
-          <dd className="mt-0.5 break-all text-ink">
-            {p.api ? `${settings.apis[p.api] ?? p.api} · ${p.baseUrl}` : "Built-in endpoint"}
-          </dd>
-        </div>
-        <div className="rounded-lg bg-inset px-3 py-2">
-          <dt className="text-xs text-ink-3">API key</dt>
-          <dd className="mt-0.5 text-ink">
-            {p.keySet ? "Saved · write-only" : p.api ? "None · dex sends “none”" : "Missing"}
-          </dd>
-        </div>
-        <div className="rounded-lg bg-inset px-3 py-2">
-          <dt className="text-xs text-ink-3">Model listing</dt>
-          <dd className={cn("mt-0.5", p.error ? "text-red" : "text-ink")}>
-            {p.error
-              ? "Failed"
-              : p.models.length
-                ? `Fixed list · ${p.models.length} IDs`
-                : p.modelCount === undefined
-                  ? "Not reported"
-                  : `${p.modelCount} found`}
-          </dd>
-        </div>
-      </dl>
-
+      <Facts rows={rows} />
       {p.error ? (
-        <Alert variant="destructive" className="mt-3">
-          <AlertTitle>Model listing failed. The provider is still saved.</AlertTitle>
-          <AlertDescription>
-            <p className="break-all font-mono text-xs">{p.error}</p>
-            <p>Check the base URL and the key, or enter model IDs in Edit.</p>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={retry.isPending}
-              onClick={() =>
-                retry.mutate({
-                  path: { providerId: p.id },
-                  body: { api: p.api, name: p.name, baseUrl: p.baseUrl, apiKey: "", models: p.models },
-                })
-              }
-            >
-              <RefreshCw aria-hidden className="size-3.5" /> {retry.isPending ? "Listing…" : "Retry listing"}
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <div className="border-t border-line p-3">
+          <Failure title="Model listing failed. The provider is still saved.">
+            <p className="font-mono text-[11.5px]">{p.error}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Button
+                size="xs"
+                variant="secondary"
+                disabled={retry.isPending}
+                onClick={() =>
+                  retry.mutate({
+                    path: { providerId: p.id },
+                    body: { api: p.api, name: p.name, baseUrl: p.baseUrl, apiKey: "", models: p.models },
+                  })
+                }
+              >
+                {retry.isPending ? <Spinner /> : null}
+                {retry.isPending ? "Listing…" : "Retry listing"}
+              </Button>
+              <span className="text-[12px] text-ink-3">
+                Or check the base URL and the key, or enter model IDs in Edit.
+              </span>
+            </div>
+          </Failure>
+        </div>
       ) : null}
       {retry.isError ? (
-        <div className="mt-3">
+        <div className="border-t border-line p-3">
           <Failure title="Could not retry the listing" error={retry.error} />
         </div>
       ) : null}
-
-      <div className="mt-4">
-        <h3 className="mb-2 text-xs font-medium text-ink-2">
-          Available models{own ? ` (${own.length})` : ""}
-        </h3>
-        {models.isError ? (
-          <p className="text-[13px] text-red">Could not load the models.</p>
-        ) : !own ? (
-          <p className="text-[13px] text-ink-3">Loading…</p>
-        ) : own.length ? (
-          <ul className="flex flex-wrap gap-1.5">
-            {own.map((m) => (
-              <li
-                key={m.id}
-                title={m.name}
-                className={cn(
-                  "inline-flex max-w-full items-center rounded-full px-2.5 py-0.5 font-mono text-[12px] shadow-hairline",
-                  inUse && settings.agent.modelId === m.id ? "bg-green-tint text-green" : "bg-field text-ink",
-                )}
-              >
-                <span className="truncate">{m.id}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-[13px] text-ink-3">No models.</p>
-        )}
-      </div>
-    </Card>
+      {models.isError ? (
+        <p className="border-t border-line px-4 py-3 text-[12.5px] text-red">Could not load the models.</p>
+      ) : !p.error && own?.length ? (
+        <ul aria-label={`${p.name} models`} className="flex flex-wrap gap-1.5 border-t border-line px-4 py-3">
+          {own.map((m) => (
+            <li
+              key={m.id}
+              title={m.id}
+              className={
+                inUse && settings.agent.modelId === m.id
+                  ? "inline-flex h-6 max-w-full items-center rounded-full bg-accent-tint px-2.5 text-[12px] font-medium text-accent-ink"
+                  : "inline-flex h-6 max-w-full items-center rounded-full bg-inset px-2.5 text-[12px] font-medium text-ink-2 shadow-btn"
+              }
+            >
+              <span className="truncate">{m.name}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </Panel>
   );
 }
 
@@ -278,25 +327,25 @@ function RemoveProvider({
         <Note tone="warn">The provider is removed. The agent model did not change; try again.</Note>
       ) : null}
       {current ? (
-        <div className="flex flex-col gap-2 rounded-xl bg-orange-tint p-3 text-sm text-ink">
-          <p className="font-medium">The agent uses this provider now.</p>
-          <label htmlFor="fallback-model" className="text-xs text-ink-2">
-            After removal, the agent uses
-          </label>
-          <NativeSelect
-            id="fallback-model"
-            className="w-full"
-            value={next}
-            disabled={remove.isPending || replace.isPending}
-            onChange={(e) => setNext(e.target.value)}
-          >
-            <NativeSelectOption value="">No model. Choose one later. Sending stops.</NativeSelectOption>
-            {others.map((m) => (
-              <NativeSelectOption key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
-                {m.provider} · {m.name}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+        <div className="flex flex-col gap-3 rounded-card bg-orange-tint p-3">
+          <p className="text-[13px] font-medium text-ink">The agent uses this provider now.</p>
+          <Field label="After removal, the agent uses">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={next}
+                disabled={remove.isPending || replace.isPending}
+                onChange={(e) => setNext(e.target.value)}
+              >
+                <option value="">No model. Choose one later. Sending stops.</option>
+                {others.map((m) => (
+                  <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
+                    {m.provider} · {m.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
         </div>
       ) : null}
     </Confirm>

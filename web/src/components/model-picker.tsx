@@ -5,11 +5,11 @@ import { getSettingsOptions, listModelsOptions } from "../api/generated/@tanstac
 import type { Model, Settings } from "../api/generated/types.gen";
 import { saveModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
+import { Popover } from "@base-ui/react/popover";
+import { Command } from "cmdk";
+import { IconMagnifyingGlass } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconMagnifyingGlass";
 import { ValuePill } from "./atoms/ValuePill";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command";
-import { Spinner } from "./ui/spinner";
-import { Failure } from "./feedback";
+import { Failure, Spinner } from "./feedback";
 
 type Group = { id: string; name: string; error?: string; models: Model[] };
 
@@ -67,7 +67,7 @@ export function ModelPicker({ trigger }: { trigger: ReactElement }) {
   });
 
   return (
-    <Popover
+    <Popover.Root
       open={open}
       onOpenChange={(next) => {
         // The save result shows in the list, so it stays open until the save ends.
@@ -77,25 +77,28 @@ export function ModelPicker({ trigger }: { trigger: ReactElement }) {
         setOpen(next);
       }}
     >
-      <PopoverTrigger render={trigger} />
-      <PopoverContent
-        align="start"
-        aria-label="Agent model"
-        // The search takes focus when it mounts, also after the models load.
-        initialFocus={false}
-        className="max-h-(--available-height) w-96 max-w-[calc(100vw-1rem)] gap-0 p-0"
-      >
-        <ModelList
-          pending={save.isPending ? save.variables : undefined}
-          error={save.isError ? save.error : undefined}
-          onPick={(model, current) => {
-            if (current) setOpen(false);
-            else save.mutate(model);
-          }}
-          onLeave={() => setOpen(false)}
-        />
-      </PopoverContent>
-    </Popover>
+      <Popover.Trigger render={trigger} />
+      <Popover.Portal>
+        <Popover.Positioner align="start" sideOffset={6} collisionPadding={8} className="z-40">
+          <Popover.Popup
+            aria-label="Agent model"
+            // The search takes focus when it mounts, also after the models load.
+            initialFocus={false}
+            className="flex max-h-[min(420px,var(--available-height))] w-[352px] max-w-[calc(100vw-1rem)] origin-(--transform-origin) animate-[pop-in_180ms_var(--ease-out-strong)_both] flex-col overflow-hidden rounded-[12px] bg-surface shadow-raised outline-none"
+          >
+            <ModelList
+              pending={save.isPending ? save.variables : undefined}
+              error={save.isError ? save.error : undefined}
+              onPick={(model, current) => {
+                if (current) setOpen(false);
+                else save.mutate(model);
+              }}
+              onLeave={() => setOpen(false)}
+            />
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
@@ -121,8 +124,8 @@ function ModelList({
 
   if (settings.isPending || models.isPending)
     return (
-      <div role="status" className="flex items-center gap-2 p-3 text-sm text-ink-2">
-        <Spinner aria-hidden /> Loading models…
+      <div role="status" className="flex items-center gap-2 p-3 text-[12.5px] text-ink-2">
+        <Spinner /> Loading models…
       </div>
     );
 
@@ -142,9 +145,9 @@ function ModelList({
 
   if (!settings.data.providers.length && !all.length)
     return (
-      <p className="p-3 text-sm text-ink-2">
+      <p className="p-3 text-[12.5px] text-ink-2">
         No providers yet.{" "}
-        <Link className="text-brand underline" to="/providers" onClick={onLeave}>
+        <Link className="font-medium text-accent-ink underline" to="/providers" onClick={onLeave}>
           Add a provider
         </Link>{" "}
         to see its models.
@@ -155,33 +158,38 @@ function ModelList({
 
   return (
     // The list is already filtered and sorted; cmdk only handles the keyboard.
-    <Command shouldFilter={false} className="h-auto min-h-0 rounded-lg! p-0">
-      <CommandInput
-        autoFocus
-        aria-label="Search models"
-        placeholder="Search providers and models"
-        value={query}
-        onValueChange={setQuery}
-      />
-      <CommandList className="max-h-88 min-h-0 flex-1">
+    <Command shouldFilter={false} className="flex min-h-0 flex-1 flex-col">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3 text-ink-3">
+        <IconMagnifyingGlass size={14} className="shrink-0" />
+        <Command.Input
+          autoFocus
+          aria-label="Search models"
+          placeholder="Search providers and models"
+          value={query}
+          onValueChange={setQuery}
+          className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-3"
+        />
+      </div>
+      <Command.List className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
         {!shown.length ? (
-          <p role="status" className="px-3 py-6 text-center text-sm text-ink-2">
+          <p role="status" className="px-3 py-6 text-center text-[12.5px] text-ink-3">
             No models match “{query.trim()}”.
           </p>
         ) : (
           shown.map((group) => (
-            <CommandGroup
+            <Command.Group
               key={group.id}
+              className="pb-1"
               heading={
-                <span className="flex flex-wrap items-center gap-2">
-                  {group.name}
-                  <span className="font-mono font-normal text-ink-3">{group.id}</span>
+                <span className="flex flex-wrap items-center gap-1.5 px-2 pt-2 pb-1 text-[11.5px] font-medium text-ink-3">
+                  <span className="text-ink-2">{group.name}</span>
+                  <span className="font-mono font-normal">{group.id}</span>
                   {group.error ? <ValuePill tone="red">Model listing failed</ValuePill> : null}
                 </span>
               }
             >
               {!group.models.length ? (
-                <p className="px-2 py-1 text-xs text-ink-3">
+                <p className="px-2 pb-1 text-[12px] text-ink-3">
                   No models.{" "}
                   {group.error
                     ? "Fix the listing error on Providers, or enter model IDs there."
@@ -191,41 +199,60 @@ function ModelList({
                 group.models.map((m) => {
                   const value = `${m.provider}/${m.id}`;
                   const checked = value === current;
+                  const saving = !!pending && `${pending.provider}/${pending.id}` === value;
 
                   return (
-                    <CommandItem
+                    <Command.Item
                       key={value}
                       value={value}
                       data-checked={checked}
                       disabled={!!pending}
                       onSelect={() => onPick(m, checked)}
-                      className="min-w-0"
+                      className="flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-hover"
                     >
-                      <span className="min-w-0 truncate text-ink" title={m.name}>
+                      <span className="min-w-0 truncate text-[12.5px] font-medium text-ink" title={m.name}>
                         {m.name}
                       </span>
-                      <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-3" title={m.id}>
+                      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink-3" title={m.id}>
                         {m.id}
                       </span>
                       {checked ? <span className="sr-only">(current)</span> : null}
-                      {pending && `${pending.provider}/${pending.id}` === value ? (
-                        <Spinner aria-label="Saving" className="ml-auto size-3.5" />
-                      ) : null}
-                    </CommandItem>
+                      {saving ? (
+                        <>
+                          <Spinner />
+                          <span className="sr-only">Saving</span>
+                        </>
+                      ) : (
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                          className={`shrink-0 text-ink ${checked ? "" : "invisible"}`}
+                        >
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                      )}
+                    </Command.Item>
                   );
                 })
               )}
-            </CommandGroup>
+            </Command.Group>
           ))
         )}
-      </CommandList>
+      </Command.List>
       {dirty ? (
-        <p className="border-t border-line px-3 py-2 text-xs text-ink-2">
+        <p className="shrink-0 border-t border-line px-3 py-2 text-[11.5px] text-ink-2">
           Your unsaved instructions stay as a draft. A model change does not save or discard them.
         </p>
       ) : null}
       {error ? (
-        <div className="border-t border-line p-2">
+        <div className="shrink-0 border-t border-line p-2">
           <Failure title="The model did not change" error={error} />
         </div>
       ) : null}

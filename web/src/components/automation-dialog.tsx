@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Automation, AutomationInput, Schedule, ScheduleInput } from "../api/generated/types.gen";
 import {
@@ -8,15 +8,18 @@ import {
 import { previewSchedule } from "../api/generated/sdk.gen";
 import { refreshAutomations } from "../lib/queries";
 import { runTime, weekdays } from "../lib/automations";
-import { cn } from "../lib/utils";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Textarea } from "./ui/textarea";
-import { Failure } from "./feedback";
-import { Field } from "./page";
-import { Switch } from "./ui/switch";
-import { NativeSelect, NativeSelectOption } from "./ui/native-select";
+import { Button } from "./atoms/Button";
+import { Switch } from "./atoms/Switch";
+import { Modal } from "./dialog";
+import { Failure, Spinner } from "./feedback";
+import { Field, Input, RadioSegments, Select, Textarea } from "./form";
+
+const kinds = [
+  { value: "every", label: "Interval" },
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "once", label: "Once" },
+] as const;
 
 function localDateTime(at: number) {
   const date = new Date(at);
@@ -25,6 +28,7 @@ function localDateTime(at: number) {
 }
 
 export function AutomationDialog({ existing, onClose }: { existing?: Automation; onClose: () => void }) {
+  const formId = useId();
   const browserZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [name, setName] = useState(existing?.name ?? "");
   const [prompt, setPrompt] = useState(existing?.prompt ?? "");
@@ -102,214 +106,200 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   ];
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !pending) onClose();
-      }}
+    <Modal
+      title={existing ? "Edit automation" : "New automation"}
+      description="Set a prompt and a schedule. The agent's model and instructions run every automation."
+      pending={pending}
+      onClose={onClose}
+      footer={
+        <>
+          <Button size="sm" variant="secondary" disabled={pending} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            type="submit"
+            form={formId}
+            disabled={pending || !validSchedule || !name.trim() || !prompt.trim()}
+          >
+            {pending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
+            {pending ? "Saving…" : "Save automation"}
+          </Button>
+        </>
+      }
     >
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[560px]">
-        <DialogHeader>
-          <DialogTitle>{existing ? "Edit automation" : "New automation"}</DialogTitle>
-          <DialogDescription>Set a prompt and a schedule for the agent.</DialogDescription>
-        </DialogHeader>
-        <form
-          className="flex flex-col gap-5 text-sm"
-          onSubmit={(event) => {
-            event.preventDefault();
+      <form
+        id={formId}
+        className="flex flex-col gap-4"
+        onSubmit={(event) => {
+          event.preventDefault();
 
-            if (!validSchedule || pending) return;
-            const body = { name: name.trim(), prompt: prompt.trim(), schedule, timeZone, session, enabled };
+          if (!validSchedule || pending) return;
+          const body = { name: name.trim(), prompt: prompt.trim(), schedule, timeZone, session, enabled };
 
-            if (existing) update.mutate({ path: { automationId: existing.id }, body });
-            else create.mutate({ body });
-          }}
-        >
-          <Field label="Name">
-            {({ id }) => <Input id={id} required value={name} onChange={(e) => setName(e.target.value)} />}
-          </Field>
-          <Field label="Prompt">
-            {({ id }) => (
-              <Textarea
+          if (existing) update.mutate({ path: { automationId: existing.id }, body });
+          else create.mutate({ body });
+        }}
+      >
+        <Field label="Name">
+          {({ id }) => (
+            <Input id={id} required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
+          )}
+        </Field>
+        <Field label="Prompt" hint="Sent to the agent as a user message on each run.">
+          {({ id, describedBy }) => (
+            <Textarea
+              id={id}
+              aria-describedby={describedBy}
+              required
+              rows={3}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Tell the agent what to do."
+            />
+          )}
+        </Field>
+        <div className="flex flex-col gap-1.5">
+          <span aria-hidden className="text-[12.5px] font-medium text-ink">
+            Repeat
+          </span>
+          <RadioSegments label="Repeat" options={kinds} value={kind} onChange={setKind} />
+        </div>
+        {kind === "every" ? (
+          <Field label="Minutes between runs" hint="Minimum: 5 minutes.">
+            {({ id, describedBy }) => (
+              <Input
                 id={id}
+                aria-describedby={describedBy}
+                type="number"
+                min={5}
+                step={1}
                 required
-                rows={4}
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Tell the agent what to do."
+                className="max-w-40 font-mono tabular-nums"
+                value={Number.isNaN(minutes) ? "" : minutes}
+                onChange={(e) => setMinutes(e.target.valueAsNumber)}
               />
             )}
           </Field>
-          <fieldset className="flex flex-col gap-3">
-            <legend className="mb-2">Schedule</legend>
-            <div className="flex gap-1 rounded-lg bg-inset p-1" role="group" aria-label="Schedule type">
-              {(["every", "daily", "weekly", "once"] as const).map((value) => (
-                <Button
-                  key={value}
-                  type="button"
-                  variant="ghost"
-                  aria-pressed={kind === value}
-                  onClick={() => setKind(value)}
-                  className={cn("flex-1 capitalize", kind === value && "bg-surface shadow-xs")}
-                >
-                  {value}
-                </Button>
-              ))}
-            </div>
-            {kind === "every" ? (
-              <Field label="Minutes between runs" hint="Minimum: 5 minutes.">
-                {({ id, describedBy }) => (
-                  <Input
-                    id={id}
-                    aria-describedby={describedBy}
-                    type="number"
-                    min={5}
-                    step={1}
-                    required
-                    value={Number.isNaN(minutes) ? "" : minutes}
-                    onChange={(e) => setMinutes(e.target.valueAsNumber)}
-                  />
-                )}
-              </Field>
-            ) : kind === "once" ? (
-              <Field label="Date and time" hint={`Enter the time in your browser time zone: ${browserZone}.`}>
-                {({ id, describedBy }) => (
-                  <Input
-                    id={id}
-                    aria-describedby={describedBy}
-                    type="datetime-local"
-                    required
-                    value={at}
-                    onChange={(e) => setAt(e.target.value)}
-                  />
-                )}
-              </Field>
-            ) : (
-              <Field label="Time">
-                {({ id }) => (
-                  <Input
-                    id={id}
-                    type="time"
-                    required
-                    value={time}
-                    onChange={(e) => setTime(e.target.value)}
-                  />
-                )}
-              </Field>
+        ) : kind === "once" ? (
+          <Field label="Date and time" hint={`Enter the time in your browser time zone: ${browserZone}.`}>
+            {({ id, describedBy }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                type="datetime-local"
+                required
+                className="max-w-60 font-mono tabular-nums"
+                value={at}
+                onChange={(e) => setAt(e.target.value)}
+              />
             )}
-            {kind === "weekly" ? (
-              <div className="flex flex-wrap gap-1" role="group" aria-label="Days of the week">
-                {weekdays.map((day, i) => (
-                  <Button
-                    key={day}
-                    type="button"
-                    size="sm"
-                    variant={days.includes(i + 1) ? "default" : "outline"}
-                    aria-pressed={days.includes(i + 1)}
-                    onClick={() =>
+          </Field>
+        ) : (
+          <Field label="Time">
+            {({ id }) => (
+              <Input
+                id={id}
+                type="time"
+                required
+                className="max-w-40 font-mono tabular-nums"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+              />
+            )}
+          </Field>
+        )}
+        {kind === "weekly" ? (
+          <fieldset>
+            <legend className="mb-1.5 text-[12.5px] font-medium text-ink">Days of the week</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {weekdays.map((day, i) => (
+                <label
+                  key={day}
+                  className="flex h-7 cursor-pointer items-center rounded-full bg-field px-3 text-[12.5px] font-medium text-ink-2 shadow-hairline transition-colors has-[:checked]:bg-ink has-[:checked]:text-canvas has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent"
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={days.includes(i + 1)}
+                    onChange={() =>
                       setDays((current) =>
                         current.includes(i + 1)
                           ? current.filter((value) => value !== i + 1)
                           : [...current, i + 1],
                       )
                     }
-                  >
-                    {day}
-                  </Button>
-                ))}
-              </div>
-            ) : null}
+                  />
+                  {day}
+                </label>
+              ))}
+            </div>
           </fieldset>
+        ) : null}
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Time zone">
             {({ id }) => (
-              <NativeSelect
-                id={id}
-                className="w-full"
-                value={timeZone}
-                onChange={(e) => setTimeZone(e.target.value)}
-              >
+              <Select id={id} value={timeZone} onChange={(e) => setTimeZone(e.target.value)}>
                 {zones.map((zone) => (
-                  <NativeSelectOption key={zone} value={zone}>
+                  <option key={zone} value={zone}>
                     {zone}
-                  </NativeSelectOption>
+                  </option>
                 ))}
-              </NativeSelect>
+              </Select>
             )}
           </Field>
-          <fieldset className="flex flex-col gap-2">
-            <legend className="mb-2">Run in</legend>
-            {(["new", "reuse"] as const).map((value) => (
-              <label
-                key={value}
-                className={cn(
-                  "flex cursor-pointer items-start gap-3 rounded-xl border border-line p-3 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ink",
-                  session === value && "border-ink",
-                )}
+          <Field
+            label="Chat for each run"
+            hint={
+              session === "reuse"
+                ? "The agent sees earlier runs. The chat grows with each run. When the chat is busy, the run is skipped."
+                : "Each run starts fresh."
+            }
+          >
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={session}
+                onChange={(e) => setSession(e.target.value === "reuse" ? "reuse" : "new")}
               >
-                <input
-                  type="radio"
-                  name="session"
-                  value={value}
-                  checked={session === value}
-                  onChange={() => setSession(value)}
-                  className="mt-1 accent-ink"
-                />
-                <span>
-                  <span className="font-medium">
-                    {value === "new" ? "New chat each run" : "One chat for this automation"}
-                  </span>
-                  <span className="mt-1 block text-xs leading-relaxed text-ink-2">
-                    {value === "new"
-                      ? "Each run starts fresh."
-                      : "Each run continues the same chat, so the agent sees earlier runs."}
-                  </span>
-                </span>
-              </label>
-            ))}
-            {session === "reuse" ? (
-              <p className="rounded-lg bg-inset p-3 text-xs leading-relaxed text-ink-2">
-                The chat grows with each run. When the chat is busy, the run is skipped.
-              </p>
-            ) : null}
-          </fieldset>
-          <label className="flex items-center justify-between">
-            <span>Enabled</span>
-            <Switch checked={enabled} onCheckedChange={setEnabled} />
-          </label>
-          <section className="rounded-lg bg-inset p-3" aria-live="polite">
-            <h3 className="mb-2 font-medium">Next runs · {timeZone}</h3>
-            {!validSchedule ? (
-              <p className="text-ink-2">Complete the schedule to see the next runs.</p>
-            ) : previewInput !== input || preview.isPending ? (
-              <p className="text-ink-2">Loading preview…</p>
-            ) : preview.isError ? (
-              <Failure title="Could not preview schedule" error={preview.error} />
-            ) : preview.data.nextRuns.length ? (
-              <ol className="space-y-1 text-ink-2">
-                {preview.data.nextRuns.map((next) => (
-                  <li key={next}>{runTime(next, timeZone)}</li>
-                ))}
-              </ol>
-            ) : (
-              <p className="text-ink-2">No future runs.</p>
+                <option value="new">New chat each run</option>
+                <option value="reuse">One chat for this automation</option>
+              </Select>
             )}
-            {!enabled ? (
-              <p className="mt-2 text-xs text-ink-2">
-                This automation is paused. Enable it to run on this schedule.
-              </p>
-            ) : null}
-          </section>
-          {error ? <Failure title="Could not save automation" error={error} /> : null}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" disabled={pending} onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={pending || !validSchedule || !name.trim() || !prompt.trim()}>
-              {pending ? "Saving…" : "Save automation"}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </Field>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[12.5px] font-medium text-ink">Enabled</span>
+          <Switch checked={enabled} onChange={setEnabled} label="Enabled" />
+        </div>
+        <section
+          aria-live="polite"
+          className="rounded-card bg-inset px-3.5 py-3 text-[12.5px] text-ink-2 shadow-hairline"
+        >
+          <h3 className="mb-1 font-medium text-ink">Next runs · {timeZone}</h3>
+          {!validSchedule ? (
+            <p>Complete the schedule to see the next runs.</p>
+          ) : previewInput !== input || preview.isPending ? (
+            <p>Loading preview…</p>
+          ) : preview.isError ? (
+            <Failure title="Could not preview schedule" error={preview.error} />
+          ) : preview.data.nextRuns.length ? (
+            <ol className="flex flex-col gap-0.5 font-mono text-[12px] tabular-nums">
+              {preview.data.nextRuns.map((next) => (
+                <li key={next}>{runTime(next, timeZone)}</li>
+              ))}
+            </ol>
+          ) : (
+            <p>No future runs.</p>
+          )}
+          {!enabled ? (
+            <p className="mt-2 text-[12px]">This automation is paused. Enable it to run on this schedule.</p>
+          ) : null}
+        </section>
+        {error ? <Failure title="Could not save automation" error={error} /> : null}
+      </form>
+    </Modal>
   );
 }

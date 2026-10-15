@@ -22,9 +22,10 @@ Run `mise run build:web` to build it separately.
 ## Pages
 
 Each page in `src/routes/` reads the API only. The app keeps no settings in
-`localStorage`; it stores only the theme and the automation unread marker
-there. The unsaved agent instructions are in memory (`src/lib/app-state.tsx`),
-so a draft stays when the user opens another page, and a reload discards it.
+`localStorage`. It stores only browser choices there: the theme (`dex-theme`),
+the open or closed Context panel of a chat (`dex-context`), and the automation
+unread marker (`dex-automations-seen`). The unsaved agent instructions are in
+memory (`src/lib/app-state.tsx`), so a draft stays when the user opens another page, and a reload discards it.
 `src/lib/agent.ts` runs agent saves one at a time. Each save reads the saved
 agent first, so a model change does not overwrite the instructions.
 
@@ -32,17 +33,26 @@ The old `/settings/<section>` addresses redirect to the new pages.
 
 ## Components and theme
 
-The shadcn components use Base UI and the `base-nova` style.
-Beautiful UI supplies the theme and the agent components.
-The tokens came from
-[slev12397/beautiful-ui](https://github.com/slev12397/beautiful-ui/blob/main/app/globals.css).
+The look follows Beautiful UI by
+[slev12397/beautiful-ui](https://github.com/slev12397/beautiful-ui) (MIT).
+`src/styles.css` is the only source of tokens. It has the upstream light and
+dark tokens from `app/globals.css`, the shared keyframes, and a few dex rules.
 The app uses system font stacks with Inter and JetBrains Mono as the first choices.
 It does not download fonts.
 
-Edit `src/styles.css` for project styles.
-Treat `src/styles/shadcn.css`, `src/components/ui/`, and `src/components/atoms/`
-as registry output.
-The registry imports `cn`. The Vite and TypeScript aliases resolve that import
+The theme follows the system until the user picks light or dark with the
+toggle in the sidebar. `src/components/theme.tsx` applies the theme before the
+first render.
+
+`src/components/atoms/` and `src/components/primitives/` are upstream copies.
+Lint and format checks skip them. A dex change in a copy has a comment at the
+top of the file. The app parts are in `src/components/`: `page.tsx` for the
+framed page, sections and fact rows, `form.tsx` for fields, `dialog.tsx` for
+modal dialogs, and `feedback.tsx` for errors and loading states. The dialogs,
+the drawer and the model picker use Base UI directly. The model picker uses
+cmdk for its search.
+
+The upstream copies import `cn`. The Vite and TypeScript aliases resolve that import
 to `src/lib/utils.ts`, which uses the approved `clsx` and `tailwind-merge` packages.
 The project does not need a separate `cn` package.
 

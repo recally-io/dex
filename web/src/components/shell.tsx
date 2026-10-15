@@ -1,90 +1,44 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Outlet, useRouterState, type LinkProps } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Bot,
-  Boxes,
-  ChevronDown,
-  Clock,
-  Info,
-  KeyRound,
-  Menu,
-  MessageSquare,
-  Monitor,
-  Moon,
-  Plus,
-  Radio,
-  Send,
-  Server,
-  Sun,
-} from "lucide-react";
+import { Dialog } from "@base-ui/react/dialog";
+import { IconBubbles } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubbles";
+import { IconChevronDownSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronDownSmall";
+import { IconCircleInfo } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCircleInfo";
+import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
+import { IconCloudApi } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCloudApi";
+import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
+import { IconEditBig } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconEditBig";
+import { IconKey2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconKey2";
+import { IconMagnifyingGlass } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconMagnifyingGlass";
+import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
+import { IconPuzzle } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPuzzle";
+import { IconRobot } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconRobot";
 import { getSettingsOptions, listChatsOptions } from "../api/generated/@tanstack/react-query.gen";
 import type { Chat } from "../api/generated/types.gen";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "./ui/sheet";
 import GlideMenu from "./primitives/GlideMenu";
 import { Failure } from "./feedback";
-import { Skeleton } from "./ui/skeleton";
-import { cn } from "../lib/utils";
-import { unreadAutomationChats } from "../lib/automations";
+import { ShellContext } from "./page";
+import { ThemeToggle, useSystemTheme } from "./theme";
+import { ago, unreadAutomationChats } from "../lib/automations";
 import { useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
-
-type Theme = "system" | "light" | "dark";
-
-function readTheme(): Theme {
-  const saved = localStorage.getItem("dex-theme");
-
-  return saved === "dark" || saved === "light" ? saved : "system";
-}
-
-function groupChats(chats: Chat[], now: Date) {
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
-  const week = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7).getTime();
-
-  return Object.groupBy(
-    chats.toSorted((a, b) => b.updatedAt - a.updatedAt),
-    (chat) =>
-      chat.updatedAt >= start
-        ? "Today"
-        : chat.updatedAt >= yesterday
-          ? "Yesterday"
-          : chat.updatedAt >= week
-            ? "Previous 7 days"
-            : "Older",
-  );
-}
+import { cn } from "../lib/utils";
 
 export function Shell() {
   const [menu, setMenu] = useState(false);
-  const [theme, setTheme] = useState<Theme>(readTheme);
   const location = useRouterState({ select: (s) => s.location });
   const path = location.pathname;
   const shown = useRef(path);
   // The drawer closes when the page changes.
   const [menuPath, setMenuPath] = useState(path);
+  const shell = useMemo(() => ({ openDrawer: () => setMenu(true) }), []);
+  useSystemTheme();
 
   if (menuPath !== path) {
     setMenuPath(path);
     setMenu(false);
   }
-
-  useEffect(() => {
-    const preference = matchMedia("(prefers-color-scheme: dark)");
-
-    function apply() {
-      document.documentElement.classList.toggle(
-        "dark",
-        theme === "dark" || (theme === "system" && preference.matches),
-      );
-    }
-
-    apply();
-    preference.addEventListener("change", apply);
-    localStorage.setItem("dex-theme", theme);
-
-    return () => preference.removeEventListener("change", apply);
-  }, [theme]);
 
   // After navigation, focus moves to the page title, so keyboard and screen reader users land on
   // the new page. A new chat keeps the focus in its composer.
@@ -101,68 +55,74 @@ export function Shell() {
   }, [path, firstMessage]);
 
   return (
-    <div className="flex h-dvh bg-page text-ink">
-      <a
-        href="#main"
-        onClick={(e) => {
-          e.preventDefault();
-          document.getElementById("main")?.focus();
-        }}
-        className="sr-only z-50 rounded bg-ink px-3 py-2 text-canvas focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
-      >
-        Skip to content
-      </a>
-      <aside className="hidden w-[272px] shrink-0 border-r border-line bg-canvas lg:block">
-        <Rail path={path} theme={theme} onTheme={setTheme} />
-      </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-canvas/95 px-3 lg:hidden">
-          <button
-            type="button"
-            aria-label="Open navigation"
-            onClick={() => setMenu(true)}
-            className="rounded-lg p-2 hover:bg-hover focus-visible:outline-2 focus-visible:outline-ink"
-          >
-            <Menu className="size-5" />
-          </button>
-          <span className="flex-1 text-sm font-semibold">dex</span>
-          <Link
-            to="/"
-            className="inline-flex h-7 items-center gap-1 rounded-full bg-ink px-2.5 text-[12px] text-canvas focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-          >
-            <Plus aria-hidden className="size-3.5" /> New chat
-          </Link>
-        </div>
-        <main id="main" tabIndex={-1} className="min-h-0 flex-1 overflow-auto outline-none">
+    <ShellContext.Provider value={shell}>
+      <div className="flex h-dvh bg-canvas text-ink lg:gap-2.5 lg:p-2.5 lg:pl-0">
+        <a
+          href="#main"
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById("main")?.focus();
+          }}
+          className="sr-only z-50 rounded-control bg-ink px-3 py-2 text-canvas focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+        >
+          Skip to content
+        </a>
+        <Sidebar path={path} className="hidden pt-0.5 lg:flex" />
+        <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 outline-none lg:gap-2.5">
           <Outlet />
         </main>
       </div>
-      <Sheet open={menu} onOpenChange={setMenu}>
-        <SheetContent side="left" className="w-[300px] gap-0 bg-canvas p-0">
-          <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <SheetDescription className="sr-only">Chats, automations and configuration</SheetDescription>
-          <Rail path={path} theme={theme} onTheme={setTheme} />
-        </SheetContent>
-      </Sheet>
-    </div>
+      <Dialog.Root open={menu} onOpenChange={setMenu}>
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-50 animate-[fade-in_160ms_ease-out_both] bg-[oklch(0.2_0.01_264/0.32)] lg:hidden" />
+          <Dialog.Popup
+            aria-label="Navigation"
+            className="fixed inset-y-0 left-0 z-50 flex w-[272px] max-w-[85vw] animate-[drawer-in_240ms_var(--ease-out-strong)_both] flex-col bg-canvas py-2 shadow-overlay outline-none lg:hidden"
+          >
+            <Dialog.Close
+              aria-label="Close navigation"
+              className="absolute top-3 right-3 z-20 flex size-8 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink"
+            >
+              <IconCrossSmall size={18} />
+            </Dialog.Close>
+            <Sidebar path={path} className="w-full" />
+          </Dialog.Popup>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </ShellContext.Provider>
   );
 }
 
-function NavRow({
+// Layout and motion from upstream primitives/SidebarNav.tsx.
+function GlideGroup({ children }: { children: ReactNode }) {
+  return (
+    <GlideMenu
+      rowSelector="[data-row]"
+      highlightClassName="sidebar-glide-highlight rounded-[7px] bg-hover-2"
+      className="group/glide flex flex-col gap-px"
+    >
+      {children}
+    </GlideMenu>
+  );
+}
+
+function Row({
   to,
   params,
-  current,
   icon,
-  children,
-  badge,
+  label,
+  current,
+  trailing,
+  small,
   title,
 }: {
   to: LinkProps["to"];
   params?: LinkProps["params"];
+  icon?: ReactNode;
+  label: ReactNode;
   current: boolean;
-  icon: ReactNode;
-  children: ReactNode;
-  badge?: ReactNode;
+  trailing?: ReactNode;
+  small?: boolean;
   title?: string;
 }) {
   return (
@@ -170,50 +130,92 @@ function NavRow({
       to={to}
       params={params}
       title={title}
-      data-menu-row
+      data-row
       aria-current={current ? "page" : undefined}
       className={cn(
-        "relative z-10 flex h-8 min-w-0 items-center gap-2.5 rounded-[8px] px-2.5 text-[13px] focus-visible:outline-2 focus-visible:outline-ink",
-        current ? "bg-inset font-medium text-ink" : "text-ink-2 hover:text-ink",
+        "relative z-10 mx-2 flex items-center rounded-control px-2 text-left transition-[background-color,color,transform] duration-150 active:scale-[0.98]",
+        small ? "h-7" : "h-8",
+        current && "bg-hover-2 group-hover/glide:bg-transparent",
       )}
     >
-      <span className="flex size-4 shrink-0 items-center justify-center text-ink-3">{icon}</span>
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      {badge}
+      {icon ? (
+        <span
+          className={cn(
+            "flex size-5 shrink-0 items-center justify-center",
+            current ? "text-ink" : small ? "text-ink-3" : "text-ink-2",
+          )}
+        >
+          {icon}
+        </span>
+      ) : null}
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate",
+          icon && "ml-1.5",
+          small ? "text-[13px]" : "text-[14px] font-medium",
+          current ? "text-ink" : "text-ink-2",
+        )}
+      >
+        {label}
+      </span>
+      {trailing ? <span className="ml-2 flex shrink-0 items-center text-ink-3">{trailing}</span> : null}
     </Link>
   );
 }
 
-function Badge({
-  tone,
-  children,
+function GroupLabel({
   label,
+  open,
+  onToggle,
+  controls,
+  children,
 }: {
-  tone: "orange" | "red" | "brand";
-  children: ReactNode;
   label: string;
+  open: boolean;
+  onToggle: () => void;
+  controls: string;
+  children?: ReactNode;
 }) {
+  return (
+    <div className="relative mx-2 mb-1 flex h-8 items-center">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={controls}
+        onClick={onToggle}
+        className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-control px-2 text-[12.5px] font-medium text-ink-3 transition-colors hover:text-ink-2"
+      >
+        <IconChevronDownSmall
+          size={16}
+          className={cn("shrink-0 transition-transform duration-200", !open && "-rotate-90")}
+        />
+        <span className="truncate">{label}</span>
+      </button>
+      {children}
+    </div>
+  );
+}
+
+function Dot({ tone, label }: { tone: "orange" | "red"; label: string }) {
   return (
     <span
       role="img"
       aria-label={label}
-      className={cn(
-        "rounded-full px-1.5 text-[10.5px] leading-4 font-semibold text-white",
-        tone === "red" ? "bg-red" : tone === "orange" ? "bg-orange" : "bg-brand",
-      )}
-    >
-      {children}
-    </span>
+      className={cn("size-1.5 rounded-full", tone === "red" ? "bg-red" : "bg-orange")}
+    />
   );
 }
 
-const origins = {
-  web: { icon: <MessageSquare aria-hidden className="size-3.5" />, name: "Web" },
-  telegram: { icon: <Send aria-hidden className="size-3.5" />, name: "Telegram" },
-  automation: { icon: <Clock aria-hidden className="size-3.5" />, name: "Automation" },
-};
+const configure = [
+  { to: "/agent", label: "Agent", icon: <IconRobot size={16} /> },
+  { to: "/providers", label: "Providers", icon: <IconCloudApi size={16} /> },
+  { to: "/channels", label: "Channels", icon: <IconBubbles size={16} /> },
+  { to: "/extensions", label: "Extensions", icon: <IconPuzzle size={16} /> },
+  { to: "/secrets", label: "Secrets", icon: <IconKey2 size={16} /> },
+  { to: "/about", label: "About", icon: <IconCircleInfo size={16} /> },
+] as const;
 
-function Rail({ path, theme, onTheme }: { path: string; theme: Theme; onTheme: (theme: Theme) => void }) {
+function Sidebar({ path, className }: { path: string; className?: string }) {
   const chats = useQuery({
     ...listChatsOptions(),
     refetchInterval: 3000,
@@ -223,16 +225,22 @@ function Rail({ path, theme, onTheme }: { path: string; theme: Theme; onTheme: (
   const settings = useQuery(getSettingsOptions());
   const model = useAgentModel(settings.data);
   const { draft } = useApp();
+  const [chatsOpen, setChatsOpen] = useState(true);
   const [runsOpen, setRunsOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(true);
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
   const [a] = path.split("/").filter(Boolean);
-  const allChats = chats.data?.chats ?? [];
+  const all = chats.data?.chats ?? [];
+  const q = query.trim().toLowerCase();
 
-  const groups = groupChats(
-    allChats.filter((chat) => chat.channel !== "automation"),
-    new Date(chats.dataUpdatedAt),
-  );
+  const list = all
+    .filter((chat) => chat.channel !== "automation")
+    .toSorted((x, y) => y.updatedAt - x.updatedAt);
 
-  const runs = allChats
+  const visible = q ? list.filter((chat) => chat.title.toLowerCase().includes(q)) : list;
+
+  const runs = all
     .filter((chat) => chat.channel === "automation")
     .toSorted((x, y) => y.updatedAt - x.updatedAt);
 
@@ -252,205 +260,216 @@ function Rail({ path, theme, onTheme }: { path: string; theme: Theme; onTheme: (
   const providerErrors = settings.data?.providers.filter((p) => p.error).length ?? 0;
   const dirty = draft !== null && draft !== settings.data?.agent.instructions;
 
-  const chatRow = (chat: Chat) => (
-    <li key={chat.id}>
-      <NavRow
-        to="/c/$chatId"
-        params={{ chatId: String(chat.id) }}
-        current={path === `/c/${chat.id}`}
-        icon={origins[chat.channel].icon}
-        title={chat.title}
-        badge={
-          chat.busy ? (
-            <span className="size-2 shrink-0 animate-pulse rounded-full bg-orange" aria-label="Running" />
-          ) : null
-        }
+  const badge =
+    unread && !open ? (
+      <span
+        role="img"
+        aria-label={`${unread} unread automation ${unread === 1 ? "run" : "runs"}`}
+        className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent-tint px-1.5 text-[11px] font-medium text-accent-ink tabular-nums"
       >
-        <span className="sr-only">{origins[chat.channel].name}: </span>
-        {chat.title}
-      </NavRow>
-    </li>
+        {unread}
+      </span>
+    ) : null;
+
+  function closeSearch() {
+    setSearching(false);
+    setQuery("");
+  }
+
+  const chatRow = (chat: Chat, label: ReactNode = chat.title) => (
+    <Row
+      key={chat.id}
+      to="/c/$chatId"
+      params={{ chatId: String(chat.id) }}
+      current={path === `/c/${chat.id}`}
+      title={chat.title}
+      label={label}
+      trailing={
+        chat.busy ? (
+          <span
+            role="img"
+            aria-label="Running"
+            className="size-1.5 animate-[caret-blink_1.2s_ease-in-out_infinite] rounded-full bg-orange"
+          />
+        ) : chat.channel === "telegram" ? (
+          <IconPaperPlane size={14} role="img" aria-label="From Telegram" />
+        ) : null
+      }
+    />
   );
 
+  const agentTrailing = dirty ? (
+    <span className="text-[11px] text-ink-3">Draft</span>
+  ) : model && !model.ok ? (
+    <Dot tone="orange" label="No available model" />
+  ) : null;
+
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between px-4 pt-4 pb-3">
-        <Link
-          to="/"
-          className="flex items-center gap-2 rounded-md text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-ink"
+    <aside aria-label="Navigation" className={cn("flex h-full w-[232px] shrink-0 flex-col", className)}>
+      {/* The workspace header: dex and the model of its one agent. */}
+      <div className="mx-2 mb-2.5 flex h-11 shrink-0 items-center gap-2 px-2">
+        <span
+          aria-hidden
+          className="flex size-6 shrink-0 items-center justify-center rounded-[7px] bg-ink text-[12px] font-semibold text-surface"
         >
-          <span className="flex size-7 items-center justify-center rounded-lg bg-ink text-sm text-page">
-            d
-          </span>
-          dex
-        </Link>
-      </div>
-      <div className="px-3 pb-2">
-        <Link
-          to="/"
-          className="inline-flex h-[27px] w-full items-center justify-center gap-1.5 rounded-full bg-ink px-3 text-[13px] font-medium text-canvas hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-        >
-          <Plus aria-hidden className="size-3.5" /> New chat
-        </Link>
-      </div>
-      <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-          <GlideMenu>
-            <NavRow
-              to="/automations"
-              current={a === "automations"}
-              icon={<Clock className="size-4" />}
-              badge={
-                unread && !open ? (
-                  <Badge tone="brand" label={`${unread} unread runs`}>
-                    {unread}
-                  </Badge>
-                ) : null
-              }
+          d
+        </span>
+        <span className="min-w-0 flex-1 leading-tight">
+          <span className="block text-[14px] font-semibold text-ink">dex</span>
+          {model ? (
+            <Link
+              to="/agent"
+              className={cn(
+                "block truncate text-[11.5px] hover:underline",
+                model.ok ? "text-ink-3" : "text-orange",
+              )}
             >
-              Automations
-            </NavRow>
-          </GlideMenu>
-          {chats.isPending ? (
-            <div className="mt-4 flex flex-col gap-2 px-2.5" role="status" aria-label="Loading chats">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-6 w-full" />
-              ))}
+              {settings.data?.agent.modelId ? model.label : "No model chosen"}
+            </Link>
+          ) : null}
+        </span>
+      </div>
+
+      <GlideGroup>
+        <Row icon={<IconEditBig size={18} />} label="New chat" to="/" current={path === "/"} />
+        <Row
+          icon={<IconClock size={18} />}
+          label="Automations"
+          to="/automations"
+          current={a === "automations"}
+          trailing={badge}
+        />
+      </GlideGroup>
+
+      <nav aria-label="Chats" className="mt-3 min-h-0 flex-1 overflow-y-auto [scrollbar-width:none]">
+        <GroupLabel
+          label="Chats"
+          open={chatsOpen}
+          controls="sidebar-chats"
+          onToggle={() => setChatsOpen(!chatsOpen)}
+        >
+          {searching ? (
+            <div className="absolute inset-0 z-20 flex h-8 animate-[fade-in_180ms_ease-out_both] items-center overflow-hidden rounded-control bg-field text-ink-3 shadow-hairline">
+              <IconMagnifyingGlass size={15} className="ml-2 shrink-0" />
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") closeSearch();
+                }}
+                placeholder="Search chats"
+                aria-label="Search chat titles"
+                className="ml-1.5 min-w-0 flex-1 bg-transparent text-[13px] font-medium text-ink outline-none placeholder:text-ink-3"
+              />
+              <button
+                type="button"
+                aria-label="Close chat search"
+                onClick={closeSearch}
+                className="flex size-8 shrink-0 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink"
+              >
+                <IconCrossSmall size={16} />
+              </button>
             </div>
+          ) : (
+            <button
+              type="button"
+              aria-label="Search chats"
+              onClick={() => {
+                setChatsOpen(true);
+                setSearching(true);
+              }}
+              className="flex size-8 shrink-0 items-center justify-center rounded-control text-ink-3 transition-colors hover:bg-hover-2 hover:text-ink"
+            >
+              <IconMagnifyingGlass size={16} />
+            </button>
+          )}
+        </GroupLabel>
+        <div id="sidebar-chats" hidden={!chatsOpen}>
+          {chats.isPending ? (
+            <p role="status" className="mx-2 px-2 py-1 text-[12.5px] text-ink-3">
+              Loading chats…
+            </p>
           ) : chats.isError ? (
-            <div className="mt-4">
+            <div className="mx-2">
               <Failure title="Could not load chats" error={chats.error} retry={() => void chats.refetch()} />
             </div>
-          ) : !allChats.length ? (
-            <p className="px-2.5 py-3 text-xs text-ink-3">No chats yet.</p>
           ) : (
-            <>
-              {(["Today", "Yesterday", "Previous 7 days", "Older"] as const).map((group) =>
-                groups[group]?.length ? (
-                  <div key={group} className="mt-4">
-                    <h2 className="px-2.5 pb-1 text-[11px] font-medium text-ink-3">{group}</h2>
-                    <GlideMenu>
-                      <ul>{groups[group]?.map(chatRow)}</ul>
-                    </GlideMenu>
-                  </div>
-                ) : null,
-              )}
-              {runs.length ? (
-                <div className="mt-4">
-                  <button
-                    type="button"
-                    aria-expanded={open}
-                    aria-controls="rail-runs"
-                    onClick={() => setRunsOpen(!open)}
-                    className="flex w-full items-center gap-1.5 rounded-md px-2.5 pb-1 text-[11px] font-medium text-ink-3 hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
-                  >
-                    <ChevronDown
-                      aria-hidden
-                      className={cn("size-3 transition-transform", open ? "" : "-rotate-90")}
-                    />
-                    Automation runs ({runs.length})
-                    {unread && !open ? (
-                      <Badge tone="brand" label={`${unread} unread`}>
-                        {unread}
-                      </Badge>
-                    ) : null}
-                  </button>
-                  <div id="rail-runs" hidden={!open}>
-                    <GlideMenu>
-                      <ul>{runs.map(chatRow)}</ul>
-                    </GlideMenu>
-                  </div>
-                </div>
+            <GlideGroup>
+              {visible.map((chat) => chatRow(chat))}
+              {q && !visible.length ? (
+                <p className="mx-2 px-2 py-2 text-[12.5px] text-ink-3">No chats found</p>
               ) : null}
-            </>
+              {!q && !list.length ? (
+                <p className="mx-2 px-2 py-1 text-[12.5px] text-ink-3">No chats yet</p>
+              ) : null}
+            </GlideGroup>
           )}
         </div>
-        <div className="border-t border-line px-3 py-3">
-          <h2 className="px-2.5 pb-1 text-[11px] font-medium text-ink-3">Configure</h2>
-          <GlideMenu>
-            <NavRow
-              to="/agent"
-              current={a === "agent"}
-              icon={<Bot className="size-4" />}
-              badge={
-                dirty ? (
-                  <span className="text-[10.5px] text-ink-3">Draft</span>
-                ) : model && !model.ok ? (
-                  <Badge tone="orange" label="No available model">
-                    !
-                  </Badge>
-                ) : null
-              }
+
+        {runs.length ? (
+          <div className="mt-3">
+            <GroupLabel
+              label={`Automation runs · ${runs.length}`}
+              open={open}
+              controls="sidebar-runs"
+              onToggle={() => setRunsOpen(!open)}
             >
-              Agent{" "}
-              {model ? (
-                <span className={cn("text-xs", model.ok ? "text-ink-3" : "text-orange")}>
-                  · {model.label}
-                </span>
-              ) : null}
-            </NavRow>
-            <NavRow
-              to="/providers"
-              current={a === "providers"}
-              icon={<Server className="size-4" />}
-              badge={
-                providerErrors ? (
-                  <Badge tone="red" label={`${providerErrors} providers need attention`}>
-                    {providerErrors}
-                  </Badge>
-                ) : null
-              }
-            >
-              Providers
-            </NavRow>
-            <NavRow to="/channels" current={a === "channels"} icon={<Radio className="size-4" />}>
-              Channels
-            </NavRow>
-            <NavRow to="/extensions" current={a === "extensions"} icon={<Boxes className="size-4" />}>
-              Extensions
-            </NavRow>
-            <NavRow to="/secrets" current={a === "secrets"} icon={<KeyRound className="size-4" />}>
-              Secrets
-            </NavRow>
-          </GlideMenu>
-        </div>
-        <div className="flex items-center gap-1 border-t border-line px-3 py-2">
-          <Link
-            to="/about"
-            aria-current={a === "about" ? "page" : undefined}
-            className={cn(
-              "flex h-8 flex-1 items-center gap-2 rounded-lg px-2.5 text-[13px] text-ink-2 hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-ink",
-              a === "about" && "bg-inset font-medium text-ink",
-            )}
-          >
-            <Info aria-hidden className="size-4 text-ink-3" /> About
-          </Link>
-          <div className="flex items-center rounded-lg bg-inset p-0.5" role="group" aria-label="Theme">
-            {(
-              [
-                { id: "system", icon: Monitor },
-                { id: "light", icon: Sun },
-                { id: "dark", icon: Moon },
-              ] as const
-            ).map(({ id, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                aria-label={`${id[0].toUpperCase()}${id.slice(1)} theme`}
-                aria-pressed={theme === id}
-                title={`${id[0].toUpperCase()}${id.slice(1)} theme`}
-                className={cn(
-                  "flex rounded-md p-1.5 text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-ink",
-                  theme === id && "bg-surface text-ink shadow-xs",
+              {badge ? <span className="mr-2">{badge}</span> : null}
+            </GroupLabel>
+            <div id="sidebar-runs" hidden={!open}>
+              <GlideGroup>
+                {runs.map((chat) =>
+                  chatRow(
+                    chat,
+                    <>
+                      {chat.title}{" "}
+                      <span className="text-ink-3">· {ago(chat.updatedAt, chats.dataUpdatedAt)}</span>
+                    </>,
+                  ),
                 )}
-                onClick={() => onTheme(id)}
-              >
-                <Icon className="size-3.5" />
-              </button>
-            ))}
+              </GlideGroup>
+            </div>
           </div>
-        </div>
+        ) : null}
       </nav>
-    </div>
+
+      {/* Configuration: present, but quieter than the chats. */}
+      <div className="mt-2 shrink-0 border-t border-dashed border-line-strong pt-2">
+        <GroupLabel
+          label="Configure"
+          open={configOpen}
+          controls="sidebar-configure"
+          onToggle={() => setConfigOpen(!configOpen)}
+        />
+        <div id="sidebar-configure" hidden={!configOpen}>
+          <GlideGroup>
+            {configure.map((item) => (
+              <Row
+                key={item.to}
+                small
+                icon={item.icon}
+                label={item.label}
+                to={item.to}
+                current={`/${a}` === item.to}
+                trailing={
+                  item.to === "/agent" ? (
+                    agentTrailing
+                  ) : item.to === "/providers" && providerErrors ? (
+                    <Dot
+                      tone="red"
+                      label={`${providerErrors} ${providerErrors === 1 ? "provider needs" : "providers need"} attention`}
+                    />
+                  ) : null
+                }
+              />
+            ))}
+          </GlideGroup>
+        </div>
+        <div className="mx-2 mt-2 flex items-center border-t border-line px-1 pt-2.5 pb-0.5">
+          <ThemeToggle />
+        </div>
+      </div>
+    </aside>
   );
 }

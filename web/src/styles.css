@@ -1,9 +1,25 @@
-@import "./styles/shadcn.css";
-@import "./app/beautifui/foundation.css";
-@import "./app/beautifui/records-table.css";
-@import "./app/beautifui/sidebar-nav.css";
+/* Foundation from slev12397/beautiful-ui app/globals.css (MIT), retrieved 2026-10-15: the
+ * tokens, the theme, the base rules and the keyframes that dex uses. The dex additions are at
+ * the end. */
+@import "tailwindcss";
+/* shadow-plugin (flornkm) — smooth, layered shadow stacks. The unprefixed
+ * entry maps them onto Tailwind's --shadow-xs…2xl scale; our semantic tokens
+ * below build on those values so the whole app picks up the smooth shadows. */
+@import "shadow-plugin/unprefixed";
 
-/* Tokens from slev12397/beautiful-ui app/globals.css, retrieved 2026-10-14. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* GENERIC FOUNDATION — tokens, @theme, base rules, the primitive-*
+ * spacing utilities, and shared keyframes below are needed by EVERY
+ * component. Blocks tagged COMPONENT-SPECIFIC further down belong to
+ * one primitive each. */
+/* ──────────────────────────────────────────────────────────
+ * Beautiful UI — design tokens
+ * Cool near-white canvas, white cards, hairline borders, layered
+ * single-digit-opacity shadows, a neutral ink ramp, and semantic
+ * color used sparingly as a condiment.
+ * ────────────────────────────────────────────────────────── */
+
 :root {
   /* surfaces — cool, blue-tinted neutrals */
   --page: oklch(0.985 0.001 286.376);
@@ -28,9 +44,9 @@
   --stripe-bg: oklch(0.97 0 0);
 
   /* accent */
-  --brand: oklch(0.626 0.205 254.947);
-  --brand-ink: oklch(0.556 0.187 255.617);
-  --brand-tint: oklch(0.96 0.019 252.878);
+  --accent: oklch(0.626 0.205 254.947);
+  --accent-ink: oklch(0.556 0.187 255.617);
+  --accent-tint: oklch(0.96 0.019 252.878);
 
   /* semantic */
   --green: oklch(0.603 0.155 150.883);
@@ -56,6 +72,7 @@
   --shadow-overlay: 0 0 0 1px var(--line), var(--shadow-lg);
   --shadow-inset-field: inset 0 1px 2px oklch(0 0 0 / 0.12);
 }
+
 .dark {
   --page: oklch(0.209 0.004 264.477);
   --canvas: oklch(0.231 0.004 264.487);
@@ -75,9 +92,9 @@
   --stripe: oklch(1 0 0 / 0.055);
   --stripe-bg: oklch(0.226 0.004 264.485);
 
-  --brand: oklch(0.68 0.173 253.301);
-  --brand-ink: oklch(0.788 0.113 248.33);
-  --brand-tint: oklch(0.68 0.173 253.301 / 0.16);
+  --accent: oklch(0.68 0.173 253.301);
+  --accent-ink: oklch(0.788 0.113 248.33);
+  --accent-tint: oklch(0.68 0.173 253.301 / 0.16);
 
   --green: oklch(0.705 0.154 153.814);
   --green-tint: oklch(0.705 0.154 153.814 / 0.14);
@@ -103,46 +120,8 @@
   --shadow-inset-field: inset 0 1px 2px oklch(0 0 0 / 0.4);
 }
 
-:root {
-  --background: var(--page);
-  --foreground: var(--ink);
-  --card: var(--surface);
-  --card-foreground: var(--ink);
-  --popover: var(--surface);
-  --popover-foreground: var(--ink);
-  --primary: var(--brand);
-  --primary-foreground: white;
-  --secondary: var(--hover);
-  --secondary-foreground: var(--ink);
-  --muted: var(--inset);
-  --muted-foreground: var(--ink-2);
-  --accent: var(--hover);
-  --accent-foreground: var(--ink);
-  --border: var(--line);
-  --input: var(--line-strong);
-  --ring: var(--brand);
-  --destructive: var(--red);
-  --sidebar: var(--canvas);
-  --sidebar-foreground: var(--ink);
-  --sidebar-primary: var(--brand);
-  --sidebar-primary-foreground: white;
-  --sidebar-accent: var(--hover);
-  --sidebar-accent-foreground: var(--ink);
-  --sidebar-border: var(--line);
-  --sidebar-ring: var(--brand);
-  --chart-1: var(--brand);
-  --chart-2: var(--green);
-  --chart-3: var(--orange);
-  --chart-4: var(--ink-2);
-  --chart-5: var(--ink-3);
-  --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.03);
-  --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.03), 0 3px 8px oklch(0 0 0 / 0.025);
-  --shadow-md: 0 2px 8px oklch(0 0 0 / 0.04), 0 8px 24px oklch(0 0 0 / 0.04);
-  --shadow-lg: 0 4px 12px oklch(0 0 0 / 0.04), 0 12px 32px oklch(0 0 0 / 0.06);
-}
 @theme inline {
-  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  /* colors */
   --color-page: var(--page);
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
@@ -150,149 +129,287 @@
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
-  --color-line: var(--line);
   --color-hover: var(--hover);
+  --color-hover-2: var(--hover-2);
   --color-field: var(--field);
-  --color-brand: var(--brand);
-  --color-brand-tint: var(--brand-tint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-tint: var(--accent-tint);
   --color-green: var(--green);
-  --color-red: var(--red);
+  --color-green-tint: var(--green-tint);
   --color-orange: var(--orange);
+  --color-orange-tint: var(--orange-tint);
+  --color-red: var(--red);
+  --color-red-tint: var(--red-tint);
+
+  /* shadows */
+  --shadow-hairline: var(--shadow-hairline);
+  --shadow-btn: var(--shadow-btn);
+  --shadow-inset-field: var(--shadow-inset-field);
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-overlay: var(--shadow-overlay);
+
+  /* type */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, "SF Mono", monospace;
+
+  /* radii — chips 6, controls 8, cards 10, windows 14, pills 999 */
   --radius-chip: 6px;
   --radius-control: 8px;
   --radius-card: 10px;
-  --shadow-card: var(--shadow-card);
-  --shadow-raised: var(--shadow-raised);
+  --radius-window: 14px;
+
+  /* easing — strong curves; built-ins are too weak */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-link: cubic-bezier(0.16, 1, 0.3, 1);
 }
-html,
-body,
-#root {
-  height: 100%;
+
+/* ── base ─────────────────────────────────────────────── */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
+
 body {
-  margin: 0;
+  background-color: var(--stripe-bg);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0,
+    transparent 7px,
+    var(--stripe) 7px,
+    var(--stripe) 8px
+  );
+  /* Pin the stripe pattern to the viewport so it stays put on scroll. */
+  background-attachment: fixed;
+  color: var(--ink);
+  font-feature-settings: "cv11", "ss01";
   font-size: 14px;
+  letter-spacing: -0.01em;
+  line-height: 1.5;
 }
-button,
-a,
-summary {
-  -webkit-tap-highlight-color: transparent;
+
+::selection {
+  background: var(--accent-tint);
+  color: var(--ink);
 }
+
+/* ── interface hygiene (interfaces.dev cheat sheet) ────── */
+
+/* headings balance; descriptions avoid orphans (skip long-form — we have none) */
+h1,
+h2,
+h3,
+h4 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* underlines clear descenders */
+a {
+  text-underline-position: from-font;
+  text-decoration-skip-ink: auto;
+}
+
+/* theme switches swap every token at once — freeze transitions so the flip
+ * is one clean repaint instead of hundreds of mismatched color fades */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
+
+/* Tailwind v4 resets buttons to cursor:default — anything
+ * clickable must invite the click */
 button:not(:disabled),
-summary {
+[role="button"]:not([aria-disabled="true"]),
+label:has(input),
+a {
   cursor: pointer;
 }
-button:disabled {
-  cursor: not-allowed;
-}
-.surface {
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
-  border-radius: 12px;
-}
-.prose {
-  line-height: 1.75;
-  overflow-wrap: anywhere;
-}
-.prose p,
-.prose ul,
-.prose ol,
-.prose pre,
-.prose table {
-  margin: 0 0 1em;
-}
-.prose h1,
-.prose h2,
-.prose h3 {
-  font-weight: 600;
-  margin: 1.2em 0 0.5em;
-}
-.prose h1 {
-  font-size: 1.5em;
-}
-.prose h2 {
-  font-size: 1.25em;
-}
-.prose ul {
-  list-style: disc;
-  padding-left: 1.5em;
-}
-.prose ol {
-  list-style: decimal;
-  padding-left: 1.5em;
-}
-.prose a {
-  color: var(--brand);
-  text-decoration: underline;
-}
-.prose code {
-  font-family: var(--font-mono);
-  font-size: 0.85em;
-  background: var(--inset);
-  padding: 2px 4px;
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
   border-radius: 4px;
 }
-.prose pre code {
-  padding: 0;
-  background: none;
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[contenteditable]:focus-visible {
+  outline: none;
 }
-.prose blockquote {
-  border-left: 2px solid var(--line-strong);
-  padding-left: 1em;
-  color: var(--ink-2);
-}
-.prose table {
-  display: block;
-  overflow-x: auto;
-}
-.prose th,
-.prose td {
-  padding: 0.4em 0.8em;
-  border: 1px solid var(--line);
-}
+
+/* ── shared keyframes ─────────────────────────────────── */
+
 @keyframes shimmer-text {
+  from {
+    background-position: 150% center;
+  }
   to {
-    background-position: -200% 0;
+    background-position: -50% center;
   }
 }
-@keyframes pulse-dot {
-  50% {
-    opacity: 0.35;
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
-.busy-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--brand);
-  animation: pulse-dot 1.4s ease-in-out infinite;
+
+/* The glide highlight of the sidebar rows, from the SidebarNav block. */
+.sidebar-glide-highlight {
+  right: 8px;
+  left: 8px;
 }
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── StreamText primitive ─────────────────────────────────
+ * Fast character reveal: the newest few characters carry a
+ * soft, masked blur so the leading edge resolves smoothly as
+ * text flows in. The caret holds solid while streaming, then
+ * blinks once the string settles. */
+/* ══════════════════════════════════════════════════════════
+ * COMPONENT-SPECIFIC — StreamText
+ * The streaming caret + tail.
+ * Copy this block only alongside StreamText; it is not part of the
+ * generic foundation above.
+ * ══════════════════════════════════════════════════════════ */
+.stream-tail {
+  filter: blur(1.6px);
+  -webkit-mask-image: linear-gradient(to right, oklch(0 0 0) 20%, oklch(0 0 0 / 0.2));
+  mask-image: linear-gradient(to right, oklch(0 0 0) 20%, oklch(0 0 0 / 0.2));
+}
+
 .stream-caret {
   display: inline-block;
   width: 2px;
-  height: 1em;
-  margin-left: 2px;
-  background: var(--brand);
-  vertical-align: -0.15em;
+  height: 1.05em;
+  margin-left: 1.5px;
+  translate: 0 -0.5px;
+  border-radius: 1px;
+  background: var(--ink);
+  vertical-align: text-bottom;
+  animation: caret-blink 1s step-end infinite;
 }
-.stream-tail {
-  filter: blur(0.35px);
+
+.stream-caret.is-streaming {
+  animation: none;
 }
+
+@keyframes caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-caret {
+    animation: none;
+  }
+  .stream-tail {
+    filter: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* pixel-grid loader — brighten plateau, staggered per cell */
+@keyframes pixel-on {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  18%,
+  42% {
+    opacity: 1;
+  }
+  62% {
+    opacity: 0.15;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation: none !important;
-    transition: none !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
-/* The registry code block uses this color name for syntax tokens. */
-.prose,
-details {
-  --accent-ink: var(--brand-ink);
+/* ── dex ─────────────────────────────────────────────── */
+
+/* Upstream sets these two with next/font. dex loads no web fonts, so it names the faces and
+   falls back to the system faces when they are not installed. */
+:root {
+  --font-inter: "Inter", -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC";
+  --font-mono-face: "JetBrains Mono", "SF Mono";
 }
-.prose [class*="max-w-105"],
-details [class*="max-w-105"] {
-  max-width: none;
+
+/* The hatch gutter around framed pages, the same stripe as the body. */
+.hatch {
+  background-color: var(--stripe-bg);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0,
+    transparent 7px,
+    var(--stripe) 7px,
+    var(--stripe) 8px
+  );
+}
+
+/* The page title takes focus after navigation; it needs no ring. */
+#page-title:focus-visible {
+  outline: none;
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
 }

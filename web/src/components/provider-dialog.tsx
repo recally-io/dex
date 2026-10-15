@@ -4,21 +4,10 @@ import type { Provider, Settings } from "../api/generated/types.gen";
 import { getSettingsQueryKey, setProviderMutation } from "../api/generated/@tanstack/react-query.gen";
 import { errorText, queryClient, refreshSettings } from "../lib/queries";
 import { useApp } from "../lib/app-state";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "./ui/dialog";
-import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
-import { Input } from "./ui/input";
-import { Textarea } from "./ui/textarea";
-import { NativeSelect, NativeSelectOption } from "./ui/native-select";
-import { Button } from "./ui/button";
-import { Failure } from "./feedback";
-import { Field } from "./page";
+import { Button } from "./atoms/Button";
+import { Modal } from "./dialog";
+import { Failure, Spinner } from "./feedback";
+import { Field, Input, RadioSegments, SavedSecret, Select, Textarea } from "./form";
 
 // The same rule as customID in internal/settings.
 const providerId = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -34,6 +23,11 @@ const notes = new Map([
   ["openai-responses", "OpenAI Responses API."],
   ["anthropic-messages", "Anthropic Messages API."],
 ]);
+
+const kinds = [
+  { value: "builtin", label: "Built-in service" },
+  { value: "custom", label: "Custom endpoint" },
+] as const;
 
 function slug(name: string) {
   return name
@@ -170,250 +164,228 @@ export function ProviderDialog({
   const failure = save.error ? errorText(save.error) : "";
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !save.isPending) onClose();
-      }}
+    <Modal
+      title={existing ? `Edit ${existing.name}` : "Add provider"}
+      description={
+        existing
+          ? "The provider ID cannot change. Remove the provider and add it again to use another ID."
+          : "dex saves the provider, then lists its models."
+      }
+      pending={save.isPending}
+      onClose={onClose}
+      footer={
+        <>
+          <Button size="sm" variant="secondary" onClick={onClose} disabled={save.isPending}>
+            {listingError ? "Close" : "Cancel"}
+          </Button>
+          <Button size="sm" variant="primary" onClick={submit} disabled={save.isPending}>
+            {save.isPending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
+            {save.isPending ? "Saving and listing models…" : existing ? "Save changes" : "Save provider"}
+          </Button>
+        </>
+      }
     >
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="pr-8">{existing ? `Edit ${existing.name}` : "Add provider"}</DialogTitle>
-          <DialogDescription>
-            {existing
-              ? "The provider ID cannot change. Remove the provider and add it again to use another ID."
-              : "dex saves the provider, then lists its models."}
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="flex flex-col gap-4"
-          noValidate
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
-          {!existing ? (
-            <fieldset className="flex flex-col gap-2">
-              <legend className="mb-1 text-[13px] font-medium">Type</legend>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {(["builtin", "custom"] as const).map((value) => (
-                  <label
-                    key={value}
-                    className="flex cursor-pointer items-start gap-2 rounded-xl border border-line p-3 has-[:checked]:border-ink has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-ink"
-                  >
-                    <input
-                      type="radio"
-                      name="provider-type"
-                      className="mt-1 accent-[var(--ink)]"
-                      checked={kind === value}
-                      onChange={() => {
-                        setKind(value);
-                        setKey("");
-                        setTried(false);
-                      }}
-                    />
-                    <span>
-                      <span className="block text-sm font-medium">
-                        {value === "builtin" ? "Built-in service" : "Custom endpoint"}
-                      </span>
-                      <span className="text-xs text-ink-2">
-                        {value === "builtin"
-                          ? "Anthropic, OpenAI, OpenRouter and others. Needs a key."
-                          : "Any OpenAI- or Anthropic-compatible URL."}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          ) : null}
+      <form
+        className="flex flex-col gap-4"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        {!existing ? (
+          <div className="flex flex-col gap-1.5">
+            <RadioSegments
+              label="Type"
+              options={kinds}
+              value={kind}
+              onChange={(value) => {
+                setKind(value);
+                setKey("");
+                setTried(false);
+              }}
+            />
+            <p className="text-[12px] text-ink-3">
+              {kind === "builtin"
+                ? "Anthropic, OpenAI, OpenRouter and others. Needs a key."
+                : "Any OpenAI- or Anthropic-compatible URL, such as LM Studio on this computer."}
+            </p>
+          </div>
+        ) : null}
 
-          {kind === "builtin" ? (
-            existing ? (
-              <Field label="Service">
-                {({ id: field }) => <Input id={field} value={builtinName} readOnly disabled />}
-              </Field>
-            ) : (
-              <Field label="Service" error={show("id")}>
-                {({ id: field, describedBy, invalid }) => (
-                  <NativeSelect
-                    id={field}
-                    className="w-full"
-                    aria-describedby={describedBy}
-                    aria-invalid={invalid}
-                    value={builtin}
-                    onChange={(e) => setBuiltin(e.target.value)}
-                  >
-                    {free.map((b) => (
-                      <NativeSelectOption key={b.id} value={b.id}>
-                        {b.name}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
-                )}
-              </Field>
-            )
+        {kind === "builtin" ? (
+          existing ? (
+            <p className="text-[12.5px] text-ink-2">
+              <span className="font-medium text-ink">{builtinName}</span> is built in. Only the key can
+              change.
+            </p>
           ) : (
-            <>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Name" error={show("name")}>
-                  {({ id: field, describedBy, invalid }) => (
-                    <Input
-                      id={field}
-                      aria-describedby={describedBy}
-                      aria-invalid={invalid}
-                      value={name}
-                      placeholder="LM Studio"
-                      onChange={(e) => {
-                        setName(e.target.value);
-
-                        if (!idEdited) setId(slug(e.target.value));
-                      }}
-                    />
-                  )}
-                </Field>
-                <Field
-                  label="Provider ID"
-                  hint={
-                    existing
-                      ? "Fixed after the first save. Past answers keep this ID in their model label."
-                      : "The model prefix. Fixed after save. Lowercase letters, digits, and hyphens."
-                  }
-                  error={show("id")}
+            <Field label="Service" error={show("id")}>
+              {({ id: field, describedBy, invalid }) => (
+                <Select
+                  id={field}
+                  aria-describedby={describedBy}
+                  aria-invalid={invalid}
+                  value={builtin}
+                  disabled={!free.length}
+                  onChange={(e) => setBuiltin(e.target.value)}
                 >
-                  {({ id: field, describedBy, invalid }) => (
-                    <Input
-                      id={field}
-                      aria-describedby={describedBy}
-                      aria-invalid={invalid}
-                      className="font-mono"
-                      value={id}
-                      maxLength={40}
-                      disabled={!!existing}
-                      onChange={(e) => {
-                        setIdEdited(true);
-                        setId(e.target.value);
-                      }}
-                    />
-                  )}
-                </Field>
-              </div>
-              <Field label="API" hint={notes.get(api)}>
-                {({ id: field, describedBy }) => (
-                  <NativeSelect
-                    id={field}
-                    className="w-full"
-                    aria-describedby={describedBy}
-                    value={api}
-                    onChange={(e) => setApi(e.target.value)}
-                  >
-                    {apis.map((value) => (
-                      <NativeSelectOption key={value} value={value}>
-                        {settings.apis[value]}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
-                )}
-              </Field>
-              <Field label="Base URL" error={show("url")}>
+                  {free.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          )
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Name" error={show("name")}>
                 {({ id: field, describedBy, invalid }) => (
                   <Input
                     id={field}
-                    type="url"
                     aria-describedby={describedBy}
                     aria-invalid={invalid}
-                    className="font-mono"
-                    placeholder={examples.get(api)}
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
+                    value={name}
+                    placeholder="LM Studio"
+                    onChange={(e) => {
+                      setName(e.target.value);
+
+                      if (!idEdited) setId(slug(e.target.value));
+                    }}
                   />
                 )}
               </Field>
-            </>
-          )}
-
-          {existing?.keySet && !replace ? (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[13px] font-medium text-ink">API key</span>
-              <div className="flex items-center justify-between gap-3 rounded-lg bg-inset p-3">
-                <span className="text-sm text-ink-2">Saved key ••••</span>
-                <Button type="button" variant="outline" size="sm" onClick={() => setReplace(true)}>
-                  Replace key
-                </Button>
-              </div>
-              <p className="text-xs leading-5 text-ink-3">dex never shows a saved key.</p>
+              <Field
+                label="Provider ID"
+                hint={
+                  existing
+                    ? "Fixed after the first save. Past answers keep this ID in their model label."
+                    : "The model prefix. Fixed after save. Lowercase letters, digits, and hyphens."
+                }
+                error={show("id")}
+              >
+                {({ id: field, describedBy, invalid }) => (
+                  <Input
+                    id={field}
+                    aria-describedby={describedBy}
+                    aria-invalid={invalid}
+                    className="font-mono"
+                    value={id}
+                    maxLength={40}
+                    disabled={!!existing}
+                    onChange={(e) => {
+                      setIdEdited(true);
+                      setId(e.target.value);
+                    }}
+                  />
+                )}
+              </Field>
             </div>
-          ) : (
-            <Field
-              label={kind === "custom" ? "API key (optional)" : "API key"}
-              hint={
-                existing?.keySet
-                  ? "Write-only. An empty field keeps the saved key."
-                  : kind === "custom"
-                    ? "Write-only. Without a key, dex sends “none”, for local servers."
-                    : "Write-only. dex stores the key on this computer and never shows it again."
-              }
-              error={show("key")}
-            >
+            <Field label="API" hint={notes.get(api)}>
+              {({ id: field, describedBy }) => (
+                <Select
+                  id={field}
+                  aria-describedby={describedBy}
+                  value={api}
+                  onChange={(e) => setApi(e.target.value)}
+                >
+                  {apis.map((value) => (
+                    <option key={value} value={value}>
+                      {settings.apis[value]}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Field label="Base URL" error={show("url")}>
               {({ id: field, describedBy, invalid }) => (
                 <Input
                   id={field}
-                  type="password"
-                  autoComplete="new-password"
-                  spellCheck={false}
+                  type="url"
                   aria-describedby={describedBy}
                   aria-invalid={invalid}
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                />
-              )}
-            </Field>
-          )}
-
-          {kind === "custom" ? (
-            <Field
-              label="Model IDs (optional)"
-              hint="One per line. When the list is empty, dex asks the endpoint for its models."
-            >
-              {({ id: field, describedBy }) => (
-                <Textarea
-                  id={field}
-                  aria-describedby={describedBy}
                   className="font-mono"
-                  rows={3}
-                  value={models}
-                  onChange={(e) => setModels(e.target.value)}
+                  placeholder={examples.get(api)}
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
                 />
               )}
             </Field>
-          ) : null}
-          <button type="submit" hidden />
-        </form>
-        {listingError ? (
-          <Alert variant="destructive">
-            <AlertTitle>Saved. Model listing failed.</AlertTitle>
-            <AlertDescription>
-              <p className="break-all font-mono text-xs">{listingError}</p>
-              <p>The provider stays saved. Check the base URL and the key, or enter model IDs.</p>
-            </AlertDescription>
-          </Alert>
-        ) : null}
-        {failure ? (
-          <Failure
-            title={failure.startsWith("saved,") ? "Saved, but not applied" : "Provider not saved"}
-            error={save.variables?.body.apiKey ? `${failure} Enter the API key again to retry.` : failure}
+          </>
+        )}
+
+        {existing?.keySet && !replace ? (
+          <SavedSecret
+            label="API key"
+            text="Saved key ••••"
+            hint="dex never shows a saved key."
+            action="Replace key"
+            onReplace={() => setReplace(true)}
           />
+        ) : (
+          <Field
+            label={kind === "custom" ? "API key (optional)" : "API key"}
+            hint={
+              existing?.keySet
+                ? "Write-only. An empty field keeps the saved key."
+                : kind === "custom"
+                  ? "Write-only. Without a key, dex sends “none”, for local servers."
+                  : "Write-only. dex stores the key on this computer and never shows it again."
+            }
+            error={show("key")}
+          >
+            {({ id: field, describedBy, invalid }) => (
+              <Input
+                id={field}
+                type="password"
+                autoComplete="new-password"
+                spellCheck={false}
+                aria-describedby={describedBy}
+                aria-invalid={invalid}
+                className="font-mono"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+              />
+            )}
+          </Field>
+        )}
+
+        {kind === "custom" ? (
+          <Field
+            label="Model IDs (optional)"
+            hint="One per line. When the list is empty, dex asks the endpoint for its models."
+          >
+            {({ id: field, describedBy }) => (
+              <Textarea
+                id={field}
+                aria-describedby={describedBy}
+                className="font-mono"
+                rows={3}
+                value={models}
+                onChange={(e) => setModels(e.target.value)}
+              />
+            )}
+          </Field>
         ) : null}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={save.isPending}>
-            {listingError ? "Close" : "Cancel"}
-          </Button>
-          <Button onClick={submit} disabled={save.isPending}>
-            {save.isPending ? "Saving…" : existing ? "Save changes" : "Save provider"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <button type="submit" hidden />
+      </form>
+      {listingError ? (
+        <Failure title="Saved. Model listing failed.">
+          <p className="font-mono text-[11.5px]">{listingError}</p>
+          <p className="mt-1">
+            The provider stays saved. Check the base URL and the key, or enter model IDs.
+          </p>
+        </Failure>
+      ) : null}
+      {failure ? (
+        <Failure
+          title={failure.startsWith("saved,") ? "Saved, but not applied" : "Provider not saved"}
+          error={save.variables?.body.apiKey ? `${failure} Enter the API key again to retry.` : failure}
+        />
+      ) : null}
+    </Modal>
   );
 }

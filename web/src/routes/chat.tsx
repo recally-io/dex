@@ -1,15 +1,24 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { ArrowDown, Check, Clock, Lock, Send } from "lucide-react";
+import { IconArrowDown } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowDown";
+import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
+import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
+import { IconLock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconLock";
+import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
+import { IconSidebarSimpleRightWide } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconSidebarSimpleRightWide";
 import type {
   Settings,
   ChatEvent,
+  Item,
+  ToolItem,
   UserItem,
   MessageInput,
   Chat as ChatInfo,
 } from "../api/generated/types.gen";
 import {
+  getAutomationOptions,
+  getHealthOptions,
   getSettingsOptions,
   getChatOptions,
   getChatQueryKey,
@@ -21,23 +30,29 @@ import {
 import { applyChatEvent, emptyChatState } from "../lib/chat-state";
 import { queryClient, refreshChats } from "../lib/queries";
 import { useAgentModel } from "../lib/agent";
+import { useApp } from "../lib/app-state";
+import { blocks, describeTool, touchesMemory } from "../lib/tools";
 import { Composer } from "../components/composer";
-import { TranscriptItem, RetryNotice } from "../components/agent/transcript";
+import { RetryNotice, ToolStep, TranscriptItem, type ToolFocus } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
-import { Card, Note, Page, PageHeader } from "../components/page";
-import { Alert, AlertTitle, AlertDescription } from "../components/ui/alert";
-import { Button } from "../components/ui/button";
-import { Button as Pill } from "../components/atoms/Button";
-import { ValuePill } from "../components/atoms/ValuePill";
-import { Shimmer } from "../components/atoms/Shimmer";
+import { FramedPage, MainPane, MenuButton, Note, Panel, Section } from "../components/page";
+import { Button } from "../components/atoms/Button";
+import { StatusPill } from "../components/atoms/StatusPill";
 import LoadingState from "../components/primitives/LoadingState";
-import { cn } from "../lib/utils";
 
 declare module "@tanstack/history" {
   interface HistoryState {
     firstMessage?: UserItem;
   }
+}
+
+function Done() {
+  return (
+    <StatusPill tone="green" className="h-5 px-2 text-[11.5px]">
+      Done
+    </StatusPill>
+  );
 }
 
 function Setup({ settings }: { settings: Settings }) {
@@ -46,95 +61,81 @@ function Setup({ settings }: { settings: Settings }) {
   const hasProvider = settings.providers.length > 0;
   const hasModels = !!models.data?.models.length;
 
-  const steps = [
-    {
-      done: hasProvider,
-      title: "Add a provider",
-      body: "Connect Anthropic, OpenAI, OpenRouter, or a local server such as LM Studio.",
-      label: "Add provider",
-      action: () => void navigate({ to: "/providers" }),
-    },
-    {
-      done: !!settings.agent.modelId,
-      title: "Choose the agent model",
-      body: hasModels ? "Pick one of the available models." : "Models appear after a provider lists them.",
-      label: "Choose model",
-      picker: true,
-      disabled: !hasModels,
-    },
-    {
-      done: settings.telegram.enabled,
-      title: "Connect Telegram (optional)",
-      body: "The web works now. Add a Telegram bot to reach dex from your phone.",
-      label: "Open Telegram",
-      action: () => void navigate({ to: "/channels/$channelId", params: { channelId: "telegram" } }),
-      optional: true,
-    },
-  ];
-
   return (
-    <Page className="max-w-2xl">
-      <PageHeader
-        title="Set up dex"
-        description="dex needs one model before it can answer. Everything else is optional."
-      />
-      <ol className="flex flex-col gap-3">
-        {steps.map((step, i) => (
-          <li key={step.title}>
-            <Card className="flex items-start gap-4">
-              <span
-                aria-hidden
-                className={cn(
-                  "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                  step.done ? "bg-green text-white" : "bg-inset text-ink-2",
-                )}
-              >
-                {step.done ? <Check className="size-4" /> : i + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-sm font-semibold">
-                  {step.title}
-                  {step.done ? <span className="sr-only"> (done)</span> : null}
-                </h2>
-                <p className="mt-1 text-[13px] text-ink-2">{step.body}</p>
-              </div>
-              {step.done ? null : step.picker ? (
-                <ModelPicker
-                  trigger={
-                    <Pill size="sm" variant="primary" disabled={step.disabled}>
-                      {step.label}
-                    </Pill>
-                  }
-                />
-              ) : (
-                <Pill
-                  size="sm"
-                  variant={step.optional ? "secondary" : "primary"}
-                  onClick={step.action}
-                  disabled={step.disabled}
-                >
-                  {step.label}
-                </Pill>
-              )}
-            </Card>
-          </li>
-        ))}
-      </ol>
-      {models.isError ? (
-        <div className="mt-4">
-          <Failure
-            title="Could not load the models"
-            error={models.error}
-            retry={() => void models.refetch()}
+    <FramedPage
+      title="Set up dex"
+      description="dex needs one model before it can answer. Everything else is optional."
+    >
+      <Section
+        n={1}
+        title="Add a provider"
+        caption="A saved connection to a model service."
+        action={hasProvider ? <Done /> : null}
+      >
+        <Panel className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
+          <p className="min-w-0 flex-1 text-[13px] text-ink-2">
+            Connect Anthropic, OpenAI, OpenRouter, or a local server such as LM Studio.
+          </p>
+          {hasProvider ? null : (
+            <Button size="sm" variant="primary" onClick={() => void navigate({ to: "/providers" })}>
+              Add provider
+            </Button>
+          )}
+        </Panel>
+      </Section>
+      <Section
+        n={2}
+        title="Choose the agent model"
+        caption="One model answers every chat."
+        action={settings.agent.modelId ? <Done /> : null}
+      >
+        <Panel className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
+          <p className="min-w-0 flex-1 text-[13px] text-ink-2">
+            {hasModels ? "Pick one of the available models." : "Models appear after a provider lists them."}
+          </p>
+          <ModelPicker
+            trigger={
+              <Button size="sm" variant="primary" disabled={!hasModels}>
+                Choose model
+              </Button>
+            }
           />
-        </div>
-      ) : null}
-      <div className="mt-6">
-        <Note>
+        </Panel>
+        {models.isError ? (
+          <div className="mt-3">
+            <Failure
+              title="Could not load the models"
+              error={models.error}
+              retry={() => void models.refetch()}
+            />
+          </div>
+        ) : null}
+      </Section>
+      <Section
+        n={3}
+        title="Connect Telegram"
+        caption="Optional. The web works now."
+        action={settings.telegram.enabled ? <Done /> : null}
+      >
+        <Panel className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
+          <p className="min-w-0 flex-1 text-[13px] text-ink-2">
+            Add a Telegram bot to reach dex from your phone.
+          </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void navigate({ to: "/channels/$channelId", params: { channelId: "telegram" } })}
+          >
+            Open Telegram
+          </Button>
+        </Panel>
+      </Section>
+      <Section n={4} title="Before you start" caption="Read this once.">
+        <Note tone="warn">
           Tools run on this computer without a sandbox, and the server has no sign-in. Keep dex on 127.0.0.1.
         </Note>
-      </div>
-    </Page>
+      </Section>
+    </FramedPage>
   );
 }
 
@@ -142,13 +143,19 @@ export function ChatPage({ chatId }: { chatId?: number }) {
   const settings = useQuery(getSettingsOptions());
 
   return settings.isPending ? (
-    <Page>
+    <MainPane>
       <Loading />
-    </Page>
+    </MainPane>
   ) : settings.isError ? (
-    <Page>
-      <Failure title="Could not load settings" error={settings.error} retry={() => void settings.refetch()} />
-    </Page>
+    <MainPane>
+      <div className="mx-auto max-w-[720px] px-4 py-10 sm:px-8">
+        <Failure
+          title="Could not load settings"
+          error={settings.error}
+          retry={() => void settings.refetch()}
+        />
+      </div>
+    </MainPane>
   ) : !chatId && !settings.data.agent.modelId ? (
     <Setup settings={settings.data} />
   ) : (
@@ -156,35 +163,297 @@ export function ChatPage({ chatId }: { chatId?: number }) {
   );
 }
 
-function OriginBadge({ chat }: { chat: ChatInfo }) {
+function OriginPill({ chat }: { chat: ChatInfo }) {
   if (chat.channel === "telegram")
     return (
-      <ValuePill>
-        <Send aria-hidden className="mr-1 inline size-3" />
-        Telegram · read-only here
-      </ValuePill>
+      <StatusPill dot={false} className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
+        <IconPaperPlane size={11} /> Telegram · read-only
+      </StatusPill>
     );
 
-  if (chat.channel === "automation")
+  if (chat.channel === "automation") {
+    const pill = (
+      <StatusPill dot={false} className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
+        <IconClock size={11} /> Automation
+      </StatusPill>
+    );
+
     return chat.automationId ? (
       <Link
         to="/automations/$automationId"
         params={{ automationId: chat.automationId }}
-        className="rounded-full hover:underline focus-visible:outline-2 focus-visible:outline-ink"
+        className="shrink-0 rounded-full hover:opacity-80"
       >
-        <ValuePill>
-          <Clock aria-hidden className="mr-1 inline size-3" />
-          Automation
-        </ValuePill>
+        {pill}
       </Link>
     ) : (
-      <ValuePill>
-        <Clock aria-hidden className="mr-1 inline size-3" />
-        Automation
-      </ValuePill>
+      pill
     );
+  }
 
-  return <ValuePill>Web</ValuePill>;
+  return null;
+}
+
+// The Context panel is a UI choice of this browser, not a dex setting. It is open by default.
+const contextKey = "dex-context";
+
+function useContextOpen() {
+  const [open, setOpen] = useState(() => localStorage.getItem(contextKey) !== "closed");
+
+  return [
+    open,
+    (next: boolean) => {
+      localStorage.setItem(contextKey, next ? "open" : "closed");
+      setOpen(next);
+    },
+  ] as const;
+}
+
+function Heading({ n, title, detail }: { n: number; title: string; detail?: string }) {
+  return (
+    <div className="mb-2.5 flex items-baseline gap-2">
+      <span className="font-mono text-[10.5px] text-ink-3 tabular-nums">{String(n).padStart(2, "0")}</span>
+      <h3 className="text-[13px] font-semibold text-ink">{title}</h3>
+      {detail ? <span className="truncate text-[12px] text-ink-3">{detail}</span> : null}
+    </div>
+  );
+}
+
+// Card style from upstream primitives/ContextCards.tsx.
+function CardBar({ children, meta }: { children: ReactNode; meta?: ReactNode }) {
+  return (
+    <div className="flex h-9 items-center gap-2.5 border-b border-line px-3">
+      <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-ink">
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          aria-hidden
+          className="shrink-0"
+        >
+          <path d="M4 6h16M4 12h16M4 18h10" />
+        </svg>
+        <span className="truncate">{children}</span>
+      </span>
+      {meta ? <span className="ml-auto shrink-0 text-[12px] text-ink-3 tabular-nums">{meta}</span> : null}
+    </div>
+  );
+}
+
+/** What dex has for this chat: the agent, the channel, the tool calls and the memory use. */
+function ContextPane({
+  chat,
+  items,
+  settings,
+  memory,
+  onClose,
+  onFocusTool,
+}: {
+  chat: ChatInfo;
+  items: Item[];
+  settings: Settings;
+  memory?: string;
+  onClose: () => void;
+  onFocusTool: (id: string) => void;
+}) {
+  const model = useAgentModel(settings) ?? { label: "", ok: false };
+  const { draft } = useApp();
+
+  const automation = useQuery({
+    ...getAutomationOptions({ path: { automationId: chat.automationId ?? "" } }),
+    enabled: !!chat.automationId,
+  });
+
+  const tools = items.filter((item): item is ToolItem => item.kind === "tool");
+  const memoryTools = tools.filter((tool) => touchesMemory(tool, memory));
+  let answers = 0;
+  const tokens = { input: 0, output: 0 };
+
+  for (const item of items) {
+    if (item.kind !== "assistant") continue;
+    answers++;
+    tokens.input += item.usage?.input ?? 0;
+    tokens.output += item.usage?.output ?? 0;
+  }
+
+  const lines = settings.agent.instructions.split("\n").filter(Boolean).length;
+  const dirty = draft !== null && draft !== settings.agent.instructions;
+
+  return (
+    <aside
+      aria-label="Context"
+      className="hidden w-[344px] shrink-0 animate-[fade-in_300ms_ease_both] flex-col overflow-hidden rounded-window border border-line bg-page xl:flex"
+    >
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-line pr-2 pl-4">
+        <span className="text-[13px] font-semibold text-ink">Context</span>
+        <button
+          type="button"
+          aria-label="Close context"
+          onClick={onClose}
+          className="flex size-7 items-center justify-center rounded-chip text-ink-3 transition-colors hover:bg-hover hover:text-ink"
+        >
+          <IconCrossSmall size={16} />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="flex flex-col gap-7">
+          <div>
+            <Heading n={1} title="Agent" detail="the same for every chat" />
+            <div className="overflow-hidden rounded-card bg-surface shadow-card">
+              <CardBar
+                meta={
+                  <span className={model.ok ? "" : "text-orange"}>
+                    {model.ok ? "Available" : "Unavailable"}
+                  </span>
+                }
+              >
+                {model.label}
+              </CardBar>
+              <dl className="flex flex-col gap-1.5 px-3 py-2.5 text-[12.5px]">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-ink-3">Model ID</dt>
+                  <dd className="min-w-0 truncate font-mono text-[11.5px] text-ink-2">
+                    {settings.agent.provider}/{settings.agent.modelId}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-ink-3">Instructions</dt>
+                  <dd className="text-ink-2">
+                    <Link to="/agent" className="hover:underline">
+                      {lines} {lines === 1 ? "line" : "lines"}
+                      {dirty ? " · draft open" : ""}
+                    </Link>
+                  </dd>
+                </div>
+                {answers ? (
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-ink-3">Tokens in this chat</dt>
+                    <dd className="font-mono text-[11.5px] text-ink-2 tabular-nums">
+                      {tokens.input.toLocaleString()} in · {tokens.output.toLocaleString()} out
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+          </div>
+
+          <div>
+            <Heading n={2} title="Channel" />
+            <div className="rounded-card bg-surface px-3 py-2.5 text-[12.5px] leading-relaxed text-ink-2 shadow-card">
+              {chat.channel === "telegram" ? (
+                <>
+                  <span className="mb-1 flex items-center gap-1.5 font-medium text-ink">
+                    <IconPaperPlane size={13} /> Telegram
+                  </span>
+                  dex replies in Telegram. The web shows the same transcript and memory, read-only.
+                </>
+              ) : chat.channel === "automation" ? (
+                <>
+                  <span className="mb-1 flex items-center gap-1.5 font-medium text-ink">
+                    <IconClock size={13} /> Automation
+                  </span>
+                  Started by{" "}
+                  {chat.automationId && automation.data ? (
+                    <Link
+                      to="/automations/$automationId"
+                      params={{ automationId: chat.automationId }}
+                      className="font-medium text-accent-ink hover:underline"
+                    >
+                      {automation.data.name}
+                    </Link>
+                  ) : chat.automationId && !automation.isError ? (
+                    "an automation"
+                  ) : (
+                    "a deleted automation"
+                  )}
+                  . You can reply here.
+                </>
+              ) : (
+                <>
+                  <span className="mb-1 block font-medium text-ink">Web</span>
+                  This page, on this computer. You can read and send.
+                </>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <Heading
+              n={3}
+              title="Tool calls"
+              detail={tools.length ? `${tools.length} in this chat` : undefined}
+            />
+            {tools.length ? (
+              <div className="overflow-hidden rounded-card bg-surface p-1 shadow-card">
+                {tools.map((tool) => {
+                  const { verb, target } = describeTool(tool, memory);
+
+                  return (
+                    <button
+                      key={tool.id}
+                      type="button"
+                      onClick={() => onFocusTool(tool.id)}
+                      className="flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors hover:bg-hover"
+                    >
+                      <span
+                        role="img"
+                        aria-label={
+                          tool.status === "error" ? "Failed" : tool.status === "running" ? "Running" : "Done"
+                        }
+                        className={`size-1.5 shrink-0 rounded-full ${tool.status === "error" ? "bg-red" : tool.status === "running" ? "bg-orange" : "bg-green"}`}
+                      />
+                      <span className="shrink-0 text-[12.5px] font-medium text-ink">{verb}</span>
+                      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink-3">
+                        {target}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="px-0.5 text-[12.5px] text-ink-3">No tool calls yet.</p>
+            )}
+          </div>
+
+          <div>
+            <Heading n={4} title="Memory" detail="shared by every chat" />
+            <div className="overflow-hidden rounded-card bg-surface shadow-card">
+              <CardBar meta="in every prompt">MEMORY.md</CardBar>
+              <div className="px-3 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
+                {memoryTools.length ? (
+                  <ul className="flex flex-col gap-1.5">
+                    {memoryTools.map((tool) => {
+                      const { verb, target } = describeTool(tool, memory);
+
+                      return (
+                        <li key={tool.id} className="flex min-w-0 items-center gap-2">
+                          <span className="inline-flex h-6 min-w-0 items-center gap-1.5 rounded-full bg-inset px-2 text-[12px] font-medium text-ink-2 shadow-btn">
+                            <span className="truncate font-mono text-[11px]">{target}</span>
+                          </span>
+                          <span className="shrink-0 text-[11.5px] text-ink-3">
+                            {verb.replace(" memory", "")}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  "This chat did not search or change other memory files."
+                )}
+                <p className="mt-2 text-[11.5px] text-ink-3">
+                  dex has no memory page yet. The agent changes memory with its tools.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
 }
 
 function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
@@ -195,6 +464,8 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     enabled: chatId !== undefined,
   });
 
+  const health = useQuery(getHealthOptions());
+  const memory = health.data ? `${health.data.dataDir}/memory` : undefined;
   const [state, setState] = useState(emptyChatState);
 
   const [connection, setConnection] = useState<"connecting" | "ready" | "error">(
@@ -208,8 +479,12 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
   const [draft, setDraft] = useState("");
   const [jump, setJump] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  const [contextOpen, setContextOpen] = useContextOpen();
+  const [focus, setFocus] = useState<ToolFocus>();
+  const [composerHeight, setComposerHeight] = useState(150);
   const wasRunning = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
+  const composerBox = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const snapshotSeen = useRef(false);
   const failedMessage = useRef<MessageInput | null>(null);
@@ -310,6 +585,17 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     return () => observer.disconnect();
   }, []);
 
+  // The composer floats over the thread. The thread keeps space for it at the bottom.
+  useEffect(() => {
+    const box = composerBox.current;
+
+    if (!box) return;
+    const observer = new ResizeObserver(() => setComposerHeight(box.offsetHeight));
+    observer.observe(box);
+
+    return () => observer.disconnect();
+  }, []);
+
   const telegram = chat.data?.channel === "telegram";
 
   const reason = telegram
@@ -366,171 +652,236 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
 
   const running = state.running;
 
+  const composer = (
+    <>
+      {error ? (
+        <div className="mb-3">
+          <Failure
+            title="Could not complete this action"
+            error={error}
+            retry={() => {
+              if ((create.isError || send.isError) && failedMessage.current)
+                void sendText(failedMessage.current.text).catch(() => {});
+              else if (abort.isError && chatId) abort.mutate({ path: { chatId } });
+            }}
+          />
+        </div>
+      ) : null}
+      <Composer
+        model={model}
+        hasProvider={settings.providers.length > 0}
+        running={running}
+        pending={pending}
+        disabledReason={reason}
+        readOnly={telegram}
+        placeholder={chatId ? "Reply" : "Message dex"}
+        autoFocus={!chatId || !!firstMessage}
+        onSend={sendText}
+        onStop={() => {
+          if (chatId) abort.mutate({ path: { chatId } });
+        }}
+        text={draft}
+        onTextChange={setDraft}
+      />
+    </>
+  );
+
+  const live = (index: number) => running && index === state.items.length - 1;
+
+  const transcript =
+    chatId && chat.isPending ? (
+      <div className="flex h-60 items-center justify-center">
+        <LoadingState label="Loading chat" />
+      </div>
+    ) : chatId && chat.isError ? (
+      <div className="flex flex-col items-start gap-4">
+        <Failure title="Could not load this chat" error={chat.error} retry={() => void chat.refetch()} />
+        <Link className="text-[13px] font-medium text-accent-ink underline" to="/">
+          Start a new chat
+        </Link>
+      </div>
+    ) : (
+      <>
+        {telegram ? (
+          <div className="flex items-start gap-2.5 rounded-card bg-inset px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2 shadow-hairline">
+            <IconLock size={14} className="mt-0.5 shrink-0" />
+            <p>
+              This chat came from Telegram. dex replies in Telegram. The web shows the same transcript and the
+              same memory, but you cannot post here.
+            </p>
+          </div>
+        ) : null}
+        {connection !== "ready" ? (
+          <div
+            role="alert"
+            className="flex flex-col gap-2 rounded-card bg-orange-tint px-3.5 py-3 text-[12.5px]"
+          >
+            <div className="flex items-center gap-2 font-medium text-ink">
+              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-orange" />
+              {connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the agent…"}
+            </div>
+            <p className="pl-3.5 text-ink-2 [overflow-wrap:anywhere]">
+              {streamError || "Messages are paused until the stream returns. Your transcript stays here."}
+            </p>
+            <div className="pl-3.5">
+              <Button size="xs" variant="secondary" onClick={() => reconnect.current?.()}>
+                Reconnect
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        {blocks(items).map((block) =>
+          block.kind === "tools" ? (
+            <ToolStep key={block.key} tools={block.tools} memory={memory} focus={focus} />
+          ) : (
+            <TranscriptItem
+              key={block.item.id}
+              item={block.item}
+              live={live(block.index)}
+              retry={() => retryText(block.index)}
+              canRetry={
+                !reason && !pending && state.items.slice(0, block.index).some((i) => i.kind === "user")
+              }
+            />
+          ),
+        )}
+        {state.retry ? <RetryNotice retry={state.retry} /> : null}
+        {running &&
+        !state.retry &&
+        !items.some((item) => item.kind === "tool" && item.status === "running") &&
+        items.at(-1)?.kind !== "assistant" &&
+        items.at(-1)?.kind !== "thinking" ? (
+          <div className="flex min-h-6 items-center">
+            <LoadingState label="dex is working" variant="Dots" />
+          </div>
+        ) : null}
+        {!items.length && connection === "ready" ? (
+          <p className="py-12 text-center text-[13px] text-ink-3">No messages yet.</p>
+        ) : null}
+      </>
+    );
+
+  const status = (
+    <div className="sr-only" role="status" aria-live="polite">
+      {announcement}
+    </div>
+  );
+
+  // A new chat: the empty state from upstream IceCreamHarness, with the composer in the middle.
+  if (!chatId)
+    return (
+      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line">
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 lg:hidden">
+          <MenuButton />
+          <span className="text-[14px] font-semibold text-ink">dex</span>
+        </div>
+        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto flex min-h-full max-w-[720px] flex-col justify-center px-4 py-10 sm:px-8">
+            <h1
+              id="page-title"
+              tabIndex={-1}
+              className="animate-[fade-up_600ms_var(--ease-out-strong)_both] text-[26px] font-normal tracking-[-0.02em] text-ink outline-none"
+            >
+              <span className="block text-ink-3">One agent, on this computer</span>
+              <span className="block">What should dex do?</span>
+            </h1>
+            <div ref={composerBox} className="mt-7 animate-[fade-up_600ms_var(--ease-out-strong)_120ms_both]">
+              {composer}
+            </div>
+          </div>
+        </div>
+        {status}
+      </section>
+    );
+
   return (
-    <div className="flex h-full min-h-0 flex-col bg-page">
-      {chatId ? (
-        <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-line bg-page/90 px-4 py-3 backdrop-blur sm:px-8">
+    <>
+      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
+          <MenuButton />
           <h1
             id="page-title"
             tabIndex={-1}
-            className="min-w-0 flex-1 truncate text-base font-semibold outline-none"
+            className="min-w-0 truncate text-[13px] font-semibold text-ink outline-none"
           >
             {chat.data?.title || "Chat"}
           </h1>
-          {chat.data ? <OriginBadge chat={chat.data} /> : null}
+          {chat.data ? <OriginPill chat={chat.data} /> : null}
           {running ? (
-            <ValuePill tone="orange">
-              <Shimmer>Running</Shimmer>
-            </ValuePill>
+            <StatusPill tone="orange" className="h-5 shrink-0 px-2 text-[11.5px]">
+              Running
+            </StatusPill>
+          ) : null}
+          <span className="flex-1" />
+          {chat.data && !contextOpen ? (
+            <button
+              type="button"
+              aria-label="Open context"
+              onClick={() => setContextOpen(true)}
+              className="hidden h-7 items-center gap-1.5 rounded-[7px] px-2 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-hover hover:text-ink xl:flex"
+            >
+              <IconSidebarSimpleRightWide size={16} /> Context
+            </button>
           ) : null}
         </header>
-      ) : null}
-      <div
-        ref={scroller}
-        className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-8"
-        onScroll={() => {
-          const el = scroller.current;
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            ref={scroller}
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+            onScroll={() => {
+              const el = scroller.current;
 
-          if (el) {
-            pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
-            setJump(!pinned.current);
-          }
-        }}
-      >
-        <div className="mx-auto max-w-3xl pb-10 pt-6">
-          {chatId && chat.isPending ? (
-            <div className="flex h-60 items-center justify-center">
-              <LoadingState label="Loading chat" />
-            </div>
-          ) : chatId && chat.isError ? (
-            <div className="flex flex-col items-start gap-4">
-              <Failure
-                title="Could not load this chat"
-                error={chat.error}
-                retry={() => void chat.refetch()}
-              />
-              <Link className="text-sm text-brand underline" to="/">
-                Start a new chat
-              </Link>
-            </div>
-          ) : chatId ? (
-            <>
-              {telegram ? (
-                <div className="mb-6 flex items-start gap-2 rounded-xl bg-inset px-4 py-3 text-[13px] text-ink-2">
-                  <Lock aria-hidden className="mt-0.5 size-4 shrink-0" />
-                  <p>
-                    This chat came from Telegram. dex replies in Telegram. The web shows the same transcript
-                    and the same memory, but you cannot post here.
-                  </p>
-                </div>
-              ) : null}
-              {connection !== "ready" ? (
-                <Alert className="mb-6">
-                  <AlertTitle>
-                    {connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the agent…"}
-                  </AlertTitle>
-                  <AlertDescription>
-                    <p>
-                      {streamError ||
-                        "Messages are paused until the stream returns. Your transcript stays here."}
-                    </p>
-                    <Button variant="outline" size="sm" onClick={() => reconnect.current?.()}>
-                      Reconnect
-                    </Button>
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-              <div className="flex flex-col gap-6">
-                {items.map((item, index) => (
-                  <TranscriptItem
-                    key={item.id}
-                    item={item}
-                    live={running && index === state.items.length - 1}
-                    retry={() => retryText(index)}
-                    canRetry={
-                      !reason && !pending && state.items.slice(0, index).some((i) => i.kind === "user")
-                    }
-                  />
-                ))}
-                {state.retry ? <RetryNotice retry={state.retry} /> : null}
-                {running &&
-                !state.retry &&
-                !items.some((item) => item.kind === "tool" && item.status === "running") &&
-                items.at(-1)?.kind !== "assistant" &&
-                items.at(-1)?.kind !== "thinking" ? (
-                  <div className="rounded-xl border border-line bg-surface p-4 shadow-card">
-                    <LoadingState label="dex is working" />
-                  </div>
-                ) : null}
-                {!items.length && connection === "ready" ? (
-                  <p className="py-12 text-center text-sm text-ink-2">No messages yet.</p>
-                ) : null}
-              </div>
-            </>
-          ) : (
-            <div className="flex min-h-[50dvh] flex-col justify-end pt-10">
-              <h1
-                id="page-title"
-                tabIndex={-1}
-                className="mb-3 text-center text-2xl font-semibold tracking-tight outline-none sm:text-3xl"
-              >
-                What should dex do?
-              </h1>
-              <p className="text-center text-sm text-ink-2">
-                One agent with its own workspace and memory, on this computer.
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="sr-only" role="status" aria-live="polite">
-        {announcement}
-      </div>
-      <div className="relative mx-auto w-full max-w-[52rem] px-4 pb-4 pt-3 sm:px-8">
-        {jump ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="absolute -top-10 left-1/2 -translate-x-1/2 shadow-sm"
-            onClick={() => {
-              pinned.current = true;
-              setJump(false);
-              scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+              if (el) {
+                pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+                setJump(!pinned.current);
+              }
             }}
           >
-            <ArrowDown className="size-3.5" />
-            Jump to latest
-          </Button>
-        ) : null}
-        {error ? (
-          <div className="mb-3">
-            <Failure
-              title="Could not complete this action"
-              error={error}
-              retry={() => {
-                if ((create.isError || send.isError) && failedMessage.current)
-                  void sendText(failedMessage.current.text).catch(() => {});
-                else if (abort.isError && chatId) abort.mutate({ path: { chatId } });
-              }}
-            />
+            <div
+              className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 pt-8 sm:px-8"
+              style={{ paddingBottom: composerHeight + 16 }}
+            >
+              {transcript}
+            </div>
           </div>
-        ) : null}
-        <Composer
-          model={model}
-          hasProvider={settings.providers.length > 0}
-          running={running}
-          pending={pending}
-          disabledReason={reason}
-          readOnly={telegram}
-          autoFocus={!chatId || !!firstMessage}
-          onSend={sendText}
-          onStop={() => {
-            if (chatId) abort.mutate({ path: { chatId } });
-          }}
-          text={draft}
-          onTextChange={setDraft}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,var(--page)_64%,transparent)]"
+            style={{ height: composerHeight + 32 }}
+          />
+          <div ref={composerBox} className="absolute inset-x-0 bottom-0 px-3 pb-3 sm:px-8 sm:pb-5">
+            <div className="relative mx-auto max-w-[720px]">
+              {jump ? (
+                <Button
+                  size="xs"
+                  variant="secondary"
+                  className="absolute -top-10 left-1/2 -translate-x-1/2 gap-1"
+                  onClick={() => {
+                    pinned.current = true;
+                    setJump(false);
+                    scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+                  }}
+                >
+                  <IconArrowDown size={14} />
+                  Jump to latest
+                </Button>
+              ) : null}
+              {composer}
+            </div>
+          </div>
+        </div>
+        {status}
+      </section>
+      {chat.data && contextOpen ? (
+        <ContextPane
+          chat={chat.data}
+          items={items}
+          settings={settings}
+          memory={memory}
+          onClose={() => setContextOpen(false)}
+          onFocusTool={(id) => setFocus({ id, at: Date.now() })}
         />
-      </div>
-    </div>
+      ) : null}
+    </>
   );
 }
