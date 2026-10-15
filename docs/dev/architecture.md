@@ -274,6 +274,8 @@ so dex needs no public URL.
 
 - Only private chats can enter the agent. The bot ignores users outside the
   saved allowlist. A saved token with no allowed users waits for owner pairing.
+  Earlier versions accepted group messages from allowed users. The bot now
+  ignores all non-private chats, including messages from allowed users.
 - The Channels page creates a link with the bot username from `getMe` and a
   random code. The code expires after 10 minutes. `telegram_settings` stores
   the code and expiry. One SQLite update adds the owner and clears the code.

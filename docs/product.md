@@ -29,6 +29,8 @@ to read in an afternoon.
 - Telegram setup: save a bot token, then open a single-use pairing link to
   allow the owner's account. Links expire after 10 minutes. Manual user-ID
   entry is an advanced option. The bot ignores other users and group chats.
+  Earlier versions accepted group messages from allowed users. The bot now
+  ignores all non-private chats, including messages from allowed users.
 - Entry points: the web UI and Telegram. External channel chats are read-only
   on the web. `/new` starts another chat. `/stop` stops pending work. `/help`
   lists commands. Reply delivery resumes after a restart and skips confirmed
