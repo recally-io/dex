@@ -1,208 +1,226 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
-import { ChevronRight, Globe, MessageCircle, Send, ShieldAlert } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { IconBrowserTabs } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBrowserTabs";
+import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
 import type { Settings } from "../api/generated/types.gen";
-import { deleteTelegramMutation, setTelegramMutation } from "../api/generated/@tanstack/react-query.gen";
+import {
+  deleteTelegramMutation,
+  getSettingsOptions,
+  listChatsOptions,
+  setTelegramMutation,
+} from "../api/generated/@tanstack/react-query.gen";
 import { errorText, refreshSettings } from "../lib/queries";
 import { useApp } from "../lib/app-state";
 import { Confirm } from "../components/confirm";
-import { Failure } from "../components/feedback";
-import { Card, Field, Note, NotAvailable, Page, PageHeader, Rows, Section } from "../components/page";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Textarea } from "../components/ui/textarea";
-import { Button as Pill } from "../components/atoms/Button";
-import { ValuePill } from "../components/atoms/ValuePill";
+import { Modal } from "../components/dialog";
+import { Failure, Spinner } from "../components/feedback";
+import { Field, Input, SavedSecret, Textarea } from "../components/form";
+import { Facts, FramedPage, Mono, Note, NotAvailable, Panel, Section } from "../components/page";
+import { Button } from "../components/atoms/Button";
+import { StatusPill } from "../components/atoms/StatusPill";
 import { WithSettings } from "./agent";
 
-function Boundary() {
-  return (
-    <div className="mb-8 flex items-start gap-3 rounded-xl bg-orange-tint px-4 py-3 text-[13px] leading-6 text-ink">
-      <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-orange" />
-      <p>
-        <strong>A channel gives its allowed people the whole agent.</strong> They reach the same model,
-        instructions and memory as you. The agent can run read, write, edit and bash on this computer for
-        them. Allow only people you trust.
-      </p>
-    </div>
-  );
-}
-
-function telegramStatus(settings: Settings) {
-  return settings.telegram.enabled ? (
-    <ValuePill tone="green">Configured</ValuePill>
-  ) : (
-    <ValuePill>Off</ValuePill>
-  );
-}
-
 const unsupported = [
-  {
-    name: "Slack",
-    icon: (
-      <span aria-hidden className="text-base font-bold">
-        #
-      </span>
-    ),
-  },
-  {
-    name: "Feishu / Lark",
-    icon: (
-      <span aria-hidden className="text-sm font-bold">
-        飞
-      </span>
-    ),
-  },
-  { name: "WeChat", icon: <MessageCircle aria-hidden className="size-5" /> },
+  { name: "Slack", text: "dex cannot connect to Slack in this version." },
+  { name: "Feishu / Lark", text: "dex cannot connect to Feishu or Lark in this version." },
+  { name: "WeChat", text: "dex cannot connect to WeChat in this version." },
 ];
 
-function ChannelLink({
+function OnOff({ on }: { on: boolean }) {
+  return (
+    <StatusPill tone={on ? "green" : "neutral"} className="h-5 px-2 text-[11.5px]">
+      {on ? "On" : "Off"}
+    </StatusPill>
+  );
+}
+
+function ChannelRow({
   channel,
   icon,
   name,
+  text,
   status,
-  summary,
 }: {
-  channel: "web" | "telegram";
+  channel?: "web" | "telegram";
   icon: ReactNode;
   name: string;
+  text: string;
   status: ReactNode;
-  summary: string;
 }) {
+  const body = (
+    <>
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-inset text-ink-2 shadow-hairline">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13.5px] font-medium text-ink group-hover:underline">{name}</span>
+        <span className="block text-[12px] text-ink-3">{text}</span>
+      </span>
+      <span className="shrink-0">{status}</span>
+    </>
+  );
+
+  return channel ? (
+    <Link
+      to="/channels/$channelId"
+      params={{ channelId: channel }}
+      className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-hover"
+    >
+      {body}
+    </Link>
+  ) : (
+    <div className="flex items-center gap-3 px-4 py-3">{body}</div>
+  );
+}
+
+// A channel gives its allowed people the whole agent.
+function Boundary() {
   return (
-    <li>
-      <Link
-        to="/channels/$channelId"
-        params={{ channelId: channel }}
-        className="flex h-full items-start gap-4 rounded-[14px] border border-line bg-surface p-4 shadow-card hover:bg-hover focus-visible:outline-2 focus-visible:outline-ink"
-      >
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-inset text-ink-2">
-          {icon}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-ink">{name}</span>
-            {status}
-          </span>
-          <span className="mt-1 block text-[13px] leading-5 text-ink-2">{summary}</span>
-        </span>
-        <ChevronRight aria-hidden className="mt-2 size-4 shrink-0 text-ink-3" />
-      </Link>
-    </li>
+    <Note tone="warn">
+      <strong className="font-medium">A channel gives its allowed people the whole agent.</strong> They reach
+      the same model, instructions and memory as you. The agent can run read, write, edit and bash on this
+      computer for them. Allow only people you trust.
+    </Note>
   );
 }
 
 export function ChannelsPage() {
   return (
-    <Page>
-      <PageHeader
-        title="Channels"
-        description="Channels are the ways messages reach the agent and the way answers go back. Each chat shows where it came from."
-      />
+    <FramedPage
+      title="Channels"
+      description="A channel is a place where you talk to the agent. Every channel uses the same agent, memory and workspace. Each chat shows where it came from."
+    >
       <WithSettings>
-        {(settings) => (
-          <>
-            <Boundary />
-            <ul className="grid gap-3 md:grid-cols-2">
-              <ChannelLink
-                channel="web"
-                icon={<Globe aria-hidden className="size-5" />}
-                name="Web"
-                status={<ValuePill tone="green">Built in</ValuePill>}
-                summary="This page, on this computer. You can read and send in every web and automation chat."
-              />
-              <ChannelLink
-                channel="telegram"
-                icon={<Send aria-hidden className="size-5" />}
-                name="Telegram"
-                status={telegramStatus(settings)}
-                summary={
-                  settings.telegram.enabled
-                    ? `Bot ${settings.telegram.botId ?? ""} · ${settings.telegram.allowedUsers.length} allowed user${settings.telegram.allowedUsers.length === 1 ? "" : "s"}. Chats are read-only on the web.`
-                    : "Talk to dex from a Telegram bot. Needs a bot token and allowed user IDs."
-                }
-              />
-              {unsupported.map(({ name, icon }) => (
-                <li
-                  key={name}
-                  className="flex items-start gap-4 rounded-[14px] border border-dashed border-line p-4"
-                >
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-inset text-ink-3">
-                    {icon}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-ink-2">{name}</span>
-                      <NotAvailable />
-                    </span>
-                    <span className="mt-1 block text-[13px] leading-5 text-ink-3">
-                      dex cannot connect to {name} in this version.
-                    </span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+        {(settings) => {
+          const tg = settings.telegram;
+
+          return (
+            <>
+              <Section n={1} title="Available" caption="Web is always on.">
+                <Panel>
+                  <div className="divide-y divide-line">
+                    <ChannelRow
+                      channel="web"
+                      icon={<IconBrowserTabs size={16} />}
+                      name="Web"
+                      text="This page. Read every chat, and send in web and automation chats."
+                      status={<OnOff on />}
+                    />
+                    <ChannelRow
+                      channel="telegram"
+                      icon={<IconPaperPlane size={16} />}
+                      name="Telegram"
+                      text={
+                        tg.enabled
+                          ? `Bot ${tg.botId ?? "unknown"} · ${tg.allowedUsers.length} allowed ${tg.allowedUsers.length === 1 ? "user" : "users"}. Read-only on the web`
+                          : "Talk to dex from a Telegram bot. Needs a bot token and allowed user IDs."
+                      }
+                      status={<OnOff on={tg.enabled} />}
+                    />
+                  </div>
+                </Panel>
+              </Section>
+              <Section n={2} title="Not yet available" caption="dex does not support these channels now.">
+                <Panel>
+                  <div className="divide-y divide-line opacity-80">
+                    {unsupported.map((c) => (
+                      <ChannelRow
+                        key={c.name}
+                        icon={<span className="text-[12px] font-semibold">{c.name[0]}</span>}
+                        name={c.name}
+                        text={c.text}
+                        status={<NotAvailable />}
+                      />
+                    ))}
+                  </div>
+                </Panel>
+              </Section>
+              <Section n={3} title="Rules" caption="The same for every channel.">
+                <Panel>
+                  <Facts
+                    rows={[
+                      ["Agent", "One model and one set of instructions"],
+                      ["Memory", "Shared. A fact from Telegram is known on the web"],
+                      ["Replies", "In the channel where the chat started"],
+                    ]}
+                  />
+                </Panel>
+                <div className="mt-3">
+                  <Boundary />
+                </div>
+              </Section>
+            </>
+          );
+        }}
       </WithSettings>
-    </Page>
+    </FramedPage>
+  );
+}
+
+function Crumb() {
+  return (
+    <Link to="/channels" className="hover:text-ink hover:underline">
+      Channels
+    </Link>
   );
 }
 
 export function ChannelPage({ channel }: { channel: "web" | "telegram" }) {
+  return channel === "web" ? <WebChannel /> : <TelegramChannel />;
+}
+
+function WebChannel() {
   return (
-    <Page>
-      <WithSettings>
-        {(settings) =>
-          channel === "web" ? (
-            <>
-              <PageHeader
-                eyebrow={
-                  <Link to="/channels" className="hover:underline">
-                    Channels
-                  </Link>
-                }
-                title="Web"
-                badge={<ValuePill tone="green">Built in</ValuePill>}
-              />
-              <Section title="Access">
-                <Card>
-                  <Rows
-                    rows={[
-                      [
-                        "Address",
-                        <span key="address" className="break-all font-mono">
-                          {window.location.origin}
-                        </span>,
-                      ],
-                      ["Sign-in", "None. Any program on this computer that can reach the port can use dex."],
-                      ["Can send in", "Web chats and automation chats"],
-                      ["Read-only", "Telegram chats"],
-                    ]}
-                  />
-                </Card>
-              </Section>
-              <Note>The web channel is built in. You cannot turn it off.</Note>
-            </>
-          ) : (
-            <Telegram settings={settings} />
-          )
-        }
-      </WithSettings>
-    </Page>
+    <FramedPage
+      eyebrow={<Crumb />}
+      title="Web"
+      badge={<OnOff on />}
+      description="The web is built in and always on. It is the only place to change the agent, providers and automations."
+    >
+      <Section n={1} title="What you can do">
+        <Panel>
+          <Facts
+            rows={[
+              ["Address", <Mono key="address">{window.location.origin}</Mono>],
+              ["Web chats", "Read and send"],
+              ["Automation chats", "Read and reply"],
+              ["Telegram chats", "Read only. Reply in Telegram"],
+              ["Settings", "Change everything"],
+            ]}
+          />
+        </Panel>
+      </Section>
+      <Section n={2} title="Access">
+        <Note tone="warn">
+          The server has no sign-in, and tools run without a sandbox. Any program on this computer that can
+          reach the port can run commands with dex. Keep dex on 127.0.0.1.
+        </Note>
+      </Section>
+    </FramedPage>
   );
 }
 
-function Telegram({ settings }: { settings: Settings }) {
+function TelegramChannel() {
+  const saved = useQuery(getSettingsOptions());
+  const chats = useQuery(listChatsOptions());
+  const telegramChats = chats.data?.chats.filter((c) => c.channel === "telegram").length;
+
+  return (
+    <FramedPage
+      eyebrow={<Crumb />}
+      title="Telegram"
+      badge={saved.data ? <OnOff on={saved.data.telegram.enabled} /> : null}
+      description="Talk to dex from your phone. Only the users that you allow can use the bot."
+    >
+      <WithSettings>
+        {(settings) => <Telegram settings={settings} telegramChats={telegramChats} />}
+      </WithSettings>
+    </FramedPage>
+  );
+}
+
+function Telegram({ settings, telegramChats }: { settings: Settings; telegramChats?: number }) {
   const { notify } = useApp();
   const telegram = settings.telegram;
   const [edit, setEdit] = useState(false);
@@ -219,82 +237,96 @@ function Telegram({ settings }: { settings: Settings }) {
 
   return (
     <>
-      <PageHeader
-        eyebrow={
-          <Link to="/channels" className="hover:underline">
-            Channels
-          </Link>
-        }
-        title="Telegram"
-        badge={telegramStatus(settings)}
-      />
-      <Boundary />
       <Section
-        title="Saved configuration"
-        actions={
-          telegram.enabled ? (
-            <>
-              <Button variant="outline" size="sm" onClick={() => setEdit(true)}>
-                Edit
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  deletion.reset();
-                  setOff(true);
-                }}
-              >
-                Turn off
-              </Button>
-            </>
-          ) : (
-            <Pill variant="primary" size="sm" onClick={() => setEdit(true)}>
-              Set up Telegram
-            </Pill>
-          )
+        n={1}
+        title="Bot"
+        caption={telegram.enabled ? undefined : "Not connected."}
+        action={
+          <Button
+            size="sm"
+            variant={telegram.enabled ? "secondary" : "primary"}
+            onClick={() => setEdit(true)}
+          >
+            {telegram.enabled ? "Edit" : "Connect bot"}
+          </Button>
         }
       >
-        <Card>
-          {telegram.enabled ? (
-            <Rows
+        {telegram.enabled ? (
+          <Panel>
+            <Facts
               rows={[
+                ["Bot ID", <Mono key="bot">{telegram.botId ?? "Unknown"}</Mono>],
                 [
-                  "Bot ID",
-                  <span key="bot" className="font-mono">
-                    {telegram.botId ?? "Unknown"}
+                  "Bot token",
+                  <span key="token" className="text-ink-2">
+                    Saved · write-only
                   </span>,
                 ],
-                ["Bot token", "Saved · write-only"],
                 [
                   "Allowed user IDs",
-                  <span key="users" className="break-all font-mono">
+                  <span key="users" className="font-mono text-[12px] text-ink-2 tabular-nums">
                     {telegram.allowedUsers.join(", ")}
+                  </span>,
+                ],
+                [
+                  "Chats from Telegram",
+                  <span key="chats" className="font-mono text-[12px] tabular-nums">
+                    {telegramChats ?? "…"}
                   </span>,
                 ],
               ]}
             />
-          ) : (
-            <p className="text-[13px] text-ink-2">Telegram is off. dex does not read any bot.</p>
-          )}
-        </Card>
+          </Panel>
+        ) : (
+          <Panel className="px-4 py-3.5">
+            <p className="mb-2 text-[13px] text-ink-2">Telegram is off. dex does not read any bot.</p>
+            <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-[13px] text-ink-2 marker:font-mono marker:text-[11px] marker:text-ink-3">
+              <li>
+                In Telegram, open <Mono>@BotFather</Mono> and send <Mono>/newbot</Mono>.
+              </li>
+              <li>Copy the token that BotFather gives you.</li>
+              <li>
+                Get your user ID, for example from <Mono>@userinfobot</Mono>.
+              </li>
+              <li>Select Connect bot and enter the token and your ID.</li>
+            </ol>
+          </Panel>
+        )}
+        <div className="mt-3">
+          <Note>
+            On means that dex saved the bot and started it. dex does not report whether the bot reaches
+            Telegram. To check it, send the bot a message from an allowed account.
+          </Note>
+        </div>
       </Section>
-      <Section title="Status">
-        <Note>
-          Configured means that dex saved the bot and started it. dex does not report whether the bot reaches
-          Telegram. To check it, send the bot a message from an allowed account.
-        </Note>
-      </Section>
-      <Section title="How chats work">
-        <Card>
-          <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] text-ink-2">
+      <Section n={2} title="How chats work" caption="Telegram chats are read-only here.">
+        <Panel className="px-4 py-3.5">
+          <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] text-ink-2 marker:text-ink-3">
             <li>Each Telegram chat becomes one dex chat, marked with the Telegram origin.</li>
-            <li>dex replies in Telegram. On the web, these chats are read-only.</li>
+            <li>dex replies in Telegram. On the web, you can read these chats with their tool calls.</li>
             <li>dex ignores messages from user IDs that are not allowed.</li>
             <li>The agent, its tools and its memory are the same as on the web.</li>
           </ul>
-        </Card>
+        </Panel>
+        <div className="mt-3">
+          <Boundary />
+        </div>
       </Section>
+      {telegram.enabled ? (
+        <Section n={3} title="Turn off" caption="The bot stops answering. Past chats stay.">
+          <Button
+            size="sm"
+            variant="secondary"
+            className="text-red"
+            onClick={() => {
+              deletion.reset();
+              setOff(true);
+            }}
+          >
+            Turn off Telegram
+          </Button>
+        </Section>
+      ) : null}
       {edit ? <TelegramDialog settings={settings} onClose={() => setEdit(false)} /> : null}
       {off ? (
         <Confirm
@@ -353,101 +385,94 @@ function TelegramDialog({ settings, onClose }: { settings: Settings; onClose: ()
   }
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !save.isPending) onClose();
-      }}
+    <Modal
+      title={saved ? "Edit Telegram" : "Connect Telegram"}
+      description="Create a bot with @BotFather. Message @userinfobot to find your user ID. dex saves the bot and restarts it."
+      pending={save.isPending}
+      onClose={onClose}
+      footer={
+        <>
+          <Button size="sm" variant="secondary" onClick={onClose} disabled={save.isPending}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="primary" onClick={submit} disabled={save.isPending}>
+            {save.isPending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
+            {save.isPending ? "Saving…" : "Save Telegram"}
+          </Button>
+        </>
+      }
     >
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="pr-8">{saved ? "Edit Telegram" : "Set up Telegram"}</DialogTitle>
-          <DialogDescription>
-            Create a bot with @BotFather. Message @userinfobot to find your user ID.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="flex flex-col gap-4"
-          noValidate
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
-          {saved && !replace ? (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[13px] font-medium text-ink">Bot token</span>
-              <div className="flex items-center justify-between gap-3 rounded-lg bg-inset p-3">
-                <span className="text-sm text-ink-2">Saved token ••••</span>
-                <Button type="button" variant="outline" size="sm" onClick={() => setReplace(true)}>
-                  Replace token
-                </Button>
-              </div>
-              <p className="text-xs leading-5 text-ink-3">dex never shows a saved token.</p>
-            </div>
-          ) : (
-            <Field
-              label="Bot token"
-              hint={
-                saved
-                  ? "Write-only. An empty field keeps the saved token."
-                  : "Write-only. It looks like 123456:ABC-DEF."
-              }
-              error={tried ? tokenError : undefined}
-            >
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  type="password"
-                  autoComplete="new-password"
-                  spellCheck={false}
-                  aria-describedby={describedBy}
-                  aria-invalid={invalid}
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                />
-              )}
-            </Field>
-          )}
+      <form
+        className="flex flex-col gap-4"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        {saved && !replace ? (
+          <SavedSecret
+            label="Bot token"
+            text="Saved token ••••"
+            hint="dex never shows a saved token."
+            action="Replace token"
+            onReplace={() => setReplace(true)}
+          />
+        ) : (
           <Field
-            label="Allowed user IDs"
-            hint="One per line, or separated with commas. dex ignores messages from all other users."
-            error={tried ? parsed.error : undefined}
+            label="Bot token"
+            hint={
+              saved
+                ? "Write-only. An empty field keeps the saved token."
+                : "Write-only. It looks like 123456:ABC-DEF."
+            }
+            error={tried ? tokenError : undefined}
           >
             {({ id, describedBy, invalid }) => (
-              <Textarea
+              <Input
                 id={id}
-                inputMode="numeric"
-                rows={3}
-                className="font-mono"
+                type="password"
+                autoComplete="new-password"
+                spellCheck={false}
                 aria-describedby={describedBy}
                 aria-invalid={invalid}
-                value={users}
-                onChange={(e) => setUsers(e.target.value)}
+                className="font-mono"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
               />
             )}
           </Field>
-          <button type="submit" hidden />
-        </form>
-        {save.isError ? (
-          <Failure
-            title="Telegram not saved"
-            error={
-              save.variables?.body.token
-                ? `${errorText(save.error)} Enter the bot token again to retry.`
-                : save.error
-            }
-          />
-        ) : null}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={save.isPending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={save.isPending}>
-            {save.isPending ? "Saving…" : "Save Telegram"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        )}
+        <Field
+          label="Allowed user IDs"
+          hint="One per line, or separated with commas. dex ignores messages from all other users."
+          error={tried ? parsed.error : undefined}
+        >
+          {({ id, describedBy, invalid }) => (
+            <Textarea
+              id={id}
+              inputMode="numeric"
+              rows={3}
+              className="font-mono tabular-nums"
+              aria-describedby={describedBy}
+              aria-invalid={invalid}
+              value={users}
+              onChange={(e) => setUsers(e.target.value)}
+            />
+          )}
+        </Field>
+        <button type="submit" hidden />
+      </form>
+      {save.isError ? (
+        <Failure
+          title="Telegram not saved"
+          error={
+            save.variables?.body.token
+              ? `${errorText(save.error)} Enter the bot token again to retry.`
+              : save.error
+          }
+        />
+      ) : null}
+    </Modal>
   );
 }

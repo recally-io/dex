@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
-import { X } from "lucide-react";
+import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
 
 type Notice = { id: number; text: string };
 
@@ -68,21 +68,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       <div
         role="status"
         aria-live="polite"
-        className="pointer-events-none fixed inset-x-0 top-16 z-[60] flex flex-col items-center gap-2 px-4 lg:top-4"
+        className="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex flex-col items-center gap-2 px-4"
       >
         {notices.map((notice) => (
           <div
             key={notice.id}
-            className="pointer-events-auto flex max-w-md items-center gap-3 rounded-full bg-ink py-2 pr-2 pl-4 text-sm text-canvas shadow-overlay"
+            className="pointer-events-auto flex max-w-[440px] animate-[fade-up_300ms_var(--ease-out-strong)_both] items-center gap-2 rounded-full bg-surface py-1.5 pr-1.5 pl-4 text-[12.5px] font-medium text-ink shadow-overlay"
           >
             <span>{notice.text}</span>
             <button
               type="button"
               aria-label="Dismiss notification"
               onClick={() => dismiss(notice.id)}
-              className="rounded-full p-1 opacity-70 hover:opacity-100 focus-visible:outline-2 focus-visible:outline-canvas"
+              className="flex size-6 shrink-0 items-center justify-center rounded-full text-ink-3 transition-colors hover:bg-hover hover:text-ink"
             >
-              <X className="size-3.5" />
+              <IconCrossSmall size={14} />
             </button>
           </div>
         ))}

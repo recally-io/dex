@@ -21,20 +21,26 @@ import { ExtensionsPage } from "./routes/extensions";
 import { SecretsPage } from "./routes/secrets";
 import { AboutPage } from "./routes/about";
 import { AppProvider } from "./lib/app-state";
-import { Page, PageHeader } from "./components/page";
-import { TooltipProvider } from "./components/ui/tooltip";
+import { FramedPage, Section } from "./components/page";
+import { Button, buttonVariants } from "./components/atoms/Button";
+import { applySavedTheme } from "./components/theme";
 import "./styles.css";
+
+function Missing({ title, description }: { title: string; description: string }) {
+  return (
+    <FramedPage title={title} description={description}>
+      <Section n={1} title="Go back">
+        <Link className={buttonVariants({ size: "sm", variant: "secondary" })} to="/">
+          Start a new chat
+        </Link>
+      </Section>
+    </FramedPage>
+  );
+}
 
 const root = createRootRoute({
   component: Shell,
-  notFoundComponent: () => (
-    <Page>
-      <PageHeader title="Page not found" description="dex has no page at this address." />
-      <Link className="text-sm text-brand underline" to="/">
-        Start a new chat
-      </Link>
-    </Page>
-  ),
+  notFoundComponent: () => <Missing title="Page not found" description="dex has no page at this address." />,
 });
 
 const home = createRoute({ getParentRoute: () => root, path: "/", component: () => <ChatPage /> });
@@ -47,9 +53,7 @@ function ChatRoute() {
   return Number.isSafeInteger(id) && id > 0 ? (
     <ChatPage chatId={id} />
   ) : (
-    <Page>
-      <PageHeader title="Chat not found" description="The chat ID in the address is not valid." />
-    </Page>
+    <Missing title="Chat not found" description="The chat ID in the address is not valid." />
   );
 }
 
@@ -140,12 +144,13 @@ const router = createRouter({
     defaultSettings,
   ]),
   defaultErrorComponent: ({ error, reset }) => (
-    <Page>
-      <PageHeader title="Could not open this page" description={errorText(error)} />
-      <button onClick={reset} className="text-sm text-brand underline">
-        Try again
-      </button>
-    </Page>
+    <FramedPage title="Could not open this page" description={errorText(error)}>
+      <Section n={1} title="What to do" caption="The error can be temporary.">
+        <Button size="sm" variant="secondary" onClick={reset}>
+          Try again
+        </Button>
+      </Section>
+    </FramedPage>
   ),
 });
 
@@ -155,13 +160,14 @@ declare module "@tanstack/react-router" {
   }
 }
 
+// The theme class is set before the first paint, so a dark page does not flash light.
+applySavedTheme();
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <AppProvider>
-        <TooltipProvider>
-          <RouterProvider router={router} />
-        </TooltipProvider>
+        <RouterProvider router={router} />
       </AppProvider>
     </QueryClientProvider>
   </StrictMode>,

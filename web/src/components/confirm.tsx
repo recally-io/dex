@@ -1,13 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "./ui/dialog";
-import { Button } from "./ui/button";
+import { Button } from "./atoms/Button";
+import { Modal } from "./dialog";
 import { Failure } from "./feedback";
 
 export function Confirm({
@@ -30,28 +23,34 @@ export function Confirm({
   error?: unknown;
 }) {
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !pending) onCancel();
-      }}
-    >
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="pr-8">{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        {children}
-        {error ? <Failure title="Could not complete this action" error={error} /> : null}
-        <DialogFooter>
-          <Button variant="outline" onClick={onCancel} disabled={pending}>
+    <Modal
+      title={title}
+      description={description}
+      pending={pending}
+      onClose={onCancel}
+      footer={
+        <>
+          <Button size="sm" variant="secondary" onClick={onCancel} disabled={pending}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={pending}>
+          <Button
+            size="sm"
+            variant="primary"
+            className="bg-red text-white"
+            onClick={onConfirm}
+            disabled={pending}
+          >
             {pending ? "Please wait…" : confirmLabel}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      {children || error ? (
+        <>
+          {children}
+          {error ? <Failure title="Could not complete this action" error={error} /> : null}
+        </>
+      ) : null}
+    </Modal>
   );
 }

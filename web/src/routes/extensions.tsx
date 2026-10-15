@@ -1,93 +1,61 @@
 import { Link } from "@tanstack/react-router";
-import { Blocks, Plug } from "lucide-react";
-import type { ReactNode } from "react";
-import { Card, Note, NotAvailable, Page, PageHeader, Section } from "../components/page";
-import { Button } from "../components/ui/button";
-import { ValuePill } from "../components/atoms/ValuePill";
-
-function Capability({
-  id,
-  icon,
-  title,
-  body,
-  action,
-}: {
-  id: string;
-  icon: ReactNode;
-  title: string;
-  body: string;
-  action: string;
-}) {
-  return (
-    <Card className="border-dashed shadow-none">
-      <div className="flex items-start gap-4">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-inset text-ink-3">
-          {icon}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold text-ink">{title}</h2>
-            <NotAvailable />
-          </div>
-          <p id={id} className="mt-1 text-[13px] leading-5 text-ink-2">
-            {body}
-          </p>
-        </div>
-        <Button variant="outline" size="sm" disabled aria-describedby={id}>
-          {action}
-        </Button>
-      </div>
-    </Card>
-  );
-}
+import { Facts, FramedPage, NotAvailable, Panel, Section } from "../components/page";
 
 export function ExtensionsPage() {
   return (
-    <Page>
-      <PageHeader
-        title="Extensions"
-        description="Extensions would give the agent more tools. This version of dex has none; the agent uses only its built-in tools."
-      />
-      <Section title="Built-in tools">
-        <Card>
-          <p className="mb-3 text-[13px] text-ink-2">
-            Always on. The agent runs them on this computer without a sandbox and does not ask before each
-            call.
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {["read", "write", "edit", "bash"].map((tool) => (
-              <ValuePill key={tool}>
-                <span className="font-mono">{tool}</span>
-              </ValuePill>
-            ))}
-          </div>
-        </Card>
-      </Section>
-      <Section title="Not available yet">
-        <div className="flex flex-col gap-3">
-          <Capability
-            id="skills-status"
-            icon={<Blocks aria-hidden className="size-5" />}
-            title="Skills"
-            body="Skills are packaged instructions and scripts. dex cannot install or load skills in this version."
-            action="Add skill"
+    <FramedPage
+      title="Extensions"
+      description="Extensions add skills and tools to the agent. dex cannot add them from the web yet."
+    >
+      <Section n={1} title="Built in" caption="Always on. You cannot turn them off.">
+        <Panel>
+          <Facts
+            monoLabels
+            rows={[
+              [
+                "memory",
+                <span key="memory" className="font-normal text-ink-2">
+                  Puts the memory rules and MEMORY.md in the prompt
+                </span>,
+              ],
+              [
+                "read, write, edit, bash",
+                <span key="tools" className="font-normal text-ink-2">
+                  The four agent tools. They run on this computer without a sandbox
+                </span>,
+              ],
+            ]}
           />
-          <Capability
-            id="mcp-status"
-            icon={<Plug aria-hidden className="size-5" />}
-            title="MCP servers"
-            body="MCP servers give the agent tools from other programs. dex cannot connect to MCP servers in this version."
-            action="Add server"
-          />
-        </div>
+        </Panel>
       </Section>
-      <Note>
-        To change how the agent works now, edit its{" "}
-        <Link to="/agent" className="text-brand underline">
-          instructions
-        </Link>
-        .
-      </Note>
-    </Page>
+      <Section
+        n={2}
+        title="Skills"
+        caption="Instructions that the agent loads when a task needs them."
+        action={<NotAvailable />}
+      >
+        <Panel className="px-4 py-3.5 text-[12.5px] leading-relaxed text-ink-2">
+          dex does not load skills now. The agent can still read instruction files that you put in the
+          workspace or in memory.
+        </Panel>
+      </Section>
+      <Section
+        n={3}
+        title="MCP servers"
+        caption="Tools from Model Context Protocol servers."
+        action={<NotAvailable />}
+      >
+        <Panel className="px-4 py-3.5 text-[12.5px] leading-relaxed text-ink-2">
+          dex does not connect to MCP servers now. The agent has only its four tools.
+        </Panel>
+        <p className="mt-3 px-0.5 text-[12px] text-ink-3">
+          To change how the agent works now, edit its{" "}
+          <Link to="/agent" className="font-medium text-accent-ink underline">
+            instructions
+          </Link>
+          .
+        </p>
+      </Section>
+    </FramedPage>
   );
 }

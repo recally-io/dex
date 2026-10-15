@@ -1,124 +1,162 @@
-import { useId, type ReactNode } from "react";
+import { createContext, useContext, useId, type ReactNode } from "react";
+import { IconBurger } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBurger";
+import { StatusPill } from "./atoms/StatusPill";
 import { cn } from "../lib/utils";
 
-// The page title takes focus after navigation; see Shell.
-export function Page({ children, className }: { children: ReactNode; className?: string }) {
+export const ShellContext = createContext({ openDrawer: () => {} });
+
+/** The drawer button for screens below lg. */
+export function MenuButton() {
+  const { openDrawer } = useContext(ShellContext);
+
   return (
-    <div className={cn("mx-auto w-full max-w-5xl px-4 py-6 sm:px-8 sm:py-10", className)}>{children}</div>
+    <button
+      type="button"
+      aria-label="Open navigation"
+      onClick={openDrawer}
+      className="-ml-1 flex size-9 shrink-0 items-center justify-center rounded-control text-ink-2 transition-colors hover:bg-hover hover:text-ink lg:hidden"
+    >
+      <IconBurger size={18} />
+    </button>
   );
 }
 
-export function PageHeader({
-  title,
-  description,
-  actions,
-  eyebrow,
-  badge,
-}: {
-  title: ReactNode;
-  description?: ReactNode;
-  actions?: ReactNode;
-  eyebrow?: ReactNode;
-  badge?: ReactNode;
-}) {
+/** The rounded main pane. Below lg it has a small bar with the drawer button. */
+export function MainPane({ children, bar = true }: { children: ReactNode; bar?: boolean }) {
   return (
-    <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-      <div className="min-w-0">
-        {eyebrow ? <div className="mb-2 text-xs text-ink-3">{eyebrow}</div> : null}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <h1
-            id="page-title"
-            tabIndex={-1}
-            className="break-words text-2xl font-semibold tracking-tight text-ink outline-none"
-          >
-            {title}
-          </h1>
-          {badge}
+    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line">
+      {bar ? (
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 lg:hidden">
+          <MenuButton />
+          <span className="text-[14px] font-semibold text-ink">dex</span>
         </div>
-        {description ? <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{description}</p> : null}
-      </div>
-      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
-    </header>
+      ) : null}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
+    </section>
   );
 }
 
-export function Section({
+/** A configuration page: hatch gutters, a dashed frame, a header, then numbered sections. */
+export function FramedPage({
+  eyebrow,
   title,
   description,
-  actions,
   badge,
+  actions,
   children,
 }: {
-  title: ReactNode;
+  eyebrow?: ReactNode;
+  title: string;
   description?: ReactNode;
-  actions?: ReactNode;
   badge?: ReactNode;
+  actions?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <MainPane>
+      <div className="hatch flex min-h-full flex-col">
+        <div className="mx-auto w-full max-w-[800px] flex-1 bg-page md:border-x md:border-dashed md:border-line-strong">
+          <header className="border-b border-dashed border-line-strong px-5 pt-10 pb-7 sm:px-8 sm:pt-14">
+            {eyebrow ? <div className="mb-3 text-[12px] text-ink-3">{eyebrow}</div> : null}
+            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1
+                    id="page-title"
+                    tabIndex={-1}
+                    className="text-[21px] leading-snug font-semibold tracking-[-0.02em] text-ink outline-none [overflow-wrap:anywhere]"
+                  >
+                    {title}
+                  </h1>
+                  {badge}
+                </div>
+                {description ? (
+                  <p className="mt-1.5 max-w-[560px] text-[13px] leading-relaxed text-ink-2">{description}</p>
+                ) : null}
+              </div>
+              {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+            </div>
+          </header>
+          {children}
+        </div>
+      </div>
+    </MainPane>
+  );
+}
+
+/** One numbered section: mono number, bold title, muted caption, then the content. */
+export function Section({
+  n,
+  title,
+  caption,
+  action,
+  children,
+}: {
+  n: number;
+  title: string;
+  caption?: ReactNode;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   const id = useId();
 
   return (
-    <section aria-labelledby={id} className="mb-10">
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 id={id} className="text-base font-semibold text-ink">
-              {title}
-            </h2>
-            {badge}
-          </div>
-          {description ? <p className="mt-1 max-w-2xl text-sm text-ink-2">{description}</p> : null}
+    <section
+      aria-labelledby={id}
+      className="border-b border-dashed border-line-strong px-5 py-8 last:border-b-0 sm:px-8 sm:py-9"
+    >
+      <div className="mb-3 flex items-start gap-2 sm:items-baseline">
+        <span className="mt-0.5 font-mono text-[11px] text-ink-3 tabular-nums sm:mt-0">
+          {String(n).padStart(2, "0")}
+        </span>
+        <div className="min-w-0 flex-1 sm:flex sm:items-baseline sm:gap-2">
+          <h2 id={id} className="text-[13px] font-semibold text-ink sm:whitespace-nowrap">
+            {title}
+          </h2>
+          {caption ? <p className="mt-0.5 text-[12.5px] text-ink-3 sm:mt-0">{caption}</p> : null}
         </div>
-        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+        {action ? <div className="-my-1 shrink-0">{action}</div> : null}
       </div>
       {children}
     </section>
   );
 }
 
-export function Card({ children, className }: { children: ReactNode; className?: string }) {
+/** The white hairline card that holds the content of a section. */
+export function Panel({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn("rounded-[14px] border border-line bg-surface p-4 shadow-card sm:p-5", className)}>
-      {children}
-    </div>
+    <div className={cn("overflow-hidden rounded-window bg-surface shadow-card", className)}>{children}</div>
   );
 }
 
-export type FieldIds = { id: string; describedBy: string | undefined; invalid: boolean };
-
-export function Field({
-  label,
-  hint,
-  error,
-  children,
-}: {
-  label: ReactNode;
-  hint?: ReactNode;
-  error?: string;
-  children: (ids: FieldIds) => ReactNode;
-}) {
-  const id = useId();
-  const hintId = `${id}-hint`;
-  const errorId = `${id}-error`;
-  const describedBy = [hint ? hintId : "", error ? errorId : ""].filter(Boolean).join(" ") || undefined;
-
+/** Label-left and value-right rows, like upstream TextRow, divided by hairlines. Labels are unique. */
+export function Facts({ rows, monoLabels = false }: { rows: [string, ReactNode][]; monoLabels?: boolean }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-[13px] font-medium text-ink">
-        {label}
-      </label>
-      {children({ id, describedBy, invalid: !!error })}
-      {hint ? (
-        <p id={hintId} className="text-xs leading-5 text-ink-3">
-          {hint}
-        </p>
-      ) : null}
-      {error ? (
-        <p id={errorId} className="text-xs font-medium text-red">
-          {error}
-        </p>
-      ) : null}
-    </div>
+    <dl className="divide-y divide-line">
+      {rows.map(([label, value]) => (
+        <div
+          key={label}
+          className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2.5"
+        >
+          <dt className={monoLabels ? "font-mono text-[12px] text-ink" : "text-[13px] text-ink-2"}>
+            {label}
+          </dt>
+          <dd className="min-w-0 text-right text-[13px] font-medium text-ink [overflow-wrap:anywhere]">
+            {value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** A panel with a centered title and text, for a list that has no entries. */
+export function Empty({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <Panel className="px-5 py-8 text-center">
+      <p className="text-[13px] font-medium text-ink">{title}</p>
+      <div className="mx-auto mt-1 max-w-[380px] text-[12.5px] text-ink-3">{children}</div>
+    </Panel>
   );
 }
 
@@ -126,8 +164,8 @@ export function Note({ children, tone = "neutral" }: { children: ReactNode; tone
   return (
     <div
       className={cn(
-        "rounded-xl px-4 py-3 text-[13px] leading-6",
-        tone === "warn" ? "bg-orange-tint text-ink" : "bg-inset text-ink-2",
+        "rounded-card px-3.5 py-2.5 text-[12.5px] leading-relaxed",
+        tone === "warn" ? "bg-orange-tint text-ink" : "bg-inset text-ink-2 shadow-hairline",
       )}
     >
       {children}
@@ -135,34 +173,11 @@ export function Note({ children, tone = "neutral" }: { children: ReactNode; tone
   );
 }
 
-export function Empty({ title, body, action }: { title: string; body: ReactNode; action?: ReactNode }) {
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-[14px] border border-dashed border-line px-6 py-12 text-center">
-      <p className="text-sm font-medium text-ink">{title}</p>
-      <p className="max-w-md text-sm text-ink-2">{body}</p>
-      {action}
-    </div>
-  );
-}
-
-export function Rows({ rows }: { rows: [string, ReactNode][] }) {
-  return (
-    <dl className="grid gap-x-6 gap-y-3 text-[13px] sm:grid-cols-[180px_1fr]">
-      {rows.map(([term, value]) => (
-        <div key={term} className="contents">
-          <dt className="text-ink-3">{term}</dt>
-          <dd className="min-w-0 break-words text-ink">{value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
 // Marks a capability that this version of dex does not have.
 export function NotAvailable() {
-  return (
-    <span className="inline-flex h-5 shrink-0 items-center rounded-full border border-dashed border-line-strong px-2 text-[11px] font-medium text-ink-2">
-      Not available yet
-    </span>
-  );
+  return <StatusPill className="h-5 shrink-0 px-2 text-[11.5px]">Not yet available</StatusPill>;
+}
+
+export function Mono({ children, className }: { children: ReactNode; className?: string }) {
+  return <span className={cn("font-mono text-[12px] text-ink-2", className)}>{children}</span>;
 }

@@ -1,18 +1,16 @@
 import type { ReactNode } from "react";
-import { Link, type LinkProps } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowRight } from "lucide-react";
 import type { Settings } from "../api/generated/types.gen";
-import { getSettingsOptions, listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
+import { getHealthOptions, getSettingsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { saveAgent, useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { ModelPicker } from "../components/model-picker";
-import { Failure, Loading } from "../components/feedback";
-import { Card, Note, NotAvailable, Page, PageHeader, Section } from "../components/page";
-import { Button } from "../components/ui/button";
-import { Textarea } from "../components/ui/textarea";
-import { Button as Pill } from "../components/atoms/Button";
-import { ValuePill } from "../components/atoms/ValuePill";
+import { Failure, Loading, Spinner } from "../components/feedback";
+import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
+import { Textarea } from "../components/form";
+import { Button } from "../components/atoms/Button";
+import { StatusPill } from "../components/atoms/StatusPill";
 import { cn } from "../lib/utils";
 
 // Shows the page only with the saved settings; it has no fallback data.
@@ -22,88 +20,50 @@ export function WithSettings({ children }: { children: (settings: Settings) => R
   return settings.isPending ? (
     <Loading />
   ) : settings.isError ? (
-    <Failure title="Could not load settings" error={settings.error} retry={() => void settings.refetch()} />
+    <div className="px-5 py-8 sm:px-8">
+      <Failure title="Could not load settings" error={settings.error} retry={() => void settings.refetch()} />
+    </div>
   ) : (
     children(settings.data)
   );
 }
 
-function Step({
-  label,
-  value,
-  to,
-  warn,
-}: {
-  label: string;
-  value: string;
-  to: LinkProps["to"];
-  warn: boolean;
-}) {
-  return (
-    <Link
-      to={to}
-      className="flex min-w-0 flex-1 flex-col rounded-xl border border-line bg-surface px-4 py-3 hover:bg-hover focus-visible:outline-2 focus-visible:outline-ink"
-    >
-      <span className="text-xs text-ink-3">{label}</span>
-      <span className={cn("truncate text-sm font-medium", warn ? "text-orange" : "text-ink")}>{value}</span>
-    </Link>
-  );
-}
-
-// Providers → available models → agent model, as one chain.
-export function ModelChain({ settings }: { settings: Settings }) {
-  const models = useQuery(listModelsOptions());
-  const model = useAgentModel(settings);
-  const count = models.data?.models.length;
-
-  return (
-    <div
-      role="group"
-      aria-label="How the agent gets a model"
-      className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center"
-    >
-      <Step
-        label="Providers"
-        value={`${settings.providers.length} saved`}
-        to="/providers"
-        warn={!settings.providers.length}
-      />
-      <ArrowRight aria-hidden className="hidden size-4 shrink-0 text-ink-3 sm:block" />
-      <Step
-        label="Available models"
-        value={count === undefined ? (models.isError ? "Could not load" : "Loading…") : `${count} models`}
-        to="/providers"
-        warn={count === 0 || models.isError}
-      />
-      <ArrowRight aria-hidden className="hidden size-4 shrink-0 text-ink-3 sm:block" />
-      <Step
-        label="Agent model"
-        value={settings.agent.modelId ? (model?.label ?? "") : "Not chosen"}
-        to="/agent"
-        warn={!model?.ok}
-      />
-    </div>
-  );
-}
+const tools = [
+  ["read", "Reads a file"],
+  ["write", "Writes a file"],
+  ["edit", "Replaces text in a file"],
+  ["bash", "Runs a shell command"],
+] as const;
 
 export function AgentPage() {
+  const saved = useQuery(getSettingsOptions());
+  const model = useAgentModel(saved.data);
+
   return (
-    <Page>
-      <PageHeader
-        title="Agent"
-        description="dex runs one agent. Every chat, channel and automation uses the same model, instructions, tools and memory."
-      />
+    <FramedPage
+      title="Agent"
+      description="dex has one agent. Every chat, channel and automation uses this model and these instructions."
+      badge={
+        model && !model.ok ? (
+          <StatusPill tone="orange" className="h-5 px-2 text-[11.5px]">
+            No available model
+          </StatusPill>
+        ) : null
+      }
+    >
       <WithSettings>{(settings) => <Agent settings={settings} />}</WithSettings>
-    </Page>
+    </FramedPage>
   );
 }
 
 function Agent({ settings }: { settings: Settings }) {
   const { draft, setDraft, settleDraft, notify } = useApp();
   const model = useAgentModel(settings);
+  const health = useQuery(getHealthOptions());
   const saved = settings.agent.instructions;
   const text = draft ?? saved;
   const dirty = draft !== null && draft !== saved;
+  const provider = settings.providers.find((p) => p.id === settings.agent.provider);
 
   const save = useMutation({
     mutationFn: (instructions: string) => saveAgent((agent) => ({ ...agent, instructions })),
@@ -120,155 +80,181 @@ function Agent({ settings }: { settings: Settings }) {
     },
   });
 
-  const channels = ["Web", ...(settings.telegram.enabled ? ["Telegram"] : [])];
+  const dataDir = health.data?.dataDir;
 
   return (
     <>
-      <Section title="Model" description="The model that answers every run.">
-        <Card>
-          <div className="flex flex-col gap-4">
-            <ModelChain settings={settings} />
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0 text-sm">
-                {!settings.agent.modelId ? (
-                  <p className="text-orange">No model chosen. dex cannot answer until you choose one.</p>
-                ) : model?.ok ? (
-                  <p className="text-ink-2">
-                    Uses <span className="font-medium text-ink">{model.label}</span>{" "}
-                    <span className="break-all font-mono text-xs">
-                      {settings.agent.provider}/{settings.agent.modelId}
-                    </span>
-                  </p>
-                ) : (
-                  <p className="text-orange">
-                    {settings.agent.provider}/{settings.agent.modelId} is not in the available models. Choose
-                    another model.
-                  </p>
-                )}
-              </div>
-              <ModelPicker
-                trigger={
-                  <Pill variant="primary" size="sm">
-                    {settings.agent.modelId ? "Change model" : "Choose model"}
-                  </Pill>
-                }
-              />
+      <Section n={1} title="Model" caption="A change applies from the next message.">
+        <Panel>
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3.5">
+            <div className="min-w-0 flex-1">
+              <p className={cn("truncate text-[14px] font-medium", model?.ok ? "text-ink" : "text-orange")}>
+                {settings.agent.modelId ? model?.label : "No model chosen"}
+              </p>
+              {settings.agent.modelId ? (
+                <p className="mt-0.5 truncate font-mono text-[11.5px] text-ink-3">
+                  {settings.agent.provider}/{settings.agent.modelId}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-[12.5px] text-ink-3">dex cannot answer until you choose one.</p>
+              )}
             </div>
-            {!settings.providers.length ? (
+            <ModelPicker
+              trigger={
+                <Button variant="secondary" size="sm">
+                  {settings.agent.modelId ? "Change model" : "Choose model"}
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                    className="text-ink-3"
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </Button>
+              }
+            />
+          </div>
+          {!model?.ok && settings.agent.modelId ? (
+            <div className="border-t border-line px-4 py-3">
+              <Note tone="warn">
+                {provider
+                  ? `${provider.name} does not list this model now.`
+                  : "The provider of this model is removed."}{" "}
+                New messages stay off until you choose an available model. Stop still works.
+              </Note>
+            </div>
+          ) : null}
+          {!settings.providers.length ? (
+            <div className="border-t border-line px-4 py-3">
               <Note>
                 Add a provider first.{" "}
-                <Link className="text-brand underline" to="/providers">
+                <Link className="font-medium text-accent-ink underline" to="/providers">
                   Go to Providers
                 </Link>
               </Note>
-            ) : null}
-          </div>
-        </Card>
+            </div>
+          ) : null}
+        </Panel>
       </Section>
 
       <Section
+        n={2}
         title="Instructions"
-        description="Added to every run. A draft stays here when you change the model or open another page."
+        caption="Added to the system prompt of every run."
+        action={
+          dirty ? (
+            <StatusPill tone="orange" className="h-5 px-2 text-[11.5px]">
+              Draft
+            </StatusPill>
+          ) : (
+            <StatusPill tone="green" className="h-5 px-2 text-[11.5px]">
+              Saved
+            </StatusPill>
+          )
+        }
       >
-        <Card>
-          <label htmlFor="instructions" className="sr-only">
-            Agent instructions
-          </label>
+        <Panel className="p-1">
           <Textarea
-            id="instructions"
-            value={text}
-            rows={8}
-            className="font-mono text-[13px] leading-6"
-            placeholder="For example: Reply in the language I write in."
+            aria-label="Agent instructions"
             aria-describedby="instructions-status"
+            rows={7}
+            value={text}
+            maxLength={32000}
+            placeholder="For example: Reply in the language I write in."
             onChange={(e) => setDraft(e.target.value)}
+            className="rounded-[11px] font-mono text-[12.5px] shadow-none focus:shadow-none"
           />
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <p id="instructions-status" className="text-xs text-ink-3" aria-live="polite">
-              {dirty ? "Unsaved draft. Runs use the saved instructions until you save." : "Saved."}{" "}
-              {text.length.toLocaleString()} characters
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!dirty || save.isPending}
-                onClick={() => {
-                  save.reset();
-                  setDraft(null);
-                }}
-              >
-                Discard draft
-              </Button>
-              <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate(text)}>
-                {save.isPending ? "Saving…" : "Save instructions"}
-              </Button>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 border-t border-line px-3 py-2">
+            <span className="font-mono text-[11px] text-ink-3 tabular-nums">
+              {text.length.toLocaleString()} / 32,000
+            </span>
+            <span id="instructions-status" aria-live="polite" className="min-w-0 text-[11.5px] text-ink-3">
+              {dirty ? "Unsaved draft. Runs use the saved instructions until you save." : null}
+            </span>
+            <span className="flex-1" />
+            <Button
+              size="xs"
+              variant="quiet"
+              aria-label="Discard draft"
+              disabled={!dirty || save.isPending}
+              onClick={() => {
+                save.reset();
+                setDraft(null);
+              }}
+            >
+              Discard
+            </Button>
+            <Button
+              size="xs"
+              variant="primary"
+              aria-label="Save instructions"
+              disabled={!dirty || save.isPending}
+              onClick={() => save.mutate(text)}
+            >
+              {save.isPending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
+              {save.isPending ? "Saving" : "Save"}
+            </Button>
           </div>
           {save.isError ? (
-            <div className="mt-3">
+            <div className="border-t border-line p-3">
               <Failure title="Instructions not saved. Your draft is kept." error={save.error} />
             </div>
           ) : null}
-        </Card>
+        </Panel>
       </Section>
 
-      <Section
-        title="What the agent can use"
-        description="A read-only summary. Change each part on its own page."
-      >
-        <div className="grid gap-3 md:grid-cols-2">
-          <Card>
-            <h3 className="mb-2 text-sm font-semibold">Built-in tools</h3>
-            <p className="mb-3 text-[13px] text-ink-2">
-              The agent runs these tools on this computer without a sandbox, in its workspace folder. dex does
-              not ask before each call.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {["read", "write", "edit", "bash"].map((tool) => (
-                <ValuePill key={tool}>
-                  <span className="font-mono">{tool}</span>
-                </ValuePill>
-              ))}
-            </div>
-          </Card>
-          <Card>
-            <h3 className="mb-2 text-sm font-semibold">Memory</h3>
-            <p className="text-[13px] text-ink-2">
-              One memory, a git repository in the data folder, shared by every chat and channel. A fact
-              learned in Telegram can appear in a web chat. dex has no memory page yet.
-            </p>
-          </Card>
-          <Card>
-            <div className="mb-2 flex items-center gap-2">
-              <h3 className="text-sm font-semibold">
-                <Link to="/extensions" className="hover:underline">
-                  Extensions
-                </Link>
-              </h3>
-              <NotAvailable />
-            </div>
-            <p className="text-[13px] text-ink-2">
-              Skills and MCP servers are not available in this version. The agent uses only its built-in
-              tools.
-            </p>
-          </Card>
-          <Card>
-            <h3 className="mb-2 text-sm font-semibold">
-              <Link to="/channels" className="hover:underline">
-                Who can reach it
-              </Link>
-            </h3>
-            <p className="mb-3 text-[13px] text-ink-2">
-              Every channel talks to this agent. There is no per-channel or per-chat model.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {channels.map((channel) => (
-                <ValuePill key={channel}>{channel}</ValuePill>
-              ))}
-            </div>
-          </Card>
+      <Section n={3} title="Tools" caption="Fixed. The agent always has these four.">
+        <Panel>
+          <Facts
+            monoLabels
+            rows={tools.map(([name, summary]) => [
+              name,
+              <span key={name} className="font-normal text-ink-2">
+                {summary}
+              </span>,
+            ])}
+          />
+        </Panel>
+        <div className="mt-3">
+          <Note tone="warn">
+            Tools run on this computer as your user, without a sandbox. The working directory is the
+            workspace. dex does not ask before each call.
+          </Note>
         </div>
+      </Section>
+
+      <Section n={4} title="Memory and workspace" caption="Shared by every chat and channel.">
+        <Panel>
+          <Facts
+            rows={[
+              ["Memory", <Mono key="m">{dataDir ? `${dataDir}/memory` : "memory"}</Mono>],
+              ["Always in the prompt", <Mono key="i">MEMORY.md</Mono>],
+              ["History", "A git repository. dex commits each change with the chat ID"],
+              [
+                "Workspace",
+                <Mono key="w">
+                  {dataDir ? `${dataDir}/agents/default/workspace` : "agents/default/workspace"}
+                </Mono>,
+              ],
+              ["Channels", ["Web", ...(settings.telegram.enabled ? ["Telegram"] : [])].join(", ")],
+            ]}
+          />
+        </Panel>
+        <p className="mt-3 px-0.5 text-[12px] text-ink-3">
+          dex has no memory editor yet. The agent reads and changes memory with its tools. Each chat shows
+          these calls in its Context panel. Skills and MCP servers are{" "}
+          <Link to="/extensions" className="font-medium text-accent-ink underline">
+            not available yet
+          </Link>
+          .
+        </p>
       </Section>
     </>
   );
