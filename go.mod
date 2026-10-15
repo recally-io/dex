@@ -6,7 +6,7 @@ require (
 	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/pressly/goose/v3 v3.29.0
-	golang.org/x/mod v0.41.0
+	golang.org/x/mod v0.42.0
 	modernc.org/sqlite v1.60.1
 )
 
