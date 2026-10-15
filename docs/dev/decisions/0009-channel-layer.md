@@ -20,7 +20,10 @@ A stable source key includes the platform, bot identity, and remote message ID.
 It does not include the rotating conversation key.
 
 Each platform has one sender. It reads settled submissions and records each
-confirmed part. Notify only wakes it. At start, it resumes undelivered replies.
+confirmed part. Fixed command replies record only whole-reply delivery.
+`Bot.Send` receives the peer, stable delivery ID, part index, and text.
+Notify carries only the channel key and wakes the sender. At start, the sender
+resumes undelivered replies.
 Delivery is at least once. A crash between platform success and the local
 commit can duplicate one part. Old settled messages are excluded on upgrade.
 

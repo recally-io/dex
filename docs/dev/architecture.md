@@ -316,14 +316,17 @@ remain writable.
 `/new` rotation commit in one transaction. `/stop` settles queued submissions
 as unanswered with reason `stopped`, prevents later admission, and aborts the
 worker run. An interrupted stop can run again; abort is safe to repeat.
+If abort fails, control logs the error and completes the command with a failure
+answer. The platform can then receive more messages and deliver other replies.
 
 Each platform has one durable sender. Notify only wakes this sender. At start
 and after a failed send, the same sender reads settled, undelivered submissions.
 It records progress after each confirmed part and marks the whole reply as
 delivered after its last part. A permanent rejection skips that part and does
 not block later replies. A transient error retries with a delay from 5 s to
-60 s. Platforms can use `PartSender` to get the stable submission or command
-ID and the part index. Worker replay still reads only pending messages.
+60 s. Each bot receives the stable submission or command ID and the part index
+through `Bot.Send`. Fixed command replies record only whole-reply delivery.
+Worker replay still reads only pending messages.
 Delivery is at least once: a crash between platform success and the local
 commit can duplicate one part. Migration marks old settled replies as delivered
 because earlier versions did not record delivery success.

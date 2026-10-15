@@ -226,6 +226,35 @@ func TestUserBlockedPeerDoesNotStopOtherReplies(t *testing.T) {
 	}
 }
 
+func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
+	// Given a chat whose worker conversation no longer exists.
+	f := newFakeTelegram(t)
+	dir := t.TempDir()
+	startTelegram(t, f, dir, 42)
+	f.message(1, 42, 7, "initial")
+	if got := f.next(t).Text; got != "echo: initial" {
+		t.Fatal(got)
+	}
+	conn, err := sql.Open("sqlite", filepath.Join(dir, "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err = conn.ExecContext(t.Context(), "UPDATE conversations SET worker_conversation_id = 999999 WHERE channel_key = 'telegram:7'"); err != nil {
+		t.Fatal(err)
+	}
+	// When /stop gets a permanent worker error, the command still has an answer.
+	f.message(2, 42, 7, "/stop")
+	if got := f.next(t).Text; got != "Could not stop the current answer." {
+		t.Fatalf("stop reply: %q", got)
+	}
+	// Then the platform advances past /stop and delivers a later peer's answer.
+	f.message(3, 42, 8, "after failed stop")
+	if got := f.next(t); got.ChatID != 8 || got.Text != "echo: after failed stop" {
+		t.Fatalf("later reply: %+v", got)
+	}
+}
+
 func TestUserStopsExistingChannelChatDuringMaintenance(t *testing.T) {
 	// Given a chat whose worker conversation already exists and admission is closed.
 	f := newFakeTelegram(t)

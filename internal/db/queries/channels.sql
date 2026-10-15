@@ -5,13 +5,10 @@ ON CONFLICT (peer) DO UPDATE SET peer = excluded.peer RETURNING channel_key;
 -- name: SetChannelPeer :exec
 UPDATE channel_peers SET channel_key = ? WHERE peer = ?;
 
--- name: GetChannelPeer :one
-SELECT channel_key FROM channel_peers WHERE peer = ?;
-
 -- name: GetSubmissionBySource :one
 SELECT id FROM submissions WHERE source_key = ?;
 
--- name: CreateChannelCommand :execrows
+-- name: CreateChannelCommand :exec
 INSERT INTO channel_commands (source_key, peer, channel_key, command) VALUES (?, ?, ?, ?)
 ON CONFLICT DO NOTHING;
 
@@ -47,9 +44,6 @@ WHERE s.status = 'pending' AND (c.channel_key = @peer OR c.channel_key LIKE @pee
 -- name: AdvanceChannelReply :exec
 UPDATE submissions SET delivered_parts = delivered_parts + 1 WHERE id = ?;
 
--- name: AdvanceChannelCommandReply :exec
-UPDATE channel_commands SET delivered_parts = delivered_parts + 1 WHERE source_key = ?;
-
--- name: StopChatSubmissions :many
+-- name: StopChatSubmissions :execrows
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @settled_at
-WHERE conversation_id = @conversation_id AND status = 'pending' RETURNING id;
+WHERE conversation_id = @conversation_id AND status = 'pending';

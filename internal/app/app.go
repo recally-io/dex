@@ -125,7 +125,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		},
 		OnStart: func(ctx context.Context) { chats.Replay(ctx) },
 	})
-	chats = chat.New(q, w, time.Now, func(ctx context.Context, key string, reply chat.Reply) { bots.Notify(ctx, key, reply) }, func(id int64) { hub.Changed(id) })
+	chats = chat.New(q, w, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
 	hub = live.New(q, chats, w, DefaultAgentID)
 	bots = channel.New(runCtx, conn, chats, DefaultAgentID)
 	uploads := upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID))

@@ -111,7 +111,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	defer func() { cancel(); b.closePreviews() }()
 
 	// Telegram sends an update again until a getUpdates call with a higher offset confirms it. After
-	// a restart the offset is 0, so the last batch comes again; Submit ignores the repeats.
+	// a restart the offset is 0, so the last batch comes again; Receive ignores the repeats.
 	var offset int64
 	for {
 		var updates []update

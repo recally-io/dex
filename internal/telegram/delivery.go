@@ -28,13 +28,8 @@ func (b *Bot) Parts(reply chat.Reply) []string {
 	return parts
 }
 
-// Send sends a part without a preview identity.
-func (b *Bot) Send(ctx context.Context, peer, text string) error {
-	return b.SendPart(ctx, peer, "", 1, text)
-}
-
-// SendPart replaces its preview and confirms one final part. The caller stores progress.
-func (b *Bot) SendPart(ctx context.Context, key, deliveryID string, index int, part string) error {
+// Send replaces its preview and confirms one final part. The caller stores progress.
+func (b *Bot) Send(ctx context.Context, key, deliveryID string, index int, part string) error {
 	id, ok := strings.CutPrefix(key, channelPrefix)
 	if !ok {
 		return errors.New("telegram destination is invalid")

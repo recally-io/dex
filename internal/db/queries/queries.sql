@@ -44,9 +44,6 @@ WHERE id = ? AND status = 'pending';
 
 -- name: GetSubmissionReply :one
 SELECT
-    s.status,
-    s.answer,
-    s.reason,
     c.channel_key,
     c.id AS conversation_id
 FROM submissions s

@@ -47,14 +47,13 @@ type AutomationRun struct {
 }
 
 type ChannelCommand struct {
-	SourceKey      string        `json:"source_key"`
-	Peer           string        `json:"peer"`
-	ChannelKey     string        `json:"channel_key"`
-	Command        string        `json:"command"`
-	Answer         string        `json:"answer"`
-	Completed      int64         `json:"completed"`
-	DeliveredParts int64         `json:"delivered_parts"`
-	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
+	SourceKey   string        `json:"source_key"`
+	Peer        string        `json:"peer"`
+	ChannelKey  string        `json:"channel_key"`
+	Command     string        `json:"command"`
+	Answer      string        `json:"answer"`
+	Completed   int64         `json:"completed"`
+	DeliveredAt sql.NullInt64 `json:"delivered_at"`
 }
 
 type ChannelPeer struct {
