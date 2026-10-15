@@ -21,6 +21,8 @@ import (
 
 // This server is the platform boundary. dex, SQLite and the worker remain real.
 type fakeFeishu struct {
+	pingInterval         int
+	conn                 *websocket.Conn
 	server               *httptest.Server
 	events               chan []byte
 	ack                  chan struct{}
@@ -43,7 +45,7 @@ type fakeFeishu struct {
 
 func newFakeFeishu(t *testing.T) *fakeFeishu {
 	t.Helper()
-	f := &fakeFeishu{events: make(chan []byte, 32), ack: make(chan struct{}, 32)}
+	f := &fakeFeishu{pingInterval: 120, events: make(chan []byte, 32), ack: make(chan struct{}, 32)}
 	f.server = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.server.Close)
 	return f
@@ -60,7 +62,7 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`{"code":1}`))
 			return
 		}
-		_ = json.MarshalWrite(w, map[string]any{"code": 0, "data": map[string]any{"URL": "ws://" + r.Host + "/ws?service_id=9", "ClientConfig": map[string]int{"ReconnectCount": 0, "ReconnectInterval": 120, "ReconnectNonce": 0, "PingInterval": 120}}})
+		_ = json.MarshalWrite(w, map[string]any{"code": 0, "data": map[string]any{"URL": "ws://" + r.Host + "/ws?service_id=9", "ClientConfig": map[string]int{"ReconnectCount": 0, "ReconnectInterval": 120, "ReconnectNonce": 0, "PingInterval": f.pingInterval}}})
 	case "/ws":
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -69,6 +71,7 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 		defer func() { _ = conn.CloseNow() }()
 		f.mu.Lock()
 		f.connections++
+		f.conn = conn
 		disconnect := f.disconnect && f.connections == 1
 		f.mu.Unlock()
 		if disconnect {
@@ -85,6 +88,10 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 				_, data, err := conn.Read(ctx)
 				if err != nil {
 					return
+				}
+				if strings.Contains(string(data), "ping") {
+					_ = conn.Write(ctx, websocket.MessageBinary, []byte(strings.Replace(string(data), "ping", "pong", 1)))
+					continue
 				}
 				// Data frames end with the acknowledgement JSON payload; pings do not.
 				if strings.Contains(string(data), `{"code":200}`) {

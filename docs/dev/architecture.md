@@ -365,7 +365,9 @@ Network failures, server errors and rate limits get at most
 token refresh. A token rejection can therefore cause up to 6 API attempts,
 plus token requests. Downloads wait at most 30 seconds for response headers;
 each complete download has a 5-minute deadline, including error body reads.
-Admission and downloads use the socket session context. JSON responses remain
+Downloads use the socket session context.
+Durable admission uses the bot lifetime, so a disconnect cannot cancel a stored
+message while it waits for queue space. JSON responses remain
 bounded to 4 MB and download error responses to 1 MB. Retry delays are
 200 ms and 800 ms; `Retry-After`
 can extend a delay to at most 2 seconds. Reply delivery remains at least once.

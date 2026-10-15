@@ -64,7 +64,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	})
 }
 
-func (b *Bot) receive(ctx, previewCtx context.Context, data []byte) error {
+func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 	m, err := ParseMessage(data)
 	if err != nil {
 		slog.Warn("feishu: ignored invalid message")
@@ -85,7 +85,7 @@ func (b *Bot) receive(ctx, previewCtx context.Context, data []byte) error {
 			slog.Info("feishu: owner not paired; ignored message")
 			return nil
 		}
-		paired, err := b.pair(ctx, m.Sender, strings.TrimSpace(code))
+		paired, err := b.pair(sessionCtx, m.Sender, strings.TrimSpace(code))
 		if err != nil {
 			return err
 		}
@@ -94,7 +94,7 @@ func (b *Bot) receive(ctx, previewCtx context.Context, data []byte) error {
 		}
 		b.cfg.OwnerID = m.Sender
 		b.manager.Report("feishu", channel.Status{State: "running"})
-		_, err = b.client.Send(ctx, m.Sender, "text", TextContent("Paired. Send a message to start."), deliveryUUID("pair:"+m.ID, 0))
+		_, err = b.client.Send(sessionCtx, m.Sender, "text", TextContent("Paired. Send a message to start."), deliveryUUID("pair:"+m.ID, 0))
 		return err
 	}
 	// Pairing codes are control data, including repeated setup events.
@@ -110,14 +110,14 @@ func (b *Bot) receive(ctx, previewCtx context.Context, data []byte) error {
 	}
 	source := "feishu:" + b.cfg.AppID + ":" + m.ID
 	// Avoid a second download or preview when the platform repeats an admitted event.
-	if _, err := b.q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true}); err == nil {
+	if _, err := b.q.GetSubmissionBySource(sessionCtx, sql.NullString{String: source, Valid: true}); err == nil {
 		return nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	msg := chat.Message{Content: m.Text}
 	for _, resource := range m.Resources {
-		reader, err := b.client.Download(ctx, m.ID, resource.Key, resource.Type)
+		reader, err := b.client.Download(sessionCtx, m.ID, resource.Key, resource.Type)
 		if err != nil {
 			if permanentAPIError(err) {
 				return nil
@@ -136,17 +136,17 @@ func (b *Bot) receive(ctx, previewCtx context.Context, data []byte) error {
 		msg.Attachments = append(msg.Attachments, attachment)
 	}
 	peer := "feishu:" + m.Sender
-	if err := b.manager.Receive(ctx, peer, source, msg); err != nil {
+	if err := b.manager.Receive(botCtx, peer, source, msg); err != nil {
 		return err
 	}
-	id, err := b.q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
+	id, err := b.q.GetSubmissionBySource(sessionCtx, sql.NullString{String: source, Valid: true})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	row, err := b.q.GetSubmission(ctx, id)
+	row, err := b.q.GetSubmission(sessionCtx, id)
 	if err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func (b *Bot) receive(ctx, previewCtx context.Context, data []byte) error {
 	// Final delivery takes the same lock, so a fast answer cannot pass this preview.
 	p := &preview{}
 	b.previews[id] = p
-	streamCtx, cancel := context.WithCancel(previewCtx)
+	streamCtx, cancel := context.WithCancel(botCtx)
 	p.cancel = cancel
 	b.wg.Go(func() { b.stream(streamCtx, id, row.ConversationID, m.Sender, p) })
 	return nil
