@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 	"uuid"
@@ -90,7 +91,8 @@ func TestUserStopsWhileMaintenanceCheckReportsBusy(t *testing.T) {
 		}
 	}
 	checked, deliver := make(chan struct{}), make(chan struct{})
-	defer close(deliver)
+	releaseResponse := sync.OnceFunc(func() { close(deliver) })
+	defer releaseResponse()
 	aborted := make(chan struct{}, 1)
 	call := maintenanceCall(func(ctx context.Context, method string, params, result any) error {
 		err := w.Call(ctx, method, params, result)
@@ -117,17 +119,35 @@ func TestUserStopsWhileMaintenanceCheckReportsBusy(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("maintenance check did not return:", ctx.Err())
 	}
-	// When /stop arrives before control receives the busy response, it must reach the worker.
-	if err := m.Receive(ctx, "telegram:7", "stop-during-check", chat.Message{Content: "/stop"}); err != nil {
-		t.Fatal(err)
-	}
+	// When /stop arrives during the check, it must abort after the Busy result.
+	stopped := make(chan error, 1)
+	go func() {
+		stopped <- m.Receive(ctx, "telegram:7", "stop-during-check", chat.Message{Content: "/stop"})
+	}()
+	// A stop that completes before the result must still have reached worker abort.
 	select {
-	case <-aborted:
-	default:
-		t.Fatal("/stop skipped the worker abort while quiesce was unconfirmed")
+	case err := <-stopped:
+		if err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-aborted:
+		default:
+			t.Fatal("/stop skipped the worker abort while quiesce was unconfirmed")
+		}
+	case <-time.After(time.Second):
+		releaseResponse()
+		if err := <-stopped; err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-aborted:
+		default:
+			t.Fatal("/stop skipped the worker abort after Busy")
+		}
 	}
 	// Then the delayed maintenance check still reports busy.
-	deliver <- struct{}{}
+	releaseResponse()
 	if err := <-acquired; !errors.Is(err, chat.ErrMaintenanceBusy) {
 		t.Fatalf("maintenance result: %v", err)
 	}
