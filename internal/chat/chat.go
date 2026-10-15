@@ -16,9 +16,9 @@ import (
 	"unicode/utf8"
 	"uuid"
 
-	"github.com/vaayne/dex/internal/db/sqlc"
-	"github.com/vaayne/dex/internal/dream"
-	"github.com/vaayne/dex/internal/worker"
+	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/dream"
+	"github.com/recally-io/dex/internal/worker"
 )
 
 // Caller sends requests to the worker. *worker.Worker implements it.

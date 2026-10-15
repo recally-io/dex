@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vaayne/dex/internal/app"
+	"github.com/recally-io/dex/internal/app"
 )
 
 type automationInfo struct {

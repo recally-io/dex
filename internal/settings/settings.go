@@ -17,10 +17,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vaayne/dex/internal/chat"
-	"github.com/vaayne/dex/internal/db/sqlc"
-	"github.com/vaayne/dex/internal/telegram"
-	"github.com/vaayne/dex/internal/worker"
+	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/telegram"
+	"github.com/recally-io/dex/internal/worker"
 )
 
 // ErrInvalid wraps the errors of a change that the service refuses.

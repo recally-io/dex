@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 
-	"github.com/vaayne/dex/internal/api"
+	"github.com/recally-io/dex/internal/api"
 )
 
 func (h *handler) ListAutomations(ctx context.Context, _ api.ListAutomationsRequestObject) (api.ListAutomationsResponseObject, error) {

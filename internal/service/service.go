@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-const label = "com.vaayne.dex"
+const label = "io.recally.dex"
 
 // Manager uses the current user's service domain and definition directory.
 type Manager struct{ home, config string }

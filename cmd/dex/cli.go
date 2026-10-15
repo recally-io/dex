@@ -18,8 +18,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/vaayne/dex/internal/service"
-	"github.com/vaayne/dex/internal/update"
+	"github.com/recally-io/dex/internal/service"
+	"github.com/recally-io/dex/internal/update"
 )
 
 var errUsage = errors.New("usage error")

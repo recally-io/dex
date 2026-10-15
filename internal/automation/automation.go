@@ -19,7 +19,7 @@ import (
 	"unicode/utf8"
 	"uuid"
 
-	"github.com/vaayne/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 // Channel starts the channel key of an automation's chats: automation:<id> for an automation

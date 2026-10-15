@@ -21,7 +21,7 @@ import (
 	"unicode/utf8"
 	"uuid"
 
-	"github.com/vaayne/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 // Channel starts the channel key of a dream. Dreams are chats that the chat list and the API do not

@@ -1,4 +1,4 @@
-module github.com/vaayne/dex
+module github.com/recally-io/dex
 
 go 1.27.2
 

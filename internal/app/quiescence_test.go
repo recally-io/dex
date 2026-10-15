@@ -12,9 +12,9 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/vaayne/dex/internal/chat"
-	"github.com/vaayne/dex/internal/worker"
-	"github.com/vaayne/dex/internal/workerbin"
+	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/worker"
+	"github.com/recally-io/dex/internal/workerbin"
 )
 
 // startMaintenanceWorker uses the real protocol without control replay, as after a

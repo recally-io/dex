@@ -18,10 +18,10 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/vaayne/dex/internal/api"
-	"github.com/vaayne/dex/internal/chat"
-	"github.com/vaayne/dex/internal/db/sqlc"
-	"github.com/vaayne/dex/internal/worker"
+	"github.com/recally-io/dex/internal/api"
+	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/worker"
 )
 
 const (

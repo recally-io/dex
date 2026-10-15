@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/vaayne/dex/internal/worker"
+	"github.com/recally-io/dex/internal/worker"
 )
 
 var ErrMaintenanceBusy = errors.New("maintenance is busy")

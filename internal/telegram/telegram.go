@@ -19,7 +19,7 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"github.com/vaayne/dex/internal/chat"
+	"github.com/recally-io/dex/internal/chat"
 )
 
 const channelPrefix = "telegram:"

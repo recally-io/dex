@@ -19,8 +19,8 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/vaayne/dex/internal/app"
-	"github.com/vaayne/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/app"
+	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 // These tests run the real embedded worker with pi-ai's faux provider: model faux/echo answers
