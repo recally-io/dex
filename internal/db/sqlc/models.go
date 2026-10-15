@@ -117,7 +117,7 @@ type WechatRuntime struct {
 	Owner            string `json:"owner"`
 	Cursor           string `json:"cursor"`
 	ContextToken     string `json:"context_token"`
-	ContextMessageID int64  `json:"context_message_id"`
+	ContextMessageID string `json:"context_message_id"`
 	PauseUntil       int64  `json:"pause_until"`
 }
 

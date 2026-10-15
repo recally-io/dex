@@ -13,6 +13,9 @@ DELETE FROM wechat_settings WHERE id = 1;
 INSERT INTO wechat_runtime (bot_id, owner) VALUES (?, ?)
 ON CONFLICT (bot_id, owner) DO UPDATE SET bot_id = excluded.bot_id RETURNING *;
 
+-- name: GetWechatRuntime :one
+SELECT * FROM wechat_runtime WHERE bot_id = ? AND owner = ?;
+
 -- name: SetWechatCursor :exec
 UPDATE wechat_runtime SET cursor = ? WHERE bot_id = ? AND owner = ?;
 

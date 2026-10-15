@@ -38,7 +38,14 @@ to read in an afternoon.
   accepts images and files with the same limits. It uses voice transcription
   as text and shows a placeholder for videos.
 - WeChat setup: scan a QR code and confirm on the phone. Only that owner
-  can send private messages to the agent. A stale login asks for a new scan.
+  can send private messages to the agent. QR status polling stops when the page
+  closes. Remote QR expiry permits at most three replacements per attempt;
+  there is no fixed five-minute login deadline. Local activation must succeed
+  before the page reports a connection. A failed save can retry the same
+  confirmation. A stale login asks for a new scan. Its one-hour API cooldown
+  survives a restart; a successful new login clears it. Temporary receive or
+  storage failures retry without a settings change. CDN 408 and 429 retain the
+  message for retry. A replay does not download admitted attachments again.
 - Timers: scheduled messages to an agent.
 
 Status: the web UI, Telegram, WeChat, durable messages, timers, and the worker are

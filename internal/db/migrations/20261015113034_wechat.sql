@@ -13,7 +13,7 @@ CREATE TABLE wechat_runtime (
     owner TEXT NOT NULL,
     cursor TEXT NOT NULL DEFAULT '',
     context_token TEXT NOT NULL DEFAULT '',
-    context_message_id INTEGER NOT NULL DEFAULT 0,
+    context_message_id TEXT NOT NULL DEFAULT '00000000000000000000',
     pause_until INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (bot_id, owner)
 ) STRICT;

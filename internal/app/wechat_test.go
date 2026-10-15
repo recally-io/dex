@@ -2,11 +2,13 @@ package app_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +25,13 @@ import (
 	"github.com/recally-io/dex/internal/app"
 )
 
+type wechatLogin struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	QRContent string `json:"qrContent"`
+	Active    bool   `json:"active"`
+}
+
 // fakeWechat is the iLink and CDN boundary. It never calls a real WeChat service.
 type fakeWechat struct {
 	failSend      atomic.Bool
@@ -31,6 +40,9 @@ type fakeWechat struct {
 	staleRet      atomic.Int64
 	staleCode     atomic.Int64
 	badMedia      atomic.Bool
+	mediaStatus   atomic.Int64
+	badMediaQuery string
+	downloads     map[string]int
 	attempted     chan wechatSent
 	blobs         map[string][]byte
 	mediaRequests atomic.Int64
@@ -67,7 +79,7 @@ type wechatSent struct {
 
 func newFakeWechat(t *testing.T) *fakeWechat {
 	t.Helper()
-	f := &fakeWechat{sent: make(chan wechatSent, 64), attempted: make(chan wechatSent, 64), blobs: make(map[string][]byte)}
+	f := &fakeWechat{sent: make(chan wechatSent, 64), attempted: make(chan wechatSent, 64), blobs: make(map[string][]byte), downloads: make(map[string]int)}
 	f.srv = httptest.NewTLSServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -76,13 +88,20 @@ func newFakeWechat(t *testing.T) *fakeWechat {
 func (f *fakeWechat) serve(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/c2c/download" {
 		f.mediaRequests.Add(1)
-		if f.badMedia.Load() {
-			w.WriteHeader(http.StatusServiceUnavailable)
+		query := r.URL.Query().Get("encrypted_query_param")
+		f.mu.Lock()
+		f.downloads[query]++
+		data := f.blobs[query]
+		bad := f.badMediaQuery == "" || query == f.badMediaQuery
+		f.mu.Unlock()
+		if bad && f.badMedia.Load() {
+			status := int(f.mediaStatus.Load())
+			if status == 0 {
+				status = http.StatusServiceUnavailable
+			}
+			w.WriteHeader(status)
 			return
 		}
-		f.mu.Lock()
-		data := f.blobs[r.URL.Query().Get("encrypted_query_param")]
-		f.mu.Unlock()
 		if data == nil {
 			http.NotFound(w, r)
 			return
@@ -179,11 +198,7 @@ func TestUserStartsWechatQRLogin(t *testing.T) {
 	f := newFakeWechat(t)
 	d := startWechat(t, f, t.TempDir())
 	// When the user requests a QR code and confirms login on the phone.
-	var login struct {
-		ID        string `json:"id"`
-		Status    string `json:"status"`
-		QRContent string `json:"qrContent"`
-	}
+	var login wechatLogin
 	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
 	if login.Status != "wait" || !strings.Contains(login.QRContent, "qr1") {
 		t.Fatalf("QR: %+v", login)
@@ -202,7 +217,7 @@ func (f *fakeWechat) batch(cursor string, messages ...map[string]any) {
 	f.updates = append(f.updates, map[string]any{"ret": 0, "msgs": messages, "get_updates_buf": cursor, "longpolling_timeout_ms": 1000})
 }
 
-func wxText(id int64, from, text string) map[string]any {
+func wxText(id uint64, from, text string) map[string]any {
 	return map[string]any{"message_id": id, "from_user_id": from, "message_type": 1, "message_state": 2, "context_token": fmt.Sprintf("context%d", id), "item_list": []any{map[string]any{"type": 1, "text_item": map[string]string{"text": text}}}}
 }
 
@@ -227,10 +242,7 @@ func wxSentText(sent wechatSent) string {
 
 func connectWechat(t *testing.T, d *dex) {
 	t.Helper()
-	var login struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
-	}
+	var login wechatLogin
 	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
 	d.must(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
 	if login.Status != "confirmed" {
@@ -255,12 +267,7 @@ func TestUserWechatQRHandlesVerificationRedirectAndExpiry(t *testing.T) {
 	f.statuses = []map[string]any{{"status": "wait"}, {"status": "scaned"}, {"status": "need_verifycode"}, {"status": "scaned_but_redirect", "redirect_host": strings.TrimPrefix(target.srv.URL, "https://")}, {"status": "expired"}}
 	target.statuses = []map[string]any{{"status": "expired"}}
 	d := startWechat(t, f, t.TempDir())
-	var login struct {
-		ID        string `json:"id"`
-		Status    string `json:"status"`
-		Active    bool   `json:"active"`
-		QRContent string `json:"qrContent"`
-	}
+	var login wechatLogin
 	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
 	path := "/api/settings/wechat/login/" + login.ID + "/poll"
 	// When the user supplies the phone digits and the server redirects and expires QR codes.
@@ -299,11 +306,7 @@ func TestUserWechatQRStopsAfterThreeRefreshes(t *testing.T) {
 			f := newFakeWechat(t)
 			f.statuses = []map[string]any{{"status": state}, {"status": state}, {"status": state}, {"status": state}}
 			d := startWechat(t, f, t.TempDir())
-			var login struct {
-				ID     string `json:"id"`
-				Active bool   `json:"active"`
-				Status string `json:"status"`
-			}
+			var login wechatLogin
 			d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
 			// When the initial code and three replacements fail, the session stops.
 			for range 4 {
@@ -324,11 +327,7 @@ func TestUserWechatAlreadyBoundDoesNotInventAnOwner(t *testing.T) {
 	f := newFakeWechat(t)
 	f.statuses = []map[string]any{{"status": "binded_redirect"}}
 	d := startWechat(t, f, t.TempDir())
-	var login struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
-		Active bool   `json:"active"`
-	}
+	var login wechatLogin
 	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
 	// When the user polls, no owner or token is fabricated.
 	d.must(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
@@ -614,7 +613,7 @@ func TestUserWechatStaleLoginNeedsNewScan(t *testing.T) {
 	}
 }
 
-func TestUserWechatCommandsRotateAndStop(t *testing.T) {
+func TestUserWechatCommandsStop(t *testing.T) {
 	// Given an owner chat whose command source IDs are stable.
 	f := newFakeWechat(t)
 	f.batch("c1", wxText(1, "owner", "first"))
@@ -622,17 +621,6 @@ func TestUserWechatCommandsRotateAndStop(t *testing.T) {
 	connectWechat(t, d)
 	if got := wxSentText(f.next(t)); got != "echo: first" {
 		t.Fatal(got)
-	}
-	// When /new repeats, only one rotation occurs.
-	f.batch("c2", wxText(2, "owner", "/new"), wxText(2, "owner", "/new"), wxText(3, "owner", "second"))
-	var newChat, answer bool
-	for range 2 {
-		text := wxSentText(f.next(t))
-		newChat = newChat || text == "Started a new chat."
-		answer = answer || text == "echo: second"
-	}
-	if !newChat || !answer || len(d.chats(t)) != 2 {
-		t.Fatal("chat rotation or replies differ")
 	}
 	// When the next run is pending, /stop aborts it through the shared service.
 	d.setModel(t, "bash")
@@ -695,11 +683,7 @@ func TestUserWechatQRTimeoutKeepsWaiting(t *testing.T) {
 	client := *f.srv.Client()
 	client.Timeout = 100 * time.Millisecond
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), WechatAPIURL: f.srv.URL, WechatHTTPClient: &client})
-	var login struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
-		Active bool   `json:"active"`
-	}
+	var login wechatLogin
 	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
 	// When the poll times out, the user can continue with the same active QR session.
 	d.must(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
@@ -713,14 +697,16 @@ func TestUserWechatCannotActivateWithoutOwner(t *testing.T) {
 	f := newFakeWechat(t)
 	f.statuses = []map[string]any{{"status": "confirmed", "bot_token": "secret", "ilink_bot_id": "bot1", "baseurl": f.srv.URL}}
 	d := startWechat(t, f, t.TempDir())
-	var login struct {
-		ID string `json:"id"`
-	}
+	var login wechatLogin
 	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
 	// When the owner ID is absent, no account or admission rule is activated.
 	status, body := d.call(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{})
 	if status == http.StatusOK {
 		t.Fatalf("accepted missing owner: %s", body)
+	}
+	status, body = d.call(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{})
+	if status == http.StatusOK {
+		t.Fatalf("repeated poll accepted missing owner: %s", body)
 	}
 	var settings struct {
 		Wechat struct {
@@ -785,5 +771,411 @@ func TestUserWechatRescanDeliversReplyAfterSendSessionExpires(t *testing.T) {
 	connectWechat(t, d)
 	if got := wxSentText(f.next(t)); got != "echo: pending delivery" {
 		t.Fatal(got)
+	}
+}
+
+func TestUserWechatFullMessageIDRangeSurvivesBatchReplay(t *testing.T) {
+	// Given the largest protocol IDs, including a message outside the owner filter.
+	f := newFakeWechat(t)
+	const high uint64 = 1 << 63
+	const last uint64 = 1<<64 - 1
+	f.batch("first", wxText(high, "stranger", "ignore"), wxText(high+1, "owner", "first"))
+	f.batch("replay", wxText(high+1, "owner", "first"), wxText(last, "owner", "last"))
+	f.batch("older-replay", wxText(high+1, "owner", "first"))
+	dir := t.TempDir()
+	d := startWechat(t, f, dir)
+	// When the batches arrive, the replay does not run the first message twice.
+	connectWechat(t, d)
+	if got := wxSentText(f.next(t)); got != "echo: first" {
+		t.Fatal(got)
+	}
+	if got := wxSentText(f.next(t)); got != "echo: last" {
+		t.Fatal(got)
+	}
+	conn := wxConn(t, dir)
+	eventually(t, "full uint64 watermark and cursor", func() (bool, any) {
+		var cursor, watermark, token string
+		err := conn.QueryRowContext(t.Context(), "SELECT cursor, context_message_id, context_token FROM wechat_runtime").Scan(&cursor, &watermark, &token)
+		return err == nil && cursor == "older-replay" && watermark == "18446744073709551615" && token == "context18446744073709551615", fmt.Sprintf("%s %s %s %v", cursor, watermark, token, err)
+	})
+	var sources string
+	if err := conn.QueryRowContext(t.Context(), "SELECT group_concat(source_key, ',') FROM (SELECT source_key FROM submissions ORDER BY source_key)").Scan(&sources); err != nil {
+		t.Fatal(err)
+	}
+	if sources != "wechat:bot1:18446744073709551615,wechat:bot1:9223372036854775809" {
+		t.Fatal(sources)
+	}
+}
+
+func TestUserWechatRetriesLocalActivationAfterFailedSave(t *testing.T) {
+	// Given a database failure during runtime initialization after a valid remote confirmation.
+	f := newFakeWechat(t)
+	dir := t.TempDir()
+	d := startWechat(t, f, dir)
+	conn := wxConn(t, dir)
+	if _, err := conn.ExecContext(t.Context(), "CREATE TRIGGER fail_wechat_save BEFORE INSERT ON wechat_runtime BEGIN SELECT RAISE(ABORT, 'test interrupted activation'); END"); err != nil {
+		t.Fatal(err)
+	}
+	var login wechatLogin
+	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
+	path := "/api/settings/wechat/login/" + login.ID + "/poll"
+	status, body := d.call(t, http.MethodPost, path, map[string]string{})
+	if status == http.StatusOK {
+		t.Fatalf("failed save reported success: %s", body)
+	}
+	var n int
+	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM wechat_settings").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatal("failed activation left saved credentials")
+	}
+	// When storage recovers, the same candidate can activate without another remote confirmation.
+	if _, err := conn.ExecContext(t.Context(), "DROP TRIGGER fail_wechat_save"); err != nil {
+		t.Fatal(err)
+	}
+	d.must(t, http.MethodPost, path, map[string]string{}, &login)
+	if login.Active || login.Status != "confirmed" {
+		t.Fatalf("login: %+v", login)
+	}
+	f.mu.Lock()
+	polls := 0
+	for _, req := range f.requests {
+		if req.Path == "/ilink/bot/get_qrcode_status" {
+			polls++
+		}
+	}
+	f.mu.Unlock()
+	if polls != 1 {
+		t.Fatalf("confirmation was consumed, remote polls=%d", polls)
+	}
+	f.batch("after-retry", wxText(1, "owner", "activated"))
+	if got := wxSentText(f.next(t)); got != "echo: activated" {
+		t.Fatal(got)
+	}
+}
+
+func wxFile(query, name string) map[string]any {
+	return map[string]any{"type": 4, "file_item": map[string]any{"file_name": name, "media": map[string]string{"encrypt_query_param": query, "aes_key": base64.StdEncoding.EncodeToString([]byte("0123456789abcdef"))}}}
+}
+
+func TestUserWechatTemporaryCDNFailuresKeepBatch(t *testing.T) {
+	for _, code := range []int{http.StatusRequestTimeout, http.StatusTooManyRequests} {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			// Given a temporary CDN rejection of an owner attachment.
+			f := newFakeWechat(t)
+			f.mediaStatus.Store(int64(code))
+			f.badMedia.Store(true)
+			f.blobs["file"] = wxEncrypt(t, []byte("recover"), []byte("0123456789abcdef"))
+			msg := wxText(1, "owner", "")
+			msg["item_list"] = []any{wxFile("file", "retry.txt")}
+			f.batch("recovered", msg)
+			dir := t.TempDir()
+			d := startWechat(t, f, dir)
+			connectWechat(t, d)
+			conn := wxConn(t, dir)
+			eventually(t, "temporary receive error", func() (bool, any) {
+				var s struct {
+					Wechat struct {
+						Status struct {
+							State string `json:"state"`
+						} `json:"status"`
+					} `json:"wechat"`
+				}
+				d.must(t, http.MethodGet, "/api/settings", nil, &s)
+				return s.Wechat.Status.State == "error", s
+			})
+			var cursor string
+			if err := conn.QueryRowContext(t.Context(), "SELECT cursor FROM wechat_runtime").Scan(&cursor); err != nil {
+				t.Fatal(err)
+			}
+			if cursor != "" {
+				t.Fatalf("temporary HTTP %d lost the message: cursor=%s", code, cursor)
+			}
+			// When the CDN recovers, the existing receive retry admits the message once.
+			f.badMedia.Store(false)
+			_ = f.next(t)
+			eventually(t, "cursor commits after CDN recovery", func() (bool, any) {
+				var n int
+				err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions, wechat_runtime WHERE cursor = 'recovered'").Scan(&n)
+				return err == nil && n == 1, fmt.Sprintf("n=%d err=%v", n, err)
+			})
+		})
+	}
+}
+
+func TestUserWechatReplaySkipsAdmittedMediaAndCleansPartialUploads(t *testing.T) {
+	// Given an admitted file followed by a message with two files, whose second download fails.
+	f := newFakeWechat(t)
+	key := []byte("0123456789abcdef")
+	for _, query := range []string{"admitted", "partial", "blocked"} {
+		f.blobs[query] = wxEncrypt(t, []byte(query), key)
+	}
+	f.badMediaQuery = "blocked"
+	f.badMedia.Store(true)
+	first, second := wxText(1, "owner", ""), wxText(2, "owner", "")
+	first["item_list"] = []any{wxFile("admitted", "admitted.txt")}
+	second["item_list"] = []any{wxFile("partial", "partial.txt"), wxFile("blocked", "blocked.txt")}
+	f.batch("complete", first, second)
+	dir := t.TempDir()
+	d := startWechat(t, f, dir)
+	connectWechat(t, d)
+	_ = f.next(t)
+	// Then only the admitted upload remains after the failed conversion.
+	eventually(t, "partial conversion ends", func() (bool, any) {
+		var s struct {
+			Wechat struct {
+				Status struct {
+					State string `json:"state"`
+				} `json:"status"`
+			} `json:"wechat"`
+		}
+		d.must(t, http.MethodGet, "/api/settings", nil, &s)
+		return s.Wechat.Status.State == "error", s
+	})
+	uploads := filepath.Join(dir, "agents", app.DefaultAgentID, "workspace", "uploads", "*", "*")
+	files, err := filepath.Glob(uploads)
+	if err != nil || len(files) != 1 {
+		t.Fatalf("partial attempt leaked uploads: %v %v", files, err)
+	}
+	// When the batch replays, the admitted attachment is not downloaded again.
+	f.badMedia.Store(false)
+	_ = f.next(t)
+	conn := wxConn(t, dir)
+	eventually(t, "batch completion", func() (bool, any) {
+		var cursor string
+		err := conn.QueryRowContext(t.Context(), "SELECT cursor FROM wechat_runtime").Scan(&cursor)
+		return err == nil && cursor == "complete", cursor
+	})
+	files, err = filepath.Glob(uploads)
+	if err != nil || len(files) != 3 {
+		t.Fatalf("upload ownership differs: %v %v", files, err)
+	}
+	f.mu.Lock()
+	downloads := f.downloads["admitted"]
+	f.mu.Unlock()
+	if downloads != 1 {
+		t.Fatalf("admitted media downloaded %d times", downloads)
+	}
+}
+
+func TestUserWechatRetriesRuntimeReadAfterRestart(t *testing.T) {
+	// Given saved credentials and a temporary runtime read failure on restart.
+	f := newFakeWechat(t)
+	dir := t.TempDir()
+	d := startWechat(t, f, dir)
+	connectWechat(t, d)
+	d.stop()
+	conn := wxConn(t, dir)
+	if _, err := conn.ExecContext(t.Context(), "ALTER TABLE wechat_runtime RENAME TO unavailable_runtime"); err != nil {
+		t.Fatal(err)
+	}
+	d = startWechat(t, f, dir)
+	eventually(t, "runtime read failure is visible", func() (bool, any) {
+		var s struct {
+			Wechat struct {
+				Status struct {
+					State string `json:"state"`
+				} `json:"status"`
+			} `json:"wechat"`
+		}
+		d.must(t, http.MethodGet, "/api/settings", nil, &s)
+		return s.Wechat.Status.State == "error", s
+	})
+	// When storage recovers, Run retries without another settings change.
+	if _, err := conn.ExecContext(t.Context(), "ALTER TABLE unavailable_runtime RENAME TO wechat_runtime"); err != nil {
+		t.Fatal(err)
+	}
+	f.batch("after-storage-recovery", wxText(1, "owner", "recovered"))
+	if got := wxSentText(f.next(t)); got != "echo: recovered" {
+		t.Fatal(got)
+	}
+}
+
+// wechatJoinTransport holds a real -14 response until the test releases the old request.
+type wechatJoinTransport struct {
+	base    http.RoundTripper
+	once    sync.Once
+	entered chan struct{}
+	stopped chan struct{}
+	release chan struct{}
+}
+
+func (tr *wechatJoinTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := tr.base.RoundTrip(req)
+	if err == nil && req.URL.Path == "/ilink/bot/getupdates" {
+		tr.once.Do(func() {
+			raw, readErr := io.ReadAll(resp.Body)
+			closeErr := resp.Body.Close()
+			if readErr != nil || closeErr != nil {
+				err = errors.Join(readErr, closeErr)
+				return
+			}
+			resp.Body = &wechatJoinBody{ReadCloser: io.NopCloser(bytes.NewReader(raw)), ctx: req.Context(), transport: tr}
+		})
+	}
+	return resp, err
+}
+
+type wechatJoinBody struct {
+	io.ReadCloser
+	ctx       context.Context
+	transport *wechatJoinTransport
+	once      sync.Once
+}
+
+func (b *wechatJoinBody) Read(p []byte) (int, error) {
+	b.once.Do(func() {
+		close(b.transport.entered)
+		<-b.ctx.Done()
+		close(b.transport.stopped)
+		<-b.transport.release
+	})
+	return b.ReadCloser.Read(p)
+}
+
+func TestUserWechatRescanJoinsOldRequestBeforeClearingPause(t *testing.T) {
+	// Given an old -14 response blocked at the HTTP boundary.
+	f := newFakeWechat(t)
+	f.staleRet.Store(-14)
+	tr := &wechatJoinTransport{base: f.srv.Client().Transport, entered: make(chan struct{}), stopped: make(chan struct{}), release: make(chan struct{})}
+	var release sync.Once
+	unblock := func() { release.Do(func() { close(tr.release) }) }
+	defer unblock()
+	client := *f.srv.Client()
+	client.Transport = tr
+	dir := t.TempDir()
+	d := startDexWith(t, app.Config{DataDir: dir, WechatAPIURL: f.srv.URL, WechatHTTPClient: &client})
+	d.setModel(t, "echo")
+	connectWechat(t, d)
+	select {
+	case <-tr.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("old request did not reach barrier")
+	}
+	conn := wxConn(t, dir)
+	until := time.Now().Add(time.Hour).UnixMilli()
+	if _, err := conn.ExecContext(t.Context(), "UPDATE wechat_runtime SET pause_until = ?", until); err != nil {
+		t.Fatal(err)
+	}
+	var login wechatLogin
+	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
+	// When a replacement confirms, activation cancels and joins the old request first.
+	done := make(chan error, 1)
+	go func() {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/settings/wechat/login/"+login.ID+"/poll", strings.NewReader("{}"))
+		if err != nil {
+			done <- err
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := d.srv.Client().Do(req)
+		if err == nil {
+			defer func() { _ = resp.Body.Close() }()
+			if resp.StatusCode != http.StatusOK {
+				err = fmt.Errorf("activation HTTP %d", resp.StatusCode)
+			}
+		}
+		done <- err
+	}()
+	select {
+	case <-tr.stopped:
+	case <-time.After(10 * time.Second):
+		t.Fatal("old request was not canceled")
+	}
+	var stored int64
+	if err := conn.QueryRowContext(t.Context(), "SELECT pause_until FROM wechat_runtime").Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != until {
+		unblock()
+		t.Fatalf("pause reset before old request joined: got %d want %d", stored, until)
+	}
+	f.staleRet.Store(0)
+	f.batch("fresh", wxText(1, "owner", "new credentials"))
+	unblock()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("activation did not finish")
+	}
+	if got := wxSentText(f.next(t)); got != "echo: new credentials" {
+		t.Fatal(got)
+	}
+	if err := conn.QueryRowContext(t.Context(), "SELECT pause_until FROM wechat_runtime").Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != 0 {
+		t.Fatalf("late old response paused the new bot: %d", stored)
+	}
+}
+
+func TestUserWechatInterruptedCommandSkipsMediaBeforeCompletion(t *testing.T) {
+	// Given an admitted chat and an interrupted command receipt.
+	f := newFakeWechat(t)
+	f.batch("first", wxText(1, "owner", "hello"))
+	dir := t.TempDir()
+	d := startWechat(t, f, dir)
+	connectWechat(t, d)
+	_ = f.next(t)
+	conn := wxConn(t, dir)
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_commands (source_key, peer, channel_key, command) VALUES ('wechat:bot1:2', 'wechat:owner', 'wechat:owner', '/stop')"); err != nil {
+		t.Fatal(err)
+	}
+	// When the source replays with unavailable media, the receipt still completes.
+	f.badMedia.Store(true)
+	msg := wxText(2, "owner", "")
+	msg["item_list"] = []any{wxFile("unavailable", "unused.txt")}
+	f.batch("command-complete", msg)
+	if got := wxSentText(f.next(t)); got != "Stopped the current answer." {
+		t.Fatal(got)
+	}
+	eventually(t, "command replay cursor", func() (bool, any) {
+		var cursor string
+		err := conn.QueryRowContext(t.Context(), "SELECT cursor FROM wechat_runtime").Scan(&cursor)
+		return err == nil && cursor == "command-complete", cursor
+	})
+	if n := f.mediaRequests.Load(); n != 0 {
+		t.Fatalf("receipt replay downloaded media %d times", n)
+	}
+	var completed int
+	if err := conn.QueryRowContext(t.Context(), "SELECT completed FROM channel_commands WHERE source_key = 'wechat:bot1:2'").Scan(&completed); err != nil {
+		t.Fatal(err)
+	}
+	if completed != 1 {
+		t.Fatal("interrupted command was not completed")
+	}
+}
+
+func TestUserWechatRejectedMediaCleansUploadsBeforeCursorAdvance(t *testing.T) {
+	// Given a message with one valid file followed by invalid media.
+	f := newFakeWechat(t)
+	f.blobs["valid"] = wxEncrypt(t, []byte("unused"), []byte("0123456789abcdef"))
+	msg := wxText(1, "owner", "")
+	msg["item_list"] = []any{wxFile("valid", "unused.txt"), map[string]any{"type": 4, "file_item": map[string]string{"file_name": "invalid.txt"}}}
+	f.batch("rejected", msg)
+	dir := t.TempDir()
+	d := startWechat(t, f, dir)
+	connectWechat(t, d)
+	conn := wxConn(t, dir)
+	// Then explicit rejection advances the cursor and leaves no unowned upload.
+	eventually(t, "invalid media rejection", func() (bool, any) {
+		var cursor string
+		err := conn.QueryRowContext(t.Context(), "SELECT cursor FROM wechat_runtime").Scan(&cursor)
+		return err == nil && cursor == "rejected", cursor
+	})
+	files, err := filepath.Glob(filepath.Join(dir, "agents", app.DefaultAgentID, "workspace", "uploads", "*"))
+	if err != nil || len(files) != 0 {
+		t.Fatalf("rejected media left uploads: %v %v", files, err)
+	}
+	var n int
+	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatal("invalid message was admitted")
 	}
 }

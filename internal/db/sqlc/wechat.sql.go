@@ -42,6 +42,29 @@ func (q *Queries) EnsureWechatRuntime(ctx context.Context, arg EnsureWechatRunti
 	return i, err
 }
 
+const getWechatRuntime = `-- name: GetWechatRuntime :one
+SELECT bot_id, owner, cursor, context_token, context_message_id, pause_until FROM wechat_runtime WHERE bot_id = ? AND owner = ?
+`
+
+type GetWechatRuntimeParams struct {
+	BotID string `json:"bot_id"`
+	Owner string `json:"owner"`
+}
+
+func (q *Queries) GetWechatRuntime(ctx context.Context, arg GetWechatRuntimeParams) (WechatRuntime, error) {
+	row := q.db.QueryRowContext(ctx, getWechatRuntime, arg.BotID, arg.Owner)
+	var i WechatRuntime
+	err := row.Scan(
+		&i.BotID,
+		&i.Owner,
+		&i.Cursor,
+		&i.ContextToken,
+		&i.ContextMessageID,
+		&i.PauseUntil,
+	)
+	return i, err
+}
+
 const getWechatSettings = `-- name: GetWechatSettings :one
 SELECT id, token, base_url, bot_id, owner FROM wechat_settings WHERE id = 1
 `
@@ -66,7 +89,7 @@ WHERE bot_id = ?3 AND owner = ?4 AND context_message_id <= ?2
 
 type SetWechatContextParams struct {
 	ContextToken string `json:"context_token"`
-	MessageID    int64  `json:"message_id"`
+	MessageID    string `json:"message_id"`
 	BotID        string `json:"bot_id"`
 	Owner        string `json:"owner"`
 }

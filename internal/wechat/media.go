@@ -136,7 +136,7 @@ func (b *Bot) download(ctx context.Context, ref media, hexKey string) ([]byte, e
 		return nil, networkError(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+	if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusRequestTimeout && resp.StatusCode != http.StatusTooManyRequests {
 		return nil, errInvalidMessage
 	}
 	if resp.StatusCode != http.StatusOK {

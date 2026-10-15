@@ -94,7 +94,7 @@ type Service struct {
 	onWechat      func(*wechat.Config)
 	login         *wechat.Login
 	loginID       string
-	wechatEpoch   uint64
+	wechatDB      *sql.DB
 	ChannelStatus func(string) channel.Status
 	q             *sqlc.Queries
 	worker        worker.CallFunc

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"uuid"
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -23,8 +24,9 @@ type Wechat struct {
 var verifyDigits = regexp.MustCompile(`^[0-9]{1,16}$`)
 
 // ConfigureWechat connects the runtime before the HTTP server starts.
-func (s *Service) ConfigureWechat(options wechat.Options, onChange func(*wechat.Config)) {
+func (s *Service) ConfigureWechat(options wechat.Options, conn *sql.DB, onChange func(*wechat.Config)) {
 	s.wechatOptions = options
+	s.wechatDB = conn
 	s.onWechat = onChange
 }
 
@@ -64,21 +66,20 @@ func (s *Service) wechatView(ctx context.Context) (Wechat, error) {
 // BeginWechatLogin replaces a temporary QR session. No credential is stored yet.
 func (s *Service) BeginWechatLogin(ctx context.Context) (wechat.LoginView, error) {
 	s.mu.Lock()
-	s.wechatEpoch++
-	epoch := s.wechatEpoch
+	id := uuid.NewV7().String()
+	s.loginID = id
 	s.login = nil
 	s.mu.Unlock()
-	login, view, err := wechat.BeginLogin(ctx, s.wechatOptions)
+	login, view, err := wechat.BeginLogin(ctx, id, s.wechatOptions)
 	if err != nil {
 		return view, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if epoch != s.wechatEpoch {
+	if id != s.loginID {
 		return view, fmt.Errorf("%w: WeChat login was replaced", ErrInvalid)
 	}
 	s.login = login
-	s.loginID = view.ID
 	return view, nil
 }
 
@@ -94,7 +95,7 @@ func (s *Service) PollWechatLogin(ctx context.Context, id, code string) (wechat.
 	if login == nil || id != currentID {
 		return wechat.LoginView{}, fmt.Errorf("%w: start a new WeChat login", ErrInvalid)
 	}
-	view, cfg, err := login.Poll(ctx, code)
+	view, err := login.Poll(ctx, code)
 	if err != nil {
 		return view, err
 	}
@@ -103,28 +104,51 @@ func (s *Service) PollWechatLogin(ctx context.Context, id, code string) (wechat.
 	if s.login != login {
 		return wechat.LoginView{}, fmt.Errorf("%w: WeChat login was replaced", ErrInvalid)
 	}
-	if cfg == nil {
-		return view, nil
+	return login.Activate(func(cfg *wechat.Config) error {
+		return s.activateWechat(ctx, cfg)
+	})
+}
+
+func (s *Service) activateWechat(ctx context.Context, cfg *wechat.Config) error {
+	previous, err := s.WechatConfig(ctx)
+	if err != nil {
+		return err
 	}
-	if err = s.q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{Token: cfg.Token, BaseUrl: cfg.BaseURL, BotID: cfg.BotID, Owner: cfg.Owner}); err != nil {
-		return view, err
+	// Join all old requests before resetting runtime state shared with the replacement.
+	s.onWechat(nil)
+	activated := false
+	defer func() {
+		if !activated {
+			s.onWechat(previous)
+		}
+	}()
+	tx, err := s.wechatDB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
 	}
-	if _, err = s.q.EnsureWechatRuntime(ctx, sqlc.EnsureWechatRuntimeParams{BotID: cfg.BotID, Owner: cfg.Owner}); err != nil {
-		return view, err
+	defer func() { _ = tx.Rollback() }()
+	q := s.q.WithTx(tx)
+	if err = q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{Token: cfg.Token, BaseUrl: cfg.BaseURL, BotID: cfg.BotID, Owner: cfg.Owner}); err != nil {
+		return err
 	}
-	if err = s.q.SetWechatPause(ctx, sqlc.SetWechatPauseParams{BotID: cfg.BotID, Owner: cfg.Owner, PauseUntil: 0}); err != nil {
-		return view, err
+	if _, err = q.EnsureWechatRuntime(ctx, sqlc.EnsureWechatRuntimeParams{BotID: cfg.BotID, Owner: cfg.Owner}); err != nil {
+		return err
 	}
-	// Stop the old account before waking the new sender. It reads the persisted context itself.
+	if err = q.SetWechatPause(ctx, sqlc.SetWechatPauseParams{BotID: cfg.BotID, Owner: cfg.Owner, PauseUntil: 0}); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
 	s.onWechat(cfg)
-	return view, nil
+	activated = true
+	return nil
 }
 
 // DeleteWechat stops the bot, forgets credentials, and invalidates any QR poll in flight.
 func (s *Service) DeleteWechat(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.wechatEpoch++
 	s.login = nil
 	s.loginID = ""
 	if err := s.q.DeleteWechatSettings(ctx); err != nil {

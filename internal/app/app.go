@@ -144,7 +144,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	prefs.ChannelStatus = bots.Status
 	uploads := upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID))
 	wxOptions := wechat.Options{APIURL: cfg.WechatAPIURL, CDNURL: cfg.WechatCDNURL, HTTPClient: cfg.WechatHTTPClient, Version: cfg.Version}
-	prefs.ConfigureWechat(wxOptions, func(cfg *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
+	prefs.ConfigureWechat(wxOptions, conn, func(cfg *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
 		if cfg == nil {
 			bots.Set("wechat", nil)
 			return

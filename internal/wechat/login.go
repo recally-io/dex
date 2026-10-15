@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"uuid"
 )
 
 // LoginView contains QR setup state, without credentials or the protocol polling key.
@@ -22,19 +21,20 @@ type LoginView struct {
 
 // Login is one temporary QR session. The settings service owns the current session.
 type Login struct {
-	mu       sync.Mutex
-	client   *client
-	view     LoginView
-	code     string
-	pollURL  string
-	attempts int
-	expires  time.Time
+	mu        sync.Mutex
+	client    *client
+	view      LoginView
+	code      string
+	pollURL   string
+	attempts  int
+	candidate *Config
+	failure   error
 }
 
 // BeginLogin requests the first QR code. At most three replacements are used in one session.
-func BeginLogin(ctx context.Context, options Options) (*Login, LoginView, error) {
+func BeginLogin(ctx context.Context, id string, options Options) (*Login, LoginView, error) {
 	c := newClient(options)
-	l := &Login{client: c, pollURL: c.options.APIURL, expires: time.Now().Add(5 * time.Minute), view: LoginView{ID: uuid.NewV7().String(), Status: "wait", Active: true}}
+	l := &Login{client: c, pollURL: c.options.APIURL, view: LoginView{ID: id, Status: "wait", Active: true}}
 	err := l.refresh(ctx)
 	return l, l.view, err
 }
@@ -63,18 +63,12 @@ func (l *Login) refresh(ctx context.Context) error {
 	return nil
 }
 
-// Poll waits for one protocol state. Only confirmed returns credentials for settings to save.
-func (l *Login) Poll(ctx context.Context, verifyCode string) (LoginView, *Config, error) {
+// Poll waits for one protocol state. Activation publishes local confirmation.
+func (l *Login) Poll(ctx context.Context, verifyCode string) (LoginView, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if !l.view.Active {
-		return l.view, nil, nil
-	}
-	if time.Now().After(l.expires) {
-		l.view.Active = false
-		l.view.Status = "expired"
-		l.view.Reason = "Login expired. Start again."
-		return l.view, nil, nil
+	if !l.view.Active || l.candidate != nil {
+		return l.view, l.failure
 	}
 	endpoint := "get_qrcode_status?qrcode=" + url.QueryEscape(l.code)
 	if verifyCode != "" {
@@ -91,10 +85,10 @@ func (l *Login) Poll(ctx context.Context, verifyCode string) (LoginView, *Config
 	err := l.client.call(ctx, l.pollURL, "", http.MethodGet, endpoint, nil, &state, 35*time.Second)
 	if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 		l.view.Status = "wait"
-		return l.view, nil, nil
+		return l.view, nil
 	}
 	if err != nil {
-		return l.view, nil, err
+		return l.view, err
 	}
 	l.view.Status = state.Status
 	l.view.Reason = ""
@@ -104,12 +98,12 @@ func (l *Login) Poll(ctx context.Context, verifyCode string) (LoginView, *Config
 		target := "https://" + state.RedirectHost
 		parsed, parseErr := url.Parse(target)
 		if parseErr != nil || state.RedirectHost == "" || parsed.Host != state.RedirectHost || parsed.Path != "" || strings.ContainsAny(state.RedirectHost, "/?#@") {
-			return l.view, nil, errors.New("invalid WeChat QR redirect host")
+			return l.view, errors.New("invalid WeChat QR redirect host")
 		}
 		l.pollURL = target
 	case "expired", "verify_code_blocked":
 		if err = l.refresh(ctx); err != nil {
-			return l.view, nil, err
+			return l.view, err
 		}
 	case "binded_redirect":
 		l.view.Active = false
@@ -117,13 +111,32 @@ func (l *Login) Poll(ctx context.Context, verifyCode string) (LoginView, *Config
 	case "confirmed":
 		cfg := &Config{Token: state.Token, BotID: state.BotID, Owner: state.Owner, BaseURL: state.BaseURL}
 		if err = cfg.Validate(); err != nil {
+			l.view.Status = "scaned"
 			l.view.Active = false
-			return l.view, nil, err
+			l.failure = err
+			return l.view, err
 		}
-		l.view.Active = false
-		return l.view, cfg, nil
+		l.view.Status = "scaned"
+		l.candidate = cfg
+		return l.view, nil
 	default:
-		return l.view, nil, errors.New("unknown WeChat QR status")
+		return l.view, errors.New("unknown WeChat QR status")
 	}
-	return l.view, nil, nil
+	return l.view, nil
+}
+
+// Activate retains candidate credentials until settings and runtime activation succeed.
+func (l *Login) Activate(save func(*Config) error) (LoginView, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.candidate == nil {
+		return l.view, l.failure
+	}
+	if err := save(l.candidate); err != nil {
+		return l.view, err
+	}
+	l.candidate = nil
+	l.view.Status = "confirmed"
+	l.view.Active = false
+	return l.view, nil
 }
