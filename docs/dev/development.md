@@ -46,6 +46,35 @@ The optional environment variables are `DEX_DATA_DIR` (default `~/.dex`) and
 `DEX_ADDR` (default `127.0.0.1:8787`). Use a separate `DEX_DATA_DIR` to try
 settings without changing your own.
 
+## Service E2E
+
+The ignored `.local/e2e/service/` directory holds the local service scripts
+and logs. From the repository root, run
+`bash .local/e2e/service/run-mac.sh` or
+`bash .local/e2e/service/run-linux.sh` when these local scripts are available.
+The Linux script creates an OrbStack Ubuntu VM and deletes it on exit.
+The scripts build each target's embedded worker with the build task before
+they build test executables. They restore the native build after Linux.
+
+The test executables use the `dex_e2e` build tag. That tag selects a local
+release API with DEX_TEST_RELEASE_API and enables the real worker's faux
+provider. Normal builds have no release API override. The fixtures serve real
+compiled dex binaries in release archives with SHA-256 checksums.
+
+The scenario refuses an existing com.vaayne.dex definition. It copies the
+binary outside the temporary directory, uses ports 18787 and 18788, and uses
+a temporary data directory. It checks service lifecycle, crash recovery,
+partial reinstall, health identity, worker ping, diagnostics, an occupied
+port, updates, and busy bash deferral. It removes the service, test data,
+executables, and test logs from the service domain. Artifacts stay in
+`.local/e2e/service/`. It never uses port 8787 or the normal data directory.
+
+The Go tests validate both definitions with golden files. macOS tests run
+plutil; Linux tests run systemd-analyze when it is available. Update tests use
+local HTTP servers and real archives. Maintenance tests use the real worker,
+SQLite, and HTTP server. The tests do not prove access to a real model provider
+or a private GitHub release with production credentials.
+
 ## Tasks
 
 Run `mise tasks` for the full list. The main tasks:

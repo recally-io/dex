@@ -30,6 +30,42 @@ executable (about 60 MB, Bun runtime included) and gzips it (about 30 MB) into
 `<user cache dir>/dex/worker-<hash>` once, and control starts it as a child
 process. See [ADR 0001](decisions/0001-embedded-bun-worker.md).
 
+## Service and updates
+
+`cmd/dex` parses commands with the standard `flag` package. With no command,
+it runs `serve` in the foreground. Host, port, and data directory use flags,
+then DEX_ADDR and DEX_DATA_DIR, then defaults. Control accepts only loopback
+addresses, because its unauthenticated API can execute shell commands.
+
+`internal/service` manages a per-user launchd job or systemd unit. The
+definition contains resolved `serve` arguments and PATH. A configuration
+record inside the same definition lets reinstall retain omitted options.
+Read validates the record and compares the generated definition with the file.
+An edited definition must be removed before reinstall. Worker environment
+filtering stays in `app.WorkerEnv`.
+
+macOS stop uses bootout and waits for job removal. Start uses bootstrap;
+restart stops before it starts. KeepAlive restarts failures, not clean exits.
+Both backends allow 60 seconds for process cleanup. Linux uses `/usr/bin/env`
+to execute the absolute dex path: systemd rejects quotes and backslashes in
+its executable field, but accepts them in arguments. env replaces itself
+without a shell. Health must match the expected version and data directory,
+and the worker must answer ping.
+
+`internal/update` selects a GitHub release, downloads assets through the
+release-assets API, checks SHA-256, extracts only the regular dex file, and
+checks its version. It stages beside the resolved executable and uses a
+process lock to serialize updates. A rename replaces the executable atomically.
+The previous inode remains as `dex.previous`. Failed readiness reports the
+backup and logs; it does not roll back data migrations. A stopped service
+stays stopped. A foreground process needs a manual restart.
+
+A second per-user job runs opt-in daily updates. The definition contains no
+token. Enable checks stored gh credentials in the minimal service environment.
+Manual updates can also use GH_TOKEN or GITHUB_TOKEN. Cross-host download
+redirects lose Authorization. See [ADR 0006](decisions/0006-service-and-update.md)
+and the [service commands](../../README.md#run-and-manage-dex).
+
 ## Maintenance gate
 
 All tool execution enters through `chat.Service.Run`, including automations,
@@ -296,8 +332,8 @@ so dex needs no public URL.
 
 Agent tools (`read`, `write`, `edit`, `bash`) run on the host without a
 sandbox, inside the agent workspace. The HTTP server listens on
-`127.0.0.1:8787` by default and has no authentication. Do not expose it to a
-network. A chat channel must allow only known user IDs: the settings refuse a
+`127.0.0.1:8787` by default and has no authentication. The CLI rejects hosts
+other than loopback. A chat channel must allow only known user IDs: the settings refuse a
 Telegram bot without allowed users. The API refuses cross-site writes
 (`http.CrossOriginProtection`), so another web page in the user's browser
 cannot send messages or change settings.
