@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortChatData, AbortChatErrors, AbortChatResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChatData, GetChatErrors, GetChatResponses, GetHealthData, GetHealthResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetUploadData, GetUploadErrors, GetUploadResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetAgentData, SetAgentErrors, SetAgentResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
+import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChatData, GetChatErrors, GetChatResponses, GetHealthData, GetHealthResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetUploadData, GetUploadErrors, GetUploadResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetAgentData, SetAgentErrors, SetAgentResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -19,6 +19,27 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 };
 
 export const getHealth = <ThrowOnError extends boolean = false>(options?: Options<GetHealthData, ThrowOnError>): RequestResult<GetHealthResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetHealthResponses, unknown, ThrowOnError>({ url: '/api/health', ...options });
+
+export const releaseMaintenance = <ThrowOnError extends boolean = false>(options: Options<ReleaseMaintenanceData, ThrowOnError>): RequestResult<ReleaseMaintenanceResponses, ReleaseMaintenanceErrors, ThrowOnError> => (options.client ?? client).delete<ReleaseMaintenanceResponses, ReleaseMaintenanceErrors, ThrowOnError>({
+    url: '/api/maintenance',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Hold dispatch for two minutes if no work is active. The same lease renews it.
+ */
+export const acquireMaintenance = <ThrowOnError extends boolean = false>(options: Options<AcquireMaintenanceData, ThrowOnError>): RequestResult<AcquireMaintenanceResponses, AcquireMaintenanceErrors, ThrowOnError> => (options.client ?? client).post<AcquireMaintenanceResponses, AcquireMaintenanceErrors, ThrowOnError>({
+    url: '/api/maintenance',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * All chats of the default agent, newest activity first.

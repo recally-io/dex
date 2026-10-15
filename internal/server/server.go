@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 	"uuid"
 
@@ -34,6 +35,7 @@ type Config struct {
 	AgentID     string
 	DataDir     string
 	Version     string
+	WorkerReady func(context.Context) bool
 }
 
 // The longest message, in characters, and the most attachments of one message, as in the contract.
@@ -69,7 +71,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, chat.ErrNoModel):
+			case errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -107,8 +109,31 @@ type handler struct{ Config }
 
 var ok = api.Ok{Status: api.OkStatusOk}
 
-func (h *handler) GetHealth(context.Context, api.GetHealthRequestObject) (api.GetHealthResponseObject, error) {
-	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir}, nil
+func (h *handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (api.GetHealthResponseObject, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	ready := h.WorkerReady != nil && h.WorkerReady(ctx)
+	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, WorkerReady: ready}, nil
+}
+func (h *handler) AcquireMaintenance(ctx context.Context, req api.AcquireMaintenanceRequestObject) (api.AcquireMaintenanceResponseObject, error) {
+	if req.Body == nil || req.Body.LeaseId.String() == "00000000-0000-0000-0000-000000000000" {
+		return nil, errInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := h.Chats.AcquireMaintenance(ctx, req.Body.LeaseId.String()); err != nil {
+		return nil, err
+	}
+	return api.AcquireMaintenance200JSONResponse(ok), nil
+}
+func (h *handler) ReleaseMaintenance(_ context.Context, req api.ReleaseMaintenanceRequestObject) (api.ReleaseMaintenanceResponseObject, error) {
+	if req.Body == nil || req.Body.LeaseId.String() == "00000000-0000-0000-0000-000000000000" {
+		return nil, errInvalid
+	}
+	if err := h.Chats.ReleaseMaintenance(req.Body.LeaseId.String()); err != nil {
+		return nil, err
+	}
+	return api.ReleaseMaintenance200JSONResponse(ok), nil
 }
 
 func chatView(c chat.Chat) api.Chat {
