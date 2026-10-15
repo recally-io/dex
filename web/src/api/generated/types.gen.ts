@@ -19,6 +19,7 @@ export type Health = {
     status: 'ok';
     version: string;
     dataDir: string;
+    workerReady: boolean;
 };
 
 export type Chat = {
@@ -437,6 +438,64 @@ export type GetHealthResponses = {
 };
 
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
+
+export type ReleaseMaintenanceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/maintenance';
+};
+
+export type ReleaseMaintenanceErrors = {
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ReleaseMaintenanceError = ReleaseMaintenanceErrors[keyof ReleaseMaintenanceErrors];
+
+export type ReleaseMaintenanceResponses = {
+    /**
+     * Worker admission can resume.
+     */
+    200: Ok;
+};
+
+export type ReleaseMaintenanceResponse = ReleaseMaintenanceResponses[keyof ReleaseMaintenanceResponses];
+
+export type AcquireMaintenanceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/maintenance';
+};
+
+export type AcquireMaintenanceErrors = {
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AcquireMaintenanceError = AcquireMaintenanceErrors[keyof AcquireMaintenanceErrors];
+
+export type AcquireMaintenanceResponses = {
+    /**
+     * Worker admission is held until expiry or release.
+     */
+    200: Ok;
+};
+
+export type AcquireMaintenanceResponse = AcquireMaintenanceResponses[keyof AcquireMaintenanceResponses];
 
 export type ListChatsData = {
     body?: never;

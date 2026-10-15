@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 	"uuid"
@@ -88,6 +89,9 @@ type Service struct {
 	// Serializes worker conversation creation, so two first messages of one chat create one worker
 	// conversation. Global lock; per conversation if throughput matters.
 	createMu sync.Mutex
+
+	maintenanceMu sync.Mutex
+	leaseUntil    atomic.Int64
 }
 
 // New returns a Service. Connect the worker's settled events to HandleSettled and its start to

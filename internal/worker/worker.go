@@ -34,7 +34,7 @@ type Config struct {
 	OnExit func()
 	// Init runs after each process start, before Call can reach the process, for example to load
 	// credentials. call sends a request to the new process.
-	Init func(ctx context.Context, call CallFunc)
+	Init func(ctx context.Context, call CallFunc) error
 	// OnStart runs on its own goroutine after Init, for example to replay submissions that the
 	// previous process did not settle.
 	OnStart func(ctx context.Context)
@@ -85,10 +85,13 @@ func (w *Worker) runOnce(ctx context.Context) error {
 	cmd.Dir = w.cfg.Dir
 	cmd.Env = w.cfg.Env
 	cmd.Stderr = os.Stderr
-	stdin, err := cmd.StdinPipe()
+	childStdin, stdin, err := os.Pipe()
 	if err != nil {
 		return err
 	}
+	defer childStdin.Close()
+	defer stdin.Close()
+	cmd.Stdin = childStdin
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -99,7 +102,8 @@ func (w *Worker) runOnce(ctx context.Context) error {
 		return fmt.Errorf("start %s: %w", w.cfg.Path, err)
 	}
 
-	p := &process{stdin: stdin, pending: map[int64]chan incoming{}, done: make(chan struct{})}
+	_ = childStdin.Close()
+	p := &process{stdin: stdin, writer: make(chan struct{}, 1), pending: map[int64]chan incoming{}, done: make(chan struct{})}
 	readErr := make(chan error, 1)
 	go func() {
 		err := p.read(ctx, stdout, w.cfg)
@@ -107,7 +111,12 @@ func (w *Worker) runOnce(ctx context.Context) error {
 		readErr <- err
 	}()
 	if w.cfg.Init != nil {
-		w.cfg.Init(ctx, p.call)
+		if err := w.cfg.Init(ctx, p.call); err != nil {
+			_ = stdin.Close()
+			_ = cmd.Process.Kill()
+			<-readErr
+			return errors.Join(err, cmd.Wait())
+		}
 	}
 	// When the process exited during Init, Call fails with ErrUnavailable until setProc(nil).
 	w.setProc(p)
@@ -153,9 +162,9 @@ func (w *Worker) Call(ctx context.Context, method string, params, result any) er
 }
 
 type process struct {
-	stdin   io.Writer
-	writeMu sync.Mutex
-	nextID  atomic.Int64
+	stdin  *os.File
+	writer chan struct{}
+	nextID atomic.Int64
 
 	mu      sync.Mutex
 	pending map[int64]chan incoming
@@ -178,11 +187,17 @@ func (p *process) call(ctx context.Context, method string, params, result any) e
 	if err != nil {
 		return err
 	}
-	p.writeMu.Lock()
-	_, err = p.stdin.Write(append(line, '\n'))
-	p.writeMu.Unlock()
+	select {
+	case p.writer <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.done:
+		return ErrUnavailable
+	}
+	err = p.write(ctx, append(line, '\n'))
+	<-p.writer
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrUnavailable, err)
+		return errors.Join(ctx.Err(), fmt.Errorf("%w: %w", ErrUnavailable, err))
 	}
 
 	select {
@@ -196,6 +211,28 @@ func (p *process) call(ctx context.Context, method string, params, result any) e
 		}
 		return json.Unmarshal(msg.Result, result)
 	}
+}
+
+// A partial JSON line cannot be reused. Close the pipe on write failure so the
+// supervisor replaces the worker instead of sending more data after that line.
+func (p *process) write(ctx context.Context, line []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := p.stdin.SetWriteDeadline(time.Time{}); err != nil {
+		return err
+	}
+	cancelled := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() { _ = p.stdin.SetWriteDeadline(time.Now()); close(cancelled) })
+	_, err := p.stdin.Write(line)
+	if !stop() {
+		<-cancelled
+	}
+	_ = p.stdin.SetWriteDeadline(time.Time{})
+	if err != nil {
+		_ = p.stdin.Close()
+	}
+	return err
 }
 
 func (p *process) read(ctx context.Context, stdout io.Reader, cfg Config) error {

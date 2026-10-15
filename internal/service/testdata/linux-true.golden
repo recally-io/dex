@@ -1,0 +1,33 @@
+# dex-config: eyJob3N0IjoiMTI3LjAuMC4xIiwicG9ydCI6MTg3ODcsImRhdGFEaXIiOiIvZGF0YS9zcGFjZSAmIFwicXVvdGVcIiDkuK3mlocgJWggJEhPTUUgXFxwYXRoIiwiZXhlY3V0YWJsZSI6Ii9vcHQvc3BhY2UgJiBcInF1b3RlXCIg5Lit5paHICVoICRIT01FIFxccGF0aC9kZXgiLCJwYXRoIjoiL3Vzci9iaW46L3Vzci9sb2NhbC9iaW46L3Rvb2xzL3NwYWNlICYgXCJxdW90ZVwiIOS4reaWhyAlaCAkSE9NRSBcXHBhdGgiLCJhdXRvVXBkYXRlIjp0cnVlLCJjaGFubmVsIjoicHJlcmVsZWFzZSJ9
+[Unit]
+Description=dex agent host
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env -- "/opt/space & \"quote\" 中文 %%h $$HOME \\path/dex" "serve" "--host" "127.0.0.1" "--port" "18787" "--data-dir" "/data/space & \"quote\" 中文 %%h $$HOME \\path"
+WorkingDirectory=%h
+Environment="PATH=/usr/bin:/usr/local/bin:/tools/space & \"quote\" 中文 %%h $HOME \\path"
+Restart=on-failure
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target
+[Unit]
+Description=dex daily update
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env -- "/opt/space & \"quote\" 中文 %%h $$HOME \\path/dex" "update" "--scheduled"
+WorkingDirectory=%h
+Environment="PATH=/usr/bin:/usr/local/bin:/tools/space & \"quote\" 中文 %%h $HOME \\path"
+TimeoutStartSec=10min
+[Unit]
+Description=dex daily update timer
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target

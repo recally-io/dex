@@ -395,9 +395,10 @@ type ErrorItemKind string
 
 // Health defines model for Health.
 type Health struct {
-	DataDir string       `json:"dataDir"`
-	Status  HealthStatus `json:"status"`
-	Version string       `json:"version"`
+	DataDir     string       `json:"dataDir"`
+	Status      HealthStatus `json:"status"`
+	Version     string       `json:"version"`
+	WorkerReady bool         `json:"workerReady"`
 }
 
 // HealthStatus defines model for Health.Status.
@@ -1126,6 +1127,12 @@ type ServerInterface interface {
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
 
+	// (DELETE /api/maintenance)
+	ReleaseMaintenance(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/maintenance)
+	AcquireMaintenance(w http.ResponseWriter, r *http.Request)
+
 	// (GET /api/models)
 	ListModels(w http.ResponseWriter, r *http.Request)
 
@@ -1507,6 +1514,34 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ReleaseMaintenance operation middleware
+func (siw *ServerInterfaceWrapper) ReleaseMaintenance(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReleaseMaintenance(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcquireMaintenance operation middleware
+func (siw *ServerInterfaceWrapper) AcquireMaintenance(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcquireMaintenance(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListModels operation middleware
 func (siw *ServerInterfaceWrapper) ListModels(w http.ResponseWriter, r *http.Request) {
 
@@ -1790,6 +1825,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/maintenance", wrapper.ReleaseMaintenance)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/maintenance", wrapper.AcquireMaintenance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats", wrapper.ListChats)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/chats", wrapper.CreateChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats/{chatId}", wrapper.GetChat)
@@ -2705,6 +2742,110 @@ func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	return err
 }
 
+type ReleaseMaintenanceRequestObject struct {
+}
+
+type ReleaseMaintenanceResponseObject interface {
+	VisitReleaseMaintenanceResponse(w http.ResponseWriter) error
+}
+
+type ReleaseMaintenance200JSONResponse Ok
+
+func (response ReleaseMaintenance200JSONResponse) VisitReleaseMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseMaintenance409JSONResponse struct{ ErrorJSONResponse }
+
+func (response ReleaseMaintenance409JSONResponse) VisitReleaseMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseMaintenancedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ReleaseMaintenancedefaultJSONResponse) VisitReleaseMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcquireMaintenanceRequestObject struct {
+}
+
+type AcquireMaintenanceResponseObject interface {
+	VisitAcquireMaintenanceResponse(w http.ResponseWriter) error
+}
+
+type AcquireMaintenance200JSONResponse Ok
+
+func (response AcquireMaintenance200JSONResponse) VisitAcquireMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcquireMaintenance409JSONResponse struct{ ErrorJSONResponse }
+
+func (response AcquireMaintenance409JSONResponse) VisitAcquireMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcquireMaintenancedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response AcquireMaintenancedefaultJSONResponse) VisitAcquireMaintenanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListModelsRequestObject struct {
 }
 
@@ -3207,6 +3348,12 @@ type StrictServerInterface interface {
 
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+
+	// (DELETE /api/maintenance)
+	ReleaseMaintenance(ctx context.Context, request ReleaseMaintenanceRequestObject) (ReleaseMaintenanceResponseObject, error)
+
+	// (POST /api/maintenance)
+	AcquireMaintenance(ctx context.Context, request AcquireMaintenanceRequestObject) (AcquireMaintenanceResponseObject, error)
 
 	// (GET /api/models)
 	ListModels(ctx context.Context, request ListModelsRequestObject) (ListModelsResponseObject, error)
@@ -3714,6 +3861,54 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReleaseMaintenance operation middleware
+func (sh *strictHandler) ReleaseMaintenance(w http.ResponseWriter, r *http.Request) {
+	var request ReleaseMaintenanceRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReleaseMaintenance(ctx, request.(ReleaseMaintenanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReleaseMaintenance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReleaseMaintenanceResponseObject); ok {
+		if err := validResponse.VisitReleaseMaintenanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AcquireMaintenance operation middleware
+func (sh *strictHandler) AcquireMaintenance(w http.ResponseWriter, r *http.Request) {
+	var request AcquireMaintenanceRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcquireMaintenance(ctx, request.(AcquireMaintenanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcquireMaintenance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcquireMaintenanceResponseObject); ok {
+		if err := validResponse.VisitAcquireMaintenanceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

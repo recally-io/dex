@@ -30,6 +30,23 @@ executable (about 60 MB, Bun runtime included) and gzips it (about 30 MB) into
 `<user cache dir>/dex/worker-<hash>` once, and control starts it as a child
 process. See [ADR 0001](decisions/0001-embedded-bun-worker.md).
 
+## Service and updates
+
+`cmd/dex` runs the foreground server or manages a per-user launchd or systemd
+service. Listening addresses are loopback only: the API has no authentication
+and can run shell commands. Definitions store serve arguments, PATH, and a
+configuration record that permits partial reinstall across template changes.
+
+`internal/update` verifies GitHub release assets, stages beside the executable,
+and retains `dex.previous`. The worker owns a two-minute maintenance gate.
+It closes admission before checking durable runs and pending memory commits.
+Control stores the expiry to restore the gate after a worker restart. New
+messages stay stored until release, expiry, or a control restart.
+
+See [service commands and recovery](../../README.md#run-and-manage-dex) and
+[ADR 0006](decisions/0006-service-and-update.md) for lifecycle, update, and gate
+decisions.
+
 ## Sources of truth
 
 | Data                                 | Owner               | Location                                                                  |
@@ -280,8 +297,8 @@ so dex needs no public URL.
 
 Agent tools (`read`, `write`, `edit`, `bash`) run on the host without a
 sandbox, inside the agent workspace. The HTTP server listens on
-`127.0.0.1:8787` by default and has no authentication. Do not expose it to a
-network. A chat channel must allow only known user IDs: the settings refuse a
+`127.0.0.1:8787` by default and has no authentication. The CLI rejects hosts
+other than loopback. A chat channel must allow only known user IDs: the settings refuse a
 Telegram bot without allowed users. The API refuses cross-site writes
 (`http.CrossOriginProtection`), so another web page in the user's browser
 cannot send messages or change settings.

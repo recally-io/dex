@@ -27,6 +27,8 @@ import type {
 	SubmitResult,
 	UnwatchParams,
 	WatchParams,
+	QuiesceParams,
+	QuiesceResult,
 } from "./protocol.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -49,9 +51,73 @@ export class Agents {
 	// resumes after a restart has none until control submits to it again.
 	readonly #sources = new Map<string, string>();
 	readonly #watches = new Map<string, AgentEventStream>();
+	readonly #pendingWatches = new Map<string, AbortController>();
 	readonly #harnesses = new Map<string, Promise<Harness>>();
 	// The tail of each conversation's submit chain; see #serial.
 	readonly #chains = new Map<string, Promise<unknown>>();
+	#checking = false;
+	#operations = 0;
+	#gateUntil = 0;
+	readonly #gateWaiters = new Set<() => void>();
+
+	async quiesce(params: QuiesceParams): Promise<QuiesceResult> {
+		if (this.#checking) return { busy: true, reason: "maintenance check is pending" };
+		// Close admission before the first await. Existing operations remain counted.
+		this.#gateUntil = params.expiresAt;
+		this.#checking = true;
+		try {
+			if (this.#operations > 0) {
+				this.resume();
+				return { busy: true, reason: "worker requests or memory commits are pending" };
+			}
+			const states = await Promise.all(
+				[...this.#harnesses.values()].map(async (pending) => (await pending).inspect(context)),
+			);
+			if (states.some((state) => state.tasks.length > 0 || state.submissions.length > 0)) {
+				this.resume();
+				return { busy: true, reason: "durable work is unfinished" };
+			}
+			return { busy: false };
+		} catch (error) {
+			this.resume();
+			throw error;
+		} finally {
+			this.#checking = false;
+		}
+	}
+
+	resume(): Record<string, never> {
+		this.#gateUntil = 0;
+		for (const wake of this.#gateWaiters) wake();
+		return {};
+	}
+
+	async #admit<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+		while (this.#gateUntil > Date.now()) {
+			signal?.throwIfAborted();
+			const expiresAt = this.#gateUntil;
+			// Each wake must recheck a lease that another updater can renew.
+			// oxlint-disable-next-line no-await-in-loop
+			await new Promise<void>((resolve) => {
+				const wake = () => {
+					clearTimeout(timer);
+					this.#gateWaiters.delete(wake);
+					signal?.removeEventListener("abort", wake);
+					resolve();
+				};
+				const timer = setTimeout(wake, Math.max(1, expiresAt - Date.now()));
+				this.#gateWaiters.add(wake);
+				signal?.addEventListener("abort", wake, { once: true });
+			});
+		}
+		signal?.throwIfAborted();
+		this.#operations++;
+		try {
+			return await task();
+		} finally {
+			this.#operations--;
+		}
+	}
 
 	constructor(
 		dataDir: string,
@@ -66,7 +132,11 @@ export class Agents {
 		this.#memory = new MemoryRepo(join(dataDir, "memory"));
 	}
 
-	async createConversation(params: CreateConversationParams): Promise<CreateConversationResult> {
+	createConversation(params: CreateConversationParams): Promise<CreateConversationResult> {
+		return this.#admit(() => this.#createConversation(params));
+	}
+
+	async #createConversation(params: CreateConversationParams): Promise<CreateConversationResult> {
 		const harness = await this.#harness(params.agentId);
 		const conversation = await harness.createConversation(
 			{
@@ -82,7 +152,11 @@ export class Agents {
 		return { conversationId: conversation.id };
 	}
 
-	async submit(params: SubmitParams): Promise<SubmitResult> {
+	submit(params: SubmitParams): Promise<SubmitResult> {
+		return this.#admit(() => this.#submit(params));
+	}
+
+	async #submit(params: SubmitParams): Promise<SubmitResult> {
 		const conversation = await this.#conversation(params.agentId, params.conversationId);
 		// configure() and submit() are separate commits. Without the chain, two submits with
 		// different settings could interleave, and a message could run with the other one's settings.
@@ -117,7 +191,10 @@ export class Agents {
 				},
 				context,
 			);
-			void this.#settle(params, conversation, submission);
+			this.#operations++;
+			void this.#settle(params, conversation, submission).finally(() => {
+				this.#operations--;
+			});
 			return { submissionId: submission.id };
 		});
 	}
@@ -127,9 +204,24 @@ export class Agents {
 	 * it before this method returns.
 	 */
 	async watch(params: WatchParams): Promise<Record<string, never>> {
-		if (this.#watches.has(params.watchId)) throw new Error(`duplicate watch ID: ${params.watchId}`);
+		if (this.#pendingWatches.has(params.watchId) || this.#watches.has(params.watchId))
+			throw new Error(`duplicate watch ID: ${params.watchId}`);
+		const pending = new AbortController();
+		this.#pendingWatches.set(params.watchId, pending);
+		try {
+			return await this.#admit(() => this.#watch(params, pending.signal), pending.signal);
+		} finally {
+			this.#pendingWatches.delete(params.watchId);
+		}
+	}
+
+	async #watch(params: WatchParams, signal: AbortSignal): Promise<Record<string, never>> {
 		const conversation = await this.#conversation(params.agentId, params.conversationId);
 		const stream = await watchEvents(await this.#harness(params.agentId), conversation.id, context);
+		if (signal.aborted) {
+			await stream.stop();
+			return {};
+		}
 		this.#watches.set(params.watchId, stream);
 		const view = new ChatView();
 		this.#emitChat({ watchId: params.watchId, events: [view.snapshot(stream.snapshot)] });
@@ -148,6 +240,7 @@ export class Agents {
 	}
 
 	async unwatch(params: UnwatchParams): Promise<Record<string, never>> {
+		this.#pendingWatches.get(params.watchId)?.abort();
 		await this.#watches.get(params.watchId)?.stop();
 		return {};
 	}
@@ -159,7 +252,11 @@ export class Agents {
 	}
 
 	/** Stops the conversation's run and withdraws its queued messages. */
-	async abort(params: AbortParams): Promise<Record<string, never>> {
+	abort(params: AbortParams): Promise<Record<string, never>> {
+		return this.#admit(() => this.#abort(params));
+	}
+
+	async #abort(params: AbortParams): Promise<Record<string, never>> {
 		const conversation = await this.#conversation(params.agentId, params.conversationId);
 		await conversation.abort(context);
 		return {};

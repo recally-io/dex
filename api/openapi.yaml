@@ -3,7 +3,7 @@ info:
   title: dex
   version: 0.1.0
   description: >
-    The HTTP API of dex control. The web UI is its only client. The API has no
+    The HTTP API of dex control. The web UI and local CLI use it. The API has no
     authentication and listens on 127.0.0.1; it refuses cross-site writes.
     Times are Unix milliseconds.
 paths:
@@ -16,6 +16,29 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Health" }
+
+  /api/maintenance:
+    post:
+      operationId: acquireMaintenance
+      description: Hold worker admission for two minutes if no work is active. POST renews it.
+      responses:
+        "200":
+          description: Worker admission is held until expiry or release.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: releaseMaintenance
+      responses:
+        "200":
+          description: Worker admission can resume.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/chats:
     get:
@@ -466,11 +489,12 @@ components:
 
     Health:
       type: object
-      required: [status, version, dataDir]
+      required: [status, version, dataDir, workerReady]
       properties:
         status: { type: string, enum: [ok] }
         version: { type: string }
         dataDir: { type: string }
+        workerReady: { type: boolean }
 
     Chat:
       type: object

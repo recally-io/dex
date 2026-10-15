@@ -14,8 +14,12 @@ to read in an afternoon.
 ## Scope
 
 - One `dex` binary. The host needs no other runtime.
-- All settings in the web UI: providers, the agent's model, thinking level
-  and instructions, and Telegram. dex needs no configuration file or environment variable.
+- Runtime: foreground execution, or a per-user launchd/systemd service that
+  starts at login. Optional daily updates wait until agent work is idle.
+  Listening addresses are limited to loopback.
+- Agent settings in the web UI: providers, the agent's model, thinking level
+  and instructions, and Telegram. dex needs no configuration file for agent settings. The CLI manages
+  the service address, data directory, and update policy.
   The web UI has these pages: Agent, Providers, Channels, Automations, and
   About. The Extensions and Secrets pages and the Slack, Feishu, and WeChat
   channels show that dex does not support them yet.
