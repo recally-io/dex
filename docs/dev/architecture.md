@@ -342,8 +342,9 @@ An MCP server from an mcp.json file runs as the user, without a sandbox, and
 gets the worker environment plus its own `env`. mcp.json holds headers and
 environment values as plain text; the API returns no command, URL, header or
 environment value. A server that fails shows only a category of the error,
-such as an HTTP status. The full error and the server's stderr go to the
-worker log.
+such as an HTTP status. The worker log gets the error and the server's
+stderr, with the URL, argument, header and environment values of the entry
+replaced.
 
 Every chat reads the memory, including Telegram chats of each allowed user.
 A memory entry can carry a prompt injection from a web page or a file to

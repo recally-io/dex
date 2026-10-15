@@ -41,7 +41,8 @@ var cacheDir string
 func TestMain(m *testing.M) {
 	// The tests start this binary as a stdio MCP server; see mcpServer.
 	if dir := os.Getenv("DEX_TEST_MCP_DIR"); dir != "" {
-		if err := (&mcptest.Server{Dir: dir, Prefix: os.Getenv("DEX_TEST_MCP_PREFIX")}).ServeStdio(os.Stdin, os.Stdout); err != nil {
+		if err := (&mcptest.Server{Dir: dir, Prefix: os.Getenv("DEX_TEST_MCP_PREFIX"),
+			Twice: os.Getenv("DEX_TEST_MCP_TWICE") != ""}).ServeStdio(os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

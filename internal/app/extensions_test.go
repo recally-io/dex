@@ -447,10 +447,11 @@ func TestExtensionsDoNotShowSecretsOfTheFiles(t *testing.T) {
 
 func TestFirstServerKeepsAToolNameThatTwoServersHave(t *testing.T) {
 	// Given server "a" with tool "b__append", and server "a__b" with tool "append": both are
-	// mcp__a__b__append
+	// mcp__a__b__append. Server "a" also lists "b__read" twice.
 	dataDir, home, aDir, abDir := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
 	a := stdioServer(t, aDir)
 	a["env"].(map[string]string)["DEX_TEST_MCP_PREFIX"] = "b__"
+	a["env"].(map[string]string)["DEX_TEST_MCP_TWICE"] = "1"
 	writeMCP(t, filepath.Join(home, ".agents", "mcp.json"), map[string]any{"a": a, "a__b": stdioServer(t, abDir)})
 	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
 	d.setModel(t, "tool")
@@ -467,7 +468,7 @@ func TestFirstServerKeepsAToolNameThatTwoServersHave(t *testing.T) {
 	if s := got.server("a__b"); s.State != "connected" || !strings.Contains(s.Error, "mcp__a__b__append") {
 		t.Fatalf("a__b = %+v", s)
 	}
-	if s := got.server("a"); s.Error != "" {
+	if s := got.server("a"); s.Error != "tools with a name that another tool uses: mcp__a__b__read" {
 		t.Fatalf("a = %+v", s)
 	}
 }

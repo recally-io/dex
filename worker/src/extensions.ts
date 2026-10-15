@@ -114,11 +114,19 @@ export class AgentExtensions {
 		// first server in name order keeps it.
 		const names = new Set<string>();
 		const tools = servers.flatMap((s) => {
-			const kept = (s?.tools ?? []).filter((tool) => !names.has(tool.name));
-			const lost = (s?.tools ?? []).filter((tool) => !kept.includes(tool));
-			if (s !== undefined && lost.length > 0)
-				s.info.error = `tools with a name that another server uses: ${lost.map((tool) => tool.name).join(", ")}`;
-			for (const tool of kept) names.add(tool.name);
+			if (s === undefined) return [];
+			// A server can also list one tool twice.
+			const lost: string[] = [];
+			const kept = s.tools.filter((tool) => {
+				const fresh = !names.has(tool.name);
+				if (fresh) names.add(tool.name);
+				else lost.push(tool.name);
+				return fresh;
+			});
+			if (lost.length > 0)
+				s.info.error = [s.info.error, `tools with a name that another tool uses: ${lost.join(", ")}`]
+					.filter((text) => text !== undefined)
+					.join("; ");
 			return kept;
 		});
 		const info = this.#info(
@@ -239,10 +247,12 @@ export class AgentExtensions {
 			return { client, tools, info };
 		} catch (error) {
 			await client.close().catch(() => undefined);
-			// The details stay in the log of this computer. The API gets only the category, because a
-			// raw error or the server's stderr can hold the command, URL, headers or environment.
+			// The API gets only the category, because a raw error or the server's stderr can hold the
+			// URL, headers, arguments or environment. The log gets the details without those values.
 			const stderr = transport instanceof StdioTransport ? transport.stderr.trim().slice(-2000) : "";
-			console.error(`MCP server ${name}: ${errorText(error)}${stderr === "" ? "" : `\n${stderr}`}`);
+			console.error(
+				redact(`MCP server ${name}: ${errorText(error)}${stderr === "" ? "" : `\n${stderr}`}`, server),
+			);
 			const info = serverInfo(entry, "failed");
 			info.error = `${failure(error)}; see the dex log for details`;
 			return { client: undefined, tools: [], info };
@@ -384,6 +394,26 @@ function failure(error: unknown): string {
 	if (errorCode(error) === "ENOENT") return "the command does not exist";
 	if (error instanceof TypeError && /url/i.test(error.message)) return "the URL is not valid";
 	return "the connection failed";
+}
+
+/**
+ * Replaces the values of a server entry that can be credentials. Values shorter than 8 characters
+ * stay, because they also match common words.
+ */
+function redact(text: string, server: Server): string {
+	const values = [
+		...("url" in server ? [server.url, ...(URL.parse(server.url)?.searchParams.values() ?? [])] : []),
+		...("args" in server ? (server.args ?? []) : []),
+		...Object.values(("env" in server ? server.env : undefined) ?? {}),
+		...Object.values(("headers" in server ? server.headers : undefined) ?? {}),
+	];
+	// A header value such as "Bearer <token>" can appear only in part.
+	const parts = values
+		.flatMap((value) => value.split(/\s+/).concat(value))
+		.filter((value) => value.length >= 8);
+	return parts
+		.toSorted((a, b) => b.length - a.length)
+		.reduce((out, value) => out.replaceAll(value, "[redacted]"), text);
 }
 
 function errorCode(error: unknown): unknown {

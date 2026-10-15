@@ -25,14 +25,16 @@ type object = map[string]any
 type Server struct {
 	Dir string
 	// Prefix starts each tool name, so that two servers can have tools with the same full name.
-	Prefix   string
+	Prefix string
+	// Twice lists the read tool twice, as a server with a bug can.
+	Twice    bool
 	mu       sync.Mutex
 	sessions map[string]*session
 }
 
 type session struct {
 	mu     sync.Mutex
-	calls  map[string]context.CancelFunc
+	calls  map[string]*context.CancelFunc
 	closed bool
 }
 
@@ -44,7 +46,7 @@ func (p *session) cancel(id string) {
 	}
 	for key, cancel := range p.calls {
 		if id == "" || id == key {
-			cancel()
+			(*cancel)()
 		}
 	}
 }
@@ -53,9 +55,10 @@ func (p *session) start(ctx context.Context, id string) (context.Context, func()
 	ctx, cancel := context.WithCancel(ctx)
 	p.mu.Lock()
 	if p.calls == nil {
-		p.calls = make(map[string]context.CancelFunc)
+		p.calls = make(map[string]*context.CancelFunc)
 	}
-	p.calls[id] = cancel
+	entry := &cancel
+	p.calls[id] = entry
 	if p.closed {
 		cancel()
 	}
@@ -63,7 +66,10 @@ func (p *session) start(ctx context.Context, id string) (context.Context, func()
 	return ctx, func() {
 		cancel()
 		p.mu.Lock()
-		delete(p.calls, id)
+		// A client can reuse the ID of a call that ended; keep the entry of the new call.
+		if p.calls[id] == entry {
+			delete(p.calls, id)
+		}
 		p.mu.Unlock()
 	}
 }
@@ -152,7 +158,7 @@ func (s *Server) dispatch(ctx context.Context, p *session, req request) object {
 		default:
 			return rpcError(req.ID, -32602, "invalid cursor")
 		}
-		tools := toolList(s.Prefix)
+		tools := toolList(s.Prefix, s.Twice)
 		end := min(offset+2, len(tools))
 		page := object{"tools": tools[offset:end]}
 		if end < len(tools) {
@@ -202,9 +208,13 @@ func cursor(offset int) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("tools:%d", offset)))
 }
 
-func toolList(prefix string) []object {
+func toolList(prefix string, twice bool) []object {
 	tools := make([]object, 0, 5)
-	for _, name := range []string{"append", "read", "fail", "slow_echo", "wait"} {
+	names := []string{"append", "read", "fail", "slow_echo", "wait"}
+	if twice {
+		names = append(names, "read")
+	}
+	for _, name := range names {
 		schema := object{"type": "object", "properties": object{}}
 		key := "text"
 		if name == "wait" {
