@@ -82,19 +82,31 @@ func TestUserServiceDefinitions(t *testing.T) {
 		})
 	}
 }
-func TestUserLoopbackAddress(t *testing.T) {
-	for _, host := range []string{"127.0.0.1", "127.9.2.3", "::1", "localhost"} {
+func TestUserHostAddress(t *testing.T) {
+	// A loopback host needs no token; local clients reach a wildcard host through loopback.
+	for host, want := range map[string]struct {
+		loopback bool
+		url      string
+	}{
+		"127.9.2.3":   {true, "http://127.9.2.3:18787"},
+		"::1":         {true, "http://[::1]:18787"},
+		"localhost":   {true, "http://127.0.0.1:18787"},
+		"0.0.0.0":     {false, "http://127.0.0.1:18787"},
+		"::":          {false, "http://[::1]:18787"},
+		"100.64.0.7":  {false, "http://100.64.0.7:18787"},
+		"192.168.0.1": {false, "http://192.168.0.1:18787"},
+	} {
 		c := Config{Host: host, Port: 18787, DataDir: t.TempDir(), Channel: "stable"}
 		if err := c.Validate(); err != nil {
 			t.Fatalf("%s: %v", host, err)
 		}
-		if host == "localhost" && c.Host != "127.0.0.1" {
-			t.Fatal("localhost was not normalized")
+		if c.Loopback() != want.loopback || c.URL() != want.url {
+			t.Fatalf("%s: loopback=%t url=%s", host, c.Loopback(), c.URL())
 		}
 	}
-	for _, host := range []string{"", "0.0.0.0", "::", "192.168.0.1", "example.com", "::ffff:127.0.0.1"} {
+	for _, host := range []string{"", "example.com", "fe80::1%en0"} {
 		c := Config{Host: host, Port: 18787, DataDir: t.TempDir(), Channel: "stable"}
-		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "no authentication") {
+		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "IP address") {
 			t.Fatalf("host %q: %v", host, err)
 		}
 	}

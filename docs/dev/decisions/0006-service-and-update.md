@@ -1,6 +1,7 @@
 # 0006: Per-user services and guarded binary updates
 
-Status: accepted. Date: 2026-10-15.
+Status: accepted. Date: 2026-10-15. The loopback-only rule is superseded by
+[0007](0007-network-access-token.md).
 
 ## Context
 

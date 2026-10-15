@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "../api/generated/types.gen";
 import { createUpload } from "../api/generated/sdk.gen";
 import { errorText } from "./queries";
+import { newId } from "./utils";
 
 // The limits of control: internal/upload.MaxSize and the attachments of MessageInput.
 export const maxFiles = 10;
@@ -72,7 +73,7 @@ export function useAttachments() {
     );
 
     const added = taken.map((file): DraftFile => {
-      const key = crypto.randomUUID();
+      const key = newId();
       const preview = isImage(file.type) ? URL.createObjectURL(file) : undefined;
       const abort = new AbortController();
       uploads.current.set(key, { abort, preview });

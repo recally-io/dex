@@ -3,10 +3,34 @@ info:
   title: dex
   version: 0.1.0
   description: >
-    The HTTP API of dex control. The web UI and local CLI use it. The API has no
-    authentication and listens on 127.0.0.1; it refuses cross-site writes.
+    The HTTP API of dex control. The web UI and local CLI use it. On a loopback
+    host without DEX_TOKEN the API has no authentication. Otherwise every
+    operation except POST /api/session needs the access token, as a Bearer
+    token or as the session cookie. The API refuses cross-site writes.
     Times are Unix milliseconds.
+security:
+  - bearer: []
+  - session: []
 paths:
+  /api/session:
+    post:
+      operationId: createSession
+      description: Exchanges the access token for the session cookie.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewSession" }
+      responses:
+        "204":
+          description: The token is correct. The cookie holds it.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/health:
     get:
       operationId: getHealth
@@ -467,6 +491,10 @@ components:
       required: true
       schema: { type: integer, format: int64 }
 
+  securitySchemes:
+    bearer: { type: http, scheme: bearer }
+    session: { type: apiKey, in: cookie, name: dex_session }
+
   responses:
     Error:
       description: The request failed.
@@ -480,6 +508,15 @@ components:
       required: [error]
       properties:
         error: { type: string, description: A message for the user. }
+
+    NewSession:
+      type: object
+      required: [token]
+      properties:
+        token: {
+          type: string,
+          description: The access token. `dex token` prints the stored token.,
+        }
 
     Ok:
       type: object

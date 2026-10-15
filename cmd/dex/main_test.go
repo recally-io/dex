@@ -55,10 +55,56 @@ func TestUserFlagsOverrideEnvironmentParts(t *testing.T) {
 
 func TestUserLeadingFlagsSelectServe(t *testing.T) {
 	// Given foreground flags without an explicit serve command.
-	// When validation rejects an unsafe host, the error must come from serve configuration.
+	// When serve rejects a weak DEX_TOKEN, the error must come from serve configuration.
+	t.Setenv("DEX_TOKEN", "short")
 	err := dispatch([]string{"--host", "0.0.0.0", "--port", "18788", "--data-dir", t.TempDir()})
-	if err == nil || !strings.Contains(err.Error(), "no authentication") {
+	if err == nil || !strings.Contains(err.Error(), "DEX_TOKEN") {
 		t.Fatalf("leading flags did not select serve: %v", err)
+	}
+}
+
+func TestUserTokenSelection(t *testing.T) {
+	loopback, network := service.Config{Host: "127.0.0.1"}, service.Config{Host: "0.0.0.0"}
+	own := "user-token-0123456789abcdefghijklmnopqrstuvwxyz"
+	for _, tc := range []struct {
+		name       string
+		env        *string
+		c          service.Config
+		storedOnly bool
+		token      string
+		require    bool
+	}{
+		{"loopback without DEX_TOKEN", nil, loopback, false, "", false},
+		{"network host uses the stored token", nil, network, false, "", true},
+		{"DEX_TOKEN turns auth on for loopback", &own, loopback, false, own, true},
+		{"the service ignores DEX_TOKEN", &own, network, true, "", true},
+	} {
+		if tc.env == nil {
+			t.Setenv("DEX_TOKEN", "")
+			os.Unsetenv("DEX_TOKEN") //nolint:errcheck // t.Setenv restores it
+		} else {
+			t.Setenv("DEX_TOKEN", *tc.env)
+		}
+		token, require, err := serveAuth(tc.c, tc.storedOnly)
+		if err != nil || token != tc.token || require != tc.require {
+			t.Fatalf("%s: token=%q require=%t err=%v", tc.name, token, require, err)
+		}
+	}
+	// A set but empty DEX_TOKEN is a mistake, not "no token".
+	t.Setenv("DEX_TOKEN", "")
+	if _, _, err := serveAuth(network, false); err == nil {
+		t.Fatal("an empty DEX_TOKEN was accepted")
+	}
+}
+
+func TestUserStatusWithoutAService(t *testing.T) {
+	// Given no installed service, when the user asks for its status, then dex reports it.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	for _, args := range [][]string{{"service", "status"}, {"service", "status", "--json"}} {
+		if err := dispatch(args); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
 	}
 }
 

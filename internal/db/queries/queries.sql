@@ -136,6 +136,12 @@ ON CONFLICT (id) DO UPDATE SET token = excluded.token, allowed_users = excluded.
 -- name: DeleteTelegramSettings :exec
 DELETE FROM telegram_settings WHERE id = 1;
 
+-- name: CreateAccessTokenIfMissing :exec
+INSERT INTO access_token (id, token) VALUES (1, ?) ON CONFLICT (id) DO NOTHING;
+
+-- name: GetAccessToken :one
+SELECT token FROM access_token WHERE id = 1;
+
 -- name: CreateDream :exec
 INSERT INTO dreams (id, agent_id, through_settled_at, through_id, created_at)
 VALUES (?, ?, ?, ?, ?);

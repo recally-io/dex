@@ -39,8 +39,28 @@ dex doctor
 
 `dex` with no arguments runs `serve` in the foreground. Flags override
 `DEX_ADDR` and `DEX_DATA_DIR`, which override the defaults shown above.
-Only loopback hosts are allowed: `127.0.0.0/8` and `::1`. `localhost` becomes
-`127.0.0.1`. The API has no authentication and can run shell commands.
+The host must be an IP address; `localhost` becomes `127.0.0.1`. On a
+loopback host the API has no authentication.
+
+### Access from other devices
+
+The API can run shell commands, so a host that is not loopback requires an
+access token:
+
+```sh
+dex service install --host 0.0.0.0   # or a Tailscale address such as 100.64.0.7
+dex token                            # print the token
+```
+
+Open `http://<host address>:8787` on the other device and paste the token.
+The browser keeps it in a cookie. API clients send `Authorization: Bearer <token>`.
+dex creates the stored token on its first start and never replaces it.
+For a foreground `dex serve`, set `DEX_TOKEN` to your own random token of 32 to
+256 base64url characters. DEX_TOKEN also turns on the token for a loopback host.
+The service ignores DEX_TOKEN and always uses the stored token.
+
+dex serves plain HTTP, so anyone who can watch the network can read the token.
+Prefer a Tailscale address to `0.0.0.0` on a shared network.
 
 `service install` accepts `--host`, `--port`, and `--data-dir`. A reinstall
 keeps options that you omit and restarts dex. A new data directory selects

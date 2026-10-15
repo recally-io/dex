@@ -28,6 +28,15 @@ func (q *Queries) CountAutomationPending(ctx context.Context, automationID strin
 	return count, err
 }
 
+const createAccessTokenIfMissing = `-- name: CreateAccessTokenIfMissing :exec
+INSERT INTO access_token (id, token) VALUES (1, ?) ON CONFLICT (id) DO NOTHING
+`
+
+func (q *Queries) CreateAccessTokenIfMissing(ctx context.Context, token string) error {
+	_, err := q.db.ExecContext(ctx, createAccessTokenIfMissing, token)
+	return err
+}
+
 const createAgentIfMissing = `-- name: CreateAgentIfMissing :exec
 INSERT INTO agents (id, name, model_provider, model_id, created_at)
 VALUES (?, ?, '', '', ?)
@@ -288,6 +297,17 @@ type FailAutomationRunParams struct {
 func (q *Queries) FailAutomationRun(ctx context.Context, arg FailAutomationRunParams) error {
 	_, err := q.db.ExecContext(ctx, failAutomationRun, arg.Reason, arg.ID)
 	return err
+}
+
+const getAccessToken = `-- name: GetAccessToken :one
+SELECT token FROM access_token WHERE id = 1
+`
+
+func (q *Queries) GetAccessToken(ctx context.Context) (string, error) {
+	row := q.db.QueryRowContext(ctx, getAccessToken)
+	var token string
+	err := row.Scan(&token)
+	return token, err
 }
 
 const getAgent = `-- name: GetAgent :one

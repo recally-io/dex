@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/service"
+	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/update"
 )
 
@@ -43,10 +44,10 @@ func parse(f *flag.FlagSet, args []string) error {
 	return nil
 }
 func usage() {
-	fmt.Fprintln(os.Stderr, "Usage: dex [serve|version|service|update|open|doctor] [options]\n  No command: serve in the foreground.\n  dex service install: start now and at login.\n  Use dex <command> --help for options.")
+	fmt.Fprintln(os.Stderr, "Usage: dex [serve|version|service|update|open|doctor|token] [options]\n  No command: serve in the foreground.\n  dex service install: start now and at login.\n  Use dex <command> --help for options.")
 }
 func runFlags(f *flag.FlagSet, c *service.Config) {
-	f.StringVar(&c.Host, "host", c.Host, "Loopback host (127.0.0.0/8 or ::1)")
+	f.StringVar(&c.Host, "host", c.Host, "Host IP; a host that is not loopback requires the access token")
 	f.IntVar(&c.Port, "port", c.Port, "HTTP port")
 	f.StringVar(&c.DataDir, "data-dir", c.DataDir, "Data directory (does not move existing data)")
 }
@@ -80,7 +81,7 @@ func dispatch(args []string) error {
 		return serviceCommand(ctx, args)
 	case "update":
 		return updateCommand(ctx, args)
-	case "open", "doctor":
+	case "open", "doctor", "token":
 		return localCommand(ctx, name, args)
 	default:
 		usage()
@@ -145,6 +146,12 @@ func serviceCommand(ctx context.Context, args []string) error {
 			return fmt.Errorf("%w; logs: %s", err, m.LogPath())
 		}
 		fmt.Printf("dex is running: %s\nBinary: %s\nLogs: dex service logs\nLog location: %s\nStatus: dex service status\nUninstall: dex service uninstall\n", c.URL(), c.Executable, m.LogPath())
+		if !c.Loopback() {
+			fmt.Printf("dex accepts connections on %s over plain HTTP. Sign in with the token from: dex token\n", c.Addr())
+		}
+		if _, set := os.LookupEnv("DEX_TOKEN"); set {
+			fmt.Println("The service does not use DEX_TOKEN from this shell; it uses the stored token.")
+		}
 		if runtime.GOOS == "linux" {
 			printLinger(ctx)
 		}
@@ -404,11 +411,30 @@ func serveCommand(ctx context.Context, args []string) error {
 	if err != nil {
 		return errors.Join(errUsage, err)
 	}
-	err = configured(flags("serve"), args, &c)
+	f := flags("serve")
+	storedOnly := f.Bool("stored-token", false, "Ignore DEX_TOKEN and use the stored token (the service sets this)")
+	err = configured(f, args, &c)
 	if err != nil {
 		return err
 	}
-	return serve(ctx, c)
+	token, require, err := serveAuth(c, *storedOnly)
+	if err != nil {
+		return errors.Join(errUsage, err)
+	}
+	return serve(ctx, c, token, require)
+}
+
+// serveAuth selects the access token: DEX_TOKEN when it is set, or the stored token when the host
+// is not loopback. A set DEX_TOKEN turns authentication on for a loopback host too.
+func serveAuth(c service.Config, storedOnly bool) (token string, require bool, err error) {
+	token, set := os.LookupEnv("DEX_TOKEN")
+	if storedOnly || !set {
+		return "", !c.Loopback(), nil
+	}
+	if err := settings.CheckToken(token); err != nil {
+		return "", false, fmt.Errorf("DEX_TOKEN: %w", err)
+	}
+	return token, true, nil
 }
 
 func localCommand(ctx context.Context, name string, args []string) error {
@@ -432,11 +458,23 @@ func localCommand(ctx context.Context, name string, args []string) error {
 	if err := configured(f, args, &c); err != nil {
 		return err
 	}
-	if name == "doctor" {
+	switch name {
+	case "doctor":
 		if managerErr != nil {
 			return managerErr
 		}
 		return doctor(ctx, m, c)
+	case "token":
+		token, err := settings.StoredToken(ctx, c.DataDir)
+		if err != nil {
+			return err
+		}
+		if token == "" {
+			return fmt.Errorf("%s has no access token yet; start this version of dex with it once", c.DataDir)
+		}
+		// A foreground dex with DEX_TOKEN uses that token instead.
+		fmt.Println(token)
+		return nil
 	}
 	fmt.Println(c.URL())
 	if printOnly {
@@ -446,7 +484,7 @@ func localCommand(ctx context.Context, name string, args []string) error {
 	if runtime.GOOS == "darwin" {
 		tool = "open"
 	}
-	//nolint:gosec // G204: fixed browser opener and validated loopback URL, without a shell.
+	//nolint:gosec // G204: fixed browser opener and validated local URL, without a shell.
 	if err := exec.CommandContext(ctx, tool, c.URL()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "Could not open the browser; use the URL above.")
 	}

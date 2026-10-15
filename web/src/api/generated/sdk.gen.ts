@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChatData, GetChatErrors, GetChatResponses, GetHealthData, GetHealthResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetUploadData, GetUploadErrors, GetUploadResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetAgentData, SetAgentErrors, SetAgentResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
+import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChatData, GetChatErrors, GetChatResponses, GetHealthData, GetHealthResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetUploadData, GetUploadErrors, GetUploadResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetAgentData, SetAgentErrors, SetAgentResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -18,25 +18,74 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
 
-export const getHealth = <ThrowOnError extends boolean = false>(options?: Options<GetHealthData, ThrowOnError>): RequestResult<GetHealthResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetHealthResponses, unknown, ThrowOnError>({ url: '/api/health', ...options });
+/**
+ * Exchanges the access token for the session cookie.
+ */
+export const createSession = <ThrowOnError extends boolean = false>(options: Options<CreateSessionData, ThrowOnError>): RequestResult<CreateSessionResponses, CreateSessionErrors, ThrowOnError> => (options.client ?? client).post<CreateSessionResponses, CreateSessionErrors, ThrowOnError>({
+    url: '/api/session',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
-export const releaseMaintenance = <ThrowOnError extends boolean = false>(options?: Options<ReleaseMaintenanceData, ThrowOnError>): RequestResult<ReleaseMaintenanceResponses, ReleaseMaintenanceErrors, ThrowOnError> => (options?.client ?? client).delete<ReleaseMaintenanceResponses, ReleaseMaintenanceErrors, ThrowOnError>({ url: '/api/maintenance', ...options });
+export const getHealth = <ThrowOnError extends boolean = false>(options?: Options<GetHealthData, ThrowOnError>): RequestResult<GetHealthResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetHealthResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/health',
+    ...options
+});
+
+export const releaseMaintenance = <ThrowOnError extends boolean = false>(options?: Options<ReleaseMaintenanceData, ThrowOnError>): RequestResult<ReleaseMaintenanceResponses, ReleaseMaintenanceErrors, ThrowOnError> => (options?.client ?? client).delete<ReleaseMaintenanceResponses, ReleaseMaintenanceErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/maintenance',
+    ...options
+});
 
 /**
  * Hold worker admission for two minutes if no work is active. POST renews it.
  */
-export const acquireMaintenance = <ThrowOnError extends boolean = false>(options?: Options<AcquireMaintenanceData, ThrowOnError>): RequestResult<AcquireMaintenanceResponses, AcquireMaintenanceErrors, ThrowOnError> => (options?.client ?? client).post<AcquireMaintenanceResponses, AcquireMaintenanceErrors, ThrowOnError>({ url: '/api/maintenance', ...options });
+export const acquireMaintenance = <ThrowOnError extends boolean = false>(options?: Options<AcquireMaintenanceData, ThrowOnError>): RequestResult<AcquireMaintenanceResponses, AcquireMaintenanceErrors, ThrowOnError> => (options?.client ?? client).post<AcquireMaintenanceResponses, AcquireMaintenanceErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/maintenance',
+    ...options
+});
 
 /**
  * All chats of the default agent, newest activity first.
  */
-export const listChats = <ThrowOnError extends boolean = false>(options?: Options<ListChatsData, ThrowOnError>): RequestResult<ListChatsResponses, ListChatsErrors, ThrowOnError> => (options?.client ?? client).get<ListChatsResponses, ListChatsErrors, ThrowOnError>({ url: '/api/chats', ...options });
+export const listChats = <ThrowOnError extends boolean = false>(options?: Options<ListChatsData, ThrowOnError>): RequestResult<ListChatsResponses, ListChatsErrors, ThrowOnError> => (options?.client ?? client).get<ListChatsResponses, ListChatsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/chats',
+    ...options
+});
 
 /**
  * Creates a web chat and sends its first message. The title is the start of the message, or the name of its first attachment. The settings of the new chat override the agent's. Returns when the message is stored; the answer comes through the chat's event stream.
  *
  */
 export const createChat = <ThrowOnError extends boolean = false>(options: Options<CreateChatData, ThrowOnError>): RequestResult<CreateChatResponses, CreateChatErrors, ThrowOnError> => (options.client ?? client).post<CreateChatResponses, CreateChatErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
     url: '/api/chats',
     ...options,
     headers: {
@@ -45,13 +94,26 @@ export const createChat = <ThrowOnError extends boolean = false>(options: Option
     }
 });
 
-export const getChat = <ThrowOnError extends boolean = false>(options: Options<GetChatData, ThrowOnError>): RequestResult<GetChatResponses, GetChatErrors, ThrowOnError> => (options.client ?? client).get<GetChatResponses, GetChatErrors, ThrowOnError>({ url: '/api/chats/{chatId}', ...options });
+export const getChat = <ThrowOnError extends boolean = false>(options: Options<GetChatData, ThrowOnError>): RequestResult<GetChatResponses, GetChatErrors, ThrowOnError> => (options.client ?? client).get<GetChatResponses, GetChatErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/chats/{chatId}',
+    ...options
+});
 
 /**
  * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message. 403 for a Telegram chat.
  *
  */
 export const setChatSettings = <ThrowOnError extends boolean = false>(options: Options<SetChatSettingsData, ThrowOnError>): RequestResult<SetChatSettingsResponses, SetChatSettingsErrors, ThrowOnError> => (options.client ?? client).put<SetChatSettingsResponses, SetChatSettingsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
     url: '/api/chats/{chatId}/settings',
     ...options,
     headers: {
@@ -65,6 +127,11 @@ export const setChatSettings = <ThrowOnError extends boolean = false>(options: O
  *
  */
 export const sendMessage = <ThrowOnError extends boolean = false>(options: Options<SendMessageData, ThrowOnError>): RequestResult<SendMessageResponses, SendMessageErrors, ThrowOnError> => (options.client ?? client).post<SendMessageResponses, SendMessageErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
     url: '/api/chats/{chatId}/messages',
     ...options,
     headers: {
@@ -77,13 +144,29 @@ export const sendMessage = <ThrowOnError extends boolean = false>(options: Optio
  * Stops the run of the chat and withdraws its queued messages. The current tool call stops first.
  *
  */
-export const abortChat = <ThrowOnError extends boolean = false>(options: Options<AbortChatData, ThrowOnError>): RequestResult<AbortChatResponses, AbortChatErrors, ThrowOnError> => (options.client ?? client).post<AbortChatResponses, AbortChatErrors, ThrowOnError>({ url: '/api/chats/{chatId}/abort', ...options });
+export const abortChat = <ThrowOnError extends boolean = false>(options: Options<AbortChatData, ThrowOnError>): RequestResult<AbortChatResponses, AbortChatErrors, ThrowOnError> => (options.client ?? client).post<AbortChatResponses, AbortChatErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/chats/{chatId}/abort',
+    ...options
+});
 
 /**
  * Server-sent events. Each event has `event: <type>` and one `data:` line with a ChatEvent as JSON. The first event is a snapshot; a later snapshot replaces all state. A comment line comes every 15 s. The server closes the stream when the worker restarts or when the client is too slow; the client reconnects and gets a new snapshot.
  *
  */
-export const watchChat = <ThrowOnError extends boolean = false>(options: Options<WatchChatData, ThrowOnError, WatchChatResponse>): Promise<ServerSentEventsResult<WatchChatResponses>> => (options.client ?? client).sse.get<WatchChatResponses, WatchChatErrors, ThrowOnError>({ url: '/api/chats/{chatId}/events', ...options });
+export const watchChat = <ThrowOnError extends boolean = false>(options: Options<WatchChatData, ThrowOnError, WatchChatResponse>): Promise<ServerSentEventsResult<WatchChatResponses>> => (options.client ?? client).sse.get<WatchChatResponses, WatchChatErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/chats/{chatId}/events',
+    ...options
+});
 
 /**
  * Stores one file for a later message, in the agent workspace at `uploads/<id>/<name>`. The agent reads it with its tools. The largest file is 20 MB.
@@ -91,6 +174,11 @@ export const watchChat = <ThrowOnError extends boolean = false>(options: Options
  */
 export const createUpload = <ThrowOnError extends boolean = false>(options: Options<CreateUploadData, ThrowOnError>): RequestResult<CreateUploadResponses, CreateUploadErrors, ThrowOnError> => (options.client ?? client).post<CreateUploadResponses, CreateUploadErrors, ThrowOnError>({
     ...formDataBodySerializer,
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
     url: '/api/uploads',
     ...options,
     headers: {
@@ -103,20 +191,49 @@ export const createUpload = <ThrowOnError extends boolean = false>(options: Opti
  * The file of an upload. PNG, JPEG, GIF and WebP images come inline with their type; all other files come as a download of type application/octet-stream.
  *
  */
-export const getUpload = <ThrowOnError extends boolean = false>(options: Options<GetUploadData, ThrowOnError>): RequestResult<GetUploadResponses, GetUploadErrors, ThrowOnError> => (options.client ?? client).get<GetUploadResponses, GetUploadErrors, ThrowOnError>({ url: '/api/uploads/{uploadId}', ...options });
+export const getUpload = <ThrowOnError extends boolean = false>(options: Options<GetUploadData, ThrowOnError>): RequestResult<GetUploadResponses, GetUploadErrors, ThrowOnError> => (options.client ?? client).get<GetUploadResponses, GetUploadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/uploads/{uploadId}',
+    ...options
+});
 
-export const getSettings = <ThrowOnError extends boolean = false>(options?: Options<GetSettingsData, ThrowOnError>): RequestResult<GetSettingsResponses, GetSettingsErrors, ThrowOnError> => (options?.client ?? client).get<GetSettingsResponses, GetSettingsErrors, ThrowOnError>({ url: '/api/settings', ...options });
+export const getSettings = <ThrowOnError extends boolean = false>(options?: Options<GetSettingsData, ThrowOnError>): RequestResult<GetSettingsResponses, GetSettingsErrors, ThrowOnError> => (options?.client ?? client).get<GetSettingsResponses, GetSettingsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/settings',
+    ...options
+});
 
 /**
  * The models of the providers that have credentials.
  */
-export const listModels = <ThrowOnError extends boolean = false>(options?: Options<ListModelsData, ThrowOnError>): RequestResult<ListModelsResponses, ListModelsErrors, ThrowOnError> => (options?.client ?? client).get<ListModelsResponses, ListModelsErrors, ThrowOnError>({ url: '/api/models', ...options });
+export const listModels = <ThrowOnError extends boolean = false>(options?: Options<ListModelsData, ThrowOnError>): RequestResult<ListModelsResponses, ListModelsErrors, ThrowOnError> => (options?.client ?? client).get<ListModelsResponses, ListModelsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/models',
+    ...options
+});
 
 /**
  * Changes the default model, thinking level and instructions. Each chat uses them from its next message, except the settings that the chat overrides. An empty modelId clears the model.
  *
  */
 export const setAgent = <ThrowOnError extends boolean = false>(options: Options<SetAgentData, ThrowOnError>): RequestResult<SetAgentResponses, SetAgentErrors, ThrowOnError> => (options.client ?? client).put<SetAgentResponses, SetAgentErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
     url: '/api/settings/agent',
     ...options,
     headers: {
@@ -125,13 +242,26 @@ export const setAgent = <ThrowOnError extends boolean = false>(options: Options<
     }
 });
 
-export const deleteProvider = <ThrowOnError extends boolean = false>(options: Options<DeleteProviderData, ThrowOnError>): RequestResult<DeleteProviderResponses, DeleteProviderErrors, ThrowOnError> => (options.client ?? client).delete<DeleteProviderResponses, DeleteProviderErrors, ThrowOnError>({ url: '/api/settings/providers/{providerId}', ...options });
+export const deleteProvider = <ThrowOnError extends boolean = false>(options: Options<DeleteProviderData, ThrowOnError>): RequestResult<DeleteProviderResponses, DeleteProviderErrors, ThrowOnError> => (options.client ?? client).delete<DeleteProviderResponses, DeleteProviderErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/settings/providers/{providerId}',
+    ...options
+});
 
 /**
  * Adds or changes a provider. An empty apiKey keeps the saved key. When the model list of a custom provider fails, the provider is saved and the response has the reason in `error`.
  *
  */
 export const setProvider = <ThrowOnError extends boolean = false>(options: Options<SetProviderData, ThrowOnError>): RequestResult<SetProviderResponses, SetProviderErrors, ThrowOnError> => (options.client ?? client).put<SetProviderResponses, SetProviderErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
     url: '/api/settings/providers/{providerId}',
     ...options,
     headers: {
@@ -143,12 +273,25 @@ export const setProvider = <ThrowOnError extends boolean = false>(options: Optio
 /**
  * Turns Telegram off and forgets the token.
  */
-export const deleteTelegram = <ThrowOnError extends boolean = false>(options?: Options<DeleteTelegramData, ThrowOnError>): RequestResult<DeleteTelegramResponses, DeleteTelegramErrors, ThrowOnError> => (options?.client ?? client).delete<DeleteTelegramResponses, DeleteTelegramErrors, ThrowOnError>({ url: '/api/settings/telegram', ...options });
+export const deleteTelegram = <ThrowOnError extends boolean = false>(options?: Options<DeleteTelegramData, ThrowOnError>): RequestResult<DeleteTelegramResponses, DeleteTelegramErrors, ThrowOnError> => (options?.client ?? client).delete<DeleteTelegramResponses, DeleteTelegramErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/settings/telegram',
+    ...options
+});
 
 /**
  * Saves the bot and restarts it. An empty token keeps the saved token.
  */
 export const setTelegram = <ThrowOnError extends boolean = false>(options: Options<SetTelegramData, ThrowOnError>): RequestResult<SetTelegramResponses, SetTelegramErrors, ThrowOnError> => (options.client ?? client).put<SetTelegramResponses, SetTelegramErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
     url: '/api/settings/telegram',
     ...options,
     headers: {
@@ -160,9 +303,22 @@ export const setTelegram = <ThrowOnError extends boolean = false>(options: Optio
 /**
  * All automations of the default agent, oldest first.
  */
-export const listAutomations = <ThrowOnError extends boolean = false>(options?: Options<ListAutomationsData, ThrowOnError>): RequestResult<ListAutomationsResponses, ListAutomationsErrors, ThrowOnError> => (options?.client ?? client).get<ListAutomationsResponses, ListAutomationsErrors, ThrowOnError>({ url: '/api/automations', ...options });
+export const listAutomations = <ThrowOnError extends boolean = false>(options?: Options<ListAutomationsData, ThrowOnError>): RequestResult<ListAutomationsResponses, ListAutomationsErrors, ThrowOnError> => (options?.client ?? client).get<ListAutomationsResponses, ListAutomationsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/automations',
+    ...options
+});
 
 export const createAutomation = <ThrowOnError extends boolean = false>(options: Options<CreateAutomationData, ThrowOnError>): RequestResult<CreateAutomationResponses, CreateAutomationErrors, ThrowOnError> => (options.client ?? client).post<CreateAutomationResponses, CreateAutomationErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
     url: '/api/automations',
     ...options,
     headers: {
@@ -175,6 +331,11 @@ export const createAutomation = <ThrowOnError extends boolean = false>(options: 
  * The next times of a schedule, as the scheduler computes them.
  */
 export const previewSchedule = <ThrowOnError extends boolean = false>(options: Options<PreviewScheduleData, ThrowOnError>): RequestResult<PreviewScheduleResponses, PreviewScheduleErrors, ThrowOnError> => (options.client ?? client).post<PreviewScheduleResponses, PreviewScheduleErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
     url: '/api/automations/preview',
     ...options,
     headers: {
@@ -186,15 +347,36 @@ export const previewSchedule = <ThrowOnError extends boolean = false>(options: O
 /**
  * Removes the automation and its run history. Its chats stay.
  */
-export const deleteAutomation = <ThrowOnError extends boolean = false>(options: Options<DeleteAutomationData, ThrowOnError>): RequestResult<DeleteAutomationResponses, DeleteAutomationErrors, ThrowOnError> => (options.client ?? client).delete<DeleteAutomationResponses, DeleteAutomationErrors, ThrowOnError>({ url: '/api/automations/{automationId}', ...options });
+export const deleteAutomation = <ThrowOnError extends boolean = false>(options: Options<DeleteAutomationData, ThrowOnError>): RequestResult<DeleteAutomationResponses, DeleteAutomationErrors, ThrowOnError> => (options.client ?? client).delete<DeleteAutomationResponses, DeleteAutomationErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/automations/{automationId}',
+    ...options
+});
 
-export const getAutomation = <ThrowOnError extends boolean = false>(options: Options<GetAutomationData, ThrowOnError>): RequestResult<GetAutomationResponses, GetAutomationErrors, ThrowOnError> => (options.client ?? client).get<GetAutomationResponses, GetAutomationErrors, ThrowOnError>({ url: '/api/automations/{automationId}', ...options });
+export const getAutomation = <ThrowOnError extends boolean = false>(options: Options<GetAutomationData, ThrowOnError>): RequestResult<GetAutomationResponses, GetAutomationErrors, ThrowOnError> => (options.client ?? client).get<GetAutomationResponses, GetAutomationErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/automations/{automationId}',
+    ...options
+});
 
 /**
  * Changes the automation. The next run is computed again from now, so a change never runs a past time.
  *
  */
 export const updateAutomation = <ThrowOnError extends boolean = false>(options: Options<UpdateAutomationData, ThrowOnError>): RequestResult<UpdateAutomationResponses, UpdateAutomationErrors, ThrowOnError> => (options.client ?? client).put<UpdateAutomationResponses, UpdateAutomationErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
     url: '/api/automations/{automationId}',
     ...options,
     headers: {
@@ -207,9 +389,25 @@ export const updateAutomation = <ThrowOnError extends boolean = false>(options: 
  * Runs the automation now, outside its schedule. The run is skipped when the agent has no model or the previous run is still busy.
  *
  */
-export const runAutomation = <ThrowOnError extends boolean = false>(options: Options<RunAutomationData, ThrowOnError>): RequestResult<RunAutomationResponses, RunAutomationErrors, ThrowOnError> => (options.client ?? client).post<RunAutomationResponses, RunAutomationErrors, ThrowOnError>({ url: '/api/automations/{automationId}/run', ...options });
+export const runAutomation = <ThrowOnError extends boolean = false>(options: Options<RunAutomationData, ThrowOnError>): RequestResult<RunAutomationResponses, RunAutomationErrors, ThrowOnError> => (options.client ?? client).post<RunAutomationResponses, RunAutomationErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/automations/{automationId}/run',
+    ...options
+});
 
 /**
  * The last 50 runs, newest first.
  */
-export const listAutomationRuns = <ThrowOnError extends boolean = false>(options: Options<ListAutomationRunsData, ThrowOnError>): RequestResult<ListAutomationRunsResponses, ListAutomationRunsErrors, ThrowOnError> => (options.client ?? client).get<ListAutomationRunsResponses, ListAutomationRunsErrors, ThrowOnError>({ url: '/api/automations/{automationId}/runs', ...options });
+export const listAutomationRuns = <ThrowOnError extends boolean = false>(options: Options<ListAutomationRunsData, ThrowOnError>): RequestResult<ListAutomationRunsResponses, ListAutomationRunsErrors, ThrowOnError> => (options.client ?? client).get<ListAutomationRunsResponses, ListAutomationRunsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/automations/{automationId}/runs',
+    ...options
+});

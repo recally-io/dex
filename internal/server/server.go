@@ -36,6 +36,8 @@ type Config struct {
 	DataDir     string
 	Version     string
 	WorkerReady func(context.Context) bool
+	// Token is the access token that the API requires, or empty for no authentication.
+	Token string
 }
 
 // The longest message, in characters, and the most attachments of one message, as in the contract.
@@ -50,9 +52,9 @@ var errInvalid = errors.New("invalid request")
 // errReadOnly is a message to a chat that the web UI cannot write to.
 var errReadOnly = errors.New("this chat is read-only here; reply in Telegram")
 
-// New returns the handler for the API under /api/ and the web UI at /. The API has no
-// authentication; it refuses only cross-site writes, so a web page in the user's browser cannot
-// send messages or change settings.
+// New returns the handler for the API under /api/ and the web UI at /. The API requires
+// cfg.Token when it is set. It refuses cross-site writes, so a web page in the user's browser
+// cannot send messages or change settings, and cannot sign in.
 func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
 	strict := api.NewStrictHandlerWithOptions(&handler{cfg}, nil, api.StrictHTTPServerOptions{
@@ -94,7 +96,7 @@ func New(cfg Config) http.Handler {
 			small.ServeHTTP(w, r)
 		}
 	})
-	return http.NewCrossOriginProtection().Handler(limited)
+	return http.NewCrossOriginProtection().Handler(requireToken(cfg.Token, limited))
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

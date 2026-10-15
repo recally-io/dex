@@ -11,6 +11,13 @@ export type Error = {
     error: string;
 };
 
+export type NewSession = {
+    /**
+     * The access token. `dex token` prints the stored token.
+     */
+    token: string;
+};
+
 export type Ok = {
     status: 'ok';
 };
@@ -422,6 +429,35 @@ export type TelegramInput = {
 export type AutomationId = string;
 
 export type ChatId = number;
+
+export type CreateSessionData = {
+    body: NewSession;
+    path?: never;
+    query?: never;
+    url: '/api/session';
+};
+
+export type CreateSessionErrors = {
+    /**
+     * The request failed.
+     */
+    401: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateSessionError = CreateSessionErrors[keyof CreateSessionErrors];
+
+export type CreateSessionResponses = {
+    /**
+     * The token is correct. The cookie holds it.
+     */
+    204: void;
+};
+
+export type CreateSessionResponse = CreateSessionResponses[keyof CreateSessionResponses];
 
 export type GetHealthData = {
     body?: never;
