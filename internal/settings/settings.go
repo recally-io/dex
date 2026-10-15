@@ -20,6 +20,7 @@ import (
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/feishu"
 	"github.com/recally-io/dex/internal/telegram"
 	"github.com/recally-io/dex/internal/wechat"
 	"github.com/recally-io/dex/internal/worker"
@@ -101,6 +102,12 @@ type Service struct {
 	agentID       string
 	apiURL        string // Telegram Bot API URL; empty for the default
 	onTelegram    func(*telegram.Config)
+
+	feishuAPIURL    string
+	feishuRegistrar feishu.Registrar
+	onFeishu        func(*feishu.Config)
+	feishuSession   *feishuSession
+	feishuSessionID string
 
 	// Serializes changes, so the worker and the bot always get the newest saved settings.
 	mu sync.Mutex

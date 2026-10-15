@@ -18,15 +18,15 @@ to read in an afternoon.
   starts at login. Optional daily updates wait until agent work is idle.
   Listening addresses are limited to loopback.
 - Agent settings in the web UI: providers, the agent's model, thinking level
-  and instructions, Telegram, and WeChat. dex needs no configuration file for agent settings. The CLI manages
+  and instructions, Telegram, WeChat, and Feishu / Lark. dex needs no configuration file for agent settings. The CLI manages
   the service address, data directory, and update policy.
   The web UI has these pages: Agent, Providers, Channels, Automations, and
-  About. The Extensions and Secrets pages and the Slack and Feishu
-  channels show that dex does not support them yet.
+  About. The Extensions and Secrets pages and the Slack
+  channel show that dex does not support them yet.
 - Agents with a model, instructions, and a workspace directory.
 - Durable conversations: a crash or a restart does not lose a message or a
   started run.
-- Entry points: the web UI, Telegram, and WeChat. External channel chats are read-only
+- Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. External channel chats are read-only
   on the web. `/new` starts another chat. `/stop` stops pending work. `/help`
   lists commands. Reply delivery resumes after a restart and skips confirmed
   parts. A crash after remote success can duplicate one part. The Channels
@@ -46,11 +46,19 @@ to read in an afternoon.
   survives a restart; a successful new login clears it. Temporary receive or
   storage failures retry without a settings change. CDN 408 and 429 retain the
   message for retry. A replay does not download admitted attachments again.
+- Feishu / Lark: QR app creation or manual credentials with a one-time
+  pairing code. Only the owner can use the bot in private messages. Text,
+  rich posts (including code blocks), images and files reach the agent.
+  Replies use a streamed card. A card content rejection allows plain text
+  as a fallback. Temporary failures retry the card. Startup and connection
+  failures recover without a settings change. The Channels page shows runtime
+  status. Saved Lark settings keep the Lark platform. Groups, threads and
+  outbound media are not supported.
 - Timers: scheduled messages to an agent.
 
-Status: the web UI, Telegram, WeChat, durable messages, timers, and the worker are
-done. Skills, MCP servers, named secrets, and other chat channels are not
-started.
+Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages, timers, skills,
+MCP servers, and the worker are available. Named secrets and other chat
+channels are not available.
 
 ## Non-goals
 

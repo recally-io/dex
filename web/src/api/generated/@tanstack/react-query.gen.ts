@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acquireMaintenance, beginWechatLogin, createAutomation, createChat, createSession, createUpload, deleteAutomation, deleteProvider, deleteTelegram, deleteWechat, getAutomation, getChat, getExtensions, getHealth, getSettings, getUpload, listAutomationRuns, listAutomations, listChats, listModels, type Options, pollWechatLogin, previewSchedule, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setAgent, setChatSettings, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetHealthData, GetHealthResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, beginFeishu, beginWechatLogin, createAutomation, createChat, createSession, createUpload, deleteAutomation, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, getAutomation, getChat, getExtensions, getFeishu, getHealth, getSettings, getUpload, listAutomationRuns, listAutomations, listChats, listModels, type Options, pollFeishu, pollWechatLogin, previewSchedule, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setAgent, setChatSettings, setFeishu, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
 
 /**
  * Exchanges the access token for the session cookie.
@@ -439,6 +439,77 @@ export const setTelegramMutation = (options?: Partial<Options<SetTelegramData>>)
     const mutationOptions: UseMutationOptions<SetTelegramResponse, SetTelegramError, Options<SetTelegramData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await setTelegram({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const deleteFeishuMutation = (options?: Partial<Options<DeleteFeishuData>>): UseMutationOptions<DeleteFeishuResponse, DeleteFeishuError, Options<DeleteFeishuData>> => {
+    const mutationOptions: UseMutationOptions<DeleteFeishuResponse, DeleteFeishuError, Options<DeleteFeishuData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteFeishu({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getFeishuQueryKey = (options?: Options<GetFeishuData>) => createQueryKey('getFeishu', options);
+
+export const getFeishuOptions = (options?: Options<GetFeishuData>) => queryOptions<GetFeishuResponse, GetFeishuError, GetFeishuResponse, ReturnType<typeof getFeishuQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getFeishu({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getFeishuQueryKey(options)
+});
+
+export const setFeishuMutation = (options?: Partial<Options<SetFeishuData>>): UseMutationOptions<SetFeishuResponse, SetFeishuError, Options<SetFeishuData>> => {
+    const mutationOptions: UseMutationOptions<SetFeishuResponse, SetFeishuError, Options<SetFeishuData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await setFeishu({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const beginFeishuMutation = (options?: Partial<Options<BeginFeishuData>>): UseMutationOptions<BeginFeishuResponse, BeginFeishuError, Options<BeginFeishuData>> => {
+    const mutationOptions: UseMutationOptions<BeginFeishuResponse, BeginFeishuError, Options<BeginFeishuData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await beginFeishu({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const pollFeishuMutation = (options?: Partial<Options<PollFeishuData>>): UseMutationOptions<PollFeishuResponse, PollFeishuError, Options<PollFeishuData>> => {
+    const mutationOptions: UseMutationOptions<PollFeishuResponse, PollFeishuError, Options<PollFeishuData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await pollFeishu({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

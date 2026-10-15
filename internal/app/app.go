@@ -21,6 +21,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
+	"github.com/recally-io/dex/internal/feishu"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/scheduler"
 	"github.com/recally-io/dex/internal/server"
@@ -44,6 +45,9 @@ type Config struct {
 	WorkerEnv []string
 	// TelegramAPIURL replaces https://api.telegram.org, for example for a local Bot API server.
 	TelegramAPIURL string
+	// FeishuAPIURL and FeishuAccountsURL replace the platform boundaries in tests.
+	FeishuAPIURL      string
+	FeishuAccountsURL string
 	// Wechat API and CDN overrides connect integration tests to local HTTP servers.
 	WechatAPIURL     string
 	WechatCDNURL     string
@@ -141,8 +145,16 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		cfg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
 		bots.Set("telegram", telegram.New(*cfg, bots))
 	})
-	prefs.ChannelStatus = bots.Status
 	uploads := upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID))
+	setFeishu := func(config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
+		if config == nil {
+			bots.Set("feishu", nil)
+			return
+		}
+		bots.Set("feishu", feishu.New(*config, bots, q, hub, uploads, prefs.PairFeishu))
+	}
+	prefs.ConfigureFeishu(cfg.FeishuAPIURL, cfg.FeishuAccountsURL, setFeishu)
+	prefs.ChannelStatus = bots.Status
 	wxOptions := wechat.Options{APIURL: cfg.WechatAPIURL, CDNURL: cfg.WechatCDNURL, HTTPClient: cfg.WechatHTTPClient, Version: cfg.Version}
 	prefs.ConfigureWechat(wxOptions, conn, func(cfg *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
 		if cfg == nil {
@@ -158,6 +170,11 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	}
 
 	tg, err := prefs.TelegramConfig(ctx)
+	if err != nil {
+		cancel()
+		return nil, errors.Join(err, conn.Close())
+	}
+	fs, err := prefs.FeishuConfig(ctx)
 	if err != nil {
 		cancel()
 		return nil, errors.Join(err, conn.Close())
@@ -196,6 +213,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	jobs.Start()
+	setFeishu(fs)
 	if tg != nil {
 		tg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
 		bots.Set("telegram", telegram.New(*tg, bots)) //nolint:contextcheck // the bot uses the manager lifetime
