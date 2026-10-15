@@ -81,6 +81,16 @@ type Dream struct {
 	CreatedAt        int64  `json:"created_at"`
 }
 
+type FeishuSetting struct {
+	ID               int64  `json:"id"`
+	AppID            string `json:"app_id"`
+	AppSecret        string `json:"app_secret"`
+	Brand            string `json:"brand"`
+	OwnerID          string `json:"owner_id"`
+	PairingCode      string `json:"pairing_code"`
+	PairingExpiresAt int64  `json:"pairing_expires_at"`
+}
+
 type Provider struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`

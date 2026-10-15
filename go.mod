@@ -3,6 +3,7 @@ module github.com/recally-io/dex
 go 1.27.2
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/pressly/goose/v3 v3.29.0

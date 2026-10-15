@@ -73,7 +73,8 @@ const channel = createRoute({
   getParentRoute: () => root,
   path: "/channels/$channelId",
   beforeLoad: ({ params }) => {
-    if (params.channelId !== "web" && params.channelId !== "telegram") throw notFound();
+    if (params.channelId !== "web" && params.channelId !== "telegram" && params.channelId !== "feishu")
+      throw notFound();
   },
   component: ChannelRoute,
 });
@@ -81,7 +82,12 @@ const channel = createRoute({
 function ChannelRoute() {
   const { channelId } = channel.useParams();
 
-  return <ChannelPage key={channelId} channel={channelId === "web" ? "web" : "telegram"} />;
+  return (
+    <ChannelPage
+      key={channelId}
+      channel={channelId === "web" ? "web" : channelId === "feishu" ? "feishu" : "telegram"}
+    />
+  );
 }
 
 // Old addresses from the single settings page.

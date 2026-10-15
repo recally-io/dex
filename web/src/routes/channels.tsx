@@ -7,6 +7,7 @@ import type { Settings } from "../api/generated/types.gen";
 import {
   createTelegramPairingMutation,
   deleteTelegramMutation,
+  getFeishuOptions,
   getSettingsOptions,
   listChatsOptions,
   setTelegramMutation,
@@ -21,12 +22,10 @@ import { Field, Input, SavedSecret, Textarea } from "../components/form";
 import { Facts, FramedPage, Mono, Note, NotAvailable, Panel, Section } from "../components/page";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
+import { FeishuChannel } from "./feishu";
 import { WithSettings } from "./agent";
 
-const unsupported = [
-  { name: "Slack", text: "dex cannot connect to Slack in this version." },
-  { name: "Feishu / Lark", text: "dex cannot connect to Feishu or Lark in this version." },
-];
+const unsupported = [{ name: "Slack", text: "dex cannot connect to Slack in this version." }];
 
 function OnOff({ on }: { on: boolean }) {
   return (
@@ -43,7 +42,7 @@ function ChannelRow({
   text,
   status,
 }: {
-  channel?: "web" | "telegram";
+  channel?: "web" | "telegram" | "feishu";
   icon: ReactNode;
   name: string;
   text: string;
@@ -88,6 +87,7 @@ function Boundary() {
 
 export function ChannelsPage() {
   useQuery({ ...getSettingsOptions(), refetchInterval: 2000 });
+  const feishu = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
 
   return (
     <FramedPage
@@ -122,6 +122,17 @@ export function ChannelsPage() {
                       status={
                         <StatusPill tone={tg.status.state === "running" ? "green" : "neutral"}>
                           {tg.status.state}
+                        </StatusPill>
+                      }
+                    />
+                    <ChannelRow
+                      channel="feishu"
+                      icon={<IconPaperPlane size={16} />}
+                      name="Feishu / Lark"
+                      text="Private chat with the paired owner. Create an app with a QR code."
+                      status={
+                        <StatusPill tone={feishu.data?.status === "running" ? "green" : "neutral"}>
+                          {feishu.isError ? "unavailable" : (feishu.data?.status ?? "Loading…")}
                         </StatusPill>
                       }
                     />
@@ -174,8 +185,8 @@ function Crumb() {
   );
 }
 
-export function ChannelPage({ channel }: { channel: "web" | "telegram" }) {
-  return channel === "web" ? <WebChannel /> : <TelegramChannel />;
+export function ChannelPage({ channel }: { channel: "web" | "telegram" | "feishu" }) {
+  return channel === "web" ? <WebChannel /> : channel === "feishu" ? <FeishuChannel /> : <TelegramChannel />;
 }
 
 function WebChannel() {
