@@ -80,7 +80,7 @@ type Service struct {
 	q       *sqlc.Queries
 	worker  Caller
 	now     func() time.Time
-	notify  func(ctx context.Context, channelKey string, reply Reply)
+	notify  func(channelKey string)
 	changed func(chatID int64)
 
 	// Stored submissions wait here for Run, which delivers them in order.
@@ -98,10 +98,10 @@ type Service struct {
 }
 
 // New returns a Service. Connect the worker's settled events to HandleSettled and its start to
-// Replay, and run Run. notify, if not nil, receives each reply once, when its submission settles.
+// Replay, and run Run. notify, if not nil, receives the channel key when a submission settles.
 // changed, if not nil, learns that a chat has a new message, a settled message, or a worker
 // conversation. Both run on the goroutine that reads the worker, so they must not block.
-func New(q *sqlc.Queries, w Caller, now func() time.Time, notify func(ctx context.Context, channelKey string, reply Reply), changed func(chatID int64)) *Service {
+func New(q *sqlc.Queries, w Caller, now func() time.Time, notify func(channelKey string), changed func(chatID int64)) *Service {
 	return &Service{
 		q: q, worker: w, now: now, notify: notify, changed: changed,
 		queue: make(chan sqlc.ListPendingSubmissionsRow, 1024),
@@ -156,15 +156,6 @@ func (s *Service) Send(ctx context.Context, agentID, channelKey string, m Messag
 		return 0, ErrNoModel
 	}
 	return s.enqueue(ctx, agentID, channelKey, "", m)
-}
-
-// Submit stores content as a message to agentID on channelKey and returns without waiting; the
-// reply goes to notify. sourceKey identifies the message on its channel: when a message with the
-// same sourceKey exists, Submit does nothing, so a channel that delivers a message twice gets one
-// answer.
-func (s *Service) Submit(ctx context.Context, agentID, channelKey, sourceKey, content string) error {
-	_, err := s.enqueue(ctx, agentID, channelKey, sourceKey, Message{ID: uuid.NewV7().String(), Content: content})
-	return err
 }
 
 // SubmitMessage stores a channel update with its attachments and source identity.
@@ -267,18 +258,18 @@ func (s *Service) Abort(ctx context.Context, agentID string, id int64) error {
 		s.deliveryMu.Unlock()
 		return err
 	}
-	ids, err := s.q.StopChatSubmissions(ctx, sqlc.StopChatSubmissionsParams{ConversationID: id, SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+	count, err := s.q.StopChatSubmissions(ctx, sqlc.StopChatSubmissionsParams{ConversationID: id, SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
 	s.deliveryMu.Unlock()
 	if err != nil {
 		return err
 	}
-	if len(ids) > 0 {
+	if count > 0 {
 		s.signal(id)
 		if s.notify != nil {
-			s.notify(ctx, c.ChannelKey, Reply{Status: "unanswered", Reason: "stopped"})
+			s.notify(c.ChannelKey)
 		}
 	}
-	// A held maintenance lease proves the worker has no active run. Its abort call also waits
+	// A confirmed maintenance lease proves the worker has no active run. Its abort call also waits
 	// for admission, so only control's queue needs to be withdrawn while the lease is held.
 	if c.WorkerConversationID == 0 || s.leaseUntil.Load() > s.now().UnixMilli() {
 		return nil
@@ -408,7 +399,7 @@ func (s *Service) settle(ctx context.Context, event worker.Settled) {
 	}
 	s.signal(row.ConversationID)
 	if s.notify != nil {
-		s.notify(ctx, row.ChannelKey, Reply{Status: row.Status, Answer: row.Answer.String, Reason: row.Reason.String})
+		s.notify(row.ChannelKey)
 	}
 }
 

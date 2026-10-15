@@ -12,7 +12,6 @@ CREATE TABLE channel_commands (
     command TEXT NOT NULL,
     answer TEXT NOT NULL DEFAULT '',
     completed INTEGER NOT NULL DEFAULT 0,
-    delivered_parts INTEGER NOT NULL DEFAULT 0,
     delivered_at INTEGER
 ) STRICT;
 

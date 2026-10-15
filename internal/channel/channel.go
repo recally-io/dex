@@ -1,13 +1,13 @@
 // Package channel owns peer-to-chat mapping, commands, bot lifetime, and reply delivery.
 //
 // New connects a Manager to control's database and chat service. A platform passes inbound
-// messages to Receive (or Submit for text). Peer names have the form "platform:remote-id" and
+// messages to Receive. Peer names have the form "platform:remote-id" and
 // contain no slash. Source keys identify updates globally, including the bot identity.
 //
 // A platform implements Bot and registers it with Set("platform", bot). Set stops and waits for
 // the previous bot before it starts the replacement; nil turns it off. Run receives messages.
-// Parts renders and splits a final reply. Send confirms one part; a PartSender receives its
-// stable identity instead. ErrPermanent skips a rejected part. Report updates
+// Parts renders and splits a final reply. Send confirms one part with its stable identity.
+// ErrPermanent skips a rejected part. Report updates
 // runtime status; Status returns it for the settings API. Connect chat's notify to Notify.
 //
 // Receive handles /new, /stop, and /help before submitting messages. /new preserves old chats
@@ -36,13 +36,6 @@ import (
 // Other errors keep the part for retry.
 var ErrPermanent = errors.New("permanent channel delivery failure")
 
-// PartSender optionally gives a transport stable delivery identity. Replies use the submission
-// ID; command answers use the command source key. Part is a zero-based index. SendPart has the
-// same error contract as Send. A transport can use it for remote idempotency or preview updates.
-type PartSender interface {
-	SendPart(ctx context.Context, peer, deliveryID string, part int, text string) error
-}
-
 // Status is the public runtime state. Reason must contain no credentials.
 type Status struct {
 	State  string `json:"state"`
@@ -53,7 +46,8 @@ type Status struct {
 type Bot interface {
 	Run(context.Context) error
 	Parts(chat.Reply) []string
-	Send(context.Context, string, string) error
+	// Replies use the submission ID; commands use the source key. Part is zero-based.
+	Send(ctx context.Context, peer, deliveryID string, part int, text string) error
 }
 
 type runtime struct {
@@ -148,7 +142,7 @@ func (m *Manager) Status(name string) Status {
 }
 
 // Notify wakes delivery without blocking the worker's reader. The database holds the reply.
-func (m *Manager) Notify(_ context.Context, key string, _ chat.Reply) {
+func (m *Manager) Notify(key string) {
 	name, _, _ := strings.Cut(key, ":")
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -158,11 +152,6 @@ func (m *Manager) Notify(_ context.Context, key string, _ chat.Reply) {
 		default:
 		}
 	}
-}
-
-// Submit accepts a text update. It implements the existing Telegram submitter contract.
-func (m *Manager) Submit(ctx context.Context, _ string, peer, source, text string) error {
-	return m.Receive(ctx, peer, source, chat.Message{Content: text})
 }
 
 // Receive stores one update or executes a shared command. A repeated source has no effect.
@@ -202,7 +191,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := m.q.WithTx(tx)
-	if _, err = q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{SourceKey: source, Peer: peer, ChannelKey: key, Command: cmd}); err != nil {
+	if err = q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{SourceKey: source, Peer: peer, ChannelKey: key, Command: cmd}); err != nil {
 		return err
 	}
 	if cmd == "/new" {
@@ -230,21 +219,22 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	case "/new":
 		answer = "Started a new chat."
 	case "/stop":
+		answer = "Stopped the current answer."
 		conv, err := m.q.GetConversationByKey(ctx, sqlc.GetConversationByKeyParams{AgentID: m.agentID, ChannelKey: c.ChannelKey})
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		if err == nil {
 			if err = m.chats.Abort(ctx, m.agentID, conv.ID); err != nil {
-				return err
+				slog.Warn("channel: could not stop the current answer", "source", c.SourceKey, "err", err)
+				answer = "Could not stop the current answer."
 			}
 		}
-		answer = "Stopped the current answer."
 	}
 	if err := m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{Answer: answer, SourceKey: c.SourceKey}); err != nil {
 		return err
 	}
-	m.Notify(ctx, c.Peer, chat.Reply{})
+	m.Notify(c.Peer)
 	return nil
 }
 
@@ -277,12 +267,7 @@ func (m *Manager) deliver(ctx context.Context, name string, r *runtime) {
 }
 
 func sendPart(ctx context.Context, bot Bot, peer, id string, part int, text string) error {
-	var err error
-	if sender, ok := bot.(PartSender); ok {
-		err = sender.SendPart(ctx, peer, id, part, text)
-	} else {
-		err = bot.Send(ctx, peer, text)
-	}
+	err := bot.Send(ctx, peer, id, part, text)
 	if errors.Is(err, ErrPermanent) {
 		slog.Warn("channel: skipped a rejected reply part", "delivery", id, "part", part, "err", err)
 		return nil
@@ -330,13 +315,10 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 		return err
 	}
 	for _, r := range acks {
-		parts := bot.Parts(chat.Reply{Status: "done", Answer: r.Answer})
-		for i := int(r.DeliveredParts); i < len(parts); i++ {
-			if err = sendPart(ctx, bot, r.Peer, r.SourceKey, i, parts[i]); err != nil {
+		// Fixed command replies fit one part; add progress if commands gain long replies.
+		for i, part := range bot.Parts(chat.Reply{Status: "done", Answer: r.Answer}) {
+			if err = sendPart(ctx, bot, r.Peer, r.SourceKey, i, part); err != nil {
 				return fmt.Errorf("send command reply: %w", err)
-			}
-			if err = m.q.AdvanceChannelCommandReply(ctx, r.SourceKey); err != nil {
-				return err
 			}
 		}
 		if err = m.q.MarkChannelCommandDelivered(ctx, sqlc.MarkChannelCommandDeliveredParams{SourceKey: r.SourceKey, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
