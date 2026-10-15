@@ -24,10 +24,11 @@ test("the log of a failed MCP server has no values from its entry", async () => 
 		join(dir, "home", ".agents", "mcp.json"),
 		JSON.stringify({
 			mcpServers: {
+				missing: { command: join(dir, "SECRET-COMMAND") },
 				crash: {
 					command: "/bin/sh",
-					args: ["-c", 'echo "$TOKEN $0" >&2; exit 1', "SECRET-ARG"],
-					env: { TOKEN: "SECRET-ENV" },
+					args: ["-c", 'echo "$TOKEN $0" >&2; exit 1', "--token=SECRET-ARG"],
+					env: { TOKEN: "SECRET" },
 				},
 				denied: {
 					type: "http",
@@ -44,10 +45,9 @@ test("the log of a failed MCP server has no values from its entry", async () => 
 	const loaded = await new AgentExtensions(join(dir, "home"), join(dir, "agent"), dir).load();
 	await loaded.close();
 
-	expect(loaded.info.servers.map((s) => s.state)).toEqual(["failed", "failed", "failed"]);
+	expect(loaded.info.servers.map((s) => s.state)).toEqual(["failed", "failed", "failed", "failed"]);
 	const text = log.mock.calls.flat().join("\n");
-	// The log still has the details that are not secret.
-	expect(text).toContain("status 500");
-	expect(text).toContain("[redacted]");
+	expect(text).toContain("MCP server denied: the server answered with HTTP status 500");
+	expect(text).toContain("MCP server missing: the command does not exist");
 	expect(text).not.toContain("SECRET");
 });

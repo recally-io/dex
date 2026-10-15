@@ -46,8 +46,8 @@ only source of settings. Extension files are an exception to it.
 
 - An edit to a file applies after a reload or a restart.
 - mcp.json holds headers and environment values as plain text. The API does
-  not return commands, URLs, headers, environment values or raw errors; the
-  details of a failure go to the worker log, without the values of the entry.
+  not return commands, URLs, headers, environment values or raw errors, and
+  the worker log has only the category of a failure.
 - An MCP server runs as the user, without a sandbox. A user who can chat with
   the agent can make it write an mcp.json file, because the agent tools have
   no sandbox either.

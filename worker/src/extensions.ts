@@ -189,11 +189,10 @@ export class AgentExtensions {
 	async #connect(entry: ServerEntry) {
 		const { name, server } = entry;
 		const client = new McpClient({ name: "dex", version: "1", requestTimeoutMs: CONNECT_TIMEOUT_MS });
-		let transport: StdioTransport | StreamableHttpTransport | undefined;
 		try {
 			if (!("url" in server) && !("command" in server))
 				throw new Error("a server without a command or URL is off");
-			transport =
+			const transport =
 				server.type === "http"
 					? new StreamableHttpTransport({ url: server.url, headers: server.headers ?? {} })
 					: new StdioTransport({
@@ -202,6 +201,7 @@ export class AgentExtensions {
 							// The worker environment has no credentials; a server gets its own in `env`.
 							env: server.env ?? {},
 							cwd: resolve(this.#workspace, server.cwd ?? "."),
+							// "inherit" would put the server's output, which can hold its credentials, in the log.
 							stderr: "pipe",
 						});
 			await client.connect(transport);
@@ -247,14 +247,11 @@ export class AgentExtensions {
 			return { client, tools, info };
 		} catch (error) {
 			await client.close().catch(() => undefined);
-			// The API gets only the category, because a raw error or the server's stderr can hold the
-			// URL, headers, arguments or environment. The log gets the details without those values.
-			const stderr = transport instanceof StdioTransport ? transport.stderr.trim().slice(-2000) : "";
-			console.error(
-				redact(`MCP server ${name}: ${errorText(error)}${stderr === "" ? "" : `\n${stderr}`}`, server),
-			);
+			// A raw error or the server's stderr can hold the command, URL, arguments, headers or
+			// environment, so neither the API nor the log gets them. To see them, run the server by hand.
 			const info = serverInfo(entry, "failed");
-			info.error = `${failure(error)}; see the dex log for details`;
+			info.error = failure(error);
+			console.error(`MCP server ${name}: ${info.error}`);
 			return { client: undefined, tools: [], info };
 		}
 	}
@@ -394,26 +391,6 @@ function failure(error: unknown): string {
 	if (errorCode(error) === "ENOENT") return "the command does not exist";
 	if (error instanceof TypeError && /url/i.test(error.message)) return "the URL is not valid";
 	return "the connection failed";
-}
-
-/**
- * Replaces the values of a server entry that can be credentials. Values shorter than 8 characters
- * stay, because they also match common words.
- */
-function redact(text: string, server: Server): string {
-	const values = [
-		...("url" in server ? [server.url, ...(URL.parse(server.url)?.searchParams.values() ?? [])] : []),
-		...("args" in server ? (server.args ?? []) : []),
-		...Object.values(("env" in server ? server.env : undefined) ?? {}),
-		...Object.values(("headers" in server ? server.headers : undefined) ?? {}),
-	];
-	// A header value such as "Bearer <token>" can appear only in part.
-	const parts = values
-		.flatMap((value) => value.split(/\s+/).concat(value))
-		.filter((value) => value.length >= 8);
-	return parts
-		.toSorted((a, b) => b.length - a.length)
-		.reduce((out, value) => out.replaceAll(value, "[redacted]"), text);
 }
 
 function errorCode(error: unknown): unknown {
