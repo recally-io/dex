@@ -50,6 +50,8 @@ type Worker struct {
 	mu   sync.Mutex
 	proc *process      // nil while no process runs
 	up   chan struct{} // closed while proc is not nil
+	// restarting marks an exit that Restart requested, so Run starts the next process at once.
+	restarting atomic.Bool
 }
 
 // New returns a Worker. Run starts it.
@@ -66,6 +68,9 @@ func (w *Worker) Run(ctx context.Context) error {
 		err := w.runOnce(ctx)
 		if ctx.Err() != nil {
 			return nil //nolint:nilerr // an exit after cancel is the requested stop
+		}
+		if w.restarting.Swap(false) {
+			continue
 		}
 		if time.Since(started) > time.Minute {
 			backoff = time.Second
@@ -129,6 +134,42 @@ func (w *Worker) runOnce(ctx context.Context) error {
 		w.cfg.OnExit()
 	}
 	return errors.Join(cmd.Wait(), err)
+}
+
+// Restart stops the process, which closes its storage, and returns when the next process accepts
+// calls. The caller must stop new work first, for example with the maintenance lease.
+func (w *Worker) Restart(ctx context.Context) error {
+	w.mu.Lock()
+	old := w.proc
+	w.mu.Unlock()
+	if old == nil {
+		return ErrUnavailable
+	}
+	w.restarting.Store(true)
+	_ = old.stdin.Close()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-old.done:
+	}
+	for {
+		w.mu.Lock()
+		p, up := w.proc, w.up
+		w.mu.Unlock()
+		if p != nil && p != old {
+			return nil
+		}
+		if p == old {
+			// Run has not seen the exit yet.
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-up:
+		}
+	}
 }
 
 func (w *Worker) setProc(p *process) {

@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acquireMaintenance, createAutomation, createChat, createSession, createUpload, deleteAutomation, deleteProvider, deleteTelegram, getAutomation, getChat, getHealth, getSettings, getUpload, listAutomationRuns, listAutomations, listChats, listModels, type Options, previewSchedule, releaseMaintenance, runAutomation, sendMessage, setAgent, setChatSettings, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatResponse, GetHealthData, GetHealthResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, createAutomation, createChat, createSession, createUpload, deleteAutomation, deleteProvider, deleteTelegram, getAutomation, getChat, getExtensions, getHealth, getSettings, getUpload, listAutomationRuns, listAutomations, listChats, listModels, type Options, previewSchedule, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setAgent, setChatSettings, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetHealthData, GetHealthResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
 
 /**
  * Exchanges the access token for the session cookie.
@@ -243,6 +243,43 @@ export const getUploadOptions = (options: Options<GetUploadData>) => queryOption
     },
     queryKey: getUploadQueryKey(options)
 });
+
+export const getExtensionsQueryKey = (options?: Options<GetExtensionsData>) => createQueryKey('getExtensions', options);
+
+/**
+ * The agent's skills and MCP servers, from ~/.agents/ and the agent directory. It does not start MCP servers: before the agent starts, the servers are idle.
+ *
+ */
+export const getExtensionsOptions = (options?: Options<GetExtensionsData>) => queryOptions<GetExtensionsResponse, GetExtensionsError, GetExtensionsResponse, ReturnType<typeof getExtensionsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getExtensions({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getExtensionsQueryKey(options)
+});
+
+/**
+ * Restarts the worker, which connects the MCP servers again. Skills need no reload. 409 when the agent has unfinished work. 400 when a file is not valid; the agent then keeps its MCP servers.
+ *
+ */
+export const reloadExtensionsMutation = (options?: Partial<Options<ReloadExtensionsData>>): UseMutationOptions<ReloadExtensionsResponse, ReloadExtensionsError, Options<ReloadExtensionsData>> => {
+    const mutationOptions: UseMutationOptions<ReloadExtensionsResponse, ReloadExtensionsError, Options<ReloadExtensionsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await reloadExtensions({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 export const getSettingsQueryKey = (options?: Options<GetSettingsData>) => createQueryKey('getSettings', options);
 

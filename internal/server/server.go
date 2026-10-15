@@ -22,6 +22,7 @@ import (
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/upload"
+	"github.com/recally-io/dex/internal/worker"
 	"github.com/recally-io/dex/web"
 )
 
@@ -36,6 +37,10 @@ type Config struct {
 	DataDir     string
 	Version     string
 	WorkerReady func(context.Context) bool
+	// Worker calls the worker for the agent's extensions.
+	Worker worker.CallFunc
+	// RestartWorker restarts the worker, which connects the MCP servers again.
+	RestartWorker func(context.Context) error
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string
 }
@@ -130,6 +135,45 @@ func (h *handler) ReleaseMaintenance(ctx context.Context, _ api.ReleaseMaintenan
 		return nil, err
 	}
 	return api.ReleaseMaintenance200JSONResponse(ok), nil
+}
+
+func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestObject) (api.GetExtensionsResponseObject, error) {
+	var out api.GetExtensions200JSONResponse
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID}, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRequestObject) (api.ReloadExtensionsResponseObject, error) {
+	// A worker that starts with an mcp.json that is not valid has no MCP servers. Keep the loaded ones.
+	var files api.Extensions
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID}, &files); err != nil {
+		return nil, err
+	}
+	if len(files.Errors) > 0 {
+		return nil, fmt.Errorf("%w: %s", errInvalid, strings.Join(files.Errors, "\n"))
+	}
+	// The maintenance lease refuses a reload while the agent has work, and holds new work until the
+	// new worker runs. The new worker gets the lease again before it accepts calls.
+	if err := h.Chats.AcquireReload(ctx); err != nil {
+		return nil, err
+	}
+	defer func() {
+		release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := h.Chats.ReleaseReload(release); err != nil {
+			slog.Error("release maintenance after an extension reload", "err", err)
+		}
+	}()
+	if err := h.RestartWorker(ctx); err != nil {
+		return nil, err
+	}
+	// The agent opens now, under the lease, so the response shows the state of each server.
+	var out api.ReloadExtensions200JSONResponse
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID, Open: true}, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func chatView(c chat.Chat) api.Chat {

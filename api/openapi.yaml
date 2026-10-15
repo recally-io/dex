@@ -251,6 +251,38 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/extensions:
+    get:
+      operationId: getExtensions
+      description: >
+        The agent's skills and MCP servers, from ~/.agents/ and the agent
+        directory. It does not start MCP servers: before the agent starts, the
+        servers are idle.
+      responses:
+        "200":
+          description: The extensions.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Extensions" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/extensions/reload:
+    post:
+      operationId: reloadExtensions
+      description: >
+        Restarts the worker, which connects the MCP servers again. Skills
+        need no reload. 409 when the agent has unfinished work. 400 when a
+        file is not valid; the agent then keeps its MCP servers.
+      responses:
+        "200":
+          description: The loaded extensions.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Extensions" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/settings:
     get:
       operationId: getSettings
@@ -1002,6 +1034,78 @@ components:
           type: array
           description: pi-ai's getSupportedThinkingLevels(model).
           items: { $ref: "#/components/schemas/ThinkingLevel" }
+
+    Extensions:
+      type: object
+      required: [paths, skills, servers, errors]
+      properties:
+        paths:
+          type: object
+          description: Where the agent reads its extensions.
+          required: [globalSkills, globalMcp, agentSkills, agentMcp]
+          properties:
+            globalSkills: { type: string }
+            globalMcp: { type: string }
+            agentSkills: { type: string }
+            agentMcp: { type: string }
+        skills:
+          type: array
+          items: { $ref: "#/components/schemas/Skill" }
+        servers:
+          type: array
+          items: { $ref: "#/components/schemas/McpServer" }
+        errors:
+          type: array
+          description: >
+            Files that dex cannot read. When an mcp.json file is one of them,
+            no MCP server starts.
+          items: { type: string }
+
+    ExtensionScope:
+      type: string
+      description: global is ~/.agents/; agent is the agent directory.
+      enum: [global, agent]
+
+    Skill:
+      type: object
+      required: [name, description, scope, path, overrides]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        scope: { $ref: "#/components/schemas/ExtensionScope" }
+        path: { type: string, description: The SKILL.md file. }
+        overrides:
+          type: boolean
+          description: The agent skill replaces a global skill with the same name.
+        error:
+          type: string
+          description: Why the skill is not valid. The prompt does not list it.
+
+    McpServer:
+      type: object
+      description: >
+        An MCP server from an mcp.json file, without its command, URL, headers
+        or environment, because they can hold credentials.
+      required: [name, scope, overrides, state, tools]
+      properties:
+        name: { type: string }
+        scope: { $ref: "#/components/schemas/ExtensionScope" }
+        overrides:
+          type: boolean
+          description: The agent server replaces a global server with the same name.
+        transport:
+          type: string
+          description: Absent for an agent entry that only turns off a global server.
+          enum: [stdio, http]
+        state:
+          type: string
+          description: idle means that the agent has not started, so dex has not connected.
+          enum: [idle, connected, failed, disabled]
+        tools:
+          type: array
+          description: The MCP tool names. The agent gets each tool as mcp__<server>__<tool>.
+          items: { type: string }
+        error: { type: string }
 
     Telegram:
       type: object

@@ -49,13 +49,14 @@ decisions.
 
 ## Sources of truth
 
-| Data                                 | Owner               | Location                                                                  |
-| ------------------------------------ | ------------------- | ------------------------------------------------------------------------- |
-| Agents, chats, submissions, settings | control             | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/)) |
-| Transcripts, runs, tool calls, usage | worker (pi-durable) | `<data dir>/agents/<id>/state.sqlite`                                     |
-| Agent files                          | the agent's tools   | `<data dir>/agents/<id>/workspace/`                                       |
-| Uploaded files                       | control             | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`             |
-| Memory (git repo)                    | the agent's tools   | `<data dir>/memory/`                                                      |
+| Data                                 | Owner               | Location                                                                    |
+| ------------------------------------ | ------------------- | --------------------------------------------------------------------------- |
+| Agents, chats, submissions, settings | control             | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))   |
+| Transcripts, runs, tool calls, usage | worker (pi-durable) | `<data dir>/agents/<id>/state.sqlite`                                       |
+| Agent files                          | the agent's tools   | `<data dir>/agents/<id>/workspace/`                                         |
+| Uploaded files                       | control             | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`               |
+| Memory (git repo)                    | the agent's tools   | `<data dir>/memory/`                                                        |
+| Skills and MCP servers               | the user's files    | `~/.agents/{skills/,mcp.json}`, `<data dir>/agents/<id>/{skills/,mcp.json}` |
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). pi-durable allows one
 process per storage, so only the worker opens an agent directory.
@@ -91,6 +92,23 @@ share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
   cut. The agent adds what repeats across chats and cleans up the memory. The
   `dreams` table records the last message that each dream read; the next dream
   starts after the newest done dream.
+
+## Extensions
+
+Skills and MCP servers come from files in two scopes, global (`~/.agents/`)
+and agent (`<data dir>/agents/<id>/`); see
+[ADR 0008](decisions/0008-agent-extensions.md).
+[`AgentExtensions`](../../worker/src/extensions.ts) connects the servers when
+the worker opens the agent, before `resume()`. It installs one pi-durable
+extension: a `skills` prompt section, which reads the skill files before each
+model request, and the MCP tools, as deferred tools named
+`mcp__<server>__<tool>`. When an agent has MCP tools, the worker also installs
+`tool_search`.
+
+`GET /api/extensions` reads the files; before the agent opens, the servers
+are `idle`. `POST /api/extensions/reload` takes the maintenance lease, which
+it refuses when another holder has it, restarts the worker, opens the agent,
+and releases the lease.
 
 ## Automations
 
@@ -164,6 +182,7 @@ The types are in [`worker/src/protocol.ts`](../../worker/src/protocol.ts) and
 | `watch`              | `watchId`, `agentId`, `conversationId`                                                                                 | `{}` after the snapshot   |
 | `unwatch`            | `watchId`                                                                                                              | `{}`                      |
 | `abort`              | `agentId`, `conversationId`                                                                                            | `{}`                      |
+| `extensions`         | `agentId`                                                                                                              | the Extensions schema     |
 
 The worker runs the submits of one conversation in order. When `model`,
 `thinkingLevel` or `instructions` differ from the conversation's, it changes
@@ -317,6 +336,13 @@ GIF and WebP inline with their type, and every other file as
 responses have `X-Content-Type-Options: nosniff`, so an uploaded HTML or SVG
 file does not run in the dex origin.
 
+An MCP server from an mcp.json file runs as the user, without a sandbox, and
+gets the worker environment plus its own `env`. mcp.json holds headers and
+environment values as plain text; the API returns no command, URL, header or
+environment value. A server that fails shows only a category of the error,
+such as an HTTP status, in the API and in the worker log. To see the full
+error, run the server by hand.
+
 Every chat reads the memory, including Telegram chats of each allowed user.
 A memory entry can carry a prompt injection from a web page or a file to
 later chats; the rules tell the agent that memory is data, not instructions,
@@ -334,6 +360,7 @@ directory in the cache directory, and it does not load `.env` or `bunfig.toml`.
   the memory at the same time can land in one commit, under the source of
   the chat that settles first.
 - The chat list polls every 3 s; it has no event stream.
+- An MCP server that drops its connection stays down until a reload.
 - dex does not delete uploads. A file that the user removes before sending,
   or that a message never uses, stays in `workspace/uploads/`. The files are
   in the agent workspace, so the agent's tools can change or delete them; the

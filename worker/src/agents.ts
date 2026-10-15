@@ -1,4 +1,5 @@
 import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message, Models } from "@earendil-works/pi-ai";
@@ -14,14 +15,18 @@ import {
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
+import { AgentExtensions, type Loaded } from "./extensions.ts";
 import { MemoryRepo } from "./memory.ts";
 import { ChatView, messageText, USER_ENTRY } from "./view.ts";
 import type {
 	AbortParams,
+	AgentParams,
 	ChatStreamEvent,
 	CreateConversationParams,
 	CreateConversationResult,
+	Extensions,
 	SettledEvent,
 	SubmitParams,
 	SubmitResult,
@@ -35,6 +40,8 @@ const context = BACKGROUND_CONTEXT;
 
 // Agent IDs become directory names.
 const AGENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+const ToolSearch = createToolSearchExtension();
 
 /**
  * Owns one pi-durable Harness per agent, opened on first use. pi-durable allows one process per
@@ -53,6 +60,8 @@ export class Agents {
 	readonly #watches = new Map<string, AgentEventStream>();
 	readonly #pendingWatches = new Map<string, AbortController>();
 	readonly #harnesses = new Map<string, Promise<Harness>>();
+	// The MCP servers of each open agent.
+	readonly #loaded = new Map<string, Loaded>();
 	// The tail of each conversation's submit chain; see #serial.
 	readonly #chains = new Map<string, Promise<unknown>>();
 	#checking = false;
@@ -262,6 +271,23 @@ export class Agents {
 		return {};
 	}
 
+	/**
+	 * The agent's skills and MCP servers. It does not start an agent that is not open. Control
+	 * reloads the MCP servers with a restart of the worker.
+	 */
+	async extensions(params: AgentParams): Promise<Extensions> {
+		// Not admitted: control opens the agent this way while it holds the maintenance lease.
+		if (params.open === true) await this.#harness(params.agentId);
+		const files = this.#files(params.agentId);
+		return files.info(this.#loaded.get(params.agentId)?.servers);
+	}
+
+	#files(agentId: string): AgentExtensions {
+		if (!AGENT_ID.test(agentId)) throw new Error(`invalid agent ID: ${agentId}`);
+		const dir = join(this.#dataDir, "agents", agentId);
+		return new AgentExtensions(homedir(), dir, join(dir, "workspace"));
+	}
+
 	async #conversation(agentId: string, conversationId: number): Promise<Conversation> {
 		const harness = await this.#harness(agentId);
 		// The ID came from this worker's own createConversation; pi-durable brands IDs only at its own boundaries.
@@ -292,6 +318,8 @@ export class Agents {
 				await harness?.close(context);
 			}),
 		);
+		await Promise.all([...this.#loaded.values()].map((loaded) => loaded.close()));
+		this.#loaded.clear();
 	}
 
 	// Runs in the background after submit() returns. A replayed requestId finds the same
@@ -335,17 +363,28 @@ export class Agents {
 		registry.install(CodingTools);
 		await this.#memory.open();
 		registry.install(this.#memory.extension((id) => this.#sources.get(`${agentId}/${id}`)));
-		const harness = await Harness.open(
-			await openNodeSqliteStorage(join(dir, "state.sqlite")),
-			{
-				models: this.#models,
-				registry,
-				// No sandbox: tools run on the host, inside the agent workspace.
-				env: ({ cwd }) => new NodeExecutionEnv({ cwd: cwd ?? workspace }),
-				onReport: (error) => console.error(`agent ${agentId}:`, error),
-			},
-			context,
-		);
+		// A run that resumes after a restart needs its MCP tools, so they load before resume().
+		const loaded = await this.#files(agentId).load();
+		let harness: Harness;
+		try {
+			registry.install(loaded.extension);
+			if (loaded.hasTools) registry.install(ToolSearch);
+			harness = await Harness.open(
+				await openNodeSqliteStorage(join(dir, "state.sqlite")),
+				{
+					models: this.#models,
+					registry,
+					// No sandbox: tools run on the host, inside the agent workspace.
+					env: ({ cwd }) => new NodeExecutionEnv({ cwd: cwd ?? workspace }),
+					onReport: (error) => console.error(`agent ${agentId}:`, error),
+				},
+				context,
+			);
+		} catch (error) {
+			await loaded.close();
+			throw error;
+		}
+		this.#loaded.set(agentId, loaded);
 		harness.resume();
 		return harness;
 	}

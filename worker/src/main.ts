@@ -4,6 +4,7 @@ import { Agents } from "./agents.ts";
 import { Catalog } from "./models.ts";
 import {
 	AbortParams,
+	AgentParams,
 	ConfigureParams,
 	CreateConversationParams,
 	type Event,
@@ -57,6 +58,8 @@ async function handle(request: Request): Promise<unknown> {
 			return agents.unwatch(Value.Parse(UnwatchParams, request.params));
 		case "abort":
 			return agents.abort(Value.Parse(AbortParams, request.params));
+		case "extensions":
+			return agents.extensions(Value.Parse(AgentParams, request.params));
 		case "configure":
 			return catalog.configure(Value.Parse(ConfigureParams, request.params).providers);
 		case "listProviders":

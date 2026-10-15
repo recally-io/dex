@@ -1,6 +1,7 @@
 # 0002: Keep all settings in control.sqlite, edited in the web UI
 
-Status: Accepted (2026-10-14)
+Status: Accepted (2026-10-14). Skills and MCP servers come from files; see
+[ADR 0008](0008-agent-extensions.md).
 
 ## Context
 

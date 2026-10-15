@@ -89,6 +89,24 @@ func (e ErrorItemKind) Valid() bool {
 	}
 }
 
+// Defines values for ExtensionScope.
+const (
+	ExtensionScopeAgent  ExtensionScope = "agent"
+	ExtensionScopeGlobal ExtensionScope = "global"
+)
+
+// Valid indicates whether the value is a known member of the ExtensionScope enum.
+func (e ExtensionScope) Valid() bool {
+	switch e {
+	case ExtensionScopeAgent:
+		return true
+	case ExtensionScopeGlobal:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	HealthStatusOk HealthStatus = "ok"
@@ -113,6 +131,48 @@ const (
 func (e ItemEventType) Valid() bool {
 	switch e {
 	case ItemEventTypeItem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for McpServerState.
+const (
+	Connected McpServerState = "connected"
+	Disabled  McpServerState = "disabled"
+	Failed    McpServerState = "failed"
+	Idle      McpServerState = "idle"
+)
+
+// Valid indicates whether the value is a known member of the McpServerState enum.
+func (e McpServerState) Valid() bool {
+	switch e {
+	case Connected:
+		return true
+	case Disabled:
+		return true
+	case Failed:
+		return true
+	case Idle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for McpServerTransport.
+const (
+	Http  McpServerTransport = "http"
+	Stdio McpServerTransport = "stdio"
+)
+
+// Valid indicates whether the value is a known member of the McpServerTransport enum.
+func (e McpServerTransport) Valid() bool {
+	switch e {
+	case Http:
+		return true
+	case Stdio:
 		return true
 	default:
 		return false
@@ -393,6 +453,25 @@ type ErrorItem struct {
 // ErrorItemKind defines model for ErrorItem.Kind.
 type ErrorItemKind string
 
+// ExtensionScope global is ~/.agents/; agent is the agent directory.
+type ExtensionScope string
+
+// Extensions defines model for Extensions.
+type Extensions struct {
+	// Errors Files that dex cannot read. When an mcp.json file is one of them, no MCP server starts.
+	Errors []string `json:"errors"`
+
+	// Paths Where the agent reads its extensions.
+	Paths struct {
+		AgentMcp     string `json:"agentMcp"`
+		AgentSkills  string `json:"agentSkills"`
+		GlobalMcp    string `json:"globalMcp"`
+		GlobalSkills string `json:"globalSkills"`
+	} `json:"paths"`
+	Servers []McpServer `json:"servers"`
+	Skills  []Skill     `json:"skills"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	DataDir     string       `json:"dataDir"`
@@ -417,6 +496,33 @@ type ItemEvent struct {
 
 // ItemEventType defines model for ItemEvent.Type.
 type ItemEventType string
+
+// McpServer An MCP server from an mcp.json file, without its command, URL, headers or environment, because they can hold credentials.
+type McpServer struct {
+	Error *string `json:"error,omitempty"`
+	Name  string  `json:"name"`
+
+	// Overrides The agent server replaces a global server with the same name.
+	Overrides bool `json:"overrides"`
+
+	// Scope global is ~/.agents/; agent is the agent directory.
+	Scope ExtensionScope `json:"scope"`
+
+	// State idle means that the agent has not started, so dex has not connected.
+	State McpServerState `json:"state"`
+
+	// Tools The MCP tool names. The agent gets each tool as mcp__<server>__<tool>.
+	Tools []string `json:"tools"`
+
+	// Transport Absent for an agent entry that only turns off a global server.
+	Transport *McpServerTransport `json:"transport,omitempty"`
+}
+
+// McpServerState idle means that the agent has not started, so dex has not connected.
+type McpServerState string
+
+// McpServerTransport Absent for an agent entry that only turns off a global server.
+type McpServerTransport string
 
 // MessageInput defines model for MessageInput.
 type MessageInput struct {
@@ -574,6 +680,24 @@ type Settings struct {
 	// Providers The providers that the user added, in the order of addition.
 	Providers []Provider `json:"providers"`
 	Telegram  Telegram   `json:"telegram"`
+}
+
+// Skill defines model for Skill.
+type Skill struct {
+	Description string `json:"description"`
+
+	// Error Why the skill is not valid. The prompt does not list it.
+	Error *string `json:"error,omitempty"`
+	Name  string  `json:"name"`
+
+	// Overrides The agent skill replaces a global skill with the same name.
+	Overrides bool `json:"overrides"`
+
+	// Path The SKILL.md file.
+	Path string `json:"path"`
+
+	// Scope global is ~/.agents/; agent is the agent directory.
+	Scope ExtensionScope `json:"scope"`
 }
 
 // SnapshotEvent defines model for SnapshotEvent.
@@ -1133,6 +1257,12 @@ type ServerInterface interface {
 	// (PUT /api/chats/{chatId}/settings)
 	SetChatSettings(w http.ResponseWriter, r *http.Request, chatId ChatId)
 
+	// (GET /api/extensions)
+	GetExtensions(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/extensions/reload)
+	ReloadExtensions(w http.ResponseWriter, r *http.Request)
+
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
 
@@ -1512,6 +1642,34 @@ func (siw *ServerInterfaceWrapper) SetChatSettings(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetExtensions operation middleware
+func (siw *ServerInterfaceWrapper) GetExtensions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExtensions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReloadExtensions operation middleware
+func (siw *ServerInterfaceWrapper) ReloadExtensions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReloadExtensions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -1863,6 +2021,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats/{chatId}/events", wrapper.WatchChat)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/uploads", wrapper.CreateUpload)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/uploads/{uploadId}", wrapper.GetUpload)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/extensions", wrapper.GetExtensions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/extensions/reload", wrapper.ReloadExtensions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings", wrapper.GetSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/models", wrapper.ListModels)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/agent", wrapper.SetAgent)
@@ -2748,6 +2908,110 @@ func (response SetChatSettingsdefaultJSONResponse) VisitSetChatSettingsResponse(
 	return err
 }
 
+type GetExtensionsRequestObject struct {
+}
+
+type GetExtensionsResponseObject interface {
+	VisitGetExtensionsResponse(w http.ResponseWriter) error
+}
+
+type GetExtensions200JSONResponse Extensions
+
+func (response GetExtensions200JSONResponse) VisitGetExtensionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExtensionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetExtensionsdefaultJSONResponse) VisitGetExtensionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReloadExtensionsRequestObject struct {
+}
+
+type ReloadExtensionsResponseObject interface {
+	VisitReloadExtensionsResponse(w http.ResponseWriter) error
+}
+
+type ReloadExtensions200JSONResponse Extensions
+
+func (response ReloadExtensions200JSONResponse) VisitReloadExtensionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReloadExtensions400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ReloadExtensions400JSONResponse) VisitReloadExtensionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReloadExtensions409JSONResponse Error
+
+func (response ReloadExtensions409JSONResponse) VisitReloadExtensionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReloadExtensionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ReloadExtensionsdefaultJSONResponse) VisitReloadExtensionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetHealthRequestObject struct {
 }
 
@@ -3428,6 +3692,12 @@ type StrictServerInterface interface {
 	// (PUT /api/chats/{chatId}/settings)
 	SetChatSettings(ctx context.Context, request SetChatSettingsRequestObject) (SetChatSettingsResponseObject, error)
 
+	// (GET /api/extensions)
+	GetExtensions(ctx context.Context, request GetExtensionsRequestObject) (GetExtensionsResponseObject, error)
+
+	// (POST /api/extensions/reload)
+	ReloadExtensions(ctx context.Context, request ReloadExtensionsRequestObject) (ReloadExtensionsResponseObject, error)
+
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
 
@@ -3922,6 +4192,54 @@ func (sh *strictHandler) SetChatSettings(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetChatSettingsResponseObject); ok {
 		if err := validResponse.VisitSetChatSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExtensions operation middleware
+func (sh *strictHandler) GetExtensions(w http.ResponseWriter, r *http.Request) {
+	var request GetExtensionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExtensions(ctx, request.(GetExtensionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExtensions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExtensionsResponseObject); ok {
+		if err := validResponse.VisitGetExtensionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReloadExtensions operation middleware
+func (sh *strictHandler) ReloadExtensions(w http.ResponseWriter, r *http.Request) {
+	var request ReloadExtensionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReloadExtensions(ctx, request.(ReloadExtensionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReloadExtensions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReloadExtensionsResponseObject); ok {
+		if err := validResponse.VisitReloadExtensionsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

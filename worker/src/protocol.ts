@@ -163,3 +163,50 @@ export type ModelInfo = {
 export const QuiesceParams = Type.Object({ expiresAt: Type.Number() });
 export type QuiesceParams = Static<typeof QuiesceParams>;
 export type QuiesceResult = { readonly busy: boolean; readonly reason?: string };
+
+export const AgentParams = Type.Object({ agentId: Type.String(), open: Type.Optional(Type.Boolean()) });
+export type AgentParams = Static<typeof AgentParams>;
+
+/** Where an extension comes from: `~/.agents/` or the agent directory. */
+export type Scope = "global" | "agent";
+
+/** A skill: `<scope dir>/skills/<name>/SKILL.md`. A skill with an error is not in the prompt. */
+export type SkillInfo = {
+	readonly name: string;
+	description: string;
+	readonly scope: Scope;
+	readonly path: string;
+	/** An agent skill that replaces a global skill with the same name. */
+	readonly overrides: boolean;
+	error?: string;
+};
+
+/**
+ * An MCP server from an mcp.json file. `tools` are the MCP tool names; the model gets each as
+ * `mcp__<server>__<tool>`. The info has no command, URL, headers or environment, because they can
+ * hold credentials.
+ */
+export type McpServerInfo = {
+	readonly name: string;
+	readonly scope: Scope;
+	readonly overrides: boolean;
+	/** Absent for an entry that only turns off a global server. */
+	readonly transport?: "stdio" | "http";
+	/** "idle": the agent has not started yet, so dex has not connected. */
+	state: "idle" | "connected" | "failed" | "disabled";
+	readonly tools: readonly string[];
+	error?: string;
+};
+
+export type Extensions = {
+	readonly paths: {
+		readonly globalSkills: string;
+		readonly globalMcp: string;
+		readonly agentSkills: string;
+		readonly agentMcp: string;
+	};
+	readonly skills: readonly SkillInfo[];
+	readonly servers: readonly McpServerInfo[];
+	/** Files that dex cannot read now. When an mcp.json file is one of them, no server starts. */
+	readonly errors: readonly string[];
+};
