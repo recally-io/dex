@@ -24,6 +24,8 @@ import { AppProvider } from "./lib/app-state";
 import { FramedPage, Section } from "./components/page";
 import { Button, buttonVariants } from "./components/atoms/Button";
 import { applySavedTheme } from "./components/theme";
+import { SignIn } from "./components/sign-in";
+import { useSignedOut } from "./lib/session";
 import "./styles.css";
 
 function Missing({ title, description }: { title: string; description: string }) {
@@ -163,11 +165,15 @@ declare module "@tanstack/react-router" {
 // The theme class is set before the first paint, so a dark page does not flash light.
 applySavedTheme();
 
+function App() {
+  return useSignedOut() ? <SignIn /> : <RouterProvider router={router} />;
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <AppProvider>
-        <RouterProvider router={router} />
+        <App />
       </AppProvider>
     </QueryClientProvider>
   </StrictMode>,

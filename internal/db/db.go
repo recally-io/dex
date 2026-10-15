@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
@@ -26,6 +27,22 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 	}
 	if err := migrate(ctx, db); err != nil {
 		return nil, errors.Join(fmt.Errorf("migrate %s: %w", path, err), db.Close())
+	}
+	return db, nil
+}
+
+// OpenReadOnly opens the database at path without migrations, so a CLI can read it while a
+// server of another version runs. The file must exist.
+func OpenReadOnly(ctx context.Context, path string) (*sql.DB, error) {
+	// An escaped URI, because SQLite reads "?" and "#" in a path as URI syntax. Not immutable:
+	// the server writes the file at the same time.
+	u := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro&_pragma=busy_timeout(5000)"}
+	db, err := sql.Open("sqlite", u.String())
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	if err := db.PingContext(ctx); err != nil {
+		return nil, errors.Join(fmt.Errorf("open %s: %w", path, err), db.Close())
 	}
 	return db, nil
 }

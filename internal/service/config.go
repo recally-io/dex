@@ -47,7 +47,8 @@ func Defaults() (Config, error) {
 	return c, nil
 }
 
-// Validate permits only local access because the API can execute shell commands.
+// Validate requires an IP address host. A host that is not loopback makes the API require the
+// access token.
 func (c *Config) Validate() error {
 	for _, value := range []string{c.DataDir, c.Executable, c.Path} {
 		if !utf8.ValidString(value) {
@@ -63,9 +64,10 @@ func (c *Config) Validate() error {
 		c.Host = "127.0.0.1"
 	}
 	ip, err := netip.ParseAddr(c.Host)
-	if err != nil || (!ip.Is4() && ip != netip.IPv6Loopback()) || (ip.Is4() && ip.As4()[0] != 127) {
-		return errors.New("host must be loopback (127.0.0.0/8 or ::1); the API has no authentication and runs shell commands")
+	if err != nil || ip.Zone() != "" {
+		return errors.New("host must be an IP address, such as 127.0.0.1, a Tailscale address, or 0.0.0.0")
 	}
+	c.Host = ip.String()
 	if c.Port < 1 || c.Port > 65535 {
 		return errors.New("port must be between 1 and 65535")
 	}
@@ -82,10 +84,27 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// Loopback reports whether only this machine can reach the host. Validate guarantees an IP.
+func (c Config) Loopback() bool { return netip.MustParseAddr(c.Host).IsLoopback() }
+
 func (c Config) Addr() string { return net.JoinHostPort(c.Host, strconv.Itoa(c.Port)) }
-func (c Config) URL() string  { return "http://" + c.Addr() }
+
+// URL is the address that a local client uses. A wildcard host accepts loopback connections.
+func (c Config) URL() string {
+	host := c.Host
+	switch ip := netip.MustParseAddr(host); {
+	case ip.IsUnspecified() && ip.Is4():
+		host = "127.0.0.1"
+	case ip.IsUnspecified():
+		host = "::1"
+	}
+	return "http://" + net.JoinHostPort(host, strconv.Itoa(c.Port))
+}
+
+// args select the stored token, so a DEX_TOKEN that the service manager passes on has no effect
+// and local clients always know the token.
 func (c Config) args() []string {
-	return []string{c.Executable, "serve", "--host", c.Host, "--port", strconv.Itoa(c.Port), "--data-dir", c.DataDir}
+	return []string{c.Executable, "serve", "--host", c.Host, "--port", strconv.Itoa(c.Port), "--data-dir", c.DataDir, "--stored-token"}
 }
 func (c Config) record() string { // Validate guarantees that all strings can be encoded.
 	b, _ := json.Marshal(c)

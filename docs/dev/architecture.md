@@ -33,8 +33,8 @@ process. See [ADR 0001](decisions/0001-embedded-bun-worker.md).
 ## Service and updates
 
 `cmd/dex` runs the foreground server or manages a per-user launchd or systemd
-service. Listening addresses are loopback only: the API has no authentication
-and can run shell commands. Definitions store serve arguments, PATH, and a
+service. A host that is not loopback makes the API require the access token
+([ADR 0007](decisions/0007-network-access-token.md)). Definitions store serve arguments, PATH, and a
 configuration record that permits partial reinstall across template changes.
 
 `internal/update` verifies GitHub release assets, stages beside the executable,
@@ -297,8 +297,10 @@ so dex needs no public URL.
 
 Agent tools (`read`, `write`, `edit`, `bash`) run on the host without a
 sandbox, inside the agent workspace. The HTTP server listens on
-`127.0.0.1:8787` by default and has no authentication. The CLI rejects hosts
-other than loopback. A chat channel must allow only known user IDs: the settings refuse a
+`127.0.0.1:8787` by default. On loopback without DEX_TOKEN it has no
+authentication. On any other host, or with DEX_TOKEN, every `/api/` request
+needs the access token ([ADR 0007](decisions/0007-network-access-token.md)).
+A chat channel must allow only known user IDs: the settings refuse a
 Telegram bot without allowed users. The API refuses cross-site writes
 (`http.CrossOriginProtection`), so another web page in the user's browser
 cannot send messages or change settings.

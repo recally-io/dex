@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/recally-io/dex/internal/settings"
 )
 
 // Health identifies the running control and confirms that its worker answers ping.
@@ -39,16 +41,33 @@ type Status struct {
 // LoopbackClient never uses a proxy or follows redirects. Callers set request deadlines.
 var LoopbackClient = &http.Client{Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 
+// Request is an API request to the service at c. A service on a host that is not loopback
+// requires its stored token, so the request reads it from the data directory.
+func Request(ctx context.Context, c Config, method, path string) (*http.Request, error) {
+	//nolint:gosec // G704: the configured local service address.
+	req, err := http.NewRequestWithContext(ctx, method, c.URL()+path, nil)
+	if err != nil || c.Loopback() {
+		return req, err
+	}
+	token, err := settings.StoredToken(ctx, c.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return req, nil
+}
+
 func Probe(ctx context.Context, c Config) (Health, error) {
 	var h Health
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	//nolint:gosec // G704: Config.Validate limits this readiness probe to loopback.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL()+"/api/health", nil)
+	req, err := Request(ctx, c, http.MethodGet, "/api/health")
 	if err != nil {
 		return h, err
 	}
-	//nolint:gosec // G704: user-selected loopback service address, with no redirects.
+	//nolint:gosec // G704: user-selected local service address, with no redirects.
 	resp, err := LoopbackClient.Do(req)
 	if err != nil {
 		return h, err

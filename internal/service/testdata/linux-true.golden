@@ -4,7 +4,7 @@ Description=dex agent host
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/env -- "/opt/space & \"quote\" 中文 %%h $$HOME \\path/dex" "serve" "--host" "127.0.0.1" "--port" "18787" "--data-dir" "/data/space & \"quote\" 中文 %%h $$HOME \\path"
+ExecStart=/usr/bin/env -- "/opt/space & \"quote\" 中文 %%h $$HOME \\path/dex" "serve" "--host" "127.0.0.1" "--port" "18787" "--data-dir" "/data/space & \"quote\" 中文 %%h $$HOME \\path" "--stored-token"
 WorkingDirectory=%h
 Environment="PATH=/usr/bin:/usr/local/bin:/tools/space & \"quote\" 中文 %%h $HOME \\path"
 Restart=on-failure

@@ -44,6 +44,8 @@ import { FramedPage, MainPane, MenuButton, Note, Panel, Section } from "../compo
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import LoadingState from "../components/primitives/LoadingState";
+import { checkSession } from "../lib/session";
+import { newId } from "../lib/utils";
 
 declare module "@tanstack/history" {
   interface HistoryState {
@@ -574,7 +576,10 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
       };
 
       for (const type of ["snapshot", "item", "append", "run"]) source.addEventListener(type, receive);
-      source.onerror = () => setConnection("error");
+      source.onerror = () => {
+        setConnection("error");
+        checkSession();
+      };
     }
 
     reconnect.current = connect;
@@ -647,7 +652,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     const body: MessageInput =
       failed?.text === text && failed.attachments?.join() === ids.join()
         ? failed
-        : { id: crypto.randomUUID(), text, attachments: ids };
+        : { id: newId(), text, attachments: ids };
 
     failedMessage.current = { body, attachments };
     const local: UserItem = { kind: "user", id: body.id, text, attachments, queued: true };

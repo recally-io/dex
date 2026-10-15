@@ -426,14 +426,13 @@ func (u *Updater) replace(stage string) error {
 func maintenance(ctx context.Context, c service.Config, method string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	//nolint:gosec // G704: validated installed loopback address.
-	req, err := http.NewRequestWithContext(ctx, method, c.URL()+"/api/maintenance", nil)
+	req, err := service.Request(ctx, c, method, "/api/maintenance")
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	client := service.LoopbackClient
-	//nolint:gosec // G704: loopback maintenance request, without redirects.
+	//nolint:gosec // G704: local maintenance request, without redirects.
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

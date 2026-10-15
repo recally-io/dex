@@ -8,6 +8,11 @@ import (
 	"database/sql"
 )
 
+type AccessToken struct {
+	ID    int64  `json:"id"`
+	Token string `json:"token"`
+}
+
 type Agent struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`

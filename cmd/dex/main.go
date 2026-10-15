@@ -1,6 +1,6 @@
 // Command dex runs the dex control process: the HTTP API and web UI, with the embedded agent
 // worker as a child process. Agent settings are in the web UI; the optional environment variables
-// are DEX_DATA_DIR (default ~/.dex) and DEX_ADDR (default 127.0.0.1:8787).
+// are DEX_DATA_DIR (default ~/.dex), DEX_ADDR (default 127.0.0.1:8787), and DEX_TOKEN.
 package main
 
 import (
@@ -34,7 +34,7 @@ func main() {
 	}
 }
 
-func serve(ctx context.Context, cfg service.Config) error {
+func serve(ctx context.Context, cfg service.Config, token string, requireToken bool) error {
 	cache, err := os.UserCacheDir()
 	if err != nil {
 		return err
@@ -47,10 +47,12 @@ func serve(ctx context.Context, cfg service.Config) error {
 	defer listener.Close()
 
 	a, err := app.Start(ctx, app.Config{
-		DataDir:   cfg.DataDir,
-		CacheDir:  filepath.Join(cache, "dex"),
-		WorkerEnv: append(app.WorkerEnv(os.Environ()), testWorkerEnv()...),
-		Version:   version(),
+		DataDir:      cfg.DataDir,
+		CacheDir:     filepath.Join(cache, "dex"),
+		WorkerEnv:    append(app.WorkerEnv(os.Environ()), testWorkerEnv()...),
+		Version:      version(),
+		Token:        token,
+		RequireToken: requireToken,
 	})
 	if err != nil {
 		return err
@@ -60,6 +62,12 @@ func serve(ctx context.Context, cfg service.Config) error {
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(listener) }()
 	slog.Info("dex is running", "url", fmt.Sprintf("http://%s", addr))
+	switch {
+	case token != "":
+		slog.Info("the API requires DEX_TOKEN")
+	case requireToken:
+		slog.Warn("the API accepts network connections over plain HTTP and requires the stored token; print it with: dex token")
+	}
 
 	select {
 	case err = <-errc:

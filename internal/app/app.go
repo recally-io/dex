@@ -48,6 +48,10 @@ type Config struct {
 	DreamEvery time.Duration
 	// AutomationCheck is the time between two checks for due automations; zero means 1 minute.
 	AutomationCheck time.Duration
+	// Token is the access token that the API requires. Empty means the stored token when
+	// RequireToken is set, and no authentication otherwise.
+	Token        string
+	RequireToken bool
 }
 
 // App is a running control process.
@@ -128,11 +132,21 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		cancel()
 		return nil, errors.Join(err, conn.Close())
 	}
+	// The stored token always exists, so `dex token` works before the host changes.
+	stored, err := prefs.AccessToken(ctx)
+	if err != nil {
+		cancel()
+		return nil, errors.Join(err, conn.Close())
+	}
+	token := cfg.Token
+	if token == "" && cfg.RequireToken {
+		token = stored
+	}
 
 	automations := automation.New(q, chats, DefaultAgentID, time.Now)
 	a := &App{db: conn, bots: bots, jobs: jobs, cancel: cancel, handler: server.New(server.Config{
 		WorkerReady: func(ctx context.Context) bool { return w.Call(ctx, "ping", struct{}{}, &struct{}{}) == nil },
-		Chats:       chats, Automations: automations, Settings: prefs, Live: hub, AgentID: DefaultAgentID, DataDir: cfg.DataDir, Version: cfg.Version,
+		Chats:       chats, Automations: automations, Settings: prefs, Live: hub, AgentID: DefaultAgentID, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 		// The worker runs the agent's tools in this workspace.
 		Uploads: upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID)),
 	})}
