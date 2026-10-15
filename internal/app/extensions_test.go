@@ -265,6 +265,19 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 	writeFile(t, filepath.Join(filesDir, "slow.release"), "")
 	w.until(t, "wait answer", answered("tool: released slow"))
 
+	// When an update holds maintenance, and the user reloads
+	eventually(t, "maintenance", func() (bool, any) {
+		status, body := d.call(t, http.MethodPost, "/api/maintenance", nil)
+		return status == http.StatusOK, body
+	})
+	status, body = d.call(t, http.MethodPost, "/api/extensions/reload", nil)
+
+	// Then dex refuses, and the update keeps its lease until it releases it
+	if status != http.StatusConflict {
+		t.Fatalf("reload during maintenance: %d %s", status, body)
+	}
+	d.must(t, http.MethodDelete, "/api/maintenance", nil, nil)
+
 	// When the user adds a server, then reloads
 	moreDir := t.TempDir()
 	writeMCP(t, agentMCP, map[string]any{"files": stdioServer(t, filesDir), "more": stdioServer(t, moreDir)})
@@ -273,9 +286,9 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 		t.Fatalf("reload: %d %s", status, body)
 	}
 
-	// Then the new server is there, and the next run uses it. The restart of the worker ends the
-	// chat stream, as the browser sees it.
-	if got.server("more").State == "" {
+	// Then the new server is connected, and the next run uses it. The restart of the worker ends
+	// the chat stream, as the browser sees it.
+	if got.server("more").State != "connected" {
 		t.Fatalf("after reload: %+v", got)
 	}
 	w = d.watch(t, chatID)

@@ -164,7 +164,7 @@ export const QuiesceParams = Type.Object({ expiresAt: Type.Number() });
 export type QuiesceParams = Static<typeof QuiesceParams>;
 export type QuiesceResult = { readonly busy: boolean; readonly reason?: string };
 
-export const AgentParams = Type.Object({ agentId: Type.String() });
+export const AgentParams = Type.Object({ agentId: Type.String(), open: Type.Optional(Type.Boolean()) });
 export type AgentParams = Static<typeof AgentParams>;
 
 /** Where an extension comes from: `~/.agents/` or the agent directory. */

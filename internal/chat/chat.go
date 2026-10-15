@@ -92,6 +92,8 @@ type Service struct {
 
 	maintenanceMu sync.Mutex
 	leaseUntil    atomic.Int64
+	reloading     bool // an extension reload holds the lease; see AcquireReload
+
 }
 
 // New returns a Service. Connect the worker's settled events to HandleSettled and its start to

@@ -106,8 +106,9 @@ model request, and the MCP tools, as deferred tools named
 `tool_search`.
 
 `GET /api/extensions` reads the files; before the agent opens, the servers
-are `idle`. `POST /api/extensions/reload` takes the maintenance lease,
-restarts the worker, and releases the lease.
+are `idle`. `POST /api/extensions/reload` takes the maintenance lease, which
+it refuses when another holder has it, restarts the worker, opens the agent,
+and releases the lease.
 
 ## Automations
 

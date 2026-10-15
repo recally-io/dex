@@ -175,4 +175,6 @@ type QuiesceResult struct {
 // AgentParams are the params of the extensions method.
 type AgentParams struct {
 	AgentID string `json:"agentId"`
+	// Open opens the agent first, which connects its MCP servers.
+	Open bool `json:"open,omitzero"`
 }

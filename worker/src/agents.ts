@@ -276,6 +276,8 @@ export class Agents {
 	 * reloads the MCP servers with a restart of the worker.
 	 */
 	async extensions(params: AgentParams): Promise<Extensions> {
+		// Not admitted: control opens the agent this way while it holds the maintenance lease.
+		if (params.open === true) await this.#harness(params.agentId);
 		const files = this.#files(params.agentId);
 		return files.info(this.#loaded.get(params.agentId)?.servers);
 	}

@@ -155,21 +155,22 @@ func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRe
 	}
 	// The maintenance lease refuses a reload while the agent has work, and holds new work until the
 	// new worker runs. The new worker gets the lease again before it accepts calls.
-	if err := h.Chats.AcquireMaintenance(ctx); err != nil {
+	if err := h.Chats.AcquireReload(ctx); err != nil {
 		return nil, err
 	}
 	defer func() {
 		release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		if err := h.Chats.ReleaseMaintenance(release); err != nil {
+		if err := h.Chats.ReleaseReload(release); err != nil {
 			slog.Error("release maintenance after an extension reload", "err", err)
 		}
 	}()
 	if err := h.RestartWorker(ctx); err != nil {
 		return nil, err
 	}
+	// The agent opens now, under the lease, so the response shows the state of each server.
 	var out api.ReloadExtensions200JSONResponse
-	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID}, &out); err != nil {
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID, Open: true}, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
