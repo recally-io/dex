@@ -211,3 +211,50 @@ func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 		}
 	}
 }
+
+func TestUserBlockedPeerDoesNotStopOtherReplies(t *testing.T) {
+	// Given a bot that one peer has blocked.
+	f := newFakeTelegram(t)
+	f.permanentChat.Store(7)
+	startTelegram(t, f, t.TempDir(), 42)
+	// When that peer and another peer each request an answer.
+	f.message(1, 42, 7, "cannot deliver")
+	f.message(2, 42, 8, "still reachable")
+	// Then the permanent failure does not stop the other answer.
+	if got := f.next(t); got.ChatID != 8 || got.Text != "echo: still reachable" {
+		t.Fatalf("reply: %+v", got)
+	}
+}
+
+func TestUserStopsExistingChannelChatDuringMaintenance(t *testing.T) {
+	// Given a chat whose worker conversation already exists and admission is closed.
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, t.TempDir(), 42)
+	f.message(1, 42, 7, "initial")
+	if got := f.next(t).Text; got != "echo: initial" {
+		t.Fatal(got)
+	}
+	eventually(t, "maintenance after the initial answer", func() (bool, any) {
+		status, body := d.call(t, http.MethodPost, "/api/maintenance", nil)
+		return status == http.StatusOK, body
+	})
+	// When a message waits for admission and the user requests /stop.
+	f.message(2, 42, 7, "must not execute")
+	eventually(t, "queued message", func() (bool, any) { c := d.chats(t); return len(c) == 1 && c[0].Busy, c })
+	f.message(3, 42, 7, "/stop")
+	// Then stop completes while the gate is still closed.
+	var stopped bool
+	for range 2 {
+		if f.next(t).Text == "Stopped the current answer." {
+			stopped = true
+		}
+	}
+	if !stopped {
+		t.Fatal("no stop acknowledgement")
+	}
+	d.must(t, http.MethodDelete, "/api/maintenance", nil, nil)
+	f.message(4, 42, 7, "after gate")
+	if got := f.next(t).Text; got != "echo: after gate" {
+		t.Fatal(got)
+	}
+}

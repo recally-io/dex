@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 )
 
@@ -139,7 +140,11 @@ func (b *Bot) Send(ctx context.Context, peer, text string) error {
 	if err != nil {
 		return err
 	}
-	return b.call(ctx, "sendMessage", map[string]any{"chat_id": chatID, "text": text}, nil)
+	err = b.call(ctx, "sendMessage", map[string]any{"chat_id": chatID, "text": text}, nil)
+	if apiErr, ok := errors.AsType[*apiError](err); ok && (apiErr.Code == 400 || apiErr.Code == 403) {
+		return fmt.Errorf("%w: %w", channel.ErrPermanent, err)
+	}
+	return err
 }
 
 func (b *Bot) receive(ctx context.Context, u update) error {
@@ -183,12 +188,13 @@ func (b *Bot) call(ctx context.Context, method string, params, result any) error
 		OK          bool           `json:"ok"`
 		Result      jsontext.Value `json:"result"`
 		Description string         `json:"description"`
+		Code        int            `json:"error_code"`
 	}
 	if err := json.UnmarshalRead(resp.Body, &out); err != nil {
 		return fmt.Errorf("telegram %s: HTTP %d: %w", method, resp.StatusCode, err)
 	}
 	if !out.OK {
-		return fmt.Errorf("telegram %s: %s", method, out.Description)
+		return &apiError{Method: method, Code: out.Code, Description: out.Description}
 	}
 	if result == nil {
 		return nil
@@ -230,3 +236,11 @@ type message struct {
 	} `json:"chat"`
 	Text string `json:"text"`
 }
+
+type apiError struct {
+	Method      string
+	Code        int
+	Description string
+}
+
+func (e *apiError) Error() string { return fmt.Sprintf("telegram %s: %s", e.Method, e.Description) }

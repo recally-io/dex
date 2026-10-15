@@ -278,7 +278,9 @@ func (s *Service) Abort(ctx context.Context, agentID string, id int64) error {
 			s.notify(ctx, c.ChannelKey, Reply{Status: "unanswered", Reason: "stopped"})
 		}
 	}
-	if c.WorkerConversationID == 0 {
+	// A held maintenance lease proves the worker has no active run. Its abort call also waits
+	// for admission, so only control's queue needs to be withdrawn while the lease is held.
+	if c.WorkerConversationID == 0 || s.leaseUntil.Load() > s.now().UnixMilli() {
 		return nil
 	}
 	return s.worker.Call(ctx, "abort", worker.AbortParams{AgentID: agentID, ConversationID: c.WorkerConversationID}, &struct{}{})

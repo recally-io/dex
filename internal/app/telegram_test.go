@@ -20,12 +20,13 @@ import (
 // of the real service. getUpdates returns every queued update with an ID at or above the offset,
 // as Telegram does.
 type fakeTelegram struct {
-	failAfter atomic.Int64
-	sendCount atomic.Int64
-	failSend  atomic.Bool
-	attempted chan struct{}
-	srv       *httptest.Server
-	sent      chan sentMessage
+	permanentChat atomic.Int64
+	failAfter     atomic.Int64
+	sendCount     atomic.Int64
+	failSend      atomic.Bool
+	attempted     chan struct{}
+	srv           *httptest.Server
+	sent          chan sentMessage
 
 	mu      sync.Mutex
 	updates []map[string]any
@@ -101,6 +102,10 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		var m sentMessage
 		_ = json.UnmarshalRead(r.Body, &m)
+		if f.permanentChat.Load() == m.ChatID {
+			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 403, "description": "bot was blocked by the user"})
+			return
+		}
 		f.sent <- m
 	}
 	_ = json.MarshalWrite(w, map[string]any{"ok": true, "result": result})

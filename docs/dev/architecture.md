@@ -298,7 +298,10 @@ worker run. An interrupted stop can run again; abort is safe to repeat.
 Each platform has one durable sender. Notify only wakes this sender. At start
 and after a failed send, the same sender reads settled, undelivered submissions.
 It records progress after each confirmed part and marks the whole reply as
-delivered after its last part. Worker replay still reads only pending messages.
+delivered after its last part. A permanent rejection skips that part and does
+not block later replies. A transient error retries with a delay from 5 s to
+60 s. Platforms can use `PartSender` to get the stable submission or command
+ID and the part index. Worker replay still reads only pending messages.
 Delivery is at least once: a crash between platform success and the local
 commit can duplicate one part. Migration marks old settled replies as delivered
 because earlier versions did not record delivery success.
@@ -331,9 +334,10 @@ See [ADR 0009](decisions/0009-channel-layer.md).
   skipped. It ignores the older missed times.
 - **Telegram API error.** The bot retries `getUpdates` after 5 s, from the
   first update that it did not store. A failed reply part stays undelivered.
-  The channel sender retries it after 5 s and after a restart. Confirmed parts
-  are skipped. A crash after remote success but before the local commit can
-  duplicate one part.
+  The channel sender retries it with a delay from 5 s to 60 s and after a
+  restart. Confirmed parts are skipped. Telegram errors 400 and 403 skip the
+  rejected part, so an unreachable peer does not block other peers. A crash
+  after remote success but before the local commit can duplicate one part.
 
 ## Security
 

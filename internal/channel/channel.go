@@ -6,7 +6,8 @@
 //
 // A platform implements Bot and registers it with Set("platform", bot). Set stops and waits for
 // the previous bot before it starts the replacement; nil turns it off. Run receives messages.
-// Parts renders and splits a final reply. Send confirms one part. Report updates
+// Parts renders and splits a final reply. Send confirms one part; a PartSender receives its
+// stable identity instead. ErrPermanent skips a rejected part. Report updates
 // runtime status; Status returns it for the settings API. Connect chat's notify to Notify.
 //
 // Receive handles /new, /stop, and /help before submitting messages. /new preserves old chats
@@ -30,6 +31,17 @@ import (
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
+
+// ErrPermanent marks a part the platform cannot accept. The sender logs and skips it.
+// Other errors keep the part for retry.
+var ErrPermanent = errors.New("permanent channel delivery failure")
+
+// PartSender optionally gives a transport stable delivery identity. Replies use the submission
+// ID; command answers use the command source key. Part is a zero-based index. SendPart has the
+// same error contract as Send. A transport can use it for remote idempotency or preview updates.
+type PartSender interface {
+	SendPart(ctx context.Context, peer, deliveryID string, part int, text string) error
+}
 
 // Status is the public runtime state. Reason must contain no credentials.
 type Status struct {
@@ -243,17 +255,39 @@ func (m *Manager) Pending(ctx context.Context, peer string) (bool, error) {
 }
 
 func (m *Manager) deliver(ctx context.Context, name string, r *runtime) {
+	delay := 5 * time.Second
 	for {
-		if err := m.flush(ctx, name, r.bot); err != nil && ctx.Err() == nil {
+		err := m.flush(ctx, name, r.bot)
+		if err != nil && ctx.Err() == nil {
 			slog.Warn("channel: reply delivery waits for retry", "channel", name, "err", err)
+		}
+		if err == nil {
+			delay = 5 * time.Second
 		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-r.wake:
-		case <-time.After(5 * time.Second):
+		case <-time.After(delay):
+		}
+		if err != nil {
+			delay = min(delay*2, 60*time.Second)
 		}
 	}
+}
+
+func sendPart(ctx context.Context, bot Bot, peer, id string, part int, text string) error {
+	var err error
+	if sender, ok := bot.(PartSender); ok {
+		err = sender.SendPart(ctx, peer, id, part, text)
+	} else {
+		err = bot.Send(ctx, peer, text)
+	}
+	if errors.Is(err, ErrPermanent) {
+		slog.Warn("channel: skipped a rejected reply part", "delivery", id, "part", part, "err", err)
+		return nil
+	}
+	return err
 }
 
 func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
@@ -280,7 +314,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 		peer, _, _ := strings.Cut(r.ChannelKey, "/")
 		parts := bot.Parts(chat.Reply{Status: r.Status, Answer: r.Answer.String, Reason: r.Reason.String})
 		for i := int(r.DeliveredParts); i < len(parts); i++ {
-			if err = bot.Send(ctx, peer, parts[i]); err != nil {
+			if err = sendPart(ctx, bot, peer, r.ID, i, parts[i]); err != nil {
 				return err
 			}
 			if err = m.q.AdvanceChannelReply(ctx, r.ID); err != nil {
@@ -298,7 +332,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 	for _, r := range acks {
 		parts := bot.Parts(chat.Reply{Status: "done", Answer: r.Answer})
 		for i := int(r.DeliveredParts); i < len(parts); i++ {
-			if err = bot.Send(ctx, r.Peer, parts[i]); err != nil {
+			if err = sendPart(ctx, bot, r.Peer, r.SourceKey, i, parts[i]); err != nil {
 				return fmt.Errorf("send command reply: %w", err)
 			}
 			if err = m.q.AdvanceChannelCommandReply(ctx, r.SourceKey); err != nil {
