@@ -27,8 +27,10 @@ Read this before you write or change a test.
   provider works; say so when you report.
 - **Controlled time.** Do not use fixed sleeps. Poll the observable condition
   with a deadline, and fail with the last observed state.
-- **Isolation.** Each test uses its own `t.TempDir()` for the data and cache
-  directories and passes the worker an explicit environment.
+- **Isolation.** Each test uses its own `t.TempDir()` for the data directory
+  and passes the worker an explicit environment. The `internal/app` tests
+  share one cache directory: it holds only the installed worker binary, and
+  unpacking it for each test made the package four times slower under `-race`.
 - **Clean ends.** Close every `app.App` a test starts, so its worker exits.
 
 ## Tiers
