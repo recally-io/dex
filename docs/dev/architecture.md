@@ -98,18 +98,16 @@ share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
 Skills and MCP servers come from files in two scopes, global (`~/.agents/`)
 and agent (`<data dir>/agents/<id>/`); see
 [ADR 0008](decisions/0008-agent-extensions.md).
-[`AgentExtensions`](../../worker/src/extensions.ts) reads them and connects
-the servers when the worker opens the agent, before `resume()`. It installs
-one pi-durable extension: a `skills` prompt section and the MCP tools, as
-deferred tools named `mcp__<server>__<tool>`. When an agent has MCP tools, the
-worker also installs `tool_search`.
+[`AgentExtensions`](../../worker/src/extensions.ts) connects the servers when
+the worker opens the agent, before `resume()`. It installs one pi-durable
+extension: a `skills` prompt section, which reads the skill files before each
+model request, and the MCP tools, as deferred tools named
+`mcp__<server>__<tool>`. When an agent has MCP tools, the worker also installs
+`tool_search`.
 
-`GET /api/extensions` shows the loaded catalog. Before the agent opens, it
-shows what the files declare, with the servers `idle`; it never starts a
-server. `POST /api/extensions/reload` loads the files again and closes the old
-servers after the new catalog is installed. It is refused while the worker has
-a request or a run in progress, and the worker holds new requests until the
-reload ends, so no call starts on a server that the reload closes.
+`GET /api/extensions` reads the files; before the agent opens, the servers
+are `idle`. `POST /api/extensions/reload` takes the maintenance lease,
+restarts the worker, and releases the lease.
 
 ## Automations
 
@@ -184,7 +182,6 @@ The types are in [`worker/src/protocol.ts`](../../worker/src/protocol.ts) and
 | `unwatch`            | `watchId`                                                                                                              | `{}`                      |
 | `abort`              | `agentId`, `conversationId`                                                                                            | `{}`                      |
 | `extensions`         | `agentId`                                                                                                              | the Extensions schema     |
-| `reloadExtensions`   | `agentId`                                                                                                              | `status`, `reason`        |
 
 The worker runs the submits of one conversation in order. When `model`,
 `thinkingLevel` or `instructions` differ from the conversation's, it changes

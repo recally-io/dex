@@ -58,16 +58,17 @@ type ServerEntry = Declared & { readonly overrides: boolean };
 
 /** What the files declare, read without starting a server. */
 type Scan = {
-	readonly skills: readonly SkillInfo[];
+	readonly skills: SkillInfo[];
 	readonly servers: readonly ServerEntry[];
-	readonly errors: readonly string[];
+	readonly errors: string[];
 };
 
-/** A loaded catalog: the extension to install, and the servers that it holds open. */
+/** The extension to install, and the MCP servers that it holds open. */
 export type Loaded = {
 	readonly extension: Extension;
 	readonly hasTools: boolean;
-	readonly info: Extensions;
+	/** The state of each server. A server that closes its connection changes to "failed". */
+	readonly servers: readonly McpServerInfo[];
 	close(): Promise<void>;
 };
 
@@ -88,34 +89,47 @@ export class AgentExtensions {
 		this.#workspace = workspace;
 	}
 
-	/** The catalog as the files declare it, without starting a server. */
-	async declared(): Promise<Extensions> {
+	/**
+	 * The catalog, read from the files now. `servers` is the state of the loaded servers; without it,
+	 * the catalog shows the servers that the files declare, and no server starts.
+	 */
+	async info(servers?: readonly McpServerInfo[]): Promise<Extensions> {
 		const scan = await this.#scan();
-		return this.#info(
-			scan,
-			scan.servers.map((entry) => serverInfo(entry, entry.server.disabled ? "disabled" : "idle")),
-		);
+		return {
+			paths: {
+				globalSkills: this.#scopes.global.skills,
+				globalMcp: this.#scopes.global.mcp,
+				agentSkills: this.#scopes.agent.skills,
+				agentMcp: this.#scopes.agent.mcp,
+			},
+			skills: scan.skills,
+			servers:
+				servers ??
+				scan.servers.map((entry) => serverInfo(entry, entry.server.disabled ? "disabled" : "idle")),
+			errors: scan.errors,
+		};
 	}
 
 	/**
-	 * Reads the files and connects the servers. A server that fails is reported and has no tools; the
-	 * others still work. When an mcp.json file is not valid, no server starts, because its entries
-	 * could replace or disable global ones.
+	 * Connects the MCP servers. A server that fails is reported and has no tools; the others still
+	 * work. When an mcp.json file is not valid, no server starts, because its entries could replace or
+	 * turn off global ones. The skills section reads the skill files before each model request, so an
+	 * edit to a skill applies without a restart.
 	 */
 	async load(): Promise<Loaded> {
 		const scan = await this.#scan();
+		for (const error of scan.errors) console.error("extensions:", error);
 		const servers = await Promise.all(
 			scan.servers.map((entry) =>
 				entry.server.disabled ? Promise.resolve(undefined) : this.#connect(entry),
 			),
 		);
 		const clients = servers.flatMap((s) => (s?.client === undefined ? [] : [s.client]));
-		// Server "a" with tool "b__c" and server "a__b" with tool "c" have the same tool name. The
-		// first server in name order keeps it.
+		// Server "a" with tool "b__c" and server "a__b" with tool "c" have the same tool name, and a
+		// server can list one tool twice. The first server in name order keeps the name.
 		const names = new Set<string>();
 		const tools = servers.flatMap((s) => {
 			if (s === undefined) return [];
-			// A server can also list one tool twice.
 			const lost: string[] = [];
 			const kept = s.tools.filter((tool) => {
 				const fresh = !names.has(tool.name);
@@ -129,52 +143,38 @@ export class AgentExtensions {
 					.join("; ");
 			return kept;
 		});
-		const info = this.#info(
-			scan,
-			scan.servers.map((entry, i) => servers[i]?.info ?? serverInfo(entry, "disabled")),
-		);
-		const text = skillsText(info.skills);
 		return {
 			extension: defineExtension({
 				name: EXTENSION_NAME,
-				sections: [section("skills", () => text)],
+				sections: [section("skills", async () => skillsText(await this.#skills([])))],
 				tools,
 			}),
 			hasTools: tools.length > 0,
-			info,
+			servers: scan.servers.map((entry, i) => servers[i]?.info ?? serverInfo(entry, "disabled")),
 			close: async () => {
 				await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
 			},
 		};
 	}
 
-	#info(scan: Scan, servers: McpServerInfo[]): Extensions {
-		return {
-			paths: {
-				globalSkills: this.#scopes.global.skills,
-				globalMcp: this.#scopes.global.mcp,
-				agentSkills: this.#scopes.agent.skills,
-				agentMcp: this.#scopes.agent.mcp,
-			},
-			skills: [...scan.skills],
-			servers,
-			errors: [...scan.errors],
-		};
+	async #skills(errors: string[]): Promise<SkillInfo[]> {
+		const [global, agent] = await Promise.all([
+			readSkills(this.#scopes.global.skills, "global", errors),
+			readSkills(this.#scopes.agent.skills, "agent", errors),
+		]);
+		return merge(global, agent, (skill, overrides) => ({ ...skill, overrides }));
 	}
 
 	async #scan(): Promise<Scan> {
 		const errors: string[] = [];
-		const [globalSkills, agentSkills] = await Promise.all([
-			readSkills(this.#scopes.global.skills, "global", errors),
-			readSkills(this.#scopes.agent.skills, "agent", errors),
-		]);
+		const skills = await this.#skills(errors);
 		const [globalMcp, agentMcp] = await Promise.all([
 			readMcp(this.#scopes.global.mcp, errors),
 			readMcp(this.#scopes.agent.mcp, errors),
 		]);
 		const valid = globalMcp !== undefined && agentMcp !== undefined;
 		return {
-			skills: merge(globalSkills, agentSkills, (skill, overrides) => ({ ...skill, overrides })),
+			skills,
 			servers: valid
 				? merge<Declared, ServerEntry>(
 						Object.entries(globalMcp).map(([name, server]) => ({ name, scope: "global", server })),

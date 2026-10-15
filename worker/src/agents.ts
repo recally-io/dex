@@ -9,7 +9,6 @@ import {
 	type ConversationId,
 	createRegistry,
 	Harness,
-	type Registry,
 	type Submission,
 	watchEvents,
 	type AgentEventStream,
@@ -28,7 +27,6 @@ import type {
 	CreateConversationParams,
 	CreateConversationResult,
 	Extensions,
-	ReloadResult,
 	SettledEvent,
 	SubmitParams,
 	SubmitResult,
@@ -44,9 +42,6 @@ const context = BACKGROUND_CONTEXT;
 const AGENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 const ToolSearch = createToolSearchExtension();
-
-/** The extension files of an open agent, its registry, and the catalog loaded from them. */
-type AgentState = { readonly files: AgentExtensions; readonly registry: Registry; loaded: Loaded };
 
 /**
  * Owns one pi-durable Harness per agent, opened on first use. pi-durable allows one process per
@@ -65,19 +60,17 @@ export class Agents {
 	readonly #watches = new Map<string, AgentEventStream>();
 	readonly #pendingWatches = new Map<string, AbortController>();
 	readonly #harnesses = new Map<string, Promise<Harness>>();
-	readonly #agents = new Map<string, AgentState>();
+	// The MCP servers of each open agent.
+	readonly #loaded = new Map<string, Loaded>();
 	// The tail of each conversation's submit chain; see #serial.
 	readonly #chains = new Map<string, Promise<unknown>>();
 	#checking = false;
 	#operations = 0;
 	#gateUntil = 0;
-	// A reload holds every new request until it ends, so no call starts on a client that it closes.
-	#reloading: Promise<unknown> | undefined;
 	readonly #gateWaiters = new Set<() => void>();
 
 	async quiesce(params: QuiesceParams): Promise<QuiesceResult> {
 		if (this.#checking) return { busy: true, reason: "maintenance check is pending" };
-		if (this.#reloading !== undefined) return { busy: true, reason: "an extension reload is pending" };
 		// Close admission before the first await. Existing operations remain counted.
 		this.#gateUntil = params.expiresAt;
 		this.#checking = true;
@@ -109,13 +102,8 @@ export class Agents {
 	}
 
 	async #admit<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-		while (this.#gateUntil > Date.now() || this.#reloading !== undefined) {
+		while (this.#gateUntil > Date.now()) {
 			signal?.throwIfAborted();
-			if (this.#reloading !== undefined) {
-				// oxlint-disable-next-line no-await-in-loop
-				await this.#reloading;
-				continue;
-			}
 			const expiresAt = this.#gateUntil;
 			// Each wake must recheck a lease that another updater can renew.
 			// oxlint-disable-next-line no-await-in-loop
@@ -283,57 +271,13 @@ export class Agents {
 		return {};
 	}
 
-	/** The agent's skills and MCP servers. It does not start an agent that is not open. */
+	/**
+	 * The agent's skills and MCP servers. It does not start an agent that is not open. Control
+	 * reloads the MCP servers with a restart of the worker.
+	 */
 	async extensions(params: AgentParams): Promise<Extensions> {
-		return this.#agents.get(params.agentId)?.loaded.info ?? this.#files(params.agentId).declared();
-	}
-
-	/** Reads the extension files again and reconnects the MCP servers, only when the agent is idle. */
-	async reloadExtensions(params: AgentParams): Promise<ReloadResult> {
-		// A request in progress could use the catalog that the reload closes.
-		if (
-			this.#checking ||
-			this.#reloading !== undefined ||
-			this.#gateUntil > Date.now() ||
-			this.#operations > 0
-		)
-			return { status: "busy", reason: "the agent has unfinished work or requests; reload when it is done" };
-		const reload = this.#reload(params.agentId);
-		this.#reloading = reload.catch(() => undefined);
-		try {
-			return await reload;
-		} finally {
-			this.#reloading = undefined;
-		}
-	}
-
-	async #reload(agentId: string): Promise<ReloadResult> {
-		const opened = this.#agents.has(agentId);
-		const harness = await this.#harness(agentId);
-		const state = this.#agents.get(agentId);
-		if (state === undefined) throw new Error(`agent ${agentId} is not open`);
-		// The open has just read the files.
-		if (!opened) return reloadResult(state.loaded);
-		// A run that changes its tools between two turns could call a tool of the new server with the
-		// arguments that it planned for the old one.
-		const { tasks, submissions } = await harness.inspect(context);
-		if (tasks.length > 0 || submissions.length > 0)
-			return { status: "busy", reason: "the agent has unfinished work; reload when it is done" };
-		const next = await state.files.load();
-		if (next.info.errors.length > 0) {
-			await next.close();
-			return reloadResult(next);
-		}
-		const previous = state.loaded;
-		try {
-			install(state.registry, next);
-		} catch (error) {
-			await next.close();
-			throw error;
-		}
-		state.loaded = next;
-		await previous.close();
-		return reloadResult(next);
+		const files = this.#files(params.agentId);
+		return files.info(this.#loaded.get(params.agentId)?.servers);
 	}
 
 	#files(agentId: string): AgentExtensions {
@@ -372,8 +316,8 @@ export class Agents {
 				await harness?.close(context);
 			}),
 		);
-		await Promise.all([...this.#agents.values()].map((state) => state.loaded.close()));
-		this.#agents.clear();
+		await Promise.all([...this.#loaded.values()].map((loaded) => loaded.close()));
+		this.#loaded.clear();
 	}
 
 	// Runs in the background after submit() returns. A replayed requestId finds the same
@@ -418,12 +362,11 @@ export class Agents {
 		await this.#memory.open();
 		registry.install(this.#memory.extension((id) => this.#sources.get(`${agentId}/${id}`)));
 		// A run that resumes after a restart needs its MCP tools, so they load before resume().
-		const files = this.#files(agentId);
-		const loaded = await files.load();
-		for (const error of loaded.info.errors) console.error(`agent ${agentId} extensions:`, error);
+		const loaded = await this.#files(agentId).load();
 		let harness: Harness;
 		try {
-			install(registry, loaded);
+			registry.install(loaded.extension);
+			if (loaded.hasTools) registry.install(ToolSearch);
 			harness = await Harness.open(
 				await openNodeSqliteStorage(join(dir, "state.sqlite")),
 				{
@@ -439,23 +382,10 @@ export class Agents {
 			await loaded.close();
 			throw error;
 		}
-		this.#agents.set(agentId, { files, registry, loaded });
+		this.#loaded.set(agentId, loaded);
 		harness.resume();
 		return harness;
 	}
-}
-
-function install(registry: Registry, loaded: Loaded): void {
-	registry.install(loaded.extension);
-	if (loaded.hasTools) registry.install(ToolSearch);
-	else registry.uninstall(ToolSearch);
-}
-
-function reloadResult(loaded: Loaded): ReloadResult {
-	const { errors } = loaded.info;
-	return errors.length > 0
-		? { status: "invalid", reason: errors.join("\n") }
-		: { status: "loaded", extensions: loaded.info };
 }
 
 function answerText(message: Message | undefined): string {

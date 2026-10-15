@@ -39,6 +39,8 @@ type Config struct {
 	WorkerReady func(context.Context) bool
 	// Worker calls the worker for the agent's extensions.
 	Worker worker.CallFunc
+	// RestartWorker restarts the worker, which connects the MCP servers again.
+	RestartWorker func(context.Context) error
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string
 }
@@ -143,19 +145,32 @@ func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestO
 	return out, nil
 }
 func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRequestObject) (api.ReloadExtensionsResponseObject, error) {
-	var result worker.ReloadResult
-	if err := h.Worker(ctx, "reloadExtensions", worker.AgentParams{AgentID: h.AgentID}, &result); err != nil {
+	// A worker that starts with an mcp.json that is not valid has no MCP servers. Keep the loaded ones.
+	var files api.Extensions
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID}, &files); err != nil {
 		return nil, err
 	}
-	switch result.Status {
-	case "busy":
-		return api.ReloadExtensions409JSONResponse{Error: result.Reason}, nil
-	case "invalid":
-		return api.ReloadExtensions400JSONResponse{Error: result.Reason}, nil
+	if len(files.Errors) > 0 {
+		return nil, fmt.Errorf("%w: %s", errInvalid, strings.Join(files.Errors, "\n"))
+	}
+	// The maintenance lease refuses a reload while the agent has work, and holds new work until the
+	// new worker runs. The new worker gets the lease again before it accepts calls.
+	if err := h.Chats.AcquireMaintenance(ctx); err != nil {
+		return nil, err
+	}
+	defer func() {
+		release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := h.Chats.ReleaseMaintenance(release); err != nil {
+			slog.Error("release maintenance after an extension reload", "err", err)
+		}
+	}()
+	if err := h.RestartWorker(ctx); err != nil {
+		return nil, err
 	}
 	var out api.ReloadExtensions200JSONResponse
-	if err := json.Unmarshal(result.Extensions, &out); err != nil {
-		return nil, fmt.Errorf("read the extensions: %w", err)
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID}, &out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

@@ -207,14 +207,6 @@ export type Extensions = {
 	};
 	readonly skills: readonly SkillInfo[];
 	readonly servers: readonly McpServerInfo[];
-	/** Files that dex cannot read. When an mcp.json file is one of them, no server starts. */
+	/** Files that dex cannot read now. When an mcp.json file is one of them, no server starts. */
 	readonly errors: readonly string[];
 };
-
-/**
- * The result of reloadExtensions. "busy": the agent has unfinished work, so nothing changed.
- * "invalid": a file is not valid, so the agent keeps its loaded extensions.
- */
-export type ReloadResult =
-	| { readonly status: "loaded"; readonly extensions: Extensions }
-	| { readonly status: "busy" | "invalid"; readonly reason: string };

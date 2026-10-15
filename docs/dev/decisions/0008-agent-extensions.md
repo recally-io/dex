@@ -23,11 +23,12 @@ only source of settings. Extension files are an exception to it.
 - The files are the configuration. dex keeps no copy in `control.sqlite`,
   and the web UI only shows them. Models, providers, Telegram and the other
   settings stay in `control.sqlite`.
-- The worker owns the extensions. It reads the files and connects the
-  servers before it resumes an agent, so a run that resumes after a restart
-  has its tools. Control asks the worker for the status and for a reload.
+- The worker owns the extensions. It connects the servers before it resumes
+  an agent, so a run that resumes after a restart has its tools.
 - Skills: the prompt lists the name, description and `SKILL.md` path of each
-  skill. The agent reads a skill with its read tool when a task needs it.
+  skill. The agent reads a skill with its read tool when a task needs it. The
+  worker reads the skill files before each model request, so an edit applies
+  to the next request.
 - MCP: `@earendil-works/pi-mcp`, from the same project as pi-durable,
   connects over stdio and Streamable HTTP. Each tool is
   `mcp__<server>__<tool>` and is deferred: the model finds it with
@@ -37,14 +38,16 @@ only source of settings. Extension files are an exception to it.
 - MCP tools keep pi-durable's default replay policy, `unsafe`. After a
   restart, an interrupted call gets an error result; dex does not send it
   again, because the call can have changed data on the server.
-- Reload is explicit. It is refused while the agent has unfinished work or
-  the worker has a request in progress, and when a file is not valid; the
-  agent then keeps its loaded extensions. During a reload, the worker holds
-  new requests.
+- An MCP reload restarts the worker under the maintenance lease that updates
+  use. The lease refuses the reload while the agent has work, and holds new
+  work until the new worker runs. dex has no code to replace servers in a
+  running worker. A reload is refused when a file is not valid, so the agent
+  keeps its servers.
 
 ## Consequences
 
-- An edit to a file applies after a reload or a restart.
+- An edit to mcp.json applies after a reload or a restart. A reload ends the
+  open chat streams, and the browser opens them again.
 - mcp.json holds headers and environment values as plain text. The API does
   not return commands, URLs, headers, environment values or raw errors, and
   the worker log has only the category of a failure.

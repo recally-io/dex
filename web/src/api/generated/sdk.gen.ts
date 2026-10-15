@@ -216,7 +216,7 @@ export const getExtensions = <ThrowOnError extends boolean = false>(options?: Op
 });
 
 /**
- * Reads the extension files again and connects the MCP servers again. New runs use the result. 409 when the agent has unfinished work. 400 when a file is not valid; the agent then keeps its loaded extensions.
+ * Restarts the worker, which connects the MCP servers again. Skills need no reload. 409 when the agent has unfinished work. 400 when a file is not valid; the agent then keeps its MCP servers.
  *
  */
 export const reloadExtensions = <ThrowOnError extends boolean = false>(options?: Options<ReloadExtensionsData, ThrowOnError>): RequestResult<ReloadExtensionsResponses, ReloadExtensionsErrors, ThrowOnError> => (options?.client ?? client).post<ReloadExtensionsResponses, ReloadExtensionsErrors, ThrowOnError>({

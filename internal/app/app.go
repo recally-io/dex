@@ -145,9 +145,10 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 
 	automations := automation.New(q, chats, DefaultAgentID, time.Now)
 	a := &App{db: conn, bots: bots, jobs: jobs, cancel: cancel, handler: server.New(server.Config{
-		WorkerReady: func(ctx context.Context) bool { return w.Call(ctx, "ping", struct{}{}, &struct{}{}) == nil },
-		Worker:      w.Call,
-		Chats:       chats, Automations: automations, Settings: prefs, Live: hub, AgentID: DefaultAgentID, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
+		WorkerReady:   func(ctx context.Context) bool { return w.Call(ctx, "ping", struct{}{}, &struct{}{}) == nil },
+		Worker:        w.Call,
+		RestartWorker: w.Restart,
+		Chats:         chats, Automations: automations, Settings: prefs, Live: hub, AgentID: DefaultAgentID, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 		// The worker runs the agent's tools in this workspace.
 		Uploads: upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID)),
 	})}

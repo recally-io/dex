@@ -1,4 +1,5 @@
-// The Go tests check the API. This test checks the worker log, which the Go tests do not capture.
+// A failed server shows only the category of its error, in the API and in the log, because a raw
+// error or the server's output can hold values of its mcp.json entry.
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,7 +11,7 @@ afterEach(async () => {
 	await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
 });
 
-test("the log of a failed MCP server has no values from its entry", async () => {
+test("a failed MCP server shows no values of its entry", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "dex-extensions-"));
 	cleanups.push(() => rm(dir, { recursive: true, force: true }));
 	// An HTTP server that fails and sends back the request.
@@ -45,7 +46,8 @@ test("the log of a failed MCP server has no values from its entry", async () => 
 	const loaded = await new AgentExtensions(join(dir, "home"), join(dir, "agent"), dir).load();
 	await loaded.close();
 
-	expect(loaded.info.servers.map((s) => s.state)).toEqual(["failed", "failed", "failed", "failed"]);
+	expect(loaded.servers.map((s) => s.state)).toEqual(["failed", "failed", "failed", "failed"]);
+	expect(JSON.stringify(loaded.servers)).not.toContain("SECRET");
 	const text = log.mock.calls.flat().join("\n");
 	expect(text).toContain("MCP server denied: the server answered with HTTP status 500");
 	expect(text).toContain("MCP server missing: the command does not exist");

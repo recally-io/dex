@@ -172,17 +172,7 @@ type QuiesceResult struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// AgentParams are the params of the extensions and reloadExtensions methods.
+// AgentParams are the params of the extensions method.
 type AgentParams struct {
 	AgentID string `json:"agentId"`
-}
-
-// ReloadResult is the result of the reloadExtensions method. Status is "loaded", "busy" (the
-// agent has unfinished work) or "invalid" (a file is not valid; the agent keeps its extensions).
-// Extensions holds the Extensions object of api/openapi.yaml, which is also the result of the
-// extensions method.
-type ReloadResult struct {
-	Status     string         `json:"status"`
-	Reason     string         `json:"reason,omitempty"`
-	Extensions jsontext.Value `json:"extensions,omitempty"`
 }

@@ -60,8 +60,6 @@ async function handle(request: Request): Promise<unknown> {
 			return agents.abort(Value.Parse(AbortParams, request.params));
 		case "extensions":
 			return agents.extensions(Value.Parse(AgentParams, request.params));
-		case "reloadExtensions":
-			return agents.reloadExtensions(Value.Parse(AgentParams, request.params));
 		case "configure":
 			return catalog.configure(Value.Parse(ConfigureParams, request.params).providers);
 		case "listProviders":

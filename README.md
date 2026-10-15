@@ -125,13 +125,10 @@ Cursor:
 ```
 
 A stdio server gets `command`, `args`, `env`, and `cwd` (relative to the agent
-workspace). An HTTP server gets `url` and `headers`. In the agent file,
-`{ "disabled": true }` turns off a global server. OAuth and the legacy SSE
-transport are not supported.
+workspace). An HTTP server gets `url` and `headers`. OAuth is not supported.
 
-The Extensions page shows each skill and server, its scope, its state, and
-its errors. After you edit a file, select Reload. dex refuses a reload while
-the agent has work, and when a file is not valid. An MCP server runs as your
+An edit to a skill applies to the next message. After you edit mcp.json,
+select Reload MCP servers on the Extensions page. An MCP server runs as your
 user without a sandbox, and mcp.json keeps its credentials as plain text.
 
 ## Updates

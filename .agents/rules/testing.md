@@ -15,9 +15,8 @@ Read this before you write or change a test.
   in the PR.
 - **No mocks.** Tests run the real embedded worker, a real SQLite database, and
   a real HTTP server. `mise run check:testpolicy` rejects mock libraries.
-- **MCP servers are real.** `internal/mcptest` is an MCP server with file
-  tools. The `internal/app` tests start their own test binary as a stdio
-  server, or serve it over HTTP.
+- **MCP servers are real.** The `internal/app` tests run
+  `internal/mcptest` as a stdio server (their own test binary) or over HTTP.
 - **Fakes only at system boundaries.** Model providers and the Telegram Bot API
   are the boundaries; `internal/app/telegram_test.go` has a fake Bot API. Tests
   use pi-ai's faux provider (`DEX_FAKE_MODEL=1`; models `faux/echo` and

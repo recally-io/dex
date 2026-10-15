@@ -1,10 +1,10 @@
-// Package mcptest provides a file-backed MCP fixture.
+// Package mcptest is an MCP server for tests. Its tools write to notes.txt in Dir, so a test can
+// see which server got a call.
 package mcptest
 
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -16,384 +16,150 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"uuid"
 )
 
 type object = map[string]any
 
-// Server serves tools that operate on files in Dir.
+// Server serves the tools append {text}, read, fail and wait {name}. wait writes "started <name>"
+// and returns when the file <name>.release exists in Dir.
 type Server struct {
 	Dir string
 	// Prefix starts each tool name, so that two servers can have tools with the same full name.
 	Prefix string
 	// Twice lists the read tool twice, as a server with a bug can.
-	Twice    bool
-	mu       sync.Mutex
-	sessions map[string]*session
-}
+	Twice bool
 
-type session struct {
-	mu     sync.Mutex
-	calls  map[string]*context.CancelFunc
-	closed bool
-}
-
-func (p *session) cancel(id string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if id == "" {
-		p.closed = true
-	}
-	for key, cancel := range p.calls {
-		if id == "" || id == key {
-			(*cancel)()
-		}
-	}
-}
-
-func (p *session) start(ctx context.Context, id string) (context.Context, func()) {
-	ctx, cancel := context.WithCancel(ctx)
-	p.mu.Lock()
-	if p.calls == nil {
-		p.calls = make(map[string]*context.CancelFunc)
-	}
-	entry := &cancel
-	p.calls[id] = entry
-	if p.closed {
-		cancel()
-	}
-	p.mu.Unlock()
-	return ctx, func() {
-		cancel()
-		p.mu.Lock()
-		// A client can reuse the ID of a call that ended; keep the entry of the new call.
-		if p.calls[id] == entry {
-			delete(p.calls, id)
-		}
-		p.mu.Unlock()
-	}
+	mu sync.Mutex
 }
 
 type request struct {
-	JSONRPC string         `json:"jsonrpc"`
-	ID      jsontext.Value `json:"id,omitempty"`
-	Method  string         `json:"method"`
-	Params  jsontext.Value `json:"params,omitempty"`
+	ID     jsontext.Value `json:"id,omitempty"`
+	Method string         `json:"method"`
+	Params struct {
+		Name      string         `json:"name"`
+		Arguments map[string]any `json:"arguments"`
+	} `json:"params"`
 }
 
-func rpcError(id jsontext.Value, code int, message string) object {
-	if len(id) == 0 {
-		id = jsontext.Value("null")
-	}
-	return object{"jsonrpc": "2.0", "id": id, "error": object{"code": code, "message": message}}
-}
-
-func supported(v string) bool {
-	return v == "2025-11-25" || v == "2025-06-18" || v == "2025-03-26"
-}
-
-func appendFile(dir, name, text string) error {
-	root, err := os.OpenRoot(dir)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = root.Close() }()
-	f, err := root.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
-	if err != nil {
-		return err
-	}
-	_, err = io.WriteString(f, text+"\n")
-	return errors.Join(err, f.Close())
-}
-
-func (s *Server) dispatch(ctx context.Context, p *session, req request) object {
-	s.mu.Lock()
-	err := appendFile(s.Dir, "ops.log", req.Method)
-	s.mu.Unlock()
-	if err != nil {
-		return rpcError(req.ID, -32603, err.Error())
-	}
-	if req.Method == "notifications/cancelled" {
-		var params struct {
-			RequestID jsontext.Value `json:"requestId"`
+// ServeStdio serves newline-delimited JSON-RPC until r ends. The end of r cancels the calls.
+func (s *Server) ServeStdio(r io.Reader, w io.Writer) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var wg sync.WaitGroup
+	var out sync.Mutex
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		var req request
+		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil || len(req.ID) == 0 {
+			continue // notifications need no answer
 		}
-		if json.Unmarshal(req.Params, &params) == nil {
-			p.cancel(string(params.RequestID))
-		}
+		// A wait call blocks, so each call has its own goroutine.
+		wg.Go(func() {
+			data, _ := json.Marshal(s.answer(ctx, req))
+			out.Lock()
+			defer out.Unlock()
+			_, _ = fmt.Fprintf(w, "%s\n", data)
+		})
+	}
+	cancel()
+	wg.Wait()
+	return scanner.Err()
+}
+
+// ServeHTTP serves MCP Streamable HTTP, with JSON answers and without sessions.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req request
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	if len(req.ID) == 0 {
-		return nil
+		w.WriteHeader(http.StatusAccepted)
+		return
 	}
-	var result any
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.MarshalWrite(w, s.answer(r.Context(), req))
+}
+
+func (s *Server) answer(ctx context.Context, req request) object {
+	var result object
 	switch req.Method {
 	case "initialize":
-		var params struct {
-			ProtocolVersion string `json:"protocolVersion"`
+		result = object{
+			"protocolVersion": "2025-06-18",
+			"capabilities":    object{"tools": object{}},
+			"serverInfo":      object{"name": "mcptest", "version": "1"},
 		}
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			return rpcError(req.ID, -32602, err.Error())
-		}
-		if !supported(params.ProtocolVersion) {
-			params.ProtocolVersion = "2025-06-18"
-		}
-		result = object{"protocolVersion": params.ProtocolVersion, "capabilities": object{"tools": object{"listChanged": false}}, "serverInfo": object{"name": "mcptest", "version": "1"}}
-	case "ping":
-		result = object{}
 	case "tools/list":
-		var params struct {
-			Cursor string `json:"cursor"`
+		names := []string{"append", "read", "fail", "wait"}
+		if s.Twice {
+			names = append(names, "read")
 		}
-		if len(req.Params) > 0 {
-			if err := json.Unmarshal(req.Params, &params); err != nil {
-				return rpcError(req.ID, -32602, err.Error())
-			}
+		tools := make([]object, 0, len(names))
+		for _, name := range names {
+			tools = append(tools, object{"name": s.Prefix + name, "inputSchema": object{"type": "object"}})
 		}
-		offset := 0
-		switch params.Cursor {
-		case "":
-		case cursor(2):
-			offset = 2
-		case cursor(4):
-			offset = 4
-		default:
-			return rpcError(req.ID, -32602, "invalid cursor")
-		}
-		tools := toolList(s.Prefix, s.Twice)
-		end := min(offset+2, len(tools))
-		page := object{"tools": tools[offset:end]}
-		if end < len(tools) {
-			page["nextCursor"] = cursor(end)
-		}
-		result = page
+		result = object{"tools": tools}
 	case "tools/call":
-		var params struct {
-			Name      string                    `json:"name"`
-			Arguments map[string]jsontext.Value `json:"arguments"`
-		}
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			return rpcError(req.ID, -32602, err.Error())
-		}
-		name, ok := strings.CutPrefix(params.Name, s.Prefix)
-		if !ok {
-			return rpcError(req.ID, -32602, "unknown tool")
-		}
-		params.Name = name
-		switch params.Name {
-		case "append", "read", "fail", "slow_echo", "wait":
-		default:
-			return rpcError(req.ID, -32602, "unknown tool")
-		}
-		arg := ""
-		key := "text"
-		if params.Name == "wait" {
-			key = "name"
-		}
-		if params.Name == "append" || params.Name == "slow_echo" || params.Name == "wait" {
-			if err := json.Unmarshal(params.Arguments[key], &arg); err != nil || string(params.Arguments[key]) == "null" {
-				return rpcError(req.ID, -32602, "expected string argument: "+key)
-			}
-		}
-		text, err := s.call(ctx, params.Name, arg)
+		name, _ := strings.CutPrefix(req.Params.Name, s.Prefix)
+		arg := fmt.Sprint(req.Params.Arguments["text"], req.Params.Arguments["name"])
+		text, err := s.call(ctx, name, strings.ReplaceAll(arg, "<nil>", ""))
 		result = object{"content": []object{{"type": "text", "text": text}}}
 		if err != nil {
 			result = object{"content": []object{{"type": "text", "text": err.Error()}}, "isError": true}
 		}
 	default:
-		return rpcError(req.ID, -32601, "method not found")
+		return object{"jsonrpc": "2.0", "id": req.ID, "error": object{"code": -32601, "message": "method not found"}}
 	}
 	return object{"jsonrpc": "2.0", "id": req.ID, "result": result}
 }
 
-func cursor(offset int) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("tools:%d", offset)))
-}
-
-func toolList(prefix string, twice bool) []object {
-	tools := make([]object, 0, 5)
-	names := []string{"append", "read", "fail", "slow_echo", "wait"}
-	if twice {
-		names = append(names, "read")
-	}
-	for _, name := range names {
-		schema := object{"type": "object", "properties": object{}}
-		key := "text"
-		if name == "wait" {
-			key = "name"
-		}
-		if name == "append" || name == "slow_echo" || name == "wait" {
-			schema["properties"] = object{key: object{"type": "string"}}
-			schema["required"] = []string{key}
-		}
-		tools = append(tools, object{"name": prefix + name, "inputSchema": schema})
-	}
-	return tools
-}
-
 func (s *Server) call(ctx context.Context, name, arg string) (string, error) {
-	root, err := os.OpenRoot(s.Dir)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = root.Close() }()
-	notes := "notes.txt"
+	notes := filepath.Join(s.Dir, "notes.txt")
 	switch name {
-	case "fail":
-		return "", errors.New("failed on purpose")
-	case "slow_echo":
-		return "echo: " + arg, nil
+	case "append":
+		if err := s.note(arg); err != nil {
+			return "", err
+		}
+		data, err := os.ReadFile(notes) //nolint:gosec // Dir comes from the test
+		return fmt.Sprintf("appended %d", strings.Count(string(data), "\n")), err
 	case "read":
-		data, err := root.ReadFile(notes)
+		data, err := os.ReadFile(notes) //nolint:gosec // Dir comes from the test
 		if errors.Is(err, os.ErrNotExist) {
 			return "", nil
 		}
 		return string(data), err
-	case "append":
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		if err := appendFile(s.Dir, notes, arg); err != nil {
-			return "", err
-		}
-		data, err := root.ReadFile(notes)
-		return fmt.Sprintf("appended %d", strings.Count(string(data), "\n")), err
+	case "fail":
+		return "", errors.New("failed on purpose")
 	case "wait":
-		if !filepath.IsLocal(arg) || filepath.Base(arg) != arg || arg == "." {
-			return "", errors.New("invalid release name")
-		}
-		s.mu.Lock()
-		err := appendFile(s.Dir, notes, "started "+arg)
-		s.mu.Unlock()
-		if err != nil {
+		if err := s.note("started " + arg); err != nil {
 			return "", err
 		}
-		ticker := time.NewTicker(20 * time.Millisecond)
-		defer ticker.Stop()
 		for {
-			if _, err := root.Stat(arg + ".release"); err == nil {
+			if _, err := os.Stat(filepath.Join(s.Dir, filepath.Base(arg)+".release")); err == nil {
 				return "released " + arg, nil
-			} else if !errors.Is(err, os.ErrNotExist) {
-				return "", err
 			}
 			select {
 			case <-ctx.Done():
 				return "", ctx.Err()
-			case <-ticker.C:
+			case <-time.After(20 * time.Millisecond):
 			}
 		}
 	}
 	return "", errors.New("unknown tool")
 }
 
-// ServeStdio serves newline-delimited JSON-RPC until r ends.
-func (s *Server) ServeStdio(r io.Reader, w io.Writer) error {
-	p := new(session)
-	var wg sync.WaitGroup
-	var output sync.Mutex
-	var writeErr error
-	send := func(response object) {
-		if response == nil {
-			return
-		}
-		data, err := json.Marshal(response)
-		output.Lock()
-		defer output.Unlock()
-		if err == nil {
-			_, err = fmt.Fprintf(w, "%s\n", data)
-		}
-		writeErr = errors.Join(writeErr, err)
-	}
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 4096), 4<<20)
-	for scanner.Scan() {
-		var req request
-		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
-			send(rpcError(nil, -32700, "parse error"))
-			continue
-		}
-		if req.JSONRPC != "2.0" || req.Method == "" {
-			send(rpcError(req.ID, -32600, "invalid request"))
-			continue
-		}
-		if len(req.ID) == 0 {
-			send(s.dispatch(context.Background(), p, req))
-			continue
-		}
-		ctx, done := p.start(context.Background(), string(req.ID))
-		wg.Go(func() { defer done(); send(s.dispatch(ctx, p, req)) })
-	}
-	p.cancel("")
-	wg.Wait()
-	return errors.Join(scanner.Err(), writeErr)
-}
-
-// ServeHTTP serves one MCP Streamable HTTP endpoint.
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if v := r.Header.Get("MCP-Protocol-Version"); v != "" && !supported(v) {
-		http.Error(w, "unsupported protocol version", http.StatusBadRequest)
-		return
-	}
-	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
-		w.Header().Set("Allow", "POST, DELETE")
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	var req request
-	if r.Method == http.MethodPost {
-		data, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
-		if err != nil || json.Unmarshal(data, &req) != nil || req.JSONRPC != "2.0" || req.Method == "" {
-			http.Error(w, "invalid request", http.StatusBadRequest)
-			return
-		}
-	}
+func (s *Server) note(text string) error {
 	s.mu.Lock()
-	if s.sessions == nil {
-		s.sessions = make(map[string]*session)
-	}
-	id := r.Header.Get("Mcp-Session-Id")
-	p := s.sessions[id]
-	if req.Method == "initialize" && id == "" {
-		id = uuid.New().String()
-		p = new(session)
-		s.sessions[id] = p
-		w.Header().Set("Mcp-Session-Id", id)
-	}
-	if r.Method == http.MethodDelete && p != nil {
-		delete(s.sessions, id)
-	}
-	s.mu.Unlock()
-	if id == "" {
-		http.Error(w, "missing session", http.StatusBadRequest)
-		return
-	}
-	if p == nil {
-		http.Error(w, "unknown session", http.StatusNotFound)
-		return
-	}
-	if r.Method == http.MethodDelete {
-		p.cancel("")
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	ctx, done := p.start(r.Context(), string(req.ID))
-	defer done()
-	response := s.dispatch(ctx, p, req)
-	if response == nil {
-		w.WriteHeader(http.StatusAccepted)
-		return
-	}
-	data, err := json.Marshal(response)
+	defer s.mu.Unlock()
+	f, err := os.OpenFile(filepath.Join(s.Dir, "notes.txt"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return err
 	}
-	var params struct {
-		Name string `json:"name"`
-	}
-	_ = json.Unmarshal(req.Params, &params)
-	if req.Method == "tools/call" && params.Name == "slow_echo" && strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = fmt.Fprintf(w, "event: message\ndata: %s\n\n", data)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(data)
-	}
+	_, err = io.WriteString(f, text+"\n")
+	return errors.Join(err, f.Close())
 }
