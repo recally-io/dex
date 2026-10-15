@@ -20,15 +20,10 @@ paths:
   /api/maintenance:
     post:
       operationId: acquireMaintenance
-      description: Hold dispatch for two minutes if no work is active. The same lease renews it.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/MaintenanceLease" }
+      description: Hold worker admission for two minutes if no work is active. POST renews it.
       responses:
         "200":
-          description: Dispatch is held until expiry or release.
+          description: Worker admission is held until expiry or release.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Ok" }
@@ -36,14 +31,9 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: releaseMaintenance
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/MaintenanceLease" }
       responses:
         "200":
-          description: Dispatch can resume.
+          description: Worker admission can resume.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Ok" }
@@ -505,12 +495,6 @@ components:
         version: { type: string }
         dataDir: { type: string }
         workerReady: { type: boolean }
-
-    MaintenanceLease:
-      type: object
-      required: [leaseId]
-      properties:
-        leaseId: { type: string, format: uuid }
 
     Chat:
       type: object

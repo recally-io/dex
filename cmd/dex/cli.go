@@ -50,16 +50,15 @@ func runFlags(f *flag.FlagSet, c *service.Config) {
 	f.IntVar(&c.Port, "port", c.Port, "HTTP port")
 	f.StringVar(&c.DataDir, "data-dir", c.DataDir, "Data directory (does not move existing data)")
 }
-func configured(name string, args []string, base service.Config) (service.Config, error) {
-	f := flags(name)
-	runFlags(f, &base)
+func configured(f *flag.FlagSet, args []string, c *service.Config) error {
+	runFlags(f, c)
 	if err := parse(f, args); err != nil {
-		return base, err
+		return err
 	}
-	if err := base.Validate(); err != nil {
-		return base, errors.Join(errUsage, err)
+	if err := c.Validate(); err != nil {
+		return errors.Join(errUsage, err)
 	}
-	return base, nil
+	return nil
 }
 func dispatch(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -74,82 +73,15 @@ func dispatch(args []string) error {
 		usage()
 		return nil
 	case "version", "--version":
-		f := flags("version")
-		if err := parse(f, args); err != nil {
-			return err
-		}
-		path, err := os.Executable()
-		if err != nil {
-			return err
-		}
-		commit := "unknown"
-		if info, ok := debug.ReadBuildInfo(); ok {
-			for _, setting := range info.Settings {
-				if setting.Key == "vcs.revision" {
-					commit = setting.Value
-				}
-			}
-		}
-		fmt.Printf("dex %s\nCommit: %s\nPlatform: %s/%s\nExecutable: %s\n", version(), commit, runtime.GOOS, runtime.GOARCH, path)
-		return nil
+		return versionCommand(args)
 	case "serve":
-		c, err := service.Defaults()
-		if err != nil {
-			return errors.Join(errUsage, err)
-		}
-		c, err = configured("serve", args, c)
-		if err != nil {
-			return err
-		}
-		return serve(ctx, c)
+		return serveCommand(ctx, args)
 	case "service":
 		return serviceCommand(ctx, args)
 	case "update":
 		return updateCommand(ctx, args)
 	case "open", "doctor":
-		c, err := service.Defaults()
-		if err != nil {
-			return errors.Join(errUsage, err)
-		}
-		m, managerErr := service.New()
-		if managerErr == nil {
-			if stored, e := m.Read(); e == nil {
-				c = stored
-			} else if !errors.Is(e, os.ErrNotExist) {
-				return e
-			}
-		}
-		f := flags(name)
-		runFlags(f, &c)
-		printOnly := false
-		if name == "open" {
-			f.BoolVar(&printOnly, "print", false, "Print the URL without opening a browser")
-		}
-		if err := parse(f, args); err != nil {
-			return err
-		}
-		if err := c.Validate(); err != nil {
-			return errors.Join(errUsage, err)
-		}
-		if name == "doctor" {
-			if managerErr != nil {
-				return managerErr
-			}
-			return doctor(ctx, m, c)
-		}
-		fmt.Println(c.URL())
-		if printOnly {
-			return nil
-		}
-		tool := "xdg-open"
-		if runtime.GOOS == "darwin" {
-			tool = "open"
-		}
-		//nolint:gosec // G204: fixed browser opener and validated loopback URL, without a shell.
-		if err := exec.CommandContext(ctx, tool, c.URL()).Run(); err != nil {
-			fmt.Fprintln(os.Stderr, "Could not open the browser; use the URL above.")
-		}
-		return nil
+		return localCommand(ctx, name, args)
 	default:
 		usage()
 		return fmt.Errorf("%w: unknown command %q", errUsage, name)
@@ -179,14 +111,10 @@ func serviceCommand(ctx context.Context, args []string) error {
 			return err
 		}
 		f := flags("service install")
-		runFlags(f, &c)
 		f.BoolVar(&c.AutoUpdate, "auto-update", c.AutoUpdate, "Enable daily updates (requires stored gh credentials)")
 		f.StringVar(&c.Channel, "channel", c.Channel, "Update channel: stable or prerelease")
-		if err := parse(f, args); err != nil {
+		if err := configured(f, args, &c); err != nil {
 			return err
-		}
-		if err := c.Validate(); err != nil {
-			return errors.Join(errUsage, err)
 		}
 		c.Executable, err = service.Executable()
 		if err != nil {
@@ -194,7 +122,7 @@ func serviceCommand(ctx context.Context, args []string) error {
 		}
 		c.Path = os.Getenv("PATH")
 		if c.AutoUpdate {
-			if err := update.CheckStoredAccess(ctx, c.Path); err != nil {
+			if _, err := update.Access(ctx, true); err != nil {
 				return err
 			}
 		}
@@ -300,10 +228,13 @@ func serviceCommand(ctx context.Context, args []string) error {
 		return fmt.Errorf("%w: unknown service command %q", errUsage, action)
 	}
 }
-func printLinger(ctx context.Context) {
+func lingering(ctx context.Context) (bool, error) {
 	//nolint:gosec // G204: fixed command and numeric current-user ID, without a shell.
 	b, err := exec.CommandContext(ctx, "loginctl", "show-user", strconv.Itoa(os.Getuid()), "-p", "Linger", "--value").Output()
-	if err == nil && strings.TrimSpace(string(b)) == "no" {
+	return strings.TrimSpace(string(b)) == "yes", err
+}
+func printLinger(ctx context.Context) {
+	if enabled, err := lingering(ctx); err == nil && !enabled {
 		fmt.Printf("Hint: loginctl enable-linger %d keeps dex running after logout and at boot.\n", os.Getuid())
 	}
 }
@@ -368,7 +299,17 @@ func doctor(ctx context.Context, m service.Manager, c service.Config) error {
 			report("warn", "running", "stopped")
 		}
 	}
-	h, err := service.Probe(ctx, c)
+	var h service.Health
+	if s.Installed && s.Config.Addr() == c.Addr() {
+		if s.Health != nil {
+			h = *s.Health
+			err = nil
+		} else {
+			err = errors.New("installed service did not answer health")
+		}
+	} else {
+		h, err = service.Probe(ctx, c)
+	}
 	if err == nil {
 		report("ok", "address", c.Addr()+" answers as dex "+h.Version)
 		if h.DataDir != c.DataDir {
@@ -383,7 +324,7 @@ func doctor(ctx context.Context, m service.Manager, c service.Config) error {
 		conn, dialErr := (&net.Dialer{Timeout: time.Second}).DialContext(ctx, "tcp", c.Addr())
 		if dialErr == nil {
 			_ = conn.Close()
-			report("fail", "address", c.Addr()+" is occupied by a listener that does not answer as dex; "+listenerOwner(ctx, c.Port))
+			report("fail", "address", c.Addr()+" is occupied by a listener that does not answer as dex; inspect it with lsof or ss")
 		} else {
 			report("warn", "address", "not listening")
 			report("skipped", "worker", "no running dex instance")
@@ -415,23 +356,17 @@ func doctor(ctx context.Context, m service.Manager, c service.Config) error {
 		}
 	}
 	if runtime.GOOS == "linux" {
-		if err := exec.CommandContext(ctx, "systemctl", "--user", "show-environment").Run(); err != nil {
-			report("fail", "user manager", err.Error())
-		} else {
-			report("ok", "user manager", "reachable")
-		}
-		//nolint:gosec // G204: fixed command and numeric current-user ID, without a shell.
-		b, err := exec.CommandContext(ctx, "loginctl", "show-user", strconv.Itoa(os.Getuid()), "-p", "Linger", "--value").Output()
+		enabled, err := lingering(ctx)
 		switch {
 		case err != nil:
 			report("warn", "lingering", err.Error())
-		case strings.TrimSpace(string(b)) == "yes":
+		case enabled:
 			report("ok", "lingering", "enabled")
 		default:
 			report("warn", "lingering", "off; dex stops after logout")
 		}
 	}
-	source, err := update.Access(ctx)
+	source, err := update.Access(ctx, false)
 	if err != nil {
 		report("warn", "update access", err.Error())
 	} else {
@@ -443,21 +378,77 @@ func doctor(ctx context.Context, m service.Manager, c service.Config) error {
 	return nil
 }
 
-func listenerOwner(ctx context.Context, port int) string {
-	tool, args := "lsof", []string{"-nP", "-iTCP:" + strconv.Itoa(port), "-sTCP:LISTEN", "-Fpc"}
-	if _, err := exec.LookPath(tool); err != nil {
-		tool = "ss"
-		args = []string{"-lptn", "sport = :" + strconv.Itoa(port)}
-		if _, err := exec.LookPath(tool); err != nil {
-			return "owner unavailable (no lsof or ss)"
+func versionCommand(args []string) error {
+	f := flags("version")
+	if err := parse(f, args); err != nil {
+		return err
+	}
+	path, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	commit := "unknown"
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs.revision" {
+				commit = setting.Value
+			}
 		}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	//nolint:gosec // G204: fixed listener inspection tools and a validated numeric port.
-	b, err := exec.CommandContext(ctx, tool, args...).Output()
+	fmt.Printf("dex %s\nCommit: %s\nPlatform: %s/%s\nExecutable: %s\n", version(), commit, runtime.GOOS, runtime.GOARCH, path)
+	return nil
+}
+
+func serveCommand(ctx context.Context, args []string) error {
+	c, err := service.Defaults()
 	if err != nil {
-		return "owner unavailable"
+		return errors.Join(errUsage, err)
 	}
-	return strings.Join(strings.Fields(string(b)), " ")
+	err = configured(flags("serve"), args, &c)
+	if err != nil {
+		return err
+	}
+	return serve(ctx, c)
+}
+
+func localCommand(ctx context.Context, name string, args []string) error {
+	c, err := service.Defaults()
+	if err != nil {
+		return errors.Join(errUsage, err)
+	}
+	m, managerErr := service.New()
+	if managerErr == nil {
+		if stored, e := m.Read(); e == nil {
+			c = stored
+		} else if !errors.Is(e, os.ErrNotExist) {
+			return e
+		}
+	}
+	f := flags(name)
+	printOnly := false
+	if name == "open" {
+		f.BoolVar(&printOnly, "print", false, "Print the URL without opening a browser")
+	}
+	if err := configured(f, args, &c); err != nil {
+		return err
+	}
+	if name == "doctor" {
+		if managerErr != nil {
+			return managerErr
+		}
+		return doctor(ctx, m, c)
+	}
+	fmt.Println(c.URL())
+	if printOnly {
+		return nil
+	}
+	tool := "xdg-open"
+	if runtime.GOOS == "darwin" {
+		tool = "open"
+	}
+	//nolint:gosec // G204: fixed browser opener and validated loopback URL, without a shell.
+	if err := exec.CommandContext(ctx, tool, c.URL()).Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "Could not open the browser; use the URL above.")
+	}
+	return nil
 }

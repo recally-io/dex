@@ -418,11 +418,6 @@ type ItemEvent struct {
 // ItemEventType defines model for ItemEvent.Type.
 type ItemEventType string
 
-// MaintenanceLease defines model for MaintenanceLease.
-type MaintenanceLease struct {
-	LeaseId openapi_types.UUID `json:"leaseId"`
-}
-
 // MessageInput defines model for MessageInput.
 type MessageInput struct {
 	// Attachments Upload IDs from POST /api/uploads, at most 10.
@@ -686,12 +681,6 @@ type SendMessageJSONRequestBody = MessageInput
 
 // SetChatSettingsJSONRequestBody defines body for SetChatSettings for application/json ContentType.
 type SetChatSettingsJSONRequestBody = ChatSettings
-
-// ReleaseMaintenanceJSONRequestBody defines body for ReleaseMaintenance for application/json ContentType.
-type ReleaseMaintenanceJSONRequestBody = MaintenanceLease
-
-// AcquireMaintenanceJSONRequestBody defines body for AcquireMaintenance for application/json ContentType.
-type AcquireMaintenanceJSONRequestBody = MaintenanceLease
 
 // SetAgentJSONRequestBody defines body for SetAgent for application/json ContentType.
 type SetAgentJSONRequestBody = Agent
@@ -2754,7 +2743,6 @@ func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseW
 }
 
 type ReleaseMaintenanceRequestObject struct {
-	Body *ReleaseMaintenanceJSONRequestBody
 }
 
 type ReleaseMaintenanceResponseObject interface {
@@ -2807,7 +2795,6 @@ func (response ReleaseMaintenancedefaultJSONResponse) VisitReleaseMaintenanceRes
 }
 
 type AcquireMaintenanceRequestObject struct {
-	Body *AcquireMaintenanceJSONRequestBody
 }
 
 type AcquireMaintenanceResponseObject interface {
@@ -3885,13 +3872,6 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 func (sh *strictHandler) ReleaseMaintenance(w http.ResponseWriter, r *http.Request) {
 	var request ReleaseMaintenanceRequestObject
 
-	var body ReleaseMaintenanceJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ReleaseMaintenance(ctx, request.(ReleaseMaintenanceRequestObject))
 	}
@@ -3915,13 +3895,6 @@ func (sh *strictHandler) ReleaseMaintenance(w http.ResponseWriter, r *http.Reque
 // AcquireMaintenance operation middleware
 func (sh *strictHandler) AcquireMaintenance(w http.ResponseWriter, r *http.Request) {
 	var request AcquireMaintenanceRequestObject
-
-	var body AcquireMaintenanceJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.AcquireMaintenance(ctx, request.(AcquireMaintenanceRequestObject))

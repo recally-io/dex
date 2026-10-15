@@ -53,12 +53,7 @@ func (m Manager) Read() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	c, err := readConfig(data)
-	if err != nil {
-		return c, err
-	}
-
-	return c, nil
+	return readConfig(data)
 }
 
 // Executable retains a stable PATH symlink when it points at this executable.
@@ -177,23 +172,11 @@ func (m Manager) bootstrap(ctx context.Context, path string) error {
 	// bootout returns before launchd finishes removing the old job.
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
+	return poll(ctx, 100*time.Millisecond, func() (bool, error) {
 		err := command(ctx, "launchctl", "bootstrap", m.domain(), path)
-		if err == nil {
-			return nil
-		}
 		exit, ok := errors.AsType[*exec.ExitError](err)
-		if !ok || exit.ExitCode() != 5 {
-			return err
-		}
-		select {
-		case <-ctx.Done():
-			return err
-		case <-ticker.C:
-		}
-	}
+		return err == nil || !ok || exit.ExitCode() != 5, err
+	})
 }
 
 // Stop keeps the definition for a later start and suppresses automatic restarts.
@@ -209,22 +192,10 @@ func (m Manager) Stop(ctx context.Context) error {
 		// A job can remain visible while launchd closes it. Start must not reuse that job.
 		stopped, cancel := context.WithTimeout(ctx, 65*time.Second)
 		defer cancel()
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-		for {
+		return poll(stopped, 100*time.Millisecond, func() (bool, error) {
 			loaded, err := m.loaded(stopped)
-			if err != nil {
-				return err
-			}
-			if !loaded {
-				return nil
-			}
-			select {
-			case <-stopped.Done():
-				return fmt.Errorf("wait for launchd stop: %w", stopped.Err())
-			case <-ticker.C:
-			}
-		}
+			return !loaded || err != nil, err
+		})
 	}
 	b, err := exec.CommandContext(ctx, "systemctl", "--user", "show", "dex.service", "-p", "LoadState", "--value").Output()
 	if err != nil {
@@ -274,4 +245,21 @@ func (m Manager) Uninstall(ctx context.Context) error {
 		return command(ctx, "systemctl", "--user", "daemon-reload")
 	}
 	return nil
+}
+
+// poll retries until check completes or the context expires, retaining the last error.
+func poll(ctx context.Context, interval time.Duration, check func() (bool, error)) error {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		done, err := check()
+		if done {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return errors.Join(ctx.Err(), err)
+		case <-ticker.C:
+		}
+	}
 }

@@ -69,7 +69,7 @@ export const releaseMaintenanceMutation = (options?: Partial<Options<ReleaseMain
 };
 
 /**
- * Hold dispatch for two minutes if no work is active. The same lease renews it.
+ * Hold worker admission for two minutes if no work is active. POST renews it.
  */
 export const acquireMaintenanceMutation = (options?: Partial<Options<AcquireMaintenanceData>>): UseMutationOptions<AcquireMaintenanceResponse, AcquireMaintenanceError, Options<AcquireMaintenanceData>> => {
     const mutationOptions: UseMutationOptions<AcquireMaintenanceResponse, AcquireMaintenanceError, Options<AcquireMaintenanceData>> = {

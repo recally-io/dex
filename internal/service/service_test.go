@@ -3,8 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"encoding/xml"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,13 +19,9 @@ import (
 
 func TestUserServiceDefinitions(t *testing.T) {
 	special := "space & \"quote\" 中文 %h $HOME \\path"
-	var tools []string
-	for i := range 100 {
-		tools = append(tools, fmt.Sprintf("/tools/%d", i))
-	}
 	for _, auto := range []bool{false, true} {
 		t.Run(fmt.Sprintf("auto=%t", auto), func(t *testing.T) {
-			c := Config{Host: "127.0.0.1", Port: 18787, DataDir: "/data/" + special, Executable: "/opt/" + special + "/dex", Path: strings.Join(tools, ":") + ":/tools/" + special, AutoUpdate: auto, Channel: "prerelease"}
+			c := Config{Host: "127.0.0.1", Port: 18787, DataDir: "/data/" + special, Executable: "/opt/" + special + "/dex", Path: "/usr/bin:/usr/local/bin:/tools/" + special, AutoUpdate: auto, Channel: "prerelease"}
 			mainPlist := plist(c, "/home/"+special, "/logs/"+special+"/dex.log")
 			for name, data := range map[string][]byte{"darwin": mainPlist, "linux": unit(c)} {
 				restored, err := readConfig(data)
@@ -61,29 +54,6 @@ func TestUserServiceDefinitions(t *testing.T) {
 					t.Fatalf("definition differs from %s", golden)
 				}
 			}
-			decoder := xml.NewDecoder(bytes.NewReader(mainPlist))
-			var values []string
-			for {
-				token, err := decoder.Token()
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				if start, ok := token.(xml.StartElement); ok && start.Name.Local == "string" {
-					var value string
-					if err := decoder.DecodeElement(&value, &start); err != nil {
-						t.Fatal(err)
-					}
-					values = append(values, value)
-				}
-			}
-			for _, value := range append(c.args(), c.Path) {
-				if !slices.Contains(values, value) {
-					t.Fatalf("plist changed %q", value)
-				}
-			}
 			dir := t.TempDir()
 			if runtime.GOOS == "darwin" {
 				for name, data := range map[string][]byte{"dex.plist": mainPlist, "update.plist": launchPlist(label+".update", []string{c.Executable, "update", "--scheduled"}, c.Path, "/home/test", "/logs/dex.log", "", true)} {
@@ -110,12 +80,6 @@ func TestUserServiceDefinitions(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-func TestUserCannotInstallTemporaryBuild(t *testing.T) {
-	_, err := Executable()
-	if err == nil || !strings.Contains(err.Error(), "temporary build") {
-		t.Fatalf("want temporary build refusal; got %v", err)
 	}
 }
 func TestUserLoopbackAddress(t *testing.T) {

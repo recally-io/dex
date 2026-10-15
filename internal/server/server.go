@@ -115,22 +115,16 @@ func (h *handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (
 	ready := h.WorkerReady != nil && h.WorkerReady(ctx)
 	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, WorkerReady: ready}, nil
 }
-func (h *handler) AcquireMaintenance(ctx context.Context, req api.AcquireMaintenanceRequestObject) (api.AcquireMaintenanceResponseObject, error) {
-	if req.Body == nil || req.Body.LeaseId.String() == "00000000-0000-0000-0000-000000000000" {
-		return nil, errInvalid
-	}
+func (h *handler) AcquireMaintenance(ctx context.Context, _ api.AcquireMaintenanceRequestObject) (api.AcquireMaintenanceResponseObject, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if err := h.Chats.AcquireMaintenance(ctx, req.Body.LeaseId.String()); err != nil {
+	if err := h.Chats.AcquireMaintenance(ctx); err != nil {
 		return nil, err
 	}
 	return api.AcquireMaintenance200JSONResponse(ok), nil
 }
-func (h *handler) ReleaseMaintenance(ctx context.Context, req api.ReleaseMaintenanceRequestObject) (api.ReleaseMaintenanceResponseObject, error) {
-	if req.Body == nil || req.Body.LeaseId.String() == "00000000-0000-0000-0000-000000000000" {
-		return nil, errInvalid
-	}
-	if err := h.Chats.ReleaseMaintenance(ctx, req.Body.LeaseId.String()); err != nil {
+func (h *handler) ReleaseMaintenance(ctx context.Context, _ api.ReleaseMaintenanceRequestObject) (api.ReleaseMaintenanceResponseObject, error) {
+	if err := h.Chats.ReleaseMaintenance(ctx); err != nil {
 		return nil, err
 	}
 	return api.ReleaseMaintenance200JSONResponse(ok), nil

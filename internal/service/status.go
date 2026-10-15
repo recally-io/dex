@@ -25,27 +25,31 @@ type Health struct {
 
 // Status has stable JSON names for scripts. Unknown PID is zero.
 type Status struct {
-	Installed  bool   `json:"installed"`
-	Running    bool   `json:"running"`
-	Healthy    bool   `json:"healthy"`
-	PID        int    `json:"pid"`
-	Config     Config `json:"config"`
-	Version    string `json:"version"`
-	Definition string `json:"definition"`
-	Logs       string `json:"logs"`
+	Health     *Health `json:"-"`
+	Installed  bool    `json:"installed"`
+	Running    bool    `json:"running"`
+	Healthy    bool    `json:"healthy"`
+	PID        int     `json:"pid"`
+	Config     Config  `json:"config"`
+	Version    string  `json:"version"`
+	Definition string  `json:"definition"`
+	Logs       string  `json:"logs"`
 }
+
+// LoopbackClient never uses a proxy or follows redirects. Callers set request deadlines.
+var LoopbackClient = &http.Client{Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 
 func Probe(ctx context.Context, c Config) (Health, error) {
 	var h Health
-	client := &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
-	defer client.CloseIdleConnections()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
 	//nolint:gosec // G704: Config.Validate limits this readiness probe to loopback.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL()+"/api/health", nil)
 	if err != nil {
 		return h, err
 	}
 	//nolint:gosec // G704: user-selected loopback service address, with no redirects.
-	resp, err := client.Do(req)
+	resp, err := LoopbackClient.Do(req)
 	if err != nil {
 		return h, err
 	}
@@ -64,25 +68,13 @@ func Probe(ctx context.Context, c Config) (Health, error) {
 func Ready(ctx context.Context, c Config, version string) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-	var last error
-	for {
+	return poll(ctx, 200*time.Millisecond, func() (bool, error) {
 		h, err := Probe(ctx, c)
-		if err == nil {
-			if h.DataDir != c.DataDir || h.Version != version || !h.WorkerReady {
-				err = fmt.Errorf("unexpected health: version=%s dataDir=%s workerReady=%t (want %s, %s)", h.Version, h.DataDir, h.WorkerReady, version, c.DataDir)
-			} else {
-				return nil
-			}
+		if err == nil && (h.DataDir != c.DataDir || h.Version != version || !h.WorkerReady) {
+			err = fmt.Errorf("unexpected health: version=%s dataDir=%s workerReady=%t (want %s, %s)", h.Version, h.DataDir, h.WorkerReady, version, c.DataDir)
 		}
-		last = err
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("readiness deadline: %w", errors.Join(ctx.Err(), last))
-		case <-ticker.C:
-		}
-	}
+		return err == nil, err
+	})
 }
 func (m Manager) Status(ctx context.Context) (Status, error) {
 	s := Status{Definition: m.Definition(), Logs: m.LogPath()}
@@ -95,7 +87,6 @@ func (m Manager) Status(ctx context.Context) (Status, error) {
 	}
 	s.Installed = true
 	s.Config = c
-	macStateKnown := false
 	if runtime.GOOS == "darwin" {
 		// Details are best effort because launchctl print has no stable schema.
 		//nolint:gosec // G204: fixed label in the current numeric user domain.
@@ -105,23 +96,14 @@ func (m Manager) Status(ctx context.Context) (Status, error) {
 				err = e
 			}
 		} else {
-			s.Running = true
 			for line := range strings.SplitSeq(string(b), "\n") {
 				key, value, ok := strings.Cut(strings.TrimSpace(line), " = ")
 				if !ok {
 					continue
 				}
-				switch key {
-				case "state":
-					macStateKnown = true
-					s.Running = value == "running"
-				case "pid":
+				if key == "pid" {
 					s.PID, _ = strconv.Atoi(value)
 				}
-			}
-			if s.PID > 0 {
-				s.Running = true
-				macStateKnown = true
 			}
 		}
 	} else {
@@ -141,12 +123,15 @@ func (m Manager) Status(ctx context.Context) (Status, error) {
 		return s, err
 	}
 	h, probeErr := Probe(ctx, c)
+	if probeErr == nil {
+		s.Health = &h
+	}
 	s.Healthy = probeErr == nil && h.WorkerReady && h.DataDir == c.DataDir
 	if s.Healthy {
 		s.Version = h.Version
 	}
-	if runtime.GOOS == "darwin" && !macStateKnown {
-		s.Running = s.Running && probeErr == nil
+	if runtime.GOOS == "darwin" {
+		s.Running = s.PID > 0 || probeErr == nil
 	}
 	return s, nil
 }

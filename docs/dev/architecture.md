@@ -32,61 +32,20 @@ process. See [ADR 0001](decisions/0001-embedded-bun-worker.md).
 
 ## Service and updates
 
-`cmd/dex` parses commands with the standard `flag` package. With no command,
-it runs `serve` in the foreground. Host, port, and data directory use flags,
-then DEX_ADDR and DEX_DATA_DIR, then defaults. Control accepts only loopback
-addresses, because its unauthenticated API can execute shell commands.
+`cmd/dex` runs the foreground server or manages a per-user launchd or systemd
+service. Listening addresses are loopback only: the API has no authentication
+and can run shell commands. Definitions store serve arguments, PATH, and a
+configuration record that permits partial reinstall across template changes.
 
-`internal/service` manages a per-user launchd job or systemd unit. The
-definition contains resolved `serve` arguments and PATH. A configuration
-record inside the same definition lets reinstall retain omitted options.
-Read validates the record and compares the generated definition with the file.
-An edited definition must be removed before reinstall. Worker environment
-filtering stays in `app.WorkerEnv`.
+`internal/update` verifies GitHub release assets, stages beside the executable,
+and retains `dex.previous`. The worker owns a two-minute maintenance gate.
+It closes admission before checking durable runs and pending memory commits.
+Control stores the expiry to restore the gate after a worker restart. New
+messages stay stored until release, expiry, or a control restart.
 
-macOS stop uses bootout and waits for job removal. Start uses bootstrap;
-restart stops before it starts. KeepAlive restarts failures, not clean exits.
-Both backends allow 60 seconds for process cleanup. Linux uses `/usr/bin/env`
-to execute the absolute dex path: systemd rejects quotes and backslashes in
-its executable field, but accepts them in arguments. env replaces itself
-without a shell. Health must match the expected version and data directory,
-and the worker must answer ping.
-
-`internal/update` selects a GitHub release, downloads assets through the
-release-assets API, checks SHA-256, extracts only the regular dex file, and
-checks its version. It stages beside the resolved executable and uses a
-process lock to serialize updates. A rename replaces the executable atomically.
-The previous inode remains as `dex.previous`. Failed readiness reports the
-backup and logs; it does not roll back data migrations. A stopped service
-stays stopped. A foreground process needs a manual restart.
-
-A second per-user job runs opt-in daily updates. The definition contains no
-token. Enable checks stored gh credentials in the minimal service environment.
-Manual updates can also use GH_TOKEN or GITHUB_TOKEN. Cross-host download
-redirects lose Authorization. See [ADR 0006](decisions/0006-service-and-update.md)
-and the [service commands](../../README.md#run-and-manage-dex).
-
-## Maintenance gate
-
-New control submissions enter through `chat.Service.Run`, including automations,
-dreams, web chats, and Telegram chats. Before dispatch, the service registers
-the submission under the same lock that grants a maintenance lease. The
-submission stays active until settled processing finishes. An active submission
-makes acquire return 409 and holds no gate. Worker `quiesce` closes admission
-before checking active RPC operations, pending settle and memory commits, and
-pi-durable `Harness.inspect()` for unfinished tasks and submissions. This
-includes persisted work resumed by a watch, without a control dispatch.
-
-A successful POST to `/api/maintenance` holds dispatch for two minutes. The
-client supplies a UUID lease ID. The same ID renews it; another ID cannot
-release it. New messages and scheduled work are stored while dispatch waits.
-DELETE releases the gate. Expiry releases dispatch if the updater dies;
-a process restart also clears the lease and replays pending work. Replacement
-and restart have a 90-second deadline, within the lease. Cross-site write
-protection applies to both maintenance endpoints. New worker operations,
-including watches, wait before opening a harness while the lease is held.
-Worker initialization restores a live lease before replay or watches can run.
-See [ADR 0007](decisions/0007-worker-quiescence.md).
+See [service commands and recovery](../../README.md#run-and-manage-dex) and
+[ADR 0006](decisions/0006-service-and-update.md) for lifecycle, update, and gate
+decisions.
 
 ## Sources of truth
 

@@ -20,26 +20,12 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 
 export const getHealth = <ThrowOnError extends boolean = false>(options?: Options<GetHealthData, ThrowOnError>): RequestResult<GetHealthResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetHealthResponses, unknown, ThrowOnError>({ url: '/api/health', ...options });
 
-export const releaseMaintenance = <ThrowOnError extends boolean = false>(options: Options<ReleaseMaintenanceData, ThrowOnError>): RequestResult<ReleaseMaintenanceResponses, ReleaseMaintenanceErrors, ThrowOnError> => (options.client ?? client).delete<ReleaseMaintenanceResponses, ReleaseMaintenanceErrors, ThrowOnError>({
-    url: '/api/maintenance',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
+export const releaseMaintenance = <ThrowOnError extends boolean = false>(options?: Options<ReleaseMaintenanceData, ThrowOnError>): RequestResult<ReleaseMaintenanceResponses, ReleaseMaintenanceErrors, ThrowOnError> => (options?.client ?? client).delete<ReleaseMaintenanceResponses, ReleaseMaintenanceErrors, ThrowOnError>({ url: '/api/maintenance', ...options });
 
 /**
- * Hold dispatch for two minutes if no work is active. The same lease renews it.
+ * Hold worker admission for two minutes if no work is active. POST renews it.
  */
-export const acquireMaintenance = <ThrowOnError extends boolean = false>(options: Options<AcquireMaintenanceData, ThrowOnError>): RequestResult<AcquireMaintenanceResponses, AcquireMaintenanceErrors, ThrowOnError> => (options.client ?? client).post<AcquireMaintenanceResponses, AcquireMaintenanceErrors, ThrowOnError>({
-    url: '/api/maintenance',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
+export const acquireMaintenance = <ThrowOnError extends boolean = false>(options?: Options<AcquireMaintenanceData, ThrowOnError>): RequestResult<AcquireMaintenanceResponses, AcquireMaintenanceErrors, ThrowOnError> => (options?.client ?? client).post<AcquireMaintenanceResponses, AcquireMaintenanceErrors, ThrowOnError>({ url: '/api/maintenance', ...options });
 
 /**
  * All chats of the default agent, newest activity first.

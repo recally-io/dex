@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 	"uuid"
@@ -90,11 +91,7 @@ type Service struct {
 	createMu sync.Mutex
 
 	maintenanceMu sync.Mutex
-	dispatchMu    sync.Mutex
-	active        map[string]bool
-	leaseID       string
-	leaseUntil    time.Time
-	dispatchWake  chan struct{}
+	leaseUntil    atomic.Int64
 }
 
 // New returns a Service. Connect the worker's settled events to HandleSettled and its start to
@@ -104,8 +101,7 @@ type Service struct {
 func New(q *sqlc.Queries, w Caller, now func() time.Time, notify func(ctx context.Context, channelKey string, reply Reply), changed func(chatID int64)) *Service {
 	return &Service{
 		q: q, worker: w, now: now, notify: notify, changed: changed,
-		queue:  make(chan sqlc.ListPendingSubmissionsRow, 1024),
-		active: make(map[string]bool), dispatchWake: make(chan struct{}, 1),
+		queue: make(chan sqlc.ListPendingSubmissionsRow, 1024),
 	}
 }
 
@@ -117,9 +113,6 @@ func (s *Service) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case p := <-s.queue:
-			if !s.beginDispatch(ctx, p.ID) {
-				return
-			}
 			s.deliver(ctx, p)
 		}
 	}
@@ -267,7 +260,6 @@ func (s *Service) deliver(ctx context.Context, p sqlc.ListPendingSubmissionsRow)
 	err := s.submit(ctx, p)
 	switch {
 	case errors.Is(err, worker.ErrUnavailable), ctx.Err() != nil:
-		s.endDispatch(p.ID)
 		slog.Warn("worker exited; the message waits for replay", "submission", p.ID)
 	case err != nil:
 		s.settle(ctx, worker.Settled{RequestID: p.ID, Status: "unanswered", Reason: err.Error()})
@@ -353,7 +345,6 @@ func source(p sqlc.ListPendingSubmissionsRow) string {
 }
 
 func (s *Service) settle(ctx context.Context, event worker.Settled) {
-	defer s.endDispatch(event.RequestID)
 	// The worker sends settled again when Replay resends a submission it already settled; only the
 	// first event changes the row.
 	changed, err := s.q.SettleSubmission(ctx, sqlc.SettleSubmissionParams{

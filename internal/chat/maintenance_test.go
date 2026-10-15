@@ -15,7 +15,7 @@ func TestUserMaintenanceWorkerFailureIsNotBusy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
 	// When maintenance cannot reach the worker, callers must receive a failure, not busy.
-	err := s.AcquireMaintenance(ctx, "test")
+	err := s.AcquireMaintenance(ctx)
 	if err == nil || errors.Is(err, ErrMaintenanceBusy) || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("worker failure reported as busy: %v", err)
 	}

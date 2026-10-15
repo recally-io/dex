@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -45,17 +47,9 @@ func TestUserFlagsOverrideEnvironmentParts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err = configured("serve", []string{"--port", "18788"}, c)
+	err = configured(flags("serve"), []string{"--port", "18788"}, &c)
 	if err != nil || c.Host != "::1" || c.Port != 18788 {
 		t.Fatalf("%+v: %v", c, err)
-	}
-}
-func TestUserReinstallKeepsOmittedOptions(t *testing.T) {
-	c := service.Config{Host: "127.0.0.1", Port: 18787, DataDir: t.TempDir(), Channel: "prerelease", AutoUpdate: true}
-	got, err := configured("service install", []string{"--port", "18788"}, c)
-	c.Port = 18788
-	if err != nil || got != c {
-		t.Fatalf("omitted options changed: %+v: %v", got, err)
 	}
 }
 
@@ -65,5 +59,39 @@ func TestUserLeadingFlagsSelectServe(t *testing.T) {
 	err := dispatch([]string{"--host", "0.0.0.0", "--port", "18788", "--data-dir", t.TempDir()})
 	if err == nil || !strings.Contains(err.Error(), "no authentication") {
 		t.Fatalf("leading flags did not select serve: %v", err)
+	}
+}
+
+func TestUserReinstallKeepsStoredOptions(t *testing.T) {
+	// Given an installed definition with non-default data and update channel.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	m, err := service.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile("../../internal/service/testdata/" + runtime.GOOS + "-false.golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(m.Definition()), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(m.Definition(), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := m.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// When reinstall supplies only the port, retain all omitted configuration.
+	got := stored
+	f := flags("service install")
+	f.BoolVar(&got.AutoUpdate, "auto-update", got.AutoUpdate, "Enable updates")
+	f.StringVar(&got.Channel, "channel", got.Channel, "Update channel")
+	err = configured(f, []string{"--port", "18788"}, &got)
+	stored.Port = 18788
+	if err != nil || got != stored {
+		t.Fatalf("reinstall lost stored options: %+v: %v", got, err)
 	}
 }

@@ -29,7 +29,6 @@ import type {
 	WatchParams,
 	QuiesceParams,
 	QuiesceResult,
-	ResumeParams,
 } from "./protocol.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -58,58 +57,45 @@ export class Agents {
 	readonly #chains = new Map<string, Promise<unknown>>();
 	#checking = false;
 	#operations = 0;
-	#settling = 0;
-	#gate: { leaseId: string; expiresAt: number } | undefined;
+	#gateUntil = 0;
 	readonly #gateWaiters = new Set<() => void>();
 
 	async quiesce(params: QuiesceParams): Promise<QuiesceResult> {
 		if (this.#checking) return { busy: true, reason: "maintenance check is pending" };
-		if (
-			this.#gate !== undefined &&
-			this.#gate.expiresAt > Date.now() &&
-			this.#gate.leaseId !== params.leaseId
-		) {
-			return { busy: true, reason: "another updater holds maintenance" };
-		}
 		// Close admission before the first await. Existing operations remain counted.
-		const gate = { ...params };
-		this.#gate = gate;
+		this.#gateUntil = params.expiresAt;
 		this.#checking = true;
 		try {
-			if (this.#operations > 0 || this.#settling > 0)
-				throw new Error("worker requests or memory commits are pending");
+			if (this.#operations > 0) {
+				this.resume();
+				return { busy: true, reason: "worker requests or memory commits are pending" };
+			}
 			const states = await Promise.all(
 				[...this.#harnesses.values()].map(async (pending) => (await pending).inspect(context)),
 			);
-			if (states.some((state) => state.tasks.length > 0 || state.submissions.length > 0))
-				throw new Error("durable work is unfinished");
+			if (states.some((state) => state.tasks.length > 0 || state.submissions.length > 0)) {
+				this.resume();
+				return { busy: true, reason: "durable work is unfinished" };
+			}
 			return { busy: false };
 		} catch (error) {
-			// Do not release a newer renewal of the same lease.
-			if (this.#gate === gate) this.resume({ leaseId: gate.leaseId });
-			return { busy: true, reason: String(error) };
+			this.resume();
+			throw error;
 		} finally {
 			this.#checking = false;
 		}
 	}
 
-	resume(params: ResumeParams): Record<string, never> {
-		if (
-			this.#gate !== undefined &&
-			this.#gate.leaseId !== params.leaseId &&
-			this.#gate.expiresAt > Date.now()
-		) {
-			throw new Error("another updater holds maintenance");
-		}
-		this.#gate = undefined;
+	resume(): Record<string, never> {
+		this.#gateUntil = 0;
 		for (const wake of this.#gateWaiters) wake();
 		return {};
 	}
 
 	async #admit<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-		while (this.#gate !== undefined && this.#gate.expiresAt > Date.now()) {
+		while (this.#gateUntil > Date.now()) {
 			signal?.throwIfAborted();
-			const expiresAt = this.#gate.expiresAt;
+			const expiresAt = this.#gateUntil;
 			// Each wake must recheck a lease that another updater can renew.
 			// oxlint-disable-next-line no-await-in-loop
 			await new Promise<void>((resolve) => {
@@ -205,9 +191,9 @@ export class Agents {
 				},
 				context,
 			);
-			this.#settling++;
+			this.#operations++;
 			void this.#settle(params, conversation, submission).finally(() => {
-				this.#settling--;
+				this.#operations--;
 			});
 			return { submissionId: submission.id };
 		});
@@ -230,7 +216,6 @@ export class Agents {
 	}
 
 	async #watch(params: WatchParams, signal: AbortSignal): Promise<Record<string, never>> {
-		if (this.#watches.has(params.watchId)) throw new Error(`duplicate watch ID: ${params.watchId}`);
 		const conversation = await this.#conversation(params.agentId, params.conversationId);
 		const stream = await watchEvents(await this.#harness(params.agentId), conversation.id, context);
 		if (signal.aborted) {

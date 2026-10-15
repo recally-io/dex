@@ -16,12 +16,10 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
-	"uuid"
 
 	"github.com/vaayne/dex/internal/service"
 	"golang.org/x/mod/semver"
@@ -81,7 +79,7 @@ func releaseClient(timeout time.Duration) *http.Client {
 	}}
 }
 
-func auth(ctx context.Context, stored bool, searchPath string) (string, string, error) {
+func auth(ctx context.Context, stored bool) (string, string, error) {
 	if !stored {
 		for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
 			if value := os.Getenv(key); value != "" {
@@ -92,25 +90,14 @@ func auth(ctx context.Context, stored bool, searchPath string) (string, string, 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	gh, err := exec.LookPath("gh")
-	if stored {
-		gh = ""
-		for _, dir := range filepath.SplitList(searchPath) {
-			candidate := filepath.Join(dir, "gh")
-			if info, e := os.Stat(candidate); e == nil && info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0 {
-				gh = candidate
-				break
-			}
-		}
-		if gh == "" {
-			return "", "", errors.New("automatic updates need gh on the installed PATH and stored credentials; run gh auth login --hostname github.com")
-		}
-	} else if err != nil {
+	if err != nil {
 		return "", "", errors.New("updates need GH_TOKEN, GITHUB_TOKEN, or gh auth login --hostname github.com")
 	}
+
 	//nolint:gosec // G204: run the user's gh credential command without a shell.
 	cmd := exec.CommandContext(ctx, gh, "auth", "token", "--hostname", "github.com")
 	if stored {
-		cmd.Env = []string{"PATH=" + searchPath, "HOME=" + os.Getenv("HOME"), "USER=" + os.Getenv("USER")}
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), "USER=" + os.Getenv("USER")}
 		if config := os.Getenv("GH_CONFIG_DIR"); config != "" {
 			return "", "", errors.New("GH_CONFIG_DIR is shell-only; store gh credentials in the default location before enabling automatic updates")
 		}
@@ -121,17 +108,10 @@ func auth(ctx context.Context, stored bool, searchPath string) (string, string, 
 	}
 	return strings.TrimSpace(string(b)), "gh stored credentials", nil
 }
-func CheckStoredAccess(ctx context.Context, searchPath string) error {
-	token, _, err := auth(ctx, true, searchPath)
-	if err != nil {
-		return err
-	}
-	u := &Updater{base: releaseBase(), client: releaseClient(10 * time.Second), token: token}
-	_, err = u.get(ctx, u.base+"/repos/vaayne/dex/releases?per_page=1", "application/vnd.github+json", 1<<20)
-	return err
-}
-func Access(ctx context.Context) (string, error) {
-	token, source, err := auth(ctx, false, "")
+
+// Access checks release access. Scheduled updates require stored credentials.
+func Access(ctx context.Context, stored bool) (string, error) {
+	token, source, err := auth(ctx, stored)
 	if err != nil {
 		return "", err
 	}
@@ -163,9 +143,6 @@ func (u *Updater) get(ctx context.Context, target, accept string, limit int64) (
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, os.ErrNotExist
-	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("release API returned %s (check access to vaayne/dex)", resp.Status)
 	}
@@ -181,22 +158,16 @@ func (u *Updater) get(ctx context.Context, target, accept string, limit int64) (
 func (u *Updater) selectRelease(ctx context.Context, opt Options) (release, error) {
 	var r release
 	endpoint := u.base + "/repos/vaayne/dex/releases"
-	switch {
-	case opt.Tag != "":
+	if opt.Tag != "" {
 		endpoint += "/tags/" + url.PathEscape(opt.Tag)
-	case opt.Channel == "stable":
-		endpoint += "/latest"
-	default:
+	} else {
 		endpoint += "?per_page=100"
 	}
 	b, err := u.get(ctx, endpoint, "application/vnd.github+json", 8<<20)
-	if errors.Is(err, os.ErrNotExist) && opt.Tag == "" && opt.Channel == "stable" {
-		return r, errors.New("no stable release available")
-	}
 	if err != nil {
 		return r, err
 	}
-	if opt.Tag != "" || opt.Channel == "stable" {
+	if opt.Tag != "" {
 		if err := json.Unmarshal(b, &r); err != nil {
 			return r, err
 		}
@@ -206,7 +177,7 @@ func (u *Updater) selectRelease(ctx context.Context, opt Options) (release, erro
 			return r, err
 		}
 		for _, candidate := range releases {
-			if candidate.Draft {
+			if candidate.Draft || opt.Channel == "stable" && candidate.Prerelease {
 				continue
 			}
 			if r.Tag == "" {
@@ -222,12 +193,10 @@ func (u *Updater) selectRelease(ctx context.Context, opt Options) (release, erro
 			}
 		}
 	}
-	if opt.Tag != "" && r.Tag != opt.Tag {
-		return r, errors.New("release API returned a different tag")
+	if r.Tag == "" || r.Draft {
+		return r, fmt.Errorf("no %s release available", opt.Channel)
 	}
-	if r.Tag == "" || r.Draft || (opt.Channel == "stable" && opt.Tag == "" && r.Prerelease) {
-		return r, errors.New("no release available for the selected channel")
-	}
+
 	return r, nil
 }
 func (u *Updater) Run(ctx context.Context, opt Options, m service.Manager, out io.Writer) error {
@@ -241,7 +210,7 @@ func (u *Updater) Run(ctx context.Context, opt Options, m service.Manager, out i
 	}
 	defer lock()
 	if u.token == "" {
-		u.token, _, err = auth(ctx, false, "")
+		u.token, _, err = auth(ctx, opt.Scheduled)
 		if err != nil {
 			return err
 		}
@@ -284,11 +253,10 @@ func (u *Updater) Run(ctx context.Context, opt Options, m service.Manager, out i
 		if !state.Healthy || state.Version != u.current {
 			return errors.New("installed instance does not match this executable or its worker is not ready")
 		}
-		lease := uuid.NewV7().String()
 		// Rename and restart finish before the two-minute server lease can expire.
 		operation, cancel := context.WithTimeout(ctx, 90*time.Second)
 		defer cancel()
-		if err := maintenance(operation, state.Config, lease, http.MethodPost); err != nil {
+		if err := maintenance(operation, state.Config, http.MethodPost); err != nil {
 			if opt.Scheduled && errors.Is(err, ErrBusy) {
 				fmt.Fprintln(out, "Update skipped: dex is busy.")
 				return nil
@@ -303,12 +271,12 @@ func (u *Updater) Run(ctx context.Context, opt Options, m service.Manager, out i
 			}
 			release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 			defer cancel()
-			_ = maintenance(release, state.Config, lease, http.MethodDelete)
+			_ = maintenance(release, state.Config, http.MethodDelete)
 		}()
 		if err := u.replace(stage); err != nil {
 			return err
 		}
-		if err := maintenance(operation, state.Config, lease, http.MethodPost); err != nil {
+		if err := maintenance(operation, state.Config, http.MethodPost); err != nil {
 			return fmt.Errorf("binary updated, maintenance renewal failed; restart not requested; previous binary: %s.previous: %w", u.executable, err)
 		}
 		restartRequested = true
@@ -335,9 +303,6 @@ func (u *Updater) stage(ctx context.Context, r release) (string, error) {
 		found := ""
 		for _, a := range r.Assets {
 			if a.Name == name {
-				if found != "" {
-					return "", fmt.Errorf("duplicate release asset %s", name)
-				}
 				found = a.URL
 			}
 		}
@@ -362,9 +327,6 @@ func (u *Updater) stage(ctx context.Context, r release) (string, error) {
 	for line := range strings.SplitSeq(string(checksums), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == name {
-			if expected != "" {
-				return "", errors.New("duplicate checksum line")
-			}
 			expected = fields[0]
 		}
 	}
@@ -423,7 +385,6 @@ func extract(archive []byte, out io.Writer) error {
 	}
 	defer gz.Close()
 	tr := tar.NewReader(io.LimitReader(gz, maxAsset+1))
-	seen := map[string]bool{}
 	found := false
 	for {
 		h, err := tr.Next()
@@ -433,14 +394,13 @@ func extract(archive []byte, out io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("release tar: %w", err)
 		}
-		if path.IsAbs(h.Name) || path.Clean(h.Name) != h.Name || h.Name == ".." || strings.HasPrefix(h.Name, "../") || strings.Contains(h.Name, "\\") || seen[h.Name] {
-			return fmt.Errorf("unsafe or duplicate archive entry %q", h.Name)
-		}
-		seen[h.Name] = true
 		if h.Typeflag != tar.TypeReg || h.Size < 0 || h.Size > maxAsset {
 			return fmt.Errorf("archive entry is not a regular file within the size limit: %q", h.Name)
 		}
 		if h.Name == "dex" {
+			if found {
+				return errors.New("duplicate dex archive entry")
+			}
 			found = true
 			if _, err := io.CopyN(out, tr, h.Size); err != nil {
 				return err
@@ -463,19 +423,16 @@ func (u *Updater) replace(stage string) error {
 	}
 	return os.Rename(stage, u.executable)
 }
-func maintenance(ctx context.Context, c service.Config, id, method string) error {
-	b, err := json.Marshal(map[string]string{"leaseId": id})
-	if err != nil {
-		return err
-	}
+func maintenance(ctx context.Context, c service.Config, method string) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	//nolint:gosec // G704: validated installed loopback address.
-	req, err := http.NewRequestWithContext(ctx, method, c.URL()+"/api/maintenance", strings.NewReader(string(b)))
+	req, err := http.NewRequestWithContext(ctx, method, c.URL()+"/api/maintenance", nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
-	defer client.CloseIdleConnections()
+	client := service.LoopbackClient
 	//nolint:gosec // G704: loopback maintenance request, without redirects.
 	resp, err := client.Do(req)
 	if err != nil {
@@ -483,7 +440,7 @@ func maintenance(ctx context.Context, c service.Config, id, method string) error
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusConflict {
-		return errors.Join(ErrBusy, errors.New("dex is running work or another updater holds maintenance"))
+		return ErrBusy
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("maintenance returned %s", resp.Status)

@@ -22,10 +22,6 @@ export type Health = {
     workerReady: boolean;
 };
 
-export type MaintenanceLease = {
-    leaseId: string;
-};
-
 export type Chat = {
     id: number;
     /**
@@ -444,7 +440,7 @@ export type GetHealthResponses = {
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
 
 export type ReleaseMaintenanceData = {
-    body: MaintenanceLease;
+    body?: never;
     path?: never;
     query?: never;
     url: '/api/maintenance';
@@ -465,7 +461,7 @@ export type ReleaseMaintenanceError = ReleaseMaintenanceErrors[keyof ReleaseMain
 
 export type ReleaseMaintenanceResponses = {
     /**
-     * Dispatch can resume.
+     * Worker admission can resume.
      */
     200: Ok;
 };
@@ -473,7 +469,7 @@ export type ReleaseMaintenanceResponses = {
 export type ReleaseMaintenanceResponse = ReleaseMaintenanceResponses[keyof ReleaseMaintenanceResponses];
 
 export type AcquireMaintenanceData = {
-    body: MaintenanceLease;
+    body?: never;
     path?: never;
     query?: never;
     url: '/api/maintenance';
@@ -494,7 +490,7 @@ export type AcquireMaintenanceError = AcquireMaintenanceErrors[keyof AcquireMain
 
 export type AcquireMaintenanceResponses = {
     /**
-     * Dispatch is held until expiry or release.
+     * Worker admission is held until expiry or release.
      */
     200: Ok;
 };

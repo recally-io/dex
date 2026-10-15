@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-	"uuid"
 )
 
 func TestUserUpdateWaitsForActiveTool(t *testing.T) {
@@ -22,8 +21,7 @@ func TestUserUpdateWaitsForActiveTool(t *testing.T) {
 	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0600) })
 	eventually(t, "tool running", func() (bool, any) { _, err := os.Stat(started); return err == nil, err })
 	// When an updater requests maintenance, the active tool makes acquire fail.
-	lease := map[string]string{"leaseId": uuid.NewV7().String()}
-	d.must(t, http.MethodPost, "/api/maintenance", lease, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, "/api/maintenance", nil, nil, http.StatusConflict)
 	if err := os.WriteFile(release, nil, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -32,10 +30,10 @@ func TestUserUpdateWaitsForActiveTool(t *testing.T) {
 	d.send(t, id, "echo next")
 	d.watch(t, id).until(t, "next run", answered("bash: next"))
 	eventually(t, "maintenance acquired", func() (bool, any) {
-		status, body := d.call(t, http.MethodPost, "/api/maintenance", lease)
+		status, body := d.call(t, http.MethodPost, "/api/maintenance", nil)
 		return status == 200, body
 	})
-	d.must(t, http.MethodDelete, "/api/maintenance", lease, nil)
+	d.must(t, http.MethodDelete, "/api/maintenance", nil, nil)
 }
 
 func TestUserMaintenanceQueuesWorkUntilReleaseOrRestart(t *testing.T) {
@@ -45,17 +43,13 @@ func TestUserMaintenanceQueuesWorkUntilReleaseOrRestart(t *testing.T) {
 			data := t.TempDir()
 			d := startDex(t, data, "")
 			d.setModel(t, "bash")
-			lease := map[string]string{"leaseId": uuid.NewV7().String()}
-			d.must(t, http.MethodPost, "/api/maintenance", lease, nil)
-			other := map[string]string{"leaseId": uuid.NewV7().String()}
-			d.must(t, http.MethodPost, "/api/maintenance", other, nil, http.StatusConflict)
-			d.must(t, http.MethodDelete, "/api/maintenance", other, nil, http.StatusConflict)
+			d.must(t, http.MethodPost, "/api/maintenance", nil, nil)
 			// When the user submits tool work, it is stored but must not execute.
 			marker := filepath.Join(t.TempDir(), "executed")
 			id := d.newChat(t, fmt.Sprintf("touch '%s'; echo released", marker))
 			deadline := time.Now().Add(2 * time.Second)
 			for time.Now().Before(deadline) {
-				d.must(t, http.MethodPost, "/api/maintenance", lease, nil)
+				d.must(t, http.MethodPost, "/api/maintenance", nil, nil)
 				if _, err := os.Stat(marker); !os.IsNotExist(err) {
 					t.Fatalf("tool escaped maintenance: %v", err)
 				}
@@ -69,7 +63,7 @@ func TestUserMaintenanceQueuesWorkUntilReleaseOrRestart(t *testing.T) {
 				d.stop()
 				d = startDex(t, data, "")
 			} else {
-				d.must(t, http.MethodDelete, "/api/maintenance", lease, nil)
+				d.must(t, http.MethodDelete, "/api/maintenance", nil, nil)
 			}
 			d.watch(t, id).until(t, "queued work after maintenance", answered("bash: released"))
 			if _, err := os.Stat(marker); err != nil {

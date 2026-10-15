@@ -15,8 +15,12 @@ unsafe.
 Use launchd LaunchAgents on macOS and systemd user units on Linux. Do not use
 root services or add a service library. Store resolved serve arguments and
 PATH inside the definition. Keep a configuration record in that same file
-for partial reinstall. Check that the generated definition matches the file
-before using it. The CLI is the only supported writer of the definition.
+for partial reinstall. The record is the source of boot configuration.
+Read accepts older templates. Reinstall rewrites the definition from the
+record and supplied flags. After an update, run `dex service install` to apply
+new template defaults. The updater runs from the old executable and does not
+regenerate definitions with the new template. The CLI is the only supported
+writer of the definition.
 
 Use a stable PATH symlink when it points to the current binary. Otherwise,
 use the resolved executable. Reject temporary install paths. Self-update
@@ -36,17 +40,32 @@ Authorization on cross-host redirects. Stage on the executable's filesystem
 and hold a process lock through replacement and readiness. Keep the previous
 inode as `dex.previous`. Do not roll back automatically.
 
-Acquire a two-minute maintenance lease before replacing a running service's
-binary. The dispatch lock checks active submissions and grants the lease as
-one operation. New messages, automations, and dreams stay stored while the
-lease holds dispatch. Busy acquire returns 409 and holds no gate. A UUID
-identifies the owner. Renewal uses the same UUID; release checks ownership.
-Expiry resumes dispatch after an updater crash. Replacement and restart
-have a 90-second deadline, within the lease. A process restart clears the
-lease and replays pending messages.
-Renew the lease before requesting restart. After that request, let the lease
-expire on failure: a service-manager command can stop the old process after
-the command returns an error. Releasing early could dispatch work during stop.
+Acquire a two-minute worker maintenance lease before replacing a running
+service's binary. Worker `quiesce` closes admission before its first await.
+It checks active operations, settle work through the memory commit, and
+pi-durable `Harness.inspect()` for unfinished tasks and submissions. A browser
+watch can resume durable work without a control submission; ping and control
+reservations cannot prove that the worker is idle.
+
+The worker owns the gate. Control stores only expiry and restores a live gate
+before a restarted worker can accept requests. New submit, create, watch, and
+abort operations wait before opening a harness. New messages remain in control
+storage. Pending watches are cancelled by watch ID when the browser leaves.
+Existing watches can continue to read. A new watch waits in full; a paused-open
+harness would add another recovery path.
+
+Busy acquire returns 409 and releases the gate. Worker failures remain errors.
+POST acquires or renews; DELETE releases. The updater's executable lock and its
+service-executable check serialize updates, so the lease needs no owner ID.
+Expiry resumes admission after an updater crash. A control restart clears the
+lease and replays pending messages. Replacement and restart have a 90-second
+budget. Readiness then gets a separate 30-second budget.
+
+Renew before restart. After restart is requested, let the lease expire on
+failure: a manager command can stop the old process after it returns an error.
+Releasing early could admit work during stop. RPC writer admission and pipe
+writes honor cancellation. Health has a one-second worker budget; CLI probes
+allow two seconds for its response.
 
 Daily updates are opt-in. macOS runs a second LaunchAgent at 10:00 local time.
 Linux uses a persistent daily timer with a random delay of up to one hour.

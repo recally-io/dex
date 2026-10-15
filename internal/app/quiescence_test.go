@@ -98,9 +98,8 @@ func TestUserMaintenanceBlocksWatchRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 			w, gate, _ := startMaintenanceWorker(t, data, nil)
-			lease := uuid.NewV7().String()
 			if gated {
-				if err := gate.AcquireMaintenance(t.Context(), lease); err != nil {
+				if err := gate.AcquireMaintenance(t.Context()); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -117,7 +116,7 @@ func TestUserMaintenanceBlocksWatchRecovery(t *testing.T) {
 					}
 					time.Sleep(time.Millisecond)
 				}
-				if err := gate.ReleaseMaintenance(t.Context(), lease); err != nil {
+				if err := gate.ReleaseMaintenance(t.Context()); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -126,7 +125,7 @@ func TestUserMaintenanceBlocksWatchRecovery(t *testing.T) {
 			}
 			eventually(t, "recovered tool", func() (bool, any) { return markerExists(started), started })
 			// Then an already recovered run also prevents acquire, despite no local active submission.
-			if err := gate.AcquireMaintenance(t.Context(), lease); err == nil {
+			if err := gate.AcquireMaintenance(t.Context()); err == nil {
 				t.Fatal("maintenance accepted a run resumed by watch")
 			}
 			if err := os.WriteFile(release, nil, 0600); err != nil {
@@ -152,15 +151,14 @@ func TestUserMaintenanceWaitsForMemoryCommit(t *testing.T) {
 	<-settled
 	eventually(t, "memory commit started", func() (bool, any) { return markerExists(started), started })
 	// When an updater acquires just after settle, pending memory work must make it busy.
-	lease := uuid.NewV7().String()
-	if err := gate.AcquireMaintenance(t.Context(), lease); err == nil {
+	if err := gate.AcquireMaintenance(t.Context()); err == nil {
 		t.Fatal("maintenance accepted a pending memory commit")
 	}
 	if err := os.WriteFile(release, nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	eventually(t, "memory commit finishes", func() (bool, any) { err := gate.AcquireMaintenance(t.Context(), lease); return err == nil, err })
-	if err := gate.ReleaseMaintenance(t.Context(), lease); err != nil {
+	eventually(t, "memory commit finishes", func() (bool, any) { err := gate.AcquireMaintenance(t.Context()); return err == nil, err })
+	if err := gate.ReleaseMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -170,8 +168,7 @@ func TestUserCancelledWatchDoesNotStartAfterMaintenance(t *testing.T) {
 	events := make(chan worker.ChatStream, 16)
 	w, gate, _ := startMaintenanceWorker(t, t.TempDir(), nil, func(ev worker.ChatStream) { events <- ev })
 	id := workerConversation(t, w)
-	lease := uuid.NewV7().String()
-	if err := gate.AcquireMaintenance(t.Context(), lease); err != nil {
+	if err := gate.AcquireMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	watchID := uuid.NewV7().String()
@@ -182,7 +179,7 @@ func TestUserCancelledWatchDoesNotStartAfterMaintenance(t *testing.T) {
 	if err := w.Call(t.Context(), "unwatch", worker.UnwatchParams{WatchID: watchID}, &struct{}{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := gate.ReleaseMaintenance(t.Context(), lease); err != nil {
+	if err := gate.ReleaseMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.NewTimer(2 * time.Second)

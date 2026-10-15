@@ -41,8 +41,10 @@ Only loopback hosts are allowed: `127.0.0.0/8` and `::1`. `localhost` becomes
 keeps options that you omit and restarts dex. A new data directory selects
 another directory; it does not move data. The service saves these values as
 `serve` arguments. It also saves PATH from the install shell. It saves no
-credentials or other shell variables. Change the service with the CLI; dex refuses a definition that
-has been edited outside dex.
+credentials or other shell variables. Change the service with the CLI.
+The configuration record is the source of boot options. Reads accept definitions
+from earlier releases. After an update,
+run `dex service install` to apply new template defaults.
 
 Stop any foreground dex process on the same address before you install.
 Install and start wait up to 30 seconds for the expected version, data

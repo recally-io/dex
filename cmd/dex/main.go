@@ -14,11 +14,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
-	"strings"
 	"time"
 
 	"github.com/vaayne/dex/internal/app"
 	"github.com/vaayne/dex/internal/service"
+	"golang.org/x/mod/module"
 )
 
 func main() {
@@ -86,12 +86,8 @@ func version() string {
 		}
 		v := info.Main.Version
 		// Go can label a checkout with a pseudo-version instead of (devel).
-		core, _, _ := strings.Cut(v, "+")
-		prefix, revision, ok := strings.CutLast(core, "-")
-		if ok && len(revision) >= 12 && len(prefix) >= 14 {
-			if _, err := time.Parse("20060102150405", prefix[len(prefix)-14:]); err == nil {
-				return "dev"
-			}
+		if module.IsPseudoVersion(v) {
+			return "dev"
 		}
 		return v
 	}

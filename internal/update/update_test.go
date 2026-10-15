@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json/v2"
@@ -75,6 +74,16 @@ func fixtureUpdater(t *testing.T, data []byte, tag, mode string) (*Updater, stri
 	if mode == "checksum" {
 		checksum = strings.Repeat("0", 64) + "  " + name + "\n"
 	}
+	var redirect *httptest.Server
+	if mode == "redirect" {
+		redirect = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "" {
+				t.Error("authorization header crossed hosts")
+			}
+			_, _ = w.Write(data)
+		}))
+		t.Cleanup(redirect.Close)
+	}
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer fixture-token" {
@@ -85,6 +94,10 @@ func fixtureUpdater(t *testing.T, data []byte, tag, mode string) (*Updater, stri
 			if r.Header.Get("Accept") != "application/octet-stream" {
 				t.Error("asset API needs octet-stream")
 			}
+			if mode == "redirect" {
+				http.Redirect(w, r, redirect.URL, http.StatusFound)
+				return
+			}
 			if mode == "interrupted" {
 				w.Header().Set("Content-Length", strconv.Itoa(len(data)+100))
 			}
@@ -93,14 +106,19 @@ func fixtureUpdater(t *testing.T, data []byte, tag, mode string) (*Updater, stri
 			_, _ = io.WriteString(w, checksum)
 		default:
 			if mode == "no-stable" {
-				w.WriteHeader(http.StatusNotFound)
+				_ = json.MarshalWrite(w, []release{{Tag: tag, Prerelease: true}})
 				return
 			}
 			assets := []asset{{Name: name, URL: server.URL + "/asset"}, {Name: "checksums.txt", URL: server.URL + "/checksums"}}
 			if mode == "missing" {
 				assets = assets[1:]
 			}
-			_ = json.MarshalWrite(w, release{Tag: tag, Assets: assets})
+			value := release{Tag: tag, Assets: assets}
+			if strings.Contains(r.URL.Path, "/tags/") {
+				_ = json.MarshalWrite(w, value)
+			} else {
+				_ = json.MarshalWrite(w, []release{value})
+			}
 		}
 	}))
 	t.Cleanup(server.Close)
@@ -149,7 +167,7 @@ func TestUserUpdateRejectsUnsafeAssetsBeforeReplacement(t *testing.T) {
 		{"missing", "missing", "missing release asset", valid},
 		{"interrupted", "interrupted", "interrupted", valid},
 		{"link", "", "not a regular file", archive(t, archiveEntry{name: "dex", kind: tar.TypeSymlink})},
-		{"traversal", "", "unsafe", archive(t, archiveEntry{name: "../dex", kind: tar.TypeReg, content: "bad"})},
+		{"traversal", "", "no regular file named dex", archive(t, archiveEntry{name: "../dex", kind: tar.TypeReg, content: "bad"})},
 		{"duplicate", "", "duplicate", archive(t, archiveEntry{name: "dex", kind: tar.TypeReg, content: "one"}, archiveEntry{name: "dex", kind: tar.TypeReg, content: "two"})},
 		{"oversized", "", "size limit", archive(t, archiveEntry{name: "dex", kind: tar.TypeReg, size: maxAsset + 1})},
 		{"bad-version", "", "unexpected version", archive(t, archiveEntry{name: "dex", kind: tar.TypeReg, content: fixtureBinary("v3.0.0")})},
@@ -214,46 +232,15 @@ func TestUserUpdateLock(t *testing.T) {
 	unlock()
 }
 func TestUserTokenDoesNotFollowCrossHostRedirect(t *testing.T) {
-	got := make(chan string, 1)
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got <- r.Header.Get("Authorization")
-		_, _ = io.WriteString(w, "download")
-	}))
-	defer target.Close()
-	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") == "" {
-			t.Error("initial API did not get token")
-		}
-		http.Redirect(w, r, target.URL, http.StatusFound)
-	}))
-	defer source.Close()
-	dir := t.TempDir()
-	binary := filepath.Join(dir, "dex")
-	if err := os.WriteFile(binary, []byte("old"), 0755); err != nil {
+	// Given an authenticated release whose asset redirects to another host.
+	data := archive(t, archiveEntry{name: "dex", kind: tar.TypeReg, content: fixtureBinary("v2.0.0")})
+	u, path, m := fixtureUpdater(t, data, "v2.0.0", "redirect")
+	// When the full update downloads the asset, its token must remain at the release API.
+	if err := u.Run(t.Context(), Options{Channel: "stable"}, m, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	u, err := New("v1.0.0", binary)
-	if err != nil {
-		t.Fatal(err)
-	}
-	u.base = source.URL
-	u.token = "must-not-leak"
-	if _, err := u.get(context.Background(), source.URL, "application/octet-stream", 100); err != nil {
-		t.Fatal(err)
-	}
-	if <-got != "" {
-		t.Fatal("authorization header crossed hosts")
-	}
-}
-func TestUserReleaseVersionOrder(t *testing.T) {
-	for _, pair := range [][2]string{{"v1.0.0-rc.1", "v1.0.0"}, {"v1.0.0-rc.2", "v1.0.0-rc.10"}, {"v1.0.0-alpha", "v1.0.0-beta"}, {"v1.9.0", "v1.10.0"}} {
-		got, err := compare(pair[0], pair[1])
-		if err != nil || got >= 0 {
-			t.Fatalf("%v: %d %v", pair, got, err)
-		}
-	}
-	if got, err := compare("v1.0.0+old", "v1.0.0+new"); err != nil || got != 0 {
-		t.Fatalf("build metadata: %d %v", got, err)
+	if version, err := service.BinaryVersion(t.Context(), path); err != nil || version != "v2.0.0" {
+		t.Fatalf("redirected update: %s: %v", version, err)
 	}
 }
 
@@ -278,10 +265,11 @@ func TestUserCheckDoesNotReplaceExecutable(t *testing.T) {
 func TestUserAutomaticUpdatesRejectShellOnlyCredentials(t *testing.T) {
 	t.Setenv("GH_TOKEN", "shell-only")
 	t.Setenv("GITHUB_TOKEN", "also-shell-only")
-	if _, _, err := auth(t.Context(), true, t.TempDir()); err == nil {
+	t.Setenv("PATH", t.TempDir())
+	if _, _, err := auth(t.Context(), true); err == nil {
 		t.Fatal("automatic updates accepted shell-only credentials")
 	}
-	token, source, err := auth(t.Context(), false, "")
+	token, source, err := auth(t.Context(), false)
 	if err != nil || token != "shell-only" || source != "GH_TOKEN" {
 		t.Fatal("manual token precedence changed")
 	}
@@ -292,9 +280,11 @@ func TestUserPrereleaseChannelIncludesCandidates(t *testing.T) {
 	}))
 	defer fixture.Close()
 	u := Updater{base: fixture.URL, client: releaseClient(time.Second)}
-	got, err := u.selectRelease(t.Context(), Options{Channel: "prerelease"})
-	if err != nil || got.Tag != "v1.1.0-rc.1" {
-		t.Fatalf("%+v: %v", got, err)
+	for channel, want := range map[string]string{"stable": "v1.0.0", "prerelease": "v1.1.0-rc.1"} {
+		got, err := u.selectRelease(t.Context(), Options{Channel: channel})
+		if err != nil || got.Tag != want {
+			t.Fatalf("%s: %+v: %v", channel, got, err)
+		}
 	}
 }
 func TestUserCannotUpdateDevOrPackageManagedBuild(t *testing.T) {
@@ -306,14 +296,26 @@ func TestUserCannotUpdateDevOrPackageManagedBuild(t *testing.T) {
 	}
 }
 
-func TestUserReleaseOrderDoesNotOverflow(t *testing.T) {
-	a, b := "v1.0.0-rc.999999999999999999999", "v1.0.0-rc.1000000000000000000000"
-	if got, err := compare(a, b); err != nil || got >= 0 {
-		t.Fatalf("numeric prerelease order: %d %v", got, err)
+func TestUserRequiresCompleteReleaseVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "dex")
+	if err := os.WriteFile(path, []byte(fixtureBinary("v1.0.0")), 0755); err != nil {
+		t.Fatal(err)
 	}
-	for _, tag := range []string{"v1", "v1.2", "v1.2+metadata", "v1.0.0-rc.01", "v1.0.0+", "v1.0.0+bad/metadata", "v01.0.0"} {
-		if _, err := compare(tag, "v1.0.0"); err == nil {
-			t.Fatalf("accepted invalid SemVer %q", tag)
+	for _, tag := range []string{"v1", "v1.2", "v1.2+metadata"} {
+		if _, err := New(tag, path); err == nil {
+			t.Fatalf("accepted shortened release version %q", tag)
 		}
+	}
+}
+
+func TestUserUpdatesExactRelease(t *testing.T) {
+	// Given a release tag, select its endpoint instead of the channel list.
+	data := archive(t, archiveEntry{name: "dex", kind: tar.TypeReg, content: fixtureBinary("v2.0.0")})
+	u, path, m := fixtureUpdater(t, data, "v2.0.0", "")
+	if err := u.Run(t.Context(), Options{Tag: "v2.0.0"}, m, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := service.BinaryVersion(t.Context(), path); err != nil || got != "v2.0.0" {
+		t.Fatalf("exact release: %s: %v", got, err)
 	}
 }
