@@ -18,7 +18,7 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/vaayne/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 // upload sends one file as POST /api/uploads and returns the status and the body. A filename with

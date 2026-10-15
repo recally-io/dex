@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vaayne/dex/internal/worker"
+	"github.com/recally-io/dex/internal/worker"
 )
 
 func TestUserMaintenanceWorkerFailureIsNotBusy(t *testing.T) {

@@ -16,8 +16,8 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/vaayne/dex/internal/app"
-	"github.com/vaayne/dex/internal/service"
+	"github.com/recally-io/dex/internal/app"
+	"github.com/recally-io/dex/internal/service"
 	"golang.org/x/mod/module"
 )
 

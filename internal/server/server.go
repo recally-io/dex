@@ -16,13 +16,13 @@ import (
 	"unicode/utf8"
 	"uuid"
 
-	"github.com/vaayne/dex/internal/api"
-	"github.com/vaayne/dex/internal/automation"
-	"github.com/vaayne/dex/internal/chat"
-	"github.com/vaayne/dex/internal/live"
-	"github.com/vaayne/dex/internal/settings"
-	"github.com/vaayne/dex/internal/upload"
-	"github.com/vaayne/dex/web"
+	"github.com/recally-io/dex/internal/api"
+	"github.com/recally-io/dex/internal/automation"
+	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/live"
+	"github.com/recally-io/dex/internal/settings"
+	"github.com/recally-io/dex/internal/upload"
+	"github.com/recally-io/dex/web"
 )
 
 // Config holds what the handler serves.

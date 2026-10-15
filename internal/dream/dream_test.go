@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/vaayne/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 func TestCutKeepsStartAndEndOfLongText(t *testing.T) {

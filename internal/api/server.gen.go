@@ -17,10 +17,10 @@ import (
 
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	"github.com/vaayne/dex/internal/automation"
-	"github.com/vaayne/dex/internal/chat"
-	"github.com/vaayne/dex/internal/settings"
-	"github.com/vaayne/dex/internal/worker"
+	"github.com/recally-io/dex/internal/automation"
+	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/settings"
+	"github.com/recally-io/dex/internal/worker"
 )
 
 // Defines values for AppendEventType.

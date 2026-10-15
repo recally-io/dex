@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vaayne/dex/internal/service"
+	"github.com/recally-io/dex/internal/service"
 )
 
 type archiveEntry struct {

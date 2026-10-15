@@ -51,7 +51,7 @@ Install and start wait up to 30 seconds for the expected version, data
 directory, and worker ping. `dex version` shows the version, commit, platform,
 and executable. Each command supports `--help`.
 
-- macOS uses `~/Library/LaunchAgents/com.vaayne.dex.plist`.
+- macOS uses `~/Library/LaunchAgents/io.recally.dex.plist`.
   Logs go to `~/Library/Logs/dex/dex.log`. The log has no size limit.
   launchd restarts dex after a crash or a nonzero exit. A clean exit does not
   restart it. Stop removes the job from launchd but keeps the definition.
@@ -77,7 +77,7 @@ dex update --version v0.1.0-rc.1
 dex service install --auto-update --channel prerelease
 ```
 
-Updates come from the private `vaayne/dex` GitHub repository. Manual updates
+Updates come from the `recally-io/dex` GitHub repository. Manual updates
 use GH_TOKEN, then GITHUB_TOKEN, then stored `gh auth` credentials. Automatic
 updates require `gh` on the installed PATH and credentials in its default
 store. Run `gh auth login --hostname github.com` first. Shell-only tokens

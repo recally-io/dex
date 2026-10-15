@@ -522,7 +522,7 @@ components:
     ChatSettings:
       x-go-type: chat.Settings
       x-go-type-import:
-        path: github.com/vaayne/dex/internal/chat
+        path: github.com/recally-io/dex/internal/chat
       type: object
       description: >
         The settings that a chat overrides. An absent field follows the
@@ -569,7 +569,7 @@ components:
     Attachment:
       x-go-type: worker.Attachment
       x-go-type-import:
-        path: github.com/vaayne/dex/internal/worker
+        path: github.com/recally-io/dex/internal/worker
       type: object
       required: [id, name, size, mimeType, path]
       properties:
@@ -599,7 +599,7 @@ components:
     Schedule:
       x-go-type: automation.Schedule
       x-go-type-import:
-        path: github.com/vaayne/dex/internal/automation
+        path: github.com/recally-io/dex/internal/automation
       type: object
       required: [kind]
       description: >
@@ -639,7 +639,7 @@ components:
     AutomationInput:
       x-go-type: automation.Input
       x-go-type-import:
-        path: github.com/vaayne/dex/internal/automation
+        path: github.com/recally-io/dex/internal/automation
       type: object
       required: [name, prompt, schedule, timeZone, session, enabled]
       properties:
@@ -658,7 +658,7 @@ components:
     Automation:
       x-go-type: automation.Automation
       x-go-type-import:
-        path: github.com/vaayne/dex/internal/automation
+        path: github.com/recally-io/dex/internal/automation
       allOf:
         - $ref: "#/components/schemas/AutomationInput"
         - type: object
@@ -684,7 +684,7 @@ components:
     AutomationRun:
       x-go-type: automation.Run
       x-go-type-import:
-        path: github.com/vaayne/dex/internal/automation
+        path: github.com/recally-io/dex/internal/automation
       type: object
       required: [id, status, createdAt]
       properties:
@@ -881,7 +881,7 @@ components:
     Agent:
       x-go-type: settings.Agent
       x-go-type-import:
-        path: github.com/vaayne/dex/internal/settings
+        path: github.com/recally-io/dex/internal/settings
       type: object
       required: [provider, modelId, thinkingLevel, instructions]
       properties:

@@ -15,7 +15,7 @@ import (
 	"unicode"
 	"uuid"
 
-	"github.com/vaayne/dex/internal/worker"
+	"github.com/recally-io/dex/internal/worker"
 )
 
 // MaxSize is the largest file, in bytes.

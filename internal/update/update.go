@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vaayne/dex/internal/service"
+	"github.com/recally-io/dex/internal/service"
 	"golang.org/x/mod/semver"
 )
 
@@ -116,7 +116,7 @@ func Access(ctx context.Context, stored bool) (string, error) {
 		return "", err
 	}
 	u := &Updater{base: releaseBase(), client: releaseClient(10 * time.Second), token: token}
-	_, err = u.get(ctx, u.base+"/repos/vaayne/dex/releases?per_page=1", "application/vnd.github+json", 1<<20)
+	_, err = u.get(ctx, u.base+"/repos/recally-io/dex/releases?per_page=1", "application/vnd.github+json", 1<<20)
 	return source, err
 }
 func (u *Updater) get(ctx context.Context, target, accept string, limit int64) ([]byte, error) {
@@ -144,7 +144,7 @@ func (u *Updater) get(ctx context.Context, target, accept string, limit int64) (
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("release API returned %s (check access to vaayne/dex)", resp.Status)
+		return nil, fmt.Errorf("release API returned %s (check access to recally-io/dex)", resp.Status)
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
@@ -157,7 +157,7 @@ func (u *Updater) get(ctx context.Context, target, accept string, limit int64) (
 }
 func (u *Updater) selectRelease(ctx context.Context, opt Options) (release, error) {
 	var r release
-	endpoint := u.base + "/repos/vaayne/dex/releases"
+	endpoint := u.base + "/repos/recally-io/dex/releases"
 	if opt.Tag != "" {
 		endpoint += "/tags/" + url.PathEscape(opt.Tag)
 	} else {
