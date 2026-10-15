@@ -64,8 +64,8 @@ func configured(name string, args []string, base service.Config) (service.Config
 func dispatch(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if len(args) == 0 {
-		args = []string{"serve"}
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") && args[0] != "--help" && args[0] != "-h" && args[0] != "--version" {
+		args = append([]string{"serve"}, args...)
 	}
 	name := args[0]
 	args = args[1:]

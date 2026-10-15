@@ -52,6 +52,7 @@ export class Agents {
 	// resumes after a restart has none until control submits to it again.
 	readonly #sources = new Map<string, string>();
 	readonly #watches = new Map<string, AgentEventStream>();
+	readonly #pendingWatches = new Map<string, AbortController>();
 	readonly #harnesses = new Map<string, Promise<Harness>>();
 	// The tail of each conversation's submit chain; see #serial.
 	readonly #chains = new Map<string, Promise<unknown>>();
@@ -105,8 +106,9 @@ export class Agents {
 		return {};
 	}
 
-	async #admit<T>(task: () => Promise<T>): Promise<T> {
+	async #admit<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
 		while (this.#gate !== undefined && this.#gate.expiresAt > Date.now()) {
+			signal?.throwIfAborted();
 			const expiresAt = this.#gate.expiresAt;
 			// Each wake must recheck a lease that another updater can renew.
 			// oxlint-disable-next-line no-await-in-loop
@@ -114,12 +116,15 @@ export class Agents {
 				const wake = () => {
 					clearTimeout(timer);
 					this.#gateWaiters.delete(wake);
+					signal?.removeEventListener("abort", wake);
 					resolve();
 				};
 				const timer = setTimeout(wake, Math.max(1, expiresAt - Date.now()));
 				this.#gateWaiters.add(wake);
+				signal?.addEventListener("abort", wake, { once: true });
 			});
 		}
+		signal?.throwIfAborted();
 		this.#operations++;
 		try {
 			return await task();
@@ -212,14 +217,26 @@ export class Agents {
 	 * Starts a watch of a conversation's chat events. The first event is a snapshot. The worker sends
 	 * it before this method returns.
 	 */
-	watch(params: WatchParams): Promise<Record<string, never>> {
-		return this.#admit(() => this.#watch(params));
+	async watch(params: WatchParams): Promise<Record<string, never>> {
+		if (this.#pendingWatches.has(params.watchId) || this.#watches.has(params.watchId))
+			throw new Error(`duplicate watch ID: ${params.watchId}`);
+		const pending = new AbortController();
+		this.#pendingWatches.set(params.watchId, pending);
+		try {
+			return await this.#admit(() => this.#watch(params, pending.signal), pending.signal);
+		} finally {
+			this.#pendingWatches.delete(params.watchId);
+		}
 	}
 
-	async #watch(params: WatchParams): Promise<Record<string, never>> {
+	async #watch(params: WatchParams, signal: AbortSignal): Promise<Record<string, never>> {
 		if (this.#watches.has(params.watchId)) throw new Error(`duplicate watch ID: ${params.watchId}`);
 		const conversation = await this.#conversation(params.agentId, params.conversationId);
 		const stream = await watchEvents(await this.#harness(params.agentId), conversation.id, context);
+		if (signal.aborted) {
+			await stream.stop();
+			return {};
+		}
 		this.#watches.set(params.watchId, stream);
 		const view = new ChatView();
 		this.#emitChat({ watchId: params.watchId, events: [view.snapshot(stream.snapshot)] });
@@ -238,6 +255,7 @@ export class Agents {
 	}
 
 	async unwatch(params: UnwatchParams): Promise<Record<string, never>> {
+		this.#pendingWatches.get(params.watchId)?.abort();
 		await this.#watches.get(params.watchId)?.stop();
 		return {};
 	}

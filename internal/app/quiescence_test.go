@@ -19,7 +19,7 @@ import (
 
 // startMaintenanceWorker uses the real protocol without control replay, as after a
 // restart when a browser opens a persisted conversation before any new submission.
-func startMaintenanceWorker(t *testing.T, data string, settled func(context.Context, worker.Settled)) (*worker.Worker, *chat.Service, func()) {
+func startMaintenanceWorker(t *testing.T, data string, settled func(context.Context, worker.Settled), chats ...func(worker.ChatStream)) (*worker.Worker, *chat.Service, func()) {
 	t.Helper()
 	cache := t.TempDir()
 	path, err := worker.Install(cache, workerbin.Gzip)
@@ -27,7 +27,11 @@ func startMaintenanceWorker(t *testing.T, data string, settled func(context.Cont
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
-	w := worker.New(worker.Config{Path: path, Dir: cache, Env: []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "DEX_FAKE_MODEL=1", "DEX_DATA_DIR=" + data}, OnSettled: settled})
+	w := worker.New(worker.Config{Path: path, Dir: cache, Env: []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "DEX_FAKE_MODEL=1", "DEX_DATA_DIR=" + data}, OnSettled: settled, OnChat: func(ev worker.ChatStream) {
+		for _, f := range chats {
+			f(ev)
+		}
+	}})
 	done := make(chan struct{})
 	go func() { _ = w.Run(ctx); close(done) }()
 	var once sync.Once
@@ -158,5 +162,34 @@ func TestUserMaintenanceWaitsForMemoryCommit(t *testing.T) {
 	eventually(t, "memory commit finishes", func() (bool, any) { err := gate.AcquireMaintenance(t.Context(), lease); return err == nil, err })
 	if err := gate.ReleaseMaintenance(t.Context(), lease); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUserCancelledWatchDoesNotStartAfterMaintenance(t *testing.T) {
+	// Given a real worker held in maintenance before a browser opens its watch.
+	events := make(chan worker.ChatStream, 16)
+	w, gate, _ := startMaintenanceWorker(t, t.TempDir(), nil, func(ev worker.ChatStream) { events <- ev })
+	id := workerConversation(t, w)
+	lease := uuid.NewV7().String()
+	if err := gate.AcquireMaintenance(t.Context(), lease); err != nil {
+		t.Fatal(err)
+	}
+	watchID := uuid.NewV7().String()
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	_ = w.Call(ctx, "watch", worker.WatchParams{AgentID: "default", ConversationID: id, WatchID: watchID}, &struct{}{})
+	// When the browser cancels, unwatch must cancel pending admission too.
+	if err := w.Call(t.Context(), "unwatch", worker.UnwatchParams{WatchID: watchID}, &struct{}{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := gate.ReleaseMaintenance(t.Context(), lease); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	select {
+	case ev := <-events:
+		t.Fatalf("cancelled watch started after release: %+v", ev)
+	case <-deadline.C:
 	}
 }

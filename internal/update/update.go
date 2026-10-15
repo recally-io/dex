@@ -315,7 +315,7 @@ func (u *Updater) Run(ctx context.Context, opt Options, m service.Manager, out i
 		if err := m.Restart(operation); err != nil {
 			return fmt.Errorf("binary updated, restart failed; previous binary: %s.previous: %w", u.executable, err)
 		}
-		if err := service.Ready(operation, state.Config, r.Tag); err != nil {
+		if err := service.Ready(ctx, state.Config, r.Tag); err != nil {
 			return fmt.Errorf("updated service is not ready; logs: %s; previous binary: %s.previous: %w", m.LogPath(), u.executable, err)
 		}
 	} else {

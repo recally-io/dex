@@ -2,7 +2,6 @@
 package service
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -58,13 +57,7 @@ func (m Manager) Read() (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	expected := unit(c)
-	if runtime.GOOS == "darwin" {
-		expected = plist(c, m.home, m.LogPath())
-	}
-	if !bytes.Equal(data, expected) {
-		return c, errors.New("service definition differs from its configuration; uninstall it before reinstalling")
-	}
+
 	return c, nil
 }
 

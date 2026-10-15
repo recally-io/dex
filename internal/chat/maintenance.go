@@ -38,7 +38,13 @@ func (s *Service) AcquireMaintenance(ctx context.Context, id string) error {
 	defer cancel()
 	_ = s.worker.Call(release, "resume", worker.ResumeParams{LeaseID: id}, &struct{}{})
 	s.clearMaintenance()
-	return errors.Join(ErrMaintenanceBusy, err, errors.New(result.Reason))
+	if err != nil {
+		return err
+	}
+	if result.Reason == "" {
+		return ErrMaintenanceBusy
+	}
+	return errors.Join(ErrMaintenanceBusy, errors.New(result.Reason))
 }
 
 func (s *Service) ReleaseMaintenance(ctx context.Context, id string) error {

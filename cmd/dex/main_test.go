@@ -58,3 +58,12 @@ func TestUserReinstallKeepsOmittedOptions(t *testing.T) {
 		t.Fatalf("omitted options changed: %+v: %v", got, err)
 	}
 }
+
+func TestUserLeadingFlagsSelectServe(t *testing.T) {
+	// Given foreground flags without an explicit serve command.
+	// When validation rejects an unsafe host, the error must come from serve configuration.
+	err := dispatch([]string{"--host", "0.0.0.0", "--port", "18788", "--data-dir", t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "no authentication") {
+		t.Fatalf("leading flags did not select serve: %v", err)
+	}
+}

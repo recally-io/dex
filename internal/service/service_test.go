@@ -181,3 +181,22 @@ func TestUserInvalidConfigurationFailsBeforeDefinitionWrite(t *testing.T) {
 		}
 	}
 }
+
+func TestUserReadsDefinitionFromPreviousRelease(t *testing.T) {
+	// Given a stored configuration and a definition from an older template.
+	m := Manager{home: t.TempDir(), config: t.TempDir()}
+	c := Config{Host: "127.0.0.1", Port: 18787, DataDir: t.TempDir(), Executable: "/opt/dex", Path: "/usr/bin", Channel: "prerelease", AutoUpdate: true}
+	data := unit(c)
+	if runtime.GOOS == "darwin" {
+		data = plist(c, m.home, m.LogPath())
+	}
+	data = append(data, []byte("\n")...)
+	if err := writeDefinition(m.Definition(), data); err != nil {
+		t.Fatal(err)
+	}
+	// When a new dex reads the installed definition, template drift must not lose options.
+	got, err := m.Read()
+	if err != nil || got != c {
+		t.Fatalf("previous definition rejected: %+v: %v", got, err)
+	}
+}
