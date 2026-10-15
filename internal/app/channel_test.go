@@ -257,4 +257,11 @@ func TestUserStopsExistingChannelChatDuringMaintenance(t *testing.T) {
 	if got := f.next(t).Text; got != "echo: after gate" {
 		t.Fatal(got)
 	}
+	// The reply precedes the memory commit. Wait for that commit before the worker exits,
+	// so its git child cannot write after TempDir removes the data directory.
+	eventually(t, "memory commit before shutdown", func() (bool, any) {
+		status, body := d.call(t, http.MethodPost, "/api/maintenance", nil)
+		return status == http.StatusOK, body
+	})
+	d.stop()
 }
