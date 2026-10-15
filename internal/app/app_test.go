@@ -33,6 +33,22 @@ type dex struct {
 	srv *httptest.Server
 }
 
+// cacheDir is shared by all tests. Install skips a worker that is already in it; unpacking the
+// worker for each start is most of the run time under -race.
+var cacheDir string
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "dex-app-test-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	cacheDir = dir
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
 // startDex starts dex with its own data directory and serves its handler. telegramURL is the Bot
 // API URL, or empty.
 func startDex(t *testing.T, dataDir, telegramURL string) *dex {
@@ -43,7 +59,7 @@ func startDex(t *testing.T, dataDir, telegramURL string) *dex {
 // startDexWith starts dex with cfg, a cache directory, and the test worker environment.
 func startDexWith(t *testing.T, cfg app.Config) *dex {
 	t.Helper()
-	cfg.CacheDir = t.TempDir()
+	cfg.CacheDir = cacheDir
 	cfg.WorkerEnv = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "DEX_FAKE_MODEL=1"}
 	a, err := app.Start(t.Context(), cfg)
 	if err != nil {
