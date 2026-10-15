@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, type LinkProps } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
@@ -6,7 +6,7 @@ import type { Settings } from "../api/generated/types.gen";
 import { getSettingsOptions, listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { saveAgent, useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
-import { ModelDialog } from "../components/model-dialog";
+import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
 import { Card, Note, NotAvailable, Page, PageHeader, Section } from "../components/page";
 import { Button } from "../components/ui/button";
@@ -100,7 +100,6 @@ export function AgentPage() {
 
 function Agent({ settings }: { settings: Settings }) {
   const { draft, setDraft, settleDraft, notify } = useApp();
-  const [picker, setPicker] = useState(false);
   const model = useAgentModel(settings);
   const saved = settings.agent.instructions;
   const text = draft ?? saved;
@@ -147,9 +146,13 @@ function Agent({ settings }: { settings: Settings }) {
                   </p>
                 )}
               </div>
-              <Pill variant="primary" size="sm" onClick={() => setPicker(true)}>
-                {settings.agent.modelId ? "Change model" : "Choose model"}
-              </Pill>
+              <ModelPicker
+                trigger={
+                  <Pill variant="primary" size="sm">
+                    {settings.agent.modelId ? "Change model" : "Choose model"}
+                  </Pill>
+                }
+              />
             </div>
             {!settings.providers.length ? (
               <Note>
@@ -267,7 +270,6 @@ function Agent({ settings }: { settings: Settings }) {
           </Card>
         </div>
       </Section>
-      <ModelDialog open={picker} onOpenChange={setPicker} />
     </>
   );
 }

@@ -23,7 +23,7 @@ import { queryClient, refreshChats } from "../lib/queries";
 import { useAgentModel } from "../lib/agent";
 import { Composer } from "../components/composer";
 import { TranscriptItem, RetryNotice } from "../components/agent/transcript";
-import { ModelDialog } from "../components/model-dialog";
+import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
 import { Card, Note, Page, PageHeader } from "../components/page";
 import { Alert, AlertTitle, AlertDescription } from "../components/ui/alert";
@@ -42,7 +42,6 @@ declare module "@tanstack/history" {
 
 function Setup({ settings }: { settings: Settings }) {
   const navigate = useNavigate();
-  const [picker, setPicker] = useState(false);
   const models = useQuery(listModelsOptions());
   const hasProvider = settings.providers.length > 0;
   const hasModels = !!models.data?.models.length;
@@ -60,7 +59,7 @@ function Setup({ settings }: { settings: Settings }) {
       title: "Choose the agent model",
       body: hasModels ? "Pick one of the available models." : "Models appear after a provider lists them.",
       label: "Choose model",
-      action: () => setPicker(true),
+      picker: true,
       disabled: !hasModels,
     },
     {
@@ -99,7 +98,15 @@ function Setup({ settings }: { settings: Settings }) {
                 </h2>
                 <p className="mt-1 text-[13px] text-ink-2">{step.body}</p>
               </div>
-              {!step.done ? (
+              {step.done ? null : step.picker ? (
+                <ModelPicker
+                  trigger={
+                    <Pill size="sm" variant="primary" disabled={step.disabled}>
+                      {step.label}
+                    </Pill>
+                  }
+                />
+              ) : (
                 <Pill
                   size="sm"
                   variant={step.optional ? "secondary" : "primary"}
@@ -108,7 +115,7 @@ function Setup({ settings }: { settings: Settings }) {
                 >
                   {step.label}
                 </Pill>
-              ) : null}
+              )}
             </Card>
           </li>
         ))}
@@ -127,7 +134,6 @@ function Setup({ settings }: { settings: Settings }) {
           Tools run on this computer without a sandbox, and the server has no sign-in. Keep dex on 127.0.0.1.
         </Note>
       </div>
-      <ModelDialog open={picker} onOpenChange={setPicker} />
     </Page>
   );
 }

@@ -1,11 +1,11 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowUp, ChevronDown, Square } from "lucide-react";
 import type { AgentModel } from "../lib/agent";
 import { Button } from "./atoms/Button";
 import { ChatComposerInput } from "./primitives/ChatComposer";
 import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip";
-import { ModelDialog } from "./model-dialog";
+import { ModelPicker } from "./model-picker";
 
 export function Composer({
   model,
@@ -35,7 +35,6 @@ export function Composer({
   const area = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
   const descriptionId = useId();
-  const [picker, setPicker] = useState(false);
   useEffect(() => {
     if (autoFocus) area.current?.focus();
   }, [autoFocus]);
@@ -58,18 +57,20 @@ export function Composer({
           footer={
             <>
               <div className="min-w-0">
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="quiet"
-                  aria-haspopup="dialog"
-                  aria-label={`Agent model: ${model.label}. Change model`}
-                  onClick={() => setPicker(true)}
-                  className={`max-w-full ${model.ok ? "" : "text-orange"}`}
-                >
-                  <span className="truncate">{model.label}</span>
-                  <ChevronDown aria-hidden className="size-3.5 shrink-0" />
-                </Button>
+                <ModelPicker
+                  trigger={
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="quiet"
+                      aria-label={`Agent model: ${model.label}. Change model`}
+                      className={`max-w-full ${model.ok ? "" : "text-orange"}`}
+                    >
+                      <span className="truncate">{model.label}</span>
+                      <ChevronDown aria-hidden className="size-3.5 shrink-0" />
+                    </Button>
+                  }
+                />
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {running ? (
@@ -153,9 +154,13 @@ export function Composer({
           <>
             {" "}
             {hasProvider ? (
-              <button type="button" className="text-brand underline" onClick={() => setPicker(true)}>
-                Choose a model
-              </button>
+              <ModelPicker
+                trigger={
+                  <button type="button" className="text-brand underline">
+                    Choose a model
+                  </button>
+                }
+              />
             ) : (
               <Link className="text-brand underline" to="/providers">
                 Add a provider
@@ -164,7 +169,6 @@ export function Composer({
           </>
         ) : null}
       </p>
-      <ModelDialog open={picker} onOpenChange={setPicker} />
     </div>
   );
 }
