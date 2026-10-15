@@ -92,11 +92,10 @@ export function useAgentModel(settings: Settings | undefined) {
   return settings ? agentModel(settings.agent, models.data?.models) : undefined;
 }
 
-/** The settings that a chat runs with: each setting of the chat, or else the agent's. */
+/** The model that a chat runs with: the chat's model, or else the agent's. */
 export function chatModel(agent: Agent, chat: ChatSettings, models: Model[] | undefined) {
   return {
     model: chat.modelId ? findModel(chat.provider ?? "", chat.modelId, models) : agentModel(agent, models),
-    thinkingLevel: chat.thinkingLevel ?? agent.thinkingLevel,
     overrides: !!chat.modelId || !!chat.thinkingLevel,
   };
 }

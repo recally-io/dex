@@ -62,7 +62,7 @@ export function ChatControls({
 }) {
   const models = useQuery(listModelsOptions());
   const list = models.data?.models;
-  const { model, thinkingLevel } = chatModel(agent, value, list);
+  const { model } = chatModel(agent, value, list);
   const own = !!value.modelId;
   const think = model.model?.reasoning ? model.model : undefined;
 
@@ -105,16 +105,16 @@ export function ChatControls({
         <ThinkingPicker
           value={value.thinkingLevel ?? null}
           levels={think?.thinkingLevels ?? []}
-          defaultLevel={agent.thinkingLevel}
+          clearable
           save={(level) => save((saved) => ({ ...saved, thinkingLevel: level ?? undefined }))}
           trigger={
             <ControlButton
-              aria-label={`Thinking: ${thinkingNames[thinkingLevel]}${value.thinkingLevel ? ", set for this chat" : ""}. Change thinking level`}
+              aria-label={`Thinking: ${value.thinkingLevel ? `${thinkingNames[value.thinkingLevel]}, set for this chat` : "default"}. Change thinking level`}
               title="Thinking level"
               className="shrink-0"
             >
               <IconBrain size={14} />
-              <span>{thinkingNames[thinkingLevel]}</span>
+              <span>{value.thinkingLevel ? thinkingNames[value.thinkingLevel] : "Default"}</span>
               {value.thinkingLevel ? <Override /> : null}
             </ControlButton>
           }

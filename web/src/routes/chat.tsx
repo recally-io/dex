@@ -265,7 +265,7 @@ function ContextPane({
   onFocusTool: (id: string) => void;
 }) {
   const models = useQuery(listModelsOptions());
-  const { model, thinkingLevel, overrides } = chatModel(settings.agent, chat.settings, models.data?.models);
+  const { model, overrides } = chatModel(settings.agent, chat.settings, models.data?.models);
   const { draft } = useApp();
 
   const automation = useQuery({
@@ -334,7 +334,11 @@ function ContextPane({
                 <div className="flex justify-between gap-3">
                   <dt className="text-ink-3">Thinking</dt>
                   <dd className="text-ink-2">
-                    {model.model && !model.model.reasoning ? "Off" : thinkingNames[thinkingLevel]}
+                    {model.model && !model.model.reasoning
+                      ? "Off"
+                      : chat.settings.thinkingLevel
+                        ? thinkingNames[chat.settings.thinkingLevel]
+                        : "Default"}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">

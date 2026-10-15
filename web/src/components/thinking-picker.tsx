@@ -11,18 +11,18 @@ const itemClass =
   "flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-hover";
 
 // An anchored, non-modal list of the levels that pi-ai supports for the model. It saves like
-// ModelPicker. With defaultLevel, the first item clears the chat's level (save(null)).
+// ModelPicker. With clearable, the first item "Default" clears the chat's level (save(null)).
 export function ThinkingPicker({
   trigger,
   value,
   levels,
-  defaultLevel,
+  clearable,
   save,
 }: {
   trigger: ReactElement;
   value: ThinkingLevel | null;
   levels: ThinkingLevel[];
-  defaultLevel?: ThinkingLevel;
+  clearable?: boolean;
   save: (level: ThinkingLevel | null) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -56,7 +56,7 @@ export function ThinkingPicker({
           >
             <Command ref={root} defaultValue={current} label="Thinking level" className="outline-none">
               <Command.List className="p-1">
-                {defaultLevel ? (
+                {clearable ? (
                   <Command.Item
                     value="default"
                     disabled={pending !== undefined}
@@ -64,7 +64,7 @@ export function ThinkingPicker({
                     className={itemClass}
                   >
                     <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink">
-                      Use default ({thinkingNames[defaultLevel]})
+                      Default
                     </span>
                     <Mark checked={current === "default"} saving={pending === null} />
                   </Command.Item>
