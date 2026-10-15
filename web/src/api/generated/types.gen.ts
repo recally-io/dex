@@ -332,6 +332,7 @@ export type Settings = {
         [key: string]: string;
     };
     telegram: Telegram;
+    wechat: Wechat;
 };
 
 export type Agent = {
@@ -478,6 +479,21 @@ export type McpServer = {
      */
     tools: Array<string>;
     error?: string;
+};
+
+export type Wechat = {
+    enabled: boolean;
+    botId?: string;
+    owner?: string;
+    status: ChannelStatus;
+};
+
+export type WechatLogin = {
+    id: string;
+    status: 'wait' | 'scaned' | 'need_verifycode' | 'verify_code_blocked' | 'scaned_but_redirect' | 'expired' | 'binded_redirect' | 'confirmed';
+    qrContent: string;
+    active: boolean;
+    reason?: string;
 };
 
 export type Telegram = {
@@ -1131,6 +1147,85 @@ export type SetProviderResponses = {
 };
 
 export type SetProviderResponse = SetProviderResponses[keyof SetProviderResponses];
+
+export type BeginWechatLoginData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/wechat/login';
+};
+
+export type BeginWechatLoginErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type BeginWechatLoginError = BeginWechatLoginErrors[keyof BeginWechatLoginErrors];
+
+export type BeginWechatLoginResponses = {
+    /**
+     * QR login state.
+     */
+    200: WechatLogin;
+};
+
+export type BeginWechatLoginResponse = BeginWechatLoginResponses[keyof BeginWechatLoginResponses];
+
+export type PollWechatLoginData = {
+    body?: {
+        verifyCode?: string;
+    };
+    path: {
+        loginId: string;
+    };
+    query?: never;
+    url: '/api/settings/wechat/login/{loginId}/poll';
+};
+
+export type PollWechatLoginErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type PollWechatLoginError = PollWechatLoginErrors[keyof PollWechatLoginErrors];
+
+export type PollWechatLoginResponses = {
+    /**
+     * Current login state, with a new QR code when refreshed.
+     */
+    200: WechatLogin;
+};
+
+export type PollWechatLoginResponse = PollWechatLoginResponses[keyof PollWechatLoginResponses];
+
+export type DeleteWechatData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/wechat';
+};
+
+export type DeleteWechatErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteWechatError = DeleteWechatErrors[keyof DeleteWechatErrors];
+
+export type DeleteWechatResponses = {
+    /**
+     * WeChat is off.
+     */
+    200: Ok;
+};
+
+export type DeleteWechatResponse = DeleteWechatResponses[keyof DeleteWechatResponses];
 
 export type DeleteTelegramData = {
     body?: never;

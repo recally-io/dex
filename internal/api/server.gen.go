@@ -21,6 +21,7 @@ import (
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/settings"
+	"github.com/recally-io/dex/internal/wechat"
 	"github.com/recally-io/dex/internal/worker"
 )
 
@@ -715,6 +716,7 @@ type Settings struct {
 	// Providers The providers that the user added, in the order of addition.
 	Providers []Provider `json:"providers"`
 	Telegram  Telegram   `json:"telegram"`
+	Wechat    Wechat     `json:"wechat"`
 }
 
 // Skill defines model for Skill.
@@ -819,11 +821,22 @@ type UserItem struct {
 // UserItemKind defines model for UserItem.Kind.
 type UserItemKind string
 
+// Wechat defines model for Wechat.
+type Wechat = settings.Wechat
+
+// WechatLogin defines model for WechatLogin.
+type WechatLogin = wechat.LoginView
+
 // AutomationId defines model for AutomationId.
 type AutomationId = string
 
 // ChatId defines model for ChatId.
 type ChatId = int64
+
+// PollWechatLoginJSONBody defines parameters for PollWechatLogin.
+type PollWechatLoginJSONBody struct {
+	VerifyCode *string `json:"verifyCode,omitempty"`
+}
 
 // CreateUploadMultipartBody defines parameters for CreateUpload.
 type CreateUploadMultipartBody struct {
@@ -868,6 +881,9 @@ type SetProviderJSONRequestBody = ProviderInput
 
 // SetTelegramJSONRequestBody defines body for SetTelegram for application/json ContentType.
 type SetTelegramJSONRequestBody = TelegramInput
+
+// PollWechatLoginJSONRequestBody defines body for PollWechatLogin for application/json ContentType.
+type PollWechatLoginJSONRequestBody PollWechatLoginJSONBody
 
 // CreateUploadMultipartRequestBody defines body for CreateUpload for multipart/form-data ContentType.
 type CreateUploadMultipartRequestBody CreateUploadMultipartBody
@@ -1355,6 +1371,15 @@ type ServerInterface interface {
 
 	// (PUT /api/settings/telegram)
 	SetTelegram(w http.ResponseWriter, r *http.Request)
+
+	// (DELETE /api/settings/wechat)
+	DeleteWechat(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/settings/wechat/login)
+	BeginWechatLogin(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/settings/wechat/login/{loginId}/poll)
+	PollWechatLogin(w http.ResponseWriter, r *http.Request, loginId string)
 
 	// (POST /api/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request)
@@ -1978,6 +2003,60 @@ func (siw *ServerInterfaceWrapper) SetTelegram(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteWechat operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWechat(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWechat(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginWechatLogin operation middleware
+func (siw *ServerInterfaceWrapper) BeginWechatLogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginWechatLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PollWechatLogin operation middleware
+func (siw *ServerInterfaceWrapper) PollWechatLogin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "loginId" -------------
+	var loginId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "loginId", r.PathValue("loginId"), &loginId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "loginId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PollWechatLogin(w, r, loginId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateUpload operation middleware
 func (siw *ServerInterfaceWrapper) CreateUpload(w http.ResponseWriter, r *http.Request) {
 
@@ -2158,6 +2237,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/agent", wrapper.SetAgent)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.DeleteProvider)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.SetProvider)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/wechat/login", wrapper.BeginWechatLogin)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/wechat/login/{loginId}/poll", wrapper.PollWechatLogin)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/wechat", wrapper.DeleteWechat)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/telegram", wrapper.DeleteTelegram)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/telegram", wrapper.SetTelegram)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/feishu", wrapper.DeleteFeishu)
@@ -3833,6 +3915,122 @@ func (response SetTelegramdefaultJSONResponse) VisitSetTelegramResponse(w http.R
 	return err
 }
 
+type DeleteWechatRequestObject struct {
+}
+
+type DeleteWechatResponseObject interface {
+	VisitDeleteWechatResponse(w http.ResponseWriter) error
+}
+
+type DeleteWechat200JSONResponse Ok
+
+func (response DeleteWechat200JSONResponse) VisitDeleteWechatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWechatdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteWechatdefaultJSONResponse) VisitDeleteWechatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginWechatLoginRequestObject struct {
+}
+
+type BeginWechatLoginResponseObject interface {
+	VisitBeginWechatLoginResponse(w http.ResponseWriter) error
+}
+
+type BeginWechatLogin200JSONResponse WechatLogin
+
+func (response BeginWechatLogin200JSONResponse) VisitBeginWechatLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginWechatLogindefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginWechatLogindefaultJSONResponse) VisitBeginWechatLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollWechatLoginRequestObject struct {
+	LoginId string `json:"loginId"`
+	Body    *PollWechatLoginJSONRequestBody
+}
+
+type PollWechatLoginResponseObject interface {
+	VisitPollWechatLoginResponse(w http.ResponseWriter) error
+}
+
+type PollWechatLogin200JSONResponse WechatLogin
+
+func (response PollWechatLogin200JSONResponse) VisitPollWechatLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollWechatLogindefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response PollWechatLogindefaultJSONResponse) VisitPollWechatLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateUploadRequestObject struct {
 	Body *multipart.Reader
 }
@@ -4073,6 +4271,15 @@ type StrictServerInterface interface {
 
 	// (PUT /api/settings/telegram)
 	SetTelegram(ctx context.Context, request SetTelegramRequestObject) (SetTelegramResponseObject, error)
+
+	// (DELETE /api/settings/wechat)
+	DeleteWechat(ctx context.Context, request DeleteWechatRequestObject) (DeleteWechatResponseObject, error)
+
+	// (POST /api/settings/wechat/login)
+	BeginWechatLogin(ctx context.Context, request BeginWechatLoginRequestObject) (BeginWechatLoginResponseObject, error)
+
+	// (POST /api/settings/wechat/login/{loginId}/poll)
+	PollWechatLogin(ctx context.Context, request PollWechatLoginRequestObject) (PollWechatLoginResponseObject, error)
 
 	// (POST /api/uploads)
 	CreateUpload(ctx context.Context, request CreateUploadRequestObject) (CreateUploadResponseObject, error)
@@ -5020,6 +5227,90 @@ func (sh *strictHandler) SetTelegram(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetTelegramResponseObject); ok {
 		if err := validResponse.VisitSetTelegramResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteWechat operation middleware
+func (sh *strictHandler) DeleteWechat(w http.ResponseWriter, r *http.Request) {
+	var request DeleteWechatRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteWechat(ctx, request.(DeleteWechatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteWechat")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteWechatResponseObject); ok {
+		if err := validResponse.VisitDeleteWechatResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginWechatLogin operation middleware
+func (sh *strictHandler) BeginWechatLogin(w http.ResponseWriter, r *http.Request) {
+	var request BeginWechatLoginRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginWechatLogin(ctx, request.(BeginWechatLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginWechatLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginWechatLoginResponseObject); ok {
+		if err := validResponse.VisitBeginWechatLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PollWechatLogin operation middleware
+func (sh *strictHandler) PollWechatLogin(w http.ResponseWriter, r *http.Request, loginId string) {
+	var request PollWechatLoginRequestObject
+
+	request.LoginId = loginId
+
+	var body PollWechatLoginJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PollWechatLogin(ctx, request.(PollWechatLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PollWechatLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PollWechatLoginResponseObject); ok {
+		if err := validResponse.VisitPollWechatLoginResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

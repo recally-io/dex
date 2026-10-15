@@ -46,6 +46,7 @@ test("user sees Feishu runtime status in the channels list", async () => {
     builtins: [],
     apis: {},
     telegram: { enabled: false, allowedUsers: [], status: { state: "off" } },
+    wechat: { enabled: false, status: { state: "off" } },
   });
   client.setQueryData(getFeishuOptions().queryKey, {
     brand: "feishu",

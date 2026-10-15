@@ -13,6 +13,7 @@ import {
 } from "../api/generated/@tanstack/react-query.gen";
 import { errorText, refreshSettings } from "../lib/queries";
 import { useApp } from "../lib/app-state";
+import { WechatChannel } from "../components/wechat-channel";
 import { Confirm } from "../components/confirm";
 import { Modal } from "../components/dialog";
 import { Failure, Spinner } from "../components/feedback";
@@ -23,10 +24,7 @@ import { StatusPill } from "../components/atoms/StatusPill";
 import { FeishuChannel } from "./feishu";
 import { WithSettings } from "./agent";
 
-const unsupported = [
-  { name: "Slack", text: "dex cannot connect to Slack in this version." },
-  { name: "WeChat", text: "dex cannot connect to WeChat in this version." },
-];
+const unsupported = [{ name: "Slack", text: "dex cannot connect to Slack in this version." }];
 
 function OnOff({ on }: { on: boolean }) {
   return (
@@ -139,7 +137,8 @@ export function ChannelsPage() {
                   </div>
                 </Panel>
               </Section>
-              <Section n={2} title="Not yet available" caption="dex does not support these channels now.">
+              <WechatChannel settings={settings} />
+              <Section n={3} title="Not yet available" caption="dex does not support these channels now.">
                 <Panel>
                   <div className="divide-y divide-line opacity-80">
                     {unsupported.map((c) => (
@@ -154,7 +153,7 @@ export function ChannelsPage() {
                   </div>
                 </Panel>
               </Section>
-              <Section n={3} title="Rules" caption="The same for every channel.">
+              <Section n={4} title="Rules" caption="The same for every channel.">
                 <Panel>
                   <Facts
                     rows={[
