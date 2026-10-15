@@ -3,6 +3,7 @@ package telegram
 import (
 	"html"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"unicode/utf16"
@@ -55,21 +56,9 @@ func renderNode(n ast.Node, source []byte, out *[]fragment) {
 		return
 	case *ast.CodeSpan:
 		open, end = "<code>", "</code>"
-	case *ast.FencedCodeBlock:
-		open, end = "<pre><code>", "</code></pre>"
-		*out = append(*out, fragment{open: open, close: end})
-		for i := 0; i < n.Lines().Len(); i++ {
-			line := n.Lines().At(i)
-			*out = append(*out, fragment{text: string(line.Value(source))})
-		}
-		*out = append(*out, fragment{close: end})
-		return
-	case *ast.CodeBlock:
+	case *ast.FencedCodeBlock, *ast.CodeBlock:
 		*out = append(*out, fragment{open: "<pre><code>", close: "</code></pre>"})
-		for i := 0; i < n.Lines().Len(); i++ {
-			line := n.Lines().At(i)
-			*out = append(*out, fragment{text: string(line.Value(source))})
-		}
+		*out = append(*out, fragment{text: string(n.Lines().Value(source))})
 		*out = append(*out, fragment{close: "</code></pre>"})
 		return
 	case *ast.Emphasis:
@@ -183,20 +172,4 @@ func splitHTML(tokens []fragment) []string {
 	return parts
 }
 
-func stripTags(s string) string {
-	var out strings.Builder
-	inTag := false
-	for _, r := range s {
-		switch r {
-		case '<':
-			inTag = true
-		case '>':
-			inTag = false
-		default:
-			if !inTag {
-				out.WriteRune(r)
-			}
-		}
-	}
-	return out.String()
-}
+var htmlTags = regexp.MustCompile(`<[^>]*>`)

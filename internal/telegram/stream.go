@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json/v2"
 	"io"
+	"slices"
 	"strings"
 	"time"
 )
@@ -18,9 +19,10 @@ type preview struct {
 }
 
 type streamItem struct {
-	ID   string `json:"id"`
-	Kind string `json:"kind"`
-	Text string `json:"text"`
+	Queued bool   `json:"queued"`
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Text   string `json:"text"`
 }
 type streamEvent struct {
 	Type  string       `json:"type"`
@@ -35,14 +37,14 @@ func (b *Bot) startPreview(ctx context.Context, key string, chatID int64) {
 	if b.cfg.Watch == nil {
 		return
 	}
+	b.previewMu.Lock()
+	defer b.previewMu.Unlock()
 	ctx, cancel := context.WithCancel(ctx)
 	id, reader, err := b.cfg.Watch(ctx, key)
 	if err != nil || reader == nil {
 		cancel()
 		return
 	}
-	b.previewMu.Lock()
-	defer b.previewMu.Unlock()
 	if b.previews[id] != nil {
 		_ = reader.Close()
 		cancel()
@@ -50,15 +52,13 @@ func (b *Bot) startPreview(ctx context.Context, key string, chatID int64) {
 	}
 	p := &preview{cancel: cancel, done: make(chan struct{})}
 	b.previews[id] = p
-	b.previewWG.Go(func() { defer close(p.done); b.watchPreview(ctx, id, chatID, p, reader) })
+	go func() { defer close(p.done); b.watchPreview(ctx, id, chatID, p, reader) }()
 }
 
 func (b *Bot) watchPreview(ctx context.Context, id string, chatID int64, p *preview, reader io.ReadCloser) {
 	var err error
 	var random [4]byte
-	if _, err := rand.Read(random[:]); err != nil {
-		return
-	}
+	_, _ = rand.Read(random[:])
 	draftID := int(binary.BigEndian.Uint32(random[:])&0x3fffffff) + 1
 	_ = b.call(ctx, "sendChatAction", map[string]any{"chat_id": chatID, "action": "typing"}, nil)
 	defer func() { _ = reader.Close() }()
@@ -104,8 +104,11 @@ func (b *Bot) watchPreview(ctx context.Context, id string, chatID int64, p *prev
 			}
 			switch ev.Type {
 			case "snapshot":
-				items = ev.Items
+				items = slices.DeleteFunc(ev.Items, func(item streamItem) bool { return item.Kind == "user" && item.Queued })
 			case "item":
+				if ev.Item.Kind == "user" && ev.Item.Queued {
+					continue
+				}
 				found := false
 				for i := range items {
 					if items[i].ID == ev.Item.ID {
@@ -193,8 +196,10 @@ func (b *Bot) closePreviews() {
 	for _, p := range b.previews {
 		p.cancel()
 	}
-	b.previewMu.Unlock()
-	b.previewWG.Wait()
+	defer b.previewMu.Unlock()
+	for _, p := range b.previews {
+		<-p.done
+	}
 }
 
 func (b *Bot) forgetPreview(id string) {

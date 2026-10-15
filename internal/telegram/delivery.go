@@ -41,9 +41,7 @@ func (b *Bot) Send(ctx context.Context, key, deliveryID string, index int, part 
 	}
 	var previewID int64
 	if index == 0 {
-		b.ingressMu.Lock()
 		previewID = b.stopPreview(deliveryID)
-		b.ingressMu.Unlock()
 	}
 	method := "sendMessage"
 	params := map[string]any{"chat_id": chatID, "text": part, "parse_mode": "HTML"}
@@ -74,7 +72,7 @@ func (b *Bot) sendFormatted(ctx context.Context, method string, params map[strin
 			return nil
 		}
 		delete(params, "parse_mode")
-		params["text"] = html.UnescapeString(stripTags(text))
+		params["text"] = html.UnescapeString(htmlTags.ReplaceAllString(text, ""))
 		err = b.call(ctx, method, params, nil)
 		if e, ok := errors.AsType[*apiError](err); ok && e.Code == 400 && method == "editMessageText" && strings.Contains(e.Description, "message is not modified") {
 			return nil

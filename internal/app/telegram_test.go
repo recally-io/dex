@@ -18,12 +18,16 @@ import (
 	"time"
 	"unicode/utf16"
 	"uuid"
+
+	"github.com/recally-io/dex/internal/settings"
 )
 
 // fakeTelegram is a Bot API server. Telegram is a system boundary, so the tests use a fake instead
 // of the real service. getUpdates returns every queued update with an ID at or above the offset,
 // as Telegram does.
 type fakeTelegram struct {
+	fileGate      <-chan struct{}
+	draftGate     <-chan struct{}
 	permanentChat atomic.Int64
 	failAfter     atomic.Int64
 	sendCount     atomic.Int64
@@ -88,6 +92,14 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
+		if f.fileGate != nil {
+			f.events <- platformEvent{Method: "download", Text: name}
+			select {
+			case <-f.fileGate:
+			case <-r.Context().Done():
+				return
+			}
+		}
 		_, _ = w.Write([]byte(body))
 		return
 	}
@@ -108,6 +120,14 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 	if failure.Code != 0 {
 		_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": failure.Code, "description": "test platform failure", "parameters": map[string]any{"retry_after": failure.Retry}})
 		return
+	}
+	if method == "sendMessageDraft" && f.draftGate != nil {
+		f.events <- platformEvent{Method: "draftStarted"}
+		select {
+		case <-f.draftGate:
+		case <-r.Context().Done():
+			return
+		}
 	}
 	var result any = true
 	switch method {
@@ -386,22 +406,22 @@ func TestUserGetsPlainTelegramAnswerWhenHTMLIsRejected(t *testing.T) {
 	f.rejectHTML = true
 	startTelegram(t, f, t.TempDir(), 42)
 	// When an answer contains Markdown.
-	f.message(1, 42, 7, "**bold** & `<safe>`")
+	f.message(1, 42, 7, "**bold** & `<safe>` [link](https://example.com/?x=1&y=2)")
 	// Then the bot sends the same text without markup.
 	got := f.next(t)
-	if got.Text != "echo: bold & <safe>" || got.ParseMode != "" {
+	if got.Text != "echo: bold & <safe> link" || got.ParseMode != "" {
 		t.Fatalf("plain fallback = %+v", got)
 	}
 }
 
-func TestUserGetsTelegramAnswerAfterShortFloodWait(t *testing.T) {
-	// Given a Bot API that asks the sender to wait one second.
+func TestUserGetsTelegramAnswerAfterDurableFloodRetry(t *testing.T) {
+	// Given a Bot API that rejects the first final send with 429.
 	f := newFakeTelegram(t)
 	f.failures["sendMessage"] = []platformFailure{{Code: 429, Retry: 1}}
 	startTelegram(t, f, t.TempDir(), 42)
 	// When the owner sends a message.
 	f.message(1, 42, 7, "hi")
-	// Then the retry succeeds.
+	// Then the shared durable sender retries and delivers the answer.
 	if got := f.next(t); got.Text != "echo: hi" {
 		t.Fatalf("retry answer = %+v", got)
 	}
@@ -623,9 +643,9 @@ func TestUserCannotSendOversizeTelegramDocument(t *testing.T) {
 }
 
 func TestUserSeesInvalidTelegramTokenStatus(t *testing.T) {
-	// Given a Bot API that rejects getMe.
+	// Given a Bot API that rejects getUpdates.
 	f := newFakeTelegram(t)
-	f.failures["getMe"] = []platformFailure{{Code: 401}}
+	f.failures["getUpdates"] = []platformFailure{{Code: 401}}
 	d := startTelegram(t, f, t.TempDir(), 42)
 	// When the Channels page reads runtime status.
 	// Then it sees an error without the bot token.
@@ -645,32 +665,14 @@ func TestUserSeesTelegramPollingErrorAndRecovery(t *testing.T) {
 
 func waitTelegramState(t *testing.T, d *dex, state string) {
 	t.Helper()
-	deadline := time.NewTimer(15 * time.Second)
-	defer deadline.Stop()
-	ticker := time.NewTicker(20 * time.Millisecond)
-	defer ticker.Stop()
-	var last string
-	for {
-		var settings struct {
-			Telegram struct {
-				Status struct {
-					State  string `json:"state"`
-					Reason string `json:"reason"`
-				} `json:"status"`
-			} `json:"telegram"`
+	eventually(t, "Telegram status "+state, func() (bool, any) {
+		var got struct {
+			Telegram settings.Telegram `json:"telegram"`
 		}
-		d.must(t, http.MethodGet, "/api/settings", nil, &settings)
-		last = settings.Telegram.Status.State
-		if strings.Contains(settings.Telegram.Status.Reason, fakeToken) {
+		d.must(t, http.MethodGet, "/api/settings", nil, &got)
+		if strings.Contains(got.Telegram.Status.Reason, fakeToken) {
 			t.Fatal("status exposed the token")
 		}
-		if last == state {
-			return
-		}
-		select {
-		case <-deadline.C:
-			t.Fatalf("Telegram state = %q, want %q", last, state)
-		case <-ticker.C:
-		}
-	}
+		return got.Telegram.Status.State == state, got.Telegram.Status
+	})
 }

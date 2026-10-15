@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/upload"
 )
@@ -66,24 +67,17 @@ func (c Config) botID() string {
 	return id
 }
 
-// Submitter stores channel messages and executes shared commands.
-type Submitter interface {
-	Receive(ctx context.Context, peer, source string, msg chat.Message) error
-}
-
 // Bot is one Telegram bot that talks to one agent.
 type Bot struct {
 	cfg       Config
-	chats     Submitter
+	chats     *channel.Manager
 	client    *http.Client
-	ingressMu sync.Mutex
 	previewMu sync.Mutex
 	previews  map[string]*preview
-	previewWG sync.WaitGroup
 }
 
 // New returns a Bot. Register it with the channel manager to start it.
-func New(cfg Config, chats Submitter) *Bot {
+func New(cfg Config, chats *channel.Manager) *Bot {
 	if cfg.APIURL == "" {
 		cfg.APIURL = "https://api.telegram.org"
 	}
@@ -97,9 +91,6 @@ func New(cfg Config, chats Submitter) *Bot {
 
 // Run receives messages and sends replies until ctx is done.
 func (b *Bot) Run(ctx context.Context) error {
-	if _, err := Username(ctx, b.cfg); err != nil {
-		return err
-	}
 	if err := b.call(ctx, "setMyCommands", map[string]any{"commands": []map[string]string{
 		{"command": "new", "description": "Start a new conversation"},
 		{"command": "stop", "description": "Stop the current conversation"},
@@ -153,6 +144,9 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		return nil
 	}
 	if code, ok := strings.CutPrefix(m.Text, "/start "); ok && b.cfg.Pair != nil {
+		if slices.Contains(b.cfg.AllowedUsers, m.From.ID) {
+			return b.controlReply(ctx, m.Chat.ID, "Telegram is already paired. Send a message to talk to dex.")
+		}
 		users, err := b.cfg.Pair(ctx, strings.TrimSpace(code), m.From.ID)
 		if err != nil {
 			return err
@@ -162,14 +156,12 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 			b.cfg.AllowedUsers = users
 			response = "Telegram is paired. Send a message to talk to dex. /help lists commands."
 		}
-		return b.call(ctx, "sendMessage", map[string]any{"chat_id": m.Chat.ID, "text": response}, nil)
+		return b.controlReply(ctx, m.Chat.ID, response)
 	}
 	if !slices.Contains(b.cfg.AllowedUsers, m.From.ID) {
 		slog.Warn("telegram: ignored a message from a user who is not allowed", "user", m.From.ID)
 		return nil
 	}
-	b.ingressMu.Lock()
-	defer b.ingressMu.Unlock()
 	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
 	if (m.Document != nil || len(m.Photo) > 0) && b.cfg.Seen != nil {
 		seen, err := b.cfg.Seen(ctx, source)
@@ -189,7 +181,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		if !permanent {
 			return err
 		}
-		return b.call(ctx, "sendMessage", map[string]any{"chat_id": m.Chat.ID, "text": "Cannot read this attachment. Use a photo or document under 20 MB."}, nil)
+		return b.controlReply(ctx, m.Chat.ID, "Cannot read this attachment. Use a photo or document under 20 MB.")
 	}
 	content := m.Text
 	if content == "" {
@@ -208,27 +200,21 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 type apiError struct {
 	Code        int
 	Description string
-	RetryAfter  int
 }
 
 func (e *apiError) Error() string { return fmt.Sprintf("Telegram API %d: %s", e.Code, e.Description) }
 
-func (b *Bot) call(ctx context.Context, method string, params, result any) error {
-	err := b.request(ctx, method, params, result)
-	if e, ok := errors.AsType[*apiError](err); ok && e.Code == 429 && e.RetryAfter > 0 && e.RetryAfter <= 5 {
-		timer := time.NewTimer(time.Duration(e.RetryAfter) * time.Second)
-		defer timer.Stop()
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-timer.C:
-		}
-		return b.request(ctx, method, params, result)
+// controlReply allows polling to pass a permanently rejected acknowledgement.
+func (b *Bot) controlReply(ctx context.Context, chatID int64, text string) error {
+	err := b.call(ctx, "sendMessage", map[string]any{"chat_id": chatID, "text": text}, nil)
+	if e, ok := errors.AsType[*apiError](err); ok && (e.Code == 400 || e.Code == 403) {
+		slog.Warn("telegram: skipped a rejected control reply", "err", err)
+		return nil
 	}
 	return err
 }
 
-func (b *Bot) request(ctx context.Context, method string, params, result any) error {
+func (b *Bot) call(ctx context.Context, method string, params, result any) error {
 	body, err := json.Marshal(params)
 	if err != nil {
 		return err
@@ -253,15 +239,12 @@ func (b *Bot) request(ctx context.Context, method string, params, result any) er
 		Result      jsontext.Value `json:"result"`
 		Description string         `json:"description"`
 		Code        int            `json:"error_code"`
-		Parameters  struct {
-			RetryAfter int `json:"retry_after"`
-		} `json:"parameters"`
 	}
 	if err := json.UnmarshalRead(resp.Body, &out); err != nil {
 		return fmt.Errorf("telegram %s: HTTP %d: %w", method, resp.StatusCode, err)
 	}
 	if !out.OK {
-		return &apiError{Code: out.Code, Description: strings.ReplaceAll(out.Description, b.cfg.Token, "[redacted]"), RetryAfter: out.Parameters.RetryAfter}
+		return &apiError{Code: out.Code, Description: strings.ReplaceAll(out.Description, b.cfg.Token, "[redacted]")}
 	}
 	if result == nil {
 		return nil

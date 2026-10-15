@@ -258,10 +258,8 @@ UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE id = 1;
 
 -- name: PairTelegramOwner :one
 UPDATE telegram_settings
-SET allowed_users = CASE WHEN instr(',' || allowed_users || ',', ',' || CAST(sqlc.arg(user_id) AS TEXT) || ',') > 0 THEN allowed_users
-    WHEN allowed_users = '' THEN CAST(sqlc.arg(user_id) AS TEXT)
-    ELSE allowed_users || ',' || CAST(sqlc.arg(user_id) AS TEXT) END,
+SET allowed_users = CAST(sqlc.arg(user_id) AS TEXT),
     pairing_code = '', pairing_expires = 0
-WHERE id = 1 AND token = sqlc.arg(token) AND pairing_code = sqlc.arg(code)
+WHERE id = 1 AND allowed_users = '' AND token = sqlc.arg(token) AND pairing_code = sqlc.arg(code)
     AND pairing_code <> '' AND pairing_expires > sqlc.arg(now)
 RETURNING allowed_users;

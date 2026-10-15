@@ -278,9 +278,12 @@ so dex needs no public URL.
   ignores all non-private chats, including messages from allowed users.
 - The Channels page creates a link with the bot username from `getMe` and a
   random code. The code expires after 10 minutes. `telegram_settings` stores
-  the code and expiry. One SQLite update adds the owner and clears the code.
+  the code and expiry. Pairing is available only while the allowlist is empty. One atomic SQLite
+  update sets the owner as the only allowed user and clears the code.
   Invalid or expired codes create no user or chat. A new link or settings
   change cancels the previous code. Manual user-ID entry remains available.
+  An allowed user who repeats a pairing command receives an already-paired
+  reply, including after a lost acknowledgement or restart.
 - The bot registers `/new`, `/stop`, and `/help` with `setMyCommands`.
   The channel manager owns command execution and deduplication.
 - Each update has a stable source key: `telegram:<bot id>:<update id>`.
@@ -288,16 +291,24 @@ so dex needs no public URL.
 - Goldmark parses Markdown into Telegram HTML. The sender splits at block
   boundaries and closes code tags in each part. Each part has at most 4096
   UTF-16 code units, including markup. A rejected HTML part retries as plain
-  text. A 429 response retries once when `retry_after` is at most 5 seconds.
+  text. The shared durable sender retries final-send failures, including 429,
+  with a delay from 5 to 60 seconds. Markup and escaped characters count
+  toward the current splitter limit. This can produce more parts than
+  Telegram requires. Keep these boundaries stable for stored delivery progress.
 - Each pending submission has a worker watch through `live.Hub`. The bot
   updates a private draft at most once per second. If drafts fail, the bot
   sends one preview and edits it. Typing refreshes every 4 seconds. Previews
-  are best effort. The final reply uses the durable sender.
+  are best effort. Queued user items do not start answer segments. The final
+  reply stops and joins its preview before delivery. Preview registration and
+  final lookup use one lock; attachment downloads do not hold this lock.
 - Photos use the largest size. Documents and photos pass through
   `upload.Store`, with a 20 MB limit. Captions become message text. The agent
   and web transcript use the same upload record.
-- `getMe` checks the token at start. Poll errors and recovery update runtime
-  status on the Channels page. Tokens do not appear in status reasons.
+- Polling checks the token through `getUpdates`. A transient startup failure
+  does not stop the bot. Poll errors and recovery update runtime status on
+  the Channels page. Tokens do not appear in status reasons.
+- Pairing and attachment-rejection replies skip permanent 400/403 failures
+  so later updates can proceed. Transient failures leave the update for retry.
 
 ## Shared channels
 

@@ -310,13 +310,9 @@ function Telegram({ settings, telegramChats }: { settings: Settings; telegramCha
             {telegram.status.reason ?? "Send the bot a message to check reply delivery."}
           </Note>
         </div>
-        {telegram.enabled ? (
+        {telegram.enabled && telegram.allowedUsers.length === 0 ? (
           <div className="mt-3 flex flex-col items-start gap-3">
-            <Note>
-              {telegram.allowedUsers.length === 0
-                ? "Pair your account to start. The bot ignores messages until an owner is paired."
-                : "Only share a pairing link with a person who can use the full agent."}
-            </Note>
+            <Note>Pair your account to start. The bot ignores messages until an owner is paired.</Note>
             <Button
               size="sm"
               variant="secondary"

@@ -25,14 +25,15 @@ func (s *Service) CreateTelegramPairing(ctx context.Context) (string, int64, err
 	if cfg == nil {
 		return "", 0, fmt.Errorf("%w: connect a Telegram bot first", ErrInvalid)
 	}
+	if len(cfg.AllowedUsers) != 0 {
+		return "", 0, fmt.Errorf("%w: Telegram already has an owner", ErrInvalid)
+	}
 	username, err := telegram.Username(ctx, *cfg)
 	if err != nil {
 		return "", 0, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	code := make([]byte, 24)
-	if _, err = rand.Read(code); err != nil {
-		return "", 0, err
-	}
+	_, _ = rand.Read(code)
 	value := hex.EncodeToString(code)
 	expires := time.Now().Add(10 * time.Minute).Unix()
 	if err = s.q.SetTelegramPairing(ctx, sqlc.SetTelegramPairingParams{PairingCode: value, PairingExpires: expires}); err != nil {

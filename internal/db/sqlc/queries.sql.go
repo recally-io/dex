@@ -988,11 +988,9 @@ func (q *Queries) ListProviders(ctx context.Context) ([]Provider, error) {
 
 const pairTelegramOwner = `-- name: PairTelegramOwner :one
 UPDATE telegram_settings
-SET allowed_users = CASE WHEN instr(',' || allowed_users || ',', ',' || CAST(?1 AS TEXT) || ',') > 0 THEN allowed_users
-    WHEN allowed_users = '' THEN CAST(?1 AS TEXT)
-    ELSE allowed_users || ',' || CAST(?1 AS TEXT) END,
+SET allowed_users = CAST(?1 AS TEXT),
     pairing_code = '', pairing_expires = 0
-WHERE id = 1 AND token = ?2 AND pairing_code = ?3
+WHERE id = 1 AND allowed_users = '' AND token = ?2 AND pairing_code = ?3
     AND pairing_code <> '' AND pairing_expires > ?4
 RETURNING allowed_users
 `
