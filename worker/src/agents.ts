@@ -1,4 +1,5 @@
 import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message, Models } from "@earendil-works/pi-ai";
@@ -8,20 +9,26 @@ import {
 	type ConversationId,
 	createRegistry,
 	Harness,
+	type Registry,
 	type Submission,
 	watchEvents,
 	type AgentEventStream,
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
+import { AgentExtensions, type Loaded } from "./extensions.ts";
 import { MemoryRepo } from "./memory.ts";
 import { ChatView, messageText, USER_ENTRY } from "./view.ts";
 import type {
 	AbortParams,
+	AgentParams,
 	ChatStreamEvent,
 	CreateConversationParams,
 	CreateConversationResult,
+	Extensions,
+	ReloadResult,
 	SettledEvent,
 	SubmitParams,
 	SubmitResult,
@@ -35,6 +42,11 @@ const context = BACKGROUND_CONTEXT;
 
 // Agent IDs become directory names.
 const AGENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+const ToolSearch = createToolSearchExtension();
+
+/** The extension files of an open agent, its registry, and the catalog loaded from them. */
+type AgentState = { readonly files: AgentExtensions; readonly registry: Registry; loaded: Loaded };
 
 /**
  * Owns one pi-durable Harness per agent, opened on first use. pi-durable allows one process per
@@ -53,6 +65,7 @@ export class Agents {
 	readonly #watches = new Map<string, AgentEventStream>();
 	readonly #pendingWatches = new Map<string, AbortController>();
 	readonly #harnesses = new Map<string, Promise<Harness>>();
+	readonly #agents = new Map<string, AgentState>();
 	// The tail of each conversation's submit chain; see #serial.
 	readonly #chains = new Map<string, Promise<unknown>>();
 	#checking = false;
@@ -262,6 +275,43 @@ export class Agents {
 		return {};
 	}
 
+	/** The agent's skills and MCP servers. It does not start an agent that is not open. */
+	async extensions(params: AgentParams): Promise<Extensions> {
+		return this.#agents.get(params.agentId)?.loaded.info ?? this.#files(params.agentId).declared();
+	}
+
+	/** Reads the extension files again and reconnects the MCP servers, only when the agent is idle. */
+	reloadExtensions(params: AgentParams): Promise<ReloadResult> {
+		return this.#admit(() => this.#serial(`reload/${params.agentId}`, () => this.#reload(params.agentId)));
+	}
+
+	async #reload(agentId: string): Promise<ReloadResult> {
+		const harness = await this.#harness(agentId);
+		const state = this.#agents.get(agentId);
+		if (state === undefined) throw new Error(`agent ${agentId} is not open`);
+		// A run that changes its tools between two turns could call a tool of the new server with the
+		// arguments that it planned for the old one.
+		const { tasks, submissions } = await harness.inspect(context);
+		if (tasks.length > 0 || submissions.length > 0)
+			return { status: "busy", reason: "the agent has unfinished work; reload when it is done" };
+		const next = await state.files.load();
+		if (next.info.errors.length > 0) {
+			await next.close();
+			return { status: "invalid", reason: next.info.errors.join("\n") };
+		}
+		const previous = state.loaded;
+		install(state.registry, next);
+		state.loaded = next;
+		await previous.close();
+		return { status: "loaded", extensions: next.info };
+	}
+
+	#files(agentId: string): AgentExtensions {
+		if (!AGENT_ID.test(agentId)) throw new Error(`invalid agent ID: ${agentId}`);
+		const dir = join(this.#dataDir, "agents", agentId);
+		return new AgentExtensions(homedir(), dir, join(dir, "workspace"));
+	}
+
 	async #conversation(agentId: string, conversationId: number): Promise<Conversation> {
 		const harness = await this.#harness(agentId);
 		// The ID came from this worker's own createConversation; pi-durable brands IDs only at its own boundaries.
@@ -292,6 +342,8 @@ export class Agents {
 				await harness?.close(context);
 			}),
 		);
+		await Promise.all([...this.#agents.values()].map((state) => state.loaded.close()));
+		this.#agents.clear();
 	}
 
 	// Runs in the background after submit() returns. A replayed requestId finds the same
@@ -335,20 +387,38 @@ export class Agents {
 		registry.install(CodingTools);
 		await this.#memory.open();
 		registry.install(this.#memory.extension((id) => this.#sources.get(`${agentId}/${id}`)));
-		const harness = await Harness.open(
-			await openNodeSqliteStorage(join(dir, "state.sqlite")),
-			{
-				models: this.#models,
-				registry,
-				// No sandbox: tools run on the host, inside the agent workspace.
-				env: ({ cwd }) => new NodeExecutionEnv({ cwd: cwd ?? workspace }),
-				onReport: (error) => console.error(`agent ${agentId}:`, error),
-			},
-			context,
-		);
+		// A run that resumes after a restart needs its MCP tools, so they load before resume().
+		const files = this.#files(agentId);
+		const loaded = await files.load();
+		install(registry, loaded);
+		for (const error of loaded.info.errors) console.error(`agent ${agentId} extensions:`, error);
+		let harness: Harness;
+		try {
+			harness = await Harness.open(
+				await openNodeSqliteStorage(join(dir, "state.sqlite")),
+				{
+					models: this.#models,
+					registry,
+					// No sandbox: tools run on the host, inside the agent workspace.
+					env: ({ cwd }) => new NodeExecutionEnv({ cwd: cwd ?? workspace }),
+					onReport: (error) => console.error(`agent ${agentId}:`, error),
+				},
+				context,
+			);
+		} catch (error) {
+			await loaded.close();
+			throw error;
+		}
+		this.#agents.set(agentId, { files, registry, loaded });
 		harness.resume();
 		return harness;
 	}
+}
+
+function install(registry: Registry, loaded: Loaded): void {
+	registry.install(loaded.extension);
+	if (loaded.hasTools) registry.install(ToolSearch);
+	else registry.uninstall(ToolSearch);
 }
 
 function answerText(message: Message | undefined): string {

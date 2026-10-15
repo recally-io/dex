@@ -21,6 +21,7 @@ import (
 
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/mcptest"
 )
 
 // These tests run the real embedded worker with pi-ai's faux provider: model faux/echo answers
@@ -38,6 +39,14 @@ type dex struct {
 var cacheDir string
 
 func TestMain(m *testing.M) {
+	// The tests start this binary as a stdio MCP server; see mcpServer.
+	if dir := os.Getenv("DEX_TEST_MCP_DIR"); dir != "" {
+		if err := (&mcptest.Server{Dir: dir}).ServeStdio(os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	dir, err := os.MkdirTemp("", "dex-app-test-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -59,8 +68,14 @@ func startDex(t *testing.T, dataDir, telegramURL string) *dex {
 // startDexWith starts dex with cfg, a cache directory, and the test worker environment.
 func startDexWith(t *testing.T, cfg app.Config) *dex {
 	t.Helper()
+	return startDexHome(t, cfg, t.TempDir())
+}
+
+// startDexHome starts dex as startDexWith does, with home as the worker's HOME.
+func startDexHome(t *testing.T, cfg app.Config, home string) *dex {
+	t.Helper()
 	cfg.CacheDir = cacheDir
-	cfg.WorkerEnv = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "DEX_FAKE_MODEL=1"}
+	cfg.WorkerEnv = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "DEX_FAKE_MODEL=1"}
 	a, err := app.Start(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)

@@ -21,7 +21,7 @@ data.
 | `internal/telegram`   | Telegram bot: long polling, user allowlist, reply delivery       |
 | `internal/settings`   | Settings from the web UI: validate, save, apply to worker or bot |
 | `web`                 | The web UI: React (Vite+), built into `web/dist`, embedded       |
-| `worker`              | The Bun worker: one pi-durable Harness per agent                 |
+| `worker`              | The Bun worker: one pi-durable Harness per agent, its extensions |
 | `internal/workerbin`  | The compiled worker, gzipped, embedded (`mise run build:worker`) |
 
 ## Rules
@@ -32,8 +32,9 @@ data.
   `internal/worker/protocol.go`. Change both in one commit. The worker
   validates every request with TypeBox at its stdin boundary.
 - The worker writes only protocol lines to stdout. Logs go to stderr.
-- Only the worker opens an agent directory (`<data dir>/agents/<id>/`).
-  pi-durable allows one process per storage.
+- Only the worker opens an agent's pi-durable storage
+  (`<data dir>/agents/<id>/state.sqlite`); pi-durable allows one process per
+  storage. The worker also owns the agent's extension files.
 - `@earendil-works/pi-*` packages are experimental and change their API
   between releases. Pin exact versions. Keep pi-durable calls in
   `worker/src/agents.ts` and `worker/src/models.ts`.
@@ -41,7 +42,8 @@ data.
   then a dependency the repository already has.
 - Settings live only in `control.sqlite` and change only through
   `internal/settings`. Do not add an environment variable or a file for a
-  setting. The worker gets provider credentials only through `configure`.
+  setting. The one exception is skills and MCP servers, which come from files
+  ([ADR 0008](../../docs/dev/decisions/0008-agent-extensions.md)). The worker gets provider credentials only through `configure`.
 - Do not edit generated code: `internal/db/sqlc/` (`mise run generate:db`),
   `internal/api/server.gen.go` and `web/src/api/generated/`
   (`mise run generate:api`).

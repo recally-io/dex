@@ -92,6 +92,48 @@ it uses the resolved path. If that path changes, run install from the new
 binary. Temporary builds, including `go run`, cannot install a service.
 Other operating systems are not supported.
 
+## Skills and MCP servers
+
+dex reads skills and MCP servers from files, for all agents and for one agent:
+
+| Scope  | Skills                               | MCP servers                   |
+| ------ | ------------------------------------ | ----------------------------- |
+| Global | `~/.agents/skills/<name>/SKILL.md`   | `~/.agents/mcp.json`          |
+| Agent  | `~/.dex/agents/<id>/skills/<name>/…` | `~/.dex/agents/<id>/mcp.json` |
+
+An agent entry replaces a global entry with the same name. A skill is a
+directory with a `SKILL.md` that starts with YAML front matter with a
+`description`. The prompt lists each skill; the agent reads the file when a
+task needs it. `mcp.json` has an `mcpServers` object, as in Claude Code and
+Cursor:
+
+```json
+{
+  "mcpServers": {
+    "files": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": { "Authorization": "Bearer <token>" }
+    },
+    "old": { "disabled": true }
+  }
+}
+```
+
+A stdio server gets `command`, `args`, `env`, and `cwd` (relative to the agent
+workspace). An HTTP server gets `url` and `headers`. In the agent file,
+`{ "disabled": true }` turns off a global server. OAuth and the legacy SSE
+transport are not supported.
+
+The Extensions page shows each skill and server, its scope, its state, and
+its errors. After you edit a file, select Reload. dex refuses a reload while
+the agent has work, and when a file is not valid. An MCP server runs as your
+user without a sandbox, and mcp.json keeps its credentials as plain text.
+
 ## Updates
 
 ```sh

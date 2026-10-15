@@ -412,6 +412,74 @@ export type Model = {
     thinkingLevels: Array<ThinkingLevel>;
 };
 
+export type Extensions = {
+    /**
+     * Where the agent reads its extensions.
+     */
+    paths: {
+        globalSkills: string;
+        globalMcp: string;
+        agentSkills: string;
+        agentMcp: string;
+    };
+    skills: Array<Skill>;
+    servers: Array<McpServer>;
+    /**
+     * Files that dex cannot read. When an mcp.json file is one of them, no MCP server starts.
+     *
+     */
+    errors: Array<string>;
+};
+
+/**
+ * global is ~/.agents/; agent is the agent directory.
+ */
+export type ExtensionScope = 'global' | 'agent';
+
+export type Skill = {
+    name: string;
+    description: string;
+    scope: ExtensionScope;
+    /**
+     * The SKILL.md file.
+     */
+    path: string;
+    /**
+     * The agent skill replaces a global skill with the same name.
+     */
+    overrides: boolean;
+    /**
+     * Why the skill is not valid. The prompt does not list it.
+     */
+    error?: string;
+};
+
+/**
+ * An MCP server from an mcp.json file, without its command, URL, headers or environment, because they can hold credentials.
+ *
+ */
+export type McpServer = {
+    name: string;
+    scope: ExtensionScope;
+    /**
+     * The agent server replaces a global server with the same name.
+     */
+    overrides: boolean;
+    /**
+     * Absent for an agent entry that only turns off a global server.
+     */
+    transport?: 'stdio' | 'http';
+    /**
+     * idle means that the agent has not started, so dex has not connected.
+     */
+    state: 'idle' | 'connected' | 'failed' | 'disabled';
+    /**
+     * The MCP tool names. The agent gets each tool as mcp__<server>__<tool>.
+     */
+    tools: Array<string>;
+    error?: string;
+};
+
 export type Telegram = {
     enabled: boolean;
     botId?: string;
@@ -827,6 +895,64 @@ export type GetUploadResponses = {
 };
 
 export type GetUploadResponse = GetUploadResponses[keyof GetUploadResponses];
+
+export type GetExtensionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/extensions';
+};
+
+export type GetExtensionsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetExtensionsError = GetExtensionsErrors[keyof GetExtensionsErrors];
+
+export type GetExtensionsResponses = {
+    /**
+     * The extensions.
+     */
+    200: Extensions;
+};
+
+export type GetExtensionsResponse = GetExtensionsResponses[keyof GetExtensionsResponses];
+
+export type ReloadExtensionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/extensions/reload';
+};
+
+export type ReloadExtensionsErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ReloadExtensionsError = ReloadExtensionsErrors[keyof ReloadExtensionsErrors];
+
+export type ReloadExtensionsResponses = {
+    /**
+     * The loaded extensions.
+     */
+    200: Extensions;
+};
+
+export type ReloadExtensionsResponse = ReloadExtensionsResponses[keyof ReloadExtensionsResponses];
 
 export type GetSettingsData = {
     body?: never;

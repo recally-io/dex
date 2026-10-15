@@ -26,7 +26,10 @@ import type { ConfigureResult, ModelInfo, ProviderInfo, ProviderSettings } from 
  * variables. With `DEX_FAKE_MODEL=1`, `faux/echo` and `faux/shout` answer "<model ID>: <last user
  * text>", and `faux/bash` runs the last user text with the bash tool and answers "bash: <output>".
  * In a dream, `faux/bash` appends the dream's JSON records to dreams.md in the memory repo.
- * `faux/memory` answers "memory: <the memory section of its system prompt>". `faux/think` is a
+ * `faux/memory` answers "memory: <the memory section of its system prompt>", and `faux/section`
+ * answers "section: <the section of its system prompt that the last user text names>".
+ * `faux/tool` takes "<tool name> <JSON arguments>": it loads the tool with tool_search, calls it,
+ * and answers "tool: <output>", or "tool error: <output>" for an error result. `faux/think` is a
  * reasoning model; it answers "think <thinking level that pi-ai sent>: <last user text>". Tests use
  * them so they need no provider credentials.
  */
@@ -45,6 +48,8 @@ export class Catalog {
 					{ id: "shout" },
 					{ id: "bash" },
 					{ id: "memory" },
+					{ id: "section" },
+					{ id: "tool" },
 					{ id: "think", reasoning: true },
 				],
 				// Streams the answer in small parts, as a real provider does.
@@ -53,7 +58,10 @@ export class Catalog {
 			// Each call consumes one scripted response, so the factory queues the next one.
 			const reply: FauxResponseFactory = (transcript, options, _state, model) => {
 				faux.appendResponses([reply]);
-				if (model.id === "memory") return fauxAssistantMessage(`memory: ${memorySection(transcript)}`);
+				if (model.id === "memory") return fauxAssistantMessage(`memory: ${section(transcript, "memory")}`);
+				if (model.id === "section")
+					return fauxAssistantMessage(`section: ${section(transcript, lastUserText(transcript))}`);
+				if (model.id === "tool") return toolStep(transcript);
 				if (model.id === "think") {
 					return fauxAssistantMessage(`think ${options?.reasoning ?? "off"}: ${lastUserText(transcript)}`);
 				}
@@ -228,12 +236,12 @@ function lastUserText(transcript: TranscriptContext): string {
 	return user.content.map((block) => (block.type === "text" ? block.text : "")).join("");
 }
 
-/** The memory section of the system prompt: the last system message that sets it wins. */
-function memorySection(transcript: TranscriptContext): string {
+/** A section of the system prompt: the last system message that sets it wins. */
+function section(transcript: TranscriptContext, key: string): string {
 	let text = "";
 	for (const message of transcript.messages) {
 		if (message.role !== "system") continue;
-		const value = message.sections?.["memory"];
+		const value = message.sections?.[key];
 		if (value !== undefined) text = value ?? "";
 	}
 	return text;
@@ -245,4 +253,21 @@ function bashCommand(text: string): string {
 	const records = text.split("\n").filter((line) => line.startsWith("{"));
 	const quoted = records.map((line) => `'${line.replaceAll("'", "'\\''")}'`).join(" ");
 	return `printf '%s\\n' ${quoted} >> "$DEX_DATA_DIR/memory/dreams.md" && echo dreamed`;
+}
+
+/** One step of faux/tool: search for the tool, call it, then answer with its output. */
+function toolStep(transcript: TranscriptContext) {
+	const text = lastUserText(transcript);
+	const space = text.indexOf(" ");
+	const name = space === -1 ? text : text.slice(0, space);
+	const last = transcript.messages.findLast((message) => message.role !== "system");
+	if (last?.role === "toolResult" && last.toolName === name) {
+		const output = last.content.map((block) => (block.type === "text" ? block.text : "")).join("");
+		return fauxAssistantMessage(`tool${last.isError ? " error" : ""}: ${output.trim()}`);
+	}
+	const call =
+		last?.role === "toolResult"
+			? fauxToolCall(name, space === -1 ? {} : JSON.parse(text.slice(space + 1)))
+			: fauxToolCall("tool_search", { query: name });
+	return fauxAssistantMessage(call, { stopReason: "toolUse" });
 }

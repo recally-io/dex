@@ -1,0 +1,53 @@
+# 0008: Skills and MCP servers from files
+
+Status: Accepted (2026-10-15)
+
+## Context
+
+The agent has four tools and the memory. The user wants to extend an agent
+with skills and with tools from MCP servers. Other agent tools keep these in
+files: skills in `~/.agents/skills/<name>/SKILL.md` (the Agent Skills format),
+and MCP servers in `mcp.json` files with an `mcpServers` object. The user
+wants the same files for dex, globally and for each agent.
+
+[ADR 0002](0002-settings-in-control-db.md) says that `control.sqlite` is the
+only source of settings. Extension files are an exception to it.
+
+## Decision
+
+- Two scopes. Global: `~/.agents/skills/` and `~/.agents/mcp.json`. Agent:
+  `<data dir>/agents/<id>/skills/` and `<data dir>/agents/<id>/mcp.json`. An
+  agent entry replaces a global entry with the same name as a whole, so a
+  scope never gets the credentials of the other. An agent entry
+  `{ "disabled": true }` turns off a global server.
+- The files are the configuration. dex keeps no copy in `control.sqlite`,
+  and the web UI only shows them. Models, providers, Telegram and the other
+  settings stay in `control.sqlite`.
+- The worker owns the extensions. It reads the files and connects the
+  servers before it resumes an agent, so a run that resumes after a restart
+  has its tools. Control asks the worker for the status and for a reload.
+- Skills: the prompt lists the name, description and `SKILL.md` path of each
+  skill. The agent reads a skill with its read tool when a task needs it.
+- MCP: `@earendil-works/pi-mcp`, from the same project as pi-durable,
+  connects over stdio and Streamable HTTP. Each tool is
+  `mcp__<server>__<tool>` and is deferred: the model finds it with
+  `tool_search`. A server that fails has no tools; the other servers and the
+  chat still work. When an mcp.json file is not valid, no server starts,
+  because its entries could replace or turn off global ones.
+- MCP tools keep pi-durable's default replay policy, `unsafe`. After a
+  restart, an interrupted call gets an error result; dex does not send it
+  again, because the call can have changed data on the server.
+- Reload is explicit. It is refused while the agent has unfinished work, and
+  when a file is not valid; the agent then keeps its loaded extensions.
+
+## Consequences
+
+- An edit to a file applies after a reload or a restart.
+- mcp.json holds headers and environment values as plain text. The API does
+  not return commands, URLs, headers or environment values.
+- An MCP server runs as the user, without a sandbox. A user who can chat with
+  the agent can make it write an mcp.json file, because the agent tools have
+  no sandbox either.
+- No OAuth, no legacy HTTP+SSE transport, and no MCP prompts or resources.
+  pi-mcp has OAuth; add it when a server needs it.
+- A server that drops its connection stays down until a reload.

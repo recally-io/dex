@@ -22,6 +22,7 @@ import (
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/upload"
+	"github.com/recally-io/dex/internal/worker"
 	"github.com/recally-io/dex/web"
 )
 
@@ -36,6 +37,8 @@ type Config struct {
 	DataDir     string
 	Version     string
 	WorkerReady func(context.Context) bool
+	// Worker calls the worker for the agent's extensions.
+	Worker worker.CallFunc
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string
 }
@@ -130,6 +133,31 @@ func (h *handler) ReleaseMaintenance(ctx context.Context, _ api.ReleaseMaintenan
 		return nil, err
 	}
 	return api.ReleaseMaintenance200JSONResponse(ok), nil
+}
+
+func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestObject) (api.GetExtensionsResponseObject, error) {
+	var out api.GetExtensions200JSONResponse
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID}, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRequestObject) (api.ReloadExtensionsResponseObject, error) {
+	var result worker.ReloadResult
+	if err := h.Worker(ctx, "reloadExtensions", worker.AgentParams{AgentID: h.AgentID}, &result); err != nil {
+		return nil, err
+	}
+	switch result.Status {
+	case "busy":
+		return api.ReloadExtensions409JSONResponse{Error: result.Reason}, nil
+	case "invalid":
+		return api.ReloadExtensions400JSONResponse{Error: result.Reason}, nil
+	}
+	var out api.ReloadExtensions200JSONResponse
+	if err := json.Unmarshal(result.Extensions, &out); err != nil {
+		return nil, fmt.Errorf("read the extensions: %w", err)
+	}
+	return out, nil
 }
 
 func chatView(c chat.Chat) api.Chat {
