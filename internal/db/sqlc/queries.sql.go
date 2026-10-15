@@ -138,8 +138,8 @@ func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error 
 }
 
 const createSubmission = `-- name: CreateSubmission :execrows
-INSERT INTO submissions (id, conversation_id, content, source_key, status, created_at)
-VALUES (?, ?, ?, ?, 'pending', ?)
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, status, created_at)
+VALUES (?, ?, ?, ?, ?, 'pending', ?)
 ON CONFLICT DO NOTHING
 `
 
@@ -147,6 +147,7 @@ type CreateSubmissionParams struct {
 	ID             string         `json:"id"`
 	ConversationID int64          `json:"conversation_id"`
 	Content        string         `json:"content"`
+	Attachments    string         `json:"attachments"`
 	SourceKey      sql.NullString `json:"source_key"`
 	CreatedAt      int64          `json:"created_at"`
 }
@@ -157,6 +158,7 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 		arg.ID,
 		arg.ConversationID,
 		arg.Content,
+		arg.Attachments,
 		arg.SourceKey,
 		arg.CreatedAt,
 	)
@@ -232,25 +234,31 @@ func (q *Queries) DreamBoundary(ctx context.Context, agentID string) (DreamBound
 }
 
 const ensureConversation = `-- name: EnsureConversation :one
-INSERT INTO conversations (agent_id, channel_key, title, created_at)
-VALUES (?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, worker_conversation_id, created_at, title
+RETURNING id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level
 `
 
 type EnsureConversationParams struct {
-	AgentID    string `json:"agent_id"`
-	ChannelKey string `json:"channel_key"`
-	Title      string `json:"title"`
-	CreatedAt  int64  `json:"created_at"`
+	AgentID       string `json:"agent_id"`
+	ChannelKey    string `json:"channel_key"`
+	Title         string `json:"title"`
+	ModelProvider string `json:"model_provider"`
+	ModelID       string `json:"model_id"`
+	ThinkingLevel string `json:"thinking_level"`
+	CreatedAt     int64  `json:"created_at"`
 }
 
-// The title is set only when the conversation is created.
+// The title and the settings are set only when the conversation is created.
 func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversationParams) (Conversation, error) {
 	row := q.db.QueryRowContext(ctx, ensureConversation,
 		arg.AgentID,
 		arg.ChannelKey,
 		arg.Title,
+		arg.ModelProvider,
+		arg.ModelID,
+		arg.ThinkingLevel,
 		arg.CreatedAt,
 	)
 	var i Conversation
@@ -261,6 +269,9 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		&i.WorkerConversationID,
 		&i.CreatedAt,
 		&i.Title,
+		&i.ModelProvider,
+		&i.ModelID,
+		&i.ThinkingLevel,
 	)
 	return i, err
 }
@@ -280,7 +291,7 @@ func (q *Queries) FailAutomationRun(ctx context.Context, arg FailAutomationRunPa
 }
 
 const getAgent = `-- name: GetAgent :one
-SELECT id, name, model_provider, model_id, instructions, created_at FROM agents WHERE id = ?
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level FROM agents WHERE id = ?
 `
 
 func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
@@ -293,6 +304,7 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
 		&i.ModelID,
 		&i.Instructions,
 		&i.CreatedAt,
+		&i.ThinkingLevel,
 	)
 	return i, err
 }
@@ -330,6 +342,9 @@ SELECT
     c.id,
     c.channel_key,
     c.title,
+    c.model_provider,
+    c.model_id,
+    c.thinking_level,
     c.created_at,
     c.worker_conversation_id,
     CAST(coalesce(max(s.created_at), c.created_at) AS INTEGER) AS updated_at,
@@ -349,6 +364,9 @@ type GetChatRow struct {
 	ID                   int64         `json:"id"`
 	ChannelKey           string        `json:"channel_key"`
 	Title                string        `json:"title"`
+	ModelProvider        string        `json:"model_provider"`
+	ModelID              string        `json:"model_id"`
+	ThinkingLevel        string        `json:"thinking_level"`
 	CreatedAt            int64         `json:"created_at"`
 	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
 	UpdatedAt            int64         `json:"updated_at"`
@@ -362,6 +380,9 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 		&i.ID,
 		&i.ChannelKey,
 		&i.Title,
+		&i.ModelProvider,
+		&i.ModelID,
+		&i.ThinkingLevel,
 		&i.CreatedAt,
 		&i.WorkerConversationID,
 		&i.UpdatedAt,
@@ -371,7 +392,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, agent_id, channel_key, worker_conversation_id, created_at, title FROM conversations WHERE id = ?
+SELECT id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level FROM conversations WHERE id = ?
 `
 
 func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
@@ -384,6 +405,35 @@ func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, 
 		&i.WorkerConversationID,
 		&i.CreatedAt,
 		&i.Title,
+		&i.ModelProvider,
+		&i.ModelID,
+		&i.ThinkingLevel,
+	)
+	return i, err
+}
+
+const getConversationByKey = `-- name: GetConversationByKey :one
+SELECT id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level FROM conversations WHERE agent_id = ? AND channel_key = ?
+`
+
+type GetConversationByKeyParams struct {
+	AgentID    string `json:"agent_id"`
+	ChannelKey string `json:"channel_key"`
+}
+
+func (q *Queries) GetConversationByKey(ctx context.Context, arg GetConversationByKeyParams) (Conversation, error) {
+	row := q.db.QueryRowContext(ctx, getConversationByKey, arg.AgentID, arg.ChannelKey)
+	var i Conversation
+	err := row.Scan(
+		&i.ID,
+		&i.AgentID,
+		&i.ChannelKey,
+		&i.WorkerConversationID,
+		&i.CreatedAt,
+		&i.Title,
+		&i.ModelProvider,
+		&i.ModelID,
+		&i.ThinkingLevel,
 	)
 	return i, err
 }
@@ -408,7 +458,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -424,6 +474,7 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.CreatedAt,
 		&i.SettledAt,
 		&i.SourceKey,
+		&i.Attachments,
 	)
 	return i, err
 }
@@ -608,6 +659,9 @@ SELECT
     c.id,
     c.channel_key,
     c.title,
+    c.model_provider,
+    c.model_id,
+    c.thinking_level,
     c.created_at,
     CAST(coalesce(max(s.created_at), c.created_at) AS INTEGER) AS updated_at,
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
@@ -619,12 +673,15 @@ ORDER BY updated_at DESC, c.id DESC
 `
 
 type ListChatsRow struct {
-	ID         int64  `json:"id"`
-	ChannelKey string `json:"channel_key"`
-	Title      string `json:"title"`
-	CreatedAt  int64  `json:"created_at"`
-	UpdatedAt  int64  `json:"updated_at"`
-	Pending    int64  `json:"pending"`
+	ID            int64  `json:"id"`
+	ChannelKey    string `json:"channel_key"`
+	Title         string `json:"title"`
+	ModelProvider string `json:"model_provider"`
+	ModelID       string `json:"model_id"`
+	ThinkingLevel string `json:"thinking_level"`
+	CreatedAt     int64  `json:"created_at"`
+	UpdatedAt     int64  `json:"updated_at"`
+	Pending       int64  `json:"pending"`
 }
 
 func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow, error) {
@@ -640,6 +697,9 @@ func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow
 			&i.ID,
 			&i.ChannelKey,
 			&i.Title,
+			&i.ModelProvider,
+			&i.ModelID,
+			&i.ThinkingLevel,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Pending,
@@ -777,17 +837,18 @@ func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt6
 }
 
 const listOpenSubmissions = `-- name: ListOpenSubmissions :many
-SELECT id, content, status, reason, created_at FROM submissions
+SELECT id, content, attachments, status, reason, created_at FROM submissions
 WHERE conversation_id = ? AND status != 'done'
 ORDER BY created_at
 `
 
 type ListOpenSubmissionsRow struct {
-	ID        string         `json:"id"`
-	Content   string         `json:"content"`
-	Status    string         `json:"status"`
-	Reason    sql.NullString `json:"reason"`
-	CreatedAt int64          `json:"created_at"`
+	ID          string         `json:"id"`
+	Content     string         `json:"content"`
+	Attachments string         `json:"attachments"`
+	Status      string         `json:"status"`
+	Reason      sql.NullString `json:"reason"`
+	CreatedAt   int64          `json:"created_at"`
 }
 
 // The messages of a chat that have no answer: pending, or unanswered with a reason.
@@ -803,6 +864,7 @@ func (q *Queries) ListOpenSubmissions(ctx context.Context, conversationID int64)
 		if err := rows.Scan(
 			&i.ID,
 			&i.Content,
+			&i.Attachments,
 			&i.Status,
 			&i.Reason,
 			&i.CreatedAt,
@@ -824,6 +886,7 @@ const listPendingSubmissions = `-- name: ListPendingSubmissions :many
 SELECT
     s.id,
     s.content,
+    s.attachments,
     s.conversation_id,
     c.agent_id,
     c.channel_key
@@ -836,6 +899,7 @@ ORDER BY s.created_at
 type ListPendingSubmissionsRow struct {
 	ID             string `json:"id"`
 	Content        string `json:"content"`
+	Attachments    string `json:"attachments"`
 	ConversationID int64  `json:"conversation_id"`
 	AgentID        string `json:"agent_id"`
 	ChannelKey     string `json:"channel_key"`
@@ -853,6 +917,7 @@ func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubm
 		if err := rows.Scan(
 			&i.ID,
 			&i.Content,
+			&i.Attachments,
 			&i.ConversationID,
 			&i.AgentID,
 			&i.ChannelKey,
@@ -919,6 +984,30 @@ func (q *Queries) SetAutomationNextDue(ctx context.Context, arg SetAutomationNex
 	return err
 }
 
+const setConversationSettings = `-- name: SetConversationSettings :exec
+UPDATE conversations SET model_provider = ?, model_id = ?, thinking_level = ?
+WHERE id = ? AND agent_id = ?
+`
+
+type SetConversationSettingsParams struct {
+	ModelProvider string `json:"model_provider"`
+	ModelID       string `json:"model_id"`
+	ThinkingLevel string `json:"thinking_level"`
+	ID            int64  `json:"id"`
+	AgentID       string `json:"agent_id"`
+}
+
+func (q *Queries) SetConversationSettings(ctx context.Context, arg SetConversationSettingsParams) error {
+	_, err := q.db.ExecContext(ctx, setConversationSettings,
+		arg.ModelProvider,
+		arg.ModelID,
+		arg.ThinkingLevel,
+		arg.ID,
+		arg.AgentID,
+	)
+	return err
+}
+
 const setTelegramSettings = `-- name: SetTelegramSettings :exec
 INSERT INTO telegram_settings (id, token, allowed_users)
 VALUES (1, ?, ?)
@@ -977,12 +1066,13 @@ func (q *Queries) SettleSubmission(ctx context.Context, arg SettleSubmissionPara
 }
 
 const updateAgentSettings = `-- name: UpdateAgentSettings :exec
-UPDATE agents SET model_provider = ?, model_id = ?, instructions = ? WHERE id = ?
+UPDATE agents SET model_provider = ?, model_id = ?, thinking_level = ?, instructions = ? WHERE id = ?
 `
 
 type UpdateAgentSettingsParams struct {
 	ModelProvider string `json:"model_provider"`
 	ModelID       string `json:"model_id"`
+	ThinkingLevel string `json:"thinking_level"`
 	Instructions  string `json:"instructions"`
 	ID            string `json:"id"`
 }
@@ -991,6 +1081,7 @@ func (q *Queries) UpdateAgentSettings(ctx context.Context, arg UpdateAgentSettin
 	_, err := q.db.ExecContext(ctx, updateAgentSettings,
 		arg.ModelProvider,
 		arg.ModelID,
+		arg.ThinkingLevel,
 		arg.Instructions,
 		arg.ID,
 	)

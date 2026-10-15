@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -39,8 +40,27 @@ type Chat struct {
 	CreatedAt  int64
 	UpdatedAt  int64 // time of the last message
 	Busy       bool  // a message has no answer yet
+	Settings   Settings
 	// WorkerConversationID is 0 until the worker has the conversation.
 	WorkerConversationID int64
+}
+
+// Settings are the settings that one chat overrides. An empty field follows the agent's setting.
+// Provider and ModelID are both empty or both set; internal/settings validates them.
+type Settings struct {
+	Provider      string `json:"provider,omitempty"`
+	ModelID       string `json:"modelId,omitempty"`
+	ThinkingLevel string `json:"thinkingLevel,omitempty"`
+}
+
+// Message is a message to post. Title is the title of a new chat; empty uses the start of Content,
+// or the name of the first attachment. Settings apply only when the message creates the chat.
+type Message struct {
+	ID          string
+	Title       string
+	Content     string
+	Attachments []worker.Attachment
+	Settings    Settings
 }
 
 // ErrNoModel means that the agent has no model yet; the user chooses one in the settings.
@@ -99,14 +119,29 @@ func (s *Service) Run(ctx context.Context) {
 // When the agent has no model, it stores nothing and returns ErrNoModel. A message with an ID that
 // exists already is not stored again.
 func (s *Service) Post(ctx context.Context, agentID, channelKey, title, id, content string) (int64, error) {
+	return s.Send(ctx, agentID, channelKey, Message{ID: id, Title: title, Content: content})
+}
+
+// Send is Post for a message with attachments, or for a new chat with its own settings. When
+// neither the chat nor the agent has a model, it stores nothing and returns ErrNoModel.
+func (s *Service) Send(ctx context.Context, agentID, channelKey string, m Message) (int64, error) {
 	agent, err := s.q.GetAgent(ctx, agentID)
 	if err != nil {
 		return 0, err
 	}
-	if agent.ModelID == "" {
+	model := agent.ModelID
+	switch c, err := s.q.GetConversationByKey(ctx, sqlc.GetConversationByKeyParams{AgentID: agentID, ChannelKey: channelKey}); {
+	case errors.Is(err, sql.ErrNoRows):
+		model = cmp.Or(m.Settings.ModelID, model)
+	case err != nil:
+		return 0, err
+	default:
+		model = cmp.Or(c.ModelID, model)
+	}
+	if model == "" {
 		return 0, ErrNoModel
 	}
-	return s.enqueue(ctx, id, agentID, channelKey, "", title, content)
+	return s.enqueue(ctx, agentID, channelKey, "", m)
 }
 
 // Submit stores content as a message to agentID on channelKey and returns without waiting; the
@@ -114,21 +149,32 @@ func (s *Service) Post(ctx context.Context, agentID, channelKey, title, id, cont
 // same sourceKey exists, Submit does nothing, so a channel that delivers a message twice gets one
 // answer.
 func (s *Service) Submit(ctx context.Context, agentID, channelKey, sourceKey, content string) error {
-	_, err := s.enqueue(ctx, uuid.NewV7().String(), agentID, channelKey, sourceKey, "", content)
+	_, err := s.enqueue(ctx, agentID, channelKey, sourceKey, Message{ID: uuid.NewV7().String(), Content: content})
 	return err
 }
 
-func (s *Service) enqueue(ctx context.Context, id, agentID, channelKey, sourceKey, chatTitle, content string) (int64, error) {
+func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey string, m Message) (int64, error) {
+	chatTitle := cmp.Or(m.Title, title(m.Content))
+	if chatTitle == "" && len(m.Attachments) > 0 {
+		chatTitle = title(m.Attachments[0].Name)
+	}
 	conv, err := s.q.EnsureConversation(ctx, sqlc.EnsureConversationParams{
-		AgentID: agentID, ChannelKey: channelKey, Title: cmp.Or(chatTitle, title(content)), CreatedAt: s.now().UnixMilli(),
+		AgentID: agentID, ChannelKey: channelKey, Title: chatTitle,
+		ModelProvider: m.Settings.Provider, ModelID: m.Settings.ModelID, ThinkingLevel: m.Settings.ThinkingLevel,
+		CreatedAt: s.now().UnixMilli(),
 	})
 	if err != nil {
 		return 0, err
 	}
+	attachments, err := json.Marshal(m.Attachments)
+	if err != nil {
+		return 0, err
+	}
 	created, err := s.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
-		ID:             id,
+		ID:             m.ID,
 		ConversationID: conv.ID,
-		Content:        content,
+		Content:        m.Content,
+		Attachments:    string(attachments),
 		SourceKey:      sql.NullString{String: sourceKey, Valid: sourceKey != ""},
 		CreatedAt:      s.now().UnixMilli(),
 	})
@@ -140,7 +186,10 @@ func (s *Service) enqueue(ctx context.Context, id, agentID, channelKey, sourceKe
 	}
 	s.signal(conv.ID)
 	select {
-	case s.queue <- sqlc.ListPendingSubmissionsRow{ID: id, Content: content, ConversationID: conv.ID, AgentID: agentID, ChannelKey: channelKey}:
+	case s.queue <- sqlc.ListPendingSubmissionsRow{
+		ID: m.ID, Content: m.Content, Attachments: string(attachments), ConversationID: conv.ID, AgentID: agentID,
+		ChannelKey: channelKey,
+	}:
 	case <-ctx.Done():
 		// The message is stored; the next Replay delivers it.
 		return conv.ID, nil
@@ -166,7 +215,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 	for i, r := range rows {
 		chats[i] = Chat{
 			ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-			Busy: r.Pending > 0,
+			Busy: r.Pending > 0, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 		}
 	}
 	return chats, nil
@@ -183,7 +232,8 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	}
 	return Chat{
 		ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-		Busy: r.Pending > 0, WorkerConversationID: r.WorkerConversationID.Int64,
+		Busy: r.Pending > 0, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
+		WorkerConversationID: r.WorkerConversationID.Int64,
 	}, nil
 }
 
@@ -239,15 +289,31 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 	if err != nil {
 		return fmt.Errorf("agent %s: %w", p.AgentID, err)
 	}
-	if agent.ModelID == "" {
+	conv, err := s.q.GetConversation(ctx, p.ConversationID)
+	if err != nil {
+		return err
+	}
+	// The chat's settings override the agent's; read both now, so a change applies from the next
+	// message.
+	model := worker.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}
+	if conv.ModelID != "" {
+		model = worker.ModelRef{Provider: conv.ModelProvider, ModelID: conv.ModelID}
+	}
+	if model.ModelID == "" {
 		return ErrNoModel
 	}
-	model := worker.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}
-	instructions := agent.Instructions
-	if strings.HasPrefix(p.ChannelKey, dream.Channel) {
-		instructions = dream.Instructions(instructions)
+	settings := worker.CreateConversationParams{
+		AgentID: agent.ID, Model: model, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel),
+		Instructions: agent.Instructions,
 	}
-	conversation, err := s.workerConversation(ctx, p.ConversationID, agent.ID, model, instructions)
+	if strings.HasPrefix(p.ChannelKey, dream.Channel) {
+		settings.Instructions = dream.Instructions(settings.Instructions)
+	}
+	var attachments []worker.Attachment
+	if err := json.Unmarshal([]byte(p.Attachments), &attachments); err != nil {
+		return fmt.Errorf("submission %s attachments: %w", p.ID, err)
+	}
+	conversation, err := s.workerConversation(ctx, p.ConversationID, settings)
 	if err != nil {
 		return err
 	}
@@ -256,9 +322,11 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 		AgentID:        p.AgentID,
 		ConversationID: conversation,
 		Model:          model,
-		Instructions:   instructions,
+		ThinkingLevel:  settings.ThinkingLevel,
+		Instructions:   settings.Instructions,
 		RequestID:      p.ID,
 		Content:        p.Content,
+		Attachments:    attachments,
 		Source:         source(p),
 	}, &result)
 }
@@ -306,8 +374,8 @@ func (s *Service) signal(chatID int64) {
 }
 
 // workerConversation returns the worker's ID of the conversation, and creates the worker's
-// conversation on first use.
-func (s *Service) workerConversation(ctx context.Context, id int64, agentID string, model worker.ModelRef, instructions string) (int64, error) {
+// conversation with settings on first use.
+func (s *Service) workerConversation(ctx context.Context, id int64, settings worker.CreateConversationParams) (int64, error) {
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
 	conv, err := s.q.GetConversation(ctx, id)
@@ -320,9 +388,7 @@ func (s *Service) workerConversation(ctx context.Context, id int64, agentID stri
 	// A crash between this call and the update below leaves an empty worker conversation. That is
 	// harmless; the next message creates another one.
 	var created worker.CreateConversationResult
-	err = s.worker.Call(ctx, "createConversation", worker.CreateConversationParams{
-		AgentID: agentID, Model: model, Instructions: instructions,
-	}, &created)
+	err = s.worker.Call(ctx, "createConversation", settings, &created)
 	if err != nil {
 		return 0, fmt.Errorf("create worker conversation: %w", err)
 	}

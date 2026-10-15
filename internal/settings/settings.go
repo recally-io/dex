@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vaayne/dex/internal/chat"
 	"github.com/vaayne/dex/internal/db/sqlc"
 	"github.com/vaayne/dex/internal/telegram"
 	"github.com/vaayne/dex/internal/worker"
@@ -47,12 +48,18 @@ type Settings struct {
 	Telegram Telegram          `json:"telegram"`
 }
 
-// Agent holds the settings of the default agent. An empty ModelID means no model is chosen.
+// Agent holds the settings of the default agent. An empty ModelID means no model is chosen. A chat
+// can override the model and the thinking level.
 type Agent struct {
-	Provider     string `json:"provider"`
-	ModelID      string `json:"modelId"`
-	Instructions string `json:"instructions"`
+	Provider      string `json:"provider"`
+	ModelID       string `json:"modelId"`
+	ThinkingLevel string `json:"thinkingLevel"`
+	Instructions  string `json:"instructions"`
 }
+
+// thinkingLevels are pi-ai's ModelThinkingLevel values. pi-ai sends the nearest level that the
+// model supports, so any level is valid for any model.
+var thinkingLevels = []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 
 // Provider is a provider that the user added. API is empty for a pi-ai built-in provider. The API
 // key is write-only: requests send it, responses report only whether one is saved.
@@ -132,7 +139,10 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 		tg = Telegram{Enabled: true, BotID: botID, AllowedUsers: cfg.AllowedUsers}
 	}
 	return Settings{
-		Agent:     Agent{Provider: agent.ModelProvider, ModelID: agent.ModelID, Instructions: agent.Instructions},
+		Agent: Agent{
+			Provider: agent.ModelProvider, ModelID: agent.ModelID, ThinkingLevel: agent.ThinkingLevel,
+			Instructions: agent.Instructions,
+		},
 		Providers: providers,
 		Builtins:  builtins,
 		APIs:      APIs,
@@ -174,26 +184,60 @@ func (s *Service) Models(ctx context.Context) ([]worker.ModelInfo, error) {
 	return listed.Models, nil
 }
 
-// SetAgent changes the agent's model and instructions. The next message in each chat uses them.
-// An empty model clears it.
+// SetAgent changes the agent's model, thinking level and instructions. The next message in each
+// chat uses them, except the settings that the chat overrides. An empty model clears it.
 func (s *Service) SetAgent(ctx context.Context, a Agent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !slices.Contains(thinkingLevels, a.ThinkingLevel) {
+		return fmt.Errorf("%w: unknown thinking level %q", ErrInvalid, a.ThinkingLevel)
+	}
 	if a.ModelID != "" {
-		models, err := s.Models(ctx)
-		if err != nil {
+		if err := s.checkModel(ctx, a.Provider, a.ModelID); err != nil {
 			return err
-		}
-		if !slices.ContainsFunc(models, func(m worker.ModelInfo) bool {
-			return m.Provider == a.Provider && m.ID == a.ModelID
-		}) {
-			return fmt.Errorf("%w: no model %s/%s with credentials", ErrInvalid, a.Provider, a.ModelID)
 		}
 	} else {
 		a.Provider = ""
 	}
 	return s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
-		ModelProvider: a.Provider, ModelID: a.ModelID, Instructions: a.Instructions, ID: s.agentID,
+		ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
+		ID: s.agentID,
+	})
+}
+
+func (s *Service) checkModel(ctx context.Context, provider, modelID string) error {
+	models, err := s.Models(ctx)
+	if err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(models, func(m worker.ModelInfo) bool { return m.Provider == provider && m.ID == modelID }) {
+		return fmt.Errorf("%w: no model %s/%s with credentials", ErrInvalid, provider, modelID)
+	}
+	return nil
+}
+
+// CheckChat refuses chat settings that SetChat would refuse. A new chat stores its settings with
+// its first message, so the caller checks them first.
+func (s *Service) CheckChat(ctx context.Context, c chat.Settings) error {
+	if c.ThinkingLevel != "" && !slices.Contains(thinkingLevels, c.ThinkingLevel) {
+		return fmt.Errorf("%w: unknown thinking level %q", ErrInvalid, c.ThinkingLevel)
+	}
+	if (c.Provider == "") != (c.ModelID == "") {
+		return fmt.Errorf("%w: give both the provider and the model ID, or neither", ErrInvalid)
+	}
+	if c.ModelID == "" {
+		return nil
+	}
+	return s.checkModel(ctx, c.Provider, c.ModelID)
+}
+
+// SetChat replaces the settings that chat chatID overrides. The next message of the chat uses them.
+func (s *Service) SetChat(ctx context.Context, chatID int64, c chat.Settings) error {
+	if err := s.CheckChat(ctx, c); err != nil {
+		return err
+	}
+	return s.q.SetConversationSettings(ctx, sqlc.SetConversationSettingsParams{
+		ModelProvider: c.Provider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel, ID: chatID, AgentID: s.agentID,
 	})
 }
 

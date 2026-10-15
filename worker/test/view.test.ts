@@ -3,7 +3,7 @@
 // gets wrong.
 import { describe, expect, it } from "bun:test";
 import type { AgentEvent, SnapshotEvent } from "@earendil-works/pi-durable";
-import { ChatView, USER_ENTRY } from "../src/view.ts";
+import { ChatView, messageText, USER_ENTRY } from "../src/view.ts";
 
 // The fixtures hold only the fields that the view reads; pi-durable's types have more.
 /* oxlint-disable typescript/no-unsafe-type-assertion */
@@ -271,5 +271,42 @@ describe("ChatView", () => {
 		expect(view.apply(batch({ type: "auto_retry_end", attempt: 1 }))).toEqual([
 			{ type: "run", running: true },
 		]);
+	});
+});
+
+describe("attachments", () => {
+	const pic = { id: "u1", name: "a b.png", size: 3, mimeType: "image/png", path: "uploads/u1/a b.png" };
+	const notes = { id: "u2", name: "n.txt", size: 1, mimeType: "text/plain", path: "uploads/u2/n.txt" };
+
+	it("gives the model the text and the workspace paths", () => {
+		expect(messageText("look", [])).toBe("look");
+		expect(messageText("look", [pic, notes])).toBe(
+			"look\n\nAttached files:\n- uploads/u1/a b.png\n- uploads/u2/n.txt",
+		);
+		expect(messageText("", [notes])).toBe("Attached files:\n- uploads/u2/n.txt");
+	});
+
+	it("shows the user's text and the files, not the path list", () => {
+		const content = messageText("look", [pic, notes]);
+		const withText = entry(
+			1,
+			USER_ENTRY,
+			{ role: "user", content, timestamp: 1 },
+			{ requestId: "r1", attachments: [pic, notes] },
+		);
+		const only = entry(
+			3,
+			USER_ENTRY,
+			{ role: "user", content: messageText("", [notes]), timestamp: 3 },
+			{ requestId: "r2", attachments: [notes] },
+		);
+		expect(new ChatView().snapshot(snapshot([withText, only]))).toEqual({
+			type: "snapshot",
+			items: [
+				{ kind: "user", id: "r1", text: "look", at: 1, attachments: [pic, notes] },
+				{ kind: "user", id: "r2", text: "", at: 3, attachments: [notes] },
+			],
+			running: false,
+		});
 	});
 });

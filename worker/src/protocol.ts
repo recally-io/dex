@@ -1,6 +1,7 @@
 // Wire protocol between the Go control process and this worker: one JSON object per line on
 // stdin (requests) and stdout (responses and events). Keep it in sync with
 // internal/worker/protocol.go.
+import type { ModelInputModality, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import Type, { type Static } from "typebox";
 import type { ChatEvent } from "./view.ts";
 
@@ -22,9 +23,21 @@ export type Event = {
 
 const ModelRef = Type.Object({ provider: Type.String(), modelId: Type.String() });
 
+/** pi-ai's ModelThinkingLevel. pi-ai sends the nearest level that the model supports. */
+const ThinkingLevel = Type.Union([
+	Type.Literal("off"),
+	Type.Literal("minimal"),
+	Type.Literal("low"),
+	Type.Literal("medium"),
+	Type.Literal("high"),
+	Type.Literal("xhigh"),
+	Type.Literal("max"),
+]);
+
 export const CreateConversationParams = Type.Object({
 	agentId: Type.String(),
 	model: ModelRef,
+	thinkingLevel: ThinkingLevel,
 	instructions: Type.Optional(Type.String()),
 });
 export type CreateConversationParams = Static<typeof CreateConversationParams>;
@@ -33,21 +46,34 @@ export type CreateConversationResult = {
 	readonly conversationId: number;
 };
 
+/** A file that the user attached, at `path` relative to the agent workspace. */
+export const Attachment = Type.Object({
+	id: Type.String(),
+	name: Type.String(),
+	size: Type.Number(),
+	mimeType: Type.String(),
+	path: Type.String(),
+});
+export type Attachment = Static<typeof Attachment>;
+
 export const SubmitParams = Type.Object({
 	agentId: Type.String(),
 	conversationId: Type.Number(),
 	/**
-	 * The agent's current settings. When they differ from the conversation's, the worker changes the
+	 * The chat's current settings. When they differ from the conversation's, the worker changes the
 	 * conversation before it submits, so a settings change applies to existing chats.
 	 */
 	model: ModelRef,
+	thinkingLevel: ThinkingLevel,
 	instructions: Type.String(),
 	/**
 	 * Control's submission ID. pi-durable deduplicates on it within the conversation, so a replay
 	 * after a crash is safe.
 	 */
 	requestId: Type.String(),
+	/** The user's text. The worker adds the paths of the attachments for the model. */
 	content: Type.String(),
+	attachments: Type.Array(Attachment),
 	/** Where memory entries from this conversation come from, such as `dex:chat/12`. */
 	source: Type.String(),
 });
@@ -123,8 +149,12 @@ export type ProviderInfo = {
 	readonly source?: string | undefined;
 };
 
+/** `reasoning` and `input` are pi-ai's model fields; `thinkingLevels` is pi-ai's getSupportedThinkingLevels. */
 export type ModelInfo = {
 	readonly provider: string;
 	readonly id: string;
 	readonly name: string;
+	readonly reasoning: boolean;
+	readonly input: readonly ModelInputModality[];
+	readonly thinkingLevels: readonly ModelThinkingLevel[];
 };

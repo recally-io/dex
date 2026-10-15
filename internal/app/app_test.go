@@ -24,8 +24,9 @@ import (
 )
 
 // These tests run the real embedded worker with pi-ai's faux provider: model faux/echo answers
-// "echo: <message>", faux/shout answers "shout: <message>", and faux/bash runs the message with
-// the bash tool and answers "bash: <output>". They do not prove that a real provider works.
+// "echo: <message>", faux/shout answers "shout: <message>", faux/bash runs the message with the
+// bash tool and answers "bash: <output>", and faux/think answers "think <thinking level>:
+// <message>". They do not prove that a real provider works.
 
 type dex struct {
 	app *app.App
@@ -114,7 +115,7 @@ func cmpOr(want []int, def int) int {
 func (d *dex) setModel(t *testing.T, modelID string) {
 	t.Helper()
 	d.must(t, http.MethodPut, "/api/settings/agent",
-		map[string]string{"provider": "faux", "modelId": modelID, "instructions": ""}, nil)
+		map[string]string{"provider": "faux", "modelId": modelID, "thinkingLevel": "off", "instructions": ""}, nil)
 }
 
 type chatInfo struct {
@@ -163,6 +164,16 @@ type item struct {
 	Status string `json:"status"`
 	Output string `json:"output"`
 	Reason string `json:"reason"`
+	// Attachments of a user item.
+	Attachments []attachment `json:"attachments"`
+}
+
+type attachment struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	MimeType string `json:"mimeType"`
+	Path     string `json:"path"`
 }
 
 // transcript applies chat events as the web UI does: a snapshot replaces all, an item replaces the
@@ -678,7 +689,7 @@ func TestUserAddsCustomProviders(t *testing.T) {
 	if got := d.models(t); !containsAll(got, want) {
 		t.Fatalf("models = %q, want %q in them", got, want)
 	}
-	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"provider": "local", "modelId": "m2", "instructions": ""}, nil)
+	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"provider": "local", "modelId": "m2", "thinkingLevel": "off", "instructions": ""}, nil)
 
 	// When the user removes the gateway
 	d.must(t, http.MethodDelete, "/api/settings/providers/gw", nil, nil)
@@ -746,7 +757,7 @@ func TestInvalidRequestsAreRefused(t *testing.T) {
 		body               any
 		status             int
 	}{
-		{"unknown model", http.MethodPut, "/api/settings/agent", map[string]string{"provider": "faux", "modelId": "nope"}, 400},
+		{"unknown model", http.MethodPut, "/api/settings/agent", map[string]string{"provider": "faux", "modelId": "nope", "thinkingLevel": "off"}, 400},
 		{"unknown built-in provider", http.MethodPut, "/api/settings/providers/nope", map[string]string{"api": "", "apiKey": "k"}, 400},
 		{"unknown API", http.MethodPut, "/api/settings/providers/x", map[string]string{"api": "bogus", "baseUrl": "http://127.0.0.1:1"}, 400},
 		{"custom ID of a built-in provider", http.MethodPut, "/api/settings/providers/anthropic",
@@ -816,7 +827,7 @@ func TestUserMessageLeftPendingIsAnsweredAfterRestart(t *testing.T) {
 	q := sqlc.New(conn)
 	pendingID := uuid.NewV7().String()
 	_, err = q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-		ID: pendingID, ConversationID: chatID, Content: "are you there", CreatedAt: time.Now().UnixMilli(),
+		ID: pendingID, ConversationID: chatID, Content: "are you there", Attachments: "[]", CreatedAt: time.Now().UnixMilli(),
 	})
 	if err != nil {
 		t.Fatal(err)

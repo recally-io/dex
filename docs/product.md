@@ -14,8 +14,8 @@ to read in an afternoon.
 ## Scope
 
 - One `dex` binary. The host needs no other runtime.
-- All settings in the web UI: providers, the agent's model and instructions,
-  and Telegram. dex needs no configuration file or environment variable.
+- All settings in the web UI: providers, the agent's model, thinking level
+  and instructions, and Telegram. dex needs no configuration file or environment variable.
   The web UI has these pages: Agent, Providers, Channels, Automations, and
   About. The Extensions and Secrets pages and the Slack, Feishu, and WeChat
   channels show that dex does not support them yet.
@@ -23,6 +23,10 @@ to read in an afternoon.
 - Durable conversations: a crash or a restart does not lose a message or a
   started run.
 - Entry points: the web UI and Telegram.
+- In a web chat, the user can attach files and images (at most 10 per
+  message, 20 MB each). The agent reads them with its tools. A web chat can
+  also use its own model and thinking level instead of the agent's. Telegram
+  chats and automations use the agent's settings and take no files.
 - Timers: scheduled messages to an agent.
 
 Status: the web UI, Telegram, durable messages, timers, and the worker are

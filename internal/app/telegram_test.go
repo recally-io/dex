@@ -137,6 +137,12 @@ func TestUserGetsAnswerInTelegram(t *testing.T) {
 	if status != http.StatusForbidden {
 		t.Fatalf("web message to a Telegram chat: %d %s", status, raw)
 	}
+	// Telegram chats follow the agent's settings
+	status, raw = d.call(t, http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", chats[0].ID),
+		map[string]string{"thinkingLevel": "high"})
+	if status != http.StatusForbidden {
+		t.Fatalf("settings of a Telegram chat: %d %s", status, raw)
+	}
 }
 
 func TestTelegramIgnoresUsersWhoAreNotAllowed(t *testing.T) {

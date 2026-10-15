@@ -27,7 +27,11 @@ the open or closed Context panel of a chat (`dex-context`), and the automation
 unread marker (`dex-automations-seen`). The unsaved agent instructions are in
 memory (`src/lib/app-state.tsx`), so a draft stays when the user opens another page, and a reload discards it.
 `src/lib/agent.ts` runs agent saves one at a time. Each save reads the saved
-agent first, so a model change does not overwrite the instructions.
+agent first, so a model change does not overwrite the instructions. The saves
+of one chat's model and thinking level run the same way. A new chat keeps its
+picks in the page until `POST /api/chats` stores them with the chat.
+`src/lib/attachments.ts` uploads each file of the composer when the user adds
+it; a message sends only upload IDs.
 
 The old `/settings/<section>` addresses redirect to the new pages.
 
@@ -49,8 +53,8 @@ Lint and format checks skip them. A dex change in a copy has a comment at the
 top of the file. The app parts are in `src/components/`: `page.tsx` for the
 framed page, sections and fact rows, `form.tsx` for fields, `dialog.tsx` for
 modal dialogs, and `feedback.tsx` for errors and loading states. The dialogs,
-the drawer and the model picker use Base UI directly. The model picker uses
-cmdk for its search.
+the drawer, and the model and thinking pickers use Base UI directly. The pickers
+use cmdk for the keyboard and the model search.
 
 The upstream copies import `cn`. The Vite and TypeScript aliases resolve that import
 to `src/lib/utils.ts`, which uses the approved `clsx` and `tailwind-merge` packages.

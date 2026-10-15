@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
-import type { Item, Retry, ToolItem } from "../../api/generated/types.gen";
+import { IconFileText } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconFileText";
+import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
+import { formatSize, isImage } from "../../lib/attachments";
 import { describeTool, seconds, stepTitle } from "../../lib/tools";
 import { Chip } from "../atoms/Chip";
 import { StreamText } from "../atoms/StreamText";
@@ -336,6 +338,52 @@ function CopyText({ text }: { text: string }) {
   );
 }
 
+// GET /api/uploads/{id} serves an image inline and any other file as a download.
+function Files({ files }: { files: Attachment[] }) {
+  return (
+    <ul aria-label="Attached files" className="flex max-w-full flex-wrap justify-end gap-1.5">
+      {files.map((f) =>
+        isImage(f.mimeType) ? (
+          <li key={f.id}>
+            <a
+              href={`/api/uploads/${f.id}`}
+              target="_blank"
+              rel="noreferrer"
+              title={f.name}
+              className="block"
+            >
+              <img
+                src={`/api/uploads/${f.id}`}
+                alt={f.name}
+                loading="lazy"
+                className="h-28 max-w-[min(240px,100%)] rounded-xl bg-field object-cover shadow-hairline"
+              />
+            </a>
+          </li>
+        ) : (
+          <li key={f.id} className="min-w-0">
+            <a
+              href={`/api/uploads/${f.id}`}
+              download={f.name}
+              className="flex h-10 min-w-0 items-center gap-2 rounded-[10px] bg-field py-1 pr-2.5 pl-1 text-[11.5px] shadow-hairline transition-colors hover:bg-hover"
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-inset text-ink-3">
+                <IconFileText size={15} />
+              </span>
+              <span className="flex min-w-0 flex-col leading-tight">
+                <span className="max-w-48 truncate font-medium text-ink" title={f.name}>
+                  {f.name}
+                </span>
+                <span className="text-ink-3 tabular-nums">{formatSize(f.size)}</span>
+              </span>
+            </a>
+          </li>
+        ),
+      )}
+    </ul>
+  );
+}
+
 export function TranscriptItem({
   item,
   live,
@@ -351,14 +399,21 @@ export function TranscriptItem({
     case "user":
       return (
         <div className="flex animate-[fade-up_300ms_var(--ease-out-strong)_both] flex-col items-end gap-1 pl-10 sm:pl-24">
-          <div
-            className={cn(
-              "rounded-xl bg-field px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap text-ink shadow-hairline [overflow-wrap:anywhere]",
-              item.queued && "opacity-70",
-            )}
-          >
-            {item.text}
-          </div>
+          {item.attachments?.length ? (
+            <div className={cn("max-w-full", item.queued && "opacity-70")}>
+              <Files files={item.attachments} />
+            </div>
+          ) : null}
+          {item.text ? (
+            <div
+              className={cn(
+                "rounded-xl bg-field px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap text-ink shadow-hairline [overflow-wrap:anywhere]",
+                item.queued && "opacity-70",
+              )}
+            >
+              {item.text}
+            </div>
+          ) : null}
           {item.queued ? (
             <span className="flex items-center gap-1 text-[11.5px] text-ink-3">
               <IconClock size={12} /> Queued · runs after the current reply

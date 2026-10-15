@@ -41,6 +41,17 @@ export type Chat = {
      * True while a message of the chat has no answer yet.
      */
     busy: boolean;
+    settings: ChatSettings;
+};
+
+/**
+ * The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
+ *
+ */
+export type ChatSettings = {
+    provider?: string;
+    modelId?: string;
+    thinkingLevel?: ThinkingLevel;
 };
 
 export type ChatList = {
@@ -52,7 +63,33 @@ export type MessageInput = {
      * A new UUID from the client. A retried request uses the same ID.
      */
     id: string;
+    /**
+     * 1 to 32000 characters. It can be empty when the message has an attachment.
+     *
+     */
     text: string;
+    /**
+     * Upload IDs from POST /api/uploads, at most 10.
+     */
+    attachments?: Array<string>;
+};
+
+export type NewChat = MessageInput & {
+    settings?: ChatSettings;
+};
+
+export type Attachment = {
+    id: string;
+    name: string;
+    /**
+     * Bytes.
+     */
+    size: number;
+    mimeType: string;
+    /**
+     * The path in the agent workspace, uploads/<id>/<name>.
+     */
+    path: string;
 };
 
 export type CreatedChat = {
@@ -162,6 +199,7 @@ export type UserItem = {
      * True while the message waits for the agent.
      */
     queued?: boolean;
+    attachments?: Array<Attachment>;
 };
 
 export type ThinkingItem = {
@@ -294,8 +332,15 @@ export type Agent = {
      * Empty when no model is chosen.
      */
     modelId: string;
+    thinkingLevel: ThinkingLevel;
     instructions: string;
 };
+
+/**
+ * pi-ai's ModelThinkingLevel. pi-ai sends the nearest level that the model supports.
+ *
+ */
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export type Provider = {
     id: string;
@@ -345,6 +390,18 @@ export type Model = {
     provider: string;
     id: string;
     name: string;
+    /**
+     * pi-ai's Model.reasoning. False means the model does not think.
+     */
+    reasoning: boolean;
+    /**
+     * pi-ai's Model.input.
+     */
+    input: Array<'text' | 'image'>;
+    /**
+     * pi-ai's getSupportedThinkingLevels(model).
+     */
+    thinkingLevels: Array<ThinkingLevel>;
 };
 
 export type Telegram = {
@@ -407,7 +464,7 @@ export type ListChatsResponses = {
 export type ListChatsResponse = ListChatsResponses[keyof ListChatsResponses];
 
 export type CreateChatData = {
-    body: MessageInput;
+    body: NewChat;
     path?: never;
     query?: never;
     url: '/api/chats';
@@ -469,6 +526,45 @@ export type GetChatResponses = {
 };
 
 export type GetChatResponse = GetChatResponses[keyof GetChatResponses];
+
+export type SetChatSettingsData = {
+    body: ChatSettings;
+    path: {
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/chats/{chatId}/settings';
+};
+
+export type SetChatSettingsErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetChatSettingsError = SetChatSettingsErrors[keyof SetChatSettingsErrors];
+
+export type SetChatSettingsResponses = {
+    /**
+     * Saved.
+     */
+    200: Chat;
+};
+
+export type SetChatSettingsResponse = SetChatSettingsResponses[keyof SetChatSettingsResponses];
 
 export type SendMessageData = {
     body: MessageInput;
@@ -570,6 +666,72 @@ export type WatchChatResponses = {
 };
 
 export type WatchChatResponse = WatchChatResponses[keyof WatchChatResponses];
+
+export type CreateUploadData = {
+    body: {
+        file: Blob | File;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/uploads';
+};
+
+export type CreateUploadErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    413: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateUploadError = CreateUploadErrors[keyof CreateUploadErrors];
+
+export type CreateUploadResponses = {
+    /**
+     * Stored.
+     */
+    201: Attachment;
+};
+
+export type CreateUploadResponse = CreateUploadResponses[keyof CreateUploadResponses];
+
+export type GetUploadData = {
+    body?: never;
+    path: {
+        uploadId: string;
+    };
+    query?: never;
+    url: '/api/uploads/{uploadId}';
+};
+
+export type GetUploadErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetUploadError = GetUploadErrors[keyof GetUploadErrors];
+
+export type GetUploadResponses = {
+    /**
+     * The file.
+     */
+    200: Blob | File;
+};
+
+export type GetUploadResponse = GetUploadResponses[keyof GetUploadResponses];
 
 export type GetSettingsData = {
     body?: never;
