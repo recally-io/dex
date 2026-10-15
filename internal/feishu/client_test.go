@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -124,5 +125,47 @@ func TestUserPlatformFailureHasBoundedAttempts(t *testing.T) {
 				t.Fatalf("attempts=%d want=%d", sends.Load(), scenario.want)
 			}
 		})
+	}
+}
+
+func TestUserDownloadsAfterTemporaryFailureAndExpiredToken(t *testing.T) {
+	// Given transient failures on both sides of a token refresh.
+	var tokens, gets atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "tenant_access_token") {
+			n := tokens.Add(1)
+			_ = json.MarshalWrite(w, map[string]any{"code": 0, "tenant_access_token": fmt.Sprint("token-", n), "expire": 7200})
+			return
+		}
+		n := gets.Add(1)
+		want := "Bearer token-1"
+		if n > 3 {
+			want = "Bearer token-2"
+		}
+		if r.Header.Get("Authorization") != want {
+			t.Errorf("authorization=%s want=%s", r.Header.Get("Authorization"), want)
+		}
+		switch n {
+		case 1, 2, 4, 5:
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"code":1}`))
+		case 3:
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"code":99991663}`))
+		default:
+			_, _ = w.Write([]byte("resource"))
+		}
+	}))
+	defer server.Close()
+	// When dex downloads, then each token has three attempts and the body streams.
+	client := feishu.NewClient(feishu.Config{APIURL: server.URL})
+	body, err := client.Download(t.Context(), "message", "key", "file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = body.Close() }()
+	data, err := io.ReadAll(body)
+	if err != nil || string(data) != "resource" || gets.Load() != 6 || tokens.Load() != 2 {
+		t.Fatalf("data=%q err=%v gets=%d tokens=%d", data, err, gets.Load(), tokens.Load())
 	}
 }

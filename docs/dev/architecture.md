@@ -318,33 +318,55 @@ one WebSocket long connection. It needs no public callback URL. The REST
 client caches the tenant token and refreshes an expired token. The transport
 uses `coder/websocket` and a small protobuf Frame encoder and decoder. It
 handles ping, pong, fragmented events, acknowledgement, and reconnect hints.
+Startup failures report an error and retry with the REST backoff, up to
+2 seconds between attempts. A configured bot retries until cancellation,
+even if the server sends a finite `ReconnectCount`. After a disconnect, the
+first reconnect waits only for the server's jitter. Later failures use the
+server's reconnect interval. A socket with no data for two ping intervals
+reconnects.
 Fragment buffers expire after 5 seconds. One connection allows at most 64
 fragmented events, 256 fragments per event, and 4 MB per event.
 
-The Channels page supports QR app creation and manual credentials. QR setup
-requests `im:message`, `im:message.p2p_msg:readonly`, `im:resource`, and the
+The Channels page shows runtime status and supports QR app creation and
+manual credentials. The form keeps the saved Feishu or Lark brand unless the
+user changes it. QR setup requests `im:message`, `im:message.p2p_msg:readonly`, `im:resource`, and the
 `im.message.receive_v1` event. The server keeps the device code in a session
-until approval or expiry. Lark tenants use the Lark accounts service. Setup
+until approval or expiry. Registration requests release the settings lock
+while they wait for the accounts service. Cancellation or replacement rejects
+late responses. Lark tenants use the Lark accounts service. Setup
 saves the creator's `open_id` with the app credentials through
 `settings.Service`. Manual setup requires a one-time code sent in a private
 message. The code expires after 10 minutes. A credential change clears owner
 authorization. The settings API never returns the saved app secret.
 
 The bot ignores groups and other users. Text mentions are removed. Rich posts
-become text and image attachments. Message resources pass through
-`upload.Store`, with its 20 MB file limit and 10 attachments per message.
+become text and image attachments. Code blocks keep their text and language
+in Markdown fences. Repeated `/pair` messages never reach the agent.
+Message resources pass through `upload.Store`, with its 20 MB file limit and 10 attachments per message.
 The shared channel manager handles `/new`, `/stop`, and `/help`. A source key
-contains `feishu:<app ID>:<message ID>`. The bot acknowledges an event only
-after durable admission succeeds. Failed admission gets a 500 acknowledgement.
+contains `feishu:<app ID>:<message ID>`. The bot acknowledges valid agent
+input after durable admission succeeds. Invalid content, rejected resource access,
+and files with invalid names or excessive size are acknowledged and ignored.
+Storage and temporary platform failures get a 500 acknowledgement for retry.
 
 A preview card reads the chat's worker watch events. It merges text updates
 at 250 ms intervals and omits thinking and tool data. The shared durable
 sender patches that card with the final answer, or creates a final card when
 no preview exists. It uses the submission ID and part index for stable send
-UUIDs. Each text part is at most 4000 UTF-8 bytes. A rejected card falls back
-to plain text. Network failures, server errors and rate limits get at most
-3 attempts per REST call. Retry delays are 200 ms and 800 ms; `Retry-After`
+UUIDs. Each text part is at most 4000 UTF-8 bytes. A card rejected with HTTP
+400 or an HTTP success status and code `230001` falls back to plain text.
+Temporary or uncertain send
+failures keep the card format and stable identity for retry. A successful
+final patch restores `running` status.
+Network failures, server errors and rate limits get at most
+3 attempts per token. JSON calls and downloads share authorization and one
+token refresh. A token rejection can therefore cause up to 6 API attempts,
+plus token requests. Downloads wait at most 30 seconds for response headers;
+the caller's context controls the streamed body. JSON responses remain
+bounded to 4 MB and download error responses to 1 MB. Retry delays are
+200 ms and 800 ms; `Retry-After`
 can extend a delay to at most 2 seconds. Reply delivery remains at least once.
+Previews use the bot lifetime and continue across WebSocket reconnects.
 Previews are best effort and do not mark a reply as delivered. A restart can
 leave a preview card in the platform; the durable sender sends a final card.
 

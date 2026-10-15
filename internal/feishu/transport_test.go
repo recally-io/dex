@@ -5,9 +5,11 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -84,7 +86,7 @@ func TestUserMessageIsAcknowledgedOnlyAfterAdmission(t *testing.T) {
 
 func TestUserReadsRichPostAndMentions(t *testing.T) {
 	// Given a platform post with text, an image, and a bot mention.
-	content := `{"zh_cn":{"title":"Title","content":[[{"tag":"text","text":"@_user_1 hello"},{"tag":"img","image_key":"image-key"}]]}}`
+	content := `{"zh_cn":{"title":"Title","content":[[{"tag":"text","text":"@_user_1 hello"},{"tag":"img","image_key":"image-key"}],[{"tag":"code_block","language":"GO","text":"return 0"}]]}}`
 	event := map[string]any{"header": map[string]string{"event_type": "im.message.receive_v1"}, "event": map[string]any{"sender": map[string]any{"sender_type": "user", "sender_id": map[string]string{"open_id": "owner"}}, "message": map[string]any{"message_id": "message", "chat_type": "p2p", "message_type": "post", "content": content, "mentions": []any{map[string]string{"key": "@_user_1"}}}}}
 	b, _ := json.Marshal(event)
 	// When dex reads it, then it keeps the text and resource and removes the mention.
@@ -92,39 +94,8 @@ func TestUserReadsRichPostAndMentions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Text != "Title\n hello" || m.Sender != "owner" || len(m.Resources) != 1 || m.Resources[0].Key != "image-key" {
+	if m.Text != "Title\n hello\n\n```GO\nreturn 0\n```" || m.Sender != "owner" || len(m.Resources) != 1 || m.Resources[0].Key != "image-key" {
 		t.Fatalf("%+v", m)
-	}
-}
-
-func TestUserCreatesAppWithMinimumPermissions(t *testing.T) {
-	// Given a device registration service.
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil {
-			t.Error(err)
-		}
-		if r.Form.Get("action") == "begin" {
-			_, _ = w.Write([]byte(`{"device_code":"device","verification_uri_complete":"https://accounts.feishu.cn/verify?code=scan","interval":2,"expires_in":300}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"client_id":"app","client_secret":"secret","user_info":{"open_id":"owner","tenant_brand":"feishu"}}`))
-	}))
-	defer server.Close()
-	registrar := Registrar{AccountsURL: server.URL}
-	// When the owner completes the flow, then dex receives credentials and the owner identity.
-	session, err := registrar.Begin(t.Context(), "feishu")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(session.QRURL, "addons=") || !strings.Contains(session.QRURL, "createOnly=true") {
-		t.Fatal("missing setup parameters")
-	}
-	result, err := registrar.Poll(t.Context(), "feishu", session.DeviceCode)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.AppID != "app" || result.UserInfo.OpenID != "owner" {
-		t.Fatal("missing owner identity")
 	}
 }
 
@@ -153,5 +124,127 @@ func TestUserRegistersLarkFromFeishuAccount(t *testing.T) {
 	}
 	if polls != 2 || result.UserInfo.OpenID != "lark-owner" || result.UserInfo.Brand != "lark" {
 		t.Fatalf("polls=%d result=%+v", polls, result.UserInfo)
+	}
+}
+
+func TestUserReconnectsBeforePlatformRetryInterval(t *testing.T) {
+	// Given a platform with a 120-second retry interval and no jitter.
+	var connections atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/callback/ws/endpoint" {
+			_ = json.MarshalWrite(w, map[string]any{"code": 0, "data": map[string]any{"URL": "ws://" + r.Host + "/ws?service_id=7", "ClientConfig": connectionConfig{ReconnectCount: -1, ReconnectInterval: 120, PingInterval: 1}}})
+			return
+		}
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+		connections.Add(1)
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	// When the socket closes, then the first reconnect starts within two seconds.
+	_ = NewClient(Config{APIURL: server.URL}).Listen(ctx, func(context.Context, []byte) error { return nil }, func(error) {
+		if connections.Load() >= 2 {
+			cancel()
+		}
+	})
+	if connections.Load() < 2 {
+		t.Fatalf("first reconnect waited for the retry interval: connections=%d", connections.Load())
+	}
+}
+
+func TestUserReconnectsWhenPlatformStopsResponding(t *testing.T) {
+	// Given a socket that accepts pings but sends no data or pong.
+	var connections atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/callback/ws/endpoint" {
+			_ = json.MarshalWrite(w, map[string]any{"code": 0, "data": map[string]any{"URL": "ws://" + r.Host + "/ws?service_id=7", "ClientConfig": connectionConfig{ReconnectCount: -1, ReconnectInterval: 1, PingInterval: 1}}})
+			return
+		}
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+		connections.Add(1)
+		for {
+			if _, _, err := conn.Read(r.Context()); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	// When two heartbeat intervals pass, then dex replaces the silent socket.
+	_ = NewClient(Config{APIURL: server.URL}).Listen(ctx, func(context.Context, []byte) error { return nil }, func(error) {
+		if connections.Load() >= 2 {
+			cancel()
+		}
+	})
+	if connections.Load() < 2 {
+		t.Fatalf("silent connection stayed open: connections=%d", connections.Load())
+	}
+}
+
+func TestUserDownloadsBodyBeyondHeaderTimeout(t *testing.T) {
+	// Given a server that sends headers immediately and a body after 31 seconds.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "tenant_access_token") {
+			_, _ = w.Write([]byte(`{"code":0,"tenant_access_token":"token","expire":7200}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		timer := time.NewTimer(31 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			_, _ = w.Write([]byte("slow resource"))
+		case <-r.Context().Done():
+		}
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 35*time.Second)
+	defer cancel()
+	// When the caller streams the body, then no 30-second client timeout cuts it off.
+	body, err := NewClient(Config{APIURL: server.URL}).Download(ctx, "message", "key", "file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = body.Close() }()
+	data, err := io.ReadAll(body)
+	if err != nil || string(data) != "slow resource" {
+		t.Fatalf("download=%q err=%v", data, err)
+	}
+}
+
+func TestUserDownloadHeaderWaitIsBounded(t *testing.T) {
+	// Given a platform that sends no resource headers.
+	var gets atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "tenant_access_token") {
+			_, _ = w.Write([]byte(`{"code":0,"tenant_access_token":"token","expire":7200}`))
+			return
+		}
+		gets.Add(1)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	client := NewClient(Config{APIURL: server.URL})
+	// Shorten only the platform header boundary; body streaming has no client timeout.
+	client.http.Transport.(*http.Transport).ResponseHeaderTimeout = 10 * time.Millisecond
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	// When headers never arrive, then the client exhausts its three attempts.
+	if body, err := client.Download(ctx, "message", "key", "file"); err == nil {
+		_ = body.Close()
+		t.Fatal("download did not time out")
+	}
+	if gets.Load() != 3 || ctx.Err() != nil {
+		t.Fatalf("gets=%d context=%v", gets.Load(), ctx.Err())
 	}
 }

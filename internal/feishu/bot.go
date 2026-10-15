@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"uuid"
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
@@ -66,7 +65,8 @@ func (b *Bot) Run(ctx context.Context) error {
 func (b *Bot) receive(ctx context.Context, data []byte) error {
 	m, err := ParseMessage(data)
 	if err != nil {
-		return err
+		slog.Warn("feishu: ignored invalid message")
+		return nil
 	}
 	if m.ID == "" {
 		return nil
@@ -95,6 +95,10 @@ func (b *Bot) receive(ctx context.Context, data []byte) error {
 		_, err = b.client.Send(ctx, m.Sender, "text", TextContent("Paired. Send a message to start."), deliveryUUID("pair:"+m.ID, 0))
 		return err
 	}
+	// Pairing codes are control data, including repeated setup events.
+	if strings.HasPrefix(m.Text, "/pair ") {
+		return nil
+	}
 	if m.Sender != b.cfg.OwnerID {
 		slog.Info("feishu: ignored message from another user")
 		return nil
@@ -113,11 +117,18 @@ func (b *Bot) receive(ctx context.Context, data []byte) error {
 	for _, resource := range m.Resources {
 		reader, err := b.client.Download(ctx, m.ID, resource.Key, resource.Type)
 		if err != nil {
+			if permanentAPIError(err) {
+				return nil
+			}
 			return err
 		}
 		attachment, saveErr := b.uploads.Save(resource.Name, reader)
 		closeErr := reader.Close()
 		if err := errors.Join(saveErr, closeErr); err != nil {
+			if errors.Is(err, upload.ErrTooLarge) || errors.Is(err, upload.ErrInvalidName) {
+				slog.Warn("feishu: ignored rejected attachment")
+				return nil
+			}
 			return err
 		}
 		msg.Attachments = append(msg.Attachments, attachment)
@@ -161,13 +172,8 @@ func (b *Bot) Parts(reply chat.Reply) []string {
 	return Parts(text)
 }
 
-// Send confirms a command or final message without a durable identity.
-func (b *Bot) Send(ctx context.Context, peer, text string) error {
-	return b.SendPart(ctx, peer, uuid.NewV7().String(), 0, text)
-}
-
-// SendPart patches the preview for part zero. Other parts get their own stable create ID.
-func (b *Bot) SendPart(ctx context.Context, peer, id string, part int, text string) error {
+// Send patches the preview for part zero. Other parts use a stable create ID.
+func (b *Bot) Send(ctx context.Context, peer, id string, part int, text string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	owner, ok := strings.CutPrefix(peer, "feishu:")
@@ -181,18 +187,19 @@ func (b *Bot) SendPart(ctx context.Context, peer, id string, part int, text stri
 		if p.messageID != "" {
 			if err := b.client.Patch(ctx, p.messageID, card); err == nil {
 				delete(b.previews, id)
+				b.manager.Report("feishu", channel.Status{State: "running"})
 				return nil
 			}
 		}
 	}
 	uuid := deliveryUUID(id, part)
 	_, err := b.client.Send(ctx, owner, "interactive", card, uuid)
-	if err != nil {
+	if e, ok := errors.AsType[*APIError](err); ok && e.Code == 230001 && (e.Status == http.StatusBadRequest || e.Status >= 200 && e.Status < 300) {
 		_, err = b.client.Send(ctx, owner, "text", TextContent(text), deliveryUUID(id+":text", part))
 	}
 	if err != nil {
 		b.manager.Report("feishu", channel.Status{State: "error", Reason: err.Error()})
-		if e, ok := errors.AsType[*APIError](err); ok && !retryable(e.Status, e.Code) && (e.Code < 99991600 || e.Code >= 99991700) && e.Status != http.StatusUnauthorized {
+		if permanentAPIError(err) {
 			delete(b.previews, id)
 			return fmt.Errorf("%w: %w", channel.ErrPermanent, err)
 		}
@@ -207,4 +214,11 @@ func deliveryUUID(id string, part int) string {
 	// Feishu limits uuid to 50 characters. The complete identity remains in the digest.
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", id, part)))
 	return hex.EncodeToString(sum[:24])
+}
+
+func permanentAPIError(err error) bool {
+	e, ok := errors.AsType[*APIError](err)
+	return ok && ((e.Status >= 400 && e.Status < 500 && e.Status != http.StatusUnauthorized) ||
+		(e.Status >= 200 && e.Status < 300 && e.Code != 0)) &&
+		!retryable(e.Status, e.Code) && (e.Code < 99991600 || e.Code >= 99991700)
 }

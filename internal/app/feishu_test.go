@@ -21,15 +21,24 @@ import (
 
 // This server is the platform boundary. dex, SQLite and the worker remain real.
 type fakeFeishu struct {
-	server      *httptest.Server
-	events      chan []byte
-	ack         chan struct{}
-	mu          sync.Mutex
-	messages    []string
-	methods     []string
-	rejectCards bool
-	fail        bool
-	next        int
+	server               *httptest.Server
+	events               chan []byte
+	ack                  chan struct{}
+	mu                   sync.Mutex
+	messages             []string
+	methods              []string
+	rejectCards          bool
+	fail                 bool
+	next                 int
+	startupFailures      int
+	startupRequests      int
+	disconnect           bool
+	connections          int
+	disconnectAfterEvent bool
+	cardFailures         int
+	textAttempts         int
+	resourceStatus       int
+	resourceSize         int
 }
 
 func newFakeFeishu(t *testing.T) *fakeFeishu {
@@ -42,13 +51,30 @@ func newFakeFeishu(t *testing.T) *fakeFeishu {
 func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/callback/ws/endpoint":
-		_ = json.MarshalWrite(w, map[string]any{"code": 0, "data": map[string]any{"URL": "ws://" + r.Host + "/ws?service_id=9", "ClientConfig": map[string]int{"ReconnectCount": -1, "ReconnectInterval": 1, "ReconnectNonce": 0, "PingInterval": 10}}})
+		f.mu.Lock()
+		f.startupRequests++
+		fail := f.startupRequests <= f.startupFailures
+		f.mu.Unlock()
+		if fail {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"code":1}`))
+			return
+		}
+		_ = json.MarshalWrite(w, map[string]any{"code": 0, "data": map[string]any{"URL": "ws://" + r.Host + "/ws?service_id=9", "ClientConfig": map[string]int{"ReconnectCount": 0, "ReconnectInterval": 120, "ReconnectNonce": 0, "PingInterval": 120}}})
 	case "/ws":
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
 			return
 		}
 		defer func() { _ = conn.CloseNow() }()
+		f.mu.Lock()
+		f.connections++
+		disconnect := f.disconnect && f.connections == 1
+		f.mu.Unlock()
+		if disconnect {
+			return
+		}
+
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
 		done := make(chan struct{})
@@ -63,6 +89,14 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 				// Data frames end with the acknowledgement JSON payload; pings do not.
 				if strings.Contains(string(data), `{"code":200}`) {
 					f.ack <- struct{}{}
+					f.mu.Lock()
+					disconnect := f.disconnectAfterEvent
+					f.disconnectAfterEvent = false
+					f.mu.Unlock()
+					if disconnect {
+						_ = conn.CloseNow()
+						return
+					}
 				}
 			}
 		}()
@@ -96,6 +130,18 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"code":0,"tenant_access_token":"tenant-token","expire":7200}`))
 	default:
 		if strings.Contains(r.URL.Path, "/resources/") {
+			f.mu.Lock()
+			status, size := f.resourceStatus, f.resourceSize
+			f.mu.Unlock()
+			if status != 0 {
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte("resource not found"))
+				return
+			}
+			if size > 0 {
+				_, _ = w.Write([]byte(strings.Repeat("x", size)))
+				return
+			}
 			_, _ = w.Write([]byte("file from owner"))
 			return
 		}
@@ -112,6 +158,18 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"code":1}`))
 			return
+		}
+		if r.Method == http.MethodPost {
+			if strings.Contains(body.Content, `"elements"`) {
+				if f.cardFailures > 0 {
+					f.cardFailures--
+					w.WriteHeader(http.StatusServiceUnavailable)
+					_, _ = w.Write([]byte(`{"code":1}`))
+					return
+				}
+			} else {
+				f.textAttempts++
+			}
 		}
 		if f.rejectCards && strings.Contains(body.Content, `"elements"`) {
 			w.WriteHeader(http.StatusBadRequest)
@@ -184,6 +242,10 @@ func pairFeishu(t *testing.T, d *dex, f *fakeFeishu) {
 	f.text(t, "wrong-pair", "stranger", "p2p", "/pair invalid")
 	f.text(t, "owner-pair", "owner", "p2p", "/pair "+result.PairingCode)
 	f.waitReply(t, "Paired.")
+	f.text(t, "owner-pair", "owner", "p2p", "/pair "+result.PairingCode)
+	if chats := d.chats(t); len(chats) != 0 {
+		t.Fatalf("pair retry reached agent: %+v", chats)
+	}
 	_, body := d.call(t, http.MethodGet, "/api/settings/feishu", nil)
 	if strings.Contains(body, "app-secret") || strings.Contains(body, result.PairingCode) || !strings.Contains(body, `"paired":true`) {
 		t.Fatalf("unsafe settings response: %s", body)
@@ -304,9 +366,17 @@ func TestUserSeesFeishuThinkingCardBecomeFinalAnswer(t *testing.T) {
 	// When the run waits, then dex sends a thinking card.
 	f.text(t, "stream", "owner", "p2p", "curl -fsS "+toolServer.URL)
 	f.waitReply(t, "Thinking")
-	// When the tool finishes, then dex patches the card with the final answer.
+	// When the final patch fails temporarily, then a later patch restores runtime status.
+	f.mu.Lock()
+	f.fail = true
+	f.mu.Unlock()
 	once.Do(func() { close(release) })
+	waitFeishuStatus(t, d, "error")
+	f.mu.Lock()
+	f.fail = false
+	f.mu.Unlock()
 	f.waitReply(t, "bash: streamed answer")
+	waitFeishuStatus(t, d, "running")
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	found := false
@@ -350,10 +420,14 @@ func TestUserCreatesFeishuAppAndPairsTheCreator(t *testing.T) {
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), FeishuAPIURL: f.server.URL, FeishuAccountsURL: accounts.URL})
 	d.setModel(t, "echo")
 	var setup struct {
+		QRURL   string `json:"qrUrl"`
 		Session string `json:"session"`
 		Status  string `json:"status"`
 	}
 	d.must(t, http.MethodPost, "/api/settings/feishu/registration", map[string]string{"brand": "feishu"}, &setup)
+	if !strings.Contains(setup.QRURL, "addons=") || !strings.Contains(setup.QRURL, "createOnly=true") {
+		t.Fatal("missing setup parameters")
+	}
 	if setup.Session == "" {
 		t.Fatal("missing registration session")
 	}
@@ -371,6 +445,9 @@ func TestUserCreatesFeishuAppAndPairsTheCreator(t *testing.T) {
 		d.must(t, http.MethodPost, "/api/settings/feishu/registration/poll", map[string]string{"session": setup.Session}, &setup)
 	}
 	_, body := d.call(t, http.MethodGet, "/api/settings/feishu", nil)
+	if !strings.Contains(body, `"appId":"qr-app"`) {
+		t.Fatalf("missing saved app ID: %s", body)
+	}
 	if strings.Contains(body, "private-secret") || strings.Contains(body, "private-device") {
 		t.Fatal("registration disclosed credentials")
 	}
@@ -404,4 +481,219 @@ func TestUserStopsFeishuAnswer(t *testing.T) {
 	// When the owner types /stop, then the run gets a final unanswered card.
 	f.text(t, "stop", "owner", "p2p", "/stop")
 	f.waitReply(t, "No answer:")
+}
+
+func TestUserGetsFeishuReplyAfterStartupFailure(t *testing.T) {
+	// Given a platform whose first startup request and REST retries fail.
+	f := newFakeFeishu(t)
+	f.startupFailures = 3
+	d := startFeishu(t, f, t.TempDir())
+	// When the owner pairs later, then the bot recovers without a settings change.
+	pairFeishu(t, d, f)
+	f.text(t, "recovered", "owner", "p2p", "startup recovered")
+	f.waitReply(t, "echo: startup recovered")
+}
+
+func TestUserGetsFeishuReplyAfterFiniteReconnectCount(t *testing.T) {
+	// Given a platform that disconnects once and advertises no reconnects.
+	f := newFakeFeishu(t)
+	f.disconnect = true
+	d := startFeishu(t, f, t.TempDir())
+	// When the connection recovers, then the bot still delivers replies.
+	pairFeishu(t, d, f)
+	f.text(t, "reconnected", "owner", "p2p", "connection recovered")
+	f.waitReply(t, "echo: connection recovered")
+}
+
+func TestUserDoesNotGetTextFallbackForTemporaryFeishuFailure(t *testing.T) {
+	// Given a platform that temporarily fails all three card attempts.
+	f := newFakeFeishu(t)
+	d := startFeishu(t, f, t.TempDir())
+	pairFeishu(t, d, f)
+	f.mu.Lock()
+	f.cardFailures = 3
+	before := f.textAttempts
+	f.mu.Unlock()
+	// When durable delivery retries, then it keeps the card identity and format.
+	f.text(t, "temporary-card", "owner", "p2p", "/help")
+	f.waitReply(t, "/stop stops")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.textAttempts != before {
+		t.Fatalf("temporary failure sent text fallback: %d", f.textAttempts-before)
+	}
+}
+
+func waitFeishuStatus(t *testing.T, d *dex, want string) {
+	t.Helper()
+	deadline := time.NewTimer(15 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		var result struct {
+			Status string `json:"status"`
+		}
+		d.must(t, http.MethodGet, "/api/settings/feishu", nil, &result)
+		if result.Status == want {
+			return
+		}
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			t.Fatalf("status=%s want=%s", result.Status, want)
+		}
+	}
+}
+
+func TestUserSeesFeishuPreviewAfterReconnect(t *testing.T) {
+	// Given a real tool that waits while its input socket disconnects.
+	f := newFakeFeishu(t)
+	d := startFeishu(t, f, t.TempDir())
+	pairFeishu(t, d, f)
+	d.setModel(t, "bash")
+	release := make(chan struct{})
+	var once sync.Once
+	tool := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+			_, _ = w.Write([]byte("after reconnect"))
+		case <-r.Context().Done():
+		}
+	}))
+	defer tool.Close()
+	defer once.Do(func() { close(release) })
+	f.mu.Lock()
+	f.disconnectAfterEvent = true
+	f.mu.Unlock()
+	// When the input connection closes before the preview tick, then the preview still appears.
+	f.text(t, "preview-reconnect", "owner", "p2p", "curl -fsS "+tool.URL)
+	f.waitReply(t, "Thinking")
+	once.Do(func() { close(release) })
+	f.waitReply(t, "bash: after reconnect")
+}
+
+func TestUserInvalidFeishuMessageDoesNotBlockLaterInput(t *testing.T) {
+	// Given a paired app and invalid platform content.
+	f := newFakeFeishu(t)
+	d := startFeishu(t, f, t.TempDir())
+	pairFeishu(t, d, f)
+	// When dex rejects invalid content and a path as a file name, then it acknowledges both.
+	f.message(t, "bad-json", "owner", "p2p", "text", `{`)
+	f.message(t, "bad-name", "owner", "p2p", "file", `{"file_key":"file-key","file_name":"../notes.txt"}`)
+	f.mu.Lock()
+	f.resourceStatus = http.StatusNotFound
+	f.mu.Unlock()
+	f.message(t, "missing-resource", "owner", "p2p", "file", `{"file_key":"missing","file_name":"notes.txt"}`)
+	f.mu.Lock()
+	f.resourceStatus = 0
+	f.resourceSize = (20 << 20) + 1
+	f.mu.Unlock()
+	f.message(t, "too-large", "owner", "p2p", "file", `{"file_key":"large","file_name":"notes.txt"}`)
+	f.mu.Lock()
+	f.resourceSize = 0
+	f.mu.Unlock()
+	if chats := d.chats(t); len(chats) != 0 {
+		t.Fatalf("invalid input stored: %+v", chats)
+	}
+	// Then valid input still gets a reply.
+	f.text(t, "valid-later", "owner", "p2p", "valid later")
+	f.waitReply(t, "echo: valid later")
+}
+
+func TestUserCancelsFeishuSetupWhileAccountsServiceWaits(t *testing.T) {
+	for _, action := range []string{"begin", "poll"} {
+		t.Run(action, func(t *testing.T) {
+			// Given a registration request that waits at the accounts boundary.
+			entered := make(chan struct{}, 1)
+			release := make(chan struct{})
+			var once sync.Once
+			accounts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := r.ParseForm(); err != nil {
+					t.Error(err)
+					return
+				}
+				if r.Form.Get("action") == action {
+					entered <- struct{}{}
+					select {
+					case <-release:
+					case <-r.Context().Done():
+						return
+					}
+				}
+				if r.Form.Get("action") == "begin" {
+					_, _ = w.Write([]byte(`{"device_code":"device","verification_uri_complete":"https://accounts.feishu.cn/verify","interval":1,"expires_in":300}`))
+				} else {
+					_, _ = w.Write([]byte(`{"client_id":"late-app","client_secret":"secret","user_info":{"open_id":"owner","tenant_brand":"feishu"}}`))
+				}
+			}))
+			defer accounts.Close()
+			defer once.Do(func() { close(release) })
+			f := newFakeFeishu(t)
+			d := startDexWith(t, app.Config{DataDir: t.TempDir(), FeishuAccountsURL: accounts.URL, FeishuAPIURL: f.server.URL})
+			path := "/api/settings/feishu/registration"
+			body := map[string]string{"brand": "feishu"}
+			if action == "poll" {
+				var setup struct {
+					Session string `json:"session"`
+				}
+				d.must(t, http.MethodPost, path, body, &setup)
+				path += "/poll"
+				body = map[string]string{"session": setup.Session}
+			}
+			done := make(chan int, 1)
+			go func() {
+				tick := time.NewTicker(20 * time.Millisecond)
+				defer tick.Stop()
+				for {
+					status, raw := d.call(t, http.MethodPost, path, body)
+					if status != http.StatusOK || action == "begin" || !strings.Contains(raw, `"pending"`) {
+						done <- status
+						return
+					}
+					select {
+					case <-tick.C:
+					case <-t.Context().Done():
+						return
+					}
+				}
+			}()
+			select {
+			case <-entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("registration did not reach accounts")
+			}
+			// When the user turns the channel off, then cancellation completes before accounts respond.
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, http.MethodDelete, d.srv.URL+"/api/settings/feishu", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := d.srv.Client().Do(req)
+			once.Do(func() { close(release) })
+			if err != nil {
+				t.Fatalf("settings blocked by registration: %v", err)
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("delete status=%d", resp.StatusCode)
+			}
+			select {
+			case status := <-done:
+				if status != http.StatusBadRequest {
+					t.Fatalf("stale registration status=%d", status)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("stale registration did not finish")
+			}
+			var saved struct {
+				Enabled bool `json:"enabled"`
+			}
+			d.must(t, http.MethodGet, "/api/settings/feishu", nil, &saved)
+			if saved.Enabled {
+				t.Fatal("late credentials restored a canceled channel")
+			}
+		})
+	}
 }

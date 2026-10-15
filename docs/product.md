@@ -37,9 +37,12 @@ to read in an afternoon.
   chats and automations use the agent's settings and take no files.
 - Feishu / Lark: QR app creation or manual credentials with a one-time
   pairing code. Only the owner can use the bot in private messages. Text,
-  rich posts, images and files reach the agent. Replies use a streamed card,
-  with plain text as a fallback. Groups, threads and outbound media are not
-  supported.
+  rich posts (including code blocks), images and files reach the agent.
+  Replies use a streamed card. A card content rejection allows plain text
+  as a fallback. Temporary failures retry the card. Startup and connection
+  failures recover without a settings change. The Channels page shows runtime
+  status. Saved Lark settings keep the Lark platform. Groups, threads and
+  outbound media are not supported.
 - Timers: scheduled messages to an agent.
 
 Status: the web UI, Telegram, Feishu / Lark, durable messages, timers, skills,

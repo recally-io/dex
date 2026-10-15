@@ -18,7 +18,8 @@ import type { FeishuSetup } from "../api/generated/types.gen";
 export function FeishuChannel() {
   const client = useQueryClient();
   const saved = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
-  const [brand, setBrand] = useState("feishu");
+  const [selectedBrand, setBrand] = useState<string | null>(null);
+  const brand = selectedBrand ?? saved.data?.brand ?? "feishu";
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
   const [setup, setSetup] = useState<FeishuSetup | null>(null);

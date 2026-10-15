@@ -2,11 +2,10 @@ package feishu
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"math/big"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -34,10 +33,12 @@ type fragments struct {
 func (c *Client) Listen(ctx context.Context, handle func(context.Context, []byte) error, report func(error)) error {
 	conf := connectionConfig{ReconnectCount: -1, ReconnectInterval: 120, ReconnectNonce: 30, PingInterval: 120}
 	attempts := 0
+	connected := false
 	for {
 		err := c.connection(ctx, handle, &conf, func(err error) {
 			if err == nil {
 				attempts = 0
+				connected = true
 			}
 			report(err)
 		})
@@ -45,17 +46,17 @@ func (c *Client) Listen(ctx context.Context, handle func(context.Context, []byte
 			return nil //nolint:nilerr // Cancellation is a requested shutdown.
 		}
 		report(err)
-		if conf.ReconnectCount >= 0 && attempts >= conf.ReconnectCount {
-			return err
-		}
+		// ReconnectCount limits the SDK, but dex keeps a configured bot alive.
 		attempts++
 		delay := time.Duration(max(1, conf.ReconnectInterval)) * time.Second
-		if attempts == 1 && conf.ReconnectNonce > 0 {
-			nonce, err := rand.Int(rand.Reader, big.NewInt(int64(min(conf.ReconnectNonce, 300)*1000)))
-			if err != nil {
-				return err
+		if attempts == 1 {
+			delay = 0
+			if conf.ReconnectNonce > 0 {
+				delay = time.Duration(rand.IntN(min(conf.ReconnectNonce, 300)*1000)) * time.Millisecond //nolint:gosec // Reconnect jitter needs no cryptographic randomness.
 			}
-			delay += time.Duration(nonce.Int64()) * time.Millisecond
+		}
+		if !connected {
+			delay = retryDelay(min(attempts-1, 2), "")
 		}
 		if err := pause(ctx, delay); err != nil {
 			return nil //nolint:nilerr // Cancellation is a requested shutdown.
@@ -121,7 +122,12 @@ func (c *Client) connection(ctx context.Context, handle func(context.Context, []
 	defer func() { cancel(); wg.Wait() }()
 	pending := map[string]*fragments{}
 	for {
-		kind, b, err := conn.Read(session)
+		mu.Lock()
+		readTimeout := 2 * time.Duration(max(1, conf.PingInterval)) * time.Second
+		mu.Unlock()
+		readCtx, readCancel := context.WithTimeout(session, readTimeout)
+		kind, b, err := conn.Read(readCtx)
+		readCancel()
 		if err != nil {
 			return errors.New("feishu WebSocket disconnected")
 		}
@@ -204,7 +210,7 @@ func (c *Client) connection(ctx context.Context, handle func(context.Context, []
 			delete(pending, id)
 		}
 		code := 200
-		if err := handle(session, payload); err != nil {
+		if err := handle(ctx, payload); err != nil {
 			code = 500
 		}
 		f.payload = []byte(fmt.Sprintf(`{"code":%d}`, code))

@@ -68,16 +68,8 @@ func (s *Service) GetFeishu(ctx context.Context) (Feishu, error) {
 	if cfg == nil {
 		return Feishu{Brand: "feishu", Status: "off"}, nil
 	}
-	status := "running"
-	if cfg.OwnerID == "" {
-		status = "needs_login"
-	}
-	reason := ""
-	if s.ChannelStatus != nil {
-		runtime := s.ChannelStatus("feishu")
-		status, reason = runtime.State, runtime.Reason
-	}
-	return Feishu{Enabled: true, AppID: cfg.AppID, Brand: cfg.Brand, Paired: cfg.OwnerID != "", Status: status, Error: reason}, nil
+	runtime := s.ChannelStatus("feishu")
+	return Feishu{Enabled: true, AppID: cfg.AppID, Brand: cfg.Brand, Paired: cfg.OwnerID != "", Status: runtime.State, Error: runtime.Reason}, nil
 }
 
 func validBrand(brand string) bool { return brand == "feishu" || brand == "lark" }
@@ -119,6 +111,7 @@ func (s *Service) SetFeishu(ctx context.Context, appID, secret, brand string) (F
 		return FeishuSetup{}, err
 	}
 	s.feishuSession = nil
+	s.feishuSessionID = ""
 	return FeishuSetup{Status: "saved", PairingCode: pairing, ExpiresIn: 600}, nil
 }
 
@@ -126,9 +119,7 @@ func (s *Service) saveFeishu(ctx context.Context, cfg feishu.Config, pairing str
 	if err := s.q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{AppID: cfg.AppID, AppSecret: cfg.AppSecret, Brand: cfg.Brand, OwnerID: cfg.OwnerID, PairingCode: pairing, PairingExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli()}); err != nil {
 		return err
 	}
-	if s.onFeishu != nil {
-		s.onFeishu(&cfg)
-	}
+	s.onFeishu(&cfg)
 	return nil
 }
 
@@ -150,41 +141,56 @@ func (s *Service) DeleteFeishu(ctx context.Context) error {
 		return err
 	}
 	s.feishuSession = nil
-	if s.onFeishu != nil {
-		s.onFeishu(nil)
-	}
+	s.feishuSessionID = ""
+	s.onFeishu(nil)
 	return nil
 }
 
 // BeginFeishu keeps the platform device code on the server.
 func (s *Service) BeginFeishu(ctx context.Context, brand string) (FeishuSetup, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if !validBrand(brand) {
 		return FeishuSetup{}, fmt.Errorf("%w: choose Feishu or Lark", ErrInvalid)
 	}
+	id := uuid.NewV7().String()
+	s.mu.Lock()
+	s.feishuSession = nil
+	s.feishuSessionID = id
+	s.mu.Unlock()
 	data, err := s.feishuRegistrar.Begin(ctx, brand)
 	if err != nil {
 		return FeishuSetup{}, err
 	}
-	id := uuid.NewV7().String()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.feishuSessionID != id {
+		return FeishuSetup{}, fmt.Errorf("%w: registration was replaced or canceled", ErrInvalid)
+	}
 	s.feishuSession = &feishuSession{device: data.DeviceCode, brand: brand, expires: time.Now().Add(time.Duration(data.ExpiresIn) * time.Second), next: time.Now().Add(time.Duration(data.Interval) * time.Second)}
-	s.feishuSessionID = id
 	return FeishuSetup{Session: id, QRURL: data.QRURL, Interval: data.Interval, ExpiresIn: data.ExpiresIn, Status: "pending"}, nil
 }
 
 // PollFeishu saves credentials only from the active server-owned device session.
 func (s *Service) PollFeishu(ctx context.Context, id string) (FeishuSetup, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	session := s.feishuSession
 	if session == nil || id != s.feishuSessionID || time.Now().After(session.expires) {
+		s.mu.Unlock()
 		return FeishuSetup{}, fmt.Errorf("%w: registration expired; create a new QR code", ErrInvalid)
 	}
 	if time.Now().Before(session.next) {
-		return FeishuSetup{Session: id, Status: "pending", Interval: max(1, int(time.Until(session.next).Seconds())+1)}, nil
+		interval := max(1, int(time.Until(session.next).Seconds())+1)
+		s.mu.Unlock()
+		return FeishuSetup{Session: id, Status: "pending", Interval: interval}, nil
 	}
+	// Reserve the next poll while the remote request runs without the settings lock.
+	session.next = time.Now().Add(20 * time.Second)
+	s.mu.Unlock()
 	data, err := s.feishuRegistrar.Poll(ctx, session.brand, session.device)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.feishuSession != session || id != s.feishuSessionID || time.Now().After(session.expires) {
+		return FeishuSetup{}, fmt.Errorf("%w: registration was replaced or expired", ErrInvalid)
+	}
 	if err != nil {
 		return FeishuSetup{}, err
 	}
@@ -201,5 +207,6 @@ func (s *Service) PollFeishu(ctx context.Context, id string) (FeishuSetup, error
 		return FeishuSetup{}, err
 	}
 	s.feishuSession = nil
+	s.feishuSessionID = ""
 	return FeishuSetup{Status: "created"}, nil
 }

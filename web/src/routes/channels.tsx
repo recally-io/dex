@@ -6,6 +6,7 @@ import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-str
 import type { Settings } from "../api/generated/types.gen";
 import {
   deleteTelegramMutation,
+  getFeishuOptions,
   getSettingsOptions,
   listChatsOptions,
   setTelegramMutation,
@@ -86,6 +87,8 @@ function Boundary() {
 }
 
 export function ChannelsPage() {
+  const feishu = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
+
   return (
     <FramedPage
       title="Channels"
@@ -127,7 +130,11 @@ export function ChannelsPage() {
                       icon={<IconPaperPlane size={16} />}
                       name="Feishu / Lark"
                       text="Private chat with the paired owner. Create an app with a QR code."
-                      status={<span className="text-[12px] text-ink-3">Configure</span>}
+                      status={
+                        <StatusPill tone={feishu.data?.status === "running" ? "green" : "neutral"}>
+                          {feishu.isError ? "unavailable" : (feishu.data?.status ?? "Loading…")}
+                        </StatusPill>
+                      }
                     />
                   </div>
                 </Panel>

@@ -103,6 +103,7 @@ type post struct {
 	Title   string `json:"title"`
 	Content [][]struct {
 		Tag      string `json:"tag"`
+		Language string `json:"language"`
 		Text     string `json:"text"`
 		Href     string `json:"href"`
 		ImageKey string `json:"image_key"`
@@ -148,6 +149,8 @@ func parsePost(data []byte) (string, []Resource, error) {
 			switch part.Tag {
 			case "text", "md":
 				text.WriteString(part.Text)
+			case "code_block":
+				fmt.Fprintf(&text, "\n```%s\n%s\n```\n", part.Language, part.Text)
 			case "a":
 				text.WriteString(part.Text)
 				if part.Href != "" {

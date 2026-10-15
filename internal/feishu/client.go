@@ -42,7 +42,9 @@ func NewClient(cfg Config) *Client {
 			cfg.APIURL = "https://open.larksuite.com"
 		}
 	}
-	return &Client{cfg: cfg, http: &http.Client{Timeout: 30 * time.Second}}
+	transport := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert // dex does not replace the standard transport.
+	transport.ResponseHeaderTimeout = 30 * time.Second
+	return &Client{cfg: cfg, http: &http.Client{Transport: transport}}
 }
 
 // APIError contains only codes, so a platform response cannot disclose credentials.
@@ -75,12 +77,17 @@ func (c *Client) tenantToken(ctx context.Context) (string, error) {
 	return c.token, nil
 }
 
-func (c *Client) authorized(ctx context.Context, method, path string, body any) ([]byte, error) {
+type response struct {
+	data []byte
+	body io.ReadCloser
+}
+
+func (c *Client) authorized(ctx context.Context, method, path string, body any, stream bool) (response, error) {
 	token, err := c.tenantToken(ctx)
 	if err != nil {
-		return nil, err
+		return response{}, err
 	}
-	data, err := c.request(ctx, method, path, body, token)
+	data, err := c.execute(ctx, method, path, body, token, stream)
 	if e, ok := errors.AsType[*APIError](err); ok && (e.Code == 99991663 || e.Code == 99991668 || e.Code == 99991661) {
 		c.mu.Lock()
 		if c.token == token {
@@ -89,26 +96,37 @@ func (c *Client) authorized(ctx context.Context, method, path string, body any) 
 		c.mu.Unlock()
 		token, err = c.tenantToken(ctx)
 		if err != nil {
-			return nil, err
+			return response{}, err
 		}
-		return c.request(ctx, method, path, body, token)
+		return c.execute(ctx, method, path, body, token, stream)
 	}
 	return data, err
 }
 
 func (c *Client) request(ctx context.Context, method, path string, body any, token string) ([]byte, error) {
+	result, err := c.execute(ctx, method, path, body, token, false)
+	return result.data, err
+}
+
+// execute owns failures and retries; only a successful resource transfers body ownership.
+func (c *Client) execute(ctx context.Context, method, path string, body any, token string, stream bool) (response, error) {
+	if !stream {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+	}
 	var payload []byte
 	if body != nil {
 		var err error
 		payload, err = json.Marshal(body)
 		if err != nil {
-			return nil, err
+			return response{}, err
 		}
 	}
 	for attempt := range 3 {
 		req, err := http.NewRequestWithContext(ctx, method, c.cfg.APIURL+path, bytes.NewReader(payload))
 		if err != nil {
-			return nil, err
+			return response{}, err
 		}
 		req.Header.Set("Content-Type", "application/json")
 		if token != "" {
@@ -119,14 +137,24 @@ func (c *Client) request(ctx context.Context, method, path string, body any, tok
 		delay := retryDelay(attempt, "")
 		var data []byte
 		if err == nil {
-			data, err = io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+			if stream && resp.StatusCode == http.StatusOK {
+				return response{body: resp.Body}, nil
+			}
+			limit := int64(4 << 20)
+			if stream {
+				limit = 1 << 20
+			}
+			data, err = io.ReadAll(io.LimitReader(resp.Body, limit+1))
 			_ = resp.Body.Close()
+			if err == nil && int64(len(data)) > limit {
+				return response{}, errors.New("feishu response exceeds size limit")
+			}
 			if err == nil {
 				var envelope struct {
 					Code int `json:"code"`
 				}
 				err = json.Unmarshal(data, &envelope)
-				if err == nil && (resp.StatusCode < 200 || resp.StatusCode >= 300 || envelope.Code != 0) {
+				if resp.StatusCode < 200 || resp.StatusCode >= 300 || stream || (err == nil && envelope.Code != 0) {
 					err = &APIError{resp.StatusCode, envelope.Code}
 				}
 				retry = retryable(resp.StatusCode, envelope.Code)
@@ -136,13 +164,13 @@ func (c *Client) request(ctx context.Context, method, path string, body any, tok
 			delay = retryDelay(attempt, resp.Header.Get("Retry-After"))
 		}
 		if err == nil {
-			return data, nil
+			return response{data: data}, nil
 		}
 		if !retry || attempt == 2 {
-			return nil, err
+			return response{}, err
 		}
 		if err := pause(ctx, min(delay, 2*time.Second)); err != nil {
-			return nil, err
+			return response{}, err
 		}
 	}
 	panic("unreachable")
@@ -175,7 +203,7 @@ func pause(ctx context.Context, delay time.Duration) error {
 
 // Send creates a message. deliveryID stays the same across retries.
 func (c *Client) Send(ctx context.Context, receiver, kind, content, deliveryID string) (string, error) {
-	data, err := c.authorized(ctx, http.MethodPost, "/open-apis/im/v1/messages?receive_id_type=open_id", map[string]string{"receive_id": receiver, "msg_type": kind, "content": content, "uuid": deliveryID})
+	data, err := c.authorized(ctx, http.MethodPost, "/open-apis/im/v1/messages?receive_id_type=open_id", map[string]string{"receive_id": receiver, "msg_type": kind, "content": content, "uuid": deliveryID}, false)
 	if err != nil {
 		return "", err
 	}
@@ -184,7 +212,7 @@ func (c *Client) Send(ctx context.Context, receiver, kind, content, deliveryID s
 			ID string `json:"message_id"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(data, &result); err != nil {
+	if err := json.Unmarshal(data.data, &result); err != nil {
 		return "", err
 	}
 	if result.Data.ID == "" {
@@ -195,55 +223,15 @@ func (c *Client) Send(ctx context.Context, receiver, kind, content, deliveryID s
 
 // Patch replaces an interactive card.
 func (c *Client) Patch(ctx context.Context, id, content string) error {
-	_, err := c.authorized(ctx, http.MethodPatch, "/open-apis/im/v1/messages/"+url.PathEscape(id), map[string]string{"content": content})
+	_, err := c.authorized(ctx, http.MethodPatch, "/open-apis/im/v1/messages/"+url.PathEscape(id), map[string]string{"content": content}, false)
 	return err
 }
 
 // Download streams one message resource to the caller. The caller closes the body.
 func (c *Client) Download(ctx context.Context, messageID, key, kind string) (io.ReadCloser, error) {
 	path := "/open-apis/im/v1/messages/" + url.PathEscape(messageID) + "/resources/" + url.PathEscape(key) + "?type=" + url.QueryEscape(kind)
-	for attempt := range 3 {
-		token, err := c.tenantToken(ctx)
-		if err != nil {
-			return nil, err
-		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.APIURL+path, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		resp, err := c.http.Do(req)
-		delay := retryDelay(attempt, "")
-		retry := err != nil
-		if err == nil {
-			if resp.StatusCode == http.StatusOK {
-				return resp.Body, nil
-			}
-			var envelope struct {
-				Code int `json:"code"`
-			}
-			decodeErr := json.UnmarshalRead(io.LimitReader(resp.Body, 1<<20), &envelope)
-			_ = resp.Body.Close()
-			err = &APIError{Status: resp.StatusCode, Code: envelope.Code}
-			retry = retryable(resp.StatusCode, envelope.Code)
-			if decodeErr == nil && (envelope.Code == 99991663 || envelope.Code == 99991668 || envelope.Code == 99991661) {
-				c.mu.Lock()
-				if c.token == token {
-					c.expires = time.Time{}
-				}
-				c.mu.Unlock()
-				retry = true
-			}
-			delay = retryDelay(attempt, resp.Header.Get("Retry-After"))
-		}
-		if !retry || attempt == 2 {
-			return nil, err
-		}
-		if err := pause(ctx, min(delay, 2*time.Second)); err != nil {
-			return nil, err
-		}
-	}
-	panic("unreachable")
+	result, err := c.authorized(ctx, http.MethodGet, path, nil, true)
+	return result.body, err
 }
 
 // TextContent encodes the platform's text content field.
