@@ -1,6 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+
+export function ChatComposerInput({
+  children,
+  footer,
+}: {
+  children: ReactNode;
+  footer: ReactNode;
+}) {
+  return (
+    <div className="overflow-hidden rounded-card bg-surface p-1.5 shadow-card">
+      <div className="rounded-control border border-line bg-field shadow-[inset_0_1px_2px_rgba(0,0,0,0.035)] transition-colors duration-150 focus-within:border-line-strong">
+        <div className="px-3.5 pt-3.5 pb-2 sm:px-4">{children}</div>
+        <div className="flex min-w-0 items-center justify-between gap-3 border-t border-line bg-surface/60 px-2.5 py-2.5 sm:px-3">
+          {footer}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ─────────────────────────────────────────────────────────
  * CHAT — interactive panel with tabs, replies, and composer.

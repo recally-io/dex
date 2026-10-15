@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy, ChevronRight, Terminal, AlertCircle, Square, Brain } from "lucide-react";
 import type { Item, Retry } from "../../api/generated/types.gen";
+import { ValuePill } from "../atoms/ValuePill";
 import { Shimmer } from "../atoms/Shimmer";
 import { StreamText } from "../atoms/StreamText";
 import CodeBlock from "../atoms/CodeBlock";
@@ -62,15 +63,19 @@ export function TranscriptItem({
     case "user":
       return (
         <div className="flex justify-end">
-          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-hover px-4 py-3">
+          <div className="max-w-[88%] rounded-[20px] rounded-br-md border border-line bg-field px-5 py-3.5 shadow-btn sm:max-w-[80%]">
             <p className="whitespace-pre-wrap break-words leading-relaxed">{item.text}</p>
-            {item.queued ? <p className="mt-2 text-right text-xs text-ink-2">Queued</p> : null}
+            {item.queued ? (
+              <div className="mt-2 text-right">
+                <ValuePill tone="orange">Queued</ValuePill>
+              </div>
+            ) : null}
           </div>
         </div>
       );
     case "thinking":
       return (
-        <details className="text-sm text-ink-2">
+        <details className="rounded-xl border border-line bg-surface/60 px-4 py-1 text-sm text-ink-2">
           <summary className="flex items-center gap-2 py-2">
             <ChevronRight className="size-3.5" />
             <Brain className="size-4" />
@@ -85,9 +90,9 @@ export function TranscriptItem({
       return (
         <details
           open={item.status === "error" ? true : undefined}
-          className="surface overflow-hidden text-sm"
+          className="overflow-hidden rounded-[14px] border border-line bg-surface text-sm shadow-card"
         >
-          <summary className="flex items-center gap-2.5 p-3">
+          <summary className="flex items-center gap-2.5 p-4">
             <ChevronRight className="size-3.5 shrink-0 text-ink-3" />
             <Terminal className="size-4 shrink-0 text-ink-2" />
             <span className="font-mono text-xs font-medium">
@@ -99,6 +104,9 @@ export function TranscriptItem({
                 .join(" · ")
                 .slice(0, 100)}
             </span>
+            <ValuePill tone={item.status === "error" ? "red" : item.status === "done" ? "green" : "orange"}>
+              {item.status === "error" ? "Failed" : item.status === "done" ? "Completed" : "Running"}
+            </ValuePill>
             {item.durationMs !== undefined ? (
               <span className="shrink-0 text-xs text-ink-3">{(item.durationMs / 1000).toFixed(1)} s</span>
             ) : null}
@@ -110,7 +118,7 @@ export function TranscriptItem({
               <span className="busy-dot" />
             )}
           </summary>
-          <div className="flex flex-col gap-3 px-3 pb-3">
+          <div className="flex flex-col gap-3 border-t border-line bg-inset/50 p-4">
             <CodeBlock
               filename="Arguments"
               lines={JSON.stringify(item.args, null, 2).split("\n")}
@@ -128,9 +136,12 @@ export function TranscriptItem({
       );
     case "assistant":
       return (
-        <article className="group">
+        <article className="group min-w-0 py-1">
           <div className="mb-3 flex items-center gap-2 text-xs font-medium text-ink-2">
-            <span className="flex size-6 items-center justify-center rounded-md bg-ink text-page">d</span>dex
+            <span className="flex size-7 items-center justify-center rounded-lg bg-ink text-page shadow-btn">
+              d
+            </span>
+            dex
           </div>
           {live ? (
             <div className="whitespace-pre-wrap leading-7">

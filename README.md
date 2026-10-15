@@ -9,7 +9,7 @@ The agent state stays in local directories. The host needs no Node or Bun.
 
 1. Run `mise install && mise run install`.
 2. Run `mise run dev:server`, then open <http://127.0.0.1:8787>.
-3. In Settings, add a provider's API key, then choose a model.
+3. On the Providers page, add a provider. On the Agent page, choose a model.
 
 `mise run build` writes a single binary to `bin/dex`.
 

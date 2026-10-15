@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Clock, Plus, Play, Pencil, Trash2 } from "lucide-react";
+import { Clock, Plus, Play, Pencil, Trash2 } from "lucide-react";
 import type { Automation, AutomationRun } from "../api/generated/types.gen";
 import {
   listAutomationsOptions,
@@ -16,25 +16,20 @@ import { runTime, scheduleText } from "../lib/automations";
 import { Button } from "../components/ui/button";
 import { Failure, Loading } from "../components/feedback";
 import { Confirm } from "../components/confirm";
-import { AutomationDialog, EnabledSwitch } from "../components/automation-dialog";
+import { AutomationDialog } from "../components/automation-dialog";
+import { Card, Empty, Page, PageHeader, Section } from "../components/page";
+import { Switch } from "../components/ui/switch";
+import { Button as Pill } from "../components/atoms/Button";
+import { ValuePill } from "../components/atoms/ValuePill";
 import { cn } from "../lib/utils";
 
 function SessionPill({ automation }: { automation: Automation }) {
-  return (
-    <span className="rounded-full bg-inset px-2 py-0.5 text-xs text-ink-2">
-      {automation.session === "new" ? "new chat each run" : "one chat"}
-    </span>
-  );
+  return <ValuePill>{automation.session === "new" ? "New chat each run" : "One chat"}</ValuePill>;
 }
 
 function RunStatus({ run }: { run: AutomationRun }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-2 capitalize",
-        run.status === "failed" && "text-destructive",
-      )}
-    >
+    <span className={cn("inline-flex items-center gap-2 capitalize", run.status === "failed" && "text-red")}>
       {run.status === "running" ? <span className="busy-dot" /> : null}
       {run.status}
     </span>
@@ -50,7 +45,7 @@ function AutomationRow({ automation }: { automation: Automation }) {
         <Link
           to="/automations/$automationId"
           params={{ automationId: automation.id }}
-          className="min-w-0 flex-1 rounded-md hover:text-brand focus-visible:outline-2 focus-visible:outline-ring"
+          className="min-w-0 flex-1 rounded-md hover:text-brand focus-visible:outline-2 focus-visible:outline-ink"
         >
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="break-words font-medium">{automation.name}</h2>
@@ -70,11 +65,11 @@ function AutomationRow({ automation }: { automation: Automation }) {
             <span>Last: {automation.lastRun ? <RunStatus run={automation.lastRun} /> : "No runs yet"}</span>
           </div>
         </Link>
-        <EnabledSwitch
-          enabled={automation.enabled}
+        <Switch
+          checked={automation.enabled}
           disabled={update.isPending}
-          label={`Enable ${automation.name}`}
-          onChange={() =>
+          aria-label={`Enable ${automation.name}`}
+          onCheckedChange={() =>
             update.mutate({
               path: { automationId: automation.id },
               body: {
@@ -103,20 +98,16 @@ export function AutomationsPage() {
   const [create, setCreate] = useState(false);
 
   return (
-    <div className="mx-auto max-w-[900px] px-5 py-8 md:px-8 md:py-10">
-      <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-            <Clock className="size-6 text-ink-2" />
-            Automations
-          </h1>
-          <p className="mt-2 text-sm text-ink-2">Run a prompt on a schedule.</p>
-        </div>
-        <Button onClick={() => setCreate(true)}>
-          <Plus />
-          New automation
-        </Button>
-      </header>
+    <Page>
+      <PageHeader
+        title="Automations"
+        description="Run a prompt on a schedule. Each run is a chat with the agent; dex schedules it on this computer."
+        actions={
+          <Pill variant="primary" size="sm" onClick={() => setCreate(true)}>
+            <Plus aria-hidden className="size-3.5" /> New automation
+          </Pill>
+        }
+      />
       {automations.isPending ? (
         <Loading />
       ) : automations.isError ? (
@@ -126,23 +117,24 @@ export function AutomationsPage() {
           retry={() => void automations.refetch()}
         />
       ) : automations.data.automations.length ? (
-        <div className="surface overflow-hidden">
+        <Card className="p-0 sm:p-0">
           {automations.data.automations.map((automation) => (
             <AutomationRow key={automation.id} automation={automation} />
           ))}
-        </div>
+        </Card>
       ) : (
-        <div className="surface px-6 py-12 text-center">
-          <Clock className="mx-auto mb-4 size-8 text-ink-3" />
-          <h2 className="font-medium">No automations yet</h2>
-          <p className="mt-2 text-sm text-ink-2">Create an automation to run your first scheduled prompt.</p>
-          <Button className="mt-5" variant="outline" onClick={() => setCreate(true)}>
-            New automation
-          </Button>
-        </div>
+        <Empty
+          title="No automations yet"
+          body="Create an automation to run your first scheduled prompt. dex runs it only while it is running."
+          action={
+            <Pill variant="primary" size="sm" onClick={() => setCreate(true)}>
+              <Clock aria-hidden className="size-3.5" /> New automation
+            </Pill>
+          }
+        />
       )}
       {create ? <AutomationDialog onClose={() => setCreate(false)} /> : null}
-    </div>
+    </Page>
   );
 }
 
@@ -175,14 +167,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
   const latestRun = runs.data?.runs.find((history) => history.id === run.data?.id) ?? run.data;
 
   return (
-    <div className="mx-auto max-w-[900px] px-5 py-8 md:px-8 md:py-10">
-      <Link
-        to="/automations"
-        className="mb-6 inline-flex items-center gap-2 text-sm text-ink-2 hover:text-ink"
-      >
-        <ArrowLeft className="size-4" />
-        Automations
-      </Link>
+    <Page>
       {automation.isPending ? (
         <Loading />
       ) : automation.isError ? (
@@ -193,42 +178,59 @@ export function AutomationPage({ automationId }: { automationId: string }) {
         />
       ) : data ? (
         <>
-          <header className="mb-6">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="break-words text-2xl font-semibold tracking-tight">{data.name}</h1>
-              <SessionPill automation={data} />
-            </div>
-            <p className="mt-3 text-sm text-ink-2">
-              {scheduleText(data.schedule, data.timeZone)} · {data.timeZone}
-            </p>
-            <p className="mt-2 text-xs text-ink-2">
-              Next:{" "}
-              {data.nextRuns[0] ? runTime(data.nextRuns[0], data.timeZone) : data.enabled ? "done" : "paused"}
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setEdit(true)}>
-                <Pencil />
-                Edit
-              </Button>
-              <Button
-                disabled={run.isPending || remove.isPending}
-                onClick={() => run.mutate({ path: { automationId } })}
-              >
-                <Play />
-                {run.isPending ? "Starting…" : "Run now"}
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  remove.reset();
-                  setConfirm(true);
-                }}
-              >
-                <Trash2 />
-                Delete
-              </Button>
-            </div>
-          </header>
+          <PageHeader
+            eyebrow={
+              <Link to="/automations" className="hover:underline">
+                Automations
+              </Link>
+            }
+            title={data.name}
+            badge={
+              <>
+                <SessionPill automation={data} />
+                {data.enabled ? null : <ValuePill tone="orange">Paused</ValuePill>}
+              </>
+            }
+            description={
+              <>
+                {scheduleText(data.schedule, data.timeZone)} · {data.timeZone}
+                <br />
+                Next:{" "}
+                {data.nextRuns[0]
+                  ? runTime(data.nextRuns[0], data.timeZone)
+                  : data.enabled
+                    ? "done"
+                    : "paused"}
+              </>
+            }
+            actions={
+              <>
+                <Button variant="outline" size="sm" onClick={() => setEdit(true)}>
+                  <Pencil aria-hidden />
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={run.isPending || remove.isPending}
+                  onClick={() => run.mutate({ path: { automationId } })}
+                >
+                  <Play aria-hidden />
+                  {run.isPending ? "Starting…" : "Run now"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    remove.reset();
+                    setConfirm(true);
+                  }}
+                >
+                  <Trash2 aria-hidden />
+                  Delete
+                </Button>
+              </>
+            }
+          />
           {run.isError ? (
             <div className="mb-5">
               <Failure title="Could not run automation" error={run.error} />
@@ -250,14 +252,14 @@ export function AutomationPage({ automationId }: { automationId: string }) {
               ) : null}
             </div>
           ) : null}
-          <section className="surface mb-8 p-5">
-            <h2 className="mb-3 text-sm font-medium">Prompt</h2>
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink-2">
-              {data.prompt}
-            </p>
-          </section>
-          <section>
-            <h2 className="mb-4 font-medium">Run history</h2>
+          <Section title="Prompt">
+            <Card>
+              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink-2">
+                {data.prompt}
+              </p>
+            </Card>
+          </Section>
+          <Section title="Run history">
             {runs.isPending ? (
               <Loading rows={2} />
             ) : runs.isError ? (
@@ -267,9 +269,11 @@ export function AutomationPage({ automationId }: { automationId: string }) {
                 retry={() => void runs.refetch()}
               />
             ) : !runs.data.runs.length ? (
-              <p className="surface p-5 text-sm text-ink-2">No runs yet.</p>
+              <Card>
+                <p className="text-sm text-ink-2">No runs yet.</p>
+              </Card>
             ) : (
-              <div className="surface overflow-x-auto">
+              <Card className="overflow-x-auto p-0 sm:p-0">
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-line text-xs text-ink-2">
                     <tr>
@@ -306,13 +310,14 @@ export function AutomationPage({ automationId }: { automationId: string }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </Card>
             )}
-          </section>
+          </Section>
           {edit ? <AutomationDialog existing={data} onClose={() => setEdit(false)} /> : null}
           {confirm ? (
             <Confirm
               title="Delete automation?"
+              confirmLabel="Delete"
               description="This deletes the automation and its run history. Its chats stay available."
               pending={remove.isPending}
               error={remove.error}
@@ -322,6 +327,6 @@ export function AutomationPage({ automationId }: { automationId: string }) {
           ) : null}
         </>
       ) : null}
-    </div>
+    </Page>
   );
 }

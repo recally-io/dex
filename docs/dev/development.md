@@ -37,7 +37,8 @@ To use Telegram:
 1. Create a bot with [@BotFather](https://t.me/BotFather).
 2. Send a message to [@userinfobot](https://t.me/userinfobot) to get your user
    ID.
-3. In Settings, enter the bot token and your user ID, and save.
+3. On the Channels > Telegram page, enter the bot token and your user ID, and
+   save.
 
 Check: the bot answers a message from an allowed user.
 

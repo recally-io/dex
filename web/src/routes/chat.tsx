@@ -1,8 +1,14 @@
 import { useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { ArrowDown, ArrowUpRight, Check, Plus, Sparkles, Send, Clock } from "lucide-react";
-import type { Settings, ChatEvent, UserItem, MessageInput } from "../api/generated/types.gen";
+import { ArrowDown, Check, Clock, Lock, Send } from "lucide-react";
+import type {
+  Settings,
+  ChatEvent,
+  UserItem,
+  MessageInput,
+  Chat as ChatInfo,
+} from "../api/generated/types.gen";
 import {
   getSettingsOptions,
   getChatOptions,
@@ -10,17 +16,23 @@ import {
   createChatMutation,
   sendMessageMutation,
   abortChatMutation,
-  setAgentMutation,
+  listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { applyChatEvent, emptyChatState } from "../lib/chat-state";
-import { queryClient, refreshChats, refreshSettings } from "../lib/queries";
+import { queryClient, refreshChats } from "../lib/queries";
+import { useAgentModel } from "../lib/agent";
 import { Composer } from "../components/composer";
 import { TranscriptItem, RetryNotice } from "../components/agent/transcript";
-import { ProviderDialog } from "../components/provider-dialog";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
+import { Card, Note, Page, PageHeader } from "../components/page";
 import { Alert, AlertTitle, AlertDescription } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
+import { Button as Pill } from "../components/atoms/Button";
+import { ValuePill } from "../components/atoms/ValuePill";
+import { Shimmer } from "../components/atoms/Shimmer";
+import LoadingState from "../components/primitives/LoadingState";
+import { cn } from "../lib/utils";
 
 declare module "@tanstack/history" {
   interface HistoryState {
@@ -29,86 +41,100 @@ declare module "@tanstack/history" {
 }
 
 function Setup({ settings }: { settings: Settings }) {
-  const [add, setAdd] = useState(false);
-  const model = useMutation({ ...setAgentMutation(), onSuccess: refreshSettings });
+  const navigate = useNavigate();
+  const models = useQuery(listModelsOptions());
+  const hasProvider = settings.providers.length > 0;
+  const hasModels = !!models.data?.models.length;
+
+  const steps = [
+    {
+      done: hasProvider,
+      title: "Add a provider",
+      body: "Connect Anthropic, OpenAI, OpenRouter, or a local server such as LM Studio.",
+      label: "Add provider",
+      action: () => void navigate({ to: "/providers" }),
+    },
+    {
+      done: !!settings.agent.modelId,
+      title: "Choose the agent model",
+      body: hasModels ? "Pick one of the available models." : "Models appear after a provider lists them.",
+      label: "Choose model",
+      picker: true,
+      disabled: !hasModels,
+    },
+    {
+      done: settings.telegram.enabled,
+      title: "Connect Telegram (optional)",
+      body: "The web works now. Add a Telegram bot to reach dex from your phone.",
+      label: "Open Telegram",
+      action: () => void navigate({ to: "/channels/$channelId", params: { channelId: "telegram" } }),
+      optional: true,
+    },
+  ];
 
   return (
-    <div className="mx-auto w-full max-w-[600px] px-5 py-14 md:py-24">
-      <div className="mb-7 flex size-12 items-center justify-center rounded-2xl bg-ink text-2xl font-semibold text-page">
-        d
-      </div>
-      <p className="mb-3 text-xs font-medium tracking-widest text-ink-2 uppercase">Welcome to dex</p>
-      <h1 className="text-3xl font-semibold tracking-tight">A little setup. A lot of possibility.</h1>
-      <p className="mt-4 max-w-md leading-relaxed text-ink-2">
-        Your personal agent runs here, on your computer. Connect a provider and choose a model to start.
-      </p>
-      <div className="surface mt-9 divide-y divide-line">
-        <div className="flex items-center gap-4 p-5">
-          <Step done={!!settings.providers.length} number={1} />
-          <div className="flex-1">
-            <h2 className="font-medium">Add a provider</h2>
-            <p className="mt-1 text-xs text-ink-2">Bring your own API key, or use a local server.</p>
-          </div>
-          <Button size="sm" variant="outline" onClick={() => setAdd(true)}>
-            <Plus />
-            Add
-          </Button>
-        </div>
-        <div className="flex items-center gap-4 p-5">
-          <Step done={!!settings.agent.modelId} number={2} />
-          <div className="min-w-0 flex-1">
-            <h2 className="font-medium">Choose a model</h2>
-            <p className="mt-1 text-xs text-ink-2">The model powers all of your chats.</p>
-          </div>
-          <ModelPicker
-            provider={settings.agent.provider}
-            modelId={settings.agent.modelId}
-            onSelect={(provider, modelId) => model.mutate({ body: { ...settings.agent, provider, modelId } })}
-            disabled={!settings.providers.length || model.isPending}
-          />
-        </div>
-        <div className="flex items-center gap-4 p-5">
-          <Step done={settings.telegram.enabled} number={3} />
-          <div className="flex-1">
-            <h2 className="font-medium">
-              Connect Telegram <span className="font-normal text-ink-3">· optional</span>
-            </h2>
-            <p className="mt-1 text-xs text-ink-2">Take your agent with you.</p>
-          </div>
-          <Link
-            to="/settings/$section"
-            params={{ section: "telegram" }}
-            className="rounded-md p-2 text-ink-2 hover:bg-hover"
-            aria-label="Set up Telegram"
-          >
-            <ArrowUpRight className="size-4" />
-          </Link>
-        </div>
-      </div>
-      {!settings.providers.length ? (
-        <p className="mt-3 text-xs text-ink-2">Add a provider before you choose a model.</p>
-      ) : null}
-      {model.isError ? (
-        <div className="mt-5">
+    <Page className="max-w-2xl">
+      <PageHeader
+        title="Set up dex"
+        description="dex needs one model before it can answer. Everything else is optional."
+      />
+      <ol className="flex flex-col gap-3">
+        {steps.map((step, i) => (
+          <li key={step.title}>
+            <Card className="flex items-start gap-4">
+              <span
+                aria-hidden
+                className={cn(
+                  "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                  step.done ? "bg-green text-white" : "bg-inset text-ink-2",
+                )}
+              >
+                {step.done ? <Check className="size-4" /> : i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-semibold">
+                  {step.title}
+                  {step.done ? <span className="sr-only"> (done)</span> : null}
+                </h2>
+                <p className="mt-1 text-[13px] text-ink-2">{step.body}</p>
+              </div>
+              {step.done ? null : step.picker ? (
+                <ModelPicker
+                  trigger={
+                    <Pill size="sm" variant="primary" disabled={step.disabled}>
+                      {step.label}
+                    </Pill>
+                  }
+                />
+              ) : (
+                <Pill
+                  size="sm"
+                  variant={step.optional ? "secondary" : "primary"}
+                  onClick={step.action}
+                  disabled={step.disabled}
+                >
+                  {step.label}
+                </Pill>
+              )}
+            </Card>
+          </li>
+        ))}
+      </ol>
+      {models.isError ? (
+        <div className="mt-4">
           <Failure
-            title="Could not choose model"
-            error={model.error}
-            retry={() => {
-              if (model.variables) model.mutate(model.variables);
-            }}
+            title="Could not load the models"
+            error={models.error}
+            retry={() => void models.refetch()}
           />
         </div>
       ) : null}
-      {add ? <ProviderDialog settings={settings} onClose={() => setAdd(false)} /> : null}
-    </div>
-  );
-}
-
-function Step({ done, number }: { done: boolean; number: number }) {
-  return (
-    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-inset text-xs text-ink-2">
-      {done ? <Check className="size-3.5 text-green" /> : number}
-    </span>
+      <div className="mt-6">
+        <Note>
+          Tools run on this computer without a sandbox, and the server has no sign-in. Keep dex on 127.0.0.1.
+        </Note>
+      </div>
+    </Page>
   );
 }
 
@@ -116,20 +142,49 @@ export function ChatPage({ chatId }: { chatId?: number }) {
   const settings = useQuery(getSettingsOptions());
 
   return settings.isPending ? (
-    <div className="mx-auto w-full max-w-[720px] p-8">
+    <Page>
       <Loading />
-    </div>
+    </Page>
   ) : settings.isError ? (
-    <div className="m-8">
-      <Failure error={settings.error} retry={() => void settings.refetch()} />
-    </div>
-  ) : settings.data ? (
-    !chatId && !settings.data.agent.modelId ? (
-      <Setup settings={settings.data} />
+    <Page>
+      <Failure title="Could not load settings" error={settings.error} retry={() => void settings.refetch()} />
+    </Page>
+  ) : !chatId && !settings.data.agent.modelId ? (
+    <Setup settings={settings.data} />
+  ) : (
+    <Chat key={chatId ?? "new"} chatId={chatId} settings={settings.data} />
+  );
+}
+
+function OriginBadge({ chat }: { chat: ChatInfo }) {
+  if (chat.channel === "telegram")
+    return (
+      <ValuePill>
+        <Send aria-hidden className="mr-1 inline size-3" />
+        Telegram · read-only here
+      </ValuePill>
+    );
+
+  if (chat.channel === "automation")
+    return chat.automationId ? (
+      <Link
+        to="/automations/$automationId"
+        params={{ automationId: chat.automationId }}
+        className="rounded-full hover:underline focus-visible:outline-2 focus-visible:outline-ink"
+      >
+        <ValuePill>
+          <Clock aria-hidden className="mr-1 inline size-3" />
+          Automation
+        </ValuePill>
+      </Link>
     ) : (
-      <Chat key={chatId ?? "new"} chatId={chatId} settings={settings.data} />
-    )
-  ) : null;
+      <ValuePill>
+        <Clock aria-hidden className="mr-1 inline size-3" />
+        Automation
+      </ValuePill>
+    );
+
+  return <ValuePill>Web</ValuePill>;
 }
 
 function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
@@ -152,12 +207,15 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
   const [queued, setQueued] = useState<UserItem[]>(() => (firstMessage ? [firstMessage] : []));
   const [draft, setDraft] = useState("");
   const [jump, setJump] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
+  const wasRunning = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const snapshotSeen = useRef(false);
   const failedMessage = useRef<MessageInput | null>(null);
   const create = useMutation(createChatMutation());
   const send = useMutation(sendMessageMutation());
+  const model = useAgentModel(settings) ?? { label: "", ok: false };
 
   const abort = useMutation({
     ...abortChatMutation(),
@@ -167,7 +225,6 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     },
   });
 
-  const model = useMutation({ ...setAgentMutation(), onSuccess: refreshSettings });
   // A reconnect starts with a complete snapshot; local deltas need no replay.
   useEffect(() => {
     if (!chatId || !chat.isSuccess) return;
@@ -224,6 +281,15 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     };
   }, [chatId, chat.isSuccess]);
 
+  // Announce the start and the end of a run once each, not each streamed token.
+  useEffect(() => {
+    if (state.running && !wasRunning.current) setAnnouncement("The agent is working.");
+
+    if (!state.running && wasRunning.current) setAnnouncement("The agent finished.");
+
+    wasRunning.current = state.running;
+  }, [state.running]);
+
   const items = [
     ...state.items,
     ...queued.filter((item) => !state.items.some((remote) => remote.id === item.id)),
@@ -244,17 +310,18 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     return () => observer.disconnect();
   }, []);
 
-  const reason =
-    chat.data?.channel === "telegram"
-      ? "Reply in Telegram"
-      : !settings.agent.modelId
-        ? "Choose a model to start"
-        : chatId && connection !== "ready"
-          ? "dex is reconnecting to the agent…"
-          : undefined;
+  const telegram = chat.data?.channel === "telegram";
+
+  const reason = telegram
+    ? "Reply in Telegram. Telegram chats are read-only on the web."
+    : !model.ok
+      ? "Choose an available model before you send."
+      : chatId && connection !== "ready"
+        ? "dex is reconnecting to the agent…"
+        : undefined;
 
   const pending = create.isPending || send.isPending || abort.isPending;
-  const error = create.error ?? send.error ?? abort.error ?? model.error;
+  const error = create.error ?? send.error ?? abort.error;
 
   async function sendText(text: string) {
     // A transport retry keeps its ID. A retry of a failed agent turn gets a new ID.
@@ -297,11 +364,30 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     }
   }
 
+  const running = state.running;
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col bg-page">
+      {chatId ? (
+        <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-line bg-page/90 px-4 py-3 backdrop-blur sm:px-8">
+          <h1
+            id="page-title"
+            tabIndex={-1}
+            className="min-w-0 flex-1 truncate text-base font-semibold outline-none"
+          >
+            {chat.data?.title || "Chat"}
+          </h1>
+          {chat.data ? <OriginBadge chat={chat.data} /> : null}
+          {running ? (
+            <ValuePill tone="orange">
+              <Shimmer>Running</Shimmer>
+            </ValuePill>
+          ) : null}
+        </header>
+      ) : null}
       <div
         ref={scroller}
-        className="min-h-0 flex-1 overflow-y-auto px-5"
+        className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-8"
         onScroll={() => {
           const el = scroller.current;
 
@@ -311,27 +397,33 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
           }
         }}
       >
-        <div className="mx-auto max-w-[720px] pb-8 pt-6 md:pt-10">
+        <div className="mx-auto max-w-3xl pb-10 pt-6">
           {chatId && chat.isPending ? (
-            <Loading />
+            <div className="flex h-60 items-center justify-center">
+              <LoadingState label="Loading chat" />
+            </div>
           ) : chatId && chat.isError ? (
-            <Failure title="Could not load this chat" error={chat.error} retry={() => void chat.refetch()} />
+            <div className="flex flex-col items-start gap-4">
+              <Failure
+                title="Could not load this chat"
+                error={chat.error}
+                retry={() => void chat.refetch()}
+              />
+              <Link className="text-sm text-brand underline" to="/">
+                Start a new chat
+              </Link>
+            </div>
           ) : chatId ? (
             <>
-              <div className="mb-8 flex items-center gap-2 text-xs text-ink-2">
-                {chat.data?.channel === "telegram" ? <Send className="size-3.5" /> : null}
-                <h1 className="truncate">{chat.data?.title}</h1>
-                {chat.data?.automationId ? (
-                  <Link
-                    to="/automations/$automationId"
-                    params={{ automationId: chat.data.automationId }}
-                    className="ml-auto inline-flex shrink-0 items-center gap-1 text-ink-2 hover:text-ink"
-                  >
-                    <Clock className="size-3.5" />
-                    Automation
-                  </Link>
-                ) : null}
-              </div>
+              {telegram ? (
+                <div className="mb-6 flex items-start gap-2 rounded-xl bg-inset px-4 py-3 text-[13px] text-ink-2">
+                  <Lock aria-hidden className="mt-0.5 size-4 shrink-0" />
+                  <p>
+                    This chat came from Telegram. dex replies in Telegram. The web shows the same transcript
+                    and the same memory, but you cannot post here.
+                  </p>
+                </div>
+              ) : null}
               {connection !== "ready" ? (
                 <Alert className="mb-6">
                   <AlertTitle>
@@ -353,7 +445,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
                   <TranscriptItem
                     key={item.id}
                     item={item}
-                    live={state.running && index === state.items.length - 1}
+                    live={running && index === state.items.length - 1}
                     retry={() => retryText(index)}
                     canRetry={
                       !reason && !pending && state.items.slice(0, index).some((i) => i.kind === "user")
@@ -361,43 +453,40 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
                   />
                 ))}
                 {state.retry ? <RetryNotice retry={state.retry} /> : null}
+                {running &&
+                !state.retry &&
+                !items.some((item) => item.kind === "tool" && item.status === "running") &&
+                items.at(-1)?.kind !== "assistant" &&
+                items.at(-1)?.kind !== "thinking" ? (
+                  <div className="rounded-xl border border-line bg-surface p-4 shadow-card">
+                    <LoadingState label="dex is working" />
+                  </div>
+                ) : null}
                 {!items.length && connection === "ready" ? (
                   <p className="py-12 text-center text-sm text-ink-2">No messages yet.</p>
                 ) : null}
               </div>
             </>
           ) : (
-            <div className="flex min-h-[45dvh] flex-col justify-center">
-              <div className="mb-5 flex size-10 items-center justify-center rounded-xl bg-ink text-xl font-semibold text-page">
-                d
-              </div>
-              <p className="mb-2 text-xs font-medium tracking-widest text-ink-2 uppercase">
-                Your local agent
+            <div className="flex min-h-[50dvh] flex-col justify-end pt-10">
+              <h1
+                id="page-title"
+                tabIndex={-1}
+                className="mb-3 text-center text-2xl font-semibold tracking-tight outline-none sm:text-3xl"
+              >
+                What should dex do?
+              </h1>
+              <p className="text-center text-sm text-ink-2">
+                One agent with its own workspace and memory, on this computer.
               </p>
-              <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">What can we work on?</h1>
-              <p className="mt-4 text-ink-2">A thought, a task, a question. Start here.</p>
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
-                {[
-                  "Explore this project and explain how it works",
-                  "Help me plan my next week",
-                  "Find ways to simplify my workflow",
-                  "Review a document and suggest changes",
-                ].map((text) => (
-                  <button
-                    key={text}
-                    className="surface flex items-start gap-3 p-4 text-left text-sm leading-relaxed text-ink-2 transition-shadow hover:shadow-raised"
-                    onClick={() => setDraft(text)}
-                  >
-                    <Sparkles className="mt-0.5 size-4 shrink-0 text-ink-3" />
-                    {text}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
         </div>
       </div>
-      <div className="relative mx-auto w-full max-w-[760px] px-5 pb-5 pt-3">
+      <div className="sr-only" role="status" aria-live="polite">
+        {announcement}
+      </div>
+      <div className="relative mx-auto w-full max-w-[52rem] px-4 pb-4 pt-3 sm:px-8">
         {jump ? (
           <Button
             variant="outline"
@@ -422,21 +511,22 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
                 if ((create.isError || send.isError) && failedMessage.current)
                   void sendText(failedMessage.current.text).catch(() => {});
                 else if (abort.isError && chatId) abort.mutate({ path: { chatId } });
-                else if (model.isError && model.variables) model.mutate(model.variables);
               }}
             />
           </div>
         ) : null}
         <Composer
-          agent={settings.agent}
-          running={state.running}
+          model={model}
+          hasProvider={settings.providers.length > 0}
+          running={running}
           pending={pending}
           disabledReason={reason}
+          readOnly={telegram}
+          autoFocus={!chatId || !!firstMessage}
           onSend={sendText}
           onStop={() => {
             if (chatId) abort.mutate({ path: { chatId } });
           }}
-          onModel={(provider, modelId) => model.mutate({ body: { ...settings.agent, provider, modelId } })}
           text={draft}
           onTextChange={setDraft}
         />

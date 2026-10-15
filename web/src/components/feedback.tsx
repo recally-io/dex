@@ -31,7 +31,7 @@ export function Failure({
 
 export function Loading({ rows = 3 }: { rows?: number }) {
   return (
-    <div aria-label="Loading" className="flex flex-col gap-4">
+    <div role="status" aria-label="Loading" className="flex flex-col gap-4">
       {Array.from({ length: rows }, (_, i) => (
         <Skeleton key={i} className="h-24 w-full rounded-xl" />
       ))}
