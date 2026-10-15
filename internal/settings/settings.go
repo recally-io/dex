@@ -21,6 +21,7 @@ import (
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/telegram"
+	"github.com/recally-io/dex/internal/wechat"
 	"github.com/recally-io/dex/internal/worker"
 )
 
@@ -47,6 +48,7 @@ type Settings struct {
 	// APIs are the APIs of custom providers: ID → name.
 	APIs     map[string]string `json:"apis"`
 	Telegram Telegram          `json:"telegram"`
+	Wechat   Wechat            `json:"wechat"`
 }
 
 // Agent holds the settings of the default agent. An empty ModelID means no model is chosen. A chat
@@ -88,6 +90,11 @@ type Telegram struct {
 
 // Service reads and changes settings.
 type Service struct {
+	wechatOptions wechat.Options
+	onWechat      func(*wechat.Config)
+	login         *wechat.Login
+	loginID       string
+	wechatEpoch   uint64
 	ChannelStatus func(string) channel.Status
 	q             *sqlc.Queries
 	worker        worker.CallFunc
@@ -146,7 +153,12 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 	} else {
 		tg.Status = channel.Status{State: "off"}
 	}
+	wx, err := s.wechatView(ctx)
+	if err != nil {
+		return Settings{}, err
+	}
 	return Settings{
+		Wechat: wx,
 		Agent: Agent{
 			Provider: agent.ModelProvider, ModelID: agent.ModelID, ThinkingLevel: agent.ThinkingLevel,
 			Instructions: agent.Instructions,

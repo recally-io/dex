@@ -18,15 +18,15 @@ to read in an afternoon.
   starts at login. Optional daily updates wait until agent work is idle.
   Listening addresses are limited to loopback.
 - Agent settings in the web UI: providers, the agent's model, thinking level
-  and instructions, and Telegram. dex needs no configuration file for agent settings. The CLI manages
+  and instructions, Telegram, and WeChat. dex needs no configuration file for agent settings. The CLI manages
   the service address, data directory, and update policy.
   The web UI has these pages: Agent, Providers, Channels, Automations, and
-  About. The Extensions and Secrets pages and the Slack, Feishu, and WeChat
+  About. The Extensions and Secrets pages and the Slack and Feishu
   channels show that dex does not support them yet.
 - Agents with a model, instructions, and a workspace directory.
 - Durable conversations: a crash or a restart does not lose a message or a
   started run.
-- Entry points: the web UI and Telegram. External channel chats are read-only
+- Entry points: the web UI, Telegram, and WeChat. External channel chats are read-only
   on the web. `/new` starts another chat. `/stop` stops pending work. `/help`
   lists commands. Reply delivery resumes after a restart and skips confirmed
   parts. A crash after remote success can duplicate one part. The Channels
@@ -34,10 +34,14 @@ to read in an afternoon.
 - In a web chat, the user can attach files and images (at most 10 per
   message, 20 MB each). The agent reads them with its tools. A web chat can
   also use its own model and thinking level instead of the agent's. Telegram
-  chats and automations use the agent's settings and take no files.
+  chats and automations use the agent's settings and take no files. WeChat
+  accepts images and files with the same limits. It uses voice transcription
+  as text and shows a placeholder for videos.
+- WeChat setup: scan a QR code and confirm on the phone. Only that owner
+  can send private messages to the agent. A stale login asks for a new scan.
 - Timers: scheduled messages to an agent.
 
-Status: the web UI, Telegram, durable messages, timers, and the worker are
+Status: the web UI, Telegram, WeChat, durable messages, timers, and the worker are
 done. Skills, MCP servers, named secrets, and other chat channels are not
 started.
 

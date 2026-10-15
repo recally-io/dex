@@ -308,6 +308,35 @@ because earlier versions did not record delivery success.
 
 See [ADR 0009](decisions/0009-channel-layer.md).
 
+## WeChat
+
+[`wechat.Bot`](../../internal/wechat/bot.go) connects one iLink bot to its
+owner's private messages. The Channels page starts QR login and polls each
+state. It asks for a phone verification code when required. A region redirect
+changes the poll host. An expired or blocked QR code gets a replacement, with
+at most three replacements per login attempt. Only a confirmed result with a bot
+token, bot ID, base URL, and owner ID can activate the bot.
+
+The bot ignores other senders, group messages, bot echoes, and unfinished
+messages. It stores the owner's latest context token before it admits a
+submission. Each source key uses the bot ID and message ID. The bot advances
+the durable update cursor only after every message in the batch is stored or
+explicitly rejected. A repeated batch therefore cannot run a submission twice.
+Cursor, context token, and pause time are runtime state in `control.sqlite`.
+The settings API does not return them.
+
+Text and voice transcription become message text. Quoted text gets a
+`[引用: ...]` prefix. A video becomes a placeholder. Images and files pass
+through CDN download and AES-128-ECB decryption into `upload.Store`, with the
+same limits as web uploads: 10 files per message and 20 MB per file. Invalid
+media is rejected. A temporary download or storage error keeps the batch
+cursor unchanged.
+
+While a submission is pending, the bot sends typing status every 5 s. Final
+answers keep supported Markdown and use parts of at most 2000 characters.
+Unanswered submissions send a short error message. The durable sender reads
+the saved context token before each send, including after a restart.
+
 ## Failure behavior
 
 - **Worker exits.** [`worker.Worker.Run`](../../internal/worker/worker.go)
@@ -338,6 +367,12 @@ See [ADR 0009](decisions/0009-channel-layer.md).
   restart. Confirmed parts are skipped. Telegram errors 400 and 403 skip the
   rejected part, so an unreachable peer does not block other peers. A crash
   after remote success but before the local commit can duplicate one part.
+- **WeChat API error.** A temporary receive error retries after 5 s without
+  advancing the cursor. Failed reply parts stay in durable delivery storage.
+  A permanent destination rejection skips the part. Either `ret == -14` or
+  `errcode == -14` pauses API calls for 1 h and sets status to `needs_login`.
+  A fresh QR login clears the pause and wakes the sender. Pending replies
+  remain available for delivery.
 
 ## Security
 
@@ -347,11 +382,14 @@ sandbox, inside the agent workspace. The HTTP server listens on
 authentication. On any other host, or with DEX_TOKEN, every `/api/` request
 needs the access token ([ADR 0007](decisions/0007-network-access-token.md)).
 A chat channel must allow only known user IDs: the settings refuse a
-Telegram bot without allowed users. The API refuses cross-site writes
+Telegram bot without allowed users. WeChat captures the owner ID from QR
+confirmation and rejects a login without that ID. Other WeChat senders never
+reach the agent. The API refuses cross-site writes
 (`http.CrossOriginProtection`), so another web page in the user's browser
 cannot send messages or change settings.
 
-`control.sqlite` holds provider keys and the Telegram token as plain text. The
+`control.sqlite` holds provider keys, channel tokens, and WeChat context tokens as
+plain text. WeChat logs exclude credentials and remote error text. The
 data directory is created with mode 0700. The API never returns a key or a
 token.
 
