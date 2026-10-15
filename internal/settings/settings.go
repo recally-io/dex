@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/telegram"
@@ -79,18 +80,20 @@ type Provider struct {
 
 // Telegram describes the bot without its token.
 type Telegram struct {
-	Enabled      bool    `json:"enabled"`
-	BotID        string  `json:"botId,omitempty"`
-	AllowedUsers []int64 `json:"allowedUsers"`
+	Status       channel.Status `json:"status"`
+	Enabled      bool           `json:"enabled"`
+	BotID        string         `json:"botId,omitempty"`
+	AllowedUsers []int64        `json:"allowedUsers"`
 }
 
 // Service reads and changes settings.
 type Service struct {
-	q          *sqlc.Queries
-	worker     worker.CallFunc
-	agentID    string
-	apiURL     string // Telegram Bot API URL; empty for the default
-	onTelegram func(*telegram.Config)
+	ChannelStatus func(string) channel.Status
+	q             *sqlc.Queries
+	worker        worker.CallFunc
+	agentID       string
+	apiURL        string // Telegram Bot API URL; empty for the default
+	onTelegram    func(*telegram.Config)
 
 	// Serializes changes, so the worker and the bot always get the newest saved settings.
 	mu sync.Mutex
@@ -137,6 +140,11 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 	} else if cfg != nil {
 		botID, _, _ := strings.Cut(cfg.Token, ":")
 		tg = Telegram{Enabled: true, BotID: botID, AllowedUsers: cfg.AllowedUsers}
+	}
+	if s.ChannelStatus != nil {
+		tg.Status = s.ChannelStatus("telegram")
+	} else {
+		tg.Status = channel.Status{State: "off"}
 	}
 	return Settings{
 		Agent: Agent{

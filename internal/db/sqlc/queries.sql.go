@@ -478,7 +478,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -495,15 +495,14 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.SettledAt,
 		&i.SourceKey,
 		&i.Attachments,
+		&i.DeliveredAt,
+		&i.DeliveredParts,
 	)
 	return i, err
 }
 
 const getSubmissionReply = `-- name: GetSubmissionReply :one
 SELECT
-    s.status,
-    s.answer,
-    s.reason,
     c.channel_key,
     c.id AS conversation_id
 FROM submissions s
@@ -512,23 +511,14 @@ WHERE s.id = ?
 `
 
 type GetSubmissionReplyRow struct {
-	Status         string         `json:"status"`
-	Answer         sql.NullString `json:"answer"`
-	Reason         sql.NullString `json:"reason"`
-	ChannelKey     string         `json:"channel_key"`
-	ConversationID int64          `json:"conversation_id"`
+	ChannelKey     string `json:"channel_key"`
+	ConversationID int64  `json:"conversation_id"`
 }
 
 func (q *Queries) GetSubmissionReply(ctx context.Context, id string) (GetSubmissionReplyRow, error) {
 	row := q.db.QueryRowContext(ctx, getSubmissionReply, id)
 	var i GetSubmissionReplyRow
-	err := row.Scan(
-		&i.Status,
-		&i.Answer,
-		&i.Reason,
-		&i.ChannelKey,
-		&i.ConversationID,
-	)
+	err := row.Scan(&i.ChannelKey, &i.ConversationID)
 	return i, err
 }
 

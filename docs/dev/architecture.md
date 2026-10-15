@@ -219,7 +219,7 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
 4. The worker runs the model and the tools. The browser sees the run through
    the chat's event stream (next section).
 5. The worker sends `settled`. Control marks the submission `done` or
-   `unanswered`, and a Telegram chat gets the answer.
+   `unanswered`, and the channel sender reads the answer from durable storage.
 
 ## Attachments
 
@@ -272,16 +272,44 @@ browser ──EventSource──▶ control  GET /api/chats/{id}/events
 have a bot token. It reads messages with `getUpdates` long polling,
 so dex needs no public URL.
 
-- Each Telegram chat is one conversation of the default agent, with the
-  channel key `telegram:<chat id>`. The web UI shows it, but cannot send to
-  it (403).
-- The bot ignores every user who is not in the allowed users.
-- The bot stores each message with `chat.Service.Submit`, which does not wait.
-  The source key `telegram:<bot id>:<update id>` is unique, so a message that Telegram
-  delivers again gets no second answer.
-- When a submission settles, `chat.Service` calls its notify function once.
-  The bot sends the answer to the chat, cut into parts of 4096 UTF-16 code
-  units. A message that a restart replays gets its answer too.
+- The bot ignores users outside the saved allowlist.
+- Each update has a stable source key: `telegram:<bot id>:<update id>`.
+  A repeated update does not create another submission.
+- Replies use parts of at most 4096 UTF-16 code units.
+
+## Shared channels
+
+[`channel.Manager`](../../internal/channel/channel.go) owns bot lifetime,
+peer mapping, commands, and reply delivery. Settings changes stop the old bot
+before they start its replacement. Settings expose runtime status: `off`,
+`running`, `error` with a reason, or `needs_login`.
+
+A peer names a remote destination, such as `telegram:7`. `channel_peers` stores
+its current channel key. `/new` selects `peer/<UUID>` and keeps the old chat.
+Every key keeps its destination, so an old chat can still receive its answer.
+External channel chats are read-only on the web. Web and automation chats
+remain writable.
+
+`/new`, `/stop`, and `/help` use durable command receipts. The receipt and a
+`/new` rotation commit in one transaction. `/stop` settles queued submissions
+as unanswered with reason `stopped`, prevents later admission, and aborts the
+worker run. An interrupted stop can run again; abort is safe to repeat.
+If abort fails, control logs the error and completes the command with a failure
+answer. The platform can then receive more messages and deliver other replies.
+
+Each platform has one durable sender. Notify only wakes this sender. At start
+and after a failed send, the same sender reads settled, undelivered submissions.
+It records progress after each confirmed part and marks the whole reply as
+delivered after its last part. A permanent rejection skips that part and does
+not block later replies. A transient error retries with a delay from 5 s to
+60 s. Each bot receives the stable submission or command ID and the part index
+through `Bot.Send`. Fixed command replies record only whole-reply delivery.
+Worker replay still reads only pending messages.
+Delivery is at least once: a crash between platform success and the local
+commit can duplicate one part. Migration marks old settled replies as delivered
+because earlier versions did not record delivery success.
+
+See [ADR 0009](decisions/0009-channel-layer.md).
 
 ## Failure behavior
 
@@ -308,9 +336,11 @@ so dex needs no public URL.
   missed time when it is at most 1 h old; otherwise it records that time as
   skipped. It ignores the older missed times.
 - **Telegram API error.** The bot retries `getUpdates` after 5 s, from the
-  first update that it did not store. A `sendMessage` that fails is logged,
-  and the answer stays only in `control.sqlite`. A crash after a submission
-  settles and before `sendMessage` also loses the Telegram reply.
+  first update that it did not store. A failed reply part stays undelivered.
+  The channel sender retries it with a delay from 5 s to 60 s and after a
+  restart. Confirmed parts are skipped. Telegram errors 400 and 403 skip the
+  rejected part, so an unreachable peer does not block other peers. A crash
+  after remote success but before the local commit can duplicate one part.
 
 ## Security
 

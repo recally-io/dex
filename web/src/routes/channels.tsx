@@ -116,7 +116,11 @@ export function ChannelsPage() {
                           ? `Bot ${tg.botId ?? "unknown"} · ${tg.allowedUsers.length} allowed ${tg.allowedUsers.length === 1 ? "user" : "users"}. Read-only on the web`
                           : "Talk to dex from a Telegram bot. Needs a bot token and allowed user IDs."
                       }
-                      status={<OnOff on={tg.enabled} />}
+                      status={
+                        <StatusPill tone={tg.status.state === "running" ? "green" : "neutral"}>
+                          {tg.status.state}
+                        </StatusPill>
+                      }
                     />
                   </div>
                 </Panel>
@@ -294,8 +298,8 @@ function Telegram({ settings, telegramChats }: { settings: Settings; telegramCha
         )}
         <div className="mt-3">
           <Note>
-            On means that dex saved the bot and started it. dex does not report whether the bot reaches
-            Telegram. To check it, send the bot a message from an allowed account.
+            Runtime status: {telegram.status.state}.{" "}
+            {telegram.status.reason ?? "Send the bot a message to check reply delivery."}
           </Note>
         </div>
       </Section>

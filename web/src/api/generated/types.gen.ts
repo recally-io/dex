@@ -32,9 +32,9 @@ export type Health = {
 export type Chat = {
     id: number;
     /**
-     * Telegram chats are read-only in the web UI.
+     * External channel chats are read-only in the web UI.
      */
-    channel: 'web' | 'telegram' | 'automation';
+    channel: 'web' | 'telegram' | 'wechat' | 'feishu' | 'automation';
     /**
      * The automation that created the chat.
      */
@@ -483,7 +483,13 @@ export type McpServer = {
 export type Telegram = {
     enabled: boolean;
     botId?: string;
+    status: ChannelStatus;
     allowedUsers: Array<number>;
+};
+
+export type ChannelStatus = {
+    state: 'off' | 'running' | 'error' | 'needs_login';
+    reason?: string;
 };
 
 export type TelegramInput = {

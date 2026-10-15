@@ -46,11 +46,15 @@ func (s *Service) ReleaseReload(ctx context.Context) error {
 }
 
 func (s *Service) acquire(ctx context.Context) error {
+	// Lock order: maintenanceMu, then deliveryMu. Keep gate closure and confirmed
+	// lease publication in one boundary with submit and abort dispatch.
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
 	until := s.now().Add(2 * time.Minute).UnixMilli()
-	s.leaseUntil.Store(until)
 	var result worker.QuiesceResult
 	err := s.worker.Call(ctx, "quiesce", worker.QuiesceParams{ExpiresAt: until}, &result)
 	if err == nil && !result.Busy {
+		s.leaseUntil.Store(until)
 		return nil
 	}
 	release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)

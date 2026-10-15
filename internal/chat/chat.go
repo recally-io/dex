@@ -80,7 +80,7 @@ type Service struct {
 	q       *sqlc.Queries
 	worker  Caller
 	now     func() time.Time
-	notify  func(ctx context.Context, channelKey string, reply Reply)
+	notify  func(channelKey string)
 	changed func(chatID int64)
 
 	// Stored submissions wait here for Run, which delivers them in order.
@@ -88,7 +88,8 @@ type Service struct {
 
 	// Serializes worker conversation creation, so two first messages of one chat create one worker
 	// conversation. Global lock; per conversation if throughput matters.
-	createMu sync.Mutex
+	createMu   sync.Mutex
+	deliveryMu sync.Mutex // orders quiesce, confirmed leases, submit, and abort
 
 	maintenanceMu sync.Mutex
 	leaseUntil    atomic.Int64
@@ -97,10 +98,10 @@ type Service struct {
 }
 
 // New returns a Service. Connect the worker's settled events to HandleSettled and its start to
-// Replay, and run Run. notify, if not nil, receives each reply once, when its submission settles.
+// Replay, and run Run. notify, if not nil, receives the channel key when a submission settles.
 // changed, if not nil, learns that a chat has a new message, a settled message, or a worker
 // conversation. Both run on the goroutine that reads the worker, so they must not block.
-func New(q *sqlc.Queries, w Caller, now func() time.Time, notify func(ctx context.Context, channelKey string, reply Reply), changed func(chatID int64)) *Service {
+func New(q *sqlc.Queries, w Caller, now func() time.Time, notify func(channelKey string), changed func(chatID int64)) *Service {
 	return &Service{
 		q: q, worker: w, now: now, notify: notify, changed: changed,
 		queue: make(chan sqlc.ListPendingSubmissionsRow, 1024),
@@ -150,12 +151,10 @@ func (s *Service) Send(ctx context.Context, agentID, channelKey string, m Messag
 	return s.enqueue(ctx, agentID, channelKey, "", m)
 }
 
-// Submit stores content as a message to agentID on channelKey and returns without waiting; the
-// reply goes to notify. sourceKey identifies the message on its channel: when a message with the
-// same sourceKey exists, Submit does nothing, so a channel that delivers a message twice gets one
-// answer.
-func (s *Service) Submit(ctx context.Context, agentID, channelKey, sourceKey, content string) error {
-	_, err := s.enqueue(ctx, agentID, channelKey, sourceKey, Message{ID: uuid.NewV7().String(), Content: content})
+// SubmitMessage stores a channel update with its attachments and source identity.
+func (s *Service) SubmitMessage(ctx context.Context, agentID, channelKey, sourceKey string, m Message) error {
+	m.ID = uuid.NewV7().String()
+	_, err := s.enqueue(ctx, agentID, channelKey, sourceKey, m)
 	return err
 }
 
@@ -243,14 +242,28 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	}, nil
 }
 
-// Abort stops the run of chat id and withdraws its queued messages. The worker settles each of them
-// as unanswered.
+// Abort settles pending messages as unanswered and aborts the worker run.
+// Queued messages cannot enter the worker after this change.
 func (s *Service) Abort(ctx context.Context, agentID string, id int64) error {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
 	c, err := s.Get(ctx, agentID, id)
 	if err != nil {
 		return err
 	}
-	if c.WorkerConversationID == 0 {
+	count, err := s.q.StopChatSubmissions(ctx, sqlc.StopChatSubmissionsParams{ConversationID: id, SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		s.signal(id)
+		if s.notify != nil {
+			s.notify(c.ChannelKey)
+		}
+	}
+	// A confirmed maintenance lease proves the worker has no active run. Its abort call also waits
+	// for admission, so only control's queue needs to be withdrawn while the lease is held.
+	if c.WorkerConversationID == 0 || s.leaseUntil.Load() > s.now().UnixMilli() {
 		return nil
 	}
 	return s.worker.Call(ctx, "abort", worker.AbortParams{AgentID: agentID, ConversationID: c.WorkerConversationID}, &struct{}{})
@@ -323,6 +336,27 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 	if err != nil {
 		return err
 	}
+	for {
+		s.deliveryMu.Lock()
+		if s.leaseUntil.Load() <= s.now().UnixMilli() {
+			break
+		}
+		// Abort and lease renewal must remain available while this submission waits.
+		s.deliveryMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	defer s.deliveryMu.Unlock()
+	current, err := s.q.GetSubmission(ctx, p.ID)
+	if err != nil {
+		return err
+	}
+	if current.Status != "pending" {
+		return nil
+	}
 	var result worker.SubmitResult
 	return s.worker.Call(ctx, "submit", worker.SubmitParams{
 		AgentID:        p.AgentID,
@@ -369,7 +403,7 @@ func (s *Service) settle(ctx context.Context, event worker.Settled) {
 	}
 	s.signal(row.ConversationID)
 	if s.notify != nil {
-		s.notify(ctx, row.ChannelKey, Reply{Status: row.Status, Answer: row.Answer.String, Reason: row.Reason.String})
+		s.notify(row.ChannelKey)
 	}
 }
 
