@@ -124,7 +124,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		},
 		OnStart: func(ctx context.Context) { chats.Replay(ctx) },
 	})
-	chats = chat.New(q, w, time.Now, func(ctx context.Context, key string, reply chat.Reply) { bots.Notify(ctx, key, reply) }, func(id int64) { hub.Changed(id) })
+	chats = chat.New(q, w, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
 	hub = live.New(q, chats, w, DefaultAgentID)
 	bots = channel.New(runCtx, conn, chats, DefaultAgentID)
 	prefs = settings.New(q, w.Call, DefaultAgentID, cfg.TelegramAPIURL, func(cfg *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
@@ -134,7 +134,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 			return
 		}
 		cfg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
-		bots.Set("telegram", telegram.New(*cfg, bots, DefaultAgentID))
+		bots.Set("telegram", telegram.New(*cfg, bots))
 	})
 	prefs.ChannelStatus = bots.Status
 	tg, err := prefs.TelegramConfig(ctx)
@@ -178,7 +178,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	jobs.Start()
 	if tg != nil {
 		tg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
-		bots.Set("telegram", telegram.New(*tg, bots, DefaultAgentID)) //nolint:contextcheck // the bot uses the manager lifetime
+		bots.Set("telegram", telegram.New(*tg, bots)) //nolint:contextcheck // the bot uses the manager lifetime
 	}
 	return a, nil
 }

@@ -55,29 +55,22 @@ func (c Config) botID() string {
 	return id
 }
 
-// Submitter stores a message for an agent. *chat.Service implements it.
-type Submitter interface {
-	Submit(ctx context.Context, agentID, channelKey, sourceKey, content string) error
-}
-
 // Bot is one Telegram bot that talks to one agent.
 type Bot struct {
-	cfg     Config
-	chats   Submitter
-	agentID string
-	client  *http.Client
+	cfg    Config
+	chats  *channel.Manager
+	client *http.Client
 }
 
 // New returns a Bot. Register it with the channel manager to start it.
-func New(cfg Config, chats Submitter, agentID string) *Bot {
+func New(cfg Config, chats *channel.Manager) *Bot {
 	if cfg.APIURL == "" {
 		cfg.APIURL = "https://api.telegram.org"
 	}
 	return &Bot{
-		cfg:     cfg,
-		chats:   chats,
-		agentID: agentID,
-		client:  &http.Client{Timeout: 90 * time.Second}, // above the 30 s long poll
+		cfg:    cfg,
+		chats:  chats,
+		client: &http.Client{Timeout: 90 * time.Second}, // above the 30 s long poll
 	}
 }
 
@@ -85,7 +78,7 @@ func New(cfg Config, chats Submitter, agentID string) *Bot {
 func (b *Bot) Run(ctx context.Context) error {
 
 	// Telegram sends an update again until a getUpdates call with a higher offset confirms it. After
-	// a restart the offset is 0, so the last batch comes again; Submit ignores the repeats.
+	// a restart the offset is 0, so the last batch comes again; Receive ignores the repeats.
 	var offset int64
 	for {
 		var updates []update
@@ -131,7 +124,7 @@ func (b *Bot) Parts(reply chat.Reply) []string {
 }
 
 // Send confirms one part. The channel manager records its progress.
-func (b *Bot) Send(ctx context.Context, peer, text string) error {
+func (b *Bot) Send(ctx context.Context, peer, _ string, _ int, text string) error {
 	id, ok := strings.CutPrefix(peer, channelPrefix)
 	if !ok {
 		return errors.New("invalid Telegram peer")
@@ -158,10 +151,10 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	}
 	// Best effort: the indicator shows for 5 s or until the reply arrives.
 	_ = b.call(ctx, "sendChatAction", map[string]any{"chat_id": m.Chat.ID, "action": "typing"}, nil)
-	return b.chats.Submit(ctx, b.agentID,
+	return b.chats.Receive(ctx,
 		channelPrefix+strconv.FormatInt(m.Chat.ID, 10),
 		channelPrefix+b.cfg.botID()+":"+strconv.FormatInt(u.UpdateID, 10),
-		m.Text)
+		chat.Message{Content: m.Text})
 }
 
 func (b *Bot) call(ctx context.Context, method string, params, result any) error {
