@@ -271,7 +271,9 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
    retried request with the same UUID stores nothing.
 2. `chat.Service.Run` delivers stored submissions in SQLite insertion order
    (`submissions.rowid`), including after restart and replay. Timestamps are
-   for display and do not control delivery. On the first
+   for display and do not control delivery. An input that needs another delivery
+   attempt blocks later inputs of its chat. Other chats can still receive input.
+   On the first
    message of a chat, it calls `createConversation` and stores the worker's
    conversation ID.
 3. Control calls `submit` with the submission ID as `requestId`. pi-durable

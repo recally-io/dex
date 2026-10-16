@@ -17,11 +17,7 @@ import (
 )
 
 func TestUserKeepsInputAdmittedAfterClear(t *testing.T) {
-	for _, restartBeforeDelivery := range []bool{false, true} {
-		name := "live"
-		if restartBeforeDelivery {
-			name = "restart_before_delivery"
-		}
+	for _, name := range []string{"live", "restart_before_delivery", "restart_during_reset"} {
 		t.Run(name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
@@ -64,6 +60,7 @@ func TestUserKeepsInputAdmittedAfterClear(t *testing.T) {
 				t.Fatal(err)
 			}
 			var service *chat.Service
+			var restarted atomic.Bool
 			start := func(deliver bool) func() {
 				runCtx, stop := context.WithCancel(ctx)
 				var s *chat.Service
@@ -71,8 +68,23 @@ func TestUserKeepsInputAdmittedAfterClear(t *testing.T) {
 					Path: path, Dir: dir,
 					Env:       []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "DEX_FAKE_MODEL=1", "DEX_DATA_DIR=" + dir},
 					OnSettled: func(ctx context.Context, event worker.Settled) { s.HandleSettled(ctx, event) },
+					OnStart:   func(ctx context.Context) { s.Replay(ctx) },
 				})
-				s = chat.New(conn, w, now, nil, nil)
+				call := maintenanceCall(func(ctx context.Context, method string, params, result any) error {
+					if name == "restart_during_reset" && method == "reset" && restarted.CompareAndSwap(false, true) {
+						// Lose the old process before dispatch. The bound RPC returns its real exit error.
+						old, err := w.Bind()
+						if err != nil {
+							return err
+						}
+						if err := w.Restart(ctx); err != nil {
+							return err
+						}
+						return old(ctx, method, params, result)
+					}
+					return w.Call(ctx, method, params, result)
+				})
+				s = chat.New(conn, call, now, nil, nil)
 				service = s
 				var running sync.WaitGroup
 				running.Go(func() { _ = w.Run(runCtx) })
@@ -130,7 +142,7 @@ func TestUserKeepsInputAdmittedAfterClear(t *testing.T) {
 
 			// When control delivers, either now or after a full runtime restart.
 			var stopDelivery func()
-			if restartBeforeDelivery {
+			if name == "restart_before_delivery" {
 				stop()
 				reopen()
 				stop = start(true)
