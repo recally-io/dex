@@ -134,10 +134,8 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const [jump, setJump] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const clear = useClearContext(chatId, state.running, () => setAnnouncement("Context cleared."));
-  const [composerHeight, setComposerHeight] = useState(150);
   const wasRunning = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
-  const composerBox = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const failedMessage = useRef<{ body: MessageInput; attachments: Attachment[] } | null>(null);
   const send = useMutation(sendMessageMutation());
@@ -178,22 +176,10 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
     });
 
     observer.observe(transcript);
+    observer.observe(container);
 
     return () => observer.disconnect();
   }, []);
-
-  // The composer floats over the thread. The thread keeps space for it at the bottom.
-  useEffect(() => {
-    if (readOnly) return;
-
-    const box = composerBox.current;
-
-    if (!box) return;
-    const observer = new ResizeObserver(() => setComposerHeight(box.offsetHeight));
-    observer.observe(box);
-
-    return () => observer.disconnect();
-  }, [readOnly]);
 
   const reason = !model.ok
     ? "Choose an available model before you send."
@@ -246,9 +232,9 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const composer = readOnly ? null : (
     <>
       {abort.isSuccess ? (
-        <p role="status" className="mb-3 text-[12.5px] text-ink-2">
-          Stop requested. Earlier actions are not undone. Processes and remote work may continue.
-        </p>
+        <div role="status" className="mb-3">
+          <Note>Stop requested. Earlier actions are not undone. Processes and remote work may continue.</Note>
+        </div>
       ) : null}
       {error ? (
         <div className="mb-3">
@@ -441,44 +427,34 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
               }
             }}
           >
-            <div
-              className="mx-auto flex min-h-full w-full max-w-[720px] flex-col gap-6 px-4 pt-8 sm:px-8"
-              style={{ paddingBottom: readOnly ? 32 : composerHeight + 16 }}
-            >
+            <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col gap-6 px-4 py-8 sm:px-8">
               {transcript}
             </div>
           </div>
           {readOnly ? null : (
-            <>
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-x-0 bottom-0 bg-[linear-gradient(to_top,var(--page)_64%,transparent)]"
-                style={{ height: composerHeight + 32 }}
-              />
-              <div ref={composerBox} className="absolute inset-x-0 bottom-0 px-3 pb-3 sm:px-8 sm:pb-5">
-                <div className="relative mx-auto max-w-[720px]">
-                  {jump ? (
-                    <Button
-                      size="xs"
-                      variant="secondary"
-                      className="absolute -top-10 left-1/2 -translate-x-1/2 gap-1"
-                      onClick={() => {
-                        pinned.current = true;
-                        setJump(false);
-                        scroller.current?.scrollTo({
-                          top: scroller.current.scrollHeight,
-                          behavior: "smooth",
-                        });
-                      }}
-                    >
-                      <IconArrowDown size={14} />
-                      Jump to latest
-                    </Button>
-                  ) : null}
-                  {composer}
-                </div>
+            <div className="shrink-0 px-3 pb-3 sm:px-8 sm:pb-5">
+              <div className="relative mx-auto max-w-[720px]">
+                {jump ? (
+                  <Button
+                    size="xs"
+                    variant="secondary"
+                    className="absolute -top-10 left-1/2 -translate-x-1/2 gap-1"
+                    onClick={() => {
+                      pinned.current = true;
+                      setJump(false);
+                      scroller.current?.scrollTo({
+                        top: scroller.current.scrollHeight,
+                        behavior: "smooth",
+                      });
+                    }}
+                  >
+                    <IconArrowDown size={14} />
+                    Jump to latest
+                  </Button>
+                ) : null}
+                {composer}
               </div>
-            </>
+            </div>
           )}
         </div>
         {status}

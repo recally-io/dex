@@ -55,6 +55,7 @@ const results = [];
 const clears = [];
 const exceptions = [];
 const taskReads = new Map();
+const noticeLayouts = [];
 let serial = 0;
 const pending = new Map();
 
@@ -218,6 +219,52 @@ try {
     "document.body.innerText.includes('Context not cleared.') && document.body.innerText.includes('Dex is working. Wait for the reply or stop it, then try again.')",
   );
   await shot("02-refused");
+
+  for (const [label, width, height, theme] of [
+    ["desktop-light", 1280, 900, "light"],
+    ["desktop-dark", 1280, 900, "dark"],
+    ["mobile-light", 390, 844, "light"],
+    ["mobile-dark", 390, 844, "dark"],
+  ]) {
+    await viewport(width, height);
+    await call("Emulation.setEmulatedMedia", {
+      features: [{ name: "prefers-color-scheme", value: theme }],
+    });
+    await ui(
+      "notice theme applied",
+      `document.documentElement.classList.contains('dark') === ${theme === "dark"}`,
+    );
+    await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+
+    const layout = await evaluate(`(() => {
+      const area = document.querySelector('textarea');
+      const pane = area.closest('section');
+      const scroll = pane.querySelector('.overflow-y-auto').getBoundingClientRect();
+      const stop = [...pane.querySelectorAll('[role=status]')].find(node => node.textContent.trim().startsWith('Stop requested.')).getBoundingClientRect();
+      const warning = [...pane.querySelectorAll('[role=alert]')].find(node => node.textContent.includes('Context not cleared.')).getBoundingClientRect();
+      const composer = area.closest('form').getBoundingClientRect();
+      return { viewport: innerWidth, pageWidth: document.documentElement.scrollWidth,
+        scrollBottom: scroll.bottom, stopTop: stop.top, stopBottom: stop.bottom,
+        warningTop: warning.top, warningBottom: warning.bottom, composerTop: composer.top,
+        left: Math.min(stop.left, warning.left, composer.left),
+        right: Math.max(stop.right, warning.right, composer.right) };
+    })()`);
+
+    noticeLayouts.push({ label, ...layout });
+    await shot(`02-notices-${label}`);
+    assert.ok(
+      layout.scrollBottom <= layout.stopTop + 1 &&
+        layout.stopBottom <= layout.warningTop + 1 &&
+        layout.warningBottom <= layout.composerTop + 1 &&
+        layout.left >= 0 &&
+        layout.right <= layout.viewport + 1 &&
+        layout.pageWidth <= layout.viewport + 1,
+      `composer notices stay in layout (${label}): ${JSON.stringify(layout)}`,
+    );
+    results.push(`composer notices stay in layout (${label})`);
+  }
+
+  await viewport(1280, 900);
   await click("Clear context");
   await poll("second refusal", () => clears.filter((entry) => entry.status === 409).length === 2);
   assert.equal(clears[0].request.id, clears[1].request.id, "transport retry keeps its reset ID");
@@ -434,7 +481,16 @@ try {
   await writeFile(
     join(artifacts, "browser-results.json"),
     JSON.stringify(
-      { base, data, profile, results, clears, exceptions, taskReads: Object.fromEntries(taskReads) },
+      {
+        base,
+        data,
+        profile,
+        results,
+        clears,
+        exceptions,
+        taskReads: Object.fromEntries(taskReads),
+        noticeLayouts,
+      },
       null,
       2,
     ),
