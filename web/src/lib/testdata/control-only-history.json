@@ -1,0 +1,44 @@
+{
+  "snapshot": {
+    "running": false,
+    "historyBefore": 13,
+    "type": "snapshot",
+    "items": [
+      {
+        "text": "never admitted",
+        "at": 1792150596106,
+        "id": "01a1447f-ea09-7a6a-ae27-34bcbe9f02b2",
+        "kind": "user",
+        "queued": false
+      },
+      {
+        "aborted": false,
+        "id": "01a1447f-ea09-7a6a-ae27-34bcbe9f02b2:error",
+        "kind": "error",
+        "reason": "stopped"
+      },
+      { "entryId": 13, "kind": "boundary", "id": "e13", "boundary": "reset", "at": 1792150596157 }
+    ]
+  },
+  "page": {
+    "items": [
+      {
+        "kind": "user",
+        "id": "01a1447f-e985-7f9d-bf0a-8569f4a2d7cd",
+        "text": "earlier question",
+        "at": 1792150596034,
+        "entryId": 8
+      },
+      {
+        "kind": "assistant",
+        "id": "e12:0",
+        "text": "echo: earlier question",
+        "model": "faux/echo",
+        "usage": { "input": 2894, "output": 6 },
+        "entryId": 12
+      }
+    ]
+  },
+  "earlier": "01a1447f-e985-7f9d-bf0a-8569f4a2d7cd",
+  "stopped": "01a1447f-ea09-7a6a-ae27-34bcbe9f02b2"
+}

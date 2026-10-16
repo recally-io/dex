@@ -70,7 +70,7 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
   }
 }
 
-// Live items win overlaps. Insert history by entry order without moving control's queued items.
+// Live items win overlaps. Worker entries keep entry order; queued inputs stay last.
 function mergeItems(earlier: Item[], current: Item[]): Item[] {
   const ids = new Set(current.map((item) => item.id));
   const missing = earlier.filter((item) => !ids.has(item.id));
@@ -83,6 +83,27 @@ function mergeItems(earlier: Item[], current: Item[]): Item[] {
 
     const queued = items.findIndex((other) => other.kind === "user" && other.queued);
     items.splice(at >= 0 ? at : queued >= 0 ? queued : items.length, 0, item);
+  }
+
+  // A control-only input has no entry order. Keep its error with it, before the next
+  // newer input or reset, as the server does when it builds the snapshot.
+  for (const input of current) {
+    if (input.kind !== "user" || input.entryId !== undefined || input.queued || input.at === undefined)
+      continue;
+
+    const from = items.findIndex((item) => item.id === input.id);
+    const group = items.splice(from, items[from + 1]?.id === `${input.id}:error` ? 2 : 1);
+    const inputAt = input.at;
+
+    const at = items.findIndex(
+      (item) =>
+        (item.kind === "user" && item.queued) ||
+        ((item.kind === "user" || item.kind === "task" || item.kind === "boundary") &&
+          item.at !== undefined &&
+          item.at > inputAt),
+    );
+
+    items.splice(at >= 0 ? at : items.length, 0, ...group);
   }
 
   return items;

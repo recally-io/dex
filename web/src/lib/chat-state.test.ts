@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { applyChatEvent, emptyChatState, mergeHistory, retryMessage } from "./chat-state";
 import type { ChatEvent, Item } from "../api/generated/types.gen";
+import controlOnlyHistory from "./testdata/control-only-history.json";
 
 describe("chat retry", () => {
   const message: Item = {
@@ -54,6 +55,40 @@ describe("earlier transcript pages", () => {
   const earlier: Item = { kind: "assistant", id: "e4:0", entryId: 4, text: "Earlier answer" };
   const reset: Item = { kind: "boundary", id: "e10", entryId: 10, boundary: "reset", at: 1000 };
   const answer: Item = { kind: "assistant", id: "e12:0", entryId: 12, text: "Current answer" };
+
+  test("user keeps a withdrawn input and its error after earlier history", () => {
+    // Given the real snapshot of an input stopped before worker admission, then Clear.
+    const queued: Item = { kind: "user", id: "queued", text: "Next", queued: true, at: 1 };
+
+    // SAFETY: The fixture contains unchanged responses from the real snapshot and history APIs.
+    const snapshot = {
+      ...controlOnlyHistory.snapshot,
+      type: "snapshot" as const,
+      items: [...(controlOnlyHistory.snapshot.items as Item[]), queued],
+    };
+
+    const live = applyChatEvent(emptyChatState, snapshot);
+
+    // SAFETY: The recorded history page contains the API's Item objects.
+    const page = { items: controlOnlyHistory.page.items as Item[] };
+
+    // When the user loads an overlapping page twice and reconnects.
+    const loaded = mergeHistory(mergeHistory(live, page), page);
+    const reconnected = applyChatEvent(loaded, snapshot);
+
+    // Then the earlier answer precedes the withdrawn input and its error; queued stays last.
+    const ids = [
+      controlOnlyHistory.earlier,
+      "e12:0",
+      controlOnlyHistory.stopped,
+      `${controlOnlyHistory.stopped}:error`,
+      "e13",
+      "queued",
+    ];
+
+    expect(loaded.items.map((item) => item.id)).toEqual(ids);
+    expect(reconnected.items).toEqual(loaded.items);
+  });
 
   test("user merges overlapping pages with live items and keeps queued input last", () => {
     // Given a live answer, a partial response, and control's queued input.

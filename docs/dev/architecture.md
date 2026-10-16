@@ -429,7 +429,8 @@ browser ──EventSource──▶ control  GET /api/chats/{id}/events
   each task mark from the matching result submission. The hub places unanswered
   messages before the next newer user or task item. It then appends queued messages in
   receipt order, after all current worker output. The browser inserts new output
-  before those queued messages until the worker places them.
+  before those queued messages until the worker places them. History merging keeps
+  each control-only input with its error, before the next newer input or reset.
 - The worker's reader never waits for a stream. A stream that is 256 inputs
   behind is closed, and the browser reconnects.
 - A stream sends a comment line every 15 s.
