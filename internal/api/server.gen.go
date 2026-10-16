@@ -92,6 +92,7 @@ func (e BoundaryItemKind) Valid() bool {
 const (
 	ChatChannelAutomation ChatChannel = "automation"
 	ChatChannelFeishu     ChatChannel = "feishu"
+	ChatChannelTask       ChatChannel = "task"
 	ChatChannelTelegram   ChatChannel = "telegram"
 	ChatChannelWeb        ChatChannel = "web"
 	ChatChannelWechat     ChatChannel = "wechat"
@@ -103,6 +104,8 @@ func (e ChatChannel) Valid() bool {
 	case ChatChannelAutomation:
 		return true
 	case ChatChannelFeishu:
+		return true
+	case ChatChannelTask:
 		return true
 	case ChatChannelTelegram:
 		return true
@@ -180,22 +183,22 @@ func (e ItemEventType) Valid() bool {
 
 // Defines values for McpServerState.
 const (
-	Connected McpServerState = "connected"
-	Disabled  McpServerState = "disabled"
-	Failed    McpServerState = "failed"
-	Idle      McpServerState = "idle"
+	McpServerStateConnected McpServerState = "connected"
+	McpServerStateDisabled  McpServerState = "disabled"
+	McpServerStateFailed    McpServerState = "failed"
+	McpServerStateIdle      McpServerState = "idle"
 )
 
 // Valid indicates whether the value is a known member of the McpServerState enum.
 func (e McpServerState) Valid() bool {
 	switch e {
-	case Connected:
+	case McpServerStateConnected:
 		return true
-	case Disabled:
+	case McpServerStateDisabled:
 		return true
-	case Failed:
+	case McpServerStateFailed:
 		return true
-	case Idle:
+	case McpServerStateIdle:
 		return true
 	default:
 		return false
@@ -283,15 +286,45 @@ func (e SnapshotEventType) Valid() bool {
 	}
 }
 
+// Defines values for TaskStatus.
+const (
+	TaskStatusCancelled   TaskStatus = "cancelled"
+	TaskStatusDone        TaskStatus = "done"
+	TaskStatusFailed      TaskStatus = "failed"
+	TaskStatusInterrupted TaskStatus = "interrupted"
+	TaskStatusQueued      TaskStatus = "queued"
+	TaskStatusRunning     TaskStatus = "running"
+)
+
+// Valid indicates whether the value is a known member of the TaskStatus enum.
+func (e TaskStatus) Valid() bool {
+	switch e {
+	case TaskStatusCancelled:
+		return true
+	case TaskStatusDone:
+		return true
+	case TaskStatusFailed:
+		return true
+	case TaskStatusInterrupted:
+		return true
+	case TaskStatusQueued:
+		return true
+	case TaskStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TaskItemKind.
 const (
-	Task TaskItemKind = "task"
+	TaskItemKindTask TaskItemKind = "task"
 )
 
 // Valid indicates whether the value is a known member of the TaskItemKind enum.
 func (e TaskItemKind) Valid() bool {
 	switch e {
-	case Task:
+	case TaskItemKindTask:
 		return true
 	default:
 		return false
@@ -827,6 +860,23 @@ type SnapshotEvent struct {
 
 // SnapshotEventType defines model for SnapshotEvent.Type.
 type SnapshotEventType string
+
+// Task defines model for Task.
+type Task struct {
+	ConversationId int64  `json:"conversationId"`
+	CreatedAt      int64  `json:"createdAt"`
+	EndedAt        *int64 `json:"endedAt,omitempty"`
+	Id             string `json:"id"`
+
+	// Report The saved report in Markdown.
+	Report    string     `json:"report"`
+	StartedAt *int64     `json:"startedAt,omitempty"`
+	Status    TaskStatus `json:"status"`
+	Title     string     `json:"title"`
+}
+
+// TaskStatus defines model for Task.Status.
+type TaskStatus string
 
 // TaskItem Marks a background result. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
 type TaskItem struct {
@@ -1574,6 +1624,12 @@ type ServerInterface interface {
 
 	// (POST /api/settings/wechat/login/{loginId}/poll)
 	PollWechatLogin(w http.ResponseWriter, r *http.Request, loginId string)
+
+	// (GET /api/tasks)
+	ListTasks(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/tasks/{taskId})
+	GetTask(w http.ResponseWriter, r *http.Request, taskId string)
 
 	// (POST /api/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request)
@@ -2360,6 +2416,46 @@ func (siw *ServerInterfaceWrapper) PollWechatLogin(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ListTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTasks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTask operation middleware
+func (siw *ServerInterfaceWrapper) GetTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTask(w, r, taskId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateUpload operation middleware
 func (siw *ServerInterfaceWrapper) CreateUpload(w http.ResponseWriter, r *http.Request) {
 
@@ -2524,6 +2620,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/maintenance", wrapper.ReleaseMaintenance)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/maintenance", wrapper.AcquireMaintenance)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks", wrapper.ListTasks)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks/{taskId}", wrapper.GetTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats/main", wrapper.GetMainChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats", wrapper.ListChats)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/chats", wrapper.CreateChat)
@@ -4592,6 +4690,99 @@ func (response PollWechatLogindefaultJSONResponse) VisitPollWechatLoginResponse(
 	return err
 }
 
+type ListTasksRequestObject struct {
+}
+
+type ListTasksResponseObject interface {
+	VisitListTasksResponse(w http.ResponseWriter) error
+}
+
+type ListTasks200JSONResponse struct {
+	Tasks []Task `json:"tasks"`
+}
+
+func (response ListTasks200JSONResponse) VisitListTasksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTasksdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListTasksdefaultJSONResponse) VisitListTasksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTaskRequestObject struct {
+	TaskId string `json:"taskId"`
+}
+
+type GetTaskResponseObject interface {
+	VisitGetTaskResponse(w http.ResponseWriter) error
+}
+
+type GetTask200JSONResponse Task
+
+func (response GetTask200JSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTask404JSONResponse struct{ ErrorJSONResponse }
+
+func (response GetTask404JSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTaskdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetTaskdefaultJSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateUploadRequestObject struct {
 	Body *multipart.Reader
 }
@@ -4853,6 +5044,12 @@ type StrictServerInterface interface {
 
 	// (POST /api/settings/wechat/login/{loginId}/poll)
 	PollWechatLogin(ctx context.Context, request PollWechatLoginRequestObject) (PollWechatLoginResponseObject, error)
+
+	// (GET /api/tasks)
+	ListTasks(ctx context.Context, request ListTasksRequestObject) (ListTasksResponseObject, error)
+
+	// (GET /api/tasks/{taskId})
+	GetTask(ctx context.Context, request GetTaskRequestObject) (GetTaskResponseObject, error)
 
 	// (POST /api/uploads)
 	CreateUpload(ctx context.Context, request CreateUploadRequestObject) (CreateUploadResponseObject, error)
@@ -5992,6 +6189,56 @@ func (sh *strictHandler) PollWechatLogin(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PollWechatLoginResponseObject); ok {
 		if err := validResponse.VisitPollWechatLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTasks operation middleware
+func (sh *strictHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
+	var request ListTasksRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTasks(ctx, request.(ListTasksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTasks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTasksResponseObject); ok {
+		if err := validResponse.VisitListTasksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTask operation middleware
+func (sh *strictHandler) GetTask(w http.ResponseWriter, r *http.Request, taskId string) {
+	var request GetTaskRequestObject
+
+	request.TaskId = taskId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTask(ctx, request.(GetTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTaskResponseObject); ok {
+		if err := validResponse.VisitGetTaskResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

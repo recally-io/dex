@@ -64,6 +64,42 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/tasks:
+    get:
+      operationId: listTasks
+      description: Read the default agent's tasks, newest first. This API has no task controls.
+      responses:
+        "200":
+          description: The tasks.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tasks]
+                properties:
+                  tasks:
+                    type: array
+                    items: { $ref: "#/components/schemas/Task" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/tasks/{taskId}:
+    get:
+      operationId: getTask
+      description: Read one task and the ID of its read-only work conversation.
+      parameters:
+        - in: path
+          name: taskId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The task. Done means that it returned a report.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/chats/main:
     get:
       operationId: getMainChat
@@ -768,6 +804,21 @@ components:
         dataDir: { type: string }
         workerReady: { type: boolean }
 
+    Task:
+      type: object
+      required: [id, title, status, report, createdAt, conversationId]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        status:
+          type: string
+          enum: [queued, running, done, failed, cancelled, interrupted]
+        report: { type: string, description: The saved report in Markdown. }
+        createdAt: { type: integer, format: int64 }
+        startedAt: { type: integer, format: int64 }
+        endedAt: { type: integer, format: int64 }
+        conversationId: { type: integer, format: int64 }
+
     Chat:
       type: object
       required: [
@@ -785,7 +836,7 @@ components:
         id: { type: integer, format: int64 }
         channel:
           type: string
-          enum: [web, telegram, wechat, feishu, automation]
+          enum: [web, telegram, wechat, feishu, automation, task]
           description: External channel chats are read-only in the web UI.
         main: { type: boolean, description: This is the agent's main timeline. }
         readOnly: {

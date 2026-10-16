@@ -79,6 +79,35 @@ func (q *Queries) CreateTaskResult(ctx context.Context, arg CreateTaskResultPara
 	return err
 }
 
+const getAgentTask = `-- name: GetAgentTask :one
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.created_at, t.started_at, t.ended_at FROM tasks t JOIN conversations c ON c.id = t.conversation_id
+WHERE t.id = ? AND c.agent_id = ?
+`
+
+type GetAgentTaskParams struct {
+	ID      string `json:"id"`
+	AgentID string `json:"agent_id"`
+}
+
+func (q *Queries) GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getAgentTask, arg.ID, arg.AgentID)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.ParentConversationID,
+		&i.ConversationID,
+		&i.SpawnKey,
+		&i.SourceRequestID,
+		&i.Title,
+		&i.Status,
+		&i.Report,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.EndedAt,
+	)
+	return i, err
+}
+
 const getConversationByWorker = `-- name: GetConversationByWorker :one
 SELECT id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level FROM conversations WHERE agent_id = ? AND worker_conversation_id = ?
 `
@@ -176,6 +205,46 @@ SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id
 
 func (q *Queries) ListActiveTasks(ctx context.Context, parentConversationID int64) ([]Task, error) {
 	rows, err := q.db.QueryContext(ctx, listActiveTasks, parentConversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.ParentConversationID,
+			&i.ConversationID,
+			&i.SpawnKey,
+			&i.SourceRequestID,
+			&i.Title,
+			&i.Status,
+			&i.Report,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.EndedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAgentTasks = `-- name: ListAgentTasks :many
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.created_at, t.started_at, t.ended_at FROM tasks t JOIN conversations c ON c.id = t.conversation_id
+WHERE c.agent_id = ? ORDER BY t.created_at DESC, t.id DESC
+`
+
+func (q *Queries) ListAgentTasks(ctx context.Context, agentID string) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listAgentTasks, agentID)
 	if err != nil {
 		return nil, err
 	}

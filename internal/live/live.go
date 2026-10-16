@@ -357,7 +357,7 @@ func (h *Hub) taskItem(ctx context.Context, s *stream, head itemHead) (jsontext.
 	if err != nil {
 		return nil, fmt.Errorf("task result %s title: %w", head.ID, err)
 	}
-	return json.Marshal(api.TaskItem{Kind: api.Task, Id: head.ID, At: new(head.At), Title: title, EntryId: head.EntryID})
+	return json.Marshal(api.TaskItem{Kind: api.TaskItemKindTask, Id: head.ID, At: new(head.At), Title: title, EntryId: head.EntryID})
 }
 
 // writeExtra writes control's items that changed since the stream sent them.

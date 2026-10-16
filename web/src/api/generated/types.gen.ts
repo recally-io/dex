@@ -29,12 +29,26 @@ export type Health = {
     workerReady: boolean;
 };
 
+export type Task = {
+    id: string;
+    title: string;
+    status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'interrupted';
+    /**
+     * The saved report in Markdown.
+     */
+    report: string;
+    createdAt: number;
+    startedAt?: number;
+    endedAt?: number;
+    conversationId: number;
+};
+
 export type Chat = {
     id: number;
     /**
      * External channel chats are read-only in the web UI.
      */
-    channel: 'web' | 'telegram' | 'wechat' | 'feishu' | 'automation';
+    channel: 'web' | 'telegram' | 'wechat' | 'feishu' | 'automation' | 'task';
     /**
      * This is the agent's main timeline.
      */
@@ -736,6 +750,64 @@ export type AcquireMaintenanceResponses = {
 };
 
 export type AcquireMaintenanceResponse = AcquireMaintenanceResponses[keyof AcquireMaintenanceResponses];
+
+export type ListTasksData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/tasks';
+};
+
+export type ListTasksErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListTasksError = ListTasksErrors[keyof ListTasksErrors];
+
+export type ListTasksResponses = {
+    /**
+     * The tasks.
+     */
+    200: {
+        tasks: Array<Task>;
+    };
+};
+
+export type ListTasksResponse = ListTasksResponses[keyof ListTasksResponses];
+
+export type GetTaskData = {
+    body?: never;
+    path: {
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/tasks/{taskId}';
+};
+
+export type GetTaskErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetTaskError = GetTaskErrors[keyof GetTaskErrors];
+
+export type GetTaskResponses = {
+    /**
+     * The task. Done means that it returned a report.
+     */
+    200: Task;
+};
+
+export type GetTaskResponse = GetTaskResponses[keyof GetTaskResponses];
 
 export type GetMainChatData = {
     body?: never;

@@ -303,12 +303,16 @@ The web groups output after that mark until the next user or task item.
 A failed result reply cannot retry the user message before the mark.
 Control's pending user projection selects only `kind='message'`.
 Neither layer uses message text or an ID pattern to hide results. Ordinary
-user JSON still appears and can use the normal Retry action. Hidden execution
-chats remain absent from public chat lists, chat reads, and dream inputs.
+user JSON still appears and can use the normal Retry action. Task conversations
+stay absent from chat lists and dream inputs. The human can read their chat,
+history, and normal SSE stream. Web input, settings, clear, and abort are refused.
 Dream input selects only ordinary messages, so internal results in a main chat
 cannot enter memory as user text.
-There are no public task endpoints, separate task streams, or task commands.
-The normal main-chat SSE stream carries the marks and replies.
+`GET /api/tasks` lists all work of the default agent, newest first.
+`GET /api/tasks/{id}` returns one record with its report, times, and conversation
+ID. Both reads check the agent. Model task tools keep their parent conversation
+scope. There are no HTTP task controls or separate task streams.
+The normal main-chat SSE stream carries result marks and replies.
 
 Result delivery uses the existing submission lifecycle. A provider failure
 leaves the result unanswered. Control never changes a settled submission back

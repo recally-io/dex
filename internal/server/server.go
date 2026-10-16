@@ -76,7 +76,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, errReadOnly):
 				status = http.StatusForbidden
-			case errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound):
+			case errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
 			case errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy):
 				status = http.StatusConflict
@@ -189,6 +189,9 @@ func chatView(c chat.Chat) api.Chat {
 	}
 	if strings.HasPrefix(c.ChannelKey, "feishu:") {
 		out.Channel = api.ChatChannelFeishu
+	}
+	if strings.HasPrefix(c.ChannelKey, "task:") {
+		out.Channel = api.ChatChannelTask
 	}
 	if id, ok := automation.ChatAutomation(c.ChannelKey); ok {
 		out.Channel, out.AutomationId = api.ChatChannelAutomation, &id
