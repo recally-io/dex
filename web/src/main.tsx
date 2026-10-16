@@ -13,10 +13,10 @@ import {
 import { errorText, queryClient } from "./lib/queries";
 import { Shell } from "./components/shell";
 import { ChatPage } from "./routes/chat";
-import { AutomationsPage, AutomationPage } from "./routes/automations";
+import { AutomationPage } from "./routes/automations";
 import { AgentPage } from "./routes/agent";
 import { ProvidersPage } from "./routes/providers";
-import { ChannelPage, ChannelsPage } from "./routes/channels";
+import { ChannelPage } from "./routes/channels";
 import { ExtensionsPage } from "./routes/extensions";
 import { SecretsPage } from "./routes/secrets";
 import { AboutPage } from "./routes/about";
@@ -64,7 +64,15 @@ const page = <P extends string>(path: P, component: () => React.ReactNode) =>
 
 const agent = page("/agent", AgentPage);
 const providers = page("/providers", ProvidersPage);
-const channels = page("/channels", ChannelsPage);
+
+const channels = createRoute({
+  getParentRoute: () => root,
+  path: "/channels",
+  beforeLoad: () => {
+    throw redirect({ to: "/agent", replace: true });
+  },
+});
+
 const extensions = page("/extensions", ExtensionsPage);
 const secrets = page("/secrets", SecretsPage);
 const about = page("/about", AboutPage);
@@ -73,7 +81,7 @@ const channel = createRoute({
   getParentRoute: () => root,
   path: "/channels/$channelId",
   beforeLoad: ({ params }) => {
-    if (params.channelId !== "web" && params.channelId !== "telegram" && params.channelId !== "feishu")
+    if (params.channelId !== "wechat" && params.channelId !== "telegram" && params.channelId !== "feishu")
       throw notFound();
   },
   component: ChannelRoute,
@@ -85,7 +93,7 @@ function ChannelRoute() {
   return (
     <ChannelPage
       key={channelId}
-      channel={channelId === "web" ? "web" : channelId === "feishu" ? "feishu" : "telegram"}
+      channel={channelId === "wechat" ? "wechat" : channelId === "feishu" ? "feishu" : "telegram"}
     />
   );
 }
@@ -120,7 +128,9 @@ const defaultSettings = createRoute({
 const automations = createRoute({
   getParentRoute: () => root,
   path: "/automations",
-  component: AutomationsPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/agent", replace: true });
+  },
 });
 
 const automation = createRoute({

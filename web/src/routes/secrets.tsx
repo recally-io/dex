@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Facts, FramedPage, Mono, Note, NotAvailable, Panel, Section } from "../components/page";
 import { buttonVariants } from "../components/atoms/Button";
-import { WithSettings } from "./agent";
+import { WithSettings } from "../components/with-settings";
 
 export function SecretsPage() {
   return (

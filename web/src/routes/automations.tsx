@@ -15,6 +15,7 @@ import { refreshAutomations } from "../lib/queries";
 import { useAgentModel } from "../lib/agent";
 import { ago, runTime, scheduleText } from "../lib/automations";
 import { Failure, Loading, Spinner } from "../components/feedback";
+import { BotCrumb } from "../components/bot-crumb";
 import { Confirm } from "../components/confirm";
 import { AutomationDialog } from "../components/automation-dialog";
 import { Empty, Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
@@ -77,7 +78,7 @@ function EnabledSwitch({ automation }: { automation: Automation }) {
   );
 }
 
-export function AutomationsPage() {
+export function AutomationsSection() {
   const automations = useQuery({ ...listAutomationsOptions(), refetchInterval: 10_000 });
   const settings = useQuery(getSettingsOptions());
   const [create, setCreate] = useState(false);
@@ -87,16 +88,17 @@ export function AutomationsPage() {
   const noModel = !!settings.data && !settings.data.agent.modelId;
 
   return (
-    <FramedPage
-      title="Automations"
-      description="dex sends a prompt to the agent on a schedule. Each run is a chat that you can open and reply to. dex runs it only while dex is running on this computer."
-      actions={
-        <Button size="sm" variant="primary" disabled={noModel} onClick={() => setCreate(true)}>
-          New automation
-        </Button>
-      }
-    >
-      <Section n={1} title="Schedules" caption={list.length ? `${on} of ${list.length} on` : undefined}>
+    <>
+      <Section
+        n={4}
+        title="Automations"
+        caption={`${on} of ${list.length} on. Open one to see its runs.`}
+        action={
+          <Button size="sm" variant="primary" disabled={noModel} onClick={() => setCreate(true)}>
+            New automation
+          </Button>
+        }
+      >
         {automations.isPending ? (
           <Loading />
         ) : automations.isError ? (
@@ -147,20 +149,8 @@ export function AutomationsPage() {
           </Empty>
         )}
       </Section>
-      <Section n={2} title="How runs work" caption="The same rules for every automation.">
-        <Panel>
-          <Facts
-            rows={[
-              ["Model and instructions", "The agent's, the same as every chat"],
-              ["When dex was not running", "Only the newest missed run starts, if it is at most 1 h late"],
-              ["When the chat is busy", "The run is skipped and shows the reason"],
-              ["Run now", "Starts at once, outside the schedule"],
-            ]}
-          />
-        </Panel>
-      </Section>
       {create ? <AutomationDialog onClose={() => setCreate(false)} /> : null}
-    </FramedPage>
+    </>
   );
 }
 
@@ -219,7 +209,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
     ...deleteAutomationMutation(),
     onSuccess: async () => {
       await refreshAutomations();
-      await navigate({ to: "/automations" });
+      await navigate({ to: "/agent" });
     },
   });
 
@@ -232,11 +222,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
   const busy = history.some((h) => h.status === "running");
   const blocked = model && !model.ok ? "Choose an available agent model first." : undefined;
 
-  const crumb = (
-    <Link to="/automations" className="hover:text-ink hover:underline">
-      Automations
-    </Link>
-  );
+  const crumb = <BotCrumb />;
 
   if (automation.isPending || automation.isError)
     return (

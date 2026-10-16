@@ -16,7 +16,7 @@ import { Field, Select } from "../components/form";
 import { Empty, Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
-import { WithSettings } from "./agent";
+import { WithSettings } from "../components/with-settings";
 
 export function ProvidersPage() {
   const [dialog, setDialog] = useState<Provider | "new" | null>(null);

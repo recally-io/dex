@@ -2,21 +2,16 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Outlet, useRouterState, type LinkProps } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog } from "@base-ui/react/dialog";
-import { IconBubbles } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubbles";
-import { IconChevronDownSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronDownSmall";
 import { IconCircleInfo } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCircleInfo";
-import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
 import { IconCloudApi } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCloudApi";
 import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
 import { IconKey2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconKey2";
+import { IconSettingsGear1 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsGear1";
 import { IconPuzzle } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPuzzle";
-import { IconRobot } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconRobot";
 import { getSettingsOptions } from "../api/generated/@tanstack/react-query.gen";
 import GlideMenu from "./primitives/GlideMenu";
 import { ShellContext } from "./page";
 import { ThemeToggle, useSystemTheme } from "./theme";
-import { useAgentModel } from "../lib/agent";
-import { useApp } from "../lib/app-state";
 import { cn } from "../lib/utils";
 
 export function Shell() {
@@ -35,7 +30,7 @@ export function Shell() {
   }
 
   // After navigation, focus moves to the page title, so keyboard and screen reader users land on
-  // the new page. A new chat keeps the focus in its composer.
+  // the new page.
   useEffect(() => {
     // The first page load keeps the browser's focus.
     if (shown.current === path) return;
@@ -155,39 +150,6 @@ function Row({
   );
 }
 
-function GroupLabel({
-  label,
-  open,
-  onToggle,
-  controls,
-  children,
-}: {
-  label: string;
-  open: boolean;
-  onToggle: () => void;
-  controls: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="relative mx-2 mb-1 flex h-8 items-center">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={controls}
-        onClick={onToggle}
-        className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-control px-2 text-[12.5px] font-medium text-ink-3 transition-colors hover:text-ink-2"
-      >
-        <IconChevronDownSmall
-          size={16}
-          className={cn("shrink-0 transition-transform duration-200", !open && "-rotate-90")}
-        />
-        <span className="truncate">{label}</span>
-      </button>
-      {children}
-    </div>
-  );
-}
-
 function Dot({ tone, label }: { tone: "orange" | "red"; label: string }) {
   return (
     <span
@@ -199,9 +161,7 @@ function Dot({ tone, label }: { tone: "orange" | "red"; label: string }) {
 }
 
 const configure = [
-  { to: "/agent", label: "Agent", icon: <IconRobot size={16} /> },
   { to: "/providers", label: "Providers", icon: <IconCloudApi size={16} /> },
-  { to: "/channels", label: "Channels", icon: <IconBubbles size={16} /> },
   { to: "/extensions", label: "Extensions", icon: <IconPuzzle size={16} /> },
   { to: "/secrets", label: "Secrets", icon: <IconKey2 size={16} /> },
   { to: "/about", label: "About", icon: <IconCircleInfo size={16} /> },
@@ -209,91 +169,67 @@ const configure = [
 
 function Sidebar({ path, className }: { path: string; className?: string }) {
   const settings = useQuery(getSettingsOptions());
-  const model = useAgentModel(settings.data);
-  const { draft } = useApp();
-  const [configOpen, setConfigOpen] = useState(true);
+  const name = settings.data?.agent.name ?? "dex";
   const [a] = path.split("/").filter(Boolean);
-
   const providerErrors = settings.data?.providers.filter((p) => p.error).length ?? 0;
-  const dirty = draft !== null && draft !== settings.data?.agent.instructions;
-
-  const agentTrailing = dirty ? (
-    <span className="text-[11px] text-ink-3">Draft</span>
-  ) : model && !model.ok ? (
-    <Dot tone="orange" label="No available model" />
-  ) : null;
+  const botCurrent = path === "/" || a === "tasks";
+  const settingsCurrent = a === "agent" || a === "channels" || a === "automations";
 
   return (
     <aside aria-label="Navigation" className={cn("flex h-full w-[232px] shrink-0 flex-col", className)}>
-      {/* The workspace header: dex and the model of its one agent. */}
-      <div className="mx-2 mb-2.5 flex h-11 shrink-0 items-center gap-2 px-2">
-        <span
-          aria-hidden
-          className="flex size-6 shrink-0 items-center justify-center rounded-[7px] bg-ink text-[12px] font-semibold text-surface"
+      <div className="mx-2 mb-2.5 flex h-11 shrink-0 items-center gap-1">
+        <Link
+          to="/"
+          aria-current={botCurrent ? "page" : undefined}
+          className={cn(
+            "flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-control px-2 hover:bg-hover-2",
+            botCurrent && "bg-hover-2",
+          )}
         >
-          d
-        </span>
-        <span className="min-w-0 flex-1 leading-tight">
-          <span className="block text-[14px] font-semibold text-ink">
-            {settings.data?.agent.name ?? "dex"}
+          <span
+            aria-hidden
+            className="flex size-6 shrink-0 items-center justify-center rounded-[7px] bg-ink text-[12px] font-semibold text-surface"
+          >
+            d
           </span>
-          {model ? (
-            <Link
-              to="/agent"
-              className={cn(
-                "block truncate text-[11.5px] hover:underline",
-                model.ok ? "text-ink-3" : "text-orange",
-              )}
-            >
-              {settings.data?.agent.modelId ? model.label : "No model chosen"}
-            </Link>
-          ) : null}
-        </span>
+          <span className="truncate text-[14px] font-semibold text-ink">{name}</span>
+        </Link>
+        <Link
+          to="/agent"
+          aria-label={`${name} settings`}
+          aria-current={settingsCurrent ? "page" : undefined}
+          className={cn(
+            "flex size-8 shrink-0 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink",
+            settingsCurrent && "bg-hover-2 text-ink",
+          )}
+        >
+          <IconSettingsGear1 size={16} />
+        </Link>
       </div>
-
-      <GlideGroup>
-        <Row icon={<IconRobot size={18} />} label="Timeline" to="/" current={path === "/"} />
-        <Row
-          icon={<IconClock size={18} />}
-          label="Automations"
-          to="/automations"
-          current={a === "automations"}
-        />
-      </GlideGroup>
       <div className="flex-1" />
 
-      {/* Configuration: present, but quieter than the chats. */}
       <div className="mt-2 shrink-0 border-t border-dashed border-line-strong pt-2">
-        <GroupLabel
-          label="Configure"
-          open={configOpen}
-          controls="sidebar-configure"
-          onToggle={() => setConfigOpen(!configOpen)}
-        />
-        <div id="sidebar-configure" hidden={!configOpen}>
-          <GlideGroup>
-            {configure.map((item) => (
-              <Row
-                key={item.to}
-                small
-                icon={item.icon}
-                label={item.label}
-                to={item.to}
-                current={`/${a}` === item.to}
-                trailing={
-                  item.to === "/agent" ? (
-                    agentTrailing
-                  ) : item.to === "/providers" && providerErrors ? (
-                    <Dot
-                      tone="red"
-                      label={`${providerErrors} ${providerErrors === 1 ? "provider needs" : "providers need"} attention`}
-                    />
-                  ) : null
-                }
-              />
-            ))}
-          </GlideGroup>
-        </div>
+        <p className="mx-2 mb-1 flex h-8 items-center px-2 text-[12.5px] font-medium text-ink-3">Settings</p>
+        <GlideGroup>
+          {configure.map((item) => (
+            <Row
+              key={item.to}
+              small
+              icon={item.icon}
+              label={item.label}
+              to={item.to}
+              current={`/${a}` === item.to}
+              trailing={
+                item.to === "/providers" && providerErrors ? (
+                  <Dot
+                    tone="red"
+                    label={`${providerErrors} ${providerErrors === 1 ? "provider needs" : "providers need"} attention`}
+                  />
+                ) : null
+              }
+            />
+          ))}
+        </GlideGroup>
         <div className="mx-2 mt-2 flex items-center border-t border-line px-1 pt-2.5 pb-0.5">
           <ThemeToggle />
         </div>
