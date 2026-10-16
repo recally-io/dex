@@ -178,12 +178,14 @@ SELECT s.id, s.origin, s.status, s.answer, s.reason, s.delivered_parts
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status != 'pending' AND s.delivered_at IS NULL
 AND (s.kind = 'message' OR (s.kind = 'task_result' AND s.status = 'done'))
-AND c.agent_id = ?1 AND s.origin LIKE ?2 || '%' ORDER BY s.rowid
+AND c.agent_id = ?1 AND s.origin >= ?2 AND s.origin < ?3
+ORDER BY s.rowid
 `
 
 type ListChannelRepliesParams struct {
-	AgentID string         `json:"agent_id"`
-	Prefix  sql.NullString `json:"prefix"`
+	AgentID     string `json:"agent_id"`
+	OriginStart string `json:"origin_start"`
+	OriginEnd   string `json:"origin_end"`
 }
 
 type ListChannelRepliesRow struct {
@@ -196,7 +198,7 @@ type ListChannelRepliesRow struct {
 }
 
 func (q *Queries) ListChannelReplies(ctx context.Context, arg ListChannelRepliesParams) ([]ListChannelRepliesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listChannelReplies, arg.AgentID, arg.Prefix)
+	rows, err := q.db.QueryContext(ctx, listChannelReplies, arg.AgentID, arg.OriginStart, arg.OriginEnd)
 	if err != nil {
 		return nil, err
 	}
@@ -250,5 +252,19 @@ type MarkChannelReplyDeliveredParams struct {
 
 func (q *Queries) MarkChannelReplyDelivered(ctx context.Context, arg MarkChannelReplyDeliveredParams) error {
 	_, err := q.db.ExecContext(ctx, markChannelReplyDelivered, arg.DeliveredAt, arg.ID)
+	return err
+}
+
+const saveChannelCommandAnswer = `-- name: SaveChannelCommandAnswer :exec
+UPDATE channel_commands SET answer = ? WHERE source_key = ?
+`
+
+type SaveChannelCommandAnswerParams struct {
+	Answer    string `json:"answer"`
+	SourceKey string `json:"source_key"`
+}
+
+func (q *Queries) SaveChannelCommandAnswer(ctx context.Context, arg SaveChannelCommandAnswerParams) error {
+	_, err := q.db.ExecContext(ctx, saveChannelCommandAnswer, arg.Answer, arg.SourceKey)
 	return err
 }

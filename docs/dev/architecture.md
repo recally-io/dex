@@ -562,9 +562,12 @@ receipts. `/new` uses `channel:<source key>` as its stable reset request ID.
 A crash after reset admission but before command completion reuses that reset.
 A busy refusal is saved in the command receipt; replay cannot clear it later.
 The command sends one short notice. Reset submissions have no model reply.
+An incomplete command with an old peer channel key gets a notice with no action.
 `/stop` records stop intent for main and
-withdraws queued input and pending results. A repeated Stop is safe. The
-reply confirms the cancellation request and states that processes and remote
+withdraws queued input and pending results. A channel Stop saves its answer
+in the same transaction as the withdrawal. If command completion fails,
+replay uses that answer without another withdrawal or worker abort. The reply
+confirms the cancellation request and states that processes and remote
 work can continue. A stop error does not block later messages or other replies.
 
 Each platform has one durable sender. Settlement wakes the origin's sender.

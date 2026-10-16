@@ -12,12 +12,22 @@ import (
 
 // Stop withdraws this conversation's input and requests cancellation of its runs.
 func (s *Service) Stop(ctx context.Context, agentID string, id int64) error {
+	return s.stop(ctx, agentID, id, nil)
+}
+
+// StopChannelCommand saves the answer in the withdrawal transaction.
+// Replay can finish the receipt without withdrawing or aborting later work.
+func (s *Service) StopChannelCommand(ctx context.Context, agentID string, id int64, sourceKey, answer string) error {
+	return s.stop(ctx, agentID, id, &sqlc.SaveChannelCommandAnswerParams{SourceKey: sourceKey, Answer: answer})
+}
+
+func (s *Service) stop(ctx context.Context, agentID string, id int64, command *sqlc.SaveChannelCommandAnswerParams) error {
 	if _, err := s.Get(ctx, agentID, id); err != nil {
 		return err
 	}
 	s.deliveryMu.Lock()
 	defer s.deliveryMu.Unlock()
-	conversations, targets, call, err := s.withdraw(ctx, agentID, id)
+	conversations, targets, call, err := s.withdraw(ctx, agentID, id, command)
 	if err != nil {
 		return err
 	}
@@ -35,7 +45,7 @@ func (s *Service) Stop(ctx context.Context, agentID string, id int64) error {
 }
 
 // Withdraw and spawn take the writer before reading. The first commit defines Stop's scope.
-func (s *Service) withdraw(ctx context.Context, agentID string, id int64) ([]sqlc.Conversation, []worker.AbortParams, worker.CallFunc, error) {
+func (s *Service) withdraw(ctx context.Context, agentID string, id int64, command *sqlc.SaveChannelCommandAnswerParams) ([]sqlc.Conversation, []worker.AbortParams, worker.CallFunc, error) {
 	s.taskMu.Lock()
 	defer s.taskMu.Unlock()
 	tx, q, err := s.taskTransaction(ctx)
@@ -72,6 +82,11 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64) ([]sql
 	}
 	// Bind before recovery can publish the next worker. Cancellation stays in this process.
 	call, _ := s.worker.Bind()
+	if command != nil {
+		if err := q.SaveChannelCommandAnswer(ctx, *command); err != nil {
+			return nil, nil, nil, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, nil, nil, err
 	}

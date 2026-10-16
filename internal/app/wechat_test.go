@@ -1114,7 +1114,7 @@ func TestUserWechatRescanJoinsOldRequestBeforeClearingPause(t *testing.T) {
 }
 
 func TestUserWechatInterruptedCommandSkipsMediaBeforeCompletion(t *testing.T) {
-	// Given an admitted chat and an interrupted command receipt.
+	// Given an admitted main input and an interrupted command receipt.
 	f := newFakeWechat(t)
 	f.batch("first", wxText(1, "owner", "hello"))
 	dir := t.TempDir()
@@ -1122,7 +1122,7 @@ func TestUserWechatInterruptedCommandSkipsMediaBeforeCompletion(t *testing.T) {
 	connectWechat(t, d)
 	_ = f.next(t)
 	conn := wxConn(t, dir)
-	if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_commands (source_key, peer, channel_key, command) VALUES ('wechat:bot1:2', 'wechat:owner', 'wechat:owner', '/stop')"); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_commands (source_key, peer, channel_key, command) VALUES ('wechat:bot1:2', 'wechat:owner', 'main', '/stop')"); err != nil {
 		t.Fatal(err)
 	}
 	// When the source replays with unavailable media, the receipt still completes.

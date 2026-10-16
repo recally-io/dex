@@ -197,8 +197,11 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 		return nil
 	}
 	answer := "/new clears the main timeline's context. /stop stops the main answer and its background work. /help shows these commands."
-	switch c.Command {
-	case "/new":
+	switch {
+	case c.ChannelKey != chat.MainKey:
+		// A saved peer command cannot acquire main's scope after an upgrade.
+		answer = "This command is from an earlier version. Send a new command if needed."
+	case c.Command == "/new":
 		main, err := m.chats.Main(ctx, m.agentID)
 		if err != nil {
 			return err
@@ -213,15 +216,18 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 		default:
 			answer = "Context cleared."
 		}
-	case "/stop":
-		main, err := m.chats.Main(ctx, m.agentID)
-		if err != nil {
-			return err
+	case c.Command == "/stop":
+		answer = c.Answer
+		if answer == "" {
+			main, err := m.chats.Main(ctx, m.agentID)
+			if err != nil {
+				return err
+			}
+			answer = "Stop requested. Earlier actions are not undone. Processes and remote work may continue."
+			if err := m.chats.StopChannelCommand(ctx, m.agentID, main.ID, c.SourceKey, answer); err != nil {
+				return err
+			}
 		}
-		if err := m.chats.Stop(ctx, m.agentID, main.ID); err != nil {
-			return err
-		}
-		answer = "Stop requested. Earlier actions are not undone. Processes and remote work may continue."
 	}
 	if err := m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{Answer: answer, SourceKey: c.SourceKey}); err != nil {
 		return err
@@ -283,7 +289,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 	if err != nil {
 		return err
 	}
-	replies, err := m.q.ListChannelReplies(ctx, sqlc.ListChannelRepliesParams{AgentID: m.agentID, Prefix: sql.NullString{String: name + ":", Valid: true}})
+	replies, err := m.q.ListChannelReplies(ctx, sqlc.ListChannelRepliesParams{AgentID: m.agentID, OriginStart: name + ":", OriginEnd: name + ";"})
 	if err != nil {
 		return err
 	}
