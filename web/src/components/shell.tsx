@@ -68,7 +68,7 @@ export function Shell() {
           >
             <Dialog.Close
               aria-label="Close navigation"
-              className="absolute top-3 right-3 z-20 flex size-8 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink"
+              className="absolute top-3 -right-10 z-20 flex size-8 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink"
             >
               <IconCrossSmall size={18} />
             </Dialog.Close>

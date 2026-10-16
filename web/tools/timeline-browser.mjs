@@ -345,6 +345,16 @@ try {
     "!!document.querySelector('[role=dialog] a[aria-label=\"Browser Bot settings\"]')",
   );
   await shot("09-mobile-nav");
+  await tap('[role="dialog"] a[aria-label="Browser Bot settings"]');
+  await ui(
+    "mobile settings opened",
+    "location.pathname === '/agent' && !!document.querySelector('#bot-name')",
+  );
+  await evaluate("document.querySelector('button[aria-label=\"Open navigation\"]').click()");
+  await ui("mobile drawer reopened", "!!document.querySelector('[role=dialog]')");
+  await tap('[role="dialog"] button[aria-label="Close navigation"]');
+  await ui("mobile drawer closed", "!document.querySelector('[role=dialog]')");
+  results.push("mobile settings gear and close button both accept pointer clicks");
   assert.deepEqual(exceptions, [], "no browser exceptions");
   assert.equal((await api("/api/chats/main")).id, main.id);
   results.push(
@@ -492,6 +502,16 @@ async function click(text) {
   await evaluate(
     `(() => { const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(text)}); if (!button || button.disabled) throw new Error('Button is unavailable'); button.click(); })()`,
   );
+}
+
+async function tap(selector) {
+  const point = await evaluate(`(() => {
+    const rect = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  })()`);
+
+  await call("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
+  await call("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });
 }
 
 async function stop(child) {
