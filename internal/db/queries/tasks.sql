@@ -12,7 +12,9 @@ SELECT * FROM tasks WHERE id = ?;
 SELECT * FROM tasks WHERE spawn_key = ?;
 
 -- name: ListAgentTasks :many
-SELECT t.* FROM tasks t JOIN conversations c ON c.id = t.conversation_id
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.title, t.status,
+    t.created_at, t.started_at, t.ended_at
+FROM tasks t JOIN conversations c ON c.id = t.conversation_id
 WHERE c.agent_id = ? ORDER BY t.created_at DESC, t.id DESC;
 
 -- name: GetAgentTask :one

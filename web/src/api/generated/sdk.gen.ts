@@ -64,7 +64,7 @@ export const acquireMaintenance = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * Read the default agent's tasks, newest first. This API has no task controls.
+ * Read the default agent's task summaries, newest first. Reports are available in task details. This API has no task controls.
  */
 export const listTasks = <ThrowOnError extends boolean = false>(options?: Options<ListTasksData, ThrowOnError>): RequestResult<ListTasksResponses, ListTasksErrors, ThrowOnError> => (options?.client ?? client).get<ListTasksResponses, ListTasksErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {

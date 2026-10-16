@@ -105,7 +105,7 @@ export const acquireMaintenanceMutation = (options?: Partial<Options<AcquireMain
 export const listTasksQueryKey = (options?: Options<ListTasksData>) => createQueryKey('listTasks', options);
 
 /**
- * Read the default agent's tasks, newest first. This API has no task controls.
+ * Read the default agent's task summaries, newest first. Reports are available in task details. This API has no task controls.
  */
 export const listTasksOptions = (options?: Options<ListTasksData>) => queryOptions<ListTasksResponse, ListTasksError, ListTasksResponse, ReturnType<typeof listTasksQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {

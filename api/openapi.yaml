@@ -67,7 +67,7 @@ paths:
   /api/tasks:
     get:
       operationId: listTasks
-      description: Read the default agent's tasks, newest first. This API has no task controls.
+      description: Read the default agent's task summaries, newest first. Reports are available in task details. This API has no task controls.
       responses:
         "200":
           description: The tasks.
@@ -79,7 +79,7 @@ paths:
                 properties:
                   tasks:
                     type: array
-                    items: { $ref: "#/components/schemas/Task" }
+                    items: { $ref: "#/components/schemas/TaskSummary" }
         default: { $ref: "#/components/responses/Error" }
 
   /api/tasks/{taskId}:
@@ -804,13 +804,12 @@ components:
         dataDir: { type: string }
         workerReady: { type: boolean }
 
-    Task:
+    TaskSummary:
       type: object
       required: [
         id,
         title,
         status,
-        report,
         createdAt,
         conversationId,
         parentConversationId,
@@ -821,7 +820,6 @@ components:
         status:
           type: string
           enum: [queued, running, done, failed, cancelled, interrupted]
-        report: { type: string, description: The saved report in Markdown. }
         createdAt: { type: integer, format: int64 }
         startedAt: { type: integer, format: int64 }
         endedAt: { type: integer, format: int64 }
@@ -830,6 +828,14 @@ components:
           type: integer
           format: int64
           description: The conversation that started this task and can stop it.
+
+    Task:
+      allOf:
+        - $ref: "#/components/schemas/TaskSummary"
+        - type: object
+          required: [report]
+          properties:
+            report: { type: string, description: The saved report in Markdown. }
 
     Chat:
       type: object

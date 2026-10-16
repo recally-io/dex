@@ -9,7 +9,7 @@ import (
 )
 
 // TaskRecords gives the human all work of this bot. Model tools keep their parent scope.
-func (s *Service) TaskRecords(ctx context.Context, agentID string) ([]sqlc.Task, error) {
+func (s *Service) TaskRecords(ctx context.Context, agentID string) ([]sqlc.ListAgentTasksRow, error) {
 	return s.q.ListAgentTasks(ctx, agentID)
 }
 

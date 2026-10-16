@@ -8,16 +8,17 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-func taskView(t sqlc.Task) api.Task {
-	time := func(n sql.NullInt64) *int64 {
-		if n.Valid {
-			return new(n.Int64)
-		}
-		return nil
+func taskTime(n sql.NullInt64) *int64 {
+	if n.Valid {
+		return new(n.Int64)
 	}
+	return nil
+}
+
+func taskView(t sqlc.Task) api.Task {
 	return api.Task{
 		Id: t.ID, Title: t.Title, Status: api.TaskStatus(t.Status), Report: t.Report,
-		CreatedAt: t.CreatedAt, StartedAt: time(t.StartedAt), EndedAt: time(t.EndedAt), ConversationId: t.ConversationID,
+		CreatedAt: t.CreatedAt, StartedAt: taskTime(t.StartedAt), EndedAt: taskTime(t.EndedAt), ConversationId: t.ConversationID,
 		ParentConversationId: t.ParentConversationID,
 	}
 }
@@ -27,9 +28,13 @@ func (h *handler) ListTasks(ctx context.Context, _ api.ListTasksRequestObject) (
 	if err != nil {
 		return nil, err
 	}
-	out := api.ListTasks200JSONResponse{Tasks: make([]api.Task, len(rows))}
+	out := api.ListTasks200JSONResponse{Tasks: make([]api.TaskSummary, len(rows))}
 	for i, t := range rows {
-		out.Tasks[i] = taskView(t)
+		out.Tasks[i] = api.TaskSummary{
+			Id: t.ID, Title: t.Title, Status: api.TaskSummaryStatus(t.Status),
+			CreatedAt: t.CreatedAt, StartedAt: taskTime(t.StartedAt), EndedAt: taskTime(t.EndedAt),
+			ConversationId: t.ConversationID, ParentConversationId: t.ParentConversationID,
+		}
 	}
 	return out, nil
 }

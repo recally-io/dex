@@ -1,12 +1,12 @@
 import { format, isToday } from "date-fns";
-import type { Task } from "../api/generated/types.gen";
+import type { TaskSummary } from "../api/generated/types.gen";
 
-export function activeTaskCount(tasks: Task[]) {
+export function activeTaskCount(tasks: Pick<TaskSummary, "status">[]) {
   return tasks.filter((task) => task.status === "running" || task.status === "queued").length;
 }
 
-export function orderedTasks(tasks: Task[]) {
-  const rank = (task: Task) => (task.status === "running" ? 0 : task.status === "queued" ? 1 : 2);
+export function orderedTasks(tasks: TaskSummary[]) {
+  const rank = (task: TaskSummary) => (task.status === "running" ? 0 : task.status === "queued" ? 1 : 2);
 
   return tasks.toSorted((a, b) => rank(a) - rank(b) || b.createdAt - a.createdAt || b.id.localeCompare(a.id));
 }
@@ -26,7 +26,7 @@ export function taskDuration(ms: number) {
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
-export function taskTimes(task: Task, detail = false) {
+export function taskTimes(task: TaskSummary, detail = false) {
   const start =
     task.startedAt === undefined
       ? `Queued at ${taskTime(task.createdAt, detail)}`

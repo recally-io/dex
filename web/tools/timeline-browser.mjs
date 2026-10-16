@@ -54,6 +54,7 @@ let socket;
 const results = [];
 const clears = [];
 const exceptions = [];
+const taskReads = new Map();
 let serial = 0;
 const pending = new Map();
 
@@ -100,9 +101,15 @@ try {
       if (event.error) promise.reject(new Error(JSON.stringify(event.error)));
       else promise.accept(event.result);
     } else if (event.method === "Runtime.exceptionThrown") exceptions.push(event.params.exceptionDetails);
-    else if (event.method === "Network.requestWillBeSent" && event.params.request.url.endsWith("/clear"))
-      clears.push({ request: JSON.parse(event.params.request.postData), requestId: event.params.requestId });
-    else if (event.method === "Network.responseReceived") {
+    else if (event.method === "Network.requestWillBeSent") {
+      const { request } = event.params;
+
+      if (request.url.startsWith(`${base}/api/tasks/`))
+        taskReads.set(request.url, (taskReads.get(request.url) ?? 0) + 1);
+
+      if (request.url.endsWith("/clear"))
+        clears.push({ request: JSON.parse(request.postData), requestId: event.params.requestId });
+    } else if (event.method === "Network.responseReceived") {
       const clear = clears.find((entry) => entry.requestId === event.params.requestId);
 
       if (clear) clear.status = event.params.response.status;
@@ -294,6 +301,10 @@ try {
     "task work is read-only",
     "!document.querySelector('textarea') && ![...document.querySelectorAll('button')].some(b => /^(Cancel|Retry|Send)$/.test(b.textContent.trim()))",
   );
+  const runningURL = `${base}/api/tasks/${running.id}`;
+  const beforePoll = taskReads.get(runningURL) ?? 0;
+  await poll("running task detail polls", () => (taskReads.get(runningURL) ?? 0) > beforePoll);
+  results.push("running task detail keeps polling");
   await shot("05-task-work");
   await visit("/");
   await ui("stop background work", "!!document.querySelector('button[aria-label=\"Stop run\"]')");
@@ -304,6 +315,19 @@ try {
   );
   await visit(`/tasks/${done.id}`);
   await ui("saved report", "document.body.innerText.includes('echo: saved report')");
+  const doneURL = `${base}/api/tasks/${done.id}`;
+  const terminalReads = taskReads.get(doneURL);
+  const observedUntil = Date.now() + 6500;
+  await poll(
+    "terminal task stops polling",
+    () => {
+      assert.equal(taskReads.get(doneURL), terminalReads, "terminal detail sent another request");
+
+      return Date.now() >= observedUntil;
+    },
+    10_000,
+  );
+  results.push("terminal task detail sends no requests over two polling periods");
   await visit(`/c/${done.conversationId}`);
   await ui(
     "read-only conversation",
@@ -409,7 +433,11 @@ try {
   results.push("bot settings, trimmed name, redirects, mobile header and drawer, stable main ID");
   await writeFile(
     join(artifacts, "browser-results.json"),
-    JSON.stringify({ base, data, profile, results, clears, exceptions }, null, 2),
+    JSON.stringify(
+      { base, data, profile, results, clears, exceptions, taskReads: Object.fromEntries(taskReads) },
+      null,
+      2,
+    ),
   );
   console.log(`PASS: ${results.length} timeline browser checks. Evidence: ${artifacts}`);
 } catch (error) {

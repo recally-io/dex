@@ -42,6 +42,10 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 	second := waitExecution(t, conn, channel, "Check", "running")
 
 	// When the user lists this bot's work, both conversations appear, newest first.
+	status, raw := d.call(t, http.MethodGet, "/api/tasks", nil)
+	if status != http.StatusOK || strings.Contains(raw, `"report":`) {
+		t.Fatalf("task list must omit report bodies: %d %s", status, raw)
+	}
 	var list struct {
 		Tasks []taskInfo `json:"tasks"`
 	}

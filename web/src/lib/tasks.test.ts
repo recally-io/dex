@@ -1,13 +1,12 @@
 import { expect, test } from "vite-plus/test";
-import type { Task } from "../api/generated/types.gen";
+import type { TaskSummary } from "../api/generated/types.gen";
 import { activeTaskCount, orderedTasks, taskDuration, taskTimes } from "./tasks";
 
-const task = (id: string, status: Task["status"], createdAt: number): Task => ({
+const task = (id: string, status: TaskSummary["status"], createdAt: number): TaskSummary => ({
   id,
   title: "Same title",
   status,
   createdAt,
-  report: "",
   conversationId: createdAt,
   parentConversationId: 1,
 });

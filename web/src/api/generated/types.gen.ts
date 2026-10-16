@@ -29,14 +29,10 @@ export type Health = {
     workerReady: boolean;
 };
 
-export type Task = {
+export type TaskSummary = {
     id: string;
     title: string;
     status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'interrupted';
-    /**
-     * The saved report in Markdown.
-     */
-    report: string;
     createdAt: number;
     startedAt?: number;
     endedAt?: number;
@@ -45,6 +41,13 @@ export type Task = {
      * The conversation that started this task and can stop it.
      */
     parentConversationId: number;
+};
+
+export type Task = TaskSummary & {
+    /**
+     * The saved report in Markdown.
+     */
+    report: string;
 };
 
 export type Chat = {
@@ -757,7 +760,7 @@ export type ListTasksResponses = {
      * The tasks.
      */
     200: {
-        tasks: Array<Task>;
+        tasks: Array<TaskSummary>;
     };
 };
 

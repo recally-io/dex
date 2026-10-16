@@ -331,6 +331,36 @@ func (e TaskItemKind) Valid() bool {
 	}
 }
 
+// Defines values for TaskSummaryStatus.
+const (
+	TaskSummaryStatusCancelled   TaskSummaryStatus = "cancelled"
+	TaskSummaryStatusDone        TaskSummaryStatus = "done"
+	TaskSummaryStatusFailed      TaskSummaryStatus = "failed"
+	TaskSummaryStatusInterrupted TaskSummaryStatus = "interrupted"
+	TaskSummaryStatusQueued      TaskSummaryStatus = "queued"
+	TaskSummaryStatusRunning     TaskSummaryStatus = "running"
+)
+
+// Valid indicates whether the value is a known member of the TaskSummaryStatus enum.
+func (e TaskSummaryStatus) Valid() bool {
+	switch e {
+	case TaskSummaryStatusCancelled:
+		return true
+	case TaskSummaryStatusDone:
+		return true
+	case TaskSummaryStatusFailed:
+		return true
+	case TaskSummaryStatusInterrupted:
+		return true
+	case TaskSummaryStatusQueued:
+		return true
+	case TaskSummaryStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ThinkingItemKind.
 const (
 	Thinking ThinkingItemKind = "thinking"
@@ -895,6 +925,23 @@ type TaskItem struct {
 
 // TaskItemKind defines model for TaskItem.Kind.
 type TaskItemKind string
+
+// TaskSummary defines model for TaskSummary.
+type TaskSummary struct {
+	ConversationId int64  `json:"conversationId"`
+	CreatedAt      int64  `json:"createdAt"`
+	EndedAt        *int64 `json:"endedAt,omitempty"`
+	Id             string `json:"id"`
+
+	// ParentConversationId The conversation that started this task and can stop it.
+	ParentConversationId int64             `json:"parentConversationId"`
+	StartedAt            *int64            `json:"startedAt,omitempty"`
+	Status               TaskSummaryStatus `json:"status"`
+	Title                string            `json:"title"`
+}
+
+// TaskSummaryStatus defines model for TaskSummary.Status.
+type TaskSummaryStatus string
 
 // Telegram defines model for Telegram.
 type Telegram struct {
@@ -4707,7 +4754,7 @@ type ListTasksResponseObject interface {
 }
 
 type ListTasks200JSONResponse struct {
-	Tasks []Task `json:"tasks"`
+	Tasks []TaskSummary `json:"tasks"`
 }
 
 func (response ListTasks200JSONResponse) VisitListTasksResponse(w http.ResponseWriter) error {

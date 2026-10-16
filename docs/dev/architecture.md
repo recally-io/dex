@@ -321,11 +321,13 @@ stay absent from chat lists and dream inputs. The human can read their chat,
 history, and normal SSE stream. Web input, settings, clear, and abort are refused.
 Dream input selects only ordinary messages, so internal results in a main chat
 cannot enter memory as user text.
-`GET /api/tasks` lists all work of the default agent, newest first.
+`GET /api/tasks` lists summaries of all work of the default agent, newest first.
+The query and response omit report bodies. The badge reads only task statuses.
 `GET /api/tasks/{id}` returns one record with its report, times, and conversation
 ID. Both reads check the agent. Model task tools keep their parent conversation
 scope. There are no HTTP task controls or separate task streams. The Tasks page
-polls these records every 3 s. Its active count includes queued and running records.
+polls summaries every 3 s. Its active count includes queued and running records.
+Task details poll every 3 s while queued or running. Terminal details stop polling.
 Task details use the normal read-only chat, history, and SSE paths for Work.
 Successful `spawn_task` items carry the ID from the saved tool result. Result
 marks carry the ID and title from control's matching task record. The web links

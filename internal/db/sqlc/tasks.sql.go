@@ -244,28 +244,38 @@ func (q *Queries) ListActiveTasks(ctx context.Context, parentConversationID int6
 }
 
 const listAgentTasks = `-- name: ListAgentTasks :many
-SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.created_at, t.started_at, t.ended_at FROM tasks t JOIN conversations c ON c.id = t.conversation_id
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.title, t.status,
+    t.created_at, t.started_at, t.ended_at
+FROM tasks t JOIN conversations c ON c.id = t.conversation_id
 WHERE c.agent_id = ? ORDER BY t.created_at DESC, t.id DESC
 `
 
-func (q *Queries) ListAgentTasks(ctx context.Context, agentID string) ([]Task, error) {
+type ListAgentTasksRow struct {
+	ID                   string        `json:"id"`
+	ParentConversationID int64         `json:"parent_conversation_id"`
+	ConversationID       int64         `json:"conversation_id"`
+	Title                string        `json:"title"`
+	Status               string        `json:"status"`
+	CreatedAt            int64         `json:"created_at"`
+	StartedAt            sql.NullInt64 `json:"started_at"`
+	EndedAt              sql.NullInt64 `json:"ended_at"`
+}
+
+func (q *Queries) ListAgentTasks(ctx context.Context, agentID string) ([]ListAgentTasksRow, error) {
 	rows, err := q.db.QueryContext(ctx, listAgentTasks, agentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Task{}
+	items := []ListAgentTasksRow{}
 	for rows.Next() {
-		var i Task
+		var i ListAgentTasksRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ParentConversationID,
 			&i.ConversationID,
-			&i.SpawnKey,
-			&i.SourceRequestID,
 			&i.Title,
 			&i.Status,
-			&i.Report,
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.EndedAt,

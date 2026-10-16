@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { IconChevronRightSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronRightSmall";
-import type { Task } from "../api/generated/types.gen";
+import type { TaskSummary } from "../api/generated/types.gen";
 import {
   getSettingsOptions,
   getTaskOptions,
@@ -35,7 +35,7 @@ const tones = {
   interrupted: "red",
 } as const;
 
-function TaskPill({ task }: { task: Task }) {
+function TaskPill({ task }: { task: Pick<TaskSummary, "status"> }) {
   return (
     <StatusPill tone={tones[task.status]} className="h-5 shrink-0 px-2 text-[11.5px]">
       {labels[task.status]}
@@ -93,7 +93,11 @@ export function TasksPage() {
 }
 
 export function TaskPage({ taskId }: { taskId: string }) {
-  const task = useQuery({ ...getTaskOptions({ path: { taskId } }), refetchInterval: 3000 });
+  const task = useQuery({
+    ...getTaskOptions({ path: { taskId } }),
+    refetchInterval: ({ state }) =>
+      state.data?.status === "queued" || state.data?.status === "running" ? 3000 : false,
+  });
 
   return (
     <FramedPage
