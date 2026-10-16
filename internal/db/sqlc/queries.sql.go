@@ -928,7 +928,7 @@ SELECT
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending'
-ORDER BY s.created_at, s.rowid
+ORDER BY s.rowid
 `
 
 type ListPendingSubmissionsRow struct {
@@ -941,6 +941,7 @@ type ListPendingSubmissionsRow struct {
 	ChannelKey     string `json:"channel_key"`
 }
 
+// SQLite assigns rowids under the writer lock. Delivery follows admission, not wall time.
 func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubmissionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPendingSubmissions)
 	if err != nil {

@@ -51,6 +51,7 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE s.id = ?;
 
 -- name: ListPendingSubmissions :many
+-- SQLite assigns rowids under the writer lock. Delivery follows admission, not wall time.
 SELECT
     s.id,
     s.content,
@@ -62,7 +63,7 @@ SELECT
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending'
-ORDER BY s.created_at, s.rowid;
+ORDER BY s.rowid;
 
 -- name: ListChats :many
 SELECT

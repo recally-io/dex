@@ -269,7 +269,9 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
    the channel key (`main` for the web), stores the message as a
    `pending` submission with that UUID as its ID, and returns `202`. A
    retried request with the same UUID stores nothing.
-2. `chat.Service.Run` delivers stored submissions in order. On the first
+2. `chat.Service.Run` delivers stored submissions in SQLite insertion order
+   (`submissions.rowid`), including after restart and replay. Timestamps are
+   for display and do not control delivery. On the first
    message of a chat, it calls `createConversation` and stores the worker's
    conversation ID.
 3. Control calls `submit` with the submission ID as `requestId`. pi-durable
