@@ -357,7 +357,10 @@ record or wake the model.
 
 `POST /api/chats/{chatId}/abort` returns `{status: "ok"}` after withdrawal and the
 cancellation requests. The composer keeps Stop available for queued input,
-an active answer, and active background work. Stop needs no model. During a
+an active answer, and active background work started by the main conversation.
+Tasks from other conversations count in the bot's badge but cannot enable main
+Stop. Task records expose `parentConversationId` for this scope check.
+Stop needs no model. During a
 reconnect, the chat API's busy state keeps Stop available before the snapshot.
 The reply confirms the request. It does not prove process exit. Processes and
 remote work can continue. Cancellation does not undo file writes or remote

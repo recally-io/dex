@@ -9,6 +9,7 @@ const task = (id: string, status: Task["status"], createdAt: number): Task => ({
   createdAt,
   report: "",
   conversationId: createdAt,
+  parentConversationId: 1,
 });
 
 test("user sees queued and running work in the active count", () => {

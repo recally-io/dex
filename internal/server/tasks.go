@@ -18,6 +18,7 @@ func taskView(t sqlc.Task) api.Task {
 	return api.Task{
 		Id: t.ID, Title: t.Title, Status: api.TaskStatus(t.Status), Report: t.Report,
 		CreatedAt: t.CreatedAt, StartedAt: time(t.StartedAt), EndedAt: time(t.EndedAt), ConversationId: t.ConversationID,
+		ParentConversationId: t.ParentConversationID,
 	}
 }
 

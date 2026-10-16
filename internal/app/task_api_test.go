@@ -13,14 +13,15 @@ import (
 )
 
 type taskInfo struct {
-	ID             string `json:"id"`
-	Title          string `json:"title"`
-	Status         string `json:"status"`
-	Report         string `json:"report"`
-	CreatedAt      int64  `json:"createdAt"`
-	StartedAt      *int64 `json:"startedAt"`
-	EndedAt        *int64 `json:"endedAt"`
-	ConversationID int64  `json:"conversationId"`
+	ID                   string `json:"id"`
+	Title                string `json:"title"`
+	Status               string `json:"status"`
+	Report               string `json:"report"`
+	CreatedAt            int64  `json:"createdAt"`
+	StartedAt            *int64 `json:"startedAt"`
+	EndedAt              *int64 `json:"endedAt"`
+	ConversationID       int64  `json:"conversationId"`
+	ParentConversationID int64  `json:"parentConversationId"`
 }
 
 func TestUserReadsTaskReportsAndWork(t *testing.T) {
@@ -48,8 +49,14 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 	if len(list.Tasks) != 2 || list.Tasks[0].ID != second.ID || list.Tasks[1].ID != first.ID {
 		t.Fatalf("tasks=%+v", list.Tasks)
 	}
+	if list.Tasks[0].ParentConversationID != channel || list.Tasks[1].ParentConversationID != main {
+		t.Fatalf("task list lost its Stop scope: %+v", list.Tasks)
+	}
 	var detail taskInfo
 	d.must(t, http.MethodGet, "/api/tasks/"+first.ID, nil, &detail)
+	if detail.ParentConversationID != main {
+		t.Fatalf("task detail lost its Stop scope: %+v", detail)
+	}
 	if detail.Status != "done" || detail.Report != "echo: saved report" || detail.StartedAt == nil || detail.EndedAt == nil || detail.ConversationID == 0 || detail.CreatedAt > *detail.StartedAt || *detail.StartedAt > *detail.EndedAt {
 		t.Fatalf("saved task=%+v", detail)
 	}

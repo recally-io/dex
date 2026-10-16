@@ -8,6 +8,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 
 const [binary, artifactArg] = process.argv.slice(2);
@@ -313,6 +314,51 @@ try {
     "!document.querySelector('textarea') && !document.querySelector('button[aria-label=\"Send message\"]')",
   );
   await shot("06-read-only");
+
+  // Given an idle main timeline, admit real channel work through control's SQLite queue.
+  const channelGate = join(isolated, "channel.gate");
+  const channelDB = new DatabaseSync(join(data, "control.sqlite"));
+  channelDB.exec("PRAGMA busy_timeout = 5000");
+
+  try {
+    const inserted = channelDB
+      .prepare(
+        "INSERT INTO conversations (agent_id, channel_key, created_at) VALUES ('default', 'telegram:7', ?) RETURNING id",
+      )
+      .get(Date.now());
+
+    const content = JSON.stringify({
+      title: "Channel work",
+      goal: `while ! test -f '${channelGate}'; do sleep 0.05; done; echo channel-released`,
+      provider: "faux",
+      modelId: "bash",
+    });
+
+    channelDB
+      .prepare(
+        "INSERT INTO submissions (id, conversation_id, content, status, created_at, origin) VALUES (?, ?, ?, 'pending', ?, 'telegram:7')",
+      )
+      .run(randomUUID(), inserted.id, content, Date.now());
+  } finally {
+    channelDB.close();
+  }
+
+  const channelTask = await poll("channel task running", async () =>
+    (await api("/api/tasks")).tasks.find((task) => task.status === "running"),
+  );
+
+  await visit("/");
+  await ui("channel work in bot badge", "!!document.querySelector('[aria-label=\"1 active\"]')");
+  await ui("main stream ready", "!!document.querySelector('textarea:not(:disabled)')");
+  await check(
+    "channel work counts in Tasks but cannot enable main Stop",
+    "!document.querySelector('button[aria-label=\"Stop run\"]')",
+  );
+  await writeFile(channelGate, "release");
+  await poll(
+    "channel work completed",
+    async () => (await api(`/api/tasks/${channelTask.id}`)).status === "done",
+  );
 
   // Bot settings hold the editable name, channels and automations.
   await visit("/agent");

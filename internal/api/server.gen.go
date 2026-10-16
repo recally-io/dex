@@ -868,6 +868,9 @@ type Task struct {
 	EndedAt        *int64 `json:"endedAt,omitempty"`
 	Id             string `json:"id"`
 
+	// ParentConversationId The conversation that started this task and can stop it.
+	ParentConversationId int64 `json:"parentConversationId"`
+
 	// Report The saved report in Markdown.
 	Report    string     `json:"report"`
 	StartedAt *int64     `json:"startedAt,omitempty"`

@@ -806,7 +806,15 @@ components:
 
     Task:
       type: object
-      required: [id, title, status, report, createdAt, conversationId]
+      required: [
+        id,
+        title,
+        status,
+        report,
+        createdAt,
+        conversationId,
+        parentConversationId,
+      ]
       properties:
         id: { type: string }
         title: { type: string }
@@ -818,6 +826,10 @@ components:
         startedAt: { type: integer, format: int64 }
         endedAt: { type: integer, format: int64 }
         conversationId: { type: integer, format: int64 }
+        parentConversationId:
+          type: integer
+          format: int64
+          description: The conversation that started this task and can stop it.
 
     Chat:
       type: object

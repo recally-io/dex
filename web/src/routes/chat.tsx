@@ -116,8 +116,18 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
 
   const readOnly = chat.data?.readOnly ?? true;
 
-  const tasks = useQuery({ ...listTasksOptions(), refetchInterval: 3000 });
+  const tasks = useQuery({
+    ...listTasksOptions(),
+    enabled: chat.data?.main === true,
+    refetchInterval: 3000,
+  });
+
   const active = activeTaskCount(tasks.data?.tasks ?? []);
+
+  const activeHere = activeTaskCount(
+    (tasks.data?.tasks ?? []).filter((task) => task.parentConversationId === chatId),
+  );
+
   const health = useQuery(getHealthOptions());
   const memory = health.data ? `${health.data.dataDir}/memory` : undefined;
   const [draft, setDraft] = useState("");
@@ -301,7 +311,7 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
         running={running}
         stoppable={
           running ||
-          active > 0 ||
+          activeHere > 0 ||
           items.some((item) => item.kind === "user" && item.queued) ||
           (connection !== "ready" && chat.data?.busy === true)
         }

@@ -41,6 +41,10 @@ export type Task = {
     startedAt?: number;
     endedAt?: number;
     conversationId: number;
+    /**
+     * The conversation that started this task and can stop it.
+     */
+    parentConversationId: number;
 };
 
 export type Chat = {
