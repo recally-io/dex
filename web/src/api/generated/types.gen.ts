@@ -71,7 +71,7 @@ export type Chat = {
     title: string;
     createdAt: number;
     /**
-     * Time of the last message.
+     * Latest activity time, in Unix milliseconds. Includes conversation creation, input creation and settlement, and task start and end. Task times apply only to the task's own conversation.
      */
     updatedAt: number;
     /**

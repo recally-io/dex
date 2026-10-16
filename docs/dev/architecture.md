@@ -80,7 +80,10 @@ It uses the bot's settings, instructions and shared memory. It does not read
 main's model context or send its answers to main.
 
 The timeline header opens `/sessions`. `GET /api/chats` lists session summaries
-by `updatedAt` descending, then ID descending. It excludes main, dreams and
+by `updatedAt` descending, then ID descending. `updatedAt` is the latest
+conversation creation, input creation or settlement, or task start or end time.
+Task times apply only to the task's own conversation. List and detail use the
+same rule. The list excludes main, dreams and
 Chat sessions with no message. Task rows add `task: TaskSummary`, without
 report bodies. The query does not read reports or transcripts. The page
 filters by Chat, Task, Automation or Channel. `/tasks` redirects to `/sessions`.

@@ -113,7 +113,7 @@ func TestUserCreatesAndReusesEmptyChatSession(t *testing.T) {
 	if again := d.newSession(t); again.ID != second.ID {
 		t.Fatalf("empty session was not reused after restart: %+v", again)
 	}
-	// Existing empty rows use creation order, even if an older row was cleared.
+	// Existing empty rows use creation order.
 	newest := sessionFixture(t, d, "chat:newest-empty", second.UpdatedAt+1)
 	if again := d.newSession(t); again.ID != newest {
 		t.Fatalf("did not reuse newest empty session: %+v want=%d", again, newest)
@@ -341,4 +341,78 @@ func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 		t.Fatalf("obsolete task list still exists: %d %s", status, raw)
 	}
 	t.Logf("artifact: listed_ids=%v task_detail=%+v", ids, detail)
+}
+
+func TestUserSeesSessionActivityThroughTaskCompletion(t *testing.T) {
+	// Given an old task and newer Chats with equal completion times.
+	d := startDex(t, t.TempDir(), "")
+	conn := sessionDB(t, d)
+	main := sessionFixture(t, d, "main", 1)
+	task := sessionFixture(t, d, "task:old", 100)
+	chat := sessionFixture(t, d, "chat:newer", 200)
+	tiedChat := sessionFixture(t, d, "chat:tied", 201)
+	for _, c := range []struct{ id, created, settled int64 }{
+		{main, 50, 60}, {task, 100, 300}, {chat, 200, 210}, {tiedChat, 201, 210},
+	} {
+		if _, err := conn.ExecContext(t.Context(), "INSERT INTO submissions (id, conversation_id, content, status, created_at, settled_at) VALUES (?, ?, 'saved input', 'done', ?, ?)", fmt.Sprint(c.id), c.id, c.created, c.settled); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, created_at, started_at, ended_at) VALUES (?, ?, ?, 'old-spawn', ?, 'Old task', 'done', 100, 110, 300)", fmt.Sprint(task), main, task, fmt.Sprint(main)); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		settled *int64
+		started int64
+		ended   *int64
+		status  string
+		want    int64
+	}{
+		{"input_settlement", new(int64(300)), 110, new(int64(290)), "done", 300},
+		{"task_end", nil, 110, new(int64(310)), "done", 310},
+		{"task_start", nil, 320, nil, "running", 320},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// When task activity occurs after both newer Chats finish.
+			if _, err := conn.ExecContext(t.Context(), "UPDATE submissions SET settled_at = ? WHERE conversation_id = ?", tc.settled, task); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := conn.ExecContext(t.Context(), "UPDATE tasks SET started_at = ?, ended_at = ?, status = ? WHERE conversation_id = ?", tc.started, tc.ended, tc.status, task); err != nil {
+				t.Fatal(err)
+			}
+			var list struct {
+				Chats []sessionInfo `json:"chats"`
+			}
+			d.must(t, http.MethodGet, "/api/chats", nil, &list)
+			var ids []int64
+			for _, c := range list.Chats {
+				ids = append(ids, c.ID)
+			}
+			// Then the old task leads, and equal times use descending IDs.
+			if !slices.Equal(ids, []int64{task, tiedChat, chat}) {
+				t.Errorf("completed old task must sort first: got=%v want=%v", ids, []int64{task, tiedChat, chat})
+			}
+			for _, c := range list.Chats {
+				want := int64(210)
+				if c.ID == task {
+					want = tc.want
+				}
+				var detail sessionInfo
+				d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d", c.ID), nil, &detail)
+				if c.UpdatedAt != want || detail.UpdatedAt != want {
+					t.Errorf("session %d activity: list=%d detail=%d want=%d", c.ID, c.UpdatedAt, detail.UpdatedAt, want)
+				}
+			}
+			// Main uses its own settlement, without inheriting child task times.
+			for _, path := range []string{"/api/chats/main", fmt.Sprintf("/api/chats/%d", main)} {
+				var c sessionInfo
+				d.must(t, http.MethodGet, path, nil, &c)
+				if c.ID != main || !c.Main || c.UpdatedAt != 60 {
+					t.Errorf("main activity through %s: %+v; want updatedAt=60", path, c)
+				}
+			}
+			t.Logf("artifact: ids=%v task_activity=%d chat_activity=210 main_activity=60", ids, tc.want)
+		})
+	}
 }

@@ -40,7 +40,7 @@ type Chat struct {
 	ChannelKey string
 	Title      string
 	CreatedAt  int64
-	UpdatedAt  int64 // time of the last message
+	UpdatedAt  int64 // latest conversation, input, or task activity
 	Busy       bool  // a message has no answer yet
 	Settings   Settings
 	// WorkerConversationID is 0 until the worker has the conversation.

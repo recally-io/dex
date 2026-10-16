@@ -422,10 +422,17 @@ SELECT
     c.thinking_level,
     c.created_at,
     c.worker_conversation_id,
-    CAST(coalesce(max(s.created_at), c.created_at) AS INTEGER) AS updated_at,
+    CAST(max(
+        c.created_at,
+        coalesce(max(s.created_at), c.created_at),
+        coalesce(max(s.settled_at), c.created_at),
+        coalesce(t.started_at, c.created_at),
+        coalesce(t.ended_at, c.created_at)
+    ) AS INTEGER) AS updated_at,
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
+LEFT JOIN tasks t ON t.conversation_id = c.id
 WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id
 `
@@ -736,10 +743,17 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.created_at,
-    CAST(coalesce(max(s.created_at), c.created_at) AS INTEGER) AS updated_at,
+    CAST(max(
+        c.created_at,
+        coalesce(max(s.created_at), c.created_at),
+        coalesce(max(s.settled_at), c.created_at),
+        coalesce(t.started_at, c.created_at),
+        coalesce(t.ended_at, c.created_at)
+    ) AS INTEGER) AS updated_at,
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
+LEFT JOIN tasks t ON t.conversation_id = c.id
 WHERE c.agent_id = ? AND c.channel_key != 'main' AND c.channel_key NOT LIKE 'dream:%'
     AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'

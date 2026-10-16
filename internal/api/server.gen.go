@@ -555,7 +555,7 @@ type Chat struct {
 	Task     *TaskSummary `json:"task,omitempty"`
 	Title    string       `json:"title"`
 
-	// UpdatedAt Time of the last message.
+	// UpdatedAt Latest activity time, in Unix milliseconds. Includes conversation creation, input creation and settlement, and task start and end. Task times apply only to the task's own conversation.
 	UpdatedAt int64 `json:"updatedAt"`
 }
 

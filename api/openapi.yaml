@@ -850,7 +850,10 @@ components:
         updatedAt:
           type: integer
           format: int64
-          description: Time of the last message.
+          description: >-
+            Latest activity time, in Unix milliseconds. Includes conversation
+            creation, input creation and settlement, and task start and end.
+            Task times apply only to the task's own conversation.
         busy:
           type: boolean
           description: True while a message of the chat has no answer yet.
