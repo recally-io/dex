@@ -323,7 +323,12 @@ export class Agents {
 		});
 	}
 
-	async history(params: HistoryParams): Promise<HistoryResult> {
+	history(params: HistoryParams): Promise<HistoryResult> {
+		// A read can open the Harness and resume stored work.
+		return this.#admit(() => this.#history(params));
+	}
+
+	async #history(params: HistoryParams): Promise<HistoryResult> {
 		const conversation = await this.#conversation(params.agentId, params.conversationId);
 		// IDs are inclusive in the SDK. The public cursor is exclusive.
 		// oxlint-disable-next-line typescript/no-unsafe-type-assertion
@@ -346,7 +351,11 @@ export class Agents {
 		};
 	}
 
-	async inputEntries(params: InputEntriesParams): Promise<Record<string, number>> {
+	inputEntries(params: InputEntriesParams): Promise<Record<string, number>> {
+		return this.#admit(() => this.#inputEntries(params));
+	}
+
+	async #inputEntries(params: InputEntriesParams): Promise<Record<string, number>> {
 		const conversation = await this.#conversation(params.agentId, params.conversationId);
 		return conversation.commit(async (tx) => {
 			const submissions = await Promise.all(

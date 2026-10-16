@@ -59,79 +59,86 @@ func workerSubmit(t *testing.T, w *worker.Worker, id int64, command string) {
 	}
 }
 func markerExists(path string) bool { _, err := os.Stat(path); return err == nil }
-func TestUserMaintenanceBlocksWatchRecovery(t *testing.T) {
-	for _, gated := range []bool{false, true} {
-		t.Run(fmt.Sprintf("gated=%t", gated), func(t *testing.T) {
-			// Given a persisted bash run and a new control/worker pair without dispatch reservations.
-			data := t.TempDir()
-			dir := t.TempDir()
-			started := filepath.Join(dir, "started")
-			release := filepath.Join(dir, "release")
-			defer func() { _ = os.WriteFile(release, nil, 0600) }()
-			w, _, stop := startMaintenanceWorker(t, data, nil)
-			id := workerConversation(t, w)
-			workerPID := filepath.Join(dir, "worker-pid")
-			shellPID := filepath.Join(dir, "shell-pid")
-			workerSubmit(t, w, id, fmt.Sprintf("echo $PPID > '%s'; echo $$ > '%s'; touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo done", workerPID, shellPID, started, release))
-			eventually(t, "initial tool", func() (bool, any) { return markerExists(started), started })
-			// The interrupted unsafe tool is not replayed. Its persisted next input must
-			// still execute bash when a watch resumes the harness.
-			workerSubmit(t, w, id, fmt.Sprintf("touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo recovered", started, release))
-			// Kill the worker, rather than requesting a clean close that aborts its run.
-			for _, file := range []string{workerPID, shellPID} {
-				b, err := os.ReadFile(file)
-				if err != nil {
-					t.Fatal(err)
-				}
-				pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
-				if err != nil {
-					t.Fatal(err)
-				}
-				process, err := os.FindProcess(pid)
-				if err != nil {
-					t.Fatal(err)
-				}
-				_ = process.Kill()
-			}
-			stop()
-			if err := os.Remove(started); err != nil {
-				t.Fatal(err)
-			}
-			w, gate, _ := startMaintenanceWorker(t, data, nil)
-			if gated {
-				if err := gate.AcquireMaintenance(t.Context()); err != nil {
-					t.Fatal(err)
-				}
-			}
-			// When a browser watch opens the harness, maintenance must exclude resumed execution.
-			watched := make(chan error, 1)
-			go func() {
-				watched <- w.Call(t.Context(), "watch", worker.WatchParams{AgentID: "default", ConversationID: id, WatchID: uuid.NewV7().String()}, &struct{}{})
-			}()
-			if gated {
-				deadline := time.Now().Add(2 * time.Second)
-				for time.Now().Before(deadline) {
-					if markerExists(started) {
-						t.Fatal("watch resumed a tool while maintenance was held")
+func TestUserMaintenanceBlocksTranscriptRecovery(t *testing.T) {
+	for _, method := range []string{"watch", "history", "inputEntries"} {
+		for _, gated := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/gated=%t", method, gated), func(t *testing.T) {
+				// Given a persisted bash run and a new control/worker pair without dispatch reservations.
+				data := t.TempDir()
+				dir := t.TempDir()
+				started := filepath.Join(dir, "started")
+				release := filepath.Join(dir, "release")
+				defer func() { _ = os.WriteFile(release, nil, 0600) }()
+				w, _, stop := startMaintenanceWorker(t, data, nil)
+				id := workerConversation(t, w)
+				workerPID := filepath.Join(dir, "worker-pid")
+				shellPID := filepath.Join(dir, "shell-pid")
+				workerSubmit(t, w, id, fmt.Sprintf("echo $PPID > '%s'; echo $$ > '%s'; touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo done", workerPID, shellPID, started, release))
+				eventually(t, "initial tool", func() (bool, any) { return markerExists(started), started })
+				// The interrupted unsafe tool is not replayed. Its persisted next input must
+				// still execute bash when a read resumes the harness.
+				workerSubmit(t, w, id, fmt.Sprintf("touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo recovered", started, release))
+				// Kill the worker, rather than requesting a clean close that aborts its run.
+				for _, file := range []string{workerPID, shellPID} {
+					b, err := os.ReadFile(file)
+					if err != nil {
+						t.Fatal(err)
 					}
-					time.Sleep(time.Millisecond)
+					pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+					if err != nil {
+						t.Fatal(err)
+					}
+					process, err := os.FindProcess(pid)
+					if err != nil {
+						t.Fatal(err)
+					}
+					_ = process.Kill()
 				}
-				if err := gate.ReleaseMaintenance(t.Context()); err != nil {
+				stop()
+				if err := os.Remove(started); err != nil {
 					t.Fatal(err)
 				}
-			}
-			if err := <-watched; err != nil {
-				t.Fatal(err)
-			}
-			eventually(t, "recovered tool", func() (bool, any) { return markerExists(started), started })
-			// Then an already recovered run also prevents acquire, despite no local active submission.
-			if err := gate.AcquireMaintenance(t.Context()); err == nil {
-				t.Fatal("maintenance accepted a run resumed by watch")
-			}
-			if err := os.WriteFile(release, nil, 0600); err != nil {
-				t.Fatal(err)
-			}
-		})
+				w, gate, _ := startMaintenanceWorker(t, data, nil)
+				if gated {
+					if err := gate.AcquireMaintenance(t.Context()); err != nil {
+						t.Fatal(err)
+					}
+				}
+				// When a transcript read opens the harness, maintenance must exclude resumed execution.
+				read := make(chan error, 1)
+				go func() {
+					params := map[string]any{
+						"watch":        worker.WatchParams{AgentID: "default", ConversationID: id, WatchID: uuid.NewV7().String()},
+						"history":      worker.HistoryParams{AgentID: "default", ConversationID: id, Before: 1, Limit: 1},
+						"inputEntries": worker.InputEntriesParams{AgentID: "default", ConversationID: id, RequestIDs: []string{}},
+					}[method]
+					read <- w.Call(t.Context(), method, params, &struct{}{})
+				}()
+				if gated {
+					deadline := time.Now().Add(2 * time.Second)
+					for time.Now().Before(deadline) {
+						if markerExists(started) {
+							t.Fatalf("%s resumed a tool while maintenance was held", method)
+						}
+						time.Sleep(time.Millisecond)
+					}
+					if err := gate.ReleaseMaintenance(t.Context()); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := <-read; err != nil {
+					t.Fatal(err)
+				}
+				eventually(t, "recovered tool", func() (bool, any) { return markerExists(started), started })
+				// Then an already recovered run also prevents acquire, despite no local active submission.
+				if err := gate.AcquireMaintenance(t.Context()); err == nil {
+					t.Fatalf("maintenance accepted a run resumed by %s", method)
+				}
+				if err := os.WriteFile(release, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
 	}
 }
 func TestUserMaintenanceWaitsForMemoryCommit(t *testing.T) {
