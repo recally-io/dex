@@ -17,12 +17,11 @@ to read in an afternoon.
 - Runtime: foreground execution, or a per-user launchd/systemd service that
   starts at login. Optional daily updates wait until agent work is idle.
   Listening addresses are limited to loopback.
-- Agent settings in the web UI: providers, the agent's model, thinking level
-  and instructions, Telegram, WeChat, and Feishu / Lark. dex needs no configuration file for agent settings. The CLI manages
-  the service address, data directory, and update policy.
-  The web UI has these pages: Agent, Providers, Channels, Automations, and
-  About. The Extensions and Secrets pages and the Slack
-  channel show that dex does not support them yet.
+- Bot settings in the web UI: name, model, thinking level, instructions,
+  channels, and automations with their runs. The name has 1 to 40 characters
+  after spaces are trimmed. Providers, Extensions, Secrets, and About are global
+  pages. Named secrets are not available yet. The CLI manages the service
+  address, data directory, and update policy.
 - Agents with a model, instructions, and a workspace directory.
 - Durable conversations: control stores each message before delivery. Saved
   messages, reports, and execution records survive a restart. A restart does
@@ -30,8 +29,11 @@ to read in an afternoon.
 - One main timeline per agent. The web opens it at `/` and uses the agent's
   model settings. Clear context starts a new model context when the timeline
   is idle. Earlier messages stay readable with Show earlier messages. A clear
-  keeps long-term memory. A summary also marks where earlier messages can load.
-  The sidebar has no chat list or New chat action.
+  keeps long-term memory. After a summary, Show earlier messages can load
+  the earlier transcript. Only a clear shows a divider. The sidebar holds the
+  bot name, its settings, and global settings. It has no chat list or New chat
+  action.
+  Channels and automation runs open as read-only transcripts from bot settings.
 - Internal background delegation for the default agent. Each delegation has
   one input and fixed model settings. The main agent stays available and
   receives reports to plan review, fixes, tests, and the final answer.
@@ -51,8 +53,8 @@ to read in an afternoon.
   agent and exact channel peer, including chats before `/new`. Other peers
   and web chats are outside that stop scope. `/help` lists commands.
   Reply delivery resumes after a restart and skips confirmed
-  parts. A crash after remote success can duplicate one part. The Channels
-  page shows each bot's runtime status.
+  parts. A crash after remote success can duplicate one part. Bot settings
+  show each channel's runtime status and open its current conversation.
 - In the main timeline, the user can attach files and images (at most 10 per
   message, 20 MB each). The agent reads them with its tools. Telegram
   chats and automations use the agent's settings. Telegram accepts photos and
@@ -77,7 +79,7 @@ to read in an afternoon.
   rich posts (including code blocks), images and files reach the agent.
   Replies use a streamed card. A card content rejection allows plain text
   as a fallback. Temporary failures retry the card. Startup and connection
-  failures recover without a settings change. The Channels page shows runtime
+  failures recover without a settings change. Bot settings show runtime
   status. Saved Lark settings keep the Lark platform. Groups, threads and
   outbound media are not supported.
 - Timers: scheduled messages to an agent.
@@ -93,7 +95,10 @@ The web chat marks a delegation with the work's title. A returned result has
 a named label and a thin line that groups its replies and tool calls. The mark
 shows where the report belongs; it does not confirm that the work reached its goal.
 The chat does not show the internal report as input. Read-only task records
-give the human the saved report, status, times, and work transcript.
+give the human the saved report, status, times, and work transcript. The Tasks
+link in the timeline shows the number of queued and running tasks. Named dispatch
+and result labels open that task by its ID. The task list puts running work first,
+then queued work, then other work. Each group shows newest work first.
 Done means that the task returned a report. It does not prove goal completion.
 There are no task controls or progress percentages.
 The main agent names the work in one brief delegation confirmation, then
@@ -108,8 +113,9 @@ starts follow-up work. The built-in coding skill requires a repository path,
 project rules, independent review, tests of the final revision, and evidence.
 Writes to one repository must run in order or in separate worktrees.
 
-Web Stop remains available when the main chat is idle. Stop covers only that
-web chat. Channel chats remain read-only on the web. Stop needs no model.
+Web Stop stays in the composer for queued input, an active answer, and active
+background work. Stop covers the main timeline and its background work.
+Channel chats remain read-only on the web. Stop needs no model.
 Stop withdraws pending input and results, records cancellation, and requests
 SDK cancellation once. The reply confirms the request. It does not confirm
 process exit. Processes and remote work can continue. Prior actions are not

@@ -42,6 +42,7 @@ and retains `dex.previous`. The worker owns a two-minute maintenance gate.
 It closes admission before checking durable runs and pending memory commits.
 Control stores the expiry to restore the gate after a worker restart. New
 messages stay stored until release, expiry, or a control restart.
+Transcript reads use the gate because opening a Harness can resume stored work.
 
 See [service commands and recovery](../../README.md#run-and-manage-dex) and
 [ADR 0006](decisions/0006-service-and-update.md) for lifecycle, update, and gate
@@ -69,7 +70,11 @@ Each agent has one main conversation with channel key `main`. The unique
 agent/key constraint makes `GET /api/chats/main` safe to repeat. It creates
 the control record on demand. The web opens this conversation at `/` and
 sends through `POST /api/chats/{id}/messages`. It uses agent settings.
-Channel keys and automation conversations stay separate.
+Channel keys and automation conversations stay separate. The sidebar holds the
+bot identity and its settings link. `/agent` holds Profile, Instructions,
+Channels, and Automations. Providers, Extensions, Secrets, and About stay global.
+Channel settings link to that channel's newest conversation. Automation details
+keep their run history. These transcripts have no web composer.
 
 Every enqueue writes `submissions.origin`. Main and web input use `web`.
 Channel input uses the part of its key before `/`, including the peer ID.
@@ -157,12 +162,16 @@ The web UI edits all settings; see [ADR 0002](decisions/0002-settings-in-control
 [`settings.Service`](../../internal/settings/settings.go) validates a change,
 saves it in `control.sqlite`, and then applies it:
 
-| Setting                                   | Table               | Applied by                                                         |
-| ----------------------------------------- | ------------------- | ------------------------------------------------------------------ |
-| Agent model, thinking level, instructions | `agents`            | the next `submit` of each chat; the worker calls `configure` on it |
-| Chat model, chat thinking level           | `conversations`     | the next `submit` of that chat                                     |
-| Providers                                 | `providers`         | `configure` to the worker, and again after each worker start       |
-| Telegram token, allowed users             | `telegram_settings` | a restart of the bot                                               |
+| Setting                                 | Table               | Applied by                                                         |
+| --------------------------------------- | ------------------- | ------------------------------------------------------------------ |
+| Bot model, thinking level, instructions | `agents`            | the next `submit` of each chat; the worker calls `configure` on it |
+| Chat model, chat thinking level         | `conversations`     | the next `submit` of that chat                                     |
+| Providers                               | `providers`         | `configure` to the worker, and again after each worker start       |
+| Telegram token, allowed users           | `telegram_settings` | a restart of the bot                                               |
+
+`PUT /api/settings/agent` saves the name with the other bot settings. It trims
+spaces, then accepts 1 to 40 Unicode characters. The web uses the saved name in
+the sidebar, the timeline header, and the composer.
 
 The main timeline uses the agent's model and thinking level. It has no chat
 override. `chat.Service` resolves settings at each `submit`. Channel chats cannot
@@ -311,7 +320,12 @@ cannot enter memory as user text.
 `GET /api/tasks` lists all work of the default agent, newest first.
 `GET /api/tasks/{id}` returns one record with its report, times, and conversation
 ID. Both reads check the agent. Model task tools keep their parent conversation
-scope. There are no HTTP task controls or separate task streams.
+scope. There are no HTTP task controls or separate task streams. The Tasks page
+polls these records every 3 s. Its active count includes queued and running records.
+Task details use the normal read-only chat, history, and SSE paths for Work.
+Successful `spawn_task` items carry the ID from the saved tool result. Result
+marks carry the ID and title from control's matching task record. The web links
+both labels by ID. It never matches tasks by title.
 The normal main-chat SSE stream carries result marks and replies.
 
 Result delivery uses the existing submission lifecycle. A provider failure
@@ -338,11 +352,13 @@ There is no cancellation retry loop. Late reports cannot change a terminal
 record or wake the model.
 
 `POST /api/chats/{chatId}/abort` returns `{status: "ok"}` after withdrawal and the
-cancellation requests. Web Stop stays available while the main chat is idle
-and without a model. The reply confirms the request. It does not prove process
-exit. Processes and remote work can continue. Cancellation does not undo file writes
-or remote actions. A directed cancellation of a completed execution leaves its
-report and saved result unchanged.
+cancellation requests. The composer keeps Stop available for queued input,
+an active answer, and active background work. Stop needs no model. During a
+reconnect, the chat API's busy state keeps Stop available before the snapshot.
+The reply confirms the request. It does not prove process exit. Processes and
+remote work can continue. Cancellation does not undo file writes or remote
+actions. A directed cancellation of a completed execution leaves its report
+and saved result unchanged.
 
 Control binds admission to the current worker process. It joins old worker
 callbacks before it starts the next process. After worker loss, a running
@@ -403,13 +419,13 @@ browser ──EventSource──▶ control  GET /api/chats/{id}/events
   `snapshot` when an item was removed or pi-durable sent a snapshot.
 - Each stream has its own worker watch, so each browser tab gets its own
   snapshot. The first event of a stream is a snapshot, so a reconnect needs no
-  replay.
+  replay. This snapshot includes control changes made while watch waited.
 - [`live.Hub`](../../internal/live/live.go) adds the messages that only
   `control.sqlite` has: a `pending` message that the worker has not placed yet
   (a queued user item), and an `unanswered` message that the worker never
-  placed (a user item and an error item). It also adds the title to each task
-  mark from the matching result submission. The hub places unanswered messages
-  before the next newer user or task item. It then appends queued messages in
+  placed (a user item and an error item). It also adds the task ID and title to
+  each task mark from the matching result submission. The hub places unanswered
+  messages before the next newer user or task item. It then appends queued messages in
   receipt order, after all current worker output. The browser inserts new output
   before those queued messages until the worker places them.
 - The worker's reader never waits for a stream. A stream that is 256 inputs
@@ -426,8 +442,13 @@ the write form and adds no second reset. Reset entries keep their time in data.
 Memory files remain available. Follow-ups keep the SDK default: one input
 per answer. Do not use `followUpMode: "all"` or steer.
 
-A snapshot contains only the active worker context. Reset and compaction entries
-show dividers. `historyBefore` points to the head entry. The browser requests
+The Clear context action is in the composer. The server alone decides whether
+work is active. A 409 shows a warning and keeps the same request ID for a retry.
+The action is hidden when the last non-compaction item is a reset or is absent.
+
+A snapshot contains only the active worker context. Reset entries show dividers.
+Compaction entries stay in the data but have no divider. `historyBefore` points
+to the head entry. The browser requests
 `GET /api/chats/{id}/history?before=<entry ID>&limit=100` on demand. The worker
 reads `Conversation.entries` before that exclusive cursor and returns items
 in entry order with `nextBefore`. A page can extend to the previous assistant
@@ -447,7 +468,7 @@ so dex needs no public URL.
   saved allowlist. A saved token with no allowed users waits for owner pairing.
   Earlier versions accepted group messages from allowed users. The bot now
   ignores all non-private chats, including messages from allowed users.
-- The Channels page creates a link with the bot username from `getMe` and a
+- The Telegram channel page creates a link with the bot username from `getMe` and a
   random code. The code expires after 10 minutes. `telegram_settings` stores
   the code and expiry. Pairing is available only while the allowlist is empty. One atomic SQLite
   update sets the owner as the only allowed user and clears the code.
@@ -477,8 +498,8 @@ so dex needs no public URL.
   `upload.Store`, with a 20 MB limit. Captions become message text. The agent
   and web transcript use the same upload record.
 - Polling checks the token through `getUpdates`. A transient startup failure
-  does not stop the bot. Poll errors and recovery update runtime status on
-  the Channels page. Tokens do not appear in status reasons.
+  does not stop the bot. Poll errors and recovery update runtime status in
+  bot settings. Tokens do not appear in status reasons.
 - Pairing and attachment-rejection replies skip permanent 400/403 failures
   so later updates can proceed. Transient failures leave the update for retry.
 
@@ -492,8 +513,8 @@ before they start its replacement. Settings expose runtime status: `off`,
 A peer names a remote destination, such as `telegram:7`. `channel_peers` stores
 its current channel key. `/new` selects `peer/<UUID>` and keeps the old chat.
 Every key keeps its destination, so an old chat can still receive its answer.
-External channel chats are read-only on the web. Web and automation chats
-remain writable.
+The main timeline is writable on the web. Channel and automation transcripts
+have no web composer.
 
 `/new`, `/stop`, and `/help` use durable command
 receipts. The receipt and a `/new` rotation commit in one transaction.
@@ -532,7 +553,7 @@ The ping timer and read deadline use the same interval.
 Fragment buffers expire after 5 seconds. One connection allows at most 64
 fragmented events, 256 fragments per event, and 4 MB per event.
 
-The Channels page shows runtime status and supports QR app creation and
+The Feishu channel page shows runtime status and supports QR app creation and
 manual credentials. The form keeps the saved Feishu or Lark brand unless the
 user changes it. QR setup requests `im:message`, `im:message.p2p_msg:readonly`, `im:resource`, and the
 `im.message.receive_v1` event. The server keeps the device code in a session
@@ -584,7 +605,7 @@ E2E tests for Feishu. These tests make no real platform requests.
 ## WeChat
 
 [`wechat.Bot`](../../internal/wechat/bot.go) connects one iLink bot to its
-owner's private messages. The Channels page starts QR login and polls each
+owner's private messages. The WeChat channel page starts QR login and polls each
 state. It asks for a phone verification code when required. A region redirect
 changes the poll host. An expired or blocked QR code gets a replacement, with
 at most three replacements per login attempt. The backend queries QR status only
