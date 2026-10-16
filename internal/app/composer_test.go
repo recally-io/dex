@@ -82,12 +82,6 @@ type chatSettings struct {
 	ThinkingLevel string `json:"thinkingLevel,omitempty"`
 }
 
-type chatWithSettings struct {
-	ID       int64        `json:"id"`
-	Title    string       `json:"title"`
-	Settings chatSettings `json:"settings"`
-}
-
 func (d *dex) setThinking(t *testing.T, thinkingLevel string) {
 	t.Helper()
 	d.must(t, http.MethodPut, "/api/settings/agent",
@@ -171,18 +165,9 @@ func TestUserMainUsesAgentSettings(t *testing.T) {
 	d.send(t, id, "second")
 	w.until(t, "new agent settings", answered("think low: second"))
 
-	// Then main refuses per-chat overrides through either message entry point.
-	for _, request := range []struct {
-		method, path string
-		body         any
-	}{
-		{http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", id), chatSettings{Provider: "faux", ModelID: "echo"}},
-		{http.MethodPost, "/api/chats", map[string]any{"id": uuid.NewV7().String(), "text": "override", "settings": chatSettings{Provider: "faux", ModelID: "echo"}}},
-	} {
-		status, raw := d.call(t, request.method, request.path, request.body)
-		if status != http.StatusForbidden {
-			t.Fatalf("override: %d %s", status, raw)
-		}
+	// Then main and Chat refuse per-session overrides.
+	for _, chatID := range []int64{id, d.newSession(t).ID} {
+		d.must(t, http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", chatID), chatSettings{Provider: "faux", ModelID: "echo"}, nil, http.StatusForbidden)
 	}
 }
 
@@ -211,13 +196,11 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 	}
 
 	// When the user sends a message with both
-	var created struct {
-		Chat chatWithSettings `json:"chat"`
-	}
-	d.must(t, http.MethodPost, "/api/chats", map[string]any{
+	created := d.newSession(t)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/messages", created.ID), map[string]any{
 		"id": uuid.NewV7().String(), "text": "look", "attachments": []string{pic.ID, notes.ID},
-	}, &created, http.StatusAccepted)
-	w := d.watch(t, created.Chat.ID)
+	}, nil, http.StatusAccepted)
+	w := d.watch(t, created.ID)
 
 	// Then the model gets the text and the paths, and the transcript shows the text and the files
 	paths := "Attached files:\n- " + pic.Path + "\n- " + notes.Path
@@ -229,19 +212,21 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 
 	// When the user sends only a file in a new chat
 	only := d.mustUpload(t, "report.pdf", []byte("%PDF-1.4\n"))
-	d.must(t, http.MethodPost, "/api/chats", map[string]any{
+	created = d.newSession(t)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/messages", created.ID), map[string]any{
 		"id": uuid.NewV7().String(), "text": " ", "attachments": []string{only.ID},
-	}, &created, http.StatusAccepted)
+	}, nil, http.StatusAccepted)
 
 	// Then the chat is named after the file, and the model gets the path
-	if created.Chat.ID == 0 {
-		t.Fatal("main timeline is missing")
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d", created.ID), nil, &created)
+	if created.Title != "report.pdf" {
+		t.Fatalf("file-only title: %+v", created)
 	}
-	w2 := d.watch(t, created.Chat.ID)
+	w2 := d.watch(t, created.ID)
 	w2.until(t, "answer", answered("echo: Attached files:\n- "+only.Path))
 
 	// And a reload shows the files with the message
-	again := d.watch(t, created.Chat.ID)
+	again := d.watch(t, created.ID)
 	again.until(t, "snapshot", func(tr *transcript) bool { return tr.snapshots == 1 })
 	if got := again.tr.items[len(again.tr.items)-2]; got.Text != "" || !slices.Equal(got.Attachments, []attachment{only}) {
 		t.Fatalf("reloaded user item = %+v", got)
@@ -366,6 +351,8 @@ func TestInvalidUploadsAndAttachmentsAreRefused(t *testing.T) {
 	d.mustUpload(t, "max.bin", bytes.Repeat([]byte("x"), 20<<20))
 
 	// Messages: too many, unknown, repeated, or no attachments
+	chatID := d.newSession(t).ID
+	messagePath := fmt.Sprintf("/api/chats/%d/messages", chatID)
 	ids := make([]string, 11)
 	for i := range ids {
 		ids[i] = d.mustUpload(t, fmt.Sprintf("f%d.txt", i), []byte("x")).ID
@@ -381,7 +368,7 @@ func TestInvalidUploadsAndAttachmentsAreRefused(t *testing.T) {
 		{"no text and no attachment", map[string]any{"text": " ", "attachments": []string{}}},
 	} {
 		c.body["id"] = uuid.NewV7().String()
-		status, raw := d.call(t, http.MethodPost, "/api/chats", c.body)
+		status, raw := d.call(t, http.MethodPost, messagePath, c.body)
 		if status != http.StatusBadRequest || !strings.Contains(raw, `"error":`) {
 			t.Fatalf("%s: %d %s", c.name, status, raw)
 		}
@@ -390,7 +377,7 @@ func TestInvalidUploadsAndAttachmentsAreRefused(t *testing.T) {
 		t.Fatalf("refused messages created chats: %+v", chats)
 	}
 	// 10 attachments are allowed
-	d.must(t, http.MethodPost, "/api/chats", map[string]any{"id": uuid.NewV7().String(), "text": "ten", "attachments": ids[:10]},
+	d.must(t, http.MethodPost, messagePath, map[string]any{"id": uuid.NewV7().String(), "text": "ten", "attachments": ids[:10]},
 		nil, http.StatusAccepted)
 }
 

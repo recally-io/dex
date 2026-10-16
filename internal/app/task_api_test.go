@@ -31,7 +31,8 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 	d := startTelegram(t, f, dir, 42)
 	d.setModel(t, "spawn")
 	conn := taskResultDB(t, dir)
-	main := d.newChat(t, taskJSON(t, map[string]string{"title": "Check", "goal": "saved report", "provider": "faux", "modelId": "echo"}))
+	main := d.mainChat(t)
+	d.send(t, main, taskJSON(t, map[string]string{"title": "Check", "goal": "saved report", "provider": "faux", "modelId": "echo"}))
 	first := waitExecution(t, conn, main, "Check", "done")
 	f.message(1, 42, 7, taskJSON(t, map[string]string{"title": "Check", "goal": taskGate(t, dir, "task-api"), "provider": "faux", "modelId": "bash"}))
 	waitTaskFile(t, filepath.Join(dir, "task-api.pid"))
@@ -42,19 +43,25 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 	second := waitExecution(t, conn, channel, "Check", "running")
 
 	// When the user lists this bot's work, both conversations appear, newest first.
-	status, raw := d.call(t, http.MethodGet, "/api/tasks", nil)
+	status, raw := d.call(t, http.MethodGet, "/api/chats", nil)
 	if status != http.StatusOK || strings.Contains(raw, `"report":`) {
 		t.Fatalf("task list must omit report bodies: %d %s", status, raw)
 	}
 	var list struct {
-		Tasks []taskInfo `json:"tasks"`
+		Chats []sessionInfo `json:"chats"`
 	}
-	d.must(t, http.MethodGet, "/api/tasks", nil, &list)
-	if len(list.Tasks) != 2 || list.Tasks[0].ID != second.ID || list.Tasks[1].ID != first.ID {
-		t.Fatalf("tasks=%+v", list.Tasks)
+	d.must(t, http.MethodGet, "/api/chats", nil, &list)
+	var tasks []taskInfo
+	for _, c := range list.Chats {
+		if c.Task != nil {
+			tasks = append(tasks, *c.Task)
+		}
 	}
-	if list.Tasks[0].ParentConversationID != channel || list.Tasks[1].ParentConversationID != main {
-		t.Fatalf("task list lost its Stop scope: %+v", list.Tasks)
+	if len(tasks) != 2 || tasks[0].ID != second.ID || tasks[1].ID != first.ID {
+		t.Fatalf("tasks=%+v", tasks)
+	}
+	if tasks[0].ParentConversationID != channel || tasks[1].ParentConversationID != main {
+		t.Fatalf("session list lost its Stop scope: %+v", tasks)
 	}
 	var detail taskInfo
 	d.must(t, http.MethodGet, "/api/tasks/"+first.ID, nil, &detail)
@@ -91,8 +98,8 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 	releaseResultGate(t, dir, "task-api")
 	work.until(t, "saved work answer", answeredWith("gate released"))
 	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/history?before=9007199254740991", detail.ConversationID), nil, nil)
-	if len(d.chats(t)) != 2 {
-		t.Fatal("task conversations entered the ordinary chat list")
+	if len(d.chats(t)) != 3 {
+		t.Fatal("Sessions must contain both tasks and the channel, without main")
 	}
 	d.must(t, http.MethodGet, "/api/tasks/missing", nil, nil, http.StatusNotFound)
 	t.Logf("artifact: main task=%s channel task=%s work=%d", first.ID, second.ID, detail.ConversationID)
@@ -129,8 +136,8 @@ func TestUserTasksStayWithinBot(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the default bot's user reads tasks, the other bot's work stays outside this API.
-	status, raw := d.call(t, http.MethodGet, "/api/tasks", nil)
-	if status != http.StatusOK || strings.Contains(raw, "Other bot") || !strings.Contains(raw, `"tasks":[]`) {
+	status, raw := d.call(t, http.MethodGet, "/api/chats", nil)
+	if status != http.StatusOK || strings.Contains(raw, "Other bot") || !strings.Contains(raw, `"chats":[]`) {
 		t.Fatalf("foreign task in list: %d %s", status, raw)
 	}
 	d.must(t, http.MethodGet, "/api/tasks/"+fmt.Sprint(work.ID), nil, nil, http.StatusNotFound)

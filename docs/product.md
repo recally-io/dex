@@ -55,7 +55,7 @@ to read in an afternoon.
   Reply delivery resumes after a restart and skips confirmed
   parts. A crash after remote success can duplicate one part. Bot settings
   show each channel's runtime status and open its current conversation.
-- In the main timeline, the user can attach files and images (at most 10 per
+- In main and Chat sessions, the user can attach files and images (at most 10 per
   message, 20 MB each). The agent reads them with its tools. Telegram
   chats and automations use the agent's settings. Telegram accepts photos and
   documents up to 20 MB, with caption text. Telegram replies show progress,
@@ -95,12 +95,24 @@ The web chat marks a delegation with the work's title. A returned result has
 a named label and a thin line that groups its replies and tool calls. The mark
 shows where the report belongs; it does not confirm that the work reached its goal.
 The chat does not show the internal report as input. Read-only task records
-give the human the saved report, status, times, and work transcript. The Tasks
-link in the timeline shows the number of queued and running tasks. Named dispatch
-and result labels open that task by its ID. The task list puts running work first,
-then queued work, then other work. Each group shows newest work first.
+give the human the saved report, status, times, and work transcript. The Sessions
+link opens one list of Chat, Task, Automation and Channel sessions, newest
+activity first. The list excludes main, internal dreams and empty Chat sessions.
+The user can filter by kind. Its active count includes queued or running tasks
+and other busy sessions. Each row counts once. A filter counts only visible rows.
+Named dispatch and result labels open the task by its ID.
 Done means that the task returned a report. It does not prove goal completion.
 There are no task controls or progress percentages.
+
+`New session` opens a writable Chat with its own model context. It reuses the
+newest empty Chat, so an abandoned click leaves no list row. The first message
+sets the title. Chat uses the bot's settings, instructions and shared memory.
+Chat does not read the main timeline's context. A task started in Chat returns
+its result to that Chat. Clear context, Stop and earlier messages work within
+the selected session. Other sessions cannot enable its Stop. Task, Automation
+and Channel sessions stay read-only. Main stays the default view, and the
+sidebar keeps only the bot and global settings.
+
 The main agent names the work in one brief delegation confirmation, then
 returns to the user without polling for the result. When a report returns,
 the reply first names that work and gives its outcome. If work failed or
@@ -114,8 +126,8 @@ project rules, independent review, tests of the final revision, and evidence.
 Writes to one repository must run in order or in separate worktrees.
 
 Web Stop stays in the composer for queued input, an active answer, and active
-background work. Stop covers the main timeline and its background work.
-Channel chats remain read-only on the web. Stop needs no model.
+background work. Stop covers the selected writable session and its background
+work. Task, Automation and Channel sessions stay read-only. Stop needs no model.
 Stop withdraws pending input and results, records cancellation, and requests
 SDK cancellation once. The reply confirms the request. It does not confirm
 process exit. Processes and remote work can continue. Prior actions are not

@@ -1,14 +1,22 @@
 import { format, isToday } from "date-fns";
-import type { TaskSummary } from "../api/generated/types.gen";
+import type { Chat, TaskSummary } from "../api/generated/types.gen";
 
-export function activeTaskCount(tasks: Pick<TaskSummary, "status">[]) {
-  return tasks.filter((task) => task.status === "running" || task.status === "queued").length;
+export function sessionKind(chat: Pick<Chat, "channel" | "main">) {
+  if (chat.main) return "Main";
+
+  if (chat.channel === "web") return "Chat";
+
+  if (chat.channel === "task") return "Task";
+
+  if (chat.channel === "automation") return "Automation";
+
+  return "Channel";
 }
 
-export function orderedTasks(tasks: TaskSummary[]) {
-  const rank = (task: TaskSummary) => (task.status === "running" ? 0 : task.status === "queued" ? 1 : 2);
-
-  return tasks.toSorted((a, b) => rank(a) - rank(b) || b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+export function activeSessionCount(sessions: Pick<Chat, "busy" | "task">[]) {
+  return sessions.filter((chat) =>
+    chat.task ? chat.task.status === "running" || chat.task.status === "queued" : chat.busy,
+  ).length;
 }
 
 export function taskTime(at: number, full = false) {

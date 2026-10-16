@@ -161,15 +161,12 @@ type chatInfo struct {
 	Busy    bool   `json:"busy"`
 }
 
-// newChat posts through the legacy first-message endpoint and returns the main ID.
+// newChat opens a separate Chat session and sends its first message.
 func (d *dex) newChat(t *testing.T, text string) int64 {
 	t.Helper()
-	var created struct {
-		Chat chatInfo `json:"chat"`
-	}
-	d.must(t, http.MethodPost, "/api/chats", map[string]string{"id": uuid.NewV7().String(), "text": text}, &created,
-		http.StatusAccepted)
-	return created.Chat.ID
+	c := d.newSession(t)
+	d.send(t, c.ID, text)
+	return c.ID
 }
 
 // send sends text to chat id and returns the message ID.
@@ -484,7 +481,7 @@ func TestDreamingReadsEachChatOnce(t *testing.T) {
 			!strings.Contains(got[1], `"text":"echo one"`) && !strings.Contains(got[1], `+{"chat":"fake"`), got
 	})
 	// And the dreams are not chats of the user
-	if got := d.chats(t); len(got) != 1 {
+	if got := d.chats(t); len(got) != 2 {
 		t.Fatalf("chats = %+v", got)
 	}
 }
@@ -581,8 +578,9 @@ func TestUserMustChooseModelBeforeChatting(t *testing.T) {
 	// Given a dex that starts for the first time, without settings
 	d := startDex(t, t.TempDir(), "")
 
-	// When the user starts a chat
-	status, raw := d.call(t, http.MethodPost, "/api/chats", map[string]string{"id": uuid.NewV7().String(), "text": "hello"})
+	// When the user sends input to a session without a model.
+	c := d.newSession(t)
+	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/messages", c.ID), map[string]string{"id": uuid.NewV7().String(), "text": "hello"})
 
 	// Then dex refuses it, tells the user to choose a model, and stores nothing
 	if status != http.StatusConflict || !strings.Contains(raw, "choose one in Settings") {
@@ -608,13 +606,13 @@ func TestRetriedMessageIsStoredOnce(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
 	first := map[string]string{"id": uuid.NewV7().String(), "text": "hi"}
-	d.must(t, http.MethodPost, "/api/chats", first, nil, http.StatusAccepted)
+	chatID := d.newSession(t).ID
+	path := fmt.Sprintf("/api/chats/%d/messages", chatID)
+	d.must(t, http.MethodPost, path, first, nil, http.StatusAccepted)
 
 	// When the browser sends the same requests again, for example after a network error
-	d.must(t, http.MethodPost, "/api/chats", first, nil, http.StatusAccepted)
-	chatID := d.chats(t)[0].ID
+	d.must(t, http.MethodPost, path, first, nil, http.StatusAccepted)
 	again := map[string]string{"id": uuid.NewV7().String(), "text": "again"}
-	path := fmt.Sprintf("/api/chats/%d/messages", chatID)
 	d.must(t, http.MethodPost, path, again, nil, http.StatusAccepted)
 	d.must(t, http.MethodPost, path, again, nil, http.StatusAccepted)
 
@@ -815,9 +813,9 @@ func TestInvalidRequestsAreRefused(t *testing.T) {
 		{"negative Telegram user ID", http.MethodPut, "/api/settings/telegram",
 			map[string]any{"token": "123:abc", "allowedUsers": []int64{-1}}, 400},
 		{"bad Telegram token", http.MethodPut, "/api/settings/telegram", map[string]any{"token": "abc", "allowedUsers": []int64{1}}, 400},
-		{"message ID that is not a UUID", http.MethodPost, "/api/chats", map[string]string{"id": "1", "text": "hi"}, 400},
-		{"empty message", http.MethodPost, "/api/chats", map[string]string{"id": uuid.NewV7().String(), "text": "  "}, 400},
-		{"body that is not JSON", http.MethodPost, "/api/chats", "hi", 400},
+		{"message ID that is not a UUID", http.MethodPost, "/api/chats/999/messages", map[string]string{"id": "1", "text": "hi"}, 400},
+		{"empty message", http.MethodPost, "/api/chats/999/messages", map[string]string{"id": uuid.NewV7().String(), "text": "  "}, 400},
+		{"body that is not JSON", http.MethodPost, "/api/chats/999/messages", "hi", 400},
 		{"message to a chat that does not exist", http.MethodPost, "/api/chats/999/messages",
 			map[string]string{"id": uuid.NewV7().String(), "text": "hi"}, 404},
 		{"events of a chat that does not exist", http.MethodGet, "/api/chats/999/events", nil, 404},

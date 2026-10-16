@@ -71,7 +71,7 @@ export type Chat = {
     title: string;
     createdAt: number;
     /**
-     * Time of the last message.
+     * Latest activity time, in Unix milliseconds. Includes conversation creation, input creation and settlement, and task start and end. Task times apply only to the task's own conversation.
      */
     updatedAt: number;
     /**
@@ -79,6 +79,7 @@ export type Chat = {
      */
     busy: boolean;
     settings: ChatSettings;
+    task?: TaskSummary;
 };
 
 /**
@@ -111,10 +112,6 @@ export type MessageInput = {
     attachments?: Array<string>;
 };
 
-export type NewChat = MessageInput & {
-    settings?: ChatSettings;
-};
-
 export type Attachment = {
     id: string;
     name: string;
@@ -127,11 +124,6 @@ export type Attachment = {
      * The path in the agent workspace, uploads/<id>/<name>.
      */
     path: string;
-};
-
-export type CreatedChat = {
-    chat: Chat;
-    submissionId: string;
 };
 
 export type SentMessage = {
@@ -739,33 +731,6 @@ export type AcquireMaintenanceResponses = {
 
 export type AcquireMaintenanceResponse = AcquireMaintenanceResponses[keyof AcquireMaintenanceResponses];
 
-export type ListTasksData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/tasks';
-};
-
-export type ListTasksErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type ListTasksError = ListTasksErrors[keyof ListTasksErrors];
-
-export type ListTasksResponses = {
-    /**
-     * The tasks.
-     */
-    200: {
-        tasks: Array<TaskSummary>;
-    };
-};
-
-export type ListTasksResponse = ListTasksResponses[keyof ListTasksResponses];
-
 export type GetTaskData = {
     body?: never;
     path: {
@@ -840,7 +805,7 @@ export type ListChatsError = ListChatsErrors[keyof ListChatsErrors];
 
 export type ListChatsResponses = {
     /**
-     * The chats.
+     * The sessions.
      */
     200: ChatList;
 };
@@ -848,21 +813,13 @@ export type ListChatsResponses = {
 export type ListChatsResponse = ListChatsResponses[keyof ListChatsResponses];
 
 export type CreateChatData = {
-    body: NewChat;
+    body?: never;
     path?: never;
     query?: never;
     url: '/api/chats';
 };
 
 export type CreateChatErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    409: Error;
     /**
      * The request failed.
      */
@@ -873,9 +830,9 @@ export type CreateChatError = CreateChatErrors[keyof CreateChatErrors];
 
 export type CreateChatResponses = {
     /**
-     * The chat exists and the message is stored.
+     * The new or reused Chat session.
      */
-    202: CreatedChat;
+    201: Chat;
 };
 
 export type CreateChatResponse = CreateChatResponses[keyof CreateChatResponses];
@@ -1089,6 +1046,10 @@ export type AbortChatData = {
 };
 
 export type AbortChatErrors = {
+    /**
+     * The request failed.
+     */
+    403: Error;
     /**
      * The request failed.
      */

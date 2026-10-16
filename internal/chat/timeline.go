@@ -5,12 +5,29 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"uuid"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/worker"
 )
 
 const MainKey = "main"
+const ChatPrefix = "chat:"
+
+func Writable(key string) bool {
+	return key == MainKey || strings.HasPrefix(key, ChatPrefix)
+}
+
+// Create reuses an empty Chat without opening a worker context or requiring a model.
+func (s *Service) Create(ctx context.Context, agentID string) (Chat, error) {
+	c, err := s.q.EnsureEmptyChat(ctx, sqlc.EnsureEmptyChatParams{
+		AgentID: agentID, ChannelKey: ChatPrefix + uuid.NewV7().String(), CreatedAt: s.now().UnixMilli(),
+	})
+	if err != nil {
+		return Chat{}, err
+	}
+	return s.Get(ctx, agentID, c.ID)
+}
 
 var ErrConversationBusy = errors.New("the timeline is busy; wait for its replies before clearing context")
 var ErrResetID = errors.New("the reset ID belongs to another input")
@@ -38,7 +55,7 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 	if err != nil {
 		return err
 	}
-	if c.ChannelKey != MainKey {
+	if !Writable(c.ChannelKey) {
 		return ErrNotFound
 	}
 	if sub, err := s.q.GetSubmission(ctx, requestID); err == nil {
@@ -97,7 +114,7 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 
 func inputOrigin(key string) string {
 	switch {
-	case key == MainKey, strings.HasPrefix(key, "web:"):
+	case Writable(key), strings.HasPrefix(key, "web:"):
 		return "web"
 	case strings.HasPrefix(key, "automation:"):
 		return "automation"

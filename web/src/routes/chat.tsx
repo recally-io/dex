@@ -5,6 +5,7 @@ import { IconArrowDown } from "@central-icons-react/round-outlined-radius-2-stro
 import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
 import { IconLock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconLock";
 import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
+import { IconBubble2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubble2";
 import type {
   Attachment,
   Settings,
@@ -19,17 +20,17 @@ import {
   sendMessageMutation,
   abortChatMutation,
   listModelsOptions,
-  listTasksOptions,
+  listChatsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
 import { refreshChats } from "../lib/queries";
 import { agentModel } from "../lib/agent";
 import { useAttachments } from "../lib/attachments";
-import { activeTaskCount } from "../lib/tasks";
+import { activeSessionCount } from "../lib/tasks";
 import { Composer } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
-import { TasksLink } from "../components/task-link";
+import { SessionsLink } from "../components/session-link";
 import { RetryNotice, Transcript } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
@@ -80,6 +81,13 @@ function MainTimeline({ settings }: { settings: Settings }) {
 }
 
 function OriginPill({ chat }: { chat: ChatInfo }) {
+  if (chat.channel === "web" && !chat.main)
+    return (
+      <StatusPill dot={false} className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
+        <IconBubble2 size={11} /> Chat
+      </StatusPill>
+    );
+
   if (!["web", "automation"].includes(chat.channel))
     return (
       <StatusPill dot={false} className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
@@ -116,16 +124,16 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
 
   const readOnly = chat.data?.readOnly ?? true;
 
-  const tasks = useQuery({
-    ...listTasksOptions(),
-    enabled: chat.data?.main === true,
+  const sessions = useQuery({
+    ...listChatsOptions(),
+    enabled: !readOnly,
     refetchInterval: 3000,
   });
 
-  const active = activeTaskCount(tasks.data?.tasks ?? []);
+  const active = activeSessionCount(sessions.data?.chats ?? []);
 
-  const activeHere = activeTaskCount(
-    (tasks.data?.tasks ?? []).filter((task) => task.parentConversationId === chatId),
+  const activeHere = activeSessionCount(
+    (sessions.data?.chats ?? []).filter((session) => session.task?.parentConversationId === chatId),
   );
 
   const health = useQuery(getHealthOptions());
@@ -322,7 +330,7 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
       </div>
     ) : chatId && chat.isError ? (
       <div className="flex flex-col items-start gap-4">
-        <Failure title="Could not load this chat" error={chat.error} retry={() => void chat.refetch()} />
+        <Failure title="Could not load this session" error={chat.error} retry={() => void chat.refetch()} />
         <Link className="text-[13px] font-medium text-accent-ink underline" to="/">
           Open timeline
         </Link>
@@ -385,9 +393,16 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
           </div>
         ) : null}
         {!items.length && state.historyBefore === undefined && connection === "ready" ? (
-          <h1 className="my-auto py-12 text-center text-[22px] font-semibold text-ink sm:text-[26px]">
-            {readOnly ? "No messages yet." : `What should ${settings.agent.name} do?`}
-          </h1>
+          <div className="my-auto py-12 text-center">
+            <h1 className="text-[22px] font-semibold text-ink sm:text-[26px]">
+              {readOnly ? "No messages yet." : `What should ${settings.agent.name} do?`}
+            </h1>
+            {!chat.data?.main && !readOnly ? (
+              <p className="mt-2 text-[13px] text-ink-3">
+                This session has its own context. It does not see the main timeline.
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </>
     );
@@ -403,16 +418,26 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line">
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
           <MenuButton />
+          {chat.data && !chat.data.main ? (
+            <>
+              <Link to="/sessions" className="shrink-0 text-[13px] text-ink-3 hover:text-ink hover:underline">
+                Sessions
+              </Link>
+              <span aria-hidden className="text-line-strong">
+                /
+              </span>
+            </>
+          ) : null}
           <h1
             id="page-title"
             tabIndex={-1}
             className="min-w-0 truncate text-[13px] font-semibold text-ink outline-none"
           >
-            {chat.data?.main ? settings.agent.name : chat.data?.title || "Chat"}
+            {chat.data?.main ? settings.agent.name : chat.data?.title || "New session"}
           </h1>
-          {readOnly && chat.data ? <OriginPill chat={chat.data} /> : null}
+          {chat.data && !chat.data.main ? <OriginPill chat={chat.data} /> : null}
           <span className="flex-1" />
-          {chat.data?.main ? <TasksLink active={active} /> : null}
+          {chat.data?.main ? <SessionsLink active={active} /> : null}
         </header>
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div

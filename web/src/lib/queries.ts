@@ -22,7 +22,10 @@ export async function refreshSettings() {
 }
 
 export async function refreshChats() {
-  await queryClient.invalidateQueries({ queryKey: listChatsQueryKey() });
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: listChatsQueryKey() }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getChat" }] }),
+  ]);
 }
 
 export async function refreshAutomations() {

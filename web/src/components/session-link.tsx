@@ -1,13 +1,13 @@
 import { Link } from "@tanstack/react-router";
-import { IconTasks } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconTasks";
+import { IconBubbles } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubbles";
 
-export function TasksLink({ active }: { active: number }) {
+export function SessionsLink({ active }: { active: number }) {
   return (
     <Link
-      to="/tasks"
+      to="/sessions"
       className="flex h-7 items-center gap-1.5 rounded-[7px] px-2 text-[12.5px] font-medium text-ink-2 hover:bg-hover hover:text-ink"
     >
-      <IconTasks size={16} /> Tasks
+      <IconBubbles size={16} /> Sessions
       {active > 0 ? (
         <span
           role="img"

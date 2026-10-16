@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -43,8 +44,8 @@ func TestUserAnswersWhileDelegationRunsAndReceivesItsReport(t *testing.T) {
 	if !strings.Contains(taskTool(t, d, parent, "list_tasks", map[string]string{}), task.ID) {
 		t.Fatal("list_tasks omitted execution")
 	}
-	if chats := d.chats(t); len(chats) != 1 || chats[0].ID != parent {
-		t.Fatalf("hidden chat leaked: %+v", chats)
+	if chats := d.chats(t); len(chats) != 2 || !slices.ContainsFunc(chats, func(c chatInfo) bool { return c.ID == parent }) {
+		t.Fatalf("Chat or task session missing: %+v", chats)
 	}
 	t.Logf("execution=%s report=%q", task.ID, task.Report)
 }

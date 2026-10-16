@@ -23,20 +23,12 @@ func taskView(t sqlc.Task) api.Task {
 	}
 }
 
-func (h *handler) ListTasks(ctx context.Context, _ api.ListTasksRequestObject) (api.ListTasksResponseObject, error) {
-	rows, err := h.Chats.TaskRecords(ctx, h.AgentID)
-	if err != nil {
-		return nil, err
+func taskSummary(t sqlc.ListAgentTasksRow) api.TaskSummary {
+	return api.TaskSummary{
+		Id: t.ID, Title: t.Title, Status: api.TaskSummaryStatus(t.Status),
+		CreatedAt: t.CreatedAt, StartedAt: taskTime(t.StartedAt), EndedAt: taskTime(t.EndedAt),
+		ConversationId: t.ConversationID, ParentConversationId: t.ParentConversationID,
 	}
-	out := api.ListTasks200JSONResponse{Tasks: make([]api.TaskSummary, len(rows))}
-	for i, t := range rows {
-		out.Tasks[i] = api.TaskSummary{
-			Id: t.ID, Title: t.Title, Status: api.TaskSummaryStatus(t.Status),
-			CreatedAt: t.CreatedAt, StartedAt: taskTime(t.StartedAt), EndedAt: taskTime(t.EndedAt),
-			ConversationId: t.ConversationID, ParentConversationId: t.ParentConversationID,
-		}
-	}
-	return out, nil
 }
 
 func (h *handler) GetTask(ctx context.Context, req api.GetTaskRequestObject) (api.GetTaskResponseObject, error) {
