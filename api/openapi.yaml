@@ -111,78 +111,6 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/chats/{chatId}/tasks:
-    parameters:
-      - $ref: "#/components/parameters/ChatId"
-    get:
-      operationId: listTasks
-      description: Active goals and the ten most recent ended goals from this chat. No model call is needed.
-      responses:
-        "200":
-          description: The user tasks.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/TaskList" }
-        "404": { $ref: "#/components/responses/Error" }
-        default: { $ref: "#/components/responses/Error" }
-
-  /api/chats/{chatId}/tasks/{taskId}:
-    parameters:
-      - $ref: "#/components/parameters/ChatId"
-      - $ref: "#/components/parameters/TaskId"
-    get:
-      operationId: getTask
-      description: The goal, its execution stages, and its saved report. No model call is needed.
-      responses:
-        "200":
-          description: The user task.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Task" }
-        "404": { $ref: "#/components/responses/Error" }
-        default: { $ref: "#/components/responses/Error" }
-
-  /api/chats/{chatId}/tasks/{taskId}/stages/{stageId}/events:
-    parameters:
-      - $ref: "#/components/parameters/ChatId"
-      - $ref: "#/components/parameters/TaskId"
-      - name: stageId
-        in: path
-        required: true
-        schema: { type: string }
-    get:
-      operationId: watchTaskStage
-      description: >
-        Read-only stage transcript within its parent chat and task. Uses the
-        ChatEvent stream with an initial snapshot and a new snapshot on reconnect.
-        The hidden stage chat remains unavailable through ordinary chat APIs.
-      responses:
-        "200":
-          description: The stage event stream.
-          content:
-            text/event-stream:
-              schema: { $ref: "#/components/schemas/ChatEvent" }
-        "404": { $ref: "#/components/responses/Error" }
-
-  /api/chats/{chatId}/tasks/{taskId}/cancel:
-    parameters:
-      - $ref: "#/components/parameters/ChatId"
-      - $ref: "#/components/parameters/TaskId"
-    post:
-      operationId: cancelTask
-      description: >
-        Stores the stop intent for the whole goal. Running stages stop in the
-        background. An accepted request does not confirm that execution has stopped.
-        No model call is needed. Prior tool actions are not undone.
-      responses:
-        "202":
-          description: The stop intent is stored, or the task has ended.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Task" }
-        "404": { $ref: "#/components/responses/Error" }
-        default: { $ref: "#/components/responses/Error" }
-
   /api/chats/{chatId}/settings:
     parameters:
       - $ref: "#/components/parameters/ChatId"
@@ -241,15 +169,16 @@ paths:
     post:
       operationId: abortChat
       description: >
-        Stops the run of the chat and withdraws its queued user messages.
-        Task results remain pending for later delivery. Background tasks
-        continue until the user cancels them.
+        Stops the main turn and all background execution of this chat, and
+        withdraws queued user messages. Old results are not delivered again.
+        This does not confirm that all external side effects have stopped.
+        External channel chats are read-only on the web.
       responses:
         "200":
-          description: The run is stopped, or no run was active.
+          description: The stop request is accepted. Check confirmed for execution exit.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Ok" }
+              schema: { $ref: "#/components/schemas/StopResult" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
@@ -717,11 +646,6 @@ paths:
 
 components:
   parameters:
-    TaskId:
-      name: taskId
-      in: path
-      required: true
-      schema: { type: string }
     AutomationId:
       name: automationId
       in: path
@@ -798,89 +722,16 @@ components:
           description: True while a message of the chat has no answer yet.
         settings: { $ref: "#/components/schemas/ChatSettings" }
 
-    TaskStatus:
-      type: string
-      enum: [active, needs_input, done, failed, cancelling, unknown, cancelled]
-      description: Stage completion alone does not complete a user task.
-
-    TaskStageStatus:
-      type: string
-      enum: [
-        queued,
-        running,
-        done,
-        needs_input,
-        failed,
-        cancelling,
-        unknown,
-        cancelled,
-      ]
-
-    TaskStage:
+    StopResult:
       type: object
-      required: [
-        id,
-        title,
-        agentId,
-        status,
-        provider,
-        modelId,
-        thinkingLevel,
-        createdAt,
-        lastEventAt,
-        currentTool,
-        report,
-      ]
+      required: [confirmed]
       properties:
-        id: { type: string }
-        title: { type: string }
-        agentId: { type: string }
-        status: { $ref: "#/components/schemas/TaskStageStatus" }
-        provider: { type: string }
-        modelId: { type: string }
-        thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
-        createdAt: { type: integer, format: int64 }
-        startedAt: { type: integer, format: int64 }
-        endedAt: { type: integer, format: int64 }
-        lastEventAt: { type: integer, format: int64 }
-        currentTool: { type: string }
-        report: { type: string }
-
-    Task:
-      type: object
-      required: [
-        id,
-        shortId,
-        chatId,
-        title,
-        status,
-        createdAt,
-        lastEventAt,
-        report,
-        stages,
-      ]
-      properties:
-        id: { type: string }
-        shortId: { type: string }
-        chatId: { type: integer, format: int64 }
-        title: { type: string }
-        status: { $ref: "#/components/schemas/TaskStatus" }
-        createdAt: { type: integer, format: int64 }
-        endedAt: { type: integer, format: int64 }
-        stopRequestedAt: { type: integer, format: int64 }
-        lastEventAt: { type: integer, format: int64 }
-        report: { type: string }
-        stages:
-          type: array
-          items: { $ref: "#/components/schemas/TaskStage" }
-
-    TaskList:
-      type: object
-      required: [tasks]
-      properties:
-        tasks:
-          type: array
-          items: { $ref: "#/components/schemas/Task" }
+        confirmed:
+          type: boolean
+          description: >
+            True when controlled execution has stopped. False when the request
+            is accepted but background execution has not confirmed exit.
+            Neither value guarantees that external side effects have stopped.
 
     ChatSettings:
       x-go-type: chat.Settings

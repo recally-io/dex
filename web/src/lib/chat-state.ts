@@ -5,13 +5,7 @@ export type ChatState = { items: Item[]; running: boolean; retry?: Retry };
 export const emptyChatState: ChatState = { items: [], running: false };
 
 export function retryMessage(items: Item[], index: number) {
-  const previous = items.slice(0, index).findLast((item) => item.kind === "user");
-
-  // Task results retain control's request ID, but their transcript kind is also "user".
-  const taskResult =
-    /^task:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:result(?::attempt:\d+)?$/i;
-
-  return previous && !taskResult.test(previous.id) ? previous : undefined;
+  return items.slice(0, index).findLast((item) => item.kind === "user");
 }
 
 export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {

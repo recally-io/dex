@@ -22,9 +22,9 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
 import { AgentExtensions, type Loaded } from "./extensions.ts";
-import { taskExtension } from "./tasks.ts";
+import { CodingSkill, taskExtension } from "./tasks.ts";
 import { MemoryRepo } from "./memory.ts";
-import { ChatView, messageText, USER_ENTRY } from "./view.ts";
+import { ChatView, messageText, USER_ENTRY, TASK_RESULT_ENTRY } from "./view.ts";
 import type {
 	AbortParams,
 	AbortResult,
@@ -59,6 +59,7 @@ type TaskExecution = {
 	readonly waited: Promise<boolean>;
 	readonly resolveWait: (success: boolean) => void;
 	failed: boolean;
+	stopRequested: boolean;
 };
 
 /**
@@ -89,7 +90,9 @@ export class Agents {
 	readonly #loaded = new Map<string, Loaded>();
 	// The tail of each conversation's submit chain; see #serial.
 	readonly #chains = new Map<string, Promise<unknown>>();
+	readonly #settlements = new Set<Promise<void>>();
 	#checking = false;
+	#closing = false;
 	#operations = 0;
 	#gateUntil = 0;
 	readonly #gateWaiters = new Set<() => void>();
@@ -240,6 +243,12 @@ export class Agents {
 			}
 			if (params.whenBusy === "reject" && admission.existing === undefined && admission.queued)
 				throw new ConversationBusy(conversation.id);
+			if (params.taskStageId !== undefined || params.source.startsWith("dex:dream/")) {
+				await conversation.configure(
+					{ extensions: { remove: [taskExtension(params.agentId, this.#taskCall)] } },
+					context,
+				);
+			}
 			const agent = await conversation.agent(context);
 			const instructions = params.instructions === "" ? undefined : params.instructions;
 			if (
@@ -263,7 +272,7 @@ export class Agents {
 					requestId: params.requestId,
 					// The chat view shows the message with control's ID and its attachments.
 					entry: {
-						kind: USER_ENTRY,
+						kind: params.kind === "task_result" ? TASK_RESULT_ENTRY : USER_ENTRY,
 						data: { requestId: params.requestId, attachments: params.attachments },
 					},
 				},
@@ -288,13 +297,16 @@ export class Agents {
 						waited,
 						resolveWait,
 						failed: false,
+						stopRequested: false,
 					});
 				}
 			}
 			this.#operations++;
-			void this.#settle(params, conversation, submission).finally(() => {
+			const settlement = this.#settle(params, conversation, submission).finally(() => {
 				this.#operations--;
+				this.#settlements.delete(settlement);
 			});
+			this.#settlements.add(settlement);
 			return { submissionId: submission.id };
 		});
 	}
@@ -415,12 +427,48 @@ export class Agents {
 
 	async #abort(params: AbortParams): Promise<AbortResult> {
 		const conversation = await this.#conversation(params.agentId, params.conversationId);
-		await conversation.abort(context);
-		if (params.taskStageId === undefined) return {};
-		return { executionConfirmed: await this.#confirmExecution(params, conversation) };
+		if (params.taskStageId !== undefined) {
+			const execution = this.#taskExecutions.get(params.taskStageId);
+			if (execution?.agentId === params.agentId && execution.conversationId === conversation.id)
+				execution.stopRequested = true;
+		}
+		// abort() joins invocations. Start cleanup beside it so a previous failed cleanup can retry.
+		const aborting = conversation.abort(context);
+		const cleanup = this.#executionScopes.get(`${params.agentId}/${conversation.id}`)?.stop();
+		const executionConfirmed = await this.#confirmExecution(
+			params,
+			conversation,
+			Promise.all([aborting, cleanup]),
+		);
+		return { executionConfirmed, ...this.#stopNote(params, executionConfirmed) };
 	}
 
-	async #confirmExecution(params: AbortParams, conversation: Conversation): Promise<boolean> {
+	async #confirmExecution(
+		params: AbortParams,
+		conversation: Conversation,
+		ready: Promise<unknown> = Promise.resolve(),
+	): Promise<boolean> {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		try {
+			return await Promise.race([
+				ready.then(() =>
+					params.taskStageId === undefined
+						? this.#inspectIdle(params, conversation)
+						: this.#inspectExecution(params, conversation),
+				),
+				new Promise<boolean>((resolve) => {
+					timer = setTimeout(() => resolve(false), 5000);
+				}),
+			]);
+		} catch (error) {
+			console.error("execution cleanup:", error);
+			return false;
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+
+	async #inspectExecution(params: AbortParams, conversation: Conversation): Promise<boolean> {
 		const execution =
 			params.taskStageId === undefined ? undefined : this.#taskExecutions.get(params.taskStageId);
 		if (
@@ -430,6 +478,10 @@ export class Agents {
 		)
 			return false;
 		if (!(await execution.waited) || execution.failed) return false;
+		return this.#inspectIdle(params, conversation);
+	}
+
+	async #inspectIdle(params: AbortParams, conversation: Conversation): Promise<boolean> {
 		try {
 			await conversation.waitForIdle(context);
 			// Do not hold admission while waiting for idle: abort must remain able to stop the scope.
@@ -438,16 +490,28 @@ export class Agents {
 				const state = await harness.inspect(context);
 				if (state.tasks.some((task) => task.record.conversationId === conversation.id)) return false;
 				const live = await harness.snapshot(LiveDoc, conversation.id, context);
-				if (live === undefined || live.run !== undefined) return false;
-				// MCP calls have no receipt that proves remote work has ended.
-				if (this.#loaded.get(params.agentId)?.hasMcpCalls(conversation.id) !== false) return false;
+				const inbox = await harness.snapshot(InboxDoc, conversation.id, context);
+				if (live?.run !== undefined || (inbox !== undefined && inbox.items.length > 0)) return false;
 				const scope = this.#executionScopes.get(`${params.agentId}/${conversation.id}`);
-				return (scope === undefined || (await scope.join())) && !execution.failed;
+				return scope === undefined || (await scope.join());
 			});
 		} catch (error) {
 			console.error("task execution confirmation:", error);
 			return false;
 		}
+	}
+
+	#stopNote(params: AbortParams, confirmed: boolean): { stopNote?: string } {
+		if (this.#loaded.get(params.agentId)?.hasMcpCalls(params.conversationId))
+			return {
+				stopNote: `${confirmed ? "Controlled local execution cleanup has ended" : "Controlled local execution cleanup is not confirmed"}; remote work may still be running. Cancellation does not roll back changes.`,
+			};
+		return confirmed
+			? {}
+			: {
+					stopNote:
+						"Controlled local execution cleanup is not confirmed. Detached daemons and remote work are outside this scope.",
+				};
 	}
 
 	/**
@@ -487,11 +551,25 @@ export class Agents {
 	}
 
 	async close(): Promise<void> {
+		this.#closing = true;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		try {
+			await Promise.race([
+				this.#close(),
+				new Promise<never>((_, reject) => {
+					timer = setTimeout(() => reject(new Error("worker shutdown cleanup is not confirmed")), 10_000);
+				}),
+			]);
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+
+	async #close(): Promise<void> {
 		await Promise.all([...this.#taskWatches.values()].map((stream) => stream.stop()));
 		this.#taskWatches.clear();
 		await Promise.all([...this.#watches.values()].map((stream) => stream.stop()));
 		const opening = [...this.#harnesses.values()];
-		this.#harnesses.clear();
 		await Promise.all(
 			opening.map(async (pending) => {
 				// A harness that failed to open has nothing to close; its request already got the error.
@@ -499,8 +577,14 @@ export class Agents {
 				await harness?.close(context);
 			}),
 		);
+		await Promise.all([...this.#executionScopes.values()].map((scope) => scope.stop()));
+		// Settlement commits memory after its event; shutdown must wait for those writes.
+		await Promise.all(this.#settlements);
 		await Promise.all([...this.#loaded.values()].map((loaded) => loaded.close()));
 		this.#loaded.clear();
+		this.#harnesses.clear();
+		const cleaned = await Promise.all([...this.#executionScopes.values()].map((scope) => scope.join()));
+		if (cleaned.some((confirmed) => !confirmed)) throw new Error("worker shutdown cleanup is not confirmed");
 	}
 
 	// Runs in the background after submit() returns. A replayed requestId finds the same
@@ -533,13 +617,25 @@ export class Agents {
 						};
 			if (settled.status === "done" && settled.type === "input") {
 				const entry = await conversation.commit((tx) => tx.entry(AssistantEntry, settled.answer), context);
-				this.#emit({ ...base, ...confirmation, status: "done", answer: answerText(entry?.model?.[0]) });
+				this.#emit({
+					...base,
+					...confirmation,
+					status: "done",
+					answer: answerText(entry?.model?.[0]),
+					...(params.taskStageId !== undefined &&
+					(execution?.stopRequested || confirmation.executionConfirmed === false)
+						? this.#stopNote(params, confirmation.executionConfirmed === true)
+						: {}),
+				});
 			} else {
 				this.#emit({
 					...base,
 					...confirmation,
 					status: "unanswered",
 					reason: settled.reason ?? settled.status,
+					...(params.taskStageId === undefined
+						? {}
+						: this.#stopNote(params, confirmation.executionConfirmed === true)),
 				});
 			}
 		} catch (error) {
@@ -564,6 +660,7 @@ export class Agents {
 		if (!AGENT_ID.test(agentId)) throw new Error(`invalid agent ID: ${agentId}`);
 		let harness = this.#harnesses.get(agentId);
 		if (harness === undefined) {
+			if (this.#closing) return Promise.reject(new Error("worker is closing"));
 			harness = this.#open(agentId);
 			// A failed open must not stay cached, so the next request tries again.
 			harness.catch(() => this.#harnesses.delete(agentId));
@@ -578,6 +675,7 @@ export class Agents {
 		await mkdir(workspace, { recursive: true });
 		const registry = createRegistry();
 		registry.install(CodingTools);
+		registry.install(CodingSkill);
 		registry.install(taskExtension(agentId, this.#taskCall));
 		await this.#memory.open();
 		registry.install(this.#memory.extension((id) => this.#sources.get(`${agentId}/${id}`)));

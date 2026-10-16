@@ -154,12 +154,12 @@ func (s *Service) deliverPending(ctx context.Context) {
 			continue
 		}
 		if strings.HasPrefix(p.ChannelKey, "task:") {
-			stage, err := s.q.GetTaskStage(ctx, p.ID)
+			task, err := s.q.GetTask(ctx, p.ID)
 			if err != nil {
-				slog.Error("read pending task stage", "stage", p.ID, "err", err)
+				slog.Error("read pending task", "task", p.ID, "err", err)
 				continue
 			}
-			if stage.Status != "queued" {
+			if task.Status != "queued" {
 				continue
 			}
 		}
@@ -280,33 +280,6 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	}, nil
 }
 
-// Abort settles pending messages as unanswered and aborts the worker run.
-// Queued messages cannot enter the worker after this change.
-func (s *Service) Abort(ctx context.Context, agentID string, id int64) error {
-	s.deliveryMu.Lock()
-	defer s.deliveryMu.Unlock()
-	c, err := s.Get(ctx, agentID, id)
-	if err != nil {
-		return err
-	}
-	count, err := s.q.StopChatSubmissions(ctx, sqlc.StopChatSubmissionsParams{ConversationID: id, SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		s.signal(id)
-		if s.notify != nil {
-			s.notify(c.ChannelKey)
-		}
-	}
-	// A confirmed maintenance lease proves the worker has no active run. Its abort call also waits
-	// for admission, so only control's queue needs to be withdrawn while the lease is held.
-	if c.WorkerConversationID == 0 || s.leaseUntil.Load() > s.now().UnixMilli() {
-		return nil
-	}
-	return s.worker.Call(ctx, "abort", worker.AbortParams{AgentID: agentID, ConversationID: c.WorkerConversationID}, &struct{}{})
-}
-
 // deliver sends a stored submission to the worker. When the worker exits first, the submission
 // stays pending for Replay. Any other failure settles it as unanswered.
 func (s *Service) deliver(ctx context.Context, p sqlc.ListPendingSubmissionsRow) {
@@ -322,11 +295,11 @@ func (s *Service) deliver(ctx context.Context, p sqlc.ListPendingSubmissionsRow)
 	default:
 		confirmed := false
 		if strings.HasPrefix(p.ChannelKey, "task:") {
-			if stage, e := s.q.GetTaskStage(ctx, p.ID); e == nil {
-				confirmed = !stage.StartedAt.Valid
+			if task, e := s.q.GetTask(ctx, p.ID); e == nil {
+				confirmed = !task.StartedAt.Valid
 			}
 		}
-		s.settle(ctx, worker.Settled{RequestID: wireTaskID(p.ID, p.DeliveryAttempt), Status: "unanswered", Reason: err.Error(), ExecutionConfirmed: confirmed})
+		s.settle(ctx, worker.Settled{RequestID: p.ID, Status: "unanswered", Reason: err.Error(), ExecutionConfirmed: confirmed})
 	}
 }
 
@@ -414,9 +387,9 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 		return nil
 	}
 	params := worker.SubmitParams{
-		AgentID: p.AgentID, ConversationID: conversation, Model: model,
+		Kind: current.Kind, AgentID: p.AgentID, ConversationID: conversation, Model: model,
 		ThinkingLevel: settings.ThinkingLevel, Instructions: settings.Instructions,
-		RequestID: wireTaskID(p.ID, current.DeliveryAttempt), Content: p.Content,
+		RequestID: p.ID, Content: p.Content,
 		Attachments: attachments, Source: source(p),
 	}
 	if p.Kind == "task_result" {
@@ -425,13 +398,12 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 	call := s.worker.Call
 	if isTask {
 		s.taskMu.Lock()
-		stage, err := s.q.GetTaskStage(ctx, p.ID)
-		if err == nil && stage.Status == "queued" {
-			// Bind under the recovery lock before recording admission. An old caller cannot
-			// wait for the next process after recovery has made this stage unknown.
+		task, err := s.q.GetTask(ctx, p.ID)
+		if err == nil && task.Status == "queued" {
+			// Bind before admission so this input cannot wait for a later worker.
 			call, err = s.worker.Bind()
 			if err == nil {
-				_, err = s.q.StartTaskStage(ctx, sqlc.StartTaskStageParams{ID: p.ID, Now: s.now().UnixMilli()})
+				_, err = s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: s.now().UnixMilli()})
 			}
 		} else if err == nil {
 			s.inFlight.Delete(p.ID)
@@ -458,46 +430,27 @@ func source(p sqlc.ListPendingSubmissionsRow) string {
 }
 
 func (s *Service) settle(ctx context.Context, event worker.Settled) {
-	id, attempt := taskRequestID(event.RequestID)
-	row, err := s.q.GetSubmission(ctx, id)
-	if err != nil {
-		slog.Error("read settling submission", "submission", id, "err", err)
-		return
-	}
-	if row.DeliveryAttempt != attempt {
-		return
-	}
-	event.RequestID = id
 	handled, err := s.settleTask(ctx, event)
 	if err != nil {
-		slog.Error("settle task", "submission", id, "err", err)
+		slog.Error("settle task", "submission", event.RequestID, "err", err)
 		return
 	}
 	if handled {
-		s.inFlight.Delete(id)
+		s.inFlight.Delete(event.RequestID)
 		return
 	}
-	s.inFlight.Delete(id)
-	if row.Kind == "task_result" && event.Status == "unanswered" && event.Reason == "aborted" {
-		if err := s.q.AdvanceTaskResultAttempt(ctx, id); err != nil {
-			slog.Error("retain stopped task result", "err", err)
-			return
-		}
-		s.Wake()
-		return
-	}
-	// The worker sends settled again when Replay resends a submission it already settled; only the
-	// first event changes the row.
 	changed, err := s.q.SettleSubmission(ctx, sqlc.SettleSubmissionParams{
-		ID:        event.RequestID,
-		Status:    event.Status,
+		ID: event.RequestID, Status: event.Status,
 		Answer:    sql.NullString{String: event.Answer, Valid: event.Status == "done"},
 		Reason:    sql.NullString{String: event.Reason, Valid: event.Reason != ""},
 		SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true},
 	})
 	if err != nil {
 		slog.Error("settle submission", "submission", event.RequestID, "err", err)
+		return
 	}
+	// Submissions never return to pending, so late receipts cannot restore stopped work.
+	s.inFlight.Delete(event.RequestID)
 	if changed == 0 {
 		return
 	}

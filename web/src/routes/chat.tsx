@@ -36,7 +36,6 @@ import { useAttachments } from "../lib/attachments";
 import { useApp } from "../lib/app-state";
 import { blocks, describeTool, touchesMemory } from "../lib/tools";
 import { Composer } from "../components/composer";
-import { Tasks } from "../components/tasks";
 import { ChatControls, chatModelOverride, type SaveChatSettings } from "../components/chat-settings";
 import { RetryNotice, ToolStep, TranscriptItem, type ToolFocus } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
@@ -647,6 +646,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
   const error = create.error ?? send.error ?? abort.error;
 
   async function sendText(text: string, attachments: Attachment[]) {
+    abort.reset();
     const ids = attachments.map((a) => a.id);
     const failed = failedMessage.current?.body;
 
@@ -698,6 +698,13 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
 
   const composer = (
     <>
+      {abort.isSuccess ? (
+        <p role="status" className="mb-3 text-[12.5px] text-ink-2">
+          {abort.data.confirmed
+            ? "Stopped. Earlier actions are not undone."
+            : "Stop requested. Background execution has not confirmed exit."}
+        </p>
+      ) : null}
       {error ? (
         <div className="mb-3">
           <Failure
@@ -813,7 +820,6 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
           ),
         )}
         {state.retry ? <RetryNotice retry={state.retry} /> : null}
-        {chatId ? <Tasks chatId={chatId} /> : null}
         {running &&
         !state.retry &&
         !items.some((item) => item.kind === "tool" && item.status === "running") &&
@@ -881,6 +887,16 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
             </StatusPill>
           ) : null}
           <span className="flex-1" />
+          {chat.data && !readOnly ? (
+            <Button
+              size="xs"
+              variant="secondary"
+              disabled={abort.isPending}
+              onClick={() => abort.mutate({ path: { chatId } })}
+            >
+              {abort.isPending ? "Requesting stop…" : "Stop"}
+            </Button>
+          ) : null}
           {chat.data && !contextOpen ? (
             <button
               type="button"

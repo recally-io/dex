@@ -56,7 +56,6 @@ SELECT
     s.content,
     s.attachments,
     s.kind,
-    s.delivery_attempt,
     s.conversation_id,
     c.agent_id,
     c.channel_key
@@ -102,7 +101,7 @@ GROUP BY c.id;
 -- name: ListOpenSubmissions :many
 -- The messages of a chat that have no answer: pending, or unanswered with a reason.
 SELECT id, content, attachments, status, reason, created_at FROM submissions
-WHERE conversation_id = ? AND status != 'done'
+WHERE conversation_id = ? AND status != 'done' AND kind = 'message'
 ORDER BY created_at;
 
 -- name: ListProviders :many
@@ -185,6 +184,7 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE
     c.agent_id = @agent_id
     AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'task:%'
+    AND s.kind = 'message'
     AND s.status != 'pending'
     AND (s.settled_at > @after_settled_at OR (s.settled_at = @after_settled_at AND s.id > @after_id))
 ORDER BY s.settled_at, s.id

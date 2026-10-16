@@ -478,7 +478,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, kind, delivery_attempt FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, kind FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -498,7 +498,6 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.DeliveredAt,
 		&i.DeliveredParts,
 		&i.Kind,
-		&i.DeliveryAttempt,
 	)
 	return i, err
 }
@@ -751,6 +750,7 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE
     c.agent_id = ?1
     AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'task:%'
+    AND s.kind = 'message'
     AND s.status != 'pending'
     AND (s.settled_at > ?2 OR (s.settled_at = ?2 AND s.id > ?3))
 ORDER BY s.settled_at, s.id
@@ -856,7 +856,7 @@ func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt6
 
 const listOpenSubmissions = `-- name: ListOpenSubmissions :many
 SELECT id, content, attachments, status, reason, created_at FROM submissions
-WHERE conversation_id = ? AND status != 'done'
+WHERE conversation_id = ? AND status != 'done' AND kind = 'message'
 ORDER BY created_at
 `
 
@@ -906,7 +906,6 @@ SELECT
     s.content,
     s.attachments,
     s.kind,
-    s.delivery_attempt,
     s.conversation_id,
     c.agent_id,
     c.channel_key
@@ -917,14 +916,13 @@ ORDER BY s.created_at
 `
 
 type ListPendingSubmissionsRow struct {
-	ID              string `json:"id"`
-	Content         string `json:"content"`
-	Attachments     string `json:"attachments"`
-	Kind            string `json:"kind"`
-	DeliveryAttempt int64  `json:"delivery_attempt"`
-	ConversationID  int64  `json:"conversation_id"`
-	AgentID         string `json:"agent_id"`
-	ChannelKey      string `json:"channel_key"`
+	ID             string `json:"id"`
+	Content        string `json:"content"`
+	Attachments    string `json:"attachments"`
+	Kind           string `json:"kind"`
+	ConversationID int64  `json:"conversation_id"`
+	AgentID        string `json:"agent_id"`
+	ChannelKey     string `json:"channel_key"`
 }
 
 func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubmissionsRow, error) {
@@ -941,7 +939,6 @@ func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubm
 			&i.Content,
 			&i.Attachments,
 			&i.Kind,
-			&i.DeliveryAttempt,
 			&i.ConversationID,
 			&i.AgentID,
 			&i.ChannelKey,

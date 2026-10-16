@@ -1,4 +1,4 @@
-import { FinishTaskArgs, SpawnTaskArgs } from "./tasks.ts";
+import { SpawnTaskArgs } from "./tasks.ts";
 import {
 	createProvider,
 	getSupportedThinkingLevels,
@@ -288,7 +288,7 @@ function exposedTool(transcript: TranscriptContext, name: string): boolean {
 	return exposed;
 }
 
-/** Fixed task script: spawn, report results, optionally request one next stage or finish. */
+/** Fixed task script: spawn, report results, optionally request one follow-up. */
 function spawnStep(transcript: TranscriptContext) {
 	const text = lastUserText(transcript);
 	const last = transcript.messages.findLast((message) => message.role !== "system");
@@ -300,15 +300,11 @@ function spawnStep(transcript: TranscriptContext) {
 	if (typeof input !== "object" || input === null || Array.isArray(input))
 		throw new Error("faux/spawn requires a JSON object");
 	if ("task-result" in input) {
-		if ("finish" in input)
-			return fauxAssistantMessage(fauxToolCall("finish_task", Value.Parse(FinishTaskArgs, input.finish)), {
-				stopReason: "toolUse",
-			});
-		if ("nextStage" in input)
+		if ("nextTask" in input)
 			return fauxAssistantMessage(
 				fauxToolCall(
 					"spawn_task",
-					Value.Parse(Type.Record(Type.String(), Type.String()), Value.Parse(SpawnTaskArgs, input.nextStage)),
+					Value.Parse(Type.Record(Type.String(), Type.String()), Value.Parse(SpawnTaskArgs, input.nextTask)),
 				),
 				{ stopReason: "toolUse" },
 			);

@@ -231,7 +231,7 @@ export class AgentExtensions {
 						// The default replay policy, "unsafe", is required: a call can change data on the
 						// server, so a call that a restart interrupts must not run again.
 						execute: async (args, api, context) => {
-							// A client result cannot prove that work on the server has ended.
+							// Preserve the remote execution boundary in cancellation reports.
 							mcpCalls.add(api.conversationId);
 							const result = await client.callTool(tool.name, args, {
 								timeoutMs: CALL_TIMEOUT_MS,

@@ -27,6 +27,7 @@ type CreateConversationResult struct {
 // SubmitParams are the params of the submit method. Model, ThinkingLevel and Instructions are the
 // chat's current settings; the worker applies them to the conversation when they changed.
 type SubmitParams struct {
+	Kind           string   `json:"kind,omitempty"`
 	WhenBusy       string   `json:"whenBusy,omitempty"`
 	TaskStageID    string   `json:"taskStageId,omitempty"`
 	AgentID        string   `json:"agentId"`
@@ -67,6 +68,7 @@ type Settled struct {
 	Answer             string `json:"answer,omitempty"`
 	Reason             string `json:"reason,omitempty"`
 	ExecutionConfirmed bool   `json:"executionConfirmed,omitzero"`
+	StopNote           string `json:"stopNote,omitempty"`
 }
 
 // WatchParams are the params of the watch method. The worker sends the chat events of the
@@ -91,7 +93,8 @@ type AbortParams struct {
 }
 
 type AbortResult struct {
-	ExecutionConfirmed bool `json:"executionConfirmed,omitzero"`
+	ExecutionConfirmed bool   `json:"executionConfirmed,omitzero"`
+	StopNote           string `json:"stopNote,omitempty"`
 }
 
 // RecoverTasksParams registers old task conversations before a Harness can resume.

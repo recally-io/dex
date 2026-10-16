@@ -308,8 +308,8 @@ func (p *process) write(ctx context.Context, line []byte) error {
 	return err
 }
 
-func (p *process) handleTask(ctx context.Context, cfg Config, id int64, task TaskRequest) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+func (p *process) handleTask(processCtx context.Context, cfg Config, id int64, task TaskRequest) {
+	ctx, cancel := context.WithTimeout(processCtx, 30*time.Second)
 	defer cancel()
 	var result any
 	var err error
@@ -327,14 +327,17 @@ func (p *process) handleTask(ctx context.Context, cfg Config, id int64, task Tas
 		slog.Error("encode task response", "err", err)
 		return
 	}
+	// Handler expiry must still reach the worker. Its process lifetime remains the outer limit.
+	sendCtx, endSend := context.WithTimeout(processCtx, 5*time.Second)
+	defer endSend()
 	select {
 	case p.writer <- struct{}{}:
-	case <-ctx.Done():
+	case <-sendCtx.Done():
 		return
 	case <-p.done:
 		return
 	}
-	err = p.write(ctx, append(line, '\n'))
+	err = p.write(sendCtx, append(line, '\n'))
 	<-p.writer
 	if err != nil {
 		slog.Warn("write task response", "err", err)

@@ -27,13 +27,12 @@ to read in an afternoon.
 - Durable conversations: control stores each message before delivery. Saved
   messages, reports, and execution records survive a restart. A restart does
   not attach an old CLI process or prove that its actions occurred once.
-- Background tasks for the default agent. The main chat delegates a bounded
-  stage with its own model and thinking level, then remains available. Each
-  user goal has a short ID and can contain several stages. A completed stage
-  leaves the goal open until the main chat records a final report.
-  Each agent has two execution slots. Queued, running, cancelling, and unknown
-  stages occupy a slot. A stage that needs input ends and releases its slot.
-  A later stage can continue the same active goal. Stages cannot create tasks.
+- Internal background delegation for the default agent. Each delegation has
+  one input and fixed model settings. The main agent stays available and
+  receives reports to plan review, fixes, tests, and the final answer.
+  Each agent can hold at most 2 executions, including queued execution and
+  cleanup that has not confirmed exit. Background execution cannot delegate
+  more work. The main agent handles failures and decides the next action.
 - Telegram setup: save a bot token, then open a single-use pairing link to
   allow the owner's account while the bot has no owner. Links expire after
   10 minutes. A paired bot cannot create another pairing link. Manual user-ID
@@ -41,11 +40,10 @@ to read in an afternoon.
   Earlier versions accepted group messages from allowed users. The bot now
   ignores all non-private chats, including messages from allowed users.
 - Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. External channel chats are read-only
-  on the web. `/new` starts another chat. `/stop` stops the main answer and
-  its queued ordinary messages. Task results remain available. `/tasks` lists
-  this chat's open goals and ten recent closed goals. `/task <id>` retrieves
-  the saved report. `/cancel <id>` stores a stop request for the whole goal.
-  These task commands do not need a model. `/help` lists commands.
+  on the web. `/new` starts another chat without cancelling old work.
+  `/stop` stops the current answer and background execution for the current
+  agent and exact channel peer, including chats before `/new`. Other peers
+  and web chats are outside that stop scope. `/help` lists commands.
   Reply delivery resumes after a restart and skips confirmed
   parts. A crash after remote success can duplicate one part. The Channels
   page shows each bot's runtime status.
@@ -79,20 +77,35 @@ to read in an afternoon.
   outbound media are not supported.
 - Timers: scheduled messages to an agent.
 
-The main chat shows task cards, stage models, actual tool events, and full
-saved reports. Tool history is read-only. The built-in coding skill defines
-implementation, independent review, final-version tests, and an evidence report.
-Coding stages must carry the repository path, project rules, and acceptance
-criteria. Writes to one repository must run in order or in separate worktrees.
-The skill does not enforce a repository lock.
+The main chat shows the user's messages and the main agent's answers.
+Internal reports, IDs, and execution states have no task page or task cards.
+The main agent checks saved execution records before it reports progress or
+starts follow-up work. The built-in coding skill requires a repository path,
+project rules, independent review, tests of the final revision, and evidence.
+Writes to one repository must run in order or in separate worktrees.
 
-Cancellation accepted means that control saved the request. Only confirmed
-execution exit produces `cancelled`. Unknown execution retains its slot and
-never restarts automatically. Cancellation does not undo earlier actions.
-The first version has no action to clear an unknown slot. A stage that calls
-an MCP tool cannot yet confirm that remote work ended, so it remains unknown
-even after a report. Loading MCP tools does not prevent local stages from
-completing. Tools run on this machine without a sandbox.
+Web Stop remains available when the main chat is idle. It stops work only in
+that web chat. Channel chats remain read-only on the web. Stop needs no model.
+The reply distinguishes confirmed exit from an accepted request whose
+background execution has not confirmed exit. Stop withdraws queued input and
+prevents old results from starting another model turn. It does not undo prior
+actions or prove that all external side effects have stopped.
+
+Normal completion and execution failure return a report to the main agent.
+Stop, cancellation, and interrupted execution save reports without automatic
+delivery. The system does not retry failed execution or result delivery.
+The main agent reads saved records and artifacts, then decides whether to
+retry or continue from saved work. A later user message does not retry an
+old result. Result delivery stays in the source chat after `/new`.
+
+After worker loss, started execution becomes interrupted and does not restart
+automatically. Queued execution that never started can start for the first
+time. Cleanup that has not confirmed exit keeps its resource in the current
+worker. Worker loss does not prove that old processes ended. Before another
+execution, the main agent must check prior artifacts and side effects.
+Tools run on the host without a sandbox. Detached daemons and remote jobs
+are outside reliable process tracking. A completed MCP call can return its
+report; cancellation of that call does not prove that remote work ended.
 CLI tools must be logged in and run in the foreground without user input.
 
 Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,

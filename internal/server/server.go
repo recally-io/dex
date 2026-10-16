@@ -70,15 +70,15 @@ func New(cfg Config) http.Handler {
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
-				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrTaskInvalid):
+				errors.Is(err, upload.ErrInvalidName):
 				status = http.StatusBadRequest
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, errReadOnly):
 				status = http.StatusForbidden
-			case errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
+			case errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrTaskConflict):
+			case errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -381,10 +381,14 @@ func (h *handler) GetUpload(_ context.Context, req api.GetUploadRequestObject) (
 }
 
 func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject) (api.AbortChatResponseObject, error) {
-	if err := h.Chats.Abort(ctx, h.AgentID, req.ChatId); err != nil {
+	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	return api.AbortChat200JSONResponse(ok), nil
+	result, err := h.Chats.Stop(ctx, h.AgentID, req.ChatId)
+	if err != nil {
+		return nil, err
+	}
+	return api.AbortChat200JSONResponse{Confirmed: result.Confirmed}, nil
 }
 
 func (h *handler) WatchChat(ctx context.Context, req api.WatchChatRequestObject) (api.WatchChatResponseObject, error) {

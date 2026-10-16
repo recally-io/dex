@@ -32,34 +32,6 @@ describe("chat retry", () => {
     expect(retryMessage(state.items, 1)).toEqual(message);
     expect(retryMessage(state.items, 0)).toBeUndefined();
   });
-
-  test.each(["", ":attempt:2"])(
-    "user cannot retry an automatic task result%s or fall back to an older message",
-    (attempt) => {
-      // Given an automatic result after an ordinary message and a failed response.
-      const state = applyChatEvent(emptyChatState, {
-        type: "snapshot",
-        running: false,
-        items: [
-          message,
-          { kind: "user", id: `task:3a54d497-5875-405d-97c0-3cddc752d889:result${attempt}`, text: "Report" },
-          { kind: "assistant", id: "response", text: "Partial response" },
-          failure,
-        ],
-      });
-
-      // When Retry resolves its submission, then it has no ordinary message to resend.
-      expect(retryMessage(state.items, 3)).toBeUndefined();
-
-      // A later ordinary message restores Retry for that message.
-      const next = applyChatEvent(state, {
-        type: "item",
-        item: { ...message, id: "next-message", text: "Continue" },
-      });
-
-      expect(retryMessage(next.items, 5)).toMatchObject({ id: "next-message", text: "Continue" });
-    },
-  );
 });
 
 describe("chat transcript", () => {

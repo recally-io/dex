@@ -14,6 +14,7 @@ import type { Attachment } from "./protocol.ts";
  * attachments.
  */
 export const USER_ENTRY = "dex.user";
+export const TASK_RESULT_ENTRY = "dex.task_result";
 
 /** The text of a user message for the model: the user's text, then the paths of the attachments. */
 export function messageText(text: string, attachments: readonly Attachment[]): string {

@@ -79,6 +79,7 @@ export const Attachment = Type.Object({
 export type Attachment = Static<typeof Attachment>;
 
 export const SubmitParams = Type.Object({
+	kind: Type.Optional(Type.Union([Type.Literal("message"), Type.Literal("task_result")])),
 	whenBusy: Type.Optional(Type.Literal("reject")),
 	taskStageId: Type.Optional(Type.String()),
 	agentId: Type.String(),
@@ -124,8 +125,8 @@ export const AbortParams = Type.Object({
 	taskStageId: Type.Optional(Type.String()),
 });
 export type AbortParams = Static<typeof AbortParams>;
-/** Present only when abort requests a taskStageId. */
-export type AbortResult = { readonly executionConfirmed?: boolean };
+/** Confirms cleanup of this conversation's controlled local execution only. */
+export type AbortResult = { readonly executionConfirmed?: boolean; readonly stopNote?: string };
 
 /**
  * The event of a watch: the chat events of one commit (the first is a snapshot), or `end` when the
@@ -144,6 +145,7 @@ export type SettledEvent = {
 	readonly reason?: string;
 	/** Task submissions only. False preserves uncertainty about execution. */
 	readonly executionConfirmed?: boolean;
+	readonly stopNote?: string;
 };
 
 /**

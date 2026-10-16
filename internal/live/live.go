@@ -121,15 +121,6 @@ func (h *Hub) Open(ctx context.Context, chatID int64) (io.ReadCloser, error) {
 	return h.open(ctx, c), nil
 }
 
-// OpenTask checks the parent, task, and stage before opening a read-only stream.
-func (h *Hub) OpenTask(ctx context.Context, parentID int64, taskID, stageID string) (io.ReadCloser, error) {
-	c, err := h.chats.TaskConversation(ctx, h.agentID, parentID, taskID, stageID)
-	if err != nil {
-		return nil, err
-	}
-	return h.open(ctx, c), nil
-}
-
 // open accepts only a chat that an entry point has authorized.
 func (h *Hub) open(ctx context.Context, c chat.Chat) io.ReadCloser {
 	chatID := c.ID

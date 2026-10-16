@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -40,7 +41,7 @@ func (c taskCaller) Bind() (worker.CallFunc, error) {
 	return call, err
 }
 
-func startTaskRuntime(t *testing.T, beforeInit func(context.Context), onTask func(context.Context, worker.TaskRequest, *chat.Service) (any, error), onBind func(error)) *taskRuntime {
+func startTaskRuntime(t *testing.T, beforeInit func(context.Context), onTask func(context.Context, worker.TaskRequest, *chat.Service) (any, error), onBind func(error), onSettled ...func(context.Context, worker.Settled)) *taskRuntime {
 	t.Helper()
 	dir := t.TempDir()
 	conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))
@@ -62,8 +63,14 @@ func startTaskRuntime(t *testing.T, beforeInit func(context.Context), onTask fun
 	var service *chat.Service
 	w := worker.New(worker.Config{
 		Path: path, Dir: dir,
-		Env:       []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "DEX_DATA_DIR=" + dir, "DEX_FAKE_MODEL=1"},
-		OnSettled: func(ctx context.Context, event worker.Settled) { service.HandleSettled(ctx, event) },
+		Env: []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "DEX_DATA_DIR=" + dir, "DEX_FAKE_MODEL=1"},
+		OnSettled: func(ctx context.Context, event worker.Settled) {
+			if len(onSettled) > 0 {
+				onSettled[0](ctx, event)
+				return
+			}
+			service.HandleSettled(ctx, event)
+		},
 		OnTask: func(ctx context.Context, request worker.TaskRequest) (any, error) {
 			if onTask != nil {
 				return onTask(ctx, request, service)
@@ -101,18 +108,18 @@ func startTaskRuntime(t *testing.T, beforeInit func(context.Context), onTask fun
 	return &taskRuntime{service: service, worker: w, q: q, dir: dir, parent: id, workerParent: parent.ConversationID}
 }
 
-func (r *taskRuntime) task(t *testing.T, key, action string, args any) (any, error) {
+func (r *taskRuntime) spawnRequest(t *testing.T, key string, args any) (any, error) {
 	t.Helper()
 	raw, err := json.Marshal(args)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return r.service.HandleTask(t.Context(), worker.TaskRequest{AgentID: "bot", ConversationID: r.workerParent, SourceRequestID: "source", Key: "bot/" + key, Action: action, Args: raw})
+	return r.service.HandleTask(t.Context(), worker.TaskRequest{AgentID: "bot", ConversationID: r.workerParent, SourceRequestID: "source", Key: "bot/" + key, Action: "spawn", Args: raw})
 }
 
-func (r *taskRuntime) spawn(t *testing.T, key, goalID string) (chat.Task, string) {
+func (r *taskRuntime) spawn(t *testing.T, key string) (chat.Task, string) {
 	t.Helper()
-	result, err := r.task(t, key, "spawn", map[string]string{"title": key, "goal": "bounded work", "userTaskId": goalID, "provider": "faux", "modelId": "echo"})
+	result, err := r.spawnRequest(t, key, map[string]string{"title": key, "goal": "bounded work", "provider": "faux", "modelId": "echo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,13 +128,16 @@ func (r *taskRuntime) spawn(t *testing.T, key, goalID string) (chat.Task, string
 		t.Fatal(err)
 	}
 	var reply struct {
-		Task    chat.Task `json:"task"`
-		StageID string    `json:"stageId"`
+		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(raw, &reply); err != nil {
 		t.Fatal(err)
 	}
-	return reply.Task, reply.StageID
+	task, err := r.service.GetTask(t.Context(), "bot", r.parent, reply.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return task, reply.ID
 }
 
 func TestUserDoesNotReceiveTasksFromAnExitedWorker(t *testing.T) {
@@ -192,13 +202,13 @@ func TestUserDoesNotReceiveTasksFromAnExitedWorker(t *testing.T) {
 }
 
 func TestUserQueuedTaskSurvivesWorkerRestart(t *testing.T) {
-	// Given a queued stage with an empty, saved worker conversation.
+	// Given a queued execution with an empty, saved worker conversation.
 	r := startTaskRuntime(t, nil, nil, nil)
-	goal, stageID := r.spawn(t, "Queued", "")
+	goal, stageID := r.spawn(t, "Queued")
 	if _, err := r.q.SettleSubmission(t.Context(), sqlc.SettleSubmissionParams{ID: "source", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
-	stage, err := r.q.GetTaskStage(t.Context(), stageID)
+	stage, err := r.q.GetTask(t.Context(), stageID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +219,7 @@ func TestUserQueuedTaskSurvivesWorkerRestart(t *testing.T) {
 	if err := r.q.SetWorkerConversation(t.Context(), sqlc.SetWorkerConversationParams{ID: stage.ConversationID, WorkerConversationID: sql.NullInt64{Int64: created.ConversationID, Valid: true}}); err != nil {
 		t.Fatal(err)
 	}
-	// When the worker restarts before the stage starts, control can deliver its first input.
+	// When the worker restarts before the execution starts, control can deliver its first input.
 	if err := r.worker.Restart(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -217,16 +227,16 @@ func TestUserQueuedTaskSurvivesWorkerRestart(t *testing.T) {
 	done := make(chan struct{})
 	go func() { defer close(done); r.service.Run(ctx) }()
 	t.Cleanup(func() { stop(); <-done })
-	// Then the successful report releases its slot instead of becoming unknown.
+	// Then the successful report releases its slot instead of becoming interrupted.
 	taskEventually(t, func() (bool, any) {
 		got, err := r.service.GetTask(t.Context(), "bot", r.parent, goal.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.Stages[0].Status == "unknown" {
-			t.Fatalf("never-started task became unknown: %+v", got)
+		if got.Status == "interrupted" {
+			t.Fatalf("never-started task became interrupted: %+v", got)
 		}
-		return got.Stages[0].Status == "done" && got.Stages[0].Report == "echo: bounded work", got
+		return got.Status == "done" && got.Report == "echo: bounded work", got
 	})
 }
 
@@ -237,10 +247,10 @@ func TestUserCancelsQueuedTaskAcrossWorkerRestart(t *testing.T) {
 			name = "with empty worker conversation"
 		}
 		t.Run(name, func(t *testing.T) {
-			// Given a shell stage that has not been admitted to the worker.
+			// Given a shell execution that has not been admitted to the worker.
 			r := startTaskRuntime(t, nil, nil, nil)
 			marker := filepath.Join(r.dir, "must-not-run")
-			if _, err := r.task(t, "cancel-before-start", "spawn", map[string]string{
+			if _, err := r.spawnRequest(t, "cancel-before-start", map[string]string{
 				"title": "Cancel before start", "goal": "printf 'unexpected execution\\n' > '" + marker + "'", "provider": "faux", "modelId": "bash",
 			}); err != nil {
 				t.Fatal(err)
@@ -249,10 +259,10 @@ func TestUserCancelsQueuedTaskAcrossWorkerRestart(t *testing.T) {
 			if err != nil || len(tasks) != 1 {
 				t.Fatalf("queued task: %+v, %v", tasks, err)
 			}
-			goal, stageID := tasks[0], tasks[0].Stages[0].ID
-			stage, err := r.q.GetTaskStage(t.Context(), stageID)
+			goal, stageID := tasks[0], tasks[0].ID
+			stage, err := r.q.GetTask(t.Context(), stageID)
 			if err != nil || stage.StartedAt.Valid {
-				t.Fatalf("stage already started: %+v, %v", stage, err)
+				t.Fatalf("execution already started: %+v, %v", stage, err)
 			}
 			if savedConversation {
 				var created worker.CreateConversationResult
@@ -284,36 +294,33 @@ func TestUserCancelsQueuedTaskAcrossWorkerRestart(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if got.Status == "unknown" || got.Stages[0].Status == "unknown" {
-					t.Fatalf("never-started cancellation became unknown: %+v", got)
+				if got.Status == "interrupted" {
+					t.Fatalf("never-started cancellation became interrupted: %+v", got)
 				}
-				return got.Status == "cancelled" && got.Stages[0].Status == "cancelled", got
+				return got.Status == "cancelled", got
 			})
 			stopService()
 			got, err := r.service.GetTask(t.Context(), "bot", r.parent, goal.ID)
-			if err != nil || got.Stages[0].StartedAt != nil {
-				t.Fatalf("cancelled stage started: %+v, %v", got, err)
+			if err != nil || got.StartedAt != nil {
+				t.Fatalf("cancelled execution started: %+v, %v", got, err)
 			}
 			if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("cancelled stage left a tool artifact: %v", err)
+				t.Fatalf("cancelled execution left a tool artifact: %v", err)
 			}
 			if _, err := r.service.Post(t.Context(), "bot", "web:lifecycle", "Lifecycle", "next-source", "new work"); err != nil {
 				t.Fatal(err)
 			}
-			spawn := func(key, goalID string) error {
+			spawn := func(key string) error {
 				t.Helper()
-				args, err := json.Marshal(map[string]string{"title": key, "goal": "bounded work", "userTaskId": goalID, "provider": "faux", "modelId": "echo"})
+				args, err := json.Marshal(map[string]string{"title": key, "goal": "bounded work", "provider": "faux", "modelId": "echo"})
 				if err != nil {
 					t.Fatal(err)
 				}
 				_, err = r.service.HandleTask(t.Context(), worker.TaskRequest{AgentID: "bot", ConversationID: r.workerParent, SourceRequestID: "next-source", Key: "bot/" + key, Action: "spawn", Args: args})
 				return err
 			}
-			if err := spawn("continue-cancelled", goal.ID); !errors.Is(err, chat.ErrTaskConflict) {
-				t.Fatalf("cancelled goal continued: %v", err)
-			}
 			for _, key := range []string{"next-first", "next-second"} {
-				if err := spawn(key, ""); err != nil {
+				if err := spawn(key); err != nil {
 					t.Fatalf("slot was not released: %v", err)
 				}
 			}
@@ -339,7 +346,7 @@ func taskEventually(t *testing.T, condition func() (bool, any)) {
 }
 
 func TestUserTaskWaitsWithoutAdmissionDuringWorkerRecovery(t *testing.T) {
-	// Given a queued stage whose empty worker conversation is already saved.
+	// Given a queued execution whose empty worker conversation is already saved.
 	initializing, release := make(chan struct{}), make(chan struct{})
 	releaseOnce := sync.OnceFunc(func() { close(release) })
 	var starts int
@@ -360,11 +367,11 @@ func TestUserTaskWaitsWithoutAdmissionDuringWorkerRecovery(t *testing.T) {
 		}
 	})
 	t.Cleanup(releaseOnce)
-	goal, stageID := r.spawn(t, "Recovery window", "")
+	goal, stageID := r.spawn(t, "Recovery window")
 	if _, err := r.q.SettleSubmission(t.Context(), sqlc.SettleSubmissionParams{ID: "source", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
-	stage, err := r.q.GetTaskStage(t.Context(), stageID)
+	stage, err := r.q.GetTask(t.Context(), stageID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,83 +402,271 @@ func TestUserTaskWaitsWithoutAdmissionDuringWorkerRecovery(t *testing.T) {
 			t.Fatalf("recovery admission: %v", err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("stage dispatch waited for the next worker instead of retaining queued state")
+		t.Fatal("execution dispatch waited for the next worker instead of retaining queued state")
 	}
 	got, err := r.service.GetTask(t.Context(), "bot", r.parent, goal.ID)
-	if err != nil || got.Stages[0].Status != "queued" {
+	if err != nil || got.Status != "queued" {
 		t.Fatalf("recovery queued state: %+v, %v", got, err)
 	}
 	releaseOnce()
 	if err := <-restarted; err != nil {
 		t.Fatal(err)
 	}
-	// Then the same queued stage completes once on the ready worker.
+	// Then the same queued execution completes once on the ready worker.
 	taskEventually(t, func() (bool, any) {
 		got, err := r.service.GetTask(t.Context(), "bot", r.parent, goal.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.Stages[0].Status == "unknown" {
-			t.Fatalf("recovery admitted uncertain stage: %+v", got)
+		if got.Status == "interrupted" {
+			t.Fatalf("recovery admitted uncertain execution: %+v", got)
 		}
-		return got.Stages[0].Status == "done", got
+		return got.Status == "done", got
 	})
 }
 
-func TestUserReplayedTaskFinishKeepsTheLaterQuestion(t *testing.T) {
-	// Given two completed stages that each lead to a different question.
-	r := startTaskRuntime(t, nil, nil, nil)
-	goal, first := r.spawn(t, "First", "")
-	complete := func(id string) {
-		t.Helper()
-		if _, err := r.q.StartTaskStage(t.Context(), sqlc.StartTaskStageParams{ID: id, Now: time.Now().UnixMilli()}); err != nil {
-			t.Fatal(err)
-		}
-		r.service.HandleSettled(t.Context(), worker.Settled{RequestID: id, Status: "done", Answer: "Reviewed report", ExecutionConfirmed: true})
-	}
-	finish := func(key, question string) {
-		t.Helper()
-		if _, err := r.task(t, key, "finish", map[string]string{"id": goal.ID, "status": "needs_input", "report": question}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	complete(first)
-	finish("question-one", "Question one")
-	_, second := r.spawn(t, "Second", goal.ID)
-	complete(second)
-	finish("question-two", "Question two")
-	// When the first safe tool replays after a later question was saved.
-	finish("question-one", "Question one")
-	// Then the replay acknowledges its receipt without replacing the newer question.
-	got, err := r.service.GetTask(t.Context(), "bot", r.parent, goal.ID)
-	if err != nil || got.Status != "needs_input" || got.Report != "Question two" {
-		t.Fatalf("replayed finish changed the current question: %+v, %v", got, err)
-	}
-}
-
-func TestUserCannotContinueGoalWithAnotherUnknownStage(t *testing.T) {
-	// Given two stages under one goal, with uncertain execution in the first.
-	r := startTaskRuntime(t, nil, nil, nil)
-	goal, first := r.spawn(t, "First", "")
-	_, second := r.spawn(t, "Second", goal.ID)
-	for _, id := range []string{first, second} {
-		if _, err := r.q.StartTaskStage(t.Context(), sqlc.StartTaskStageParams{ID: id, Now: time.Now().UnixMilli()}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	r.service.HandleSettled(t.Context(), worker.Settled{RequestID: first, Status: "unanswered", Reason: "execution connection lost"})
-	// When a different stage asks for input, the unknown execution remains the goal's boundary.
-	r.service.HandleSettled(t.Context(), worker.Settled{RequestID: second, Status: "done", Answer: "NEEDS_INPUT: choose a target", ExecutionConfirmed: true})
-	got, err := r.service.GetTask(t.Context(), "bot", r.parent, goal.ID)
+func (r *taskRuntime) executeQueued(t *testing.T, id string) {
+	t.Helper()
+	row, err := r.q.GetTask(t.Context(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "unknown" {
-		t.Fatalf("unknown goal changed to %s after a different stage needed input", got.Status)
+	var created worker.CreateConversationResult
+	if err := r.worker.Call(t.Context(), "createConversation", worker.CreateConversationParams{AgentID: "bot", Model: worker.ModelRef{Provider: "faux", ModelID: "echo"}, ThinkingLevel: "off"}, &created); err != nil {
+		t.Fatal(err)
 	}
-	// Then a new stage cannot bypass the unknown execution.
-	_, err = r.task(t, "Third", "spawn", map[string]string{"title": "Third", "goal": "must not run", "userTaskId": goal.ID})
-	if !errors.Is(err, chat.ErrTaskConflict) {
-		t.Fatalf("continued unknown goal: %v", err)
+	if err := r.q.SetWorkerConversation(t.Context(), sqlc.SetWorkerConversationParams{ID: row.ConversationID, WorkerConversationID: sql.NullInt64{Int64: created.ConversationID, Valid: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.q.StartTask(t.Context(), sqlc.StartTaskParams{ID: id, Now: time.Now().UnixMilli()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.worker.Call(t.Context(), "submit", worker.SubmitParams{AgentID: "bot", ConversationID: created.ConversationID, TaskStageID: id, Model: worker.ModelRef{Provider: "faux", ModelID: "echo"}, ThinkingLevel: "off", RequestID: id, Content: "bounded work", Attachments: []worker.Attachment{}}, &worker.SubmitResult{}); err != nil {
+		t.Fatal(err)
+	}
+	taskEventually(t, func() (bool, any) {
+		got, err := r.service.GetTask(t.Context(), "bot", r.parent, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status == "cancelling" {
+			// This fixture has no delivery loop. Get cleanup evidence from the real worker.
+			var stopped worker.AbortResult
+			if err := r.worker.Call(t.Context(), "abort", worker.AbortParams{AgentID: "bot", ConversationID: created.ConversationID, TaskStageID: id}, &stopped); err != nil {
+				t.Fatal(err)
+			}
+			if !stopped.ExecutionConfirmed {
+				t.Fatalf("worker did not confirm cleanup: %+v", stopped)
+			}
+			submission, err := r.q.GetSubmission(t.Context(), id)
+			if err != nil || submission.Status != "done" {
+				t.Fatalf("natural settlement: %+v err=%v", submission, err)
+			}
+			r.service.HandleSettled(t.Context(), worker.Settled{AgentID: "bot", ConversationID: created.ConversationID, RequestID: id, Status: "done", Answer: submission.Answer.String, ExecutionConfirmed: stopped.ExecutionConfirmed, StopNote: stopped.StopNote})
+		}
+		return got.Status == "done", got
+	})
+}
+
+func TestUserDelegationReplayKeepsItsIDAndDoesNotOccupyAnotherSlot(t *testing.T) {
+	// Given a queued execution whose dispatch key is durable across worker restart.
+	r := startTaskRuntime(t, nil, nil, nil)
+	first, _ := r.spawn(t, "First")
+	if err := r.worker.Restart(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	// When the same source repeats its dispatch, control returns the saved ID.
+	replayed, _ := r.spawn(t, "First")
+	if replayed.ID != first.ID {
+		t.Fatalf("durable replay changed ID: first=%s replay=%s", first.ID, replayed.ID)
+	}
+	// Then one more execution fits, and a third distinct dispatch is rejected.
+	r.spawn(t, "Second")
+	if _, err := r.spawnRequest(t, "Third", map[string]string{"title": "Third", "goal": "must not run", "provider": "faux", "modelId": "echo"}); !errors.Is(err, chat.ErrTaskConflict) {
+		t.Fatalf("third dispatch: %v", err)
+	}
+	tasks, err := r.service.ListTasks(t.Context(), "bot", r.parent)
+	if err != nil || len(tasks) != 2 {
+		t.Fatalf("replay created work: tasks=%+v err=%v", tasks, err)
+	}
+	t.Logf("replayed=%s occupied_slots=%d", first.ID, len(tasks))
+}
+
+func TestUserBackgroundExecutionCannotManageDelegations(t *testing.T) {
+	// Given a real background conversation that completed an execution.
+	r := startTaskRuntime(t, nil, nil, nil)
+	task, _ := r.spawn(t, "Background")
+	r.executeQueued(t, task.ID)
+	row, err := r.q.GetTask(t.Context(), task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hidden, err := r.q.GetConversation(t.Context(), row.ConversationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// When the background conversation calls any management operation directly.
+	// Then control rejects every operation, even with a real owned execution ID.
+	for _, action := range []string{"spawn", "list", "get", "cancel"} {
+		args, err := json.Marshal(map[string]string{"id": task.ID, "title": "Forbidden", "goal": "must not run"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = r.service.HandleTask(t.Context(), worker.TaskRequest{AgentID: "bot", ConversationID: hidden.WorkerConversationID.Int64, SourceRequestID: task.ID, Key: "bot/forbidden-" + action, Action: action, Args: args})
+		if !errors.Is(err, chat.ErrTaskInvalid) {
+			t.Fatalf("background %s: %v", action, err)
+		}
+	}
+}
+
+func TestUserStoppedSourceCannotDispatchMoreWork(t *testing.T) {
+	// Given a pending source that can create a background execution.
+	r := startTaskRuntime(t, nil, nil, nil)
+	// When Stop withdraws that source before its tool RPC arrives.
+	if _, err := r.service.Stop(t.Context(), "bot", r.parent); err != nil {
+		t.Fatal(err)
+	}
+	// Then the stale source cannot create another execution.
+	if _, err := r.spawnRequest(t, "late-spawn", map[string]string{"title": "Late", "goal": "must not run", "provider": "faux", "modelId": "echo"}); !errors.Is(err, chat.ErrTaskConflict) {
+		t.Fatalf("stopped source spawned: %v", err)
+	}
+}
+
+func TestUserDelegationRejectsForeignAndStaleSources(t *testing.T) {
+	// Given a main source and one hidden execution under that source.
+	r := startTaskRuntime(t, nil, nil, nil)
+	task, _ := r.spawn(t, "Owned")
+	args, err := json.Marshal(map[string]string{"title": "Forbidden", "goal": "must not run", "provider": "faux", "modelId": "echo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// When a request uses an unknown source or a hidden conversation's submission ID.
+	// Then neither request can authorize another dispatch in the main conversation.
+	for _, source := range []string{"missing-source", task.ID} {
+		_, err := r.service.HandleTask(t.Context(), worker.TaskRequest{AgentID: "bot", ConversationID: r.workerParent, SourceRequestID: source, Key: "bot/forged-" + source, Action: "spawn", Args: args})
+		if !errors.Is(err, chat.ErrTaskInvalid) {
+			t.Fatalf("source %s: %v", source, err)
+		}
+	}
+	tasks, err := r.service.ListTasks(t.Context(), "bot", r.parent)
+	if err != nil || len(tasks) != 1 {
+		t.Fatalf("invalid sources created work: tasks=%+v err=%v", tasks, err)
+	}
+}
+
+func TestUserCancellingCompletedTaskLeavesItsResultAvailable(t *testing.T) {
+	// Given a completed execution with a saved report and a pending parent result.
+	r := startTaskRuntime(t, nil, nil, nil)
+	task, _ := r.spawn(t, "Completed")
+	r.executeQueued(t, task.ID)
+	before, err := r.q.GetTask(t.Context(), task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultID := "task:" + task.ID + ":result"
+	resultBefore, err := r.q.GetSubmission(t.Context(), resultID)
+	if err != nil || resultBefore.Status != "pending" {
+		t.Fatalf("pending result: %+v err=%v", resultBefore, err)
+	}
+	// When the main agent cancels an execution that is already terminal.
+	if _, err := r.service.CancelTask(t.Context(), "bot", r.parent, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Then cancellation leaves the report, stop intent, and result unchanged.
+	after, err := r.q.GetTask(t.Context(), task.ID)
+	if err != nil || after.Status != before.Status || after.Report != before.Report || after.StopRequestedAt != before.StopRequestedAt {
+		t.Fatalf("terminal task changed: before=%+v after=%+v err=%v", before, after, err)
+	}
+	resultAfter, err := r.q.GetSubmission(t.Context(), resultID)
+	if err != nil || resultAfter != resultBefore {
+		t.Fatalf("terminal cancellation changed result: before=%+v after=%+v err=%v", resultBefore, resultAfter, err)
+	}
+	t.Logf("terminal=%s status=%s result=%s", task.ID, after.Status, resultAfter.Status)
+}
+
+func TestUserFailureReportSurvivesLaterCleanupConfirmation(t *testing.T) {
+	for _, restart := range []bool{false, true} {
+		name := "cleanup confirms"
+		if restart {
+			name = "worker restarts before confirmation"
+		}
+		t.Run(name, func(t *testing.T) {
+			// Given a real failed submission whose cleanup receipt arrives separately.
+			settled := make(chan worker.Settled, 1)
+			r := startTaskRuntime(t, nil, nil, nil, func(_ context.Context, event worker.Settled) { settled <- event })
+			task, id := r.spawn(t, "Failed report")
+			row, err := r.q.GetTask(t.Context(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var created worker.CreateConversationResult
+			if err := r.worker.Call(t.Context(), "createConversation", worker.CreateConversationParams{AgentID: "bot", Model: worker.ModelRef{Provider: "faux", ModelID: "spawn"}, ThinkingLevel: "off"}, &created); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.q.SetWorkerConversation(t.Context(), sqlc.SetWorkerConversationParams{ID: row.ConversationID, WorkerConversationID: sql.NullInt64{Int64: created.ConversationID, Valid: true}}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := r.q.StartTask(t.Context(), sqlc.StartTaskParams{ID: id, Now: time.Now().UnixMilli()}); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.worker.Call(t.Context(), "submit", worker.SubmitParams{AgentID: "bot", ConversationID: created.ConversationID, TaskStageID: id, Model: worker.ModelRef{Provider: "faux", ModelID: "spawn"}, ThinkingLevel: "off", RequestID: id, Content: "invalid JSON", Attachments: []worker.Attachment{}}, &worker.SubmitResult{}); err != nil {
+				t.Fatal(err)
+			}
+			var event worker.Settled
+			select {
+			case event = <-settled:
+			case <-time.After(10 * time.Second):
+				t.Fatal("worker did not report the model failure")
+			}
+			if event.Status != "unanswered" || event.Reason != "model_error" {
+				t.Fatalf("natural failure: %+v", event)
+			}
+			// When control receives the failure before it receives exit confirmation.
+			event.ExecutionConfirmed = false
+			event.StopNote = "Controlled execution has not ended."
+			r.service.HandleSettled(t.Context(), event)
+			saved, err := r.service.GetTask(t.Context(), "bot", r.parent, id)
+			if err != nil || saved.Report != event.Reason {
+				t.Fatalf("failure was not saved before cleanup: %+v err=%v", saved, err)
+			}
+			if restart {
+				if err := r.worker.Restart(t.Context()); err != nil {
+					t.Fatal(err)
+				}
+				got, err := r.service.GetTask(t.Context(), "bot", r.parent, id)
+				if err != nil || got.Status != "interrupted" || got.Report != event.Reason {
+					t.Fatalf("restart lost failure evidence: %+v err=%v", got, err)
+				}
+				if _, err := r.q.GetSubmission(t.Context(), "task:"+id+":result"); !errors.Is(err, sql.ErrNoRows) {
+					t.Fatalf("restart delivered interrupted execution: %v", err)
+				}
+				t.Logf("execution=%s status=%s report=%q", id, got.Status, got.Report)
+				return
+			}
+			var stopped worker.AbortResult
+			if err := r.worker.Call(t.Context(), "abort", worker.AbortParams{AgentID: "bot", ConversationID: created.ConversationID, TaskStageID: id}, &stopped); err != nil {
+				t.Fatal(err)
+			}
+			if !stopped.ExecutionConfirmed {
+				t.Fatalf("cleanup was not confirmed: %+v", stopped)
+			}
+			r.service.HandleSettled(t.Context(), worker.Settled{RequestID: id, Status: "unanswered", Reason: "aborted", ExecutionConfirmed: stopped.ExecutionConfirmed, StopNote: stopped.StopNote})
+			// Then the saved report and delivered result keep the real failure and clear the old note.
+			got, err := r.service.GetTask(t.Context(), "bot", r.parent, id)
+			if err != nil || got.Status != "failed" || got.Report != event.Reason || got.StopNote != stopped.StopNote {
+				t.Fatalf("cleanup changed failure: %+v err=%v", got, err)
+			}
+			result, err := r.q.GetSubmission(t.Context(), "task:"+task.ID+":result")
+			if err != nil || result.Status != "pending" || !strings.Contains(result.Content, `"report":"model_error"`) || strings.Contains(result.Content, "has not ended") {
+				t.Fatalf("failure result: %+v err=%v", result, err)
+			}
+			if _, err := r.service.Stop(t.Context(), "bot", r.parent); err != nil {
+				t.Fatal(err)
+			}
+			if after, err := r.service.GetTask(t.Context(), "bot", r.parent, id); err != nil || after.StopRequestedAt != nil || after.Report != event.Reason {
+				t.Fatalf("Stop changed completed failure: %+v err=%v", after, err)
+			}
+			t.Logf("execution=%s report=%q stopNote=%q", id, got.Report, got.StopNote)
+		})
 	}
 }

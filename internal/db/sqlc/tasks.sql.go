@@ -10,46 +10,9 @@ import (
 	"database/sql"
 )
 
-const advanceChannelCommand = `-- name: AdvanceChannelCommand :exec
-UPDATE channel_commands SET delivered_parts = delivered_parts + 1 WHERE source_key = ?
-`
-
-func (q *Queries) AdvanceChannelCommand(ctx context.Context, sourceKey string) error {
-	_, err := q.db.ExecContext(ctx, advanceChannelCommand, sourceKey)
-	return err
-}
-
-const advanceTaskNotice = `-- name: AdvanceTaskNotice :exec
-UPDATE task_notices SET delivered_parts = delivered_parts + 1 WHERE id = ?
-`
-
-func (q *Queries) AdvanceTaskNotice(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, advanceTaskNotice, id)
-	return err
-}
-
-const advanceTaskResultAttempt = `-- name: AdvanceTaskResultAttempt :exec
-UPDATE submissions SET delivery_attempt = delivery_attempt + 1 WHERE id = ? AND kind = 'task_result'
-`
-
-func (q *Queries) AdvanceTaskResultAttempt(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, advanceTaskResultAttempt, id)
-	return err
-}
-
-const cancelTaskStages = `-- name: CancelTaskStages :exec
-UPDATE task_stages SET status = 'cancelling'
-WHERE user_task_id = ? AND status IN ('queued', 'running')
-`
-
-func (q *Queries) CancelTaskStages(ctx context.Context, userTaskID string) error {
-	_, err := q.db.ExecContext(ctx, cancelTaskStages, userTaskID)
-	return err
-}
-
 const countTaskSlots = `-- name: CountTaskSlots :one
-SELECT count(*) FROM task_stages s JOIN conversations c ON c.id = s.conversation_id
-WHERE c.agent_id = ? AND s.status IN ('queued', 'running', 'cancelling', 'unknown')
+SELECT count(*) FROM tasks t JOIN conversations c ON c.id = t.conversation_id
+WHERE c.agent_id = ? AND t.status IN ('queued', 'running', 'cancelling')
 `
 
 func (q *Queries) CountTaskSlots(ctx context.Context, agentID string) (int64, error) {
@@ -59,39 +22,31 @@ func (q *Queries) CountTaskSlots(ctx context.Context, agentID string) (int64, er
 	return count, err
 }
 
-const createTaskFinish = `-- name: CreateTaskFinish :exec
-INSERT INTO task_finishes (call_key, user_task_id) VALUES (?, ?)
+const createTask = `-- name: CreateTask :exec
+INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, last_event_at, created_at)
+VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)
 `
 
-type CreateTaskFinishParams struct {
-	CallKey    string `json:"call_key"`
-	UserTaskID string `json:"user_task_id"`
+type CreateTaskParams struct {
+	ID                   string `json:"id"`
+	ParentConversationID int64  `json:"parent_conversation_id"`
+	ConversationID       int64  `json:"conversation_id"`
+	SpawnKey             string `json:"spawn_key"`
+	SourceRequestID      string `json:"source_request_id"`
+	Title                string `json:"title"`
+	LastEventAt          int64  `json:"last_event_at"`
+	CreatedAt            int64  `json:"created_at"`
 }
 
-func (q *Queries) CreateTaskFinish(ctx context.Context, arg CreateTaskFinishParams) error {
-	_, err := q.db.ExecContext(ctx, createTaskFinish, arg.CallKey, arg.UserTaskID)
-	return err
-}
-
-const createTaskNotice = `-- name: CreateTaskNotice :exec
-INSERT INTO task_notices (id, user_task_id, channel_key, text, created_at)
-VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING
-`
-
-type CreateTaskNoticeParams struct {
-	ID         string `json:"id"`
-	UserTaskID string `json:"user_task_id"`
-	ChannelKey string `json:"channel_key"`
-	Text       string `json:"text"`
-	CreatedAt  int64  `json:"created_at"`
-}
-
-func (q *Queries) CreateTaskNotice(ctx context.Context, arg CreateTaskNoticeParams) error {
-	_, err := q.db.ExecContext(ctx, createTaskNotice,
+func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) error {
+	_, err := q.db.ExecContext(ctx, createTask,
 		arg.ID,
-		arg.UserTaskID,
-		arg.ChannelKey,
-		arg.Text,
+		arg.ParentConversationID,
+		arg.ConversationID,
+		arg.SpawnKey,
+		arg.SourceRequestID,
+		arg.Title,
+		arg.LastEventAt,
 		arg.CreatedAt,
 	)
 	return err
@@ -117,60 +72,6 @@ func (q *Queries) CreateTaskResult(ctx context.Context, arg CreateTaskResultPara
 		arg.ConversationID,
 		arg.Content,
 		arg.SourceKey,
-		arg.CreatedAt,
-	)
-	return err
-}
-
-const createTaskStage = `-- name: CreateTaskStage :exec
-INSERT INTO task_stages (id, user_task_id, conversation_id, spawn_key, source_request_id, title, status, last_event_at, created_at)
-VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)
-`
-
-type CreateTaskStageParams struct {
-	ID              string `json:"id"`
-	UserTaskID      string `json:"user_task_id"`
-	ConversationID  int64  `json:"conversation_id"`
-	SpawnKey        string `json:"spawn_key"`
-	SourceRequestID string `json:"source_request_id"`
-	Title           string `json:"title"`
-	LastEventAt     int64  `json:"last_event_at"`
-	CreatedAt       int64  `json:"created_at"`
-}
-
-func (q *Queries) CreateTaskStage(ctx context.Context, arg CreateTaskStageParams) error {
-	_, err := q.db.ExecContext(ctx, createTaskStage,
-		arg.ID,
-		arg.UserTaskID,
-		arg.ConversationID,
-		arg.SpawnKey,
-		arg.SourceRequestID,
-		arg.Title,
-		arg.LastEventAt,
-		arg.CreatedAt,
-	)
-	return err
-}
-
-const createUserTask = `-- name: CreateUserTask :exec
-INSERT INTO user_tasks (id, short_id, parent_conversation_id, title, status, created_at)
-VALUES (?, ?, ?, ?, 'active', ?)
-`
-
-type CreateUserTaskParams struct {
-	ID                   string `json:"id"`
-	ShortID              string `json:"short_id"`
-	ParentConversationID int64  `json:"parent_conversation_id"`
-	Title                string `json:"title"`
-	CreatedAt            int64  `json:"created_at"`
-}
-
-func (q *Queries) CreateUserTask(ctx context.Context, arg CreateUserTaskParams) error {
-	_, err := q.db.ExecContext(ctx, createUserTask,
-		arg.ID,
-		arg.ShortID,
-		arg.ParentConversationID,
-		arg.Title,
 		arg.CreatedAt,
 	)
 	return err
@@ -202,182 +103,76 @@ func (q *Queries) GetConversationByWorker(ctx context.Context, arg GetConversati
 	return i, err
 }
 
-const getTaskFinish = `-- name: GetTaskFinish :one
-SELECT user_task_id FROM task_finishes WHERE call_key = ?
+const getTask = `-- name: GetTask :one
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, stop_note, stop_requested_at, current_tool, last_event_at, created_at, started_at, ended_at FROM tasks WHERE id = ?
 `
 
-func (q *Queries) GetTaskFinish(ctx context.Context, callKey string) (string, error) {
-	row := q.db.QueryRowContext(ctx, getTaskFinish, callKey)
-	var user_task_id string
-	err := row.Scan(&user_task_id)
-	return user_task_id, err
-}
-
-const getTaskStage = `-- name: GetTaskStage :one
-SELECT id, user_task_id, conversation_id, spawn_key, source_request_id, title, status, report, current_tool, last_event_at, created_at, started_at, ended_at FROM task_stages WHERE id = ?
-`
-
-func (q *Queries) GetTaskStage(ctx context.Context, id string) (TaskStage, error) {
-	row := q.db.QueryRowContext(ctx, getTaskStage, id)
-	var i TaskStage
+func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getTask, id)
+	var i Task
 	err := row.Scan(
 		&i.ID,
-		&i.UserTaskID,
-		&i.ConversationID,
-		&i.SpawnKey,
-		&i.SourceRequestID,
-		&i.Title,
-		&i.Status,
-		&i.Report,
-		&i.CurrentTool,
-		&i.LastEventAt,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.EndedAt,
-	)
-	return i, err
-}
-
-const getTaskStageByConversation = `-- name: GetTaskStageByConversation :one
-SELECT id, user_task_id, conversation_id, spawn_key, source_request_id, title, status, report, current_tool, last_event_at, created_at, started_at, ended_at FROM task_stages WHERE conversation_id = ?
-`
-
-func (q *Queries) GetTaskStageByConversation(ctx context.Context, conversationID int64) (TaskStage, error) {
-	row := q.db.QueryRowContext(ctx, getTaskStageByConversation, conversationID)
-	var i TaskStage
-	err := row.Scan(
-		&i.ID,
-		&i.UserTaskID,
-		&i.ConversationID,
-		&i.SpawnKey,
-		&i.SourceRequestID,
-		&i.Title,
-		&i.Status,
-		&i.Report,
-		&i.CurrentTool,
-		&i.LastEventAt,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.EndedAt,
-	)
-	return i, err
-}
-
-const getTaskStageByKey = `-- name: GetTaskStageByKey :one
-SELECT id, user_task_id, conversation_id, spawn_key, source_request_id, title, status, report, current_tool, last_event_at, created_at, started_at, ended_at FROM task_stages WHERE spawn_key = ?
-`
-
-func (q *Queries) GetTaskStageByKey(ctx context.Context, spawnKey string) (TaskStage, error) {
-	row := q.db.QueryRowContext(ctx, getTaskStageByKey, spawnKey)
-	var i TaskStage
-	err := row.Scan(
-		&i.ID,
-		&i.UserTaskID,
-		&i.ConversationID,
-		&i.SpawnKey,
-		&i.SourceRequestID,
-		&i.Title,
-		&i.Status,
-		&i.Report,
-		&i.CurrentTool,
-		&i.LastEventAt,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.EndedAt,
-	)
-	return i, err
-}
-
-const getTaskStageByResult = `-- name: GetTaskStageByResult :one
-SELECT s.id, s.user_task_id, s.conversation_id, s.spawn_key, s.source_request_id, s.title, s.status, s.report, s.current_tool, s.last_event_at, s.created_at, s.started_at, s.ended_at FROM task_stages s JOIN submissions r ON r.source_key = 'task:' || s.id || ':result'
-WHERE r.id = ? AND r.kind = 'task_result'
-`
-
-func (q *Queries) GetTaskStageByResult(ctx context.Context, id string) (TaskStage, error) {
-	row := q.db.QueryRowContext(ctx, getTaskStageByResult, id)
-	var i TaskStage
-	err := row.Scan(
-		&i.ID,
-		&i.UserTaskID,
-		&i.ConversationID,
-		&i.SpawnKey,
-		&i.SourceRequestID,
-		&i.Title,
-		&i.Status,
-		&i.Report,
-		&i.CurrentTool,
-		&i.LastEventAt,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.EndedAt,
-	)
-	return i, err
-}
-
-const getUserTask = `-- name: GetUserTask :one
-SELECT t.id, t.short_id, t.parent_conversation_id, t.title, t.status, t.report, t.stop_requested_at, t.created_at, t.ended_at FROM user_tasks t JOIN conversations c ON c.id = t.parent_conversation_id
-WHERE c.agent_id = ?1 AND t.parent_conversation_id = ?2
-AND (t.id = ?3 OR t.short_id = ?3)
-`
-
-type GetUserTaskParams struct {
-	AgentID  string `json:"agent_id"`
-	ParentID int64  `json:"parent_id"`
-	TaskID   string `json:"task_id"`
-}
-
-func (q *Queries) GetUserTask(ctx context.Context, arg GetUserTaskParams) (UserTask, error) {
-	row := q.db.QueryRowContext(ctx, getUserTask, arg.AgentID, arg.ParentID, arg.TaskID)
-	var i UserTask
-	err := row.Scan(
-		&i.ID,
-		&i.ShortID,
 		&i.ParentConversationID,
+		&i.ConversationID,
+		&i.SpawnKey,
+		&i.SourceRequestID,
 		&i.Title,
 		&i.Status,
 		&i.Report,
+		&i.StopNote,
 		&i.StopRequestedAt,
+		&i.CurrentTool,
+		&i.LastEventAt,
 		&i.CreatedAt,
+		&i.StartedAt,
 		&i.EndedAt,
 	)
 	return i, err
 }
 
-const getUserTaskByID = `-- name: GetUserTaskByID :one
-SELECT id, short_id, parent_conversation_id, title, status, report, stop_requested_at, created_at, ended_at FROM user_tasks WHERE id = ?
+const getTaskByKey = `-- name: GetTaskByKey :one
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, stop_note, stop_requested_at, current_tool, last_event_at, created_at, started_at, ended_at FROM tasks WHERE spawn_key = ?
 `
 
-func (q *Queries) GetUserTaskByID(ctx context.Context, id string) (UserTask, error) {
-	row := q.db.QueryRowContext(ctx, getUserTaskByID, id)
-	var i UserTask
+func (q *Queries) GetTaskByKey(ctx context.Context, spawnKey string) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getTaskByKey, spawnKey)
+	var i Task
 	err := row.Scan(
 		&i.ID,
-		&i.ShortID,
 		&i.ParentConversationID,
+		&i.ConversationID,
+		&i.SpawnKey,
+		&i.SourceRequestID,
 		&i.Title,
 		&i.Status,
 		&i.Report,
+		&i.StopNote,
 		&i.StopRequestedAt,
+		&i.CurrentTool,
+		&i.LastEventAt,
 		&i.CreatedAt,
+		&i.StartedAt,
 		&i.EndedAt,
 	)
 	return i, err
 }
 
-const listCancellingStages = `-- name: ListCancellingStages :many
-SELECT s.id, s.user_task_id, s.conversation_id, s.spawn_key, s.source_request_id, s.title, s.status, s.report, s.current_tool, s.last_event_at, s.created_at, s.started_at, s.ended_at, c.agent_id, c.worker_conversation_id FROM task_stages s
-JOIN conversations c ON c.id = s.conversation_id WHERE s.status = 'cancelling'
+const listCancellingTasks = `-- name: ListCancellingTasks :many
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.stop_note, t.stop_requested_at, t.current_tool, t.last_event_at, t.created_at, t.started_at, t.ended_at, c.agent_id, c.worker_conversation_id FROM tasks t
+JOIN conversations c ON c.id = t.conversation_id WHERE t.status = 'cancelling'
 `
 
-type ListCancellingStagesRow struct {
+type ListCancellingTasksRow struct {
 	ID                   string        `json:"id"`
-	UserTaskID           string        `json:"user_task_id"`
+	ParentConversationID int64         `json:"parent_conversation_id"`
 	ConversationID       int64         `json:"conversation_id"`
 	SpawnKey             string        `json:"spawn_key"`
 	SourceRequestID      string        `json:"source_request_id"`
 	Title                string        `json:"title"`
 	Status               string        `json:"status"`
 	Report               string        `json:"report"`
+	StopNote             string        `json:"stop_note"`
+	StopRequestedAt      sql.NullInt64 `json:"stop_requested_at"`
 	CurrentTool          string        `json:"current_tool"`
 	LastEventAt          int64         `json:"last_event_at"`
 	CreatedAt            int64         `json:"created_at"`
@@ -387,133 +182,33 @@ type ListCancellingStagesRow struct {
 	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
 }
 
-func (q *Queries) ListCancellingStages(ctx context.Context) ([]ListCancellingStagesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listCancellingStages)
+func (q *Queries) ListCancellingTasks(ctx context.Context) ([]ListCancellingTasksRow, error) {
+	rows, err := q.db.QueryContext(ctx, listCancellingTasks)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListCancellingStagesRow{}
+	items := []ListCancellingTasksRow{}
 	for rows.Next() {
-		var i ListCancellingStagesRow
+		var i ListCancellingTasksRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.UserTaskID,
-			&i.ConversationID,
-			&i.SpawnKey,
-			&i.SourceRequestID,
-			&i.Title,
-			&i.Status,
-			&i.Report,
-			&i.CurrentTool,
-			&i.LastEventAt,
-			&i.CreatedAt,
-			&i.StartedAt,
-			&i.EndedAt,
-			&i.AgentID,
-			&i.WorkerConversationID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLiveTaskStages = `-- name: ListLiveTaskStages :many
-SELECT s.id, s.user_task_id, s.conversation_id, s.spawn_key, s.source_request_id, s.title, s.status, s.report, s.current_tool, s.last_event_at, s.created_at, s.started_at, s.ended_at, c.agent_id, c.worker_conversation_id FROM task_stages s
-JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status IN ('running', 'cancelling', 'unknown')
-`
-
-type ListLiveTaskStagesRow struct {
-	ID                   string        `json:"id"`
-	UserTaskID           string        `json:"user_task_id"`
-	ConversationID       int64         `json:"conversation_id"`
-	SpawnKey             string        `json:"spawn_key"`
-	SourceRequestID      string        `json:"source_request_id"`
-	Title                string        `json:"title"`
-	Status               string        `json:"status"`
-	Report               string        `json:"report"`
-	CurrentTool          string        `json:"current_tool"`
-	LastEventAt          int64         `json:"last_event_at"`
-	CreatedAt            int64         `json:"created_at"`
-	StartedAt            sql.NullInt64 `json:"started_at"`
-	EndedAt              sql.NullInt64 `json:"ended_at"`
-	AgentID              string        `json:"agent_id"`
-	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
-}
-
-func (q *Queries) ListLiveTaskStages(ctx context.Context) ([]ListLiveTaskStagesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listLiveTaskStages)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListLiveTaskStagesRow{}
-	for rows.Next() {
-		var i ListLiveTaskStagesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserTaskID,
-			&i.ConversationID,
-			&i.SpawnKey,
-			&i.SourceRequestID,
-			&i.Title,
-			&i.Status,
-			&i.Report,
-			&i.CurrentTool,
-			&i.LastEventAt,
-			&i.CreatedAt,
-			&i.StartedAt,
-			&i.EndedAt,
-			&i.AgentID,
-			&i.WorkerConversationID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listStoppingTasks = `-- name: ListStoppingTasks :many
-SELECT id, short_id, parent_conversation_id, title, status, report, stop_requested_at, created_at, ended_at FROM user_tasks t WHERE t.status = 'cancelling' AND t.ended_at IS NULL
-AND NOT EXISTS (SELECT 1 FROM task_stages s WHERE s.user_task_id = t.id
-AND s.status IN ('queued', 'running', 'cancelling'))
-`
-
-func (q *Queries) ListStoppingTasks(ctx context.Context) ([]UserTask, error) {
-	rows, err := q.db.QueryContext(ctx, listStoppingTasks)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []UserTask{}
-	for rows.Next() {
-		var i UserTask
-		if err := rows.Scan(
-			&i.ID,
-			&i.ShortID,
 			&i.ParentConversationID,
+			&i.ConversationID,
+			&i.SpawnKey,
+			&i.SourceRequestID,
 			&i.Title,
 			&i.Status,
 			&i.Report,
+			&i.StopNote,
 			&i.StopRequestedAt,
+			&i.CurrentTool,
+			&i.LastEventAt,
 			&i.CreatedAt,
+			&i.StartedAt,
 			&i.EndedAt,
+			&i.AgentID,
+			&i.WorkerConversationID,
 		); err != nil {
 			return nil, err
 		}
@@ -528,28 +223,104 @@ func (q *Queries) ListStoppingTasks(ctx context.Context) ([]UserTask, error) {
 	return items, nil
 }
 
-const listTaskNotices = `-- name: ListTaskNotices :many
-SELECT id, user_task_id, channel_key, text, created_at, delivered_parts, delivered_at FROM task_notices WHERE delivered_at IS NULL AND channel_key LIKE ?1 || '%'
-ORDER BY created_at, id
+const listLiveTasks = `-- name: ListLiveTasks :many
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.stop_note, t.stop_requested_at, t.current_tool, t.last_event_at, t.created_at, t.started_at, t.ended_at, c.agent_id, c.worker_conversation_id FROM tasks t
+JOIN conversations c ON c.id = t.conversation_id
+WHERE t.status IN ('running', 'cancelling')
 `
 
-func (q *Queries) ListTaskNotices(ctx context.Context, prefix sql.NullString) ([]TaskNotice, error) {
-	rows, err := q.db.QueryContext(ctx, listTaskNotices, prefix)
+type ListLiveTasksRow struct {
+	ID                   string        `json:"id"`
+	ParentConversationID int64         `json:"parent_conversation_id"`
+	ConversationID       int64         `json:"conversation_id"`
+	SpawnKey             string        `json:"spawn_key"`
+	SourceRequestID      string        `json:"source_request_id"`
+	Title                string        `json:"title"`
+	Status               string        `json:"status"`
+	Report               string        `json:"report"`
+	StopNote             string        `json:"stop_note"`
+	StopRequestedAt      sql.NullInt64 `json:"stop_requested_at"`
+	CurrentTool          string        `json:"current_tool"`
+	LastEventAt          int64         `json:"last_event_at"`
+	CreatedAt            int64         `json:"created_at"`
+	StartedAt            sql.NullInt64 `json:"started_at"`
+	EndedAt              sql.NullInt64 `json:"ended_at"`
+	AgentID              string        `json:"agent_id"`
+	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
+}
+
+func (q *Queries) ListLiveTasks(ctx context.Context) ([]ListLiveTasksRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLiveTasks)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []TaskNotice{}
+	items := []ListLiveTasksRow{}
 	for rows.Next() {
-		var i TaskNotice
+		var i ListLiveTasksRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.UserTaskID,
-			&i.ChannelKey,
-			&i.Text,
+			&i.ParentConversationID,
+			&i.ConversationID,
+			&i.SpawnKey,
+			&i.SourceRequestID,
+			&i.Title,
+			&i.Status,
+			&i.Report,
+			&i.StopNote,
+			&i.StopRequestedAt,
+			&i.CurrentTool,
+			&i.LastEventAt,
 			&i.CreatedAt,
-			&i.DeliveredParts,
-			&i.DeliveredAt,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.AgentID,
+			&i.WorkerConversationID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStopConversations = `-- name: ListStopConversations :many
+SELECT id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level FROM conversations WHERE agent_id = ?1
+AND (id = ?2 OR (?3 != '' AND (channel_key = ?3 OR substr(channel_key, 1, length(?3) + 1) = ?3 || '/')))
+ORDER BY id
+`
+
+type ListStopConversationsParams struct {
+	AgentID string      `json:"agent_id"`
+	ChatID  int64       `json:"chat_id"`
+	Peer    interface{} `json:"peer"`
+}
+
+func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConversationsParams) ([]Conversation, error) {
+	rows, err := q.db.QueryContext(ctx, listStopConversations, arg.AgentID, arg.ChatID, arg.Peer)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Conversation{}
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.ChannelKey,
+			&i.WorkerConversationID,
+			&i.CreatedAt,
+			&i.Title,
+			&i.ModelProvider,
+			&i.ModelID,
+			&i.ThinkingLevel,
 		); err != nil {
 			return nil, err
 		}
@@ -565,10 +336,9 @@ func (q *Queries) ListTaskNotices(ctx context.Context, prefix sql.NullString) ([
 }
 
 const listTaskRecoveries = `-- name: ListTaskRecoveries :many
-SELECT s.id, c.agent_id, c.worker_conversation_id FROM task_stages s
-JOIN conversations c ON c.id = s.conversation_id
-WHERE c.worker_conversation_id IS NOT NULL
-AND (s.status NOT IN ('queued', 'cancelling') OR s.started_at IS NOT NULL)
+SELECT t.id, c.agent_id, c.worker_conversation_id FROM tasks t
+JOIN conversations c ON c.id = t.conversation_id
+WHERE c.worker_conversation_id IS NOT NULL AND t.started_at IS NOT NULL
 `
 
 type ListTaskRecoveriesRow struct {
@@ -600,61 +370,39 @@ func (q *Queries) ListTaskRecoveries(ctx context.Context) ([]ListTaskRecoveriesR
 	return items, nil
 }
 
-const listTaskStages = `-- name: ListTaskStages :many
-SELECT s.id, s.user_task_id, s.conversation_id, s.spawn_key, s.source_request_id, s.title, s.status, s.report, s.current_tool, s.last_event_at, s.created_at, s.started_at, s.ended_at, c.agent_id, c.model_provider, c.model_id, c.thinking_level,
-c.worker_conversation_id FROM task_stages s JOIN conversations c ON c.id = s.conversation_id
-WHERE s.user_task_id = ? ORDER BY s.created_at, s.id
+const listTasks = `-- name: ListTasks :many
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.stop_note, t.stop_requested_at, t.current_tool, t.last_event_at, t.created_at, t.started_at, t.ended_at FROM tasks t
+WHERE t.parent_conversation_id = ?1 AND
+(t.ended_at IS NULL OR t.id IN (SELECT recent.id FROM tasks recent WHERE recent.parent_conversation_id = ?1
+AND recent.ended_at IS NOT NULL ORDER BY recent.ended_at DESC, recent.id DESC LIMIT 10))
+ORDER BY t.created_at DESC, t.id DESC
 `
 
-type ListTaskStagesRow struct {
-	ID                   string        `json:"id"`
-	UserTaskID           string        `json:"user_task_id"`
-	ConversationID       int64         `json:"conversation_id"`
-	SpawnKey             string        `json:"spawn_key"`
-	SourceRequestID      string        `json:"source_request_id"`
-	Title                string        `json:"title"`
-	Status               string        `json:"status"`
-	Report               string        `json:"report"`
-	CurrentTool          string        `json:"current_tool"`
-	LastEventAt          int64         `json:"last_event_at"`
-	CreatedAt            int64         `json:"created_at"`
-	StartedAt            sql.NullInt64 `json:"started_at"`
-	EndedAt              sql.NullInt64 `json:"ended_at"`
-	AgentID              string        `json:"agent_id"`
-	ModelProvider        string        `json:"model_provider"`
-	ModelID              string        `json:"model_id"`
-	ThinkingLevel        string        `json:"thinking_level"`
-	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
-}
-
-func (q *Queries) ListTaskStages(ctx context.Context, userTaskID string) ([]ListTaskStagesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listTaskStages, userTaskID)
+func (q *Queries) ListTasks(ctx context.Context, parentID int64) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listTasks, parentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListTaskStagesRow{}
+	items := []Task{}
 	for rows.Next() {
-		var i ListTaskStagesRow
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
-			&i.UserTaskID,
+			&i.ParentConversationID,
 			&i.ConversationID,
 			&i.SpawnKey,
 			&i.SourceRequestID,
 			&i.Title,
 			&i.Status,
 			&i.Report,
+			&i.StopNote,
+			&i.StopRequestedAt,
 			&i.CurrentTool,
 			&i.LastEventAt,
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.EndedAt,
-			&i.AgentID,
-			&i.ModelProvider,
-			&i.ModelID,
-			&i.ThinkingLevel,
-			&i.WorkerConversationID,
 		); err != nil {
 			return nil, err
 		}
@@ -667,161 +415,102 @@ func (q *Queries) ListTaskStages(ctx context.Context, userTaskID string) ([]List
 		return nil, err
 	}
 	return items, nil
-}
-
-const listUserTasks = `-- name: ListUserTasks :many
-SELECT t.id, t.short_id, t.parent_conversation_id, t.title, t.status, t.report, t.stop_requested_at, t.created_at, t.ended_at FROM user_tasks t WHERE t.parent_conversation_id = ?1 AND
-(t.ended_at IS NULL OR t.id IN (SELECT recent.id FROM user_tasks recent WHERE recent.parent_conversation_id = ?1
-AND recent.ended_at IS NOT NULL ORDER BY recent.ended_at DESC, recent.id DESC LIMIT 10))
-ORDER BY t.created_at DESC, t.id DESC
-`
-
-func (q *Queries) ListUserTasks(ctx context.Context, parentID int64) ([]UserTask, error) {
-	rows, err := q.db.QueryContext(ctx, listUserTasks, parentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []UserTask{}
-	for rows.Next() {
-		var i UserTask
-		if err := rows.Scan(
-			&i.ID,
-			&i.ShortID,
-			&i.ParentConversationID,
-			&i.Title,
-			&i.Status,
-			&i.Report,
-			&i.StopRequestedAt,
-			&i.CreatedAt,
-			&i.EndedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const markTaskNoticeDelivered = `-- name: MarkTaskNoticeDelivered :exec
-UPDATE task_notices SET delivered_at = ? WHERE id = ?
-`
-
-type MarkTaskNoticeDeliveredParams struct {
-	DeliveredAt sql.NullInt64 `json:"delivered_at"`
-	ID          string        `json:"id"`
-}
-
-func (q *Queries) MarkTaskNoticeDelivered(ctx context.Context, arg MarkTaskNoticeDeliveredParams) error {
-	_, err := q.db.ExecContext(ctx, markTaskNoticeDelivered, arg.DeliveredAt, arg.ID)
-	return err
-}
-
-const markTaskStageUnknown = `-- name: MarkTaskStageUnknown :exec
-UPDATE task_stages SET status = 'unknown', report = ?, last_event_at = ? WHERE id = ?
-AND status IN ('running', 'cancelling')
-`
-
-type MarkTaskStageUnknownParams struct {
-	Report      string `json:"report"`
-	LastEventAt int64  `json:"last_event_at"`
-	ID          string `json:"id"`
-}
-
-func (q *Queries) MarkTaskStageUnknown(ctx context.Context, arg MarkTaskStageUnknownParams) error {
-	_, err := q.db.ExecContext(ctx, markTaskStageUnknown, arg.Report, arg.LastEventAt, arg.ID)
-	return err
 }
 
 const requestTaskStop = `-- name: RequestTaskStop :exec
-UPDATE user_tasks SET stop_requested_at = coalesce(stop_requested_at, ?), status = 'cancelling'
-WHERE id = ? AND ended_at IS NULL
+UPDATE tasks SET stop_requested_at = coalesce(stop_requested_at, ?1), status = 'cancelling'
+WHERE id = ?2 AND status IN ('queued', 'running', 'cancelling')
 `
 
 type RequestTaskStopParams struct {
-	StopRequestedAt sql.NullInt64 `json:"stop_requested_at"`
-	ID              string        `json:"id"`
+	Now sql.NullInt64 `json:"now"`
+	ID  string        `json:"id"`
 }
 
 func (q *Queries) RequestTaskStop(ctx context.Context, arg RequestTaskStopParams) error {
-	_, err := q.db.ExecContext(ctx, requestTaskStop, arg.StopRequestedAt, arg.ID)
+	_, err := q.db.ExecContext(ctx, requestTaskStop, arg.Now, arg.ID)
 	return err
 }
 
-const setUserTaskState = `-- name: SetUserTaskState :exec
-UPDATE user_tasks SET status = ?, report = ?, ended_at = ? WHERE id = ?
+const settleTask = `-- name: SettleTask :exec
+UPDATE tasks SET status = ?, report = ?, stop_note = ?, current_tool = '', last_event_at = ?, ended_at = ?
+WHERE id = ?
 `
 
-type SetUserTaskStateParams struct {
-	Status  string        `json:"status"`
-	Report  string        `json:"report"`
-	EndedAt sql.NullInt64 `json:"ended_at"`
-	ID      string        `json:"id"`
-}
-
-func (q *Queries) SetUserTaskState(ctx context.Context, arg SetUserTaskStateParams) error {
-	_, err := q.db.ExecContext(ctx, setUserTaskState,
-		arg.Status,
-		arg.Report,
-		arg.EndedAt,
-		arg.ID,
-	)
-	return err
-}
-
-const settleTaskStage = `-- name: SettleTaskStage :execrows
-UPDATE task_stages SET status = ?, report = ?, current_tool = '', last_event_at = ?, ended_at = ?
-WHERE id = ? AND status IN ('queued', 'running', 'cancelling', 'unknown')
-`
-
-type SettleTaskStageParams struct {
+type SettleTaskParams struct {
 	Status      string        `json:"status"`
 	Report      string        `json:"report"`
+	StopNote    string        `json:"stop_note"`
 	LastEventAt int64         `json:"last_event_at"`
 	EndedAt     sql.NullInt64 `json:"ended_at"`
 	ID          string        `json:"id"`
 }
 
-func (q *Queries) SettleTaskStage(ctx context.Context, arg SettleTaskStageParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, settleTaskStage,
+func (q *Queries) SettleTask(ctx context.Context, arg SettleTaskParams) error {
+	_, err := q.db.ExecContext(ctx, settleTask,
 		arg.Status,
 		arg.Report,
+		arg.StopNote,
 		arg.LastEventAt,
 		arg.EndedAt,
 		arg.ID,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+	return err
 }
 
-const startTaskStage = `-- name: StartTaskStage :execrows
-UPDATE task_stages SET status = 'running', started_at = coalesce(started_at, ?1), last_event_at = ?1
+const startTask = `-- name: StartTask :execrows
+UPDATE tasks SET status = 'running', started_at = coalesce(started_at, ?1), last_event_at = ?1
 WHERE id = ?2 AND status = 'queued'
 `
 
-type StartTaskStageParams struct {
+type StartTaskParams struct {
 	Now int64  `json:"now"`
 	ID  string `json:"id"`
 }
 
-func (q *Queries) StartTaskStage(ctx context.Context, arg StartTaskStageParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, startTaskStage, arg.Now, arg.ID)
+func (q *Queries) StartTask(ctx context.Context, arg StartTaskParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, startTask, arg.Now, arg.ID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
+const stopConversationSubmissions = `-- name: StopConversationSubmissions :execrows
+UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = ?1
+WHERE conversation_id = ?2 AND status = 'pending'
+`
+
+type StopConversationSubmissionsParams struct {
+	Now    sql.NullInt64 `json:"now"`
+	ChatID int64         `json:"chat_id"`
+}
+
+func (q *Queries) StopConversationSubmissions(ctx context.Context, arg StopConversationSubmissionsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, stopConversationSubmissions, arg.Now, arg.ChatID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const stopConversationTasks = `-- name: StopConversationTasks :exec
+UPDATE tasks SET stop_requested_at = coalesce(stop_requested_at, ?1), status = 'cancelling'
+WHERE parent_conversation_id = ?2 AND status IN ('queued', 'running', 'cancelling')
+`
+
+type StopConversationTasksParams struct {
+	Now      sql.NullInt64 `json:"now"`
+	ParentID int64         `json:"parent_id"`
+}
+
+func (q *Queries) StopConversationTasks(ctx context.Context, arg StopConversationTasksParams) error {
+	_, err := q.db.ExecContext(ctx, stopConversationTasks, arg.Now, arg.ParentID)
+	return err
+}
+
 const updateTaskProgress = `-- name: UpdateTaskProgress :exec
-UPDATE task_stages SET current_tool = ?, last_event_at = ?
+UPDATE tasks SET current_tool = ?, last_event_at = ?
 WHERE id = ? AND status IN ('running', 'cancelling')
 `
 

@@ -47,14 +47,13 @@ type AutomationRun struct {
 }
 
 type ChannelCommand struct {
-	SourceKey      string        `json:"source_key"`
-	Peer           string        `json:"peer"`
-	ChannelKey     string        `json:"channel_key"`
-	Command        string        `json:"command"`
-	Answer         string        `json:"answer"`
-	Completed      int64         `json:"completed"`
-	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
-	DeliveredParts int64         `json:"delivered_parts"`
+	SourceKey   string        `json:"source_key"`
+	Peer        string        `json:"peer"`
+	ChannelKey  string        `json:"channel_key"`
+	Command     string        `json:"command"`
+	Answer      string        `json:"answer"`
+	Completed   int64         `json:"completed"`
+	DeliveredAt sql.NullInt64 `json:"delivered_at"`
 }
 
 type ChannelPeer struct {
@@ -103,51 +102,37 @@ type Provider struct {
 }
 
 type Submission struct {
-	ID              string         `json:"id"`
-	ConversationID  int64          `json:"conversation_id"`
-	Content         string         `json:"content"`
-	Status          string         `json:"status"`
-	Answer          sql.NullString `json:"answer"`
-	Reason          sql.NullString `json:"reason"`
-	CreatedAt       int64          `json:"created_at"`
-	SettledAt       sql.NullInt64  `json:"settled_at"`
-	SourceKey       sql.NullString `json:"source_key"`
-	Attachments     string         `json:"attachments"`
-	DeliveredAt     sql.NullInt64  `json:"delivered_at"`
-	DeliveredParts  int64          `json:"delivered_parts"`
-	Kind            string         `json:"kind"`
-	DeliveryAttempt int64          `json:"delivery_attempt"`
+	ID             string         `json:"id"`
+	ConversationID int64          `json:"conversation_id"`
+	Content        string         `json:"content"`
+	Status         string         `json:"status"`
+	Answer         sql.NullString `json:"answer"`
+	Reason         sql.NullString `json:"reason"`
+	CreatedAt      int64          `json:"created_at"`
+	SettledAt      sql.NullInt64  `json:"settled_at"`
+	SourceKey      sql.NullString `json:"source_key"`
+	Attachments    string         `json:"attachments"`
+	DeliveredAt    sql.NullInt64  `json:"delivered_at"`
+	DeliveredParts int64          `json:"delivered_parts"`
+	Kind           string         `json:"kind"`
 }
 
-type TaskFinish struct {
-	CallKey    string `json:"call_key"`
-	UserTaskID string `json:"user_task_id"`
-}
-
-type TaskNotice struct {
-	ID             string        `json:"id"`
-	UserTaskID     string        `json:"user_task_id"`
-	ChannelKey     string        `json:"channel_key"`
-	Text           string        `json:"text"`
-	CreatedAt      int64         `json:"created_at"`
-	DeliveredParts int64         `json:"delivered_parts"`
-	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
-}
-
-type TaskStage struct {
-	ID              string        `json:"id"`
-	UserTaskID      string        `json:"user_task_id"`
-	ConversationID  int64         `json:"conversation_id"`
-	SpawnKey        string        `json:"spawn_key"`
-	SourceRequestID string        `json:"source_request_id"`
-	Title           string        `json:"title"`
-	Status          string        `json:"status"`
-	Report          string        `json:"report"`
-	CurrentTool     string        `json:"current_tool"`
-	LastEventAt     int64         `json:"last_event_at"`
-	CreatedAt       int64         `json:"created_at"`
-	StartedAt       sql.NullInt64 `json:"started_at"`
-	EndedAt         sql.NullInt64 `json:"ended_at"`
+type Task struct {
+	ID                   string        `json:"id"`
+	ParentConversationID int64         `json:"parent_conversation_id"`
+	ConversationID       int64         `json:"conversation_id"`
+	SpawnKey             string        `json:"spawn_key"`
+	SourceRequestID      string        `json:"source_request_id"`
+	Title                string        `json:"title"`
+	Status               string        `json:"status"`
+	Report               string        `json:"report"`
+	StopNote             string        `json:"stop_note"`
+	StopRequestedAt      sql.NullInt64 `json:"stop_requested_at"`
+	CurrentTool          string        `json:"current_tool"`
+	LastEventAt          int64         `json:"last_event_at"`
+	CreatedAt            int64         `json:"created_at"`
+	StartedAt            sql.NullInt64 `json:"started_at"`
+	EndedAt              sql.NullInt64 `json:"ended_at"`
 }
 
 type TelegramSetting struct {
@@ -156,18 +141,6 @@ type TelegramSetting struct {
 	AllowedUsers   string `json:"allowed_users"`
 	PairingCode    string `json:"pairing_code"`
 	PairingExpires int64  `json:"pairing_expires"`
-}
-
-type UserTask struct {
-	ID                   string        `json:"id"`
-	ShortID              string        `json:"short_id"`
-	ParentConversationID int64         `json:"parent_conversation_id"`
-	Title                string        `json:"title"`
-	Status               string        `json:"status"`
-	Report               string        `json:"report"`
-	StopRequestedAt      sql.NullInt64 `json:"stop_requested_at"`
-	CreatedAt            int64         `json:"created_at"`
-	EndedAt              sql.NullInt64 `json:"ended_at"`
 }
 
 type WechatRuntime struct {

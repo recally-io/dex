@@ -147,22 +147,22 @@ func (e ItemEventType) Valid() bool {
 
 // Defines values for McpServerState.
 const (
-	McpServerStateConnected McpServerState = "connected"
-	McpServerStateDisabled  McpServerState = "disabled"
-	McpServerStateFailed    McpServerState = "failed"
-	McpServerStateIdle      McpServerState = "idle"
+	Connected McpServerState = "connected"
+	Disabled  McpServerState = "disabled"
+	Failed    McpServerState = "failed"
+	Idle      McpServerState = "idle"
 )
 
 // Valid indicates whether the value is a known member of the McpServerState enum.
 func (e McpServerState) Valid() bool {
 	switch e {
-	case McpServerStateConnected:
+	case Connected:
 		return true
-	case McpServerStateDisabled:
+	case Disabled:
 		return true
-	case McpServerStateFailed:
+	case Failed:
 		return true
-	case McpServerStateIdle:
+	case Idle:
 		return true
 	default:
 		return false
@@ -244,75 +244,6 @@ const (
 func (e SnapshotEventType) Valid() bool {
 	switch e {
 	case Snapshot:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for TaskStageStatus.
-const (
-	TaskStageStatusCancelled  TaskStageStatus = "cancelled"
-	TaskStageStatusCancelling TaskStageStatus = "cancelling"
-	TaskStageStatusDone       TaskStageStatus = "done"
-	TaskStageStatusFailed     TaskStageStatus = "failed"
-	TaskStageStatusNeedsInput TaskStageStatus = "needs_input"
-	TaskStageStatusQueued     TaskStageStatus = "queued"
-	TaskStageStatusRunning    TaskStageStatus = "running"
-	TaskStageStatusUnknown    TaskStageStatus = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the TaskStageStatus enum.
-func (e TaskStageStatus) Valid() bool {
-	switch e {
-	case TaskStageStatusCancelled:
-		return true
-	case TaskStageStatusCancelling:
-		return true
-	case TaskStageStatusDone:
-		return true
-	case TaskStageStatusFailed:
-		return true
-	case TaskStageStatusNeedsInput:
-		return true
-	case TaskStageStatusQueued:
-		return true
-	case TaskStageStatusRunning:
-		return true
-	case TaskStageStatusUnknown:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for TaskStatus.
-const (
-	TaskStatusActive     TaskStatus = "active"
-	TaskStatusCancelled  TaskStatus = "cancelled"
-	TaskStatusCancelling TaskStatus = "cancelling"
-	TaskStatusDone       TaskStatus = "done"
-	TaskStatusFailed     TaskStatus = "failed"
-	TaskStatusNeedsInput TaskStatus = "needs_input"
-	TaskStatusUnknown    TaskStatus = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the TaskStatus enum.
-func (e TaskStatus) Valid() bool {
-	switch e {
-	case TaskStatusActive:
-		return true
-	case TaskStatusCancelled:
-		return true
-	case TaskStatusCancelling:
-		return true
-	case TaskStatusDone:
-		return true
-	case TaskStatusFailed:
-		return true
-	case TaskStatusNeedsInput:
-		return true
-	case TaskStatusUnknown:
 		return true
 	default:
 		return false
@@ -817,52 +748,11 @@ type SnapshotEvent struct {
 // SnapshotEventType defines model for SnapshotEvent.Type.
 type SnapshotEventType string
 
-// Task defines model for Task.
-type Task struct {
-	ChatId      int64       `json:"chatId"`
-	CreatedAt   int64       `json:"createdAt"`
-	EndedAt     *int64      `json:"endedAt,omitempty"`
-	Id          string      `json:"id"`
-	LastEventAt int64       `json:"lastEventAt"`
-	Report      string      `json:"report"`
-	ShortId     string      `json:"shortId"`
-	Stages      []TaskStage `json:"stages"`
-
-	// Status Stage completion alone does not complete a user task.
-	Status          TaskStatus `json:"status"`
-	StopRequestedAt *int64     `json:"stopRequestedAt,omitempty"`
-	Title           string     `json:"title"`
+// StopResult defines model for StopResult.
+type StopResult struct {
+	// Confirmed True when controlled execution has stopped. False when the request is accepted but background execution has not confirmed exit. Neither value guarantees that external side effects have stopped.
+	Confirmed bool `json:"confirmed"`
 }
-
-// TaskList defines model for TaskList.
-type TaskList struct {
-	Tasks []Task `json:"tasks"`
-}
-
-// TaskStage defines model for TaskStage.
-type TaskStage struct {
-	AgentId     string          `json:"agentId"`
-	CreatedAt   int64           `json:"createdAt"`
-	CurrentTool string          `json:"currentTool"`
-	EndedAt     *int64          `json:"endedAt,omitempty"`
-	Id          string          `json:"id"`
-	LastEventAt int64           `json:"lastEventAt"`
-	ModelId     string          `json:"modelId"`
-	Provider    string          `json:"provider"`
-	Report      string          `json:"report"`
-	StartedAt   *int64          `json:"startedAt,omitempty"`
-	Status      TaskStageStatus `json:"status"`
-
-	// ThinkingLevel pi-ai's ModelThinkingLevel. pi-ai sends the nearest level that the model supports.
-	ThinkingLevel ThinkingLevel `json:"thinkingLevel"`
-	Title         string        `json:"title"`
-}
-
-// TaskStageStatus defines model for TaskStageStatus.
-type TaskStageStatus string
-
-// TaskStatus Stage completion alone does not complete a user task.
-type TaskStatus string
 
 // Telegram defines model for Telegram.
 type Telegram struct {
@@ -948,9 +838,6 @@ type AutomationId = string
 
 // ChatId defines model for ChatId.
 type ChatId = int64
-
-// TaskId defines model for TaskId.
-type TaskId = string
 
 // PollWechatLoginJSONBody defines parameters for PollWechatLogin.
 type PollWechatLoginJSONBody struct {
@@ -1437,18 +1324,6 @@ type ServerInterface interface {
 	// (PUT /api/chats/{chatId}/settings)
 	SetChatSettings(w http.ResponseWriter, r *http.Request, chatId ChatId)
 
-	// (GET /api/chats/{chatId}/tasks)
-	ListTasks(w http.ResponseWriter, r *http.Request, chatId ChatId)
-
-	// (GET /api/chats/{chatId}/tasks/{taskId})
-	GetTask(w http.ResponseWriter, r *http.Request, chatId ChatId, taskId TaskId)
-
-	// (POST /api/chats/{chatId}/tasks/{taskId}/cancel)
-	CancelTask(w http.ResponseWriter, r *http.Request, chatId ChatId, taskId TaskId)
-
-	// (GET /api/chats/{chatId}/tasks/{taskId}/stages/{stageId}/events)
-	WatchTaskStage(w http.ResponseWriter, r *http.Request, chatId ChatId, taskId TaskId, stageId string)
-
 	// (GET /api/extensions)
 	GetExtensions(w http.ResponseWriter, r *http.Request)
 
@@ -1852,146 +1727,6 @@ func (siw *ServerInterfaceWrapper) SetChatSettings(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetChatSettings(w, r, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListTasks operation middleware
-func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListTasks(w, r, chatId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetTask operation middleware
-func (siw *ServerInterfaceWrapper) GetTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "taskId" -------------
-	var taskId TaskId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetTask(w, r, chatId, taskId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CancelTask operation middleware
-func (siw *ServerInterfaceWrapper) CancelTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "taskId" -------------
-	var taskId TaskId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CancelTask(w, r, chatId, taskId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// WatchTaskStage operation middleware
-func (siw *ServerInterfaceWrapper) WatchTaskStage(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "chatId" -------------
-	var chatId ChatId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "taskId" -------------
-	var taskId TaskId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "stageId" -------------
-	var stageId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "stageId", r.PathValue("stageId"), &stageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "stageId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.WatchTaskStage(w, r, chatId, taskId, stageId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2512,10 +2247,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats", wrapper.ListChats)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/chats", wrapper.CreateChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats/{chatId}", wrapper.GetChat)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats/{chatId}/tasks", wrapper.ListTasks)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats/{chatId}/tasks/{taskId}", wrapper.GetTask)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats/{chatId}/tasks/{taskId}/stages/{stageId}/events", wrapper.WatchTaskStage)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/chats/{chatId}/tasks/{taskId}/cancel", wrapper.CancelTask)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/chats/{chatId}/settings", wrapper.SetChatSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/chats/{chatId}/messages", wrapper.SendMessage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/chats/{chatId}/abort", wrapper.AbortChat)
@@ -3130,7 +2861,7 @@ type AbortChatResponseObject interface {
 	VisitAbortChatResponse(w http.ResponseWriter) error
 }
 
-type AbortChat200JSONResponse Ok
+type AbortChat200JSONResponse StopResult
 
 func (response AbortChat200JSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
 
@@ -3414,234 +3145,6 @@ func (response SetChatSettingsdefaultJSONResponse) VisitSetChatSettingsResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListTasksRequestObject struct {
-	ChatId ChatId `json:"chatId"`
-}
-
-type ListTasksResponseObject interface {
-	VisitListTasksResponse(w http.ResponseWriter) error
-}
-
-type ListTasks200JSONResponse TaskList
-
-func (response ListTasks200JSONResponse) VisitListTasksResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListTasks404JSONResponse struct{ ErrorJSONResponse }
-
-func (response ListTasks404JSONResponse) VisitListTasksResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListTasksdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListTasksdefaultJSONResponse) VisitListTasksResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTaskRequestObject struct {
-	ChatId ChatId `json:"chatId"`
-	TaskId TaskId `json:"taskId"`
-}
-
-type GetTaskResponseObject interface {
-	VisitGetTaskResponse(w http.ResponseWriter) error
-}
-
-type GetTask200JSONResponse Task
-
-func (response GetTask200JSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTask404JSONResponse struct{ ErrorJSONResponse }
-
-func (response GetTask404JSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTaskdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetTaskdefaultJSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CancelTaskRequestObject struct {
-	ChatId ChatId `json:"chatId"`
-	TaskId TaskId `json:"taskId"`
-}
-
-type CancelTaskResponseObject interface {
-	VisitCancelTaskResponse(w http.ResponseWriter) error
-}
-
-type CancelTask202JSONResponse Task
-
-func (response CancelTask202JSONResponse) VisitCancelTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(202)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CancelTask404JSONResponse struct{ ErrorJSONResponse }
-
-func (response CancelTask404JSONResponse) VisitCancelTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CancelTaskdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response CancelTaskdefaultJSONResponse) VisitCancelTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WatchTaskStageRequestObject struct {
-	ChatId  ChatId `json:"chatId"`
-	TaskId  TaskId `json:"taskId"`
-	StageId string `json:"stageId"`
-}
-
-type WatchTaskStageResponseObject interface {
-	VisitWatchTaskStageResponse(w http.ResponseWriter) error
-}
-
-type WatchTaskStage200TexteventStreamResponse struct {
-	Body          io.Reader
-	ContentLength int64
-}
-
-func (response WatchTaskStage200TexteventStreamResponse) VisitWatchTaskStageResponse(w http.ResponseWriter) error {
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	if response.ContentLength != 0 {
-		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
-	}
-	w.WriteHeader(200)
-
-	if closer, ok := response.Body.(io.ReadCloser); ok {
-		defer closer.Close()
-	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		// If w doesn't support flushing, fall back to io.Copy.
-		_, err := io.Copy(w, response.Body)
-		return err
-	}
-	// text/event-stream messages are typically small; use a
-	// modest buffer and flush after each chunk so clients see
-	// events immediately instead of waiting on OS buffering.
-	buf := make([]byte, 4096)
-	for {
-		n, err := response.Body.Read(buf)
-		if n > 0 {
-			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-				return writeErr
-			}
-			flusher.Flush()
-		}
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return err
-		}
-	}
-}
-
-type WatchTaskStage404JSONResponse struct{ ErrorJSONResponse }
-
-func (response WatchTaskStage404JSONResponse) VisitWatchTaskStageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4791,18 +4294,6 @@ type StrictServerInterface interface {
 	// (PUT /api/chats/{chatId}/settings)
 	SetChatSettings(ctx context.Context, request SetChatSettingsRequestObject) (SetChatSettingsResponseObject, error)
 
-	// (GET /api/chats/{chatId}/tasks)
-	ListTasks(ctx context.Context, request ListTasksRequestObject) (ListTasksResponseObject, error)
-
-	// (GET /api/chats/{chatId}/tasks/{taskId})
-	GetTask(ctx context.Context, request GetTaskRequestObject) (GetTaskResponseObject, error)
-
-	// (POST /api/chats/{chatId}/tasks/{taskId}/cancel)
-	CancelTask(ctx context.Context, request CancelTaskRequestObject) (CancelTaskResponseObject, error)
-
-	// (GET /api/chats/{chatId}/tasks/{taskId}/stages/{stageId}/events)
-	WatchTaskStage(ctx context.Context, request WatchTaskStageRequestObject) (WatchTaskStageResponseObject, error)
-
 	// (GET /api/extensions)
 	GetExtensions(ctx context.Context, request GetExtensionsRequestObject) (GetExtensionsResponseObject, error)
 
@@ -5330,114 +4821,6 @@ func (sh *strictHandler) SetChatSettings(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetChatSettingsResponseObject); ok {
 		if err := validResponse.VisitSetChatSettingsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListTasks operation middleware
-func (sh *strictHandler) ListTasks(w http.ResponseWriter, r *http.Request, chatId ChatId) {
-	var request ListTasksRequestObject
-
-	request.ChatId = chatId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListTasks(ctx, request.(ListTasksRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListTasks")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListTasksResponseObject); ok {
-		if err := validResponse.VisitListTasksResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetTask operation middleware
-func (sh *strictHandler) GetTask(w http.ResponseWriter, r *http.Request, chatId ChatId, taskId TaskId) {
-	var request GetTaskRequestObject
-
-	request.ChatId = chatId
-	request.TaskId = taskId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetTask(ctx, request.(GetTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetTaskResponseObject); ok {
-		if err := validResponse.VisitGetTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CancelTask operation middleware
-func (sh *strictHandler) CancelTask(w http.ResponseWriter, r *http.Request, chatId ChatId, taskId TaskId) {
-	var request CancelTaskRequestObject
-
-	request.ChatId = chatId
-	request.TaskId = taskId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CancelTask(ctx, request.(CancelTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CancelTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CancelTaskResponseObject); ok {
-		if err := validResponse.VisitCancelTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// WatchTaskStage operation middleware
-func (sh *strictHandler) WatchTaskStage(w http.ResponseWriter, r *http.Request, chatId ChatId, taskId TaskId, stageId string) {
-	var request WatchTaskStageRequestObject
-
-	request.ChatId = chatId
-	request.TaskId = taskId
-	request.StageId = stageId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.WatchTaskStage(ctx, request.(WatchTaskStageRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "WatchTaskStage")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(WatchTaskStageResponseObject); ok {
-		if err := validResponse.VisitWatchTaskStageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

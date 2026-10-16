@@ -25,7 +25,10 @@ afterEach(async () => {
 });
 
 async function worker(
-	options: { dir?: string; recover?: { stageId: string; agentId: string; conversationId: unknown }[] } = {},
+	options: {
+		dir?: string;
+		recover?: { stageId: string; agentId: string; conversationId: unknown }[];
+	} = {},
 ) {
 	const dir = options.dir ?? (await mkdtemp(join(tmpdir(), "dex-tasks-")));
 	if (options.dir === undefined) cleanups.push(() => rm(dir, { recursive: true, force: true }));
@@ -80,8 +83,17 @@ async function worker(
 		send({ id, method, params });
 		return wait((m) => m.id === id && m.method === undefined);
 	};
+	let closed = false;
+	const shutdown = async () => {
+		if (!closed) {
+			closed = true;
+			void child.stdin.end();
+		}
+		await child.exited;
+		await reading;
+	};
 	cleanups.push(async () => {
-		void child.stdin.end();
+		await shutdown();
 		await child.exited;
 		await reading;
 		const stderr = await errors;
@@ -114,6 +126,7 @@ async function worker(
 			...extra,
 		});
 	return {
+		shutdown,
 		send,
 		wait,
 		call,
@@ -142,7 +155,6 @@ test("user can spawn a task through the real worker without a browser watch", as
 			modelId: "echo",
 			thinkingLevel: "off",
 		}),
-		{ taskStageId: "stage-1" },
 	);
 	const task = await w.wait((m) => m.method === "task");
 	expect(task.params).toMatchObject({
@@ -150,7 +162,13 @@ test("user can spawn a task through the real worker without a browser watch", as
 		conversationId: w.conversationId,
 		action: "spawn",
 		sourceRequestId: "request-1",
-		args: { title: "Check", goal: "Read one file", provider: "faux", modelId: "echo", thinkingLevel: "off" },
+		args: {
+			title: "Check",
+			goal: "Read one file",
+			provider: "faux",
+			modelId: "echo",
+			thinkingLevel: "off",
+		},
 	});
 	expect(task.params?.["key"]).toMatch(/^bot\/\d+$/);
 	const busy = await w.submit("must stay pending", { whenBusy: "reject" });
@@ -159,25 +177,17 @@ test("user can spawn a task through the real worker without a browser watch", as
 	w.send({ id: task.id, result: { id: "task-1", status: "active" } });
 	const settled = await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-1");
 	expect(settled.params?.["answer"]).toBe('spawn: {"id":"task-1","status":"active"}');
-	expect(settled.params?.["executionConfirmed"]).toBe(true);
-	expect(
-		w.messages.some((m) => m.event === "taskProgress" && m.params?.["currentTool"] === "spawn_task"),
-	).toBe(true);
-	await w.wait((m) => m.event === "taskProgress" && m.params?.["executionState"] === "idle");
-	// A result envelope closes the user goal only with an explicit finish call.
+	expect(settled.params).not.toHaveProperty("executionConfirmed");
+	// Internal results remain in model context and do not need an explicit finish call.
 	await w.submit(
 		JSON.stringify({
-			"task-result": { id: "task-1", status: "done" },
-			finish: { id: "task-1", status: "done", report: "Checked" },
+			"task-result": { id: "task-1", title: "Check", status: "done", report: "Checked" },
 		}),
+		{ kind: "task_result" },
 	);
-	const finish = await w.wait((m) => m.method === "task" && m.params?.["action"] === "finish");
-	expect(finish.params?.["args"]).toEqual({ id: "task-1", status: "done", report: "Checked" });
-	w.send({ id: finish.id, error: { message: "cannot finish this task", code: "task_conflict" } });
-	const failed = await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-3");
-	expect(failed.params?.["answer"]).toContain("spawn error:");
-	expect(failed.params?.["answer"]).toContain("task_conflict");
-	expect(failed.params).not.toHaveProperty("executionConfirmed");
+	const result = await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-3");
+	expect(result.params?.["answer"]).toContain('"report":"Checked"');
+	expect(w.messages.filter((m) => m.method === "task")).toHaveLength(1);
 });
 
 test("task control calls reject when stdin closes and retain control error causes", async () => {
@@ -258,7 +268,9 @@ test("user results complete after a failure with no queued input", async () => {
 	const w = await worker();
 	await w.submit("invalid JSON");
 	await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-1");
-	const result = await w.submit(JSON.stringify({ "task-result": { id: "task-A" } }), { whenBusy: "reject" });
+	const result = await w.submit(JSON.stringify({ "task-result": { id: "task-A" } }), {
+		whenBusy: "reject",
+	});
 	expect(result.error).toBeUndefined();
 	const settled = await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-2");
 	expect(settled.params?.["answer"]).toBe('task-result: {"id":"task-A"}');
@@ -307,7 +319,10 @@ test("user cannot confirm a new submission in a recovery-isolated empty conversa
 test("user recovery never reruns a completed shell stage or confirms its old receipt", async () => {
 	const first = await worker();
 	const command = "echo started >> starts.txt; cat starts.txt";
-	await first.submit(command, { model: { provider: "faux", modelId: "bash" }, taskStageId: "old-shell" });
+	await first.submit(command, {
+		model: { provider: "faux", modelId: "bash" },
+		taskStageId: "old-shell",
+	});
 	await first.wait((m) => m.event === "settled");
 	await first.crash();
 	const recovered = await worker({
@@ -350,7 +365,7 @@ test("restart isolates marked task tools and queued inputs before ordinary conve
 		conversationId: first.conversationId,
 		taskStageId: "unknown-stage",
 	});
-	expect(aborted.result).toEqual({ executionConfirmed: false });
+	expect(aborted.result).toMatchObject({ executionConfirmed: false });
 	await recovered.submit("replay", {
 		conversationId: first.conversationId,
 		requestId: "request-1",
@@ -381,23 +396,37 @@ test("restart isolates marked task tools and queued inputs before ordinary conve
 	);
 });
 
-test("cancellation joins a task tool while control has not answered its RPC", async () => {
+/* oxlint-disable no-await-in-loop -- Each execution must settle before the next input. */
+test.each(["task", "dream"])("%s conversations cannot call any task management tool", async (kind) => {
 	const w = await worker();
-	await w.submit(JSON.stringify({ title: "Cancel", goal: "Wait for control" }), {
-		taskStageId: "cancel-stage",
-	});
-	await w.wait((m) => m.method === "task");
-	const aborted = await w.call("abort", {
-		agentId: "bot",
-		conversationId: w.conversationId,
-		taskStageId: "cancel-stage",
-	});
-	expect(aborted.error).toBeUndefined();
-	expect(aborted.result).toEqual({ executionConfirmed: true });
-	const settled = await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-1");
-	expect(settled.params?.["status"]).toBe("unanswered");
-	expect(settled.params?.["executionConfirmed"]).toBe(true);
+	for (const [index, name, args] of [
+		[1, "spawn_task", { title: "No", goal: "No" }],
+		[2, "list_tasks", {}],
+		[3, "get_task", { id: "another-task" }],
+		[4, "cancel_task", { id: "another-task" }],
+	] as const) {
+		// Given a background execution using a real conversation and SQLite.
+		const created = await w.call("createConversation", {
+			agentId: "bot",
+			model: { provider: "faux", modelId: "tool" },
+			thinkingLevel: "off",
+		});
+		const result = created.result;
+		if (typeof result !== "object" || result === null || !("conversationId" in result))
+			throw new Error("missing conversation");
+		await w.submit(`${name} ${JSON.stringify(args)}`, {
+			conversationId: result.conversationId,
+			...(kind === "task" ? { taskStageId: `restricted-${index}` } : { source: "dex:dream/test" }),
+			model: { provider: "faux", modelId: "tool" },
+		});
+		const settled = await w.wait(
+			(m) => m.event === "settled" && m.params?.["requestId"] === `request-${index}`,
+		);
+		expect(settled.params?.["answer"]).toContain("error");
+		expect(w.messages.some((m) => m.method === "task")).toBe(false);
+	}
 });
+/* oxlint-enable no-await-in-loop */
 
 test("faux/tool calls each exposed task tool without tool_search", async () => {
 	const w = await worker();
@@ -407,7 +436,9 @@ test("faux/tool calls each exposed task tool without tool_search", async () => {
 		["cancel_task", "cancel", { id: "task-1" }],
 	] as const) {
 		// oxlint-disable-next-line no-await-in-loop
-		await w.submit(`${name} ${JSON.stringify(args)}`, { model: { provider: "faux", modelId: "tool" } });
+		await w.submit(`${name} ${JSON.stringify(args)}`, {
+			model: { provider: "faux", modelId: "tool" },
+		});
 		// oxlint-disable-next-line no-await-in-loop
 		const task = await w.wait((m) => m.method === "task" && m.params?.["action"] === action);
 		expect(task.params?.["args"]).toEqual(args);
@@ -482,8 +513,10 @@ test("abort joins a controlled shell process and silent waits do not refresh pro
 		conversationId: w.conversationId,
 		taskStageId: "other-stage",
 	});
-	expect(unknown.result).toEqual({ executionConfirmed: false });
-	expect((await w.call("abort", { agentId: "bot", conversationId: w.conversationId })).result).toEqual({});
+	expect(unknown.result).toMatchObject({ executionConfirmed: false });
+	expect((await w.call("abort", { agentId: "bot", conversationId: w.conversationId })).result).toEqual({
+		executionConfirmed: true,
+	});
 	const settled = await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-1");
 	expect(settled.params?.["status"]).toBe("unanswered");
 	expect(settled.params?.["executionConfirmed"]).toBe(true);
@@ -522,23 +555,21 @@ test("a real submission wait failure does not confirm task execution", async () 
 		source: "dex:chat/test",
 		content: JSON.stringify({ title: "Wait", goal: "Wait for control" }),
 		attachments: [],
-		taskStageId: "wait-stage",
 	});
 	await called.promise;
+	await writeFile(join(dir, "memory/stop-report.md"), "shutdown evidence\n");
 	// When shutdown closes the session, submission.wait rejects instead of returning a settlement.
 	await agents.close();
 	// Then control receives an explicit lack of evidence, even if shutdown cancels the tool.
 	const settled = await event.promise;
 	expect(settled.status).toBe("unanswered");
 	expect(settled.reason).toContain("closed");
-	expect(settled.executionConfirmed).toBe(false);
-	// Wait for the memory commit after the event before deleting its repository.
-	const deadline = Date.now() + 2000;
-	while ((await agents.quiesce({ expiresAt: Date.now() + 1000 })).busy) {
-		if (Date.now() > deadline) throw new Error("settlement cleanup did not finish");
-		// oxlint-disable-next-line no-await-in-loop
-		await new Promise((resolve) => setTimeout(resolve, 10));
-	}
+	expect(settled.executionConfirmed).toBeUndefined();
+	// Close must also join the memory commit after the final settlement.
+	expect(await agents.quiesce({ expiresAt: Date.now() + 1000 })).toEqual({ busy: false });
+	const commit = Bun.spawnSync(["git", "log", "-1", "--format=%s"], { cwd: join(dir, "memory") });
+	expect(commit.exitCode).toBe(0);
+	expect(new TextDecoder().decode(commit.stdout).trim()).toBe("Update memory from dex:chat/test");
 });
 
 test("a bot with MCP tools confirms local stages independently of other conversations", async () => {
@@ -589,8 +620,8 @@ test("a bot with MCP tools confirms local stages independently of other conversa
 	await w.submit("mcp__remote__report {}", { model: { provider: "faux", modelId: "tool" } });
 	await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-1");
 	for (const [index, model, content, confirmed] of [
-		[2, "tool", "mcp__remote__report {}", false],
-		[3, "tool", 'mcp__remote__report {"fail":true}', false],
+		[2, "tool", "mcp__remote__report {}", true],
+		[3, "tool", 'mcp__remote__report {"fail":true}', true],
 		[4, "echo", "local report", true],
 		[5, "bash", "printf DEX_MCP_LOCAL_OK", true],
 	] as const) {
@@ -610,7 +641,7 @@ test("a bot with MCP tools confirms local stages independently of other conversa
 			taskStageId: `mcp-boundary-${index}`,
 		});
 		expect(submitted).not.toHaveProperty("error");
-		// Then only stages that actually called MCP lack remote exit evidence.
+		// MCP and ordinary tools use the same controlled local execution boundary.
 		// oxlint-disable-next-line no-await-in-loop
 		const settled = await w.wait(
 			(m) => m.event === "settled" && m.params?.["requestId"] === `request-${index}`,
@@ -618,10 +649,11 @@ test("a bot with MCP tools confirms local stages independently of other conversa
 		expect(settled.params?.["status"]).toBe("done");
 		expect(settled.params?.["executionConfirmed"]).toBe(confirmed);
 		if (model === "bash") expect(settled.params?.["answer"]).toContain("DEX_MCP_LOCAL_OK");
+		if (model === "tool") expect(settled.params?.["answer"]).toContain("remote report");
 	}
 });
 
-test("MCP cancellation cannot confirm that server work stopped", async () => {
+test("MCP cancellation confirms local cleanup and reports the remote boundary", async () => {
 	// Given a real MCP HTTP server whose tool has no execution exit receipt.
 	const dir = await mkdtemp(join(tmpdir(), "dex-task-mcp-"));
 	cleanups.push(() => rm(dir, { recursive: true, force: true }));
@@ -681,7 +713,178 @@ test("MCP cancellation cannot confirm that server work stopped", async () => {
 		taskStageId: "mcp-stage",
 	});
 	expect(aborted.error).toBeUndefined();
-	expect(aborted.result).toEqual({ executionConfirmed: false });
+	expect(aborted.result).toMatchObject({
+		executionConfirmed: true,
+		stopNote: expect.stringContaining("remote work may still be running"),
+	});
 	const settled = await w.wait((m) => m.event === "settled");
-	expect(settled.params?.["executionConfirmed"]).toBe(false);
+	expect(settled.params?.["executionConfirmed"]).toBe(true);
+	expect(settled.params?.["stopNote"]).toContain("remote work may still be running");
+});
+
+/* oxlint-disable no-await-in-loop -- Poll real process and file state with a deadline. */
+for (const mode of ["cancel", "main-cancel", "shutdown", "timeout"])
+	test(`foreground job-control child cannot write after ${mode}`, async () => {
+		const w = await worker();
+		const workspace = join(w.dir, "agents/bot/workspace");
+		let foregroundPID: number | undefined;
+		cleanups.push(async () => {
+			if (foregroundPID === undefined) return;
+			try {
+				process.kill(-foregroundPID, "SIGKILL");
+			} catch {}
+		});
+		const command =
+			"set -m; echo $$ > shell.pid; bash -c 'echo $$ > foreground.pid; while [ ! -f release ]; do sleep 0.02; done; echo AFTER_CANCEL > after-cancel.txt'; echo after";
+		await w.submit(mode === "timeout" ? `bash ${JSON.stringify({ command, timeout: 1 })}` : command, {
+			model: { provider: "faux", modelId: mode === "timeout" ? "tool" : "bash" },
+			...(mode === "main-cancel" ? {} : { taskStageId: "foreground-stage" }),
+		});
+		const deadline = Date.now() + 5000;
+		while (foregroundPID === undefined) {
+			try {
+				foregroundPID =
+					Number((await readFile(join(workspace, "foreground.pid"), "utf8")).trim()) || undefined;
+			} catch {}
+			if (Date.now() >= deadline) throw new Error("foreground PID was not recorded");
+			if (foregroundPID === undefined) await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		const shellPID = Number((await readFile(join(workspace, "shell.pid"), "utf8")).trim());
+		const describe = Bun.spawnSync([
+			"/bin/ps",
+			"-o",
+			"pid,ppid,pgid,sess,stat,command",
+			"-p",
+			`${shellPID},${foregroundPID}`,
+		]);
+		console.log(new TextDecoder().decode(describe.stdout));
+		const aborted =
+			mode === "shutdown"
+				? (await w.shutdown(), undefined)
+				: mode === "timeout"
+					? undefined
+					: await w.call("abort", {
+							agentId: "bot",
+							conversationId: w.conversationId,
+							...(mode === "main-cancel" ? {} : { taskStageId: "foreground-stage" }),
+						});
+		if (mode === "timeout") {
+			const settled = await w.wait((m) => m.event === "settled");
+			expect(settled.params?.["answer"]).toContain("timed out after 1 seconds");
+			expect(settled.params?.["executionConfirmed"]).toBe(true);
+		}
+		let alive = false;
+		try {
+			process.kill(foregroundPID, 0);
+			alive = true;
+		} catch {}
+		console.log(JSON.stringify({ aborted, foregroundPID, foregroundStillAlive: alive }));
+
+		await writeFile(join(workspace, "release"), "released after executionConfirmed\n");
+		const outputPath = join(workspace, "after-cancel.txt");
+		const outputDeadline = Date.now() + 2000;
+		while (alive && !(await Bun.file(outputPath).exists()) && Date.now() < outputDeadline) {
+			try {
+				process.kill(foregroundPID, 0);
+			} catch {
+				alive = false;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		const lateWrite = await Bun.file(outputPath).exists();
+		if (mode === "cancel" || mode === "main-cancel")
+			expect(aborted?.result).toEqual({ executionConfirmed: true });
+		expect(lateWrite).toBe(false);
+		expect(alive).toBe(false);
+	});
+/* oxlint-enable no-await-in-loop */
+
+test("trusted internal results stay out of user projection and retain their real source", async () => {
+	const w = await worker();
+	const content = JSON.stringify({
+		"task-result": { id: "task-A", title: "Implement", status: "done", report: "Implemented" },
+	});
+	// An identical user JSON remains a user message; only trusted kind controls projection.
+	await w.submit(content, { kind: "message" });
+	await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-1");
+	await w.submit(content, { kind: "task_result" });
+	const settled = await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-2");
+	expect(settled.params?.["answer"]).toContain('"report":"Implemented"');
+	await w.submit(
+		JSON.stringify({
+			"task-result": { id: "task-A" },
+			nextTask: { title: "Review", goal: "Review artifacts" },
+		}),
+		{ kind: "task_result" },
+	);
+	const task = await w.wait((m) => m.method === "task");
+	expect(task.params?.["sourceRequestId"]).toBe("request-3");
+	expect(task.params?.["args"]).toEqual({ title: "Review", goal: "Review artifacts" });
+	w.send({ id: task.id, result: { id: "task-review" } });
+	await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-3");
+	await w.call("watch", {
+		agentId: "bot",
+		conversationId: w.conversationId,
+		watchId: "projection",
+	});
+	const snapshot = await w.wait((m) => m.event === "chat" && m.params?.["watchId"] === "projection");
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+	const events = snapshot.params?.["events"] as {
+		type: string;
+		items: { kind: string; id: string; text?: string }[];
+	}[];
+	const users = events.flatMap((event) => event.items ?? []).filter((item) => item.kind === "user");
+	expect(users).toHaveLength(1);
+	expect(users[0]).toMatchObject({ id: "request-1", text: content });
+	const invalid = await w.submit("invalid kind", { kind: "untrusted" });
+	expect(invalid.error).toBeDefined();
+});
+
+test("task RPC response deadline rejects without a control response and permits later calls", async () => {
+	const sent: TaskRequest[] = [];
+	const rpc = new TaskRpc((request) => sent.push(request), 20);
+	cleanups.push(async () => rpc.close());
+	const params = {
+		agentId: "bot",
+		conversationId: 1,
+		key: "bot/1",
+		sourceRequestId: "source",
+		action: "list",
+		args: {},
+	};
+	const started = Date.now();
+	const timeoutError = await rpc.call(params).catch((error: unknown) => error);
+	expect(timeoutError).toMatchObject({ message: "task control response timed out" });
+	expect(Date.now() - started).toBeLessThan(1000);
+	expect(rpc.respond({ id: 1, result: "late" })).toBe(true);
+	const next = rpc.call(params);
+	rpc.respond({ id: 2, result: "current" });
+	expect(await next).toBe("current");
+	const controller = new AbortController();
+	const aborted = rpc.call(params, controller.signal);
+	const rejection = aborted.catch((error: unknown) => error);
+	controller.abort();
+	expect(await rejection).toMatchObject({ message: "task control call aborted" });
+	const failed = rpc.call(params);
+	const failure = failed.catch((error: unknown) => error);
+	rpc.respond({ id: 4, error: { message: "limited", code: "task_limit" } });
+	expect(await failure).toMatchObject({ message: "limited", cause: { code: "task_limit" } });
+	expect(sent).toHaveLength(4);
+});
+
+test("main conversation abort joins its invocation and withdraws queued input", async () => {
+	const w = await worker();
+	await w.submit(JSON.stringify({ title: "Wait", goal: "Wait for control" }));
+	await w.wait((m) => m.method === "task");
+	await w.submit(JSON.stringify({ title: "Queued", goal: "Must not run" }));
+	const aborted = await w.call("abort", { agentId: "bot", conversationId: w.conversationId });
+	expect(aborted.result).toEqual({ executionConfirmed: true });
+	for (const id of ["request-1", "request-2"]) {
+		// oxlint-disable-next-line no-await-in-loop
+		const settled = await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === id);
+		expect(settled.params?.["status"]).toBe("unanswered");
+	}
+	expect(w.messages.filter((m) => m.method === "task")).toHaveLength(1);
+	const repeated = await w.call("abort", { agentId: "bot", conversationId: w.conversationId });
+	expect(repeated.result).toEqual({ executionConfirmed: true });
 });
