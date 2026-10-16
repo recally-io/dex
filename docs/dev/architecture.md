@@ -58,6 +58,11 @@ decisions.
 | Memory (git repo)                    | the agent's tools   | `<data dir>/memory/`                                                        |
 | Skills and MCP servers               | the user's files    | `~/.agents/{skills/,mcp.json}`, `<data dir>/agents/<id>/{skills/,mcp.json}` |
 
+Control also owns user goals (`user_tasks`), execution stages (`task_stages`),
+and outbound status notices (`task_notices`). A stage uses a hidden
+`task:<stage ID>` conversation. The worker owns that conversation's transcript
+and execution records. Control never reads the worker's SQLite files.
+
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). pi-durable allows one
 process per storage, so only the worker opens an agent directory.
 
@@ -110,6 +115,14 @@ are `idle`. `POST /api/extensions/reload` takes the maintenance lease, which
 it refuses when another holder has it, restarts the worker, opens the agent,
 and releases the lease.
 
+The task extension adds a `task-rules` section and a `coding-skill` section
+to each main chat and task stage. Bun embeds the full
+[built-in coding skill](../../worker/skills/coding/SKILL.md) in the worker.
+It does not copy the skill into a user directory or add a new extension scope.
+The skill requires a repository path, project rules, independent review, tests
+of the final revision, and evidence in the report. It requires serial writes
+or separate worktrees for tasks that change the same repository.
+
 ## Automations
 
 An automation runs a prompt on a schedule; see
@@ -156,6 +169,9 @@ their models. A provider is one of:
   `/models` (OpenAI) or `/v1/models` (Anthropic) returns. A custom provider
   without a key sends the key `none`, for local servers.
 
+For task tools, custom `openai-responses` providers send `strict:false`.
+This keeps optional parameters optional at Responses endpoints.
+
 The worker keeps the providers only in memory (built-in keys in pi-ai's
 `InMemoryCredentialStore`) and gets no provider environment variables. When a
 custom provider's model list fails, the provider stays saved and the API
@@ -183,6 +199,20 @@ The types are in [`worker/src/protocol.ts`](../../worker/src/protocol.ts) and
 | `unwatch`            | `watchId`                                                                                                              | `{}`                      |
 | `abort`              | `agentId`, `conversationId`                                                                                            | `{}`                      |
 | `extensions`         | `agentId`                                                                                                              | the Extensions schema     |
+
+The worker can also send a `task` request to control. Its params contain the
+agent, worker conversation, durable tool key, source request ID, action, and
+arguments. Control returns a response with the same ID. IDs in the two pipe
+directions have separate namespaces. Control handles these requests outside
+the stdout reader because a task action can call the worker for validation.
+
+`submit` also accepts `whenBusy` and `taskStageId`. Task result delivery uses
+`whenBusy: reject`, so it remains in control while the main chat has an active
+run or queued inputs. `abort` with a `taskStageId` returns
+`executionConfirmed`. `recoverTasks` registers old task conversations before
+the worker opens any Harness. Event `taskProgress` records actual run and tool
+events without a browser watch. A task `settled` event also carries
+`executionConfirmed`.
 
 The worker runs the submits of one conversation in order. When `model`,
 `thinkingLevel` or `instructions` differ from the conversation's, it changes
@@ -220,6 +250,86 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
    the chat's event stream (next section).
 5. The worker sends `settled`. Control marks the submission `done` or
    `unanswered`, and the channel sender reads the answer from durable storage.
+
+## Background tasks
+
+A user task is one goal with a stable short ID. Each stage has one hidden
+conversation, one goal submission, and fixed model settings. Stage `done`
+means that execution returned an answer. The main chat must use `finish_task`
+to close the user goal with a report. A `needs_input` stage ends and releases
+its slot. The next stage can use the same active user task ID.
+
+`spawn_task`, `list_tasks`, `get_task`, `cancel_task`, and `finish_task` are
+ordinary non-deferred tools. Their replay policy is safe because control owns
+the durable changes. The spawn key is the agent ID plus pi-durable's tool task
+ID. Provider tool call IDs are not used as durable keys. The worker binds each
+tool to the original submission of its actual run and saves that source in
+the tool memo. A run with multiple input submissions cannot call task tools.
+Control verifies the source conversation and result delivery attempt. Each new
+mutation also checks that the source is still pending in its write transaction.
+A saved finish receipt keeps a replay from replacing a later question.
+
+Task creation, deduplication, and capacity checks share one SQLite writer
+transaction. Queued, running, cancelling, and unknown stages occupy the two
+slots of an agent. A full agent returns a conflict. Control does not create
+an unbounded waiting queue. A task conversation cannot spawn or finish goals.
+The main chat can assign later stages. A task result can continue only its
+original user goal, even when the model omits `userTaskId`.
+
+Stage settlement, a parent `task_result` submission, and any status notice
+commit in one transaction. The result has source key `task:<stage ID>:result`.
+Its parent input retains at most the first 3000 and last 1000 characters of
+the report. Task details retain the full report. The result waits in control
+when the parent is busy. A parent stop retains the result and increments its
+`delivery_attempt`; the next worker request ID has an attempt suffix. Control
+ignores events and tool sources from earlier attempts. If a model error left
+queued worker inputs without a run, the next submit advances the old inbox
+before it accepts new input. The result stays in control until that queue clears.
+
+The web task cards and `/tasks`, `/task <id>`, and `/cancel <id>` call control
+without a model. Lists contain all open goals and the ten most recent closed
+goals from the source chat. A saved stage link reads an older goal by ID in
+that chat when the goal is outside the list. Stages remain absent from ordinary
+chat lists, ordinary chat reads, and dream inputs. A separate read-only task stream
+checks the parent, task, and stage before it opens the existing transcript.
+The main chat stays the only place for new user instructions. The web UI does
+not offer the ordinary message Retry action for automatic task results, because
+resending their text as a new user message would lose the task source.
+
+`/stop` stops the main run and withdraws ordinary queued messages. It does
+not cancel user tasks or remove pending task results. `/cancel` commits the
+whole goal's stop intent before it returns accepted. Background cancellation
+then aborts its stages. Control rejects all later stages of that goal.
+Only confirmed execution exit releases the slot as cancelled. Uncertain
+execution becomes unknown. Cancellation does not undo earlier actions.
+
+Control binds stage admission to the current worker process. If no process is
+ready, the stage stays queued. An admitted call cannot move to the next process.
+When a worker exits, control cancels and joins its task RPC callbacks before
+it initializes the next process.
+
+Before a Harness resumes after restart, the worker aborts the marked old
+task runs and queued inputs. Control marks interrupted stages unknown and
+keeps their slots. A queued stage that never started can run for the first time
+after restart, even if its empty worker conversation was already saved.
+A cancellation accepted before stage admission stays cancelling across restart
+until control confirms that no execution started and releases the slot.
+Control never resumes a possibly repeated CLI action. For current-process tasks,
+confirmation joins tracked `NodeExecutionEnv.exec`
+promises and checks that the submission wait returned with no live task or
+run. A wait error cannot confirm exit. A stage that calls an MCP tool cannot
+confirm exit because an ended client call does not prove that remote work stopped.
+The worker records the call before it sends the MCP request. Calls in another
+conversation do not prevent a local stage from completing. Unknown slots have
+no manual release action in this version.
+
+Tools use the local `NodeExecutionEnv`, without a sandbox. CLI tools must be
+logged in and run in the foreground with non-interactive options. Detached
+processes and daemons are outside the supported lifecycle. Bash has no default
+timeout. Its visible output keeps at most the last 2000 lines or 50 KiB,
+whichever limit comes first; complete output goes to a temporary file.
+A durable checkpoint does not attach a CLI after restart or guarantee that
+external actions occurred once.
 
 ## Attachments
 
@@ -284,7 +394,8 @@ so dex needs no public URL.
   change cancels the previous code. Manual user-ID entry remains available.
   An allowed user who repeats a pairing command receives an already-paired
   reply, including after a lost acknowledgement or restart.
-- The bot registers `/new`, `/stop`, and `/help` with `setMyCommands`.
+- The bot registers `/new`, `/stop`, `/tasks`, `/task`, `/cancel`, and `/help`
+  with `setMyCommands`.
   The channel manager owns command execution and deduplication.
 - Each update has a stable source key: `telegram:<bot id>:<update id>`.
   A repeated update does not create another submission.
@@ -323,21 +434,23 @@ Every key keeps its destination, so an old chat can still receive its answer.
 External channel chats are read-only on the web. Web and automation chats
 remain writable.
 
-`/new`, `/stop`, and `/help` use durable command receipts. The receipt and a
-`/new` rotation commit in one transaction. `/stop` settles queued submissions
-as unanswered with reason `stopped`, prevents later admission, and aborts the
-worker run. An interrupted stop can run again; abort is safe to repeat.
+`/new`, `/stop`, `/tasks`, `/task`, `/cancel`, and `/help` use durable command
+receipts. The receipt and a `/new` rotation commit in one transaction. `/stop`
+settles queued ordinary submissions as unanswered with reason `stopped`,
+prevents their later admission, and aborts the worker run. An interrupted stop can run again; abort is safe to repeat.
 If abort fails, control logs the error and completes the command with a failure
 answer. The platform can then receive more messages and deliver other replies.
 
 Each platform has one durable sender. Notify only wakes this sender. At start
-and after a failed send, the same sender reads settled, undelivered submissions.
-It records progress after each confirmed part and marks the whole reply as
-delivered after its last part. A permanent rejection skips that part and does
-not block later replies. A transient error retries with a delay from 5 s to
-60 s. Each bot receives the stable submission or command ID and the part index
-through `Bot.Send`. Fixed command replies record only whole-reply delivery.
-Worker replay still reads only pending messages.
+and after a failed send, it reads settled submissions, command replies, and
+task notices that remain undelivered. It records each confirmed part and
+marks the reply delivered after its last part. This includes long `/task`
+reports, which resume from the saved part after restart. A permanent rejection
+skips that part and does not block later replies. A transient error retries
+with a delay from 5 s to 60 s. Each bot receives a stable delivery ID and part
+index through `Bot.Send`. Worker replay still reads only pending submissions.
+Task notices use the source chat's saved channel key. They do not need a model
+or a second sending loop.
 Delivery is at least once: a crash between platform success and the local
 commit can duplicate one part. Migration marks old settled replies as delivered
 because earlier versions did not record delivery success.
@@ -377,8 +490,8 @@ The bot ignores groups and other users. Text mentions are removed. Rich posts
 become text and image attachments. Code blocks keep their text and language
 in Markdown fences. Repeated `/pair` messages never reach the agent.
 Message resources pass through `upload.Store`, with its 20 MB file limit and 10 attachments per message.
-The shared channel manager handles `/new`, `/stop`, and `/help`. A source key
-contains `feishu:<app ID>:<message ID>`. The bot acknowledges valid agent
+The shared channel manager handles `/new`, `/stop`, `/tasks`, `/task <id>`,
+`/cancel <id>`, and `/help`. A source key contains `feishu:<app ID>:<message ID>`. The bot acknowledges valid agent
 input after durable admission succeeds. Invalid content, rejected resource access,
 and files with invalid names or excessive size are acknowledged and ignored.
 Storage and temporary platform failures get a 500 acknowledgement for retry.
@@ -466,9 +579,11 @@ the saved context token before each send, including after a restart.
 
 - **Worker exits.** [`worker.Worker.Run`](../../internal/worker/worker.go)
   restarts it with a backoff from 1 s to 30 s. Calls wait for the new process.
-  After each start, `chat.Service.Replay` sends every `pending` submission
-  again with the same `requestId`. pi-durable finds the same submission and
-  continues it from its last checkpoint, so no message runs twice.
+  After each start, control isolates old task conversations before any Harness
+  resumes. Interrupted task execution becomes unknown. `chat.Service.Replay`
+  re-admits pending ordinary messages and results with their stable request
+  IDs. pi-durable deduplicates input admission. This does not guarantee that
+  an external tool action occurs once.
 - **Control exits.** Pending submissions stay in `control.sqlite`. The next
   start replays them.
 - **Crash between `createConversation` and storing its ID.** The worker keeps
@@ -574,10 +689,11 @@ Provider responses keep their own API type. The service's provider input can
 hold an API key. The response type cannot hold that key. Keep this conversion
 as the boundary that prevents secrets from reaching the browser.
 
-Keep the delivery queue. A pending submission can be waiting for delivery or
-waiting for an answer. A loop that scans pending rows would resend messages
-that the worker already accepted. Avoiding those repeats would need another
-state or cursor.
+Keep work in SQLite and use a coalesced wake signal. The delivery loop scans
+pending submissions. An in-memory `inFlight` set prevents repeated delivery
+after the worker accepted an input. Replay clears that set after a worker
+restart; stable request IDs make input admission safe to repeat. Task results
+that receive a busy response stay pending outside the worker inbox.
 
 Keep the live hub's merge state. It joins the worker's transcript with queued
 or failed messages that only control has. Each browser stream has its own

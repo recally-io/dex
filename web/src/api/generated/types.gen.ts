@@ -53,6 +53,47 @@ export type Chat = {
 };
 
 /**
+ * Stage completion alone does not complete a user task.
+ */
+export type TaskStatus = 'active' | 'needs_input' | 'done' | 'failed' | 'cancelling' | 'unknown' | 'cancelled';
+
+export type TaskStageStatus = 'queued' | 'running' | 'done' | 'needs_input' | 'failed' | 'cancelling' | 'unknown' | 'cancelled';
+
+export type TaskStage = {
+    id: string;
+    title: string;
+    agentId: string;
+    status: TaskStageStatus;
+    provider: string;
+    modelId: string;
+    thinkingLevel: ThinkingLevel;
+    createdAt: number;
+    startedAt?: number;
+    endedAt?: number;
+    lastEventAt: number;
+    currentTool: string;
+    report: string;
+};
+
+export type Task = {
+    id: string;
+    shortId: string;
+    chatId: number;
+    title: string;
+    status: TaskStatus;
+    createdAt: number;
+    endedAt?: number;
+    stopRequestedAt?: number;
+    lastEventAt: number;
+    report: string;
+    stages: Array<TaskStage>;
+};
+
+export type TaskList = {
+    tasks: Array<Task>;
+};
+
+/**
  * The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
  *
  */
@@ -551,6 +592,8 @@ export type FeishuPoll = {
     session: string;
 };
 
+export type TaskId = string;
+
 export type AutomationId = string;
 
 export type ChatId = number;
@@ -746,6 +789,130 @@ export type GetChatResponses = {
 };
 
 export type GetChatResponse = GetChatResponses[keyof GetChatResponses];
+
+export type ListTasksData = {
+    body?: never;
+    path: {
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/chats/{chatId}/tasks';
+};
+
+export type ListTasksErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListTasksError = ListTasksErrors[keyof ListTasksErrors];
+
+export type ListTasksResponses = {
+    /**
+     * The user tasks.
+     */
+    200: TaskList;
+};
+
+export type ListTasksResponse = ListTasksResponses[keyof ListTasksResponses];
+
+export type GetTaskData = {
+    body?: never;
+    path: {
+        chatId: number;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/chats/{chatId}/tasks/{taskId}';
+};
+
+export type GetTaskErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetTaskError = GetTaskErrors[keyof GetTaskErrors];
+
+export type GetTaskResponses = {
+    /**
+     * The user task.
+     */
+    200: Task;
+};
+
+export type GetTaskResponse = GetTaskResponses[keyof GetTaskResponses];
+
+export type WatchTaskStageData = {
+    body?: never;
+    path: {
+        chatId: number;
+        taskId: string;
+        stageId: string;
+    };
+    query?: never;
+    url: '/api/chats/{chatId}/tasks/{taskId}/stages/{stageId}/events';
+};
+
+export type WatchTaskStageErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+};
+
+export type WatchTaskStageError = WatchTaskStageErrors[keyof WatchTaskStageErrors];
+
+export type WatchTaskStageResponses = {
+    /**
+     * The stage event stream.
+     */
+    200: ChatEvent;
+};
+
+export type WatchTaskStageResponse = WatchTaskStageResponses[keyof WatchTaskStageResponses];
+
+export type CancelTaskData = {
+    body?: never;
+    path: {
+        chatId: number;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/chats/{chatId}/tasks/{taskId}/cancel';
+};
+
+export type CancelTaskErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CancelTaskError = CancelTaskErrors[keyof CancelTaskErrors];
+
+export type CancelTaskResponses = {
+    /**
+     * The stop intent is stored, or the task has ended.
+     */
+    202: Task;
+};
+
+export type CancelTaskResponse = CancelTaskResponses[keyof CancelTaskResponses];
 
 export type SetChatSettingsData = {
     body: ChatSettings;

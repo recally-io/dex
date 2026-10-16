@@ -5,6 +5,9 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message, Models } from "@earendil-works/pi-ai";
 import {
 	AssistantEntry,
+	ConversationBusy,
+	InboxDoc,
+	LiveDoc,
 	type Conversation,
 	type ConversationId,
 	createRegistry,
@@ -12,16 +15,19 @@ import {
 	type Submission,
 	watchEvents,
 	type AgentEventStream,
+	type AgentEvent,
 } from "@earendil-works/pi-durable";
-import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
+import { TaskExecutionScope } from "./task-execution.ts";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
 import { AgentExtensions, type Loaded } from "./extensions.ts";
+import { taskExtension } from "./tasks.ts";
 import { MemoryRepo } from "./memory.ts";
 import { ChatView, messageText, USER_ENTRY } from "./view.ts";
 import type {
 	AbortParams,
+	AbortResult,
 	AgentParams,
 	ChatStreamEvent,
 	CreateConversationParams,
@@ -34,6 +40,9 @@ import type {
 	WatchParams,
 	QuiesceParams,
 	QuiesceResult,
+	RecoverTasksParams,
+	TaskRequestParams,
+	TaskProgressEvent,
 } from "./protocol.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -42,6 +51,15 @@ const context = BACKGROUND_CONTEXT;
 const AGENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 const ToolSearch = createToolSearchExtension();
+
+type TaskExecution = {
+	readonly agentId: string;
+	readonly conversationId: number;
+	readonly requestId: string;
+	readonly waited: Promise<boolean>;
+	readonly resolveWait: (success: boolean) => void;
+	failed: boolean;
+};
 
 /**
  * Owns one pi-durable Harness per agent, opened on first use. pi-durable allows one process per
@@ -54,6 +72,13 @@ export class Agents {
 	readonly #emit: (event: SettledEvent) => void;
 	readonly #emitChat: (event: ChatStreamEvent) => void;
 	readonly #memory: MemoryRepo;
+	readonly #taskCall: (params: TaskRequestParams, signal?: AbortSignal) => Promise<unknown>;
+	readonly #emitTaskProgress: (event: TaskProgressEvent) => void;
+	readonly #recovering = new Map<string, Set<number>>();
+	readonly #taskWatches = new Map<string, AgentEventStream>();
+	// Process-local receipts survive settle/abort races, but never a worker restart.
+	readonly #taskExecutions = new Map<string, TaskExecution>();
+	readonly #executionScopes = new Map<string, TaskExecutionScope>();
 	// The source of each conversation, by "<agent>/<conversation>", from its last submit. A run that
 	// resumes after a restart has none until control submits to it again.
 	readonly #sources = new Map<string, string>();
@@ -133,12 +158,34 @@ export class Agents {
 		models: Models,
 		emit: (event: SettledEvent) => void,
 		emitChat: (event: ChatStreamEvent) => void,
+		taskCall: (params: TaskRequestParams, signal?: AbortSignal) => Promise<unknown> = async () => {
+			throw new Error("task control RPC is unavailable");
+		},
+		emitTaskProgress: (event: TaskProgressEvent) => void = () => {},
 	) {
 		this.#dataDir = dataDir;
 		this.#models = models;
 		this.#emit = emit;
 		this.#emitChat = emitChat;
+		this.#taskCall = taskCall;
+		this.#emitTaskProgress = emitTaskProgress;
 		this.#memory = new MemoryRepo(join(dataDir, "memory"));
+	}
+
+	recoverTasks(params: RecoverTasksParams): Record<string, never> {
+		if (this.#harnesses.size > 0) throw new Error("recoverTasks must precede agent open");
+		for (const stage of params.stages) {
+			if (!AGENT_ID.test(stage.agentId)) throw new Error("invalid recovery agent ID");
+		}
+		for (const stage of params.stages) {
+			let ids = this.#recovering.get(stage.agentId);
+			if (ids === undefined) {
+				ids = new Set();
+				this.#recovering.set(stage.agentId, ids);
+			}
+			ids.add(stage.conversationId);
+		}
+		return {};
 	}
 
 	createConversation(params: CreateConversationParams): Promise<CreateConversationResult> {
@@ -172,6 +219,27 @@ export class Agents {
 		const key = `${params.agentId}/${params.conversationId}`;
 		this.#sources.set(key, params.source);
 		return this.#serial(key, async () => {
+			// All worker admission uses this chain. Tools cannot submit to this conversation.
+			const admission = await conversation.commit(async (tx) => {
+				const existing = await tx.submissionByRequest(conversation.id, params.requestId);
+				const live = await tx.doc(LiveDoc, conversation.id);
+				const inbox = await tx.doc(InboxDoc, conversation.id);
+				return {
+					existing,
+					queued: inbox.items.length > 0,
+					idle: live.run === undefined,
+				};
+			}, context);
+			if (admission.idle && admission.queued) {
+				// pi-durable 1.2.0 ends failed runs without advancing the inbox. An empty model
+				// write triggers a final boundary without adding input to the next run.
+				await conversation.submit(
+					{ type: "write", entry: { kind: "dex.inbox_progress", model: [] } },
+					context,
+				);
+			}
+			if (params.whenBusy === "reject" && admission.existing === undefined && admission.queued)
+				throw new ConversationBusy(conversation.id);
 			const agent = await conversation.agent(context);
 			const instructions = params.instructions === "" ? undefined : params.instructions;
 			if (
@@ -189,6 +257,7 @@ export class Agents {
 			const submission = await conversation.submit(
 				{
 					type: "input",
+					...(params.whenBusy === undefined ? {} : { whenBusy: params.whenBusy }),
 					// The model gets the paths; its tools read the files.
 					content: messageText(params.content, params.attachments),
 					requestId: params.requestId,
@@ -200,12 +269,91 @@ export class Agents {
 				},
 				context,
 			);
+			if (params.taskStageId !== undefined) {
+				await this.#watchTask(params, conversation);
+				// An empty stored conversation can start fresh. Recovery-isolated work cannot
+				// prove that an old external execution exited, even after its run was cleared.
+				if (
+					admission.existing === undefined &&
+					admission.idle &&
+					!admission.queued &&
+					!this.#recovering.get(params.agentId)?.has(conversation.id) &&
+					!this.#taskExecutions.has(params.taskStageId)
+				) {
+					const { promise: waited, resolve: resolveWait } = Promise.withResolvers<boolean>();
+					this.#taskExecutions.set(params.taskStageId, {
+						agentId: params.agentId,
+						conversationId: conversation.id,
+						requestId: params.requestId,
+						waited,
+						resolveWait,
+						failed: false,
+					});
+				}
+			}
 			this.#operations++;
 			void this.#settle(params, conversation, submission).finally(() => {
 				this.#operations--;
 			});
 			return { submissionId: submission.id };
 		});
+	}
+
+	async #watchTask(params: SubmitParams, conversation: Conversation): Promise<void> {
+		const stageId = params.taskStageId;
+		if (stageId === undefined || this.#taskWatches.has(stageId)) return;
+		const stream = await watchEvents(await this.#harness(params.agentId), conversation.id, context);
+		this.#taskWatches.set(stageId, stream);
+		const view = new ChatView();
+		const tools = new Map<string, string>();
+		let running = stream.snapshot.run !== undefined;
+		let currentTool = "";
+		let lastEventAt = Date.now();
+		const emit = () =>
+			this.#emitTaskProgress({
+				stageId,
+				agentId: params.agentId,
+				conversationId: conversation.id,
+				currentTool,
+				lastEventAt,
+				executionState: running ? "running" : "idle",
+			});
+		const apply = (changes: ReturnType<ChatView["apply"]>) => {
+			for (const change of changes) {
+				if (change.type === "snapshot") {
+					running = change.running;
+					tools.clear();
+					for (const item of change.items)
+						if (item.kind === "tool" && item.status === "running") tools.set(item.id, item.name);
+				} else if (change.type === "run") {
+					running = change.running;
+					if (!running) tools.clear();
+				} else if (change.type === "item" && change.item.kind === "tool") {
+					if (change.item.status === "running") tools.set(change.item.id, change.item.name);
+					else tools.delete(change.item.id);
+				}
+			}
+			currentTool = [...tools.values()].at(-1) ?? "";
+		};
+		apply([view.snapshot(stream.snapshot)]);
+		emit();
+		stream.start(async (events: readonly AgentEvent[]) => {
+			const changes = view.apply(events);
+			apply(changes);
+			const visible = events.some(
+				(event) =>
+					event.type === "run_start" ||
+					event.type === "run_end" ||
+					event.type === "tool_execution_start" ||
+					event.type === "tool_execution_end" ||
+					event.type === "message_end",
+			);
+			if (visible) {
+				lastEventAt = Date.now();
+				emit();
+			}
+		});
+		void stream.closed.catch((error: unknown) => console.error("task progress watch failed:", error));
 	}
 
 	/**
@@ -261,14 +409,45 @@ export class Agents {
 	}
 
 	/** Stops the conversation's run and withdraws its queued messages. */
-	abort(params: AbortParams): Promise<Record<string, never>> {
+	abort(params: AbortParams): Promise<AbortResult> {
 		return this.#admit(() => this.#abort(params));
 	}
 
-	async #abort(params: AbortParams): Promise<Record<string, never>> {
+	async #abort(params: AbortParams): Promise<AbortResult> {
 		const conversation = await this.#conversation(params.agentId, params.conversationId);
 		await conversation.abort(context);
-		return {};
+		if (params.taskStageId === undefined) return {};
+		return { executionConfirmed: await this.#confirmExecution(params, conversation) };
+	}
+
+	async #confirmExecution(params: AbortParams, conversation: Conversation): Promise<boolean> {
+		const execution =
+			params.taskStageId === undefined ? undefined : this.#taskExecutions.get(params.taskStageId);
+		if (
+			execution === undefined ||
+			execution.agentId !== params.agentId ||
+			execution.conversationId !== conversation.id
+		)
+			return false;
+		if (!(await execution.waited) || execution.failed) return false;
+		try {
+			await conversation.waitForIdle(context);
+			// Do not hold admission while waiting for idle: abort must remain able to stop the scope.
+			return await this.#serial(`${params.agentId}/${conversation.id}`, async () => {
+				const harness = await this.#harness(params.agentId);
+				const state = await harness.inspect(context);
+				if (state.tasks.some((task) => task.record.conversationId === conversation.id)) return false;
+				const live = await harness.snapshot(LiveDoc, conversation.id, context);
+				if (live === undefined || live.run !== undefined) return false;
+				// MCP calls have no receipt that proves remote work has ended.
+				if (this.#loaded.get(params.agentId)?.hasMcpCalls(conversation.id) !== false) return false;
+				const scope = this.#executionScopes.get(`${params.agentId}/${conversation.id}`);
+				return (scope === undefined || (await scope.join())) && !execution.failed;
+			});
+		} catch (error) {
+			console.error("task execution confirmation:", error);
+			return false;
+		}
 	}
 
 	/**
@@ -308,6 +487,8 @@ export class Agents {
 	}
 
 	async close(): Promise<void> {
+		await Promise.all([...this.#taskWatches.values()].map((stream) => stream.stop()));
+		this.#taskWatches.clear();
 		await Promise.all([...this.#watches.values()].map((stream) => stream.stop()));
 		const opening = [...this.#harnesses.values()];
 		this.#harnesses.clear();
@@ -325,17 +506,53 @@ export class Agents {
 	// Runs in the background after submit() returns. A replayed requestId finds the same
 	// submission, so a settled one emits its event again at once.
 	async #settle(params: SubmitParams, conversation: Conversation, submission: Submission): Promise<void> {
-		const base = { agentId: params.agentId, conversationId: conversation.id, requestId: params.requestId };
+		const base: SettledEvent = {
+			agentId: params.agentId,
+			conversationId: conversation.id,
+			requestId: params.requestId,
+			status: "unanswered",
+			...(params.taskStageId === undefined ? {} : { executionConfirmed: false }),
+		};
+		const candidate =
+			params.taskStageId === undefined ? undefined : this.#taskExecutions.get(params.taskStageId);
+		const execution =
+			candidate?.agentId === params.agentId &&
+			candidate.conversationId === conversation.id &&
+			candidate.requestId === params.requestId
+				? candidate
+				: undefined;
 		try {
 			const settled = await submission.wait(context);
+			execution?.resolveWait(true);
+			const confirmation =
+				params.taskStageId === undefined
+					? {}
+					: {
+							executionConfirmed:
+								execution !== undefined && (await this.#confirmExecution(params, conversation)),
+						};
 			if (settled.status === "done" && settled.type === "input") {
 				const entry = await conversation.commit((tx) => tx.entry(AssistantEntry, settled.answer), context);
-				this.#emit({ ...base, status: "done", answer: answerText(entry?.model?.[0]) });
+				this.#emit({ ...base, ...confirmation, status: "done", answer: answerText(entry?.model?.[0]) });
 			} else {
-				this.#emit({ ...base, status: "unanswered", reason: settled.reason ?? settled.status });
+				this.#emit({
+					...base,
+					...confirmation,
+					status: "unanswered",
+					reason: settled.reason ?? settled.status,
+				});
 			}
 		} catch (error) {
+			if (execution !== undefined) {
+				execution.failed = true;
+				execution.resolveWait(false);
+			}
 			this.#emit({ ...base, status: "unanswered", reason: String(error) });
+		}
+		if (params.taskStageId !== undefined) {
+			const stream = this.#taskWatches.get(params.taskStageId);
+			await stream?.stop();
+			if (this.#taskWatches.get(params.taskStageId) === stream) this.#taskWatches.delete(params.taskStageId);
 		}
 		// A stopped or failed run can also have changed the memory.
 		await this.#memory
@@ -361,6 +578,7 @@ export class Agents {
 		await mkdir(workspace, { recursive: true });
 		const registry = createRegistry();
 		registry.install(CodingTools);
+		registry.install(taskExtension(agentId, this.#taskCall));
 		await this.#memory.open();
 		registry.install(this.#memory.extension((id) => this.#sources.get(`${agentId}/${id}`)));
 		// A run that resumes after a restart needs its MCP tools, so they load before resume().
@@ -375,12 +593,41 @@ export class Agents {
 					models: this.#models,
 					registry,
 					// No sandbox: tools run on the host, inside the agent workspace.
-					env: ({ cwd }) => new NodeExecutionEnv({ cwd: cwd ?? workspace }),
+					env: ({ cwd, conversationId }) => {
+						const key = `${agentId}/${conversationId}`;
+						let scope = this.#executionScopes.get(key);
+						if (scope === undefined) {
+							scope = new TaskExecutionScope();
+							this.#executionScopes.set(key, scope);
+						}
+						return scope.env(cwd ?? workspace);
+					},
 					onReport: (error) => console.error(`agent ${agentId}:`, error),
 				},
 				context,
 			);
 		} catch (error) {
+			await loaded.close();
+			throw error;
+		}
+		try {
+			const isolated = this.#recovering.get(agentId);
+			if (isolated !== undefined) {
+				const state = await harness.inspect(context);
+				// abortTask marks without enabling scheduling. Mark tools too before resume.
+				for (const task of state.tasks) {
+					if (!isolated.has(task.record.conversationId)) continue;
+					// oxlint-disable-next-line no-await-in-loop
+					await harness.abortTask(task.record.id, context);
+				}
+				for (const submission of state.submissions) {
+					if (!isolated.has(submission.conversationId) || submission.status !== "queued") continue;
+					// oxlint-disable-next-line no-await-in-loop
+					await harness.abortSubmission(submission.id, context, submission.conversationId);
+				}
+			}
+		} catch (error) {
+			await harness.close(context);
 			await loaded.close();
 			throw error;
 		}

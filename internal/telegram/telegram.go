@@ -93,7 +93,10 @@ func New(cfg Config, chats *channel.Manager) *Bot {
 func (b *Bot) Run(ctx context.Context) error {
 	if err := b.call(ctx, "setMyCommands", map[string]any{"commands": []map[string]string{
 		{"command": "new", "description": "Start a new conversation"},
-		{"command": "stop", "description": "Stop the current conversation"},
+		{"command": "stop", "description": "Stop the current answer"},
+		{"command": "tasks", "description": "List tasks in this chat"},
+		{"command": "task", "description": "Show a task and its full report"},
+		{"command": "cancel", "description": "Request task cancellation"},
 		{"command": "help", "description": "List commands"},
 	}}, nil); err != nil {
 		slog.Warn("telegram: command menu", "err", err)

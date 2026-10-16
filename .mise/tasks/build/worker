@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Compile the Bun worker for GOOS/GOARCH (default: host) and gzip it for go:embed"
-#MISE sources=["worker/src/**/*.ts", "worker/package.json", "worker/bun.lock"]
+#MISE sources=["worker/src/**/*.ts", "worker/skills/**/*.md", "worker/package.json", "worker/bun.lock"]
 #MISE outputs=["internal/workerbin/dex-worker.gz"]
 set -euo pipefail
 

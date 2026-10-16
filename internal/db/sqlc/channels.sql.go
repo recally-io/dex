@@ -85,7 +85,7 @@ func (q *Queries) EnsureChannelPeer(ctx context.Context, arg EnsureChannelPeerPa
 }
 
 const getChannelCommand = `-- name: GetChannelCommand :one
-SELECT source_key, peer, channel_key, command, answer, completed, delivered_at FROM channel_commands WHERE source_key = ?
+SELECT source_key, peer, channel_key, command, answer, completed, delivered_at, delivered_parts FROM channel_commands WHERE source_key = ?
 `
 
 func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (ChannelCommand, error) {
@@ -99,6 +99,7 @@ func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (Chan
 		&i.Answer,
 		&i.Completed,
 		&i.DeliveredAt,
+		&i.DeliveredParts,
 	)
 	return i, err
 }
@@ -115,7 +116,7 @@ func (q *Queries) GetSubmissionBySource(ctx context.Context, sourceKey sql.NullS
 }
 
 const listChannelCommandReplies = `-- name: ListChannelCommandReplies :many
-SELECT source_key, peer, channel_key, command, answer, completed, delivered_at FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
+SELECT source_key, peer, channel_key, command, answer, completed, delivered_at, delivered_parts FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
 AND peer LIKE ?1 || '%' ORDER BY rowid
 `
 
@@ -136,6 +137,7 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, prefix sql.Null
 			&i.Answer,
 			&i.Completed,
 			&i.DeliveredAt,
+			&i.DeliveredParts,
 		); err != nil {
 			return nil, err
 		}
@@ -151,7 +153,7 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, prefix sql.Null
 }
 
 const listChannelCommands = `-- name: ListChannelCommands :many
-SELECT source_key, peer, channel_key, command, answer, completed, delivered_at FROM channel_commands WHERE completed = 0
+SELECT source_key, peer, channel_key, command, answer, completed, delivered_at, delivered_parts FROM channel_commands WHERE completed = 0
 `
 
 func (q *Queries) ListChannelCommands(ctx context.Context) ([]ChannelCommand, error) {
@@ -171,6 +173,7 @@ func (q *Queries) ListChannelCommands(ctx context.Context) ([]ChannelCommand, er
 			&i.Answer,
 			&i.Completed,
 			&i.DeliveredAt,
+			&i.DeliveredParts,
 		); err != nil {
 			return nil, err
 		}
@@ -275,7 +278,7 @@ func (q *Queries) SetChannelPeer(ctx context.Context, arg SetChannelPeerParams) 
 
 const stopChatSubmissions = `-- name: StopChatSubmissions :execrows
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = ?1
-WHERE conversation_id = ?2 AND status = 'pending'
+WHERE conversation_id = ?2 AND status = 'pending' AND kind = 'message'
 `
 
 type StopChatSubmissionsParams struct {

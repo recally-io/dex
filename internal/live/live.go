@@ -59,10 +59,10 @@ type input struct {
 }
 
 type stream struct {
-	chatID int64
-	in     chan input
-	kill   chan struct{}
-	once   sync.Once
+	chat chat.Chat
+	in   chan input
+	kill chan struct{}
+	once sync.Once
 
 	// Used only by the goroutine that serves the stream.
 	watchID string
@@ -114,11 +114,27 @@ func (h *Hub) WorkerExited() {
 // Open checks that chat chatID exists and returns its event stream as server-sent events. The
 // stream ends when ctx is done, when the worker restarts, or when the reader is too slow.
 func (h *Hub) Open(ctx context.Context, chatID int64) (io.ReadCloser, error) {
-	if _, err := h.chats.Get(ctx, h.agentID, chatID); err != nil {
+	c, err := h.chats.Get(ctx, h.agentID, chatID)
+	if err != nil {
 		return nil, err
 	}
+	return h.open(ctx, c), nil
+}
+
+// OpenTask checks the parent, task, and stage before opening a read-only stream.
+func (h *Hub) OpenTask(ctx context.Context, parentID int64, taskID, stageID string) (io.ReadCloser, error) {
+	c, err := h.chats.TaskConversation(ctx, h.agentID, parentID, taskID, stageID)
+	if err != nil {
+		return nil, err
+	}
+	return h.open(ctx, c), nil
+}
+
+// open accepts only a chat that an entry point has authorized.
+func (h *Hub) open(ctx context.Context, c chat.Chat) io.ReadCloser {
+	chatID := c.ID
 	s := &stream{
-		chatID: chatID, in: make(chan input, queueSize), kill: make(chan struct{}),
+		chat: c, in: make(chan input, queueSize), kill: make(chan struct{}),
 		seen: map[string]bool{}, extra: map[string]string{},
 	}
 	h.mu.Lock()
@@ -134,14 +150,14 @@ func (h *Hub) Open(ctx context.Context, chatID int64) (io.ReadCloser, error) {
 		h.detach(ctx, s)
 		_ = w.CloseWithError(err)
 	}()
-	return r, nil
+	return r
 }
 
 func (h *Hub) detach(ctx context.Context, s *stream) {
 	h.mu.Lock()
-	delete(h.byChat[s.chatID], s)
-	if len(h.byChat[s.chatID]) == 0 {
-		delete(h.byChat, s.chatID)
+	delete(h.byChat[s.chat.ID], s)
+	if len(h.byChat[s.chat.ID]) == 0 {
+		delete(h.byChat, s.chat.ID)
 	}
 	watched := h.byWatch[s.watchID] == s
 	delete(h.byWatch, s.watchID)
@@ -195,8 +211,8 @@ func (h *Hub) attach(ctx context.Context, s *stream) error {
 	if s.watchID != "" {
 		return nil
 	}
-	c, err := h.chats.Get(ctx, h.agentID, s.chatID)
-	if err != nil || c.WorkerConversationID == 0 {
+	c, err := h.q.GetConversation(ctx, s.chat.ID)
+	if err != nil || c.WorkerConversationID.Int64 == 0 {
 		return err
 	}
 	s.watchID = uuid.NewV7().String()
@@ -204,7 +220,7 @@ func (h *Hub) attach(ctx context.Context, s *stream) error {
 	h.byWatch[s.watchID] = s
 	h.mu.Unlock()
 	return h.worker.Call(ctx, "watch", worker.WatchParams{
-		WatchID: s.watchID, AgentID: h.agentID, ConversationID: c.WorkerConversationID,
+		WatchID: s.watchID, AgentID: h.agentID, ConversationID: c.WorkerConversationID.Int64,
 	}, &struct{}{})
 }
 
@@ -331,7 +347,7 @@ type extraItem struct {
 }
 
 func (h *Hub) extraItems(ctx context.Context, s *stream) ([]extraItem, error) {
-	open, err := h.q.ListOpenSubmissions(ctx, s.chatID)
+	open, err := h.q.ListOpenSubmissions(ctx, s.chat.ID)
 	if err != nil {
 		return nil, err
 	}

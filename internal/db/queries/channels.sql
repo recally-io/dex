@@ -46,4 +46,4 @@ UPDATE submissions SET delivered_parts = delivered_parts + 1 WHERE id = ?;
 
 -- name: StopChatSubmissions :execrows
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @settled_at
-WHERE conversation_id = @conversation_id AND status = 'pending';
+WHERE conversation_id = @conversation_id AND status = 'pending' AND kind = 'message';

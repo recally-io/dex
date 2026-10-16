@@ -29,13 +29,14 @@ import {
   abortChatMutation,
   listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
-import { applyChatEvent, emptyChatState } from "../lib/chat-state";
+import { applyChatEvent, emptyChatState, retryMessage } from "../lib/chat-state";
 import { queryClient, refreshChats } from "../lib/queries";
 import { chatModel, saveChatSettings, thinkingNames } from "../lib/agent";
 import { useAttachments } from "../lib/attachments";
 import { useApp } from "../lib/app-state";
 import { blocks, describeTool, touchesMemory } from "../lib/tools";
 import { Composer } from "../components/composer";
+import { Tasks } from "../components/tasks";
 import { ChatControls, chatModelOverride, type SaveChatSettings } from "../components/chat-settings";
 import { RetryNotice, ToolStep, TranscriptItem, type ToolFocus } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
@@ -685,7 +686,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
   }
 
   function retryText(index: number) {
-    const previous = state.items.slice(0, index).findLast((item) => item.kind === "user");
+    const previous = retryMessage(state.items, index);
 
     if (previous?.kind === "user") {
       failedMessage.current = null;
@@ -807,13 +808,12 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
               item={block.item}
               live={live(block.index)}
               retry={() => retryText(block.index)}
-              canRetry={
-                !reason && !pending && state.items.slice(0, block.index).some((i) => i.kind === "user")
-              }
+              canRetry={!reason && !pending && retryMessage(state.items, block.index) !== undefined}
             />
           ),
         )}
         {state.retry ? <RetryNotice retry={state.retry} /> : null}
+        {chatId ? <Tasks chatId={chatId} /> : null}
         {running &&
         !state.retry &&
         !items.some((item) => item.kind === "tool" && item.status === "running") &&

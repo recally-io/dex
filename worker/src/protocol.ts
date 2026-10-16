@@ -14,7 +14,29 @@ export type Request = Static<typeof Request>;
 
 export type Response =
 	| { readonly id: number; readonly result: unknown }
-	| { readonly id: number; readonly error: { readonly message: string } };
+	| { readonly id: number; readonly error: { readonly message: string; readonly code?: string } };
+
+export type TaskRequestParams = {
+	readonly agentId: string;
+	readonly conversationId: number;
+	readonly key: string;
+	readonly sourceRequestId: string;
+	readonly action: string;
+	readonly args: object;
+};
+export type TaskRequest = {
+	readonly id: number;
+	readonly method: "task";
+	readonly params: TaskRequestParams;
+};
+export type TaskProgressEvent = {
+	readonly stageId: string;
+	readonly agentId: string;
+	readonly conversationId: number;
+	readonly currentTool: string;
+	readonly lastEventAt: number;
+	readonly executionState: "running" | "idle";
+};
 
 export type Event = {
 	readonly event: string;
@@ -24,7 +46,7 @@ export type Event = {
 const ModelRef = Type.Object({ provider: Type.String(), modelId: Type.String() });
 
 /** pi-ai's ModelThinkingLevel. pi-ai sends the nearest level that the model supports. */
-const ThinkingLevel = Type.Union([
+export const ThinkingLevel = Type.Union([
 	Type.Literal("off"),
 	Type.Literal("minimal"),
 	Type.Literal("low"),
@@ -57,6 +79,8 @@ export const Attachment = Type.Object({
 export type Attachment = Static<typeof Attachment>;
 
 export const SubmitParams = Type.Object({
+	whenBusy: Type.Optional(Type.Literal("reject")),
+	taskStageId: Type.Optional(Type.String()),
 	agentId: Type.String(),
 	conversationId: Type.Number(),
 	/**
@@ -94,8 +118,14 @@ export type WatchParams = Static<typeof WatchParams>;
 export const UnwatchParams = Type.Object({ watchId: Type.String() });
 export type UnwatchParams = Static<typeof UnwatchParams>;
 
-export const AbortParams = Type.Object({ agentId: Type.String(), conversationId: Type.Number() });
+export const AbortParams = Type.Object({
+	agentId: Type.String(),
+	conversationId: Type.Number(),
+	taskStageId: Type.Optional(Type.String()),
+});
 export type AbortParams = Static<typeof AbortParams>;
+/** Present only when abort requests a taskStageId. */
+export type AbortResult = { readonly executionConfirmed?: boolean };
 
 /**
  * The event of a watch: the chat events of one commit (the first is a snapshot), or `end` when the
@@ -112,6 +142,8 @@ export type SettledEvent = {
 	readonly status: "done" | "unanswered";
 	readonly answer?: string;
 	readonly reason?: string;
+	/** Task submissions only. False preserves uncertainty about execution. */
+	readonly executionConfirmed?: boolean;
 };
 
 /**
@@ -210,3 +242,11 @@ export type Extensions = {
 	/** Files that dex cannot read now. When an mcp.json file is one of them, no server starts. */
 	readonly errors: readonly string[];
 };
+
+/** Control sends this before opening any agent after a worker restart. */
+export const RecoverTasksParams = Type.Object({
+	stages: Type.Array(
+		Type.Object({ stageId: Type.String(), agentId: Type.String(), conversationId: Type.Number() }),
+	),
+});
+export type RecoverTasksParams = Static<typeof RecoverTasksParams>;

@@ -10,7 +10,7 @@
 // ErrPermanent skips a rejected part. Report updates
 // runtime status; Status returns it for the settings API. Connect chat's notify to Notify.
 //
-// Receive handles /new, /stop, and /help before submitting messages. /new preserves old chats
+// Receive handles shared commands before submitting messages. /new preserves old chats
 // and selects a key of the form "peer/uuid". Platforms must route by peer, not by channel key.
 // Pending reports whether the peer has work, for typing indicators. Delivery retries after a
 // failed send and after restart. It is at least once: a crash after the remote service accepts
@@ -46,7 +46,8 @@ type Status struct {
 type Bot interface {
 	Run(context.Context) error
 	Parts(chat.Reply) []string
-	// Replies use the submission ID; commands use the source key. Part is zero-based.
+	// Replies use the submission ID; commands use the source key; notices use the notice ID.
+	// Part is zero-based.
 	Send(ctx context.Context, peer, deliveryID string, part int, text string) error
 }
 
@@ -181,7 +182,9 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 		return err
 	}
 	cmd := strings.TrimSpace(msg.Content)
-	if cmd != "/new" && cmd != "/stop" && cmd != "/help" {
+	fields := strings.Fields(cmd)
+	taskCommand := len(fields) > 0 && (fields[0] == "/tasks" || fields[0] == "/task" || fields[0] == "/cancel")
+	if cmd != "/new" && cmd != "/stop" && cmd != "/help" && !taskCommand {
 		return m.chats.SubmitMessage(ctx, m.agentID, key, source, msg)
 	}
 	// The command and rotation commit together. A crash cannot rotate the same command twice.
@@ -214,7 +217,7 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	if c.Completed != 0 {
 		return nil
 	}
-	answer := "/new starts a new chat. /stop stops the current answer. /help shows these commands."
+	answer := "/new starts a new chat. /stop stops the current answer. /tasks lists tasks. /task <id> shows a task and its full report. /cancel <id> requests task cancellation. /help shows these commands."
 	switch c.Command {
 	case "/new":
 		answer = "Started a new chat."
@@ -230,12 +233,98 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 				answer = "Could not stop the current answer."
 			}
 		}
+	default:
+		if c.Command != "/help" {
+			var err error
+			answer, err = m.taskCommand(ctx, c)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	if err := m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{Answer: answer, SourceKey: c.SourceKey}); err != nil {
 		return err
 	}
 	m.Notify(c.Peer)
 	return nil
+}
+
+func (m *Manager) taskCommand(ctx context.Context, c sqlc.ChannelCommand) (string, error) {
+	args := strings.Fields(c.Command)
+	if args[0] == "/tasks" && len(args) != 1 {
+		return "Usage: /tasks", nil
+	}
+	if args[0] != "/tasks" && len(args) != 2 {
+		return "Usage: " + args[0] + " <id>", nil
+	}
+	conv, err := m.q.GetConversationByKey(ctx, sqlc.GetConversationByKeyParams{AgentID: m.agentID, ChannelKey: c.ChannelKey})
+	if errors.Is(err, sql.ErrNoRows) {
+		if args[0] == "/tasks" {
+			return "No tasks in this chat.", nil
+		}
+		return "Task not found in this chat.", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if args[0] == "/tasks" {
+		tasks, err := m.chats.ListTasks(ctx, m.agentID, conv.ID)
+		if err != nil {
+			return "", err
+		}
+		if len(tasks) == 0 {
+			return "No tasks in this chat.", nil
+		}
+		var text strings.Builder
+		for _, task := range tasks {
+			fmt.Fprintf(&text, "%s [%s] %s\n", task.ShortID, taskStatus(task.Status), task.Title)
+		}
+		text.WriteString("Use /task <id> for the full report.")
+		return text.String(), nil
+	}
+	var task chat.Task
+	if args[0] == "/cancel" {
+		task, err = m.chats.CancelTask(ctx, m.agentID, conv.ID, args[1])
+	} else {
+		task, err = m.chats.GetTask(ctx, m.agentID, conv.ID, args[1])
+	}
+	switch {
+	case errors.Is(err, chat.ErrTaskNotFound):
+		return "Task not found in this chat.", nil
+	case errors.Is(err, chat.ErrTaskInvalid):
+		return "Invalid task ID. Use /tasks to list tasks in this chat.", nil
+	case errors.Is(err, chat.ErrTaskConflict):
+		return "Task cannot be cancelled in its current state. Use /task <id> to check it.", nil
+	case err != nil:
+		return "", err
+	}
+	if args[0] == "/cancel" {
+		return fmt.Sprintf("Cancellation accepted for %s. Cancellation has been requested; execution may still be running. Use /task %s to check progress.", task.ShortID, task.ShortID), nil
+	}
+	var text strings.Builder
+	fmt.Fprintf(&text, "%s [%s] %s\n", task.ShortID, taskStatus(task.Status), task.Title)
+	if task.Report != "" {
+		fmt.Fprintf(&text, "\n%s\n", task.Report)
+	}
+	for _, stage := range task.Stages {
+		fmt.Fprintf(&text, "\nStage %s [%s] %s\n", stage.ID, taskStatus(stage.Status), stage.Title)
+		fmt.Fprintf(&text, "Model: %s/%s\n", stage.Provider, stage.ModelID)
+		fmt.Fprintf(&text, "Last event: %s\n", time.UnixMilli(stage.LastEventAt).UTC().Format(time.RFC3339))
+		if stage.CurrentTool != "" {
+			fmt.Fprintf(&text, "Tool: %s\n", stage.CurrentTool)
+		}
+		if stage.Report != "" {
+			fmt.Fprintf(&text, "%s\n", stage.Report)
+		}
+	}
+	return text.String(), nil
+}
+
+func taskStatus(status string) string {
+	if status == "unknown" {
+		return "execution state unknown"
+	}
+	return status
 }
 
 // Pending reports work in the peer's current or previous chats.
@@ -315,13 +404,35 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 		return err
 	}
 	for _, r := range acks {
-		// Fixed command replies fit one part; add progress if commands gain long replies.
-		for i, part := range bot.Parts(chat.Reply{Status: "done", Answer: r.Answer}) {
-			if err = sendPart(ctx, bot, r.Peer, r.SourceKey, i, part); err != nil {
+		parts := bot.Parts(chat.Reply{Status: "done", Answer: r.Answer})
+		for i := int(r.DeliveredParts); i < len(parts); i++ {
+			if err = sendPart(ctx, bot, r.Peer, r.SourceKey, i, parts[i]); err != nil {
 				return fmt.Errorf("send command reply: %w", err)
+			}
+			if err = m.q.AdvanceChannelCommand(ctx, r.SourceKey); err != nil {
+				return err
 			}
 		}
 		if err = m.q.MarkChannelCommandDelivered(ctx, sqlc.MarkChannelCommandDeliveredParams{SourceKey: r.SourceKey, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
+			return err
+		}
+	}
+	notices, err := m.q.ListTaskNotices(ctx, sql.NullString{String: name + ":", Valid: true})
+	if err != nil {
+		return err
+	}
+	for _, notice := range notices {
+		peer, _, _ := strings.Cut(notice.ChannelKey, "/")
+		parts := bot.Parts(chat.Reply{Status: "done", Answer: notice.Text})
+		for i := int(notice.DeliveredParts); i < len(parts); i++ {
+			if err = sendPart(ctx, bot, peer, notice.ID, i, parts[i]); err != nil {
+				return fmt.Errorf("send task notice: %w", err)
+			}
+			if err = m.q.AdvanceTaskNotice(ctx, notice.ID); err != nil {
+				return err
+			}
+		}
+		if err = m.q.MarkTaskNoticeDelivered(ctx, sqlc.MarkTaskNoticeDeliveredParams{ID: notice.ID, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
 			return err
 		}
 	}

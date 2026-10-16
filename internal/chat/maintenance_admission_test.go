@@ -106,7 +106,7 @@ func TestUserStopsAtSuccessfulQuiesceBoundary(t *testing.T) {
 				}
 				return err
 			})
-			s := chat.New(q, call, time.Now, nil, nil)
+			s := chat.New(conn, call, time.Now, nil, nil)
 			chatCtx, stopChat := context.WithCancel(ctx)
 			chatDone := make(chan struct{})
 			go func() { defer close(chatDone); s.Run(chatCtx) }()

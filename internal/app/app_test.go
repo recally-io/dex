@@ -258,8 +258,13 @@ type watcher struct {
 
 func (d *dex) watch(t *testing.T, chatID int64) *watcher {
 	t.Helper()
+	return d.watchPath(t, fmt.Sprintf("/api/chats/%d/events", chatID))
+}
+
+func (d *dex) watchPath(t *testing.T, path string) *watcher {
+	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/chats/%d/events", d.srv.URL, chatID), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, d.srv.URL+path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

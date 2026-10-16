@@ -62,7 +62,7 @@ func TestUserGetsUndeliveredTelegramReplyAfterRestart(t *testing.T) {
 	if got := f.next(t).Text; got != "echo: retry after restart" {
 		t.Fatal(got)
 	}
-	conn, err := sql.Open("sqlite", filepath.Join(dir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "echo")
-	conn, err := sql.Open("sqlite", filepath.Join(dir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 	if got := f.next(t).Text; got != "echo: initial" {
 		t.Fatal(got)
 	}
-	conn, err := sql.Open("sqlite", filepath.Join(dir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}
