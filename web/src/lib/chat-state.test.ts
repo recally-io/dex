@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { applyChatEvent, emptyChatState, retryMessage } from "./chat-state";
+import { applyChatEvent, emptyChatState, mergeHistory, retryMessage } from "./chat-state";
 import type { ChatEvent, Item } from "../api/generated/types.gen";
 
 describe("chat retry", () => {
@@ -47,6 +47,110 @@ describe("chat retry", () => {
     // When the user retries the failed response, then the original payload is available.
     expect(retryMessage(state.items, 1)).toEqual(message);
     expect(retryMessage(state.items, 0)).toBeUndefined();
+  });
+});
+
+describe("earlier transcript pages", () => {
+  const earlier: Item = { kind: "assistant", id: "e4:0", entryId: 4, text: "Earlier answer" };
+  const reset: Item = { kind: "boundary", id: "e10", entryId: 10, boundary: "reset", at: 1000 };
+  const answer: Item = { kind: "assistant", id: "e12:0", entryId: 12, text: "Current answer" };
+
+  test("user merges overlapping pages with live items and keeps queued input last", () => {
+    // Given a live answer, a partial response, and control's queued input.
+    const tool: Item = {
+      kind: "tool",
+      id: "call",
+      entryId: 11,
+      name: "read",
+      args: {},
+      output: "done",
+      status: "done",
+    };
+
+    const partial: Item = { kind: "assistant", id: "partial:1:0", text: "Writing" };
+    const queued: Item = { kind: "user", id: "queued", text: "Next", queued: true };
+
+    const live = applyChatEvent(emptyChatState, {
+      type: "snapshot",
+      items: [reset, tool, partial, queued],
+      running: true,
+      historyBefore: 10,
+    });
+
+    // When a history page overlaps the live tool, the live result wins.
+    const page = {
+      items: [earlier, reset, { ...tool, status: "error" as const, output: "stale" }],
+      nextBefore: 4,
+    };
+
+    const loaded = mergeHistory(mergeHistory(live, page), page);
+    expect(loaded.items.map((item) => item.id)).toEqual(["e4:0", "e10", "call", "partial:1:0", "queued"]);
+    expect(loaded.items[2]).toEqual(tool);
+
+    // Then a committed snapshot replaces the partial and retains the loaded page once.
+    const committed = applyChatEvent(loaded, {
+      type: "snapshot",
+      items: [reset, tool, answer, queued],
+      running: true,
+      historyBefore: 10,
+    });
+
+    expect(committed.items.map((item) => item.id)).toEqual(["e4:0", "e10", "call", "e12:0", "queued"]);
+    expect(committed.historyBefore).toBe(4);
+  });
+
+  test("user refreshes an archived tool from a later history read", () => {
+    // Given a retained tool whose result was absent in an earlier snapshot.
+    const tool: Item = {
+      kind: "tool",
+      id: "call",
+      entryId: 5,
+      name: "read",
+      args: {},
+      output: "",
+      status: "error",
+    };
+
+    const initial = applyChatEvent(emptyChatState, {
+      type: "snapshot",
+      items: [earlier, tool],
+      running: false,
+    });
+
+    const resetState = applyChatEvent(initial, {
+      type: "snapshot",
+      items: [reset, answer],
+      running: false,
+      historyBefore: 10,
+    });
+
+    // When history supplies the committed result, the archive must not retain its stale state.
+    const settled = { ...tool, output: "file contents", status: "done" as const };
+    const loaded = mergeHistory(resetState, { items: [earlier, settled] });
+    expect(loaded.items).toEqual([earlier, settled, reset, answer]);
+    expect(loaded.historyBefore).toBeUndefined();
+
+    const reconnected = applyChatEvent(loaded, {
+      type: "snapshot",
+      items: [reset, answer],
+      running: false,
+      historyBefore: 10,
+    });
+
+    expect(reconnected.items).toEqual(loaded.items);
+    expect(reconnected.historyBefore).toBeUndefined();
+  });
+
+  test("user cannot retry a message across a reset or compaction boundary", () => {
+    for (const boundary of ["reset", "compaction"] as const) {
+      const items: Item[] = [
+        { kind: "user", id: "old", text: "Old context" },
+        { ...reset, boundary },
+        { kind: "error", id: "error", reason: "Failed" },
+      ];
+
+      expect(retryMessage(items, 2)).toBeUndefined();
+    }
   });
 });
 
@@ -181,6 +285,9 @@ describe("chat transcript", () => {
       items: [{ kind: "assistant", id: "a:0", text: "Hello world", usage: { input: 10, output: 2 } }],
       running: false,
       retry: undefined,
+      history: [],
+      headBefore: undefined,
+      historyBefore: undefined,
     });
   });
   test("user sees replaced text and one tool result in the original order", () => {

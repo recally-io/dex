@@ -55,6 +55,7 @@ type Settings struct {
 // Agent holds the settings of the default agent. An empty ModelID means no model is chosen. A chat
 // can override the model and the thinking level.
 type Agent struct {
+	Name          string `json:"name"`
 	Provider      string `json:"provider"`
 	ModelID       string `json:"modelId"`
 	ThinkingLevel string `json:"thinkingLevel"`
@@ -167,7 +168,7 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 	return Settings{
 		Wechat: wx,
 		Agent: Agent{
-			Provider: agent.ModelProvider, ModelID: agent.ModelID, ThinkingLevel: agent.ThinkingLevel,
+			Name: agent.Name, Provider: agent.ModelProvider, ModelID: agent.ModelID, ThinkingLevel: agent.ThinkingLevel,
 			Instructions: agent.Instructions,
 		},
 		Providers: providers,

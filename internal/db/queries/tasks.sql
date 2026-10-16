@@ -34,8 +34,10 @@ WHERE id = ? AND status IN ('queued', 'running');
 SELECT * FROM tasks WHERE parent_conversation_id = ? AND status IN ('queued', 'running');
 
 -- name: CreateTaskResult :exec
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, kind, status, created_at)
-VALUES (?, ?, ?, 'null', ?, 'task_result', 'pending', ?)
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
+SELECT @id, @conversation_id, @content, 'null', @source_key, source.origin, 'task_result', 'pending', @created_at
+FROM tasks t JOIN submissions source ON source.id = t.source_request_id
+WHERE t.id = @task_id
 ON CONFLICT DO NOTHING;
 
 -- name: ListLiveTasks :many

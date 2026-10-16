@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { IconArrowDown } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowDown";
 import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
 import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
@@ -11,7 +11,6 @@ import type {
   Attachment,
   Settings,
   ChatEvent,
-  ChatSettings,
   Item,
   ToolItem,
   UserItem,
@@ -23,20 +22,19 @@ import {
   getHealthOptions,
   getSettingsOptions,
   getChatOptions,
-  getChatQueryKey,
-  createChatMutation,
+  getMainChatOptions,
   sendMessageMutation,
   abortChatMutation,
   listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
-import { applyChatEvent, emptyChatState, retryMessage } from "../lib/chat-state";
-import { queryClient, refreshChats } from "../lib/queries";
-import { chatModel, saveChatSettings, thinkingNames } from "../lib/agent";
+import { applyChatEvent, emptyChatState, mergeHistory, retryMessage } from "../lib/chat-state";
+import { refreshChats } from "../lib/queries";
+import { chatModel, thinkingNames } from "../lib/agent";
 import { useAttachments } from "../lib/attachments";
 import { useApp } from "../lib/app-state";
 import { describeTool, touchesMemory } from "../lib/tools";
 import { Composer } from "../components/composer";
-import { ChatControls, chatModelOverride, type SaveChatSettings } from "../components/chat-settings";
+import { ClearContextButton, LoadEarlierButton } from "../components/timeline-actions";
 import { RetryNotice, Transcript, type ToolFocus } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
@@ -46,12 +44,6 @@ import { StatusPill } from "../components/atoms/StatusPill";
 import LoadingState from "../components/primitives/LoadingState";
 import { checkSession } from "../lib/session";
 import { newId } from "../lib/utils";
-
-declare module "@tanstack/history" {
-  interface HistoryState {
-    firstMessage?: UserItem;
-  }
-}
 
 function Done() {
   return (
@@ -164,8 +156,26 @@ export function ChatPage({ chatId }: { chatId?: number }) {
     </MainPane>
   ) : !chatId && !settings.data.agent.modelId ? (
     <Setup settings={settings.data} />
+  ) : chatId ? (
+    <Chat key={chatId} chatId={chatId} settings={settings.data} />
   ) : (
-    <Chat key={chatId ?? "new"} chatId={chatId} settings={settings.data} />
+    <MainTimeline settings={settings.data} />
+  );
+}
+
+function MainTimeline({ settings }: { settings: Settings }) {
+  const main = useQuery(getMainChatOptions());
+
+  return main.isPending ? (
+    <MainPane>
+      <Loading />
+    </MainPane>
+  ) : main.isError ? (
+    <MainPane>
+      <Failure title="Could not open the timeline" error={main.error} retry={() => void main.refetch()} />
+    </MainPane>
+  ) : (
+    <Chat key={main.data.id} chatId={main.data.id} settings={settings} />
   );
 }
 
@@ -480,9 +490,7 @@ function ContextPane({
   );
 }
 
-function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
-  const navigate = useNavigate();
-
+function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const chat = useQuery({
     ...getChatOptions({ path: { chatId: chatId ?? 0 } }),
     enabled: chatId !== undefined,
@@ -498,8 +506,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
 
   const [streamError, setStreamError] = useState("");
   const reconnect = useRef<(() => void) | null>(null);
-  const firstMessage = useRouterState({ select: (router) => router.location.state.firstMessage });
-  const [queued, setQueued] = useState<UserItem[]>(() => (firstMessage ? [firstMessage] : []));
+  const [queued, setQueued] = useState<UserItem[]>([]);
   const [draft, setDraft] = useState("");
   const [jump, setJump] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -512,18 +519,10 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
   const pinned = useRef(true);
   const snapshotSeen = useRef(false);
   const failedMessage = useRef<{ body: MessageInput; attachments: Attachment[] } | null>(null);
-  const create = useMutation(createChatMutation());
   const send = useMutation(sendMessageMutation());
   const models = useQuery(listModelsOptions());
   const files = useAttachments();
-  // A new chat keeps its settings here until POST /api/chats stores them with the chat.
-  const [picks, setPicks] = useState<ChatSettings>({});
-  const chatSettings = chatId ? (chat.data?.settings ?? {}) : picks;
-  const { model } = chatModel(settings.agent, chatSettings, models.data?.models);
-
-  const saveSettings: SaveChatSettings = chatId
-    ? (change) => saveChatSettings(chatId, change)
-    : async (change) => setPicks(change);
+  const { model } = chatModel(settings.agent, {}, models.data?.models);
 
   const abort = useMutation({
     ...abortChatMutation(),
@@ -632,18 +631,18 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     return () => observer.disconnect();
   }, []);
 
-  const readOnly = !!chat.data && !["web", "automation"].includes(chat.data.channel);
+  const readOnly = chat.data?.readOnly ?? true;
 
   const reason = readOnly
-    ? "Reply in the original channel. This chat is read-only on the web."
+    ? "This chat is read-only. Send messages in the main timeline."
     : !model.ok
       ? "Choose an available model before you send."
       : chatId && connection !== "ready"
         ? "dex is reconnecting to the agent…"
         : undefined;
 
-  const pending = create.isPending || send.isPending || abort.isPending;
-  const error = create.error ?? send.error ?? abort.error;
+  const pending = send.isPending || abort.isPending;
+  const error = send.error ?? abort.error;
 
   async function sendText(text: string, attachments: Attachment[]) {
     abort.reset();
@@ -659,29 +658,17 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     failedMessage.current = { body, attachments };
     const local: UserItem = { kind: "user", id: body.id, text, attachments, queued: true };
 
-    if (chatId) {
-      setQueued((previous) => [...previous, local]);
+    setQueued((previous) => [...previous, local]);
 
-      try {
-        await send.mutateAsync({ path: { chatId }, body });
-        failedMessage.current = null;
-        setDraft((current) => (current.trim() === text ? "" : current));
-        files.sent(ids);
-        await refreshChats();
-      } catch (cause) {
-        setQueued((previous) => previous.filter((item) => item.id !== body.id));
-        throw cause;
-      }
-    } else {
-      const result = await create.mutateAsync({ body: { ...body, settings: picks } });
+    try {
+      await send.mutateAsync({ path: { chatId }, body });
       failedMessage.current = null;
+      setDraft((current) => (current.trim() === text ? "" : current));
+      files.sent(ids);
       await refreshChats();
-      queryClient.setQueryData(getChatQueryKey({ path: { chatId: result.chat.id } }), result.chat);
-      await navigate({
-        to: "/c/$chatId",
-        params: { chatId: String(result.chat.id) },
-        state: { firstMessage: local },
-      });
+    } catch (cause) {
+      setQueued((previous) => previous.filter((item) => item.id !== body.id));
+      throw cause;
     }
   }
 
@@ -709,7 +696,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
             title="Could not complete this action"
             error={error}
             retry={() => {
-              if ((create.isError || send.isError) && failedMessage.current)
+              if (send.isError && failedMessage.current)
                 void sendText(failedMessage.current.body.text, failedMessage.current.attachments).catch(
                   () => {},
                 );
@@ -719,18 +706,9 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
         </div>
       ) : null}
       <Composer
-        controls={
-          readOnly ? null : <ChatControls agent={settings.agent} value={chatSettings} save={saveSettings} />
-        }
         fix={
           model.ok ? null : settings.providers.length ? (
             <ModelPicker
-              // Telegram chats follow the agent's model, so there the picker sets it.
-              override={
-                readOnly
-                  ? undefined
-                  : chatModelOverride(settings.agent, chatSettings, models.data?.models, saveSettings)
-              }
               trigger={
                 <button type="button" className="font-medium text-accent-ink underline">
                   Choose a model
@@ -748,8 +726,8 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
         pending={pending}
         disabledReason={reason}
         readOnly={readOnly}
-        placeholder={chatId ? "Reply" : "Message dex"}
-        autoFocus={!chatId || !!firstMessage}
+        placeholder={`Message ${settings.agent.name}`}
+        autoFocus={!readOnly}
         onSend={(text) => sendText(text, files.ready)}
         onStop={() => {
           if (chatId) abort.mutate({ path: { chatId } });
@@ -769,7 +747,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
       <div className="flex flex-col items-start gap-4">
         <Failure title="Could not load this chat" error={chat.error} retry={() => void chat.refetch()} />
         <Link className="text-[13px] font-medium text-accent-ink underline" to="/">
-          Start a new chat
+          Open timeline
         </Link>
       </div>
     ) : (
@@ -777,10 +755,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
         {readOnly ? (
           <div className="flex items-start gap-2.5 rounded-card bg-inset px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2 shadow-hairline">
             <IconLock size={14} className="mt-0.5 shrink-0" />
-            <p>
-              dex replies in the original channel. The web shows the same transcript and the same memory, but
-              you cannot post here.
-            </p>
+            <p>This chat is read-only. Open the timeline to send a message.</p>
           </div>
         ) : null}
         {connection !== "ready" ? (
@@ -802,6 +777,19 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
             </div>
           </div>
         ) : null}
+        <LoadEarlierButton
+          chatId={chatId}
+          before={state.historyBefore}
+          onPage={(page) => {
+            pinned.current = false;
+            const box = scroller.current;
+            const height = box?.scrollHeight ?? 0;
+            setState((previous) => mergeHistory(previous, page));
+            requestAnimationFrame(() => {
+              if (box) box.scrollTop += box.scrollHeight - height;
+            });
+          }}
+        />
         <Transcript
           items={items}
           running={running}
@@ -832,33 +820,6 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     </div>
   );
 
-  // A new chat: the empty state from upstream IceCreamHarness, with the composer in the middle.
-  if (!chatId)
-    return (
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line">
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 lg:hidden">
-          <MenuButton />
-          <span className="text-[14px] font-semibold text-ink">dex</span>
-        </div>
-        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto flex min-h-full max-w-[720px] flex-col justify-center px-4 py-10 sm:px-8">
-            <h1
-              id="page-title"
-              tabIndex={-1}
-              className="animate-[fade-up_600ms_var(--ease-out-strong)_both] text-[26px] font-normal tracking-[-0.02em] text-ink outline-none"
-            >
-              <span className="block text-ink-3">One agent, on this computer</span>
-              <span className="block">What should dex do?</span>
-            </h1>
-            <div ref={composerBox} className="mt-7 animate-[fade-up_600ms_var(--ease-out-strong)_120ms_both]">
-              {composer}
-            </div>
-          </div>
-        </div>
-        {status}
-      </section>
-    );
-
   return (
     <>
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line">
@@ -869,7 +830,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
             tabIndex={-1}
             className="min-w-0 truncate text-[13px] font-semibold text-ink outline-none"
           >
-            {chat.data?.title || "Chat"}
+            {chat.data?.main ? settings.agent.name : chat.data?.title || "Chat"}
           </h1>
           {chat.data ? <OriginPill chat={chat.data} /> : null}
           {running ? (
@@ -878,6 +839,17 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
             </StatusPill>
           ) : null}
           <span className="flex-1" />
+          {chat.data?.main ? (
+            <ClearContextButton
+              chatId={chatId}
+              busy={
+                state.running ||
+                pending ||
+                queued.length > 0 ||
+                items.some((item) => item.kind === "user" && item.queued)
+              }
+            />
+          ) : null}
           {chat.data && !readOnly ? (
             <Button
               size="xs"

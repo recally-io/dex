@@ -88,10 +88,10 @@ type chatWithSettings struct {
 	Settings chatSettings `json:"settings"`
 }
 
-func (d *dex) setAgent(t *testing.T, modelID, thinkingLevel string) {
+func (d *dex) setThinking(t *testing.T, thinkingLevel string) {
 	t.Helper()
 	d.must(t, http.MethodPut, "/api/settings/agent",
-		map[string]string{"provider": "faux", "modelId": modelID, "thinkingLevel": thinkingLevel, "instructions": ""}, nil)
+		map[string]string{"provider": "faux", "modelId": "think", "thinkingLevel": thinkingLevel, "instructions": ""}, nil)
 }
 
 func TestUserSetsAgentThinkingLevel(t *testing.T) {
@@ -133,7 +133,7 @@ func TestUserSetsAgentThinkingLevel(t *testing.T) {
 	}
 
 	// When the user sets the level high
-	d.setAgent(t, "think", "high")
+	d.setThinking(t, "high")
 
 	// Then the settings keep it, and pi-ai sends it to the model
 	d.must(t, http.MethodGet, "/api/settings", nil, &s)
@@ -145,7 +145,7 @@ func TestUserSetsAgentThinkingLevel(t *testing.T) {
 	w.until(t, "answer at high", answered("think high: hi"))
 
 	// When the user lowers it, the same chat uses the new level from its next message
-	d.setAgent(t, "think", "low")
+	d.setThinking(t, "low")
 	d.send(t, chatID, "again")
 	w.until(t, "answer at low", answered("think low: again"))
 
@@ -157,80 +157,32 @@ func TestUserSetsAgentThinkingLevel(t *testing.T) {
 	}
 }
 
-func TestChatOverridesAgentSettings(t *testing.T) {
-	// Given an agent with faux/echo
+func TestUserMainUsesAgentSettings(t *testing.T) {
+	// Given the main timeline and the agent's model settings.
 	d := startDex(t, t.TempDir(), "")
-	d.setAgent(t, "echo", "off")
+	d.setThinking(t, "high")
+	id := d.mainChat(t)
+	d.send(t, id, "first")
+	w := d.watch(t, id)
+	w.until(t, "agent settings", answered("think high: first"))
 
-	// When the user starts chat A with faux/think at high, and chat B with the defaults
-	var created struct {
-		Chat chatWithSettings `json:"chat"`
-	}
-	d.must(t, http.MethodPost, "/api/chats", map[string]any{
-		"id": uuid.NewV7().String(), "text": "a1",
-		"settings": chatSettings{Provider: "faux", ModelID: "think", ThinkingLevel: "high"},
-	}, &created, http.StatusAccepted)
-	a := created.Chat.ID
-	b := d.newChat(t, "b1")
+	// When the agent settings change, the next input uses them.
+	d.setThinking(t, "low")
+	d.send(t, id, "second")
+	w.until(t, "new agent settings", answered("think low: second"))
 
-	// Then each chat runs with its own settings
-	if created.Chat.Settings != (chatSettings{Provider: "faux", ModelID: "think", ThinkingLevel: "high"}) {
-		t.Fatalf("chat A settings = %+v", created.Chat.Settings)
-	}
-	wa, wb := d.watch(t, a), d.watch(t, b)
-	wa.until(t, "chat A answer", answered("think high: a1"))
-	wb.until(t, "chat B answer", answered("echo: b1"))
-
-	// When the user changes the agent's defaults
-	d.setAgent(t, "think", "medium")
-
-	// Then chat B follows them, and chat A keeps its own
-	d.send(t, b, "b2")
-	wb.until(t, "chat B answer with the new default", answered("think medium: b2"))
-	d.send(t, a, "a2")
-	wa.until(t, "chat A answer with its override", answered("think high: a2"))
-
-	// When the user keeps only a thinking level in chat A
-	var saved chatWithSettings
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", a), chatSettings{ThinkingLevel: "low"}, &saved)
-	if saved.Settings != (chatSettings{ThinkingLevel: "low"}) {
-		t.Fatalf("saved = %+v", saved.Settings)
-	}
-	d.send(t, a, "a3")
-	wa.until(t, "chat A answer with the default model", answered("think low: a3"))
-
-	// When the user clears the override, chat A follows the defaults again
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", a), chatSettings{}, nil)
-	var got chatWithSettings
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d", a), nil, &got)
-	if got.Settings != (chatSettings{}) {
-		t.Fatalf("cleared = %+v", got.Settings)
-	}
-	d.send(t, a, "a4")
-	wa.until(t, "chat A answer with the defaults", answered("think medium: a4"))
-
-	// And invalid settings are refused, also for a new chat, which is then not created
-	before := len(d.chats(t))
-	for _, c := range []struct {
-		name, method, path string
-		body               any
-		status             int
+	// Then main refuses per-chat overrides through either message entry point.
+	for _, request := range []struct {
+		method, path string
+		body         any
 	}{
-		{"model without provider", http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", a), chatSettings{ModelID: "think"}, 400},
-		{"unknown model", http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", a), chatSettings{Provider: "faux", ModelID: "nope"}, 400},
-		{"unknown level", http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", a), chatSettings{ThinkingLevel: "huge"}, 400},
-		{"chat that does not exist", http.MethodPut, "/api/chats/999/settings", chatSettings{}, 404},
-		{"new chat with an unknown model", http.MethodPost, "/api/chats", map[string]any{
-			"id": uuid.NewV7().String(), "text": "x", "settings": chatSettings{Provider: "faux", ModelID: "nope"},
-		}, 400},
+		{http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", id), chatSettings{Provider: "faux", ModelID: "echo"}},
+		{http.MethodPost, "/api/chats", map[string]any{"id": uuid.NewV7().String(), "text": "override", "settings": chatSettings{Provider: "faux", ModelID: "echo"}}},
 	} {
-		status, raw := d.call(t, c.method, c.path, c.body)
-		if status != c.status || !strings.Contains(raw, `"error":`) {
-			t.Fatalf("%s: %d %s", c.name, status, raw)
+		status, raw := d.call(t, request.method, request.path, request.body)
+		if status != http.StatusForbidden {
+			t.Fatalf("override: %d %s", status, raw)
 		}
-	}
-	if after := len(d.chats(t)); after != before {
-		t.Fatalf("chats = %d, want %d", after, before)
 	}
 }
 
@@ -282,8 +234,8 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 	}, &created, http.StatusAccepted)
 
 	// Then the chat is named after the file, and the model gets the path
-	if created.Chat.Title != "report.pdf" {
-		t.Fatalf("title = %q", created.Chat.Title)
+	if created.Chat.ID == 0 {
+		t.Fatal("main timeline is missing")
 	}
 	w2 := d.watch(t, created.Chat.ID)
 	w2.until(t, "answer", answered("echo: Attached files:\n- "+only.Path))
@@ -291,7 +243,7 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 	// And a reload shows the files with the message
 	again := d.watch(t, created.Chat.ID)
 	again.until(t, "snapshot", func(tr *transcript) bool { return tr.snapshots == 1 })
-	if got := again.tr.items[0]; got.Text != "" || !slices.Equal(got.Attachments, []attachment{only}) {
+	if got := again.tr.items[len(again.tr.items)-2]; got.Text != "" || !slices.Equal(got.Attachments, []attachment{only}) {
 		t.Fatalf("reloaded user item = %+v", got)
 	}
 }
@@ -472,7 +424,7 @@ func TestPendingMessageWithAttachmentsIsReplayedAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	pendingID := uuid.NewV7().String()
-	_, err = sqlc.New(conn).CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
+	_, err = sqlc.New(conn).CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{Kind: "message", Origin: "web",
 		ID: pendingID, ConversationID: chatID, Content: "read it", Attachments: string(attachments),
 		CreatedAt: time.Now().UnixMilli(),
 	})

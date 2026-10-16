@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/recally-io/dex/internal/app"
 )
@@ -136,9 +137,12 @@ func TestUserAutomationReusesItsChatAndSkipsWhileBusy(t *testing.T) {
 		return !tr.running && n == 2
 	})
 
-	// And the user can reply in that chat
-	d.send(t, first.ChatID, "echo reply")
-	d.watch(t, first.ChatID).until(t, "reply", answered("bash: reply"))
+	// The run stays readable; web input goes to the main timeline.
+	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/messages", first.ChatID),
+		map[string]string{"id": uuid.NewV7().String(), "text": "echo reply"})
+	if status != http.StatusForbidden {
+		t.Fatalf("automation reply: %d %s", status, raw)
+	}
 }
 
 func TestInvalidAutomationsAreRefused(t *testing.T) {

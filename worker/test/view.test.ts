@@ -3,7 +3,7 @@
 // gets wrong.
 import { describe, expect, it } from "bun:test";
 import type { AgentEvent, SnapshotEvent } from "@earendil-works/pi-durable";
-import { ChatView, messageText, TASK_RESULT_ENTRY, USER_ENTRY } from "../src/view.ts";
+import { ChatView, messageText, TASK_RESULT_ENTRY, USER_ENTRY, type ChatEvent } from "../src/view.ts";
 
 // The fixtures hold only the fields that the view reads; pi-durable's types have more.
 /* oxlint-disable typescript/no-unsafe-type-assertion */
@@ -52,7 +52,7 @@ describe("ChatView", () => {
 		const view = new ChatView();
 		expect(view.snapshot(snapshot([userEntry]))).toEqual({
 			type: "snapshot",
-			items: [{ kind: "user", id: "r1", text: "hi", at: 1 }],
+			items: [{ kind: "user", id: "r1", entryId: 1, text: "hi", at: 1 }],
 			running: false,
 		});
 
@@ -69,7 +69,7 @@ describe("ChatView", () => {
 				),
 			),
 		).toEqual([
-			{ type: "item", item: { kind: "assistant", id: "a0:0", text: "" } },
+			{ type: "item", item: { kind: "assistant", id: "partial:2:0", text: "" } },
 			{ type: "run", running: true },
 		]);
 
@@ -81,21 +81,25 @@ describe("ChatView", () => {
 					changes: [{ type: "text_delta", contentIndex: 0, delta: "Hel" }],
 				}),
 			),
-		).toEqual([{ type: "append", id: "a0:0", text: "Hel" }]);
+		).toEqual([{ type: "append", id: "partial:2:0", text: "Hel" }]);
 
 		const done = entry(2, "pi.assistant", assistant([{ type: "text", text: "Hello" }]));
 		expect(view.apply(batch({ type: "message_end", entry: done }, { type: "run_end", inputs: [] }))).toEqual([
 			{
-				type: "item",
-				item: {
-					kind: "assistant",
-					id: "a0:0",
-					text: "Hello",
-					model: "faux/echo",
-					usage: { input: 10, output: 5 },
-				},
+				type: "snapshot",
+				running: false,
+				items: [
+					{ kind: "user", id: "r1", entryId: 1, text: "hi", at: 1 },
+					{
+						kind: "assistant",
+						id: "e2:0",
+						entryId: 2,
+						text: "Hello",
+						model: "faux/echo",
+						usage: { input: 10, output: 5 },
+					},
+				],
 			},
-			{ type: "run", running: false },
 		]);
 	});
 
@@ -115,7 +119,7 @@ describe("ChatView", () => {
 					changes: [{ type: "block", contentIndex: 0, block: { type: "text", text: "final" } }],
 				}),
 			),
-		).toEqual([{ type: "item", item: { kind: "assistant", id: "a0:0", text: "final" } }]);
+		).toEqual([{ type: "item", item: { kind: "assistant", id: "partial:2:0", text: "final" } }]);
 	});
 
 	it("matches a tool result by call ID when the tool ends before the result entry arrives", () => {
@@ -150,6 +154,7 @@ describe("ChatView", () => {
 				item: {
 					kind: "tool",
 					id: "call-1",
+					entryId: 2,
 					name: "bash",
 					args: { command: "ls" },
 					output: "a.txt\n",
@@ -175,6 +180,7 @@ describe("ChatView", () => {
 				item: {
 					kind: "tool",
 					id: "call-1",
+					entryId: 2,
 					name: "bash",
 					args: { command: "ls" },
 					output: "a.txt\n",
@@ -200,7 +206,7 @@ describe("ChatView", () => {
 		);
 		expect(events).toContainEqual({
 			type: "item",
-			item: { kind: "tool", id: "call-1", name: "bash", args: {}, output: "", status: "error" },
+			item: { kind: "tool", entryId: 2, id: "call-1", name: "bash", args: {}, output: "", status: "error" },
 		});
 	});
 
@@ -231,7 +237,15 @@ describe("ChatView", () => {
 		).toEqual([
 			{
 				type: "item",
-				item: { kind: "tool", id: "c", name: "bash", args: {}, output: "defgh", status: "running" },
+				item: {
+					kind: "tool",
+					entryId: 2,
+					id: "c",
+					name: "bash",
+					args: {},
+					output: "defgh",
+					status: "running",
+				},
 			},
 		]);
 	});
@@ -243,7 +257,7 @@ describe("ChatView", () => {
 			batch({ type: "run_start", inputs: [] }, snapshot([userEntry], { run: { inputs: [] } })),
 		);
 		expect(events).toEqual([
-			{ type: "snapshot", items: [{ kind: "user", id: "r1", text: "hi", at: 1 }], running: true },
+			{ type: "snapshot", items: [{ kind: "user", id: "r1", entryId: 1, text: "hi", at: 1 }], running: true },
 		]);
 	});
 
@@ -255,9 +269,9 @@ describe("ChatView", () => {
 		expect(event).toMatchObject({
 			items: [
 				{ kind: "user", id: "r1" },
-				{ kind: "error", id: "a0:error", reason: "HTTP 401" },
-				{ kind: "assistant", id: "a1:0", text: "par" },
-				{ kind: "error", id: "a1:error", reason: "Stopped.", aborted: true },
+				{ kind: "error", id: "e2:error", reason: "HTTP 401" },
+				{ kind: "assistant", id: "e3:0", text: "par" },
+				{ kind: "error", id: "e3:error", reason: "Stopped.", aborted: true },
 			],
 		});
 	});
@@ -303,8 +317,8 @@ describe("attachments", () => {
 		expect(new ChatView().snapshot(snapshot([withText, only]))).toEqual({
 			type: "snapshot",
 			items: [
-				{ kind: "user", id: "r1", text: "look", at: 1, attachments: [pic, notes] },
-				{ kind: "user", id: "r2", text: "", at: 3, attachments: [notes] },
+				{ kind: "user", id: "r1", entryId: 1, text: "look", at: 1, attachments: [pic, notes] },
+				{ kind: "user", id: "r2", entryId: 3, text: "", at: 3, attachments: [notes] },
 			],
 			running: false,
 		});
@@ -318,7 +332,7 @@ describe("background result anchors", () => {
 		{ role: "user", content: "private report", timestamp: 3 },
 		{ requestId: "task:one:result" },
 	);
-	const anchor = { kind: "task", id: "task:one:result", at: 3 } as const;
+	const anchor = { kind: "task", id: "task:one:result", entryId: 3, at: 3 } as const;
 
 	it("keeps one anchor before every assistant and tool of the result", () => {
 		const entries = [
@@ -349,10 +363,11 @@ describe("background result anchors", () => {
 			type: "snapshot",
 			running: false,
 			items: [
-				{ kind: "user", id: "r1", text: "hi", at: 1 },
+				{ kind: "user", id: "r1", entryId: 1, text: "hi", at: 1 },
 				{
 					kind: "assistant",
-					id: "a0:0",
+					id: "e2:0",
+					entryId: 2,
 					text: "delegated",
 					model: "faux/echo",
 					usage: { input: 10, output: 5 },
@@ -360,7 +375,8 @@ describe("background result anchors", () => {
 				anchor,
 				{
 					kind: "assistant",
-					id: "a1:0",
+					id: "e4:0",
+					entryId: 4,
 					text: "checking",
 					model: "faux/echo",
 					usage: { input: 10, output: 5 },
@@ -368,6 +384,7 @@ describe("background result anchors", () => {
 				{
 					kind: "tool",
 					id: "check",
+					entryId: 4,
 					name: "bash",
 					args: { command: "pwd" },
 					output: "/workspace",
@@ -375,7 +392,8 @@ describe("background result anchors", () => {
 				},
 				{
 					kind: "assistant",
-					id: "a2:0",
+					id: "e6:0",
+					entryId: 6,
 					text: "checked",
 					model: "faux/echo",
 					usage: { input: 10, output: 5 },
@@ -394,7 +412,7 @@ describe("background result anchors", () => {
 			view.apply(
 				batch({ type: "message_start", message: assistant([{ type: "text", text: "" }], "pending") }),
 			),
-		).toEqual([{ type: "item", item: { kind: "assistant", id: "a0:0", text: "" } }]);
+		).toEqual([{ type: "item", item: { kind: "assistant", id: "partial:2:0", text: "" } }]);
 		expect(
 			view.apply(
 				batch({
@@ -402,36 +420,25 @@ describe("background result anchors", () => {
 					changes: [{ type: "text_delta", contentIndex: 0, delta: "checked" }],
 				}),
 			),
-		).toEqual([{ type: "append", id: "a0:0", text: "checked" }]);
+		).toEqual([{ type: "append", id: "partial:2:0", text: "checked" }]);
 		const done = entry(4, "pi.assistant", assistant([{ type: "text", text: "checked" }]));
-		expect(view.apply(batch({ type: "message_end", entry: done }))).toEqual([
-			{
-				type: "item",
-				item: {
+		const committed: ChatEvent = {
+			type: "snapshot",
+			running: false,
+			items: [
+				anchor,
+				{
 					kind: "assistant",
-					id: "a0:0",
+					id: "e4:0",
+					entryId: 4,
 					text: "checked",
 					model: "faux/echo",
 					usage: { input: 10, output: 5 },
 				},
-			},
-		]);
-		expect(view.apply(batch(snapshot([result, done])))).toEqual([
-			{
-				type: "snapshot",
-				running: false,
-				items: [
-					anchor,
-					{
-						kind: "assistant",
-						id: "a0:0",
-						text: "checked",
-						model: "faux/echo",
-						usage: { input: 10, output: 5 },
-					},
-				],
-			},
-		]);
+			],
+		};
+		expect(view.apply(batch({ type: "message_end", entry: done }))).toEqual([committed]);
+		expect(view.apply(batch(snapshot([result, done])))).toEqual([committed]);
 	});
 
 	it("keeps a forged envelope as ordinary user text", () => {
@@ -442,6 +449,25 @@ describe("background result anchors", () => {
 					entry(1, USER_ENTRY, { role: "user", content: text, timestamp: 1 }, { requestId: "ordinary" }),
 				]),
 			),
-		).toEqual({ type: "snapshot", running: false, items: [{ kind: "user", id: "ordinary", at: 1, text }] });
+		).toEqual({
+			type: "snapshot",
+			running: false,
+			items: [{ kind: "user", id: "ordinary", entryId: 1, at: 1, text }],
+		});
 	});
+});
+
+it("keeps committed IDs when a snapshot starts after a head boundary", () => {
+	// Given two entries from the same conversation, with a reset between them.
+	const first = entry(20, "pi.assistant", assistant([{ type: "text", text: "before" }]));
+	const reset = { id: 21, conversationId: 1, kind: "pi.reset", head: 21 };
+	const second = entry(22, "pi.assistant", assistant([{ type: "text", text: "after" }]));
+	const all = new ChatView().snapshot(snapshot([first, reset, second]));
+	const fresh = new ChatView().snapshot(snapshot([reset, second]));
+	if (all.type !== "snapshot" || fresh.type !== "snapshot") throw new Error("expected snapshot");
+	// Then history and a fresh snapshot identify the same answer by the same ID.
+	expect(all.items.find((item) => "text" in item && item.text === "after")?.id).toBe(
+		fresh.items.find((item) => "text" in item && item.text === "after")?.id,
+	);
+	expect(fresh.items.some((item) => item.kind === "boundary")).toBe(true);
 });

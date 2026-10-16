@@ -85,7 +85,11 @@ export class MemoryRepo {
 
 	// Undefined when git is not installed.
 	#git: ((...args: string[]) => Promise<{ stdout: string }>) | undefined = (...args) =>
-		run("git", args, { cwd: this.dir });
+		run("git", args, {
+			cwd: this.dir,
+			// A parent Git hook can export an index or repository path. Memory has its own repo.
+			env: Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_"))),
+		});
 
 	/** The pi-durable extension that shows the memory to the agents. */
 	extension(source: (conversationId: number) => string | undefined): Extension {
@@ -113,7 +117,7 @@ export class MemoryRepo {
 function memoryRules(dir: string): string {
 	return `# Memory
 
-Each chat starts without the earlier chats. Your memory carries what you learned from one chat to the next. It is a folder of linked files at \`${dir}\`, in the Agent Memory Repo format. MEMORY.md, below, is its entry point.
+A context clear starts without the earlier conversation context. Your long-term memory still applies after a clear. It is a folder of linked files at \`${dir}\`, in the Agent Memory Repo format. MEMORY.md, below, is its entry point.
 
 - Before a task, read what it needs: search the folder (\`grep -rni "<term>" ${dir}\`) and follow the \`[[path]]\` links.
 - Update the memory yourself, without approval, when you learn something that a later chat needs: preferences, decisions, and facts that the user would otherwise have to repeat. Skip what is cheap to find again or matters only now.

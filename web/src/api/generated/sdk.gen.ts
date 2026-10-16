@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChatData, GetChatErrors, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetUploadData, GetUploadErrors, GetUploadResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetAgentData, SetAgentErrors, SetAgentResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
+import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetUploadData, GetUploadErrors, GetUploadResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetAgentData, SetAgentErrors, SetAgentResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -64,6 +64,19 @@ export const acquireMaintenance = <ThrowOnError extends boolean = false>(options
 });
 
 /**
+ * Find or create the default agent's main timeline.
+ */
+export const getMainChat = <ThrowOnError extends boolean = false>(options?: Options<GetMainChatData, ThrowOnError>): RequestResult<GetMainChatResponses, GetMainChatErrors, ThrowOnError> => (options?.client ?? client).get<GetMainChatResponses, GetMainChatErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/chats/main',
+    ...options
+});
+
+/**
  * All chats of the default agent, newest activity first.
  */
 export const listChats = <ThrowOnError extends boolean = false>(options?: Options<ListChatsData, ThrowOnError>): RequestResult<ListChatsResponses, ListChatsErrors, ThrowOnError> => (options?.client ?? client).get<ListChatsResponses, ListChatsErrors, ThrowOnError>({
@@ -77,7 +90,7 @@ export const listChats = <ThrowOnError extends boolean = false>(options?: Option
 });
 
 /**
- * Creates a web chat and sends its first message. The title is the start of the message, or the name of its first attachment. The settings of the new chat override the agent's. Returns when the message is stored; the answer comes through the chat's event stream.
+ * Sends a first message to the main timeline. A repeated ID stores nothing. Chat settings are refused. Use GET /api/chats/main to open it.
  *
  */
 export const createChat = <ThrowOnError extends boolean = false>(options: Options<CreateChatData, ThrowOnError>): RequestResult<CreateChatResponses, CreateChatErrors, ThrowOnError> => (options.client ?? client).post<CreateChatResponses, CreateChatErrors, ThrowOnError>({
@@ -105,7 +118,7 @@ export const getChat = <ThrowOnError extends boolean = false>(options: Options<G
 });
 
 /**
- * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message. 403 for a Telegram chat.
+ * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message. Only automation chats accept overrides. The main timeline uses agent settings.
  *
  */
 export const setChatSettings = <ThrowOnError extends boolean = false>(options: Options<SetChatSettingsData, ThrowOnError>): RequestResult<SetChatSettingsResponses, SetChatSettingsErrors, ThrowOnError> => (options.client ?? client).put<SetChatSettingsResponses, SetChatSettingsErrors, ThrowOnError>({
@@ -123,7 +136,7 @@ export const setChatSettings = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model; 403 for a Telegram chat. Web and automation chats take messages.
+ * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model. Only the main timeline takes messages from the web. Earlier chats are read-only.
  *
  */
 export const sendMessage = <ThrowOnError extends boolean = false>(options: Options<SendMessageData, ThrowOnError>): RequestResult<SendMessageResponses, SendMessageErrors, ThrowOnError> => (options.client ?? client).post<SendMessageResponses, SendMessageErrors, ThrowOnError>({
@@ -138,6 +151,38 @@ export const sendMessage = <ThrowOnError extends boolean = false>(options: Optio
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * Stores a context reset in the main timeline's delivery queue. A repeated UUID does not reset again. Refuses busy timelines without a change.
+ *
+ */
+export const clearContext = <ThrowOnError extends boolean = false>(options: Options<ClearContextData, ThrowOnError>): RequestResult<ClearContextResponses, ClearContextErrors, ThrowOnError> => (options.client ?? client).post<ClearContextResponses, ClearContextErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/chats/{chatId}/clear',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Reads committed items before an entry ID, oldest first. Pages can overlap the live snapshot. Merge by item ID. The entry limit extends to an assistant or input boundary to keep tool results with their call.
+ *
+ */
+export const getChatHistory = <ThrowOnError extends boolean = false>(options: Options<GetChatHistoryData, ThrowOnError>): RequestResult<GetChatHistoryResponses, GetChatHistoryErrors, ThrowOnError> => (options.client ?? client).get<GetChatHistoryResponses, GetChatHistoryErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/chats/{chatId}/history',
+    ...options
 });
 
 /**

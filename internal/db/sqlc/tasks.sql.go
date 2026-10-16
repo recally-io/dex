@@ -51,8 +51,10 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) error {
 }
 
 const createTaskResult = `-- name: CreateTaskResult :exec
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, kind, status, created_at)
-VALUES (?, ?, ?, 'null', ?, 'task_result', 'pending', ?)
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
+SELECT ?1, ?2, ?3, 'null', ?4, source.origin, 'task_result', 'pending', ?5
+FROM tasks t JOIN submissions source ON source.id = t.source_request_id
+WHERE t.id = ?6
 ON CONFLICT DO NOTHING
 `
 
@@ -62,6 +64,7 @@ type CreateTaskResultParams struct {
 	Content        string         `json:"content"`
 	SourceKey      sql.NullString `json:"source_key"`
 	CreatedAt      int64          `json:"created_at"`
+	TaskID         string         `json:"task_id"`
 }
 
 func (q *Queries) CreateTaskResult(ctx context.Context, arg CreateTaskResultParams) error {
@@ -71,6 +74,7 @@ func (q *Queries) CreateTaskResult(ctx context.Context, arg CreateTaskResultPara
 		arg.Content,
 		arg.SourceKey,
 		arg.CreatedAt,
+		arg.TaskID,
 	)
 	return err
 }

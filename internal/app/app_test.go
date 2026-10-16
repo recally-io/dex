@@ -161,7 +161,7 @@ type chatInfo struct {
 	Busy    bool   `json:"busy"`
 }
 
-// newChat starts a web chat with text and returns its ID.
+// newChat posts through the legacy first-message endpoint and returns the main ID.
 func (d *dex) newChat(t *testing.T, text string) int64 {
 	t.Helper()
 	var created struct {
@@ -404,7 +404,9 @@ func TestAgentRemembersAcrossChats(t *testing.T) {
 // its patch.
 func gitLog(t *testing.T, dataDir string) []string {
 	t.Helper()
-	out, err := exec.CommandContext(t.Context(), "git", "-C", filepath.Join(dataDir, "memory"), "log", "--reverse", "-p", "--format=%x00%s").Output()
+	cmd := exec.CommandContext(t.Context(), "git", "-C", filepath.Join(dataDir, "memory"), "log", "--reverse", "-p", "--format=%x00%s")
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dataDir}
+	out, err := cmd.Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,10 +480,10 @@ func TestDreamingReadsEachChatOnce(t *testing.T) {
 	eventually(t, "second dream", func() (bool, any) {
 		got := dreams()
 		return len(got) == 2 && strings.Contains(got[1], record(second)) &&
-			!strings.Contains(got[1], record(first)) && !strings.Contains(got[1], `+{"chat":"fake"`), got
+			!strings.Contains(got[1], `"text":"echo one"`) && !strings.Contains(got[1], `+{"chat":"fake"`), got
 	})
 	// And the dreams are not chats of the user
-	if got := d.chats(t); len(got) != 2 {
+	if got := d.chats(t); len(got) != 1 {
 		t.Fatalf("chats = %+v", got)
 	}
 }
@@ -869,7 +871,7 @@ func TestUserMessageLeftPendingIsAnsweredAfterRestart(t *testing.T) {
 	t.Cleanup(func() { _ = conn.Close() })
 	q := sqlc.New(conn)
 	pendingID := uuid.NewV7().String()
-	_, err = q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
+	_, err = q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{Kind: "message", Origin: "web",
 		ID: pendingID, ConversationID: chatID, Content: "are you there", Attachments: "[]", CreatedAt: time.Now().UnixMilli(),
 	})
 	if err != nil {

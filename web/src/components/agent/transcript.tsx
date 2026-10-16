@@ -417,6 +417,16 @@ export function TranscriptItem({
   canRetry: boolean;
 }) {
   switch (item.kind) {
+    case "boundary":
+      return (
+        <div role="separator" className="flex items-center gap-3 py-3 text-[12px] text-ink-3">
+          <span className="h-px flex-1 bg-line" />
+          <span>
+            {item.boundary === "reset" ? "Context cleared" : "Context compacted · Load earlier above"}
+          </span>
+          <span className="h-px flex-1 bg-line" />
+        </div>
+      );
     case "user":
       return (
         <div className="flex animate-[fade-up_300ms_var(--ease-out-strong)_both] flex-col items-end gap-1 pl-10 sm:pl-24">

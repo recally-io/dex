@@ -33,7 +33,7 @@ function Missing({ title, description }: { title: string; description: string })
     <FramedPage title={title} description={description}>
       <Section n={1} title="Go back">
         <Link className={buttonVariants({ size: "sm", variant: "secondary" })} to="/">
-          Start a new chat
+          Open timeline
         </Link>
       </Section>
     </FramedPage>

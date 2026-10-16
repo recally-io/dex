@@ -204,3 +204,30 @@ type AgentParams struct {
 	// Open opens the agent first, which connects its MCP servers.
 	Open bool `json:"open,omitzero"`
 }
+
+// ResetParams writes one reset through the conversation's admission chain.
+type ResetParams struct {
+	AgentID        string `json:"agentId"`
+	ConversationID int64  `json:"conversationId"`
+	RequestID      string `json:"requestId"`
+}
+
+// HistoryParams reads entries before Before. Limit extends to a display boundary.
+type HistoryParams struct {
+	AgentID        string `json:"agentId"`
+	ConversationID int64  `json:"conversationId"`
+	Before         int64  `json:"before"`
+	Limit          int    `json:"limit"`
+}
+
+type HistoryResult struct {
+	Items      []jsontext.Value `json:"items"`
+	NextBefore *int64           `json:"nextBefore,omitempty"`
+}
+
+// InputEntriesParams finds placed inputs so control does not restore old failures after a head.
+type InputEntriesParams struct {
+	AgentID        string   `json:"agentId"`
+	ConversationID int64    `json:"conversationId"`
+	RequestIDs     []string `json:"requestIds"`
+}

@@ -223,6 +223,8 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey st
 		Content:        m.Content,
 		Attachments:    string(attachments),
 		SourceKey:      sql.NullString{String: sourceKey, Valid: sourceKey != ""},
+		Origin:         inputOrigin(channelKey),
+		Kind:           "message",
 		CreatedAt:      s.now().UnixMilli(),
 	})
 	if err != nil {
@@ -332,7 +334,7 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 	if conv.ModelID != "" {
 		model = worker.ModelRef{Provider: conv.ModelProvider, ModelID: conv.ModelID}
 	}
-	if model.ModelID == "" {
+	if model.ModelID == "" && p.Kind != "context_reset" {
 		return ErrNoModel
 	}
 	settings := worker.CreateConversationParams{
@@ -375,6 +377,12 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 	if current.Status != "pending" {
 		s.inFlight.Delete(p.ID)
 		return nil
+	}
+	if p.Kind == "context_reset" {
+		var result worker.SubmitResult
+		return s.worker.Call(ctx, "reset", worker.ResetParams{
+			AgentID: p.AgentID, ConversationID: conversation, RequestID: p.ID,
+		}, &result)
 	}
 	params := worker.SubmitParams{
 		Kind: current.Kind, AgentID: p.AgentID, ConversationID: conversation, Model: model,

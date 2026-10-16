@@ -65,6 +65,19 @@ The records retain the source submission, status, and report. A cancelled
 status records a cancellation request. It does not prove process exit. There
 is no user goal lifecycle or automatic retry chain.
 
+Each agent has one main conversation with channel key `main`. The unique
+agent/key constraint makes `GET /api/chats/main` safe to repeat. It creates
+the control record on demand. The web opens this conversation at `/` and
+sends through `POST /api/chats/{id}/messages`. It uses agent settings.
+Channel keys and automation conversations stay separate.
+
+Every enqueue writes `submissions.origin`. Main and web input use `web`.
+Channel input uses the part of its key before `/`, including the peer ID.
+Automation, task input, and dream input use `automation`, `task`, and `dream`.
+A task result copies its source submission's origin in the same transaction
+that saves the report and inserts the result. A result chain thus keeps the
+first input's origin. Existing rows use `unknown`. Routing does not use origin.
+
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). pi-durable allows one
 process per storage, so only the worker opens an agent directory.
 
@@ -151,11 +164,8 @@ saves it in `control.sqlite`, and then applies it:
 | Providers                                 | `providers`         | `configure` to the worker, and again after each worker start       |
 | Telegram token, allowed users             | `telegram_settings` | a restart of the bot                                               |
 
-The agent's model and thinking level are the defaults. A web chat can
-override the model, the thinking level, or both (`PUT
-/api/chats/{id}/settings`, or `settings` in `POST /api/chats`). An empty value
-follows the agent, so a later change of the agent applies to that chat.
-`chat.Service` resolves the values at each `submit`. Telegram chats cannot
+The main timeline uses the agent's model and thinking level. It has no chat
+override. `chat.Service` resolves settings at each `submit`. Channel chats cannot
 change their settings (403). An automation chat can; an automation that
 reuses its chat then runs with the chat's settings. The thinking levels and
 the `reasoning` and `input` of a model come from pi-ai
@@ -202,6 +212,10 @@ The types are in [`worker/src/protocol.ts`](../../worker/src/protocol.ts) and
 | `watch`              | `watchId`, `agentId`, `conversationId`                                                                                 | `{}` after the snapshot   |
 | `unwatch`            | `watchId`                                                                                                              | `{}`                      |
 | `abort`              | `agentId`, `conversationId`                                                                                            | `{}`                      |
+| `checkIdle`          | `agentId`, `conversationId`                                                                                            | `{}` or busy              |
+| `reset`              | `agentId`, `conversationId`, `requestId`                                                                               | `submissionId`            |
+| `history`            | `agentId`, `conversationId`, `before`, `limit`                                                                         | `items`, `nextBefore`     |
+| `inputEntries`       | `agentId`, `conversationId`, `requestIds`                                                                              | request ID to entry ID    |
 | `extensions`         | `agentId`                                                                                                              | the Extensions schema     |
 
 The worker can also send a `task` request to control. Its params contain the
@@ -238,12 +252,12 @@ ID, so the user item in the transcript has the ID that the browser sent.
 
 Source: [message-flow.puml](../../assets/src/message-flow.puml)
 
-1. The browser sends `POST /api/chats` (new chat) or
+1. The browser opens `GET /api/chats/main`, then sends
    `POST /api/chats/{id}/messages` with a UUID that it makes.
    [`chat.Service.Send`](../../internal/chat/chat.go) refuses the message when
    neither the chat nor the agent has a model. Otherwise it finds or creates
    the conversation for
-   the channel key (`web:<first message ID>`), stores the message as a
+   the channel key (`main` for the web), stores the message as a
    `pending` submission with that UUID as its ID, and returns `202`. A
    retried request with the same UUID stores nothing.
 2. `chat.Service.Run` delivers stored submissions in order. On the first
@@ -303,8 +317,8 @@ main agent can read the saved report and choose the next action. A user Stop
 withdraws pending results. A later greeting cannot revive those results.
 A new execution must check prior artifacts and side effects.
 
-Web Stop covers only the current writable web chat. External channel chats
-are read-only on the web. The existing automation-chat write boundary remains.
+Web Stop covers only the main timeline. External channel and automation chats
+are read-only on the web.
 Channel `/stop` covers the current agent and exact channel peer, including
 its chats before `/new`. Other peers, agents, and web chats are outside that
 scope. `/new` changes context without cancelling prior execution.
@@ -397,6 +411,27 @@ browser ──EventSource──▶ control  GET /api/chats/{id}/events
 - The worker's reader never waits for a stream. A stream that is 256 inputs
   behind is closed, and the browser reconnects.
 - A stream sends a comment line every 15 s.
+
+`POST /api/chats/{id}/clear` uses the delivery lock and a SQLite writer
+transaction to check pending input and insert `context_reset` together. The
+worker also checks its active run and inbox. A refused request stores nothing.
+Delivery uses `submit({type: "write", requestId, entry: {kind: "pi.reset",
+head: "self"}})`. pi-durable 1.2.0 deduplicates the request ID before writing.
+`Conversation.reset()` does not pass a request ID. A crash replay thus uses
+the write form and adds no second reset. Reset entries keep their time in data.
+Memory files remain available. Follow-ups keep the SDK default: one input
+per answer. Do not use `followUpMode: "all"` or steer.
+
+A snapshot contains only the active worker context. Reset and compaction entries
+show dividers. `historyBefore` points to the head entry. The browser requests
+`GET /api/chats/{id}/history?before=<entry ID>&limit=100` on demand. The worker
+reads `Conversation.entries` before that exclusive cursor and returns items
+in entry order with `nextBefore`. A page can extend to the previous assistant
+or input so a tool call keeps its result. Committed assistant block IDs use
+`e<entry ID>:<block index>`. User IDs remain submission IDs; tool IDs remain
+call IDs. The browser merges overlaps by ID and keeps queued input last.
+The hub checks retired failed inputs through `inputEntries`, so a snapshot
+does not restore the same failure with a second ID. History loads those entries.
 
 ## Telegram
 
@@ -684,7 +719,6 @@ directory in the cache directory, and it does not load `.env` or `bunfig.toml`.
 - The memory repo is local; dex does not pull or push. Two chats that change
   the memory at the same time can land in one commit, under the source of
   the chat that settles first.
-- The chat list polls every 3 s; it has no event stream.
 - An MCP server that drops its connection stays down until a reload.
 - dex does not delete uploads. A file that the user removes before sending,
   or that a message never uses, stays in `workspace/uploads/`. The files are

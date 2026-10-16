@@ -25,7 +25,7 @@ export function messageText(text: string, attachments: readonly Attachment[]): s
 
 export type Retry = { readonly attempt: number; readonly at: number; readonly reason: string };
 
-export type Item =
+export type Item = { entryId?: number } & (
 	| { kind: "task"; id: string; at?: number }
 	| { kind: "user"; id: string; text: string; at?: number; attachments?: Attachment[] }
 	| { kind: "thinking"; id: string; text: string }
@@ -39,10 +39,12 @@ export type Item =
 			durationMs?: number;
 	  }
 	| { kind: "assistant"; id: string; text: string; model?: string; usage?: { input: number; output: number } }
-	| { kind: "error"; id: string; reason: string; aborted?: boolean };
+	| { kind: "error"; id: string; reason: string; aborted?: boolean }
+	| { kind: "boundary"; id: string; boundary: "reset" | "compaction"; at?: number }
+);
 
 export type ChatEvent =
-	| { type: "snapshot"; items: Item[]; running: boolean; retry?: Retry }
+	| { type: "snapshot"; items: Item[]; running: boolean; retry?: Retry; historyBefore?: number }
 	| { type: "item"; item: Item }
 	| { type: "append"; id: string; text: string }
 	| { type: "run"; running: boolean; retry?: Retry };
@@ -120,6 +122,7 @@ export class ChatView {
 			items: this.#items,
 			running: this.#state.running,
 			...retryField(this.#state.retry),
+			...historyField(this.#state.entries),
 		};
 	}
 }
@@ -218,7 +221,12 @@ function addEntry(state: State, entry: EntryRecord): void {
 	if (!state.entries.some((e) => e.id === entry.id)) state.entries.push(entry);
 }
 
-/** Renders the items of a state. IDs stay the same when a partial message becomes an entry. */
+function historyField(entries: EntryRecord[]): { historyBefore?: number } {
+	const head = entries.findLast((entry) => entry.head !== undefined);
+	return head === undefined ? {} : { historyBefore: head.id };
+}
+
+/** Committed IDs use entry IDs. A partial has a temporary ID until its entry is saved. */
 export function render(state: State): Item[] {
 	const results = new Map<string, ToolResultMessage>();
 	for (const entry of state.entries) {
@@ -226,29 +234,53 @@ export function render(state: State): Item[] {
 		if (message?.role === "toolResult") results.set(message.toolCallId, message);
 	}
 	const items: Item[] = [];
-	// Assistant text and thinking get the ID `a<n>:<block index>`, where n counts the assistant
-	// messages; the partial message is the next one, so its IDs do not change when it is committed.
-	let assistants = 0;
-	const lastAssistant = state.entries.findLastIndex((entry) => entry.model?.[0]?.role === "assistant");
-	state.entries.forEach((entry, index) => {
+	// SDK snapshots put the head marker first, even when a compaction keeps older entries.
+	const entries = state.entries.toSorted((a, b) => a.id - b.id);
+	const lastAssistant = entries.findLastIndex((entry) => entry.model?.[0]?.role === "assistant");
+	entries.forEach((entry, index) => {
+		let rendered: Item[] = [];
 		const message = entry.model?.[0];
-		if (message === undefined) return;
-		if (message.role === "user" && (entry.kind === USER_ENTRY || entry.kind === "pi.user")) {
-			items.push(userItem(entry, message));
-		} else if (entry.kind === TASK_RESULT_ENTRY) {
+		if (entry.kind === "pi.reset" || entry.kind === "pi.compaction") {
+			rendered = [
+				{
+					kind: "boundary",
+					id: `e${entry.id}`,
+					boundary: entry.kind === "pi.reset" ? "reset" : "compaction",
+					...boundaryTime(entry),
+				},
+			];
+		} else if (message?.role === "user" && (entry.kind === USER_ENTRY || entry.kind === "pi.user")) {
+			rendered = [userItem(entry, message)];
+		} else if (entry.kind === TASK_RESULT_ENTRY && message !== undefined) {
 			const id = userData(entry.data)?.requestId;
-			if (typeof id === "string") items.push({ kind: "task", id, at: message.timestamp });
-		} else if (message.role === "assistant") {
-			// The tools of the newest assistant message of a run in progress can still run.
+			if (typeof id === "string") rendered = [{ kind: "task", id, at: message.timestamp }];
+		} else if (message?.role === "assistant") {
 			const live = state.running && state.partial === undefined && index === lastAssistant;
-			items.push(...assistantItems(message, `a${assistants}`, results, state, live, true));
-			assistants++;
+			rendered = assistantItems(message, `e${entry.id}`, results, state, live, true);
+		}
+		for (const item of rendered) {
+			item.entryId = entry.id;
+			items.push(item);
 		}
 	});
 	if (state.partial !== undefined) {
-		items.push(...assistantItems(state.partial, `a${assistants}`, results, state, true, false));
+		items.push(
+			...assistantItems(state.partial, `partial:${state.partial.timestamp}`, results, state, true, false),
+		);
 	}
 	return items;
+}
+
+function boundaryTime(entry: EntryRecord): { at?: number } {
+	if (entry.kind === "pi.compaction") return { at: entry.model?.[0]?.timestamp };
+	const data = entry.data;
+	return typeof data === "object" &&
+		data !== null &&
+		!Array.isArray(data) &&
+		"at" in data &&
+		typeof data["at"] === "number"
+		? { at: data["at"] }
+		: {};
 }
 
 /** The user item shows the user's text and the attachments, not the paths that the model got. */

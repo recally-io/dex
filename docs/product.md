@@ -27,6 +27,11 @@ to read in an afternoon.
 - Durable conversations: control stores each message before delivery. Saved
   messages, reports, and execution records survive a restart. A restart does
   not attach an old CLI process or prove that its actions occurred once.
+- One main timeline per agent. The web opens it at `/` and uses the agent's
+  model settings. Clear context starts a new model context when the timeline
+  is idle. Earlier messages stay readable with Show earlier messages. A clear
+  keeps long-term memory. A summary also marks where earlier messages can load.
+  The sidebar has no chat list or New chat action.
 - Internal background delegation for the default agent. Each delegation has
   one input and fixed model settings. The main agent stays available and
   receives reports to plan review, fixes, tests, and the final answer.
@@ -48,9 +53,8 @@ to read in an afternoon.
   Reply delivery resumes after a restart and skips confirmed
   parts. A crash after remote success can duplicate one part. The Channels
   page shows each bot's runtime status.
-- In a web chat, the user can attach files and images (at most 10 per
-  message, 20 MB each). The agent reads them with its tools. A web chat can
-  also use its own model and thinking level instead of the agent's. Telegram
+- In the main timeline, the user can attach files and images (at most 10 per
+  message, 20 MB each). The agent reads them with its tools. Telegram
   chats and automations use the agent's settings. Telegram accepts photos and
   documents up to 20 MB, with caption text. Telegram replies show progress,
   code blocks, and basic text formatting. Final-send failures, including flood
@@ -77,6 +81,12 @@ to read in an afternoon.
   status. Saved Lark settings keep the Lark platform. Groups, threads and
   outbound media are not supported.
 - Timers: scheduled messages to an agent.
+
+Inputs store their origin. Web input uses `web`. Channel input uses the exact
+peer, such as `telegram:7`. A background result keeps the origin of its source
+input, also when that source is another result. Automation, internal execution,
+and memory consolidation use `automation`, `task`, and `dream`. Origin does
+not change routing. Channel input stays in its own conversation in this step.
 
 The main chat shows the user's messages and the main agent's answers.
 The web chat marks a delegation with the work's title. A returned result has

@@ -58,7 +58,7 @@ func (s *Service) settleTask(ctx context.Context, event worker.Settled) (bool, e
 	if err != nil {
 		return true, err
 	}
-	if err = q.CreateTaskResult(ctx, sqlc.CreateTaskResultParams{ID: "task:" + t.ID + ":result", ConversationID: t.ParentConversationID, Content: string(content), SourceKey: sql.NullString{String: "task:" + t.ID + ":result", Valid: true}, CreatedAt: now}); err != nil {
+	if err = q.CreateTaskResult(ctx, sqlc.CreateTaskResultParams{ID: "task:" + t.ID + ":result", TaskID: t.ID, ConversationID: t.ParentConversationID, Content: string(content), SourceKey: sql.NullString{String: "task:" + t.ID + ":result", Valid: true}, CreatedAt: now}); err != nil {
 		return true, err
 	}
 	if err = tx.Commit(); err != nil {

@@ -169,7 +169,7 @@ func (h *Hub) serve(ctx context.Context, s *stream, w io.Writer) error {
 		return err
 	}
 	if s.watchID == "" {
-		if err := h.writeSnapshot(ctx, s, w, nil, false, nil); err != nil {
+		if err := h.writeSnapshot(ctx, s, w, nil, false, nil, nil); err != nil {
 			return err
 		}
 	}
@@ -206,6 +206,7 @@ func (h *Hub) attach(ctx context.Context, s *stream) error {
 	if err != nil || c.WorkerConversationID.Int64 == 0 {
 		return err
 	}
+	s.chat.WorkerConversationID = c.WorkerConversationID.Int64
 	s.watchID = uuid.NewV7().String()
 	h.mu.Lock()
 	h.byWatch[s.watchID] = s
@@ -217,17 +218,19 @@ func (h *Hub) attach(ctx context.Context, s *stream) error {
 
 // event holds the fields of a chat event that the stream reads.
 type event struct {
-	Type    string           `json:"type"`
-	Items   []jsontext.Value `json:"items"`
-	Running bool             `json:"running"`
-	Retry   jsontext.Value   `json:"retry,omitzero"`
-	Item    *itemHead        `json:"item"`
+	Type          string           `json:"type"`
+	Items         []jsontext.Value `json:"items"`
+	Running       bool             `json:"running"`
+	Retry         jsontext.Value   `json:"retry,omitzero"`
+	HistoryBefore *int64           `json:"historyBefore,omitempty"`
+	Item          *itemHead        `json:"item"`
 }
 
 type itemHead struct {
-	Kind string `json:"kind"`
-	ID   string `json:"id"`
-	At   int64  `json:"at"`
+	Kind    string `json:"kind"`
+	ID      string `json:"id"`
+	At      int64  `json:"at"`
+	EntryID *int64 `json:"entryId,omitempty"`
 }
 
 func (h *Hub) handle(ctx context.Context, s *stream, w io.Writer, in input) error {
@@ -244,7 +247,7 @@ func (h *Hub) handle(ctx context.Context, s *stream, w io.Writer, in input) erro
 		}
 		switch {
 		case ev.Type == "snapshot":
-			if err := h.writeSnapshot(ctx, s, w, ev.Items, ev.Running, ev.Retry); err != nil {
+			if err := h.writeSnapshot(ctx, s, w, ev.Items, ev.Running, ev.Retry, ev.HistoryBefore); err != nil {
 				return err
 			}
 			continue
@@ -273,7 +276,7 @@ func (h *Hub) handle(ctx context.Context, s *stream, w io.Writer, in input) erro
 
 // writeSnapshot merges unanswered messages before newer worker inputs. Queued messages stay last
 // because the worker has not placed them yet.
-func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items []jsontext.Value, running bool, retry jsontext.Value) error {
+func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items []jsontext.Value, running bool, retry jsontext.Value, historyBefore *int64) error {
 	clear(s.seen)
 	clear(s.extra)
 	heads := make([]itemHead, len(items))
@@ -292,6 +295,32 @@ func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items [
 			}
 		}
 	}
+	if historyBefore != nil {
+		open, err := h.q.ListOpenSubmissions(ctx, s.chat.ID)
+		if err != nil {
+			return err
+		}
+		var ids []string
+		for _, sub := range open {
+			if sub.Status == "unanswered" && !s.seen[sub.ID] {
+				ids = append(ids, sub.ID)
+			}
+		}
+		if len(ids) > 0 {
+			var placed map[string]int64
+			if err := h.worker.Call(ctx, "inputEntries", worker.InputEntriesParams{
+				AgentID: h.agentID, ConversationID: s.chat.WorkerConversationID, RequestIDs: ids,
+			}, &placed); err != nil {
+				return err
+			}
+			// These errors load with their worker entries through history, with the same IDs.
+			for id, entry := range placed {
+				if entry < *historyBefore {
+					s.seen[id] = true
+				}
+			}
+		}
+	}
 	extra, err := h.extraItems(ctx, s)
 	if err != nil {
 		return err
@@ -299,7 +328,7 @@ func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items [
 	merged := make([]jsontext.Value, 0, len(items)+len(extra))
 	i := 0
 	for _, x := range extra {
-		for i < len(items) && (x.queued || (heads[i].Kind != "user" && heads[i].Kind != "task") || heads[i].At <= x.at) {
+		for i < len(items) && (x.queued || (heads[i].Kind != "user" && heads[i].Kind != "task" && heads[i].Kind != "boundary") || heads[i].At <= x.at) {
 			merged = append(merged, items[i])
 			i++
 		}
@@ -308,11 +337,12 @@ func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items [
 	}
 	merged = append(merged, items[i:]...)
 	snapshot := struct {
-		Type    string           `json:"type"`
-		Items   []jsontext.Value `json:"items"`
-		Running bool             `json:"running"`
-		Retry   jsontext.Value   `json:"retry,omitzero"`
-	}{"snapshot", merged, running, retry}
+		Type          string           `json:"type"`
+		Items         []jsontext.Value `json:"items"`
+		Running       bool             `json:"running"`
+		Retry         jsontext.Value   `json:"retry,omitzero"`
+		HistoryBefore *int64           `json:"historyBefore,omitempty"`
+	}{"snapshot", merged, running, retry, historyBefore}
 	raw, err := json.Marshal(snapshot)
 	if err != nil {
 		return err
@@ -327,7 +357,7 @@ func (h *Hub) taskItem(ctx context.Context, s *stream, head itemHead) (jsontext.
 	if err != nil {
 		return nil, fmt.Errorf("task result %s title: %w", head.ID, err)
 	}
-	return json.Marshal(api.TaskItem{Kind: api.Task, Id: head.ID, At: new(head.At), Title: title})
+	return json.Marshal(api.TaskItem{Kind: api.Task, Id: head.ID, At: new(head.At), Title: title, EntryId: head.EntryID})
 }
 
 // writeExtra writes control's items that changed since the stream sent them.
@@ -431,4 +461,34 @@ func reason(r string) string {
 func writeEvent(w io.Writer, typ string, data []byte) error {
 	_, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", typ, data)
 	return err
+}
+
+// History reads only through the worker and adds the same task names as the live stream.
+func (h *Hub) History(ctx context.Context, chatID, before int64, limit int) (worker.HistoryResult, error) {
+	c, err := h.chats.Get(ctx, h.agentID, chatID)
+	if err != nil {
+		return worker.HistoryResult{}, err
+	}
+	page := worker.HistoryResult{Items: []jsontext.Value{}}
+	if c.WorkerConversationID == 0 {
+		return page, nil
+	}
+	if err := h.worker.Call(ctx, "history", worker.HistoryParams{
+		AgentID: h.agentID, ConversationID: c.WorkerConversationID, Before: before, Limit: limit,
+	}, &page); err != nil {
+		return page, err
+	}
+	for i, raw := range page.Items {
+		var head itemHead
+		if err := json.Unmarshal(raw, &head); err != nil {
+			return page, err
+		}
+		if head.Kind == "task" {
+			page.Items[i], err = h.taskItem(ctx, &stream{chat: c}, head)
+			if err != nil {
+				return page, err
+			}
+		}
+	}
+	return page, nil
 }
