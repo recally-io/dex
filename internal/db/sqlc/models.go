@@ -114,6 +114,7 @@ type Submission struct {
 	Attachments    string         `json:"attachments"`
 	DeliveredAt    sql.NullInt64  `json:"delivered_at"`
 	DeliveredParts int64          `json:"delivered_parts"`
+	Origin         string         `json:"origin"`
 	Kind           string         `json:"kind"`
 }
 

@@ -28,6 +28,17 @@ func (q *Queries) CountAutomationPending(ctx context.Context, automationID strin
 	return count, err
 }
 
+const countPendingChat = `-- name: CountPendingChat :one
+SELECT count(*) FROM submissions WHERE conversation_id = ? AND status = 'pending'
+`
+
+func (q *Queries) CountPendingChat(ctx context.Context, conversationID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPendingChat, conversationID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAccessTokenIfMissing = `-- name: CreateAccessTokenIfMissing :exec
 INSERT INTO access_token (id, token) VALUES (1, ?) ON CONFLICT (id) DO NOTHING
 `
@@ -147,8 +158,8 @@ func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error 
 }
 
 const createSubmission = `-- name: CreateSubmission :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, status, created_at)
-VALUES (?, ?, ?, ?, ?, 'pending', ?)
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
 ON CONFLICT DO NOTHING
 `
 
@@ -158,6 +169,8 @@ type CreateSubmissionParams struct {
 	Content        string         `json:"content"`
 	Attachments    string         `json:"attachments"`
 	SourceKey      sql.NullString `json:"source_key"`
+	Origin         string         `json:"origin"`
+	Kind           string         `json:"kind"`
 	CreatedAt      int64          `json:"created_at"`
 }
 
@@ -169,6 +182,8 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 		arg.Content,
 		arg.Attachments,
 		arg.SourceKey,
+		arg.Origin,
+		arg.Kind,
 		arg.CreatedAt,
 	)
 	if err != nil {
@@ -371,7 +386,7 @@ SELECT
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'task:%'
+WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id
 `
 
@@ -478,7 +493,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, kind FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -497,6 +512,7 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.Attachments,
 		&i.DeliveredAt,
 		&i.DeliveredParts,
+		&i.Origin,
 		&i.Kind,
 	)
 	return i, err
@@ -912,7 +928,7 @@ SELECT
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending'
-ORDER BY s.created_at
+ORDER BY s.rowid
 `
 
 type ListPendingSubmissionsRow struct {
@@ -925,6 +941,7 @@ type ListPendingSubmissionsRow struct {
 	ChannelKey     string `json:"channel_key"`
 }
 
+// SQLite assigns rowids under the writer lock. Delivery follows admission, not wall time.
 func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubmissionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPendingSubmissions)
 	if err != nil {
@@ -1129,10 +1146,11 @@ func (q *Queries) SettleSubmission(ctx context.Context, arg SettleSubmissionPara
 }
 
 const updateAgentSettings = `-- name: UpdateAgentSettings :exec
-UPDATE agents SET model_provider = ?, model_id = ?, thinking_level = ?, instructions = ? WHERE id = ?
+UPDATE agents SET name = ?, model_provider = ?, model_id = ?, thinking_level = ?, instructions = ? WHERE id = ?
 `
 
 type UpdateAgentSettingsParams struct {
+	Name          string `json:"name"`
 	ModelProvider string `json:"model_provider"`
 	ModelID       string `json:"model_id"`
 	ThinkingLevel string `json:"thinking_level"`
@@ -1142,6 +1160,7 @@ type UpdateAgentSettingsParams struct {
 
 func (q *Queries) UpdateAgentSettings(ctx context.Context, arg UpdateAgentSettingsParams) error {
 	_, err := q.db.ExecContext(ctx, updateAgentSettings,
+		arg.Name,
 		arg.ModelProvider,
 		arg.ModelID,
 		arg.ThinkingLevel,

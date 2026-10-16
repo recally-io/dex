@@ -142,9 +142,13 @@ func (s *Service) deliverPending(ctx context.Context) {
 		slog.Error("list pending submissions", "err", err)
 		return
 	}
+	blocked := make(map[int64]bool)
 	for _, p := range pending {
 		if ctx.Err() != nil {
 			return
+		}
+		if blocked[p.ConversationID] {
+			continue
 		}
 		if _, ok := s.inFlight.Load(p.ID); ok {
 			continue
@@ -159,7 +163,9 @@ func (s *Service) deliverPending(ctx context.Context) {
 				continue
 			}
 		}
-		s.deliver(ctx, p)
+		if retry := s.deliver(ctx, p); retry {
+			blocked[p.ConversationID] = true
+		}
 	}
 }
 
@@ -223,6 +229,8 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey st
 		Content:        m.Content,
 		Attachments:    string(attachments),
 		SourceKey:      sql.NullString{String: sourceKey, Valid: sourceKey != ""},
+		Origin:         inputOrigin(channelKey),
+		Kind:           "message",
 		CreatedAt:      s.now().UnixMilli(),
 	})
 	if err != nil {
@@ -276,9 +284,10 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	}, nil
 }
 
-// deliver sends a stored submission to the worker. When the worker exits first, the submission
-// stays pending for Replay. Any other failure settles it as unanswered.
-func (s *Service) deliver(ctx context.Context, p sqlc.ListPendingSubmissionsRow) {
+// deliver sends a stored submission to the worker. A worker exit or busy response keeps the
+// input pending for another attempt. Other failures settle it as unanswered.
+// A true result blocks later inputs of this chat until the pending input can be retried.
+func (s *Service) deliver(ctx context.Context, p sqlc.ListPendingSubmissionsRow) bool {
 	s.inFlight.Store(p.ID, struct{}{})
 	err := s.submit(ctx, p)
 	switch {
@@ -286,11 +295,14 @@ func (s *Service) deliver(ctx context.Context, p sqlc.ListPendingSubmissionsRow)
 	case errors.Is(err, worker.ErrUnavailable), ctx.Err() != nil:
 		s.inFlight.Delete(p.ID)
 		slog.Warn("worker exited; the message waits for reconciliation", "submission", p.ID)
+		return true
 	case isBusy(err):
 		s.inFlight.Delete(p.ID)
+		return true
 	default:
 		s.settle(ctx, worker.Settled{RequestID: p.ID, Status: "unanswered", Reason: err.Error()})
 	}
+	return false
 }
 
 func isBusy(err error) bool {
@@ -332,7 +344,7 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 	if conv.ModelID != "" {
 		model = worker.ModelRef{Provider: conv.ModelProvider, ModelID: conv.ModelID}
 	}
-	if model.ModelID == "" {
+	if model.ModelID == "" && p.Kind != "context_reset" {
 		return ErrNoModel
 	}
 	settings := worker.CreateConversationParams{
@@ -375,6 +387,12 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 	if current.Status != "pending" {
 		s.inFlight.Delete(p.ID)
 		return nil
+	}
+	if p.Kind == "context_reset" {
+		var result worker.SubmitResult
+		return s.worker.Call(ctx, "reset", worker.ResetParams{
+			AgentID: p.AgentID, ConversationID: conversation, RequestID: p.ID,
+		}, &result)
 	}
 	params := worker.SubmitParams{
 		Kind: current.Kind, AgentID: p.AgentID, ConversationID: conversation, Model: model,

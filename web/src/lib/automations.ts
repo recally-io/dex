@@ -1,4 +1,4 @@
-import type { Chat, Schedule } from "../api/generated/types.gen";
+import type { Schedule } from "../api/generated/types.gen";
 
 export const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -35,10 +35,6 @@ export function scheduleText(schedule: Schedule, timeZone: string) {
       return `Every ${label} at ${schedule.time}`;
     }
   }
-}
-
-export function unreadAutomationChats(chats: Pick<Chat, "channel" | "updatedAt">[], seen: number) {
-  return chats.filter((chat) => chat.channel === "automation" && chat.updatedAt > seen).length;
 }
 
 // A short age, for example "5 min" or "2 d".

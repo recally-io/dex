@@ -10,6 +10,8 @@ import {
 	LiveDoc,
 	type Conversation,
 	type ConversationId,
+	type EntryId,
+	type EntryRecord,
 	createRegistry,
 	Harness,
 	type Submission,
@@ -23,9 +25,13 @@ import { CodingTools } from "@earendil-works/pi-durable/tools";
 import { AgentExtensions, type Loaded } from "./extensions.ts";
 import { CodingSkill, taskExtension } from "./tasks.ts";
 import { MemoryRepo } from "./memory.ts";
-import { ChatView, messageText, USER_ENTRY, TASK_RESULT_ENTRY } from "./view.ts";
+import { ChatView, messageText, USER_ENTRY, TASK_RESULT_ENTRY, render } from "./view.ts";
 import type {
 	AbortParams,
+	ResetParams,
+	HistoryParams,
+	HistoryResult,
+	InputEntriesParams,
 	AgentParams,
 	ChatStreamEvent,
 	CreateConversationParams,
@@ -268,6 +274,101 @@ export class Agents {
 		});
 	}
 
+	checkIdle(params: AbortParams): Promise<Record<string, never>> {
+		return this.#admit(async () => {
+			const conversation = await this.#conversation(params.agentId, params.conversationId);
+			return this.#serial(`${params.agentId}/${conversation.id}`, async () => {
+				await this.#requireIdle(conversation);
+				return {};
+			});
+		});
+	}
+
+	async #requireIdle(conversation: Conversation): Promise<void> {
+		await conversation.commit(async (tx) => {
+			const live = await tx.doc(LiveDoc, conversation.id);
+			const inbox = await tx.doc(InboxDoc, conversation.id);
+			if (live.run !== undefined || inbox.items.length > 0) throw new ConversationBusy(conversation.id);
+		}, context);
+	}
+
+	reset(params: ResetParams): Promise<SubmitResult> {
+		return this.#admit(async () => {
+			const conversation = await this.#conversation(params.agentId, params.conversationId);
+			return this.#serial(`${params.agentId}/${conversation.id}`, async () => {
+				const existing = await conversation.commit(
+					(tx) => tx.submissionByRequest(conversation.id, params.requestId),
+					context,
+				);
+				if (existing === undefined) await this.#requireIdle(conversation);
+				// reset() omits requestId in 1.2.0. This write deduplicates before any context change.
+				const submission = await conversation.submit(
+					{
+						type: "write",
+						requestId: params.requestId,
+						entry: { kind: "pi.reset", head: "self", data: { at: Date.now() } },
+					},
+					context,
+				);
+				const settled = await submission.wait(context);
+				if (settled.status !== "done") throw new Error(`reset: ${settled.status}`);
+				this.#emit({
+					agentId: params.agentId,
+					conversationId: conversation.id,
+					requestId: params.requestId,
+					status: "done",
+				});
+				return { submissionId: submission.id };
+			});
+		});
+	}
+
+	history(params: HistoryParams): Promise<HistoryResult> {
+		// A read can open the Harness and resume stored work.
+		return this.#admit(() => this.#history(params));
+	}
+
+	async #history(params: HistoryParams): Promise<HistoryResult> {
+		const conversation = await this.#conversation(params.agentId, params.conversationId);
+		// IDs are inclusive in the SDK. The public cursor is exclusive.
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+		const maxEntryId = (params.before - 1) as EntryId;
+		const query = { maxEntryId, order: "descending" as const };
+		const page = await conversation.entries(query, params.limit, undefined, context);
+		const entries: EntryRecord[] = [...page.items];
+		let cursor = page.next;
+		// Keep an assistant's results in the same page as its calls. At most one group extends a page.
+		while (cursor !== undefined && !historyBoundary(entries.at(-1))) {
+			// oxlint-disable-next-line no-await-in-loop
+			const more = await conversation.entries(query, 1, cursor, context);
+			entries.push(...more.items);
+			cursor = more.next;
+		}
+		const nextBefore = cursor === undefined ? undefined : entries.at(-1)?.id;
+		return {
+			items: render({ entries: entries.toReversed(), tools: new Map(), running: false }),
+			...(nextBefore === undefined ? {} : { nextBefore }),
+		};
+	}
+
+	inputEntries(params: InputEntriesParams): Promise<Record<string, number>> {
+		return this.#admit(() => this.#inputEntries(params));
+	}
+
+	async #inputEntries(params: InputEntriesParams): Promise<Record<string, number>> {
+		const conversation = await this.#conversation(params.agentId, params.conversationId);
+		return conversation.commit(async (tx) => {
+			const submissions = await Promise.all(
+				params.requestIds.map((id) => tx.submissionByRequest(conversation.id, id)),
+			);
+			return Object.fromEntries(
+				submissions.flatMap((submission) =>
+					submission?.entry === undefined ? [] : [[submission.requestId, submission.entry]],
+				),
+			);
+		}, context);
+	}
+
 	/**
 	 * Starts a watch of a conversation's chat events. The first event is a snapshot. The worker sends
 	 * it before this method returns.
@@ -465,6 +566,8 @@ export class Agents {
 		try {
 			registry.install(loaded.extension);
 			if (loaded.hasTools) registry.install(ToolSearch);
+			// Keep the default one-at-a-time follow-up. Do not use followUpMode: "all" or steer:
+			// each input must keep its own answer and origin.
 			harness = await Harness.open(
 				await openNodeSqliteStorage(join(dir, "state.sqlite")),
 				{
@@ -513,4 +616,16 @@ function answerText(message: Message | undefined): string {
 		.filter((block) => block.type === "text")
 		.map((block) => block.text)
 		.join("");
+}
+
+function historyBoundary(entry: EntryRecord | undefined): boolean {
+	return (
+		entry !== undefined &&
+		(entry.model?.[0]?.role === "assistant" ||
+			entry.kind === USER_ENTRY ||
+			entry.kind === TASK_RESULT_ENTRY ||
+			entry.kind === "pi.user" ||
+			entry.kind === "pi.reset" ||
+			entry.kind === "pi.compaction")
+	);
 }

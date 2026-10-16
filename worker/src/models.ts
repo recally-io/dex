@@ -46,6 +46,7 @@ export class Catalog {
 				provider: "faux",
 				models: [
 					{ id: "echo" },
+					{ id: "context" },
 					{ id: "shout" },
 					{ id: "bash" },
 					{ id: "memory" },
@@ -60,6 +61,10 @@ export class Catalog {
 			// Each call consumes one scripted response, so the factory queues the next one.
 			const reply: FauxResponseFactory = (transcript, options, _state, model) => {
 				faux.appendResponses([reply]);
+				if (model.id === "context")
+					return fauxAssistantMessage(
+						`context: ${JSON.stringify(transcript.messages.filter((message) => message.role === "user").map((message) => message.content))}`,
+					);
 				if (model.id === "memory") return fauxAssistantMessage(`memory: ${section(transcript, "memory")}`);
 				if (model.id === "section")
 					return fauxAssistantMessage(`section: ${section(transcript, lastUserText(transcript))}`);
@@ -300,11 +305,18 @@ function spawnStep(transcript: TranscriptContext) {
 	if (typeof input !== "object" || input === null || Array.isArray(input))
 		throw new Error("faux/spawn requires a JSON object");
 	if ("task-result" in input) {
-		if ("nextTask" in input)
+		const result = input["task-result"];
+		const report = Value.Parse(Type.Object({ report: Type.Optional(Type.String()) }), result).report ?? "";
+		const nextTask: unknown = report.startsWith("echo: next-task: ")
+			? JSON.parse(report.slice("echo: next-task: ".length))
+			: "nextTask" in input
+				? input.nextTask
+				: undefined;
+		if (nextTask !== undefined)
 			return fauxAssistantMessage(
 				fauxToolCall(
 					"spawn_task",
-					Value.Parse(Type.Record(Type.String(), Type.String()), Value.Parse(SpawnTaskArgs, input.nextTask)),
+					Value.Parse(Type.Record(Type.String(), Type.String()), Value.Parse(SpawnTaskArgs, nextTask)),
 				),
 				{ stopReason: "toolUse" },
 			);

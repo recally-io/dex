@@ -70,7 +70,9 @@ export const Attachment = Type.Object({
 export type Attachment = Static<typeof Attachment>;
 
 export const SubmitParams = Type.Object({
-	kind: Type.Optional(Type.Union([Type.Literal("message"), Type.Literal("task_result")])),
+	kind: Type.Optional(
+		Type.Union([Type.Literal("message"), Type.Literal("task_result"), Type.Literal("context_reset")]),
+	),
 	whenBusy: Type.Optional(Type.Literal("reject")),
 	taskStageId: Type.Optional(Type.String()),
 	agentId: Type.String(),
@@ -99,6 +101,29 @@ export type SubmitResult = {
 	readonly submissionId: number;
 };
 
+export const ResetParams = Type.Object({
+	agentId: Type.String(),
+	conversationId: Type.Number(),
+	requestId: Type.String(),
+});
+export type ResetParams = Static<typeof ResetParams>;
+
+export const HistoryParams = Type.Object({
+	agentId: Type.String(),
+	conversationId: Type.Number(),
+	before: Type.Integer({ minimum: 1 }),
+	limit: Type.Integer({ minimum: 1, maximum: 200 }),
+});
+export type HistoryParams = Static<typeof HistoryParams>;
+export type HistoryResult = { items: import("./view.ts").Item[]; nextBefore?: number };
+
+export const InputEntriesParams = Type.Object({
+	agentId: Type.String(),
+	conversationId: Type.Number(),
+	requestIds: Type.Array(Type.String()),
+});
+export type InputEntriesParams = Static<typeof InputEntriesParams>;
+
 export const WatchParams = Type.Object({
 	/** Control's ID for this watch; the worker's chat events carry it. */
 	watchId: Type.String(),
@@ -119,6 +144,7 @@ export type AbortParams = Static<typeof AbortParams>;
 /**
  * The event of a watch: the chat events of one commit (the first is a snapshot), or `end` when the
  * watch stopped. The chat events are the ChatEvent schema of api/openapi.yaml.
+ * Completed spawn tools carry taskId. Control adds task IDs and titles to result marks.
  */
 export type ChatStreamEvent =
 	| { readonly watchId: string; readonly events: readonly ChatEvent[] }

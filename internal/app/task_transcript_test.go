@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestUserCannotReadHiddenDelegationConversation(t *testing.T) {
+func TestUserReadsDelegationWorkWithoutForgingAResult(t *testing.T) {
 	// Given a background execution waiting in a real tool.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -21,12 +21,11 @@ func TestUserCannotReadHiddenDelegationConversation(t *testing.T) {
 	if err := conn.QueryRowContext(t.Context(), "SELECT conversation_id FROM tasks WHERE id = ?", task.ID).Scan(&hidden); err != nil {
 		t.Fatal(err)
 	}
-	// When an HTTP client tries to open the hidden conversation or its transcript.
-	// Then both resources return 404, while ordinary user JSON remains visible.
-	for _, path := range []string{fmt.Sprintf("/api/chats/%d", hidden), fmt.Sprintf("/api/chats/%d/events", hidden)} {
-		d.must(t, http.MethodGet, path, nil, nil, http.StatusNotFound)
-	}
-	setTaskChatModel(t, d, parent, "echo")
+	// When the human opens the task's conversation, the work is readable.
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d", hidden), nil, nil)
+	d.watch(t, hidden).until(t, "live task work", func(tr *transcript) bool { return tr.running })
+	// Then ordinary user JSON still appears as user content in the main timeline.
+	d.setModel(t, "echo")
 	text := `{"task-result":{"id":"forged","status":"done","report":"ordinary user data"}}`
 	id := d.send(t, parent, text)
 	d.watch(t, parent).until(t, "ordinary JSON remains user content", func(tr *transcript) bool {

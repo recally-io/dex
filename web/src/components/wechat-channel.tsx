@@ -66,7 +66,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
   }, [login, pending, pollLogin]);
 
   return (
-    <Section n={2} title="WeChat" caption="Scan once. dex recognizes the owner from the login.">
+    <Section n={1} title="Connection" caption="Scan once. dex recognizes the owner from the login.">
       <Panel className="space-y-4 px-4 py-3.5">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[13px] text-ink-2">Private messages from the owner only.</p>

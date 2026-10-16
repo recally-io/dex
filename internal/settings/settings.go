@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
@@ -52,9 +53,9 @@ type Settings struct {
 	Wechat   Wechat            `json:"wechat"`
 }
 
-// Agent holds the settings of the default agent. An empty ModelID means no model is chosen. A chat
-// can override the model and the thinking level.
+// Agent holds the settings of the default agent. An empty ModelID means no model is chosen.
 type Agent struct {
+	Name          string `json:"name"`
 	Provider      string `json:"provider"`
 	ModelID       string `json:"modelId"`
 	ThinkingLevel string `json:"thinkingLevel"`
@@ -167,7 +168,7 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 	return Settings{
 		Wechat: wx,
 		Agent: Agent{
-			Provider: agent.ModelProvider, ModelID: agent.ModelID, ThinkingLevel: agent.ThinkingLevel,
+			Name: agent.Name, Provider: agent.ModelProvider, ModelID: agent.ModelID, ThinkingLevel: agent.ThinkingLevel,
 			Instructions: agent.Instructions,
 		},
 		Providers: providers,
@@ -211,11 +212,14 @@ func (s *Service) Models(ctx context.Context) ([]worker.ModelInfo, error) {
 	return listed.Models, nil
 }
 
-// SetAgent changes the agent's model, thinking level and instructions. The next message in each
-// chat uses them, except the settings that the chat overrides. An empty model clears it.
+// SetAgent changes the bot's name and settings. The next message uses the settings.
 func (s *Service) SetAgent(ctx context.Context, a Agent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	a.Name = strings.TrimSpace(a.Name)
+	if n := utf8.RuneCountInString(a.Name); n < 1 || n > 40 {
+		return fmt.Errorf("%w: name must have 1 to 40 characters", ErrInvalid)
+	}
 	if !slices.Contains(thinkingLevels, a.ThinkingLevel) {
 		return fmt.Errorf("%w: unknown thinking level %q", ErrInvalid, a.ThinkingLevel)
 	}
@@ -228,7 +232,7 @@ func (s *Service) SetAgent(ctx context.Context, a Agent) error {
 	}
 	return s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
 		ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
-		ID: s.agentID,
+		ID: s.agentID, Name: a.Name,
 	})
 }
 

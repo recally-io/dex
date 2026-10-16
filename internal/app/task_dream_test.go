@@ -20,7 +20,7 @@ func TestUserDreamMemoryExcludesInternalTaskInput(t *testing.T) {
 	parent := d.newChat(t, taskJSON(t, map[string]string{"title": "Memory boundary", "goal": "saved evidence", "provider": "faux", "modelId": "echo"}))
 	task := waitExecution(t, conn, parent, "Memory boundary", "done")
 	result := waitResultSubmission(t, conn, "task:"+task.ID+":result", "done")
-	setTaskChatModel(t, d, parent, "echo")
+	d.setModel(t, "echo")
 	ordinary := `{"task-result":{"report":"ordinary user JSON"}}`
 	if got := taskTurn(t, d, parent, ordinary); got != "echo: "+ordinary {
 		t.Fatal(got)

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { IconBrowserTabs } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBrowserTabs";
+import { IconChevronRightSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronRightSmall";
 import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
 import type { Settings } from "../api/generated/types.gen";
 import {
@@ -19,58 +19,53 @@ import { Confirm } from "../components/confirm";
 import { Modal } from "../components/dialog";
 import { Failure, Spinner } from "../components/feedback";
 import { Field, Input, SavedSecret, Textarea } from "../components/form";
-import { Facts, FramedPage, Mono, Note, NotAvailable, Panel, Section } from "../components/page";
-import { Button } from "../components/atoms/Button";
+import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
+import { Button, buttonVariants } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import { FeishuChannel } from "./feishu";
-import { WithSettings } from "./agent";
-
-const unsupported = [{ name: "Slack", text: "dex cannot connect to Slack in this version." }];
-
-function OnOff({ on }: { on: boolean }) {
-  return (
-    <StatusPill tone={on ? "green" : "neutral"} className="h-5 px-2 text-[11.5px]">
-      {on ? "On" : "Off"}
-    </StatusPill>
-  );
-}
+import { BotCrumb } from "../components/bot-crumb";
+import { WithSettings } from "../components/with-settings";
 
 function ChannelRow({
   channel,
-  icon,
   name,
   text,
   status,
+  chatId,
 }: {
-  channel?: "web" | "telegram" | "feishu";
-  icon: ReactNode;
+  channel: "telegram" | "wechat" | "feishu";
   name: string;
   text: string;
   status: ReactNode;
+  chatId?: number;
 }) {
-  const body = (
-    <>
+  return (
+    <div className="flex flex-wrap items-center gap-3 px-4 py-3">
       <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-inset text-ink-2 shadow-hairline">
-        {icon}
+        <IconPaperPlane size={16} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[13.5px] font-medium text-ink group-hover:underline">{name}</span>
+        <Link
+          to="/channels/$channelId"
+          params={{ channelId: channel }}
+          className="block w-fit text-[13.5px] font-medium text-ink hover:underline"
+        >
+          {name}
+        </Link>
         <span className="block text-[12px] text-ink-3">{text}</span>
       </span>
-      <span className="shrink-0">{status}</span>
-    </>
-  );
-
-  return channel ? (
-    <Link
-      to="/channels/$channelId"
-      params={{ channelId: channel }}
-      className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-hover"
-    >
-      {body}
-    </Link>
-  ) : (
-    <div className="flex items-center gap-3 px-4 py-3">{body}</div>
+      {status}
+      {chatId ? (
+        <Link
+          to="/c/$chatId"
+          params={{ chatId: String(chatId) }}
+          className={buttonVariants({ size: "xs", variant: "secondary" })}
+        >
+          Open conversation
+        </Link>
+      ) : null}
+      <IconChevronRightSmall size={16} className="shrink-0 text-ink-3" />
+    </div>
   );
 }
 
@@ -85,138 +80,76 @@ function Boundary() {
   );
 }
 
-export function ChannelsPage() {
-  useQuery({ ...getSettingsOptions(), refetchInterval: 2000 });
+export function ChannelsSection({ settings }: { settings: Settings }) {
+  const saved = useQuery({ ...getSettingsOptions(), refetchInterval: 3000 });
   const feishu = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
+  const chats = useQuery({ ...listChatsOptions(), refetchInterval: 3000 });
+  const current = saved.data ?? settings;
 
-  return (
-    <FramedPage
-      title="Channels"
-      description="A channel is a place where you talk to the agent. Every channel uses the same agent, memory and workspace. Each chat shows where it came from."
-    >
-      <WithSettings>
-        {(settings) => {
-          const tg = settings.telegram;
+  const latest = (channel: "telegram" | "wechat" | "feishu") =>
+    chats.data?.chats
+      .filter((chat) => chat.channel === channel)
+      .toSorted((a, b) => b.createdAt - a.createdAt || b.id - a.id)[0]?.id;
 
-          return (
-            <>
-              <Section n={1} title="Available" caption="Web is always on.">
-                <Panel>
-                  <div className="divide-y divide-line">
-                    <ChannelRow
-                      channel="web"
-                      icon={<IconBrowserTabs size={16} />}
-                      name="Web"
-                      text="This page. Read every chat, and send in web and automation chats."
-                      status={<OnOff on />}
-                    />
-                    <ChannelRow
-                      channel="telegram"
-                      icon={<IconPaperPlane size={16} />}
-                      name="Telegram"
-                      text={
-                        tg.enabled
-                          ? `Bot ${tg.botId ?? "unknown"} · ${tg.allowedUsers.length} allowed ${tg.allowedUsers.length === 1 ? "user" : "users"}. Read-only on the web`
-                          : "Talk to dex from a Telegram bot. Connect a bot, then pair your Telegram account."
-                      }
-                      status={
-                        <StatusPill tone={tg.status.state === "running" ? "green" : "neutral"}>
-                          {tg.status.state}
-                        </StatusPill>
-                      }
-                    />
-                    <ChannelRow
-                      channel="feishu"
-                      icon={<IconPaperPlane size={16} />}
-                      name="Feishu / Lark"
-                      text="Private chat with the paired owner. Create an app with a QR code."
-                      status={
-                        <StatusPill tone={feishu.data?.status === "running" ? "green" : "neutral"}>
-                          {feishu.isError ? "unavailable" : (feishu.data?.status ?? "Loading…")}
-                        </StatusPill>
-                      }
-                    />
-                  </div>
-                </Panel>
-              </Section>
-              <WechatChannel settings={settings} />
-              <Section n={3} title="Not yet available" caption="dex does not support these channels now.">
-                <Panel>
-                  <div className="divide-y divide-line opacity-80">
-                    {unsupported.map((c) => (
-                      <ChannelRow
-                        key={c.name}
-                        icon={<span className="text-[12px] font-semibold">{c.name[0]}</span>}
-                        name={c.name}
-                        text={c.text}
-                        status={<NotAvailable />}
-                      />
-                    ))}
-                  </div>
-                </Panel>
-              </Section>
-              <Section n={4} title="Rules" caption="The same for every channel.">
-                <Panel>
-                  <Facts
-                    rows={[
-                      ["Agent", "One model and one set of instructions"],
-                      ["Memory", "Shared. A fact from Telegram is known on the web"],
-                      ["Replies", "In the channel where the chat started"],
-                    ]}
-                  />
-                </Panel>
-                <div className="mt-3">
-                  <Boundary />
-                </div>
-              </Section>
-            </>
-          );
-        }}
-      </WithSettings>
-    </FramedPage>
+  const status = (state: string) => (
+    <StatusPill tone={state === "running" ? "green" : "neutral"} className="h-5 shrink-0 px-2 text-[11.5px]">
+      {state}
+    </StatusPill>
   );
-}
 
-function Crumb() {
   return (
-    <Link to="/channels" className="hover:text-ink hover:underline">
-      Channels
-    </Link>
-  );
-}
-
-export function ChannelPage({ channel }: { channel: "web" | "telegram" | "feishu" }) {
-  return channel === "web" ? <WebChannel /> : channel === "feishu" ? <FeishuChannel /> : <TelegramChannel />;
-}
-
-function WebChannel() {
-  return (
-    <FramedPage
-      eyebrow={<Crumb />}
-      title="Web"
-      badge={<OnOff on />}
-      description="The web is built in and always on. It is the only place to change the agent, providers and automations."
-    >
-      <Section n={1} title="What you can do">
-        <Panel>
-          <Facts
-            rows={[
-              ["Address", <Mono key="address">{window.location.origin}</Mono>],
-              ["Web chats", "Read and send"],
-              ["Automation chats", "Read and reply"],
-              ["Telegram chats", "Read only. Reply in Telegram"],
-              ["Settings", "Change everything"],
-            ]}
+    <Section n={3} title="Channels" caption="Open a channel to set it up.">
+      <Panel>
+        <div className="divide-y divide-line">
+          <ChannelRow
+            channel="telegram"
+            name="Telegram"
+            text="Private messages from allowed people."
+            status={status(current.telegram.status.state)}
+            chatId={latest("telegram")}
           />
-        </Panel>
-      </Section>
-      <Section n={2} title="Access">
-        <Note tone="warn">
-          The server has no sign-in, and tools run without a sandbox. Any program on this computer that can
-          reach the port can run commands with dex. Keep dex on 127.0.0.1.
-        </Note>
-      </Section>
+          <ChannelRow
+            channel="wechat"
+            name="WeChat"
+            text="Private messages from the paired owner."
+            status={status(current.wechat.status.state)}
+            chatId={latest("wechat")}
+          />
+          <ChannelRow
+            channel="feishu"
+            name="Feishu / Lark"
+            text="Private messages from the paired owner."
+            status={status(feishu.isError ? "unavailable" : (feishu.data?.status ?? "Loading…"))}
+            chatId={latest("feishu")}
+          />
+        </div>
+      </Panel>
+      {chats.isError ? (
+        <div className="mt-3">
+          <Failure
+            title="Could not load channel conversations"
+            error={chats.error}
+            retry={() => void chats.refetch()}
+          />
+        </div>
+      ) : null}
+    </Section>
+  );
+}
+
+export function ChannelPage({ channel }: { channel: "telegram" | "wechat" | "feishu" }) {
+  return channel === "wechat" ? (
+    <FramedPage
+      eyebrow={<BotCrumb />}
+      title="WeChat"
+      description="Scan once. dex recognizes the owner from the login."
+    >
+      <WithSettings>{(settings) => <WechatChannel settings={settings} />}</WithSettings>
     </FramedPage>
+  ) : channel === "feishu" ? (
+    <FeishuChannel />
+  ) : (
+    <TelegramChannel />
   );
 }
 
@@ -227,7 +160,7 @@ function TelegramChannel() {
 
   return (
     <FramedPage
-      eyebrow={<Crumb />}
+      eyebrow={<BotCrumb />}
       title="Telegram"
       badge={
         saved.data ? (

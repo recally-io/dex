@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { IconArrowCornerDownRight } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowCornerDownRight";
@@ -208,18 +209,8 @@ function ToolStatus({ status }: { status: ToolItem["status"] }) {
   );
 }
 
-export type ToolFocus = { id: string; at: number };
-
 /** Consecutive tool calls as one step row with a line for each call. */
-export function ToolStep({
-  tools,
-  memory,
-  focus,
-}: {
-  tools: ToolItem[];
-  memory?: string;
-  focus?: ToolFocus;
-}) {
+export function ToolStep({ tools, memory }: { tools: ToolItem[]; memory?: string }) {
   const working = tools.some((t) => t.status === "running");
   const failed = tools.some((t) => t.status === "error");
   const [open, setOpen] = useState<boolean | null>(null);
@@ -229,26 +220,12 @@ export function ToolStep({
   const selected = picked === undefined ? (tools.find((t) => t.status === "error")?.id ?? null) : picked;
   const expanded = open ?? (working || failed);
   const title = stepTitle(tools, memory);
-  const ref = useRef<HTMLDivElement>(null);
-  const focused = focus && tools.some((t) => t.id === focus.id) ? focus : undefined;
-  const [shownFocus, setShownFocus] = useState<number>();
-
-  // The Context panel can open a call. Each click has a new time, so a second click opens it again.
-  if (focused && focused.at !== shownFocus) {
-    setShownFocus(focused.at);
-    setOpen(true);
-    setSelected(focused.id);
-  }
-
-  useEffect(() => {
-    if (focused) ref.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [focused]);
 
   if (tools.length === 1 && tools[0].name === "spawn_task" && !failed) {
     const dispatch = describeTool(tools[0]);
 
     return (
-      <div ref={ref} className="flex min-w-0 items-start gap-2 py-1 text-[13px] leading-5">
+      <div className="flex min-w-0 items-start gap-2 py-1 text-[13px] leading-5">
         <IconArrowUpRight size={16} aria-hidden className="mt-0.5 shrink-0 text-ink-3" />
         <p className="min-w-0 [overflow-wrap:anywhere]">
           {working ? (
@@ -256,14 +233,24 @@ export function ToolStep({
           ) : (
             <span className="font-medium text-ink-2">{dispatch.verb}</span>
           )}
-          <span className="ml-1.5 font-medium text-ink">{dispatch.target}</span>
+          {tools[0].taskId ? (
+            <Link
+              to="/tasks/$taskId"
+              params={{ taskId: tools[0].taskId }}
+              className="ml-1.5 font-medium text-ink decoration-line-strong underline-offset-3 hover:underline"
+            >
+              {dispatch.target}
+            </Link>
+          ) : (
+            <span className="ml-1.5 font-medium text-ink">{dispatch.target}</span>
+          )}
         </p>
       </div>
     );
   }
 
   return (
-    <div ref={ref} className="flex w-full flex-col">
+    <div className="flex w-full flex-col">
       <StepHeader
         working={working}
         active={title.active}
@@ -417,6 +404,16 @@ export function TranscriptItem({
   canRetry: boolean;
 }) {
   switch (item.kind) {
+    case "boundary":
+      if (item.boundary === "compaction") return null;
+
+      return (
+        <div role="separator" className="flex items-center gap-3 py-3 text-[12px] text-ink-3">
+          <span className="h-px flex-1 bg-line" />
+          <span>Context cleared</span>
+          <span className="h-px flex-1 bg-line" />
+        </div>
+      );
     case "user":
       return (
         <div className="flex animate-[fade-up_300ms_var(--ease-out-strong)_both] flex-col items-end gap-1 pl-10 sm:pl-24">
@@ -448,7 +445,13 @@ export function TranscriptItem({
           <IconArrowCornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0 text-ink-3" />
           <h3 className="min-w-0 [overflow-wrap:anywhere]">
             <span className="mr-1.5 font-medium text-ink-2">Background result</span>
-            <span className="font-semibold text-ink">{item.title}</span>
+            <Link
+              to="/tasks/$taskId"
+              params={{ taskId: item.taskId }}
+              className="font-semibold text-ink decoration-line-strong underline-offset-3 hover:underline"
+            >
+              {item.title}
+            </Link>
           </h3>
         </header>
       );
@@ -459,17 +462,13 @@ export function TranscriptItem({
 
       return (
         <article className="group min-w-0">
-          <div className="max-w-[640px] text-[13.5px] leading-[1.65] text-ink [overflow-wrap:anywhere]">
-            {live ? (
-              <div className="whitespace-pre-wrap">
-                <StreamText text={item.text} charsPerTick={Math.max(2, item.text.length)} tickMs={10} />
-              </div>
-            ) : (
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdown}>
-                {item.text}
-              </ReactMarkdown>
-            )}
-          </div>
+          {live ? (
+            <div className="max-w-[640px] text-[13.5px] leading-[1.65] whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">
+              <StreamText text={item.text} charsPerTick={Math.max(2, item.text.length)} tickMs={10} />
+            </div>
+          ) : (
+            <Markdown text={item.text} />
+          )}
           <footer className="mt-1.5 flex h-7 items-center gap-3 text-[11.5px] text-ink-3 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
             {item.model ? <span className="min-w-0 truncate font-mono">{item.model}</span> : null}
             {item.usage ? (
@@ -518,18 +517,16 @@ export function Transcript({
   retry,
   canRetry,
   memory,
-  focus,
 }: {
   items: Item[];
   running: boolean;
   retry: (index: number) => void;
   canRetry: boolean;
   memory?: string;
-  focus?: ToolFocus;
 }) {
   function content(block: ContentBlock) {
     return block.kind === "tools" ? (
-      <ToolStep key={block.key} tools={block.tools} memory={memory} focus={focus} />
+      <ToolStep key={block.key} tools={block.tools} memory={memory} />
     ) : (
       <TranscriptItem
         key={block.item.id}
@@ -578,6 +575,16 @@ export function RetryNotice({ retry }: { retry: Retry }) {
         Provider error · retry {retry.attempt} in {Math.max(0, Math.ceil((retry.at - now) / 1000))} s
       </Shimmer>
       <p className="text-[12.5px] text-ink-2 [overflow-wrap:anywhere]">{retry.reason}</p>
+    </div>
+  );
+}
+
+export function Markdown({ text }: { text: string }) {
+  return (
+    <div className="max-w-[640px] text-[13.5px] leading-[1.65] text-ink [overflow-wrap:anywhere]">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdown}>
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }

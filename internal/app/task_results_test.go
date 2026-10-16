@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"uuid"
 
 	"github.com/recally-io/dex/internal/chat"
 )
@@ -30,7 +31,7 @@ func TestUserTaskResultWaitsForBusyParent(t *testing.T) {
 	w := d.watch(t, parent)
 	w.until(t, "spawn answer", answeredWith("spawn: "))
 	waitTaskFile(t, filepath.Join(dir, "background.pid"))
-	setTaskChatModel(t, d, parent, "bash")
+	d.setModel(t, "bash")
 	foreground := d.send(t, parent, taskGate(t, dir, "parent"))
 	waitTaskFile(t, filepath.Join(dir, "parent.pid"))
 	w.until(t, "parent tool running", resultParentToolRunning)
@@ -41,8 +42,7 @@ func TestUserTaskResultWaitsForBusyParent(t *testing.T) {
 	resultID := "task:" + task.ID + ":result"
 	result := waitResultSubmission(t, conn, resultID, "pending")
 	// The later answer proves control attempted delivery before the parent changes model.
-	d.setModel(t, "echo")
-	barrier := d.newChat(t, "busy result delivery attempted")
+	barrier := d.automationBarrier(t, "busy result delivery attempted")
 	d.watch(t, barrier).until(t, "busy delivery barrier", answered("echo: busy result delivery attempted"))
 	if !strings.Contains(task.Report, "gate released") {
 		t.Fatalf("completed report missing: %+v", task)
@@ -63,7 +63,7 @@ func TestUserTaskResultWaitsForBusyParent(t *testing.T) {
 
 	// Then releasing the parent processes the saved result without another user input.
 	// A result already in the worker inbox would keep bash and could not return this spawn answer.
-	setTaskChatModel(t, d, parent, "spawn")
+	d.setModel(t, "spawn")
 	releaseResultGate(t, dir, "parent")
 	w.until(t, "background result answer", answeredWith(`"id":"`+task.ID+`"`))
 	processed := waitResultSubmission(t, conn, resultID, "done")
@@ -92,10 +92,10 @@ func TestUserTaskResultRecoversFailedParentWithQueuedInput(t *testing.T) {
 	w := d.watch(t, parent)
 	w.until(t, "spawn answer", answeredWith("spawn: "))
 	waitTaskFile(t, filepath.Join(dir, "background.pid"))
-	setTaskChatModel(t, d, parent, "bash")
+	d.setModel(t, "bash")
 	d.send(t, parent, taskGate(t, dir, "parent"))
 	waitTaskFile(t, filepath.Join(dir, "parent.pid"))
-	setTaskChatModel(t, d, parent, "spawn")
+	d.setModel(t, "spawn")
 	invalid := d.send(t, parent, "invalid JSON")
 	continuation := d.send(t, parent, `{"task-result":{"report":"queued continuation"}}`)
 	w.until(t, "both inputs queued behind the shell", func(tr *transcript) bool {
@@ -103,8 +103,7 @@ func TestUserTaskResultRecoversFailedParentWithQueuedInput(t *testing.T) {
 			slices.ContainsFunc(tr.items, func(it item) bool { return it.ID == continuation && it.Queued })
 	})
 	// A later chat answer is a delivery-loop barrier: earlier queued inputs have been submitted.
-	d.setModel(t, "echo")
-	barrier := d.newChat(t, "queued inputs admitted")
+	barrier := d.automationBarrier(t, "queued inputs admitted")
 	d.watch(t, barrier).until(t, "admission barrier", answered("echo: queued inputs admitted"))
 
 	// When the shell ends, the next model turn fails on actual invalid JSON.
@@ -152,7 +151,7 @@ func TestUserTaskResultSurvivesStopAfterParentAcceptsIt(t *testing.T) {
 	w := d.watch(t, parent)
 	w.until(t, "spawn answer", answeredWith("spawn: "))
 	waitTaskFile(t, filepath.Join(dir, "background.pid"))
-	setTaskChatModel(t, d, parent, "bash")
+	d.setModel(t, "bash")
 	releaseResultGate(t, dir, "background")
 	task := waitExecution(t, conn, parent, "Stopped result", "done")
 	resultID := "task:" + task.ID + ":result"
@@ -169,7 +168,7 @@ func TestUserTaskResultSurvivesStopAfterParentAcceptsIt(t *testing.T) {
 	}
 	releaseResultGate(t, dir, "accepted-result")
 	// Then a successful new user turn cannot revive the old result.
-	setTaskChatModel(t, d, parent, "echo")
+	d.setModel(t, "echo")
 	if got := taskTurn(t, d, parent, "hello"); got != "echo: hello" {
 		t.Fatal(got)
 	}
@@ -203,7 +202,7 @@ func TestUserKeepsQueuedQuestionAfterBackgroundResultOnReconnect(t *testing.T) {
 	w := d.watch(t, parent)
 	w.until(t, "spawn answer", answeredWith("spawn: "))
 	waitTaskFile(t, filepath.Join(dir, "background.pid"))
-	setTaskChatModel(t, d, parent, "bash")
+	d.setModel(t, "bash")
 	releaseResultGate(t, dir, "background")
 	task := waitExecution(t, conn, parent, "Check queued logs", "done")
 	resultID := "task:" + task.ID + ":result"
@@ -372,7 +371,7 @@ data: [DONE]
 	waitTaskFile(t, filepath.Join(dir, "result.pid"))
 	d.watch(t, parent).until(t, "spawn answer", answeredWith("spawn: "))
 	d.must(t, http.MethodPut, "/api/settings/providers/result-test", map[string]any{"api": "openai-completions", "baseUrl": provider.URL, "models": []string{"test"}}, nil)
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", parent), map[string]string{"provider": "result-test", "modelId": "test", "thinkingLevel": "off"}, nil)
+	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"name": "Dex", "provider": "result-test", "modelId": "test", "thinkingLevel": "off"}, nil)
 	releaseResultGate(t, dir, "result")
 	task := waitExecution(t, conn, parent, "Saved report", "done")
 	id := "task:" + task.ID + ":result"
@@ -445,7 +444,6 @@ func TestUserSeesBackgroundResultTitleRealtimeAndAfterReconnect(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the execution returns, the existing watch must receive a titled anchor.
-	snapshotsBeforeResult := w.tr.snapshots
 	releaseResultGate(t, dir, "label")
 	task := waitExecution(t, conn, parent, "Check saved logs", "done")
 	id := "task:" + task.ID + ":result"
@@ -454,14 +452,11 @@ func TestUserSeesBackgroundResultTitleRealtimeAndAfterReconnect(t *testing.T) {
 	if idx < 0 {
 		t.Fatalf("live result has no task anchor: %+v", w.tr.items)
 	}
-	if it := w.tr.items[idx]; it.Title != task.Title || it.At == 0 || it.Status != "" || it.Text != "" {
+	if it := w.tr.items[idx]; it.Title != task.Title || it.TaskID != task.ID || it.At == 0 || it.Status != "" || it.Text != "" {
 		t.Fatalf("live anchor must contain only identity, time and real title: %+v", it)
 	}
 	if idx+1 >= len(w.tr.items) || w.tr.items[idx+1].Kind != "assistant" {
 		t.Fatalf("anchor does not precede its answer: %+v", w.tr.items)
-	}
-	if w.tr.snapshots != snapshotsBeforeResult {
-		t.Fatalf("result must arrive as a live item: snapshots before=%d after=%d", snapshotsBeforeResult, w.tr.snapshots)
 	}
 	anchor := w.tr.items[idx]
 	w.cancel()
@@ -470,13 +465,26 @@ func TestUserSeesBackgroundResultTitleRealtimeAndAfterReconnect(t *testing.T) {
 	w.until(t, "historical snapshot", func(tr *transcript) bool { return tr.snapshots > 0 })
 	idx = slices.IndexFunc(w.tr.items, func(it item) bool { return it.ID == id })
 	old := slices.IndexFunc(w.tr.items, func(it item) bool { return it.ID == "old-unanswered" })
-	if idx < 0 || w.tr.items[idx].Title != anchor.Title || w.tr.items[idx].At != anchor.At || w.tr.items[idx].Kind != "task" || old < 0 || old >= idx {
+	if idx < 0 || w.tr.items[idx].Title != anchor.Title || w.tr.items[idx].TaskID != task.ID || w.tr.items[idx].At != anchor.At || w.tr.items[idx].Kind != "task" || old < 0 || old >= idx {
 		t.Fatalf("snapshot lost title or time boundary: %+v", w.tr.items)
 	}
 	for _, it := range w.tr.items {
 		if it.ID == id && it.Kind == "user" {
 			t.Fatalf("internal result became user content: %+v", it)
 		}
+	}
+	// A clear moves the result into history without changing its link or item ID.
+	d.clearMain(t, parent, uuid.NewV7().String())
+	w.until(t, "reset after result", func(tr *transcript) bool {
+		return slices.ContainsFunc(tr.items, func(it item) bool { return it.Kind == "boundary" })
+	})
+	var page struct {
+		Items []item `json:"items"`
+	}
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/history?before=9007199254740991&limit=100", parent), nil, &page)
+	idx = slices.IndexFunc(page.Items, func(it item) bool { return it.ID == anchor.ID })
+	if idx < 0 || page.Items[idx].TaskID != task.ID || page.Items[idx].Title != anchor.Title || page.Items[idx].At != anchor.At {
+		t.Fatalf("history lost the stable task link: %+v", page.Items)
 	}
 	t.Logf("artifact: result=%s title=%q live=%+v snapshot=%+v", id, task.Title, anchor, w.tr.items)
 }

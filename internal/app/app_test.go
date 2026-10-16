@@ -151,7 +151,7 @@ func cmpOr(want []int, def int) int {
 func (d *dex) setModel(t *testing.T, modelID string) {
 	t.Helper()
 	d.must(t, http.MethodPut, "/api/settings/agent",
-		map[string]string{"provider": "faux", "modelId": modelID, "thinkingLevel": "off", "instructions": ""}, nil)
+		map[string]string{"name": "Dex", "provider": "faux", "modelId": modelID, "thinkingLevel": "off", "instructions": ""}, nil)
 }
 
 type chatInfo struct {
@@ -161,7 +161,7 @@ type chatInfo struct {
 	Busy    bool   `json:"busy"`
 }
 
-// newChat starts a web chat with text and returns its ID.
+// newChat posts through the legacy first-message endpoint and returns the main ID.
 func (d *dex) newChat(t *testing.T, text string) int64 {
 	t.Helper()
 	var created struct {
@@ -193,6 +193,7 @@ func (d *dex) chats(t *testing.T) []chatInfo {
 // item is a transcript item of the chat event stream.
 type item struct {
 	Kind   string `json:"kind"`
+	TaskID string `json:"taskId"`
 	Title  string `json:"title"`
 	At     int64  `json:"at"`
 	ID     string `json:"id"`
@@ -404,7 +405,9 @@ func TestAgentRemembersAcrossChats(t *testing.T) {
 // its patch.
 func gitLog(t *testing.T, dataDir string) []string {
 	t.Helper()
-	out, err := exec.CommandContext(t.Context(), "git", "-C", filepath.Join(dataDir, "memory"), "log", "--reverse", "-p", "--format=%x00%s").Output()
+	cmd := exec.CommandContext(t.Context(), "git", "-C", filepath.Join(dataDir, "memory"), "log", "--reverse", "-p", "--format=%x00%s")
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dataDir}
+	out, err := cmd.Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,10 +481,10 @@ func TestDreamingReadsEachChatOnce(t *testing.T) {
 	eventually(t, "second dream", func() (bool, any) {
 		got := dreams()
 		return len(got) == 2 && strings.Contains(got[1], record(second)) &&
-			!strings.Contains(got[1], record(first)) && !strings.Contains(got[1], `+{"chat":"fake"`), got
+			!strings.Contains(got[1], `"text":"echo one"`) && !strings.Contains(got[1], `+{"chat":"fake"`), got
 	})
 	// And the dreams are not chats of the user
-	if got := d.chats(t); len(got) != 2 {
+	if got := d.chats(t); len(got) != 1 {
 		t.Fatalf("chats = %+v", got)
 	}
 }
@@ -732,7 +735,7 @@ func TestUserAddsCustomProviders(t *testing.T) {
 	if got := d.models(t); !containsAll(got, want) {
 		t.Fatalf("models = %q, want %q in them", got, want)
 	}
-	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"provider": "local", "modelId": "m2", "thinkingLevel": "off", "instructions": ""}, nil)
+	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"name": "Dex", "provider": "local", "modelId": "m2", "thinkingLevel": "off", "instructions": ""}, nil)
 
 	// When the user removes the gateway
 	d.must(t, http.MethodDelete, "/api/settings/providers/gw", nil, nil)
@@ -800,7 +803,7 @@ func TestInvalidRequestsAreRefused(t *testing.T) {
 		body               any
 		status             int
 	}{
-		{"unknown model", http.MethodPut, "/api/settings/agent", map[string]string{"provider": "faux", "modelId": "nope", "thinkingLevel": "off"}, 400},
+		{"unknown model", http.MethodPut, "/api/settings/agent", map[string]string{"name": "Dex", "provider": "faux", "modelId": "nope", "thinkingLevel": "off"}, 400},
 		{"unknown built-in provider", http.MethodPut, "/api/settings/providers/nope", map[string]string{"api": "", "apiKey": "k"}, 400},
 		{"unknown API", http.MethodPut, "/api/settings/providers/x", map[string]string{"api": "bogus", "baseUrl": "http://127.0.0.1:1"}, 400},
 		{"custom ID of a built-in provider", http.MethodPut, "/api/settings/providers/anthropic",
@@ -869,7 +872,7 @@ func TestUserMessageLeftPendingIsAnsweredAfterRestart(t *testing.T) {
 	t.Cleanup(func() { _ = conn.Close() })
 	q := sqlc.New(conn)
 	pendingID := uuid.NewV7().String()
-	_, err = q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
+	_, err = q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{Kind: "message", Origin: "web",
 		ID: pendingID, ConversationID: chatID, Content: "are you there", Attachments: "[]", CreatedAt: time.Now().UnixMilli(),
 	})
 	if err != nil {

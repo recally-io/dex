@@ -51,8 +51,10 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) error {
 }
 
 const createTaskResult = `-- name: CreateTaskResult :exec
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, kind, status, created_at)
-VALUES (?, ?, ?, 'null', ?, 'task_result', 'pending', ?)
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
+SELECT ?1, ?2, ?3, 'null', ?4, source.origin, 'task_result', 'pending', ?5
+FROM tasks t JOIN submissions source ON source.id = t.source_request_id
+WHERE t.id = ?6
 ON CONFLICT DO NOTHING
 `
 
@@ -62,6 +64,7 @@ type CreateTaskResultParams struct {
 	Content        string         `json:"content"`
 	SourceKey      sql.NullString `json:"source_key"`
 	CreatedAt      int64          `json:"created_at"`
+	TaskID         string         `json:"task_id"`
 }
 
 func (q *Queries) CreateTaskResult(ctx context.Context, arg CreateTaskResultParams) error {
@@ -71,8 +74,38 @@ func (q *Queries) CreateTaskResult(ctx context.Context, arg CreateTaskResultPara
 		arg.Content,
 		arg.SourceKey,
 		arg.CreatedAt,
+		arg.TaskID,
 	)
 	return err
+}
+
+const getAgentTask = `-- name: GetAgentTask :one
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.created_at, t.started_at, t.ended_at FROM tasks t JOIN conversations c ON c.id = t.conversation_id
+WHERE t.id = ? AND c.agent_id = ?
+`
+
+type GetAgentTaskParams struct {
+	ID      string `json:"id"`
+	AgentID string `json:"agent_id"`
+}
+
+func (q *Queries) GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getAgentTask, arg.ID, arg.AgentID)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.ParentConversationID,
+		&i.ConversationID,
+		&i.SpawnKey,
+		&i.SourceRequestID,
+		&i.Title,
+		&i.Status,
+		&i.Report,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.EndedAt,
+	)
+	return i, err
 }
 
 const getConversationByWorker = `-- name: GetConversationByWorker :one
@@ -147,23 +180,28 @@ func (q *Queries) GetTaskByKey(ctx context.Context, spawnKey string) (Task, erro
 	return i, err
 }
 
-const getTaskResultTitle = `-- name: GetTaskResultTitle :one
-SELECT t.title FROM submissions s
+const getTaskResultLabel = `-- name: GetTaskResultLabel :one
+SELECT t.id, t.title FROM submissions s
 JOIN tasks t ON s.id = 'task:' || t.id || ':result'
 WHERE s.id = ?1 AND s.conversation_id = ?2 AND s.kind = 'task_result'
 AND t.parent_conversation_id = s.conversation_id
 `
 
-type GetTaskResultTitleParams struct {
+type GetTaskResultLabelParams struct {
 	ResultID string `json:"result_id"`
 	ChatID   int64  `json:"chat_id"`
 }
 
-func (q *Queries) GetTaskResultTitle(ctx context.Context, arg GetTaskResultTitleParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, getTaskResultTitle, arg.ResultID, arg.ChatID)
-	var title string
-	err := row.Scan(&title)
-	return title, err
+type GetTaskResultLabelRow struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+func (q *Queries) GetTaskResultLabel(ctx context.Context, arg GetTaskResultLabelParams) (GetTaskResultLabelRow, error) {
+	row := q.db.QueryRowContext(ctx, getTaskResultLabel, arg.ResultID, arg.ChatID)
+	var i GetTaskResultLabelRow
+	err := row.Scan(&i.ID, &i.Title)
+	return i, err
 }
 
 const listActiveTasks = `-- name: ListActiveTasks :many
@@ -188,6 +226,56 @@ func (q *Queries) ListActiveTasks(ctx context.Context, parentConversationID int6
 			&i.Title,
 			&i.Status,
 			&i.Report,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.EndedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAgentTasks = `-- name: ListAgentTasks :many
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.title, t.status,
+    t.created_at, t.started_at, t.ended_at
+FROM tasks t JOIN conversations c ON c.id = t.conversation_id
+WHERE c.agent_id = ? ORDER BY t.created_at DESC, t.id DESC
+`
+
+type ListAgentTasksRow struct {
+	ID                   string        `json:"id"`
+	ParentConversationID int64         `json:"parent_conversation_id"`
+	ConversationID       int64         `json:"conversation_id"`
+	Title                string        `json:"title"`
+	Status               string        `json:"status"`
+	CreatedAt            int64         `json:"created_at"`
+	StartedAt            sql.NullInt64 `json:"started_at"`
+	EndedAt              sql.NullInt64 `json:"ended_at"`
+}
+
+func (q *Queries) ListAgentTasks(ctx context.Context, agentID string) ([]ListAgentTasksRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAgentTasks, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAgentTasksRow{}
+	for rows.Next() {
+		var i ListAgentTasksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ParentConversationID,
+			&i.ConversationID,
+			&i.Title,
+			&i.Status,
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.EndedAt,

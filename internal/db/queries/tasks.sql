@@ -11,6 +11,16 @@ SELECT * FROM tasks WHERE id = ?;
 -- name: GetTaskByKey :one
 SELECT * FROM tasks WHERE spawn_key = ?;
 
+-- name: ListAgentTasks :many
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.title, t.status,
+    t.created_at, t.started_at, t.ended_at
+FROM tasks t JOIN conversations c ON c.id = t.conversation_id
+WHERE c.agent_id = ? ORDER BY t.created_at DESC, t.id DESC;
+
+-- name: GetAgentTask :one
+SELECT t.* FROM tasks t JOIN conversations c ON c.id = t.conversation_id
+WHERE t.id = ? AND c.agent_id = ?;
+
 -- name: ListTasks :many
 SELECT t.* FROM tasks t
 WHERE t.parent_conversation_id = @parent_id AND
@@ -34,8 +44,10 @@ WHERE id = ? AND status IN ('queued', 'running');
 SELECT * FROM tasks WHERE parent_conversation_id = ? AND status IN ('queued', 'running');
 
 -- name: CreateTaskResult :exec
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, kind, status, created_at)
-VALUES (?, ?, ?, 'null', ?, 'task_result', 'pending', ?)
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
+SELECT @id, @conversation_id, @content, 'null', @source_key, source.origin, 'task_result', 'pending', @created_at
+FROM tasks t JOIN submissions source ON source.id = t.source_request_id
+WHERE t.id = @task_id
 ON CONFLICT DO NOTHING;
 
 -- name: ListLiveTasks :many
@@ -55,8 +67,8 @@ ORDER BY id;
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @now
 WHERE conversation_id = @chat_id AND status = 'pending';
 
--- name: GetTaskResultTitle :one
-SELECT t.title FROM submissions s
+-- name: GetTaskResultLabel :one
+SELECT t.id, t.title FROM submissions s
 JOIN tasks t ON s.id = 'task:' || t.id || ':result'
 WHERE s.id = @result_id AND s.conversation_id = @chat_id AND s.kind = 'task_result'
 AND t.parent_conversation_id = s.conversation_id;

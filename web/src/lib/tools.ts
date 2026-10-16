@@ -23,7 +23,7 @@ export function blocks(items: Item[]): Block[] {
       return;
     }
 
-    if (item.kind === "user") task = undefined;
+    if (item.kind === "user" || item.kind === "boundary") task = undefined;
     const target = task?.blocks ?? out;
     const last = target.at(-1);
 

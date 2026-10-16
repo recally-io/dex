@@ -55,7 +55,7 @@ const (
 var errInvalid = errors.New("invalid request")
 
 // errReadOnly is a message to a chat that the web UI cannot write to.
-var errReadOnly = errors.New("this chat is read-only here; reply in the original channel")
+var errReadOnly = errors.New("this chat is read-only; send messages in the main timeline")
 
 // New returns the handler for the API under /api/ and the web UI at /. The API requires
 // cfg.Token when it is set. It refuses cross-site writes, so a web page in the user's browser
@@ -70,15 +70,15 @@ func New(cfg Config) http.Handler {
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
-				errors.Is(err, upload.ErrInvalidName):
+				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrResetID):
 				status = http.StatusBadRequest
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, errReadOnly):
 				status = http.StatusForbidden
-			case errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound):
+			case errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy):
+			case errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -179,7 +179,7 @@ func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRe
 func chatView(c chat.Chat) api.Chat {
 	out := api.Chat{
 		Id: c.ID, Channel: api.ChatChannelWeb, Title: c.Title, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Busy: c.Busy,
-		Settings: c.Settings,
+		Settings: c.Settings, Main: c.ChannelKey == chat.MainKey, ReadOnly: c.ChannelKey != chat.MainKey,
 	}
 	if strings.HasPrefix(c.ChannelKey, "telegram:") {
 		out.Channel = api.ChatChannelTelegram
@@ -189,6 +189,9 @@ func chatView(c chat.Chat) api.Chat {
 	}
 	if strings.HasPrefix(c.ChannelKey, "feishu:") {
 		out.Channel = api.ChatChannelFeishu
+	}
+	if strings.HasPrefix(c.ChannelKey, "task:") {
+		out.Channel = api.ChatChannelTask
 	}
 	if id, ok := automation.ChatAutomation(c.ChannelKey); ok {
 		out.Channel, out.AutomationId = api.ChatChannelAutomation, &id
@@ -259,14 +262,10 @@ func (h *handler) CreateChat(ctx context.Context, req api.CreateChatRequestObjec
 	if err != nil {
 		return nil, err
 	}
-	if b.Settings != nil {
-		if err := h.Settings.CheckChat(ctx, *b.Settings); err != nil {
-			return nil, err
-		}
-		m.Settings = *b.Settings
+	if b.Settings != nil && *b.Settings != (chat.Settings{}) {
+		return nil, errReadOnly
 	}
-	// The channel key comes from the message ID, so a retried request finds the same chat.
-	chatID, err := h.Chats.Send(ctx, h.AgentID, "web:"+m.ID, m)
+	chatID, err := h.Chats.Send(ctx, h.AgentID, chat.MainKey, m)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +300,7 @@ func (h *handler) writableChat(ctx context.Context, id int64) (chat.Chat, error)
 	if err != nil {
 		return chat.Chat{}, err
 	}
-	if !strings.HasPrefix(c.ChannelKey, "web:") && !strings.HasPrefix(c.ChannelKey, "automation:") {
+	if c.ChannelKey != chat.MainKey {
 		return chat.Chat{}, errReadOnly
 	}
 	return c, nil
@@ -311,13 +310,17 @@ func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRe
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+	c, err := h.Chats.Get(ctx, h.AgentID, req.ChatId)
+	if err != nil {
 		return nil, err
+	}
+	if !strings.HasPrefix(c.ChannelKey, "automation:") {
+		return nil, errReadOnly
 	}
 	if err := h.Settings.SetChat(ctx, req.ChatId, *req.Body); err != nil {
 		return nil, err
 	}
-	c, err := h.Chats.Get(ctx, h.AgentID, req.ChatId)
+	c, err = h.Chats.Get(ctx, h.AgentID, req.ChatId)
 	if err != nil {
 		return nil, err
 	}
@@ -556,4 +559,50 @@ func (h *handler) DeleteWechat(ctx context.Context, _ api.DeleteWechatRequestObj
 		return nil, err
 	}
 	return api.DeleteWechat200JSONResponse(ok), nil
+}
+
+func (h *handler) GetMainChat(ctx context.Context, _ api.GetMainChatRequestObject) (api.GetMainChatResponseObject, error) {
+	c, err := h.Chats.Main(ctx, h.AgentID)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetMainChat200JSONResponse(chatView(c)), nil
+}
+
+func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestObject) (api.ClearContextResponseObject, error) {
+	if req.Body == nil {
+		return nil, errInvalid
+	}
+	id, err := uuid.Parse(req.Body.Id)
+	if err != nil {
+		return nil, errors.Join(errInvalid, err)
+	}
+	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+		return nil, err
+	}
+	if err := h.Chats.Clear(ctx, h.AgentID, req.ChatId, id.String()); err != nil {
+		return nil, err
+	}
+	return api.ClearContext202JSONResponse{SubmissionId: id.String()}, nil
+}
+
+func (h *handler) GetChatHistory(ctx context.Context, req api.GetChatHistoryRequestObject) (api.GetChatHistoryResponseObject, error) {
+	limit := 100
+	if req.Params.Limit != nil {
+		limit = *req.Params.Limit
+	}
+	if req.Params.Before < 1 || limit < 1 || limit > 200 {
+		return nil, errInvalid
+	}
+	page, err := h.Live.History(ctx, req.ChatId, req.Params.Before, limit)
+	if err != nil {
+		return nil, err
+	}
+	var out api.GetChatHistory200JSONResponse
+	// The worker renders the same Item contract for history and live events.
+	raw, err := json.Marshal(page)
+	if err == nil {
+		err = json.Unmarshal(raw, &out)
+	}
+	return out, err
 }

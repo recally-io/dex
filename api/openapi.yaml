@@ -64,6 +64,54 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/tasks:
+    get:
+      operationId: listTasks
+      description: Read the default agent's task summaries, newest first. Reports are available in task details. This API has no task controls.
+      responses:
+        "200":
+          description: The tasks.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tasks]
+                properties:
+                  tasks:
+                    type: array
+                    items: { $ref: "#/components/schemas/TaskSummary" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/tasks/{taskId}:
+    get:
+      operationId: getTask
+      description: Read one task and the ID of its read-only work conversation.
+      parameters:
+        - in: path
+          name: taskId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The task. Done means that it returned a report.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/chats/main:
+    get:
+      operationId: getMainChat
+      description: Find or create the default agent's main timeline.
+      responses:
+        "200":
+          description: The main timeline.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chat" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/chats:
     get:
       operationId: listChats
@@ -78,10 +126,8 @@ paths:
     post:
       operationId: createChat
       description: >
-        Creates a web chat and sends its first message. The title is the start
-        of the message, or the name of its first attachment. The settings of
-        the new chat override the agent's. Returns when the message is stored;
-        the answer comes through the chat's event stream.
+        Sends a first message to the main timeline. A repeated ID stores
+        nothing. Chat settings are refused. Use GET /api/chats/main to open it.
       requestBody:
         required: true
         content:
@@ -118,8 +164,8 @@ paths:
       operationId: setChatSettings
       description: >
         Sets the model and the thinking level of one chat. An absent field
-        follows the agent's setting. They apply from the next message. 403 for
-        a Telegram chat.
+        follows the agent's setting. They apply from the next message. Only
+        automation chats accept overrides. The main timeline uses agent settings.
       requestBody:
         required: true
         content:
@@ -144,8 +190,8 @@ paths:
       description: >
         Stores a message in a web chat and returns. A message with an ID that
         exists already is not stored again. The answer comes through the
-        event stream. 409 when the agent has no model; 403 for a Telegram chat.
-        Web and automation chats take messages.
+        event stream. 409 when the agent has no model. Only the main timeline
+        takes messages from the web. Earlier chats are read-only.
       requestBody:
         required: true
         content:
@@ -161,6 +207,65 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/chats/{chatId}/clear:
+    parameters:
+      - $ref: "#/components/parameters/ChatId"
+    post:
+      operationId: clearContext
+      description: >
+        Stores a context reset in the main timeline's delivery queue. A repeated
+        UUID does not reset again. Refuses busy timelines without a change.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: {
+                  type: string,
+                  description: A stable client UUID for this reset.,
+                }
+      responses:
+        "202":
+          description: The reset is stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SentMessage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/chats/{chatId}/history:
+    parameters:
+      - $ref: "#/components/parameters/ChatId"
+    get:
+      operationId: getChatHistory
+      description: >
+        Reads committed items before an entry ID, oldest first. Pages can
+        overlap the live snapshot. Merge by item ID. The entry limit extends
+        to an assistant or input boundary to keep tool results with their call.
+      parameters:
+        - in: query
+          name: before
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        "200":
+          description: A history page. No nextBefore means the start was reached.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HistoryPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
   /api/chats/{chatId}/abort:
@@ -699,15 +804,63 @@ components:
         dataDir: { type: string }
         workerReady: { type: boolean }
 
+    TaskSummary:
+      type: object
+      required: [
+        id,
+        title,
+        status,
+        createdAt,
+        conversationId,
+        parentConversationId,
+      ]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        status:
+          type: string
+          enum: [queued, running, done, failed, cancelled, interrupted]
+        createdAt: { type: integer, format: int64 }
+        startedAt: { type: integer, format: int64 }
+        endedAt: { type: integer, format: int64 }
+        conversationId: { type: integer, format: int64 }
+        parentConversationId:
+          type: integer
+          format: int64
+          description: The conversation that started this task and can stop it.
+
+    Task:
+      allOf:
+        - $ref: "#/components/schemas/TaskSummary"
+        - type: object
+          required: [report]
+          properties:
+            report: { type: string, description: The saved report in Markdown. }
+
     Chat:
       type: object
-      required: [id, channel, title, createdAt, updatedAt, busy, settings]
+      required: [
+        id,
+        channel,
+        title,
+        createdAt,
+        updatedAt,
+        busy,
+        settings,
+        main,
+        readOnly,
+      ]
       properties:
         id: { type: integer, format: int64 }
         channel:
           type: string
-          enum: [web, telegram, wechat, feishu, automation]
+          enum: [web, telegram, wechat, feishu, automation, task]
           description: External channel chats are read-only in the web UI.
+        main: { type: boolean, description: This is the agent's main timeline. }
+        readOnly: {
+          type: boolean,
+          description: The web cannot send messages to this chat.,
+        }
         automationId:
           type: string
           description: The automation that created the chat.
@@ -911,6 +1064,29 @@ components:
 
     # Transcript
 
+    HistoryPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Item" }
+        nextBefore: { type: integer, format: int64 }
+
+    BoundaryItem:
+      type: object
+      required: [kind, id, boundary]
+      properties:
+        kind: { type: string, enum: [boundary] }
+        id: { type: string }
+        entryId: { type: integer, format: int64 }
+        boundary: { type: string, enum: [reset, compaction] }
+        at: {
+          type: integer,
+          format: int64,
+          description: The boundary time in milliseconds.,
+        }
+
     Item:
       oneOf:
         - $ref: "#/components/schemas/UserItem"
@@ -919,6 +1095,7 @@ components:
         - $ref: "#/components/schemas/ToolItem"
         - $ref: "#/components/schemas/AssistantItem"
         - $ref: "#/components/schemas/ErrorItem"
+        - $ref: "#/components/schemas/BoundaryItem"
       discriminator:
         propertyName: kind
         mapping:
@@ -928,6 +1105,7 @@ components:
           tool: "#/components/schemas/ToolItem"
           assistant: "#/components/schemas/AssistantItem"
           error: "#/components/schemas/ErrorItem"
+          boundary: "#/components/schemas/BoundaryItem"
 
     UserItem:
       type: object
@@ -935,6 +1113,7 @@ components:
       properties:
         kind: { type: string, enum: [user] }
         id: { type: string }
+        entryId: { type: integer, format: int64 }
         text: { type: string }
         at: { type: integer, format: int64 }
         queued:
@@ -950,12 +1129,15 @@ components:
         Marks a background result. Items after this mark belong to the result
         until the next user or task item. The mark does not confirm that the
         work reached its goal.
-      required: [kind, id, title]
+      required: [kind, id, title, taskId]
       properties:
         kind: { type: string, enum: [task] }
         id: { type: string }
+        entryId: { type: integer, format: int64 }
         at: { type: integer, format: int64 }
         title: { type: string }
+
+        taskId: { type: string, description: The saved task ID. }
 
     ThinkingItem:
       type: object
@@ -963,6 +1145,7 @@ components:
       properties:
         kind: { type: string, enum: [thinking] }
         id: { type: string }
+        entryId: { type: integer, format: int64 }
         text:
           type: string
           description: Empty when the provider redacted it.
@@ -973,6 +1156,7 @@ components:
       properties:
         kind: { type: string, enum: [tool] }
         id: { type: string, description: The tool call ID. }
+        entryId: { type: integer, format: int64 }
         name: { type: string }
         args:
           type: object
@@ -983,6 +1167,10 @@ components:
           enum: [running, done, error]
           description: A call that ended without a result is an error.
         durationMs: { type: integer, format: int64 }
+        taskId: {
+          type: string,
+          description: The saved task ID of a successful spawn_task call.,
+        }
 
     AssistantItem:
       type: object
@@ -990,6 +1178,7 @@ components:
       properties:
         kind: { type: string, enum: [assistant] }
         id: { type: string }
+        entryId: { type: integer, format: int64 }
         text: { type: string, description: Markdown. }
         model: { type: string, description: "<provider>/<model id>" }
         usage: { $ref: "#/components/schemas/Usage" }
@@ -1000,6 +1189,7 @@ components:
       properties:
         kind: { type: string, enum: [error] }
         id: { type: string }
+        entryId: { type: integer, format: int64 }
         reason: { type: string }
         aborted:
           type: boolean
@@ -1048,6 +1238,11 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Item" }
         running: { type: boolean }
+        historyBefore: {
+          type: integer,
+          format: int64,
+          description: Load history before this entry ID.,
+        }
         retry: { $ref: "#/components/schemas/Retry" }
 
     ItemEvent:
@@ -1102,8 +1297,14 @@ components:
       x-go-type-import:
         path: github.com/recally-io/dex/internal/settings
       type: object
-      required: [provider, modelId, thinkingLevel, instructions]
+      required: [name, provider, modelId, thinkingLevel, instructions]
       properties:
+        name: {
+          type: string,
+          minLength: 1,
+          maxLength: 40,
+          description: The bot name. Trim spaces before validation.,
+        }
         provider: { type: string }
         modelId: { type: string, description: Empty when no model is chosen. }
         thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }

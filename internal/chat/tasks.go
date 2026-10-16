@@ -245,7 +245,7 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r wor
 	if err != nil {
 		return nil, err
 	}
-	if _, err = q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: id, ConversationID: conv.ID, Content: a.Goal, Attachments: "null", CreatedAt: now}); err != nil {
+	if _, err = q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: id, ConversationID: conv.ID, Content: a.Goal, Attachments: "null", Origin: "task", Kind: "message", CreatedAt: now}); err != nil {
 		return nil, err
 	}
 	if err = q.CreateTask(ctx, sqlc.CreateTaskParams{ID: id, ParentConversationID: parent.ID, ConversationID: conv.ID, SpawnKey: r.Key, SourceRequestID: source.ID, Title: a.Title, CreatedAt: now}); err != nil {

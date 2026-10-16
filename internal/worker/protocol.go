@@ -102,6 +102,7 @@ type RecoverTaskStage struct {
 
 // ChatStream is the chat event of a watch: Events holds the ChatEvent objects of api/openapi.yaml
 // from one commit, or End is true when the watch stopped.
+// Completed spawn tools carry taskId. Control adds task IDs and titles to result marks.
 type ChatStream struct {
 	WatchID string           `json:"watchId"`
 	Events  []jsontext.Value `json:"events"`
@@ -203,4 +204,31 @@ type AgentParams struct {
 	AgentID string `json:"agentId"`
 	// Open opens the agent first, which connects its MCP servers.
 	Open bool `json:"open,omitzero"`
+}
+
+// ResetParams writes one reset through the conversation's admission chain.
+type ResetParams struct {
+	AgentID        string `json:"agentId"`
+	ConversationID int64  `json:"conversationId"`
+	RequestID      string `json:"requestId"`
+}
+
+// HistoryParams reads entries before Before. Limit extends to a display boundary.
+type HistoryParams struct {
+	AgentID        string `json:"agentId"`
+	ConversationID int64  `json:"conversationId"`
+	Before         int64  `json:"before"`
+	Limit          int    `json:"limit"`
+}
+
+type HistoryResult struct {
+	Items      []jsontext.Value `json:"items"`
+	NextBefore *int64           `json:"nextBefore,omitempty"`
+}
+
+// InputEntriesParams finds placed inputs so control does not restore old failures after a head.
+type InputEntriesParams struct {
+	AgentID        string   `json:"agentId"`
+	ConversationID int64    `json:"conversationId"`
+	RequestIDs     []string `json:"requestIds"`
 }

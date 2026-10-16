@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-// A UI preference of this browser, like the context panel; it is not a dex setting. Only "light"
+// A UI preference of this browser; it is not a dex setting. Only "light"
 // and "dark" are a pick. Any other value, also "system" from older builds, follows the system.
 const key = "dex-theme";
 const listeners = new Set<() => void>();

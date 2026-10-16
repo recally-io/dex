@@ -5,7 +5,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,7 +25,7 @@ func TestUserAnswersWhileDelegationRunsAndReceivesItsReport(t *testing.T) {
 	task := waitExecution(t, conn, parent, "Artifact", "running")
 	waitTaskFile(t, filepath.Join(dir, "artifact.pid"))
 	// When the user sends an ordinary question while the background shell waits.
-	setTaskChatModel(t, d, parent, "echo")
+	d.setModel(t, "echo")
 	if got := taskTurn(t, d, parent, "foreground available"); got != "echo: foreground available" {
 		t.Fatal(got)
 	}
@@ -34,7 +33,7 @@ func TestUserAnswersWhileDelegationRunsAndReceivesItsReport(t *testing.T) {
 		t.Fatal(got)
 	}
 	// Then the result returns to the original conversation and its report remains queryable.
-	setTaskChatModel(t, d, parent, "spawn")
+	d.setModel(t, "spawn")
 	releaseResultGate(t, dir, "artifact")
 	d.watch(t, parent).until(t, "source result", answeredWith(`"id":"`+task.ID+`"`))
 	task = waitExecution(t, conn, parent, "Artifact", "done")
@@ -53,26 +52,41 @@ func TestUserAnswersWhileDelegationRunsAndReceivesItsReport(t *testing.T) {
 func TestUserDelegationSlotsAndToolsRespectConversationOwnership(t *testing.T) {
 	// Given two chats on one agent, each holding one background execution.
 	dir := t.TempDir()
-	d := startDex(t, dir, "")
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, dir, 42)
 	conn := taskResultDB(t, dir)
 	d.setModel(t, "spawn")
 	firstChat := d.newChat(t, taskJSON(t, map[string]string{"title": "First", "goal": taskGate(t, dir, "first"), "provider": "faux", "modelId": "bash"}))
 	first := waitExecution(t, conn, firstChat, "First", "running")
 	waitTaskFile(t, filepath.Join(dir, "first.pid"))
-	secondChat := d.newChat(t, taskJSON(t, map[string]string{"title": "Second", "goal": taskGate(t, dir, "second"), "provider": "faux", "modelId": "bash"}))
+	f.message(1, 42, 7, taskJSON(t, map[string]string{"title": "Second", "goal": taskGate(t, dir, "second"), "provider": "faux", "modelId": "bash"}))
+	var secondChat int64
+	eventually(t, "channel conversation", func() (bool, any) {
+		err := conn.QueryRowContext(t.Context(), "SELECT id FROM conversations WHERE channel_key='telegram:7'").Scan(&secondChat)
+		return err == nil, err
+	})
 	second := waitExecution(t, conn, secondChat, "Second", "running")
 	waitTaskFile(t, filepath.Join(dir, "second.pid"))
+	f.next(t)
+	update := int64(1)
+	channelTool := func(name string, args any) string {
+		t.Helper()
+		d.setModel(t, "tool")
+		update++
+		f.message(update, 42, 7, name+" "+taskJSON(t, args))
+		return f.next(t).Text
+	}
 	// When another dispatch is attempted, the agent-wide limit rejects it.
 	if got := spawnExecution(t, d, firstChat, "Third", "must not run", "echo"); !strings.Contains(got, "error") {
 		t.Fatal(got)
 	}
 	// Then another conversation cannot inspect or cancel the first execution.
 	for _, tool := range []string{"get_task", "cancel_task"} {
-		if got := taskTool(t, d, secondChat, tool, map[string]string{"id": first.ID}); !strings.Contains(got, "not found") {
+		if got := channelTool(tool, map[string]string{"id": first.ID}); !strings.Contains(got, "not found") {
 			t.Fatalf("%s: %s", tool, got)
 		}
 	}
-	if got := taskTool(t, d, secondChat, "list_tasks", map[string]string{}); strings.Contains(got, first.ID) || !strings.Contains(got, second.ID) {
+	if got := channelTool("list_tasks", map[string]string{}); strings.Contains(got, first.ID) || !strings.Contains(got, second.ID) {
 		t.Fatal(got)
 	}
 	taskTool(t, d, firstChat, "cancel_task", map[string]string{"id": first.ID})
@@ -80,7 +94,7 @@ func TestUserDelegationSlotsAndToolsRespectConversationOwnership(t *testing.T) {
 	waitTaskPIDGone(t, filepath.Join(dir, "first.pid"))
 	spawnExecution(t, d, firstChat, "Reused slot", "bounded report", "echo")
 	waitExecution(t, conn, firstChat, "Reused slot", "done")
-	taskTool(t, d, secondChat, "cancel_task", map[string]string{"id": second.ID})
+	channelTool("cancel_task", map[string]string{"id": second.ID})
 	waitExecution(t, conn, secondChat, "Second", "cancelled")
 }
 
@@ -118,7 +132,7 @@ func TestUserRestartDoesNotRerunStartedDelegationOrKeepItsSlot(t *testing.T) {
 
 func spawnExecution(t *testing.T, d *dex, parent int64, title, goal, model string) string {
 	t.Helper()
-	setTaskChatModel(t, d, parent, "spawn")
+	d.setModel(t, "spawn")
 	return taskTurn(t, d, parent, taskJSON(t, map[string]string{"title": title, "goal": goal, "provider": "faux", "modelId": model}))
 }
 
@@ -141,11 +155,6 @@ func taskJSON(t *testing.T, value any) string {
 	return string(data)
 }
 
-func setTaskChatModel(t *testing.T, d *dex, chatID int64, model string) {
-	t.Helper()
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", chatID), map[string]string{"provider": "faux", "modelId": model, "thinkingLevel": "off"}, nil)
-}
-
 func taskTurn(t *testing.T, d *dex, chatID int64, text string) string {
 	t.Helper()
 	id := d.send(t, chatID, text)
@@ -163,7 +172,7 @@ func taskTurn(t *testing.T, d *dex, chatID int64, text string) string {
 
 func taskTool(t *testing.T, d *dex, chatID int64, name string, args any) string {
 	t.Helper()
-	setTaskChatModel(t, d, chatID, "tool")
+	d.setModel(t, "tool")
 	return taskTurn(t, d, chatID, name+" "+taskJSON(t, args))
 }
 

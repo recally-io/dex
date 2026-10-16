@@ -29,12 +29,41 @@ export type Health = {
     workerReady: boolean;
 };
 
+export type TaskSummary = {
+    id: string;
+    title: string;
+    status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'interrupted';
+    createdAt: number;
+    startedAt?: number;
+    endedAt?: number;
+    conversationId: number;
+    /**
+     * The conversation that started this task and can stop it.
+     */
+    parentConversationId: number;
+};
+
+export type Task = TaskSummary & {
+    /**
+     * The saved report in Markdown.
+     */
+    report: string;
+};
+
 export type Chat = {
     id: number;
     /**
      * External channel chats are read-only in the web UI.
      */
-    channel: 'web' | 'telegram' | 'wechat' | 'feishu' | 'automation';
+    channel: 'web' | 'telegram' | 'wechat' | 'feishu' | 'automation' | 'task';
+    /**
+     * This is the agent's main timeline.
+     */
+    main: boolean;
+    /**
+     * The web cannot send messages to this chat.
+     */
+    readOnly: boolean;
     /**
      * The automation that created the chat.
      */
@@ -186,6 +215,22 @@ export type AutomationRunList = {
     runs: Array<AutomationRun>;
 };
 
+export type HistoryPage = {
+    items: Array<Item>;
+    nextBefore?: number;
+};
+
+export type BoundaryItem = {
+    kind: 'boundary';
+    id: string;
+    entryId?: number;
+    boundary: 'reset' | 'compaction';
+    /**
+     * The boundary time in milliseconds.
+     */
+    at?: number;
+};
+
 export type Item = ({
     kind: 'user';
 } & UserItem) | ({
@@ -198,11 +243,14 @@ export type Item = ({
     kind: 'assistant';
 } & AssistantItem) | ({
     kind: 'error';
-} & ErrorItem);
+} & ErrorItem) | ({
+    kind: 'boundary';
+} & BoundaryItem);
 
 export type UserItem = {
     kind: 'user';
     id: string;
+    entryId?: number;
     text: string;
     at?: number;
     /**
@@ -218,13 +266,19 @@ export type UserItem = {
 export type TaskItem = {
     kind: 'task';
     id: string;
+    entryId?: number;
     at?: number;
     title: string;
+    /**
+     * The saved task ID.
+     */
+    taskId: string;
 };
 
 export type ThinkingItem = {
     kind: 'thinking';
     id: string;
+    entryId?: number;
     /**
      * Empty when the provider redacted it.
      */
@@ -237,6 +291,7 @@ export type ToolItem = {
      * The tool call ID.
      */
     id: string;
+    entryId?: number;
     name: string;
     args: {
         [key: string]: unknown;
@@ -247,11 +302,16 @@ export type ToolItem = {
      */
     status: 'running' | 'done' | 'error';
     durationMs?: number;
+    /**
+     * The saved task ID of a successful spawn_task call.
+     */
+    taskId?: string;
 };
 
 export type AssistantItem = {
     kind: 'assistant';
     id: string;
+    entryId?: number;
     /**
      * Markdown.
      */
@@ -266,6 +326,7 @@ export type AssistantItem = {
 export type ErrorItem = {
     kind: 'error';
     id: string;
+    entryId?: number;
     reason: string;
     /**
      * True when the user stopped the run.
@@ -301,6 +362,10 @@ export type SnapshotEvent = {
     type: 'snapshot';
     items: Array<Item>;
     running: boolean;
+    /**
+     * Load history before this entry ID.
+     */
+    historyBefore?: number;
     retry?: Retry;
 };
 
@@ -348,6 +413,10 @@ export type Settings = {
 };
 
 export type Agent = {
+    /**
+     * The bot name. Trim spaces before validation.
+     */
+    name: string;
     provider: string;
     /**
      * Empty when no model is chosen.
@@ -670,6 +739,89 @@ export type AcquireMaintenanceResponses = {
 
 export type AcquireMaintenanceResponse = AcquireMaintenanceResponses[keyof AcquireMaintenanceResponses];
 
+export type ListTasksData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/tasks';
+};
+
+export type ListTasksErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListTasksError = ListTasksErrors[keyof ListTasksErrors];
+
+export type ListTasksResponses = {
+    /**
+     * The tasks.
+     */
+    200: {
+        tasks: Array<TaskSummary>;
+    };
+};
+
+export type ListTasksResponse = ListTasksResponses[keyof ListTasksResponses];
+
+export type GetTaskData = {
+    body?: never;
+    path: {
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/tasks/{taskId}';
+};
+
+export type GetTaskErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetTaskError = GetTaskErrors[keyof GetTaskErrors];
+
+export type GetTaskResponses = {
+    /**
+     * The task. Done means that it returned a report.
+     */
+    200: Task;
+};
+
+export type GetTaskResponse = GetTaskResponses[keyof GetTaskResponses];
+
+export type GetMainChatData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/chats/main';
+};
+
+export type GetMainChatErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetMainChatError = GetMainChatErrors[keyof GetMainChatErrors];
+
+export type GetMainChatResponses = {
+    /**
+     * The main timeline.
+     */
+    200: Chat;
+};
+
+export type GetMainChatResponse = GetMainChatResponses[keyof GetMainChatResponses];
+
 export type ListChatsData = {
     body?: never;
     path?: never;
@@ -840,6 +992,92 @@ export type SendMessageResponses = {
 };
 
 export type SendMessageResponse = SendMessageResponses[keyof SendMessageResponses];
+
+export type ClearContextData = {
+    body: {
+        /**
+         * A stable client UUID for this reset.
+         */
+        id: string;
+    };
+    path: {
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/chats/{chatId}/clear';
+};
+
+export type ClearContextErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ClearContextError = ClearContextErrors[keyof ClearContextErrors];
+
+export type ClearContextResponses = {
+    /**
+     * The reset is stored.
+     */
+    202: SentMessage;
+};
+
+export type ClearContextResponse = ClearContextResponses[keyof ClearContextResponses];
+
+export type GetChatHistoryData = {
+    body?: never;
+    path: {
+        chatId: number;
+    };
+    query: {
+        before: number;
+        limit?: number;
+    };
+    url: '/api/chats/{chatId}/history';
+};
+
+export type GetChatHistoryErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetChatHistoryError = GetChatHistoryErrors[keyof GetChatHistoryErrors];
+
+export type GetChatHistoryResponses = {
+    /**
+     * A history page. No nextBefore means the start was reached.
+     */
+    200: HistoryPage;
+};
+
+export type GetChatHistoryResponse = GetChatHistoryResponses[keyof GetChatHistoryResponses];
 
 export type AbortChatData = {
     body?: never;

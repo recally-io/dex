@@ -498,10 +498,11 @@ test("shutdown suppresses settled events and waits for the real memory commit", 
 	// Then shutdown emits no failure, but still commits memory before close returns.
 	expect(events).toEqual([]);
 	expect(await agents.quiesce({ expiresAt: Date.now() + 1000 })).toEqual({ busy: false });
-	const commit = Bun.spawnSync(["git", "log", "-1", "--format=%s"], { cwd: join(dir, "memory") });
+	const git = { cwd: join(dir, "memory"), env: { PATH: process.env["PATH"], HOME: dir } };
+	const commit = Bun.spawnSync(["git", "log", "-1", "--format=%s"], git);
 	expect(commit.exitCode).toBe(0);
 	expect(new TextDecoder().decode(commit.stdout).trim()).toBe("Update memory from dex:chat/test");
-	const saved = Bun.spawnSync(["git", "show", "HEAD:stop-report.md"], { cwd: join(dir, "memory") });
+	const saved = Bun.spawnSync(["git", "show", "HEAD:stop-report.md"], git);
 	expect(saved.exitCode).toBe(0);
 	expect(new TextDecoder().decode(saved.stdout)).toBe("shutdown evidence\n");
 });
@@ -673,4 +674,43 @@ test("main conversation abort joins its invocation and withdraws queued input", 
 	expect(w.messages.filter((m) => m.method === "task")).toHaveLength(1);
 	const repeated = await w.call("abort", { agentId: "bot", conversationId: w.conversationId });
 	expect(repeated.result).toEqual({});
+});
+
+test("user reset replay stays idempotent while new input runs and busy reset changes nothing", async () => {
+	// Given a committed reset and a new run held at the control boundary.
+	const w = await worker();
+	const params = { agentId: "bot", conversationId: w.conversationId, requestId: "clear-once" };
+	const cleared = await w.call("reset", params);
+	expect(cleared.error).toBeUndefined();
+	await w.submit(JSON.stringify({ title: "Running", goal: "Wait for control" }));
+	const running = await w.wait((m) => m.method === "task");
+	await w.submit(JSON.stringify({ title: "Queued", goal: "One follow-up" }));
+	// When the worker replays that reset, it returns the same submission before its idle check.
+	expect((await w.call("reset", params)).result).toEqual(cleared.result);
+	const refused = await w.call("reset", { ...params, requestId: "clear-refused" });
+	expect(refused.error?.code).toBe("conversation_busy");
+	w.send({ id: running.id, result: { id: "running-task" } });
+	const queued = await w.wait((m) => m.method === "task" && m.params?.["sourceRequestId"] === "request-2");
+	w.send({ id: queued.id, result: { id: "queued-task" } });
+	await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-2");
+	// Then the transcript has one reset and both inputs still have separate answers.
+	const history = await w.call("history", {
+		agentId: "bot",
+		conversationId: w.conversationId,
+		before: Number.MAX_SAFE_INTEGER,
+		limit: 100,
+	});
+	expect(history.error).toBeUndefined();
+	const result = history.result;
+	if (typeof result !== "object" || result === null || !("items" in result) || !Array.isArray(result.items))
+		throw new Error("missing history items");
+	expect(result.items.filter((item) => item.kind === "boundary")).toHaveLength(1);
+	expect(result.items.filter((item) => item.kind === "user").map((item) => item.id)).toEqual([
+		"request-1",
+		"request-2",
+	]);
+	for (const id of ["request-1", "request-2"])
+		expect(
+			w.messages.find((m) => m.event === "settled" && m.params?.["requestId"] === id)?.params?.["status"],
+		).toBe("done");
 });

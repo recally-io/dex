@@ -4,7 +4,7 @@ VALUES (?, ?, '', '', ?)
 ON CONFLICT (id) DO NOTHING;
 
 -- name: UpdateAgentSettings :exec
-UPDATE agents SET model_provider = ?, model_id = ?, thinking_level = ?, instructions = ? WHERE id = ?;
+UPDATE agents SET name = ?, model_provider = ?, model_id = ?, thinking_level = ?, instructions = ? WHERE id = ?;
 
 -- name: GetAgent :one
 SELECT * FROM agents WHERE id = ?;
@@ -31,8 +31,8 @@ UPDATE conversations SET worker_conversation_id = ? WHERE id = ?;
 
 -- name: CreateSubmission :execrows
 -- A message whose ID or source key exists already is not stored again.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, status, created_at)
-VALUES (?, ?, ?, ?, ?, 'pending', ?)
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
 ON CONFLICT DO NOTHING;
 
 -- name: GetSubmission :one
@@ -51,6 +51,7 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE s.id = ?;
 
 -- name: ListPendingSubmissions :many
+-- SQLite assigns rowids under the writer lock. Delivery follows admission, not wall time.
 SELECT
     s.id,
     s.content,
@@ -62,7 +63,7 @@ SELECT
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending'
-ORDER BY s.created_at;
+ORDER BY s.rowid;
 
 -- name: ListChats :many
 SELECT
@@ -95,7 +96,7 @@ SELECT
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'task:%'
+WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id;
 
 -- name: ListOpenSubmissions :many
@@ -265,3 +266,6 @@ SET allowed_users = CAST(sqlc.arg(user_id) AS TEXT),
 WHERE id = 1 AND allowed_users = '' AND token = sqlc.arg(token) AND pairing_code = sqlc.arg(code)
     AND pairing_code <> '' AND pairing_expires > sqlc.arg(now)
 RETURNING allowed_users;
+
+-- name: CountPendingChat :one
+SELECT count(*) FROM submissions WHERE conversation_id = ? AND status = 'pending';

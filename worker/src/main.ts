@@ -16,6 +16,9 @@ import {
 	SubmitParams,
 	UnwatchParams,
 	WatchParams,
+	ResetParams,
+	HistoryParams,
+	InputEntriesParams,
 	QuiesceParams,
 	RecoverTasksParams,
 } from "./protocol.ts";
@@ -60,6 +63,14 @@ async function handle(request: Request): Promise<unknown> {
 			return agents.createConversation(Value.Parse(CreateConversationParams, request.params));
 		case "submit":
 			return agents.submit(Value.Parse(SubmitParams, request.params));
+		case "checkIdle":
+			return agents.checkIdle(Value.Parse(AbortParams, request.params));
+		case "reset":
+			return agents.reset(Value.Parse(ResetParams, request.params));
+		case "history":
+			return agents.history(Value.Parse(HistoryParams, request.params));
+		case "inputEntries":
+			return agents.inputEntries(Value.Parse(InputEntriesParams, request.params));
 		case "watch":
 			return agents.watch(Value.Parse(WatchParams, request.params));
 		case "unwatch":
