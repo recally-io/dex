@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -16,21 +15,9 @@ func (s *Service) Stop(ctx context.Context, agentID string, id int64) error {
 	if _, err := s.Get(ctx, agentID, id); err != nil {
 		return err
 	}
-	return s.stop(ctx, agentID, id, "")
-}
-
-// StopPeer includes old contexts that send results to the same visible peer.
-func (s *Service) StopPeer(ctx context.Context, agentID, peer string) error {
-	if !strings.Contains(peer, ":") || strings.Contains(peer, "/") {
-		return ErrNotFound
-	}
-	return s.stop(ctx, agentID, 0, peer)
-}
-
-func (s *Service) stop(ctx context.Context, agentID string, id int64, peer string) error {
 	s.deliveryMu.Lock()
 	defer s.deliveryMu.Unlock()
-	conversations, targets, call, err := s.withdraw(ctx, agentID, id, peer)
+	conversations, targets, call, err := s.withdraw(ctx, agentID, id)
 	if err != nil {
 		return err
 	}
@@ -48,7 +35,7 @@ func (s *Service) stop(ctx context.Context, agentID string, id int64, peer strin
 }
 
 // Withdraw and spawn take the writer before reading. The first commit defines Stop's scope.
-func (s *Service) withdraw(ctx context.Context, agentID string, id int64, peer string) ([]sqlc.Conversation, []worker.AbortParams, worker.CallFunc, error) {
+func (s *Service) withdraw(ctx context.Context, agentID string, id int64) ([]sqlc.Conversation, []worker.AbortParams, worker.CallFunc, error) {
 	s.taskMu.Lock()
 	defer s.taskMu.Unlock()
 	tx, q, err := s.taskTransaction(ctx)
@@ -56,7 +43,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, peer s
 		return nil, nil, nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	conversations, err := q.ListStopConversations(ctx, sqlc.ListStopConversationsParams{AgentID: agentID, ChatID: id, Peer: peer})
+	conversations, err := q.ListStopConversations(ctx, sqlc.ListStopConversationsParams{AgentID: agentID, ChatID: id})
 	if err != nil {
 		return nil, nil, nil, err
 	}

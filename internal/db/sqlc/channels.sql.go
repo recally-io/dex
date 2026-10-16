@@ -35,11 +35,16 @@ func (q *Queries) CompleteChannelCommand(ctx context.Context, arg CompleteChanne
 
 const countChannelPending = `-- name: CountChannelPending :one
 SELECT count(*) FROM submissions s JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status = 'pending' AND (c.channel_key = ?1 OR c.channel_key LIKE ?1 || '/%')
+WHERE s.status = 'pending' AND c.agent_id = ?1 AND s.origin = ?2
 `
 
-func (q *Queries) CountChannelPending(ctx context.Context, peer string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countChannelPending, peer)
+type CountChannelPendingParams struct {
+	AgentID string `json:"agent_id"`
+	Peer    string `json:"peer"`
+}
+
+func (q *Queries) CountChannelPending(ctx context.Context, arg CountChannelPendingParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countChannelPending, arg.AgentID, arg.Peer)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -65,23 +70,6 @@ func (q *Queries) CreateChannelCommand(ctx context.Context, arg CreateChannelCom
 		arg.Command,
 	)
 	return err
-}
-
-const ensureChannelPeer = `-- name: EnsureChannelPeer :one
-INSERT INTO channel_peers (peer, channel_key) VALUES (?, ?)
-ON CONFLICT (peer) DO UPDATE SET peer = excluded.peer RETURNING channel_key
-`
-
-type EnsureChannelPeerParams struct {
-	Peer       string `json:"peer"`
-	ChannelKey string `json:"channel_key"`
-}
-
-func (q *Queries) EnsureChannelPeer(ctx context.Context, arg EnsureChannelPeerParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, ensureChannelPeer, arg.Peer, arg.ChannelKey)
-	var channel_key string
-	err := row.Scan(&channel_key)
-	return channel_key, err
 }
 
 const getChannelCommand = `-- name: GetChannelCommand :one
@@ -186,24 +174,29 @@ func (q *Queries) ListChannelCommands(ctx context.Context) ([]ChannelCommand, er
 }
 
 const listChannelReplies = `-- name: ListChannelReplies :many
-SELECT s.id, c.channel_key, s.status, s.answer, s.reason, s.delivered_parts
+SELECT s.id, s.origin, s.status, s.answer, s.reason, s.delivered_parts
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status != 'pending' AND s.delivered_at IS NULL
-AND (s.kind = 'message' OR s.status = 'done')
-AND c.channel_key LIKE ?1 || '%' ORDER BY s.created_at, s.id
+AND (s.kind = 'message' OR (s.kind = 'task_result' AND s.status = 'done'))
+AND c.agent_id = ?1 AND s.origin LIKE ?2 || '%' ORDER BY s.rowid
 `
+
+type ListChannelRepliesParams struct {
+	AgentID string         `json:"agent_id"`
+	Prefix  sql.NullString `json:"prefix"`
+}
 
 type ListChannelRepliesRow struct {
 	ID             string         `json:"id"`
-	ChannelKey     string         `json:"channel_key"`
+	Origin         string         `json:"origin"`
 	Status         string         `json:"status"`
 	Answer         sql.NullString `json:"answer"`
 	Reason         sql.NullString `json:"reason"`
 	DeliveredParts int64          `json:"delivered_parts"`
 }
 
-func (q *Queries) ListChannelReplies(ctx context.Context, prefix sql.NullString) ([]ListChannelRepliesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listChannelReplies, prefix)
+func (q *Queries) ListChannelReplies(ctx context.Context, arg ListChannelRepliesParams) ([]ListChannelRepliesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listChannelReplies, arg.AgentID, arg.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +206,7 @@ func (q *Queries) ListChannelReplies(ctx context.Context, prefix sql.NullString)
 		var i ListChannelRepliesRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.ChannelKey,
+			&i.Origin,
 			&i.Status,
 			&i.Answer,
 			&i.Reason,
@@ -257,19 +250,5 @@ type MarkChannelReplyDeliveredParams struct {
 
 func (q *Queries) MarkChannelReplyDelivered(ctx context.Context, arg MarkChannelReplyDeliveredParams) error {
 	_, err := q.db.ExecContext(ctx, markChannelReplyDelivered, arg.DeliveredAt, arg.ID)
-	return err
-}
-
-const setChannelPeer = `-- name: SetChannelPeer :exec
-UPDATE channel_peers SET channel_key = ? WHERE peer = ?
-`
-
-type SetChannelPeerParams struct {
-	ChannelKey string `json:"channel_key"`
-	Peer       string `json:"peer"`
-}
-
-func (q *Queries) SetChannelPeer(ctx context.Context, arg SetChannelPeerParams) error {
-	_, err := q.db.ExecContext(ctx, setChannelPeer, arg.ChannelKey, arg.Peer)
 	return err
 }

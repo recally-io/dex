@@ -134,7 +134,7 @@ func (b *Bot) watchPreview(ctx context.Context, id string, chatID int64, p *prev
 			current := ""
 			active := false
 			for _, item := range items {
-				if item.Kind == "user" {
+				if item.Kind == "user" || item.Kind == "task" || item.Kind == "boundary" {
 					if active {
 						break
 					}

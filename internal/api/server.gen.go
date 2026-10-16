@@ -994,6 +994,9 @@ type UserItem struct {
 	Id          string        `json:"id"`
 	Kind        UserItemKind  `json:"kind"`
 
+	// Origin The input entry, such as web, telegram:7, wechat:owner or feishu:owner.
+	Origin *string `json:"origin,omitempty"`
+
 	// Queued True while the message waits for the agent.
 	Queued *bool  `json:"queued,omitempty"`
 	Text   string `json:"text"`

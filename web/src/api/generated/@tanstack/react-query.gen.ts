@@ -141,7 +141,7 @@ export const getMainChatOptions = (options?: Options<GetMainChatData>) => queryO
 export const listChatsQueryKey = (options?: Options<ListChatsData>) => createQueryKey('listChats', options);
 
 /**
- * Session summaries of the default agent, newest activity first, then highest ID first. Excludes main, dreams and Chat sessions with no message. Task summaries have no reports. Transcripts are not included.
+ * Session summaries of the default agent, newest activity first, then highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no message. Task summaries have no reports. Transcripts are not included.
  *
  */
 export const listChatsOptions = (options?: Options<ListChatsData>) => queryOptions<ListChatsResponse, ListChatsError, ListChatsResponse, ReturnType<typeof listChatsQueryKey>>({

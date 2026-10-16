@@ -12,7 +12,7 @@ import (
 	"uuid"
 )
 
-func TestUserStartsNewChannelChatOnce(t *testing.T) {
+func TestUserClearsChannelMainContextOnce(t *testing.T) {
 	// Given a Telegram peer with one conversation.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
@@ -24,22 +24,17 @@ func TestUserStartsNewChannelChatOnce(t *testing.T) {
 	f.message(2, 42, 7, "/new")
 	f.message(2, 42, 7, "/new")
 	f.message(3, 42, 7, "after")
-	// Then there is one command acknowledgement and two separate read-only chats.
+	// Then one notice confirms Clear, and main keeps the transcript.
 	got := []string{f.next(t).Text, f.next(t).Text}
 	slices.Sort(got)
-	if !slices.Equal(got, []string{"Started a new chat.", "echo: after"}) {
+	if !slices.Equal(got, []string{"Context cleared.", "echo: after"}) {
 		t.Fatalf("replies: %q", got)
 	}
 
-	chats := d.chats(t)
-	if len(chats) != 2 {
-		t.Fatalf("chats: %+v", chats)
+	if chats := d.chats(t); len(chats) != 0 {
+		t.Fatalf("channel in Sessions: %+v", chats)
 	}
-	for _, c := range chats {
-		if c.Channel != "telegram" {
-			t.Fatalf("channel: %s", c.Channel)
-		}
-	}
+	d.watch(t, d.mainChat(t)).until(t, "answer after Clear", answered("echo: after"))
 }
 
 func TestUserGetsUndeliveredTelegramReplyAfterRestart(t *testing.T) {
@@ -94,11 +89,7 @@ func TestUserStopsCurrentChannelAnswer(t *testing.T) {
 	f.message(1, 42, 7, "sleep 60")
 	deadline := time.NewTimer(20 * time.Second)
 	defer deadline.Stop()
-	for {
-		chats := d.chats(t)
-		if len(chats) > 0 && chats[0].Busy {
-			break
-		}
+	for !d.mainInfo(t).Busy {
 		select {
 		case <-deadline.C:
 			t.Fatal("chat did not become busy")
@@ -148,8 +139,8 @@ func TestUserStopsChannelMessageBeforeWorkerAdmission(t *testing.T) {
 	if got := f.next(t).Text; got != "echo: after stop" {
 		t.Fatal(got)
 	}
-	if chats := d.chats(t); len(chats) != 1 || chats[0].Busy {
-		t.Fatalf("chats: %+v", chats)
+	if c := d.mainInfo(t); c.Busy {
+		t.Fatalf("main: %+v", c)
 	}
 }
 
@@ -204,11 +195,9 @@ func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 			}
 		}
 	}
-	// Then each chat keeps its actual origin in the API.
-	for _, c := range d.chats(t) {
-		if !slices.Contains([]string{"telegram", "wechat", "feishu"}, c.Channel) {
-			t.Fatalf("origin: %s", c.Channel)
-		}
+	// Then Sessions excludes the old channel conversations.
+	if chats := d.chats(t); len(chats) != 0 {
+		t.Fatalf("old channels in Sessions: %+v", chats)
 	}
 }
 
@@ -240,7 +229,11 @@ func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	if _, err = conn.ExecContext(t.Context(), "UPDATE conversations SET worker_conversation_id = 999999 WHERE channel_key = 'telegram:7'"); err != nil {
+	var workerID int64
+	if err := conn.QueryRowContext(t.Context(), "SELECT worker_conversation_id FROM conversations WHERE channel_key='main'").Scan(&workerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = conn.ExecContext(t.Context(), "UPDATE conversations SET worker_conversation_id = 999999 WHERE channel_key = 'main'"); err != nil {
 		t.Fatal(err)
 	}
 	// When /stop gets a permanent worker error, the command still has an answer.
@@ -248,7 +241,10 @@ func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 	if got := f.next(t).Text; got != "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
 		t.Fatalf("stop reply: %q", got)
 	}
-	// Then the platform advances past /stop and delivers a later peer's answer.
+	// Then the platform advances past /stop. Repair the test's missing worker record.
+	if _, err = conn.ExecContext(t.Context(), "UPDATE conversations SET worker_conversation_id=? WHERE channel_key='main'", workerID); err != nil {
+		t.Fatal(err)
+	}
 	f.message(3, 42, 8, "after failed stop")
 	if got := f.next(t); got.ChatID != 8 || got.Text != "echo: after failed stop" {
 		t.Fatalf("later reply: %+v", got)
@@ -269,7 +265,7 @@ func TestUserStopsExistingChannelChatDuringMaintenance(t *testing.T) {
 	})
 	// When a message waits for admission and the user requests /stop.
 	f.message(2, 42, 7, "must not execute")
-	eventually(t, "queued message", func() (bool, any) { c := d.chats(t); return len(c) == 1 && c[0].Busy, c })
+	eventually(t, "queued message", func() (bool, any) { c := d.mainInfo(t); return c.Busy, c })
 	f.message(3, 42, 7, "/stop")
 	// Then stop completes while the gate is still closed.
 	var stopped bool

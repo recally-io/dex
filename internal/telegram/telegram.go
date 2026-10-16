@@ -1,5 +1,5 @@
 // Package telegram connects Telegram chats to an agent. It reads messages from the Bot API with long
-// polling and sends replies back. /new selects another conversation for the private chat.
+// polling and sends replies back. /new clears the main timeline's context.
 package telegram
 
 import (
@@ -92,8 +92,8 @@ func New(cfg Config, chats *channel.Manager) *Bot {
 // Run receives messages and sends replies until ctx is done.
 func (b *Bot) Run(ctx context.Context) error {
 	if err := b.call(ctx, "setMyCommands", map[string]any{"commands": []map[string]string{
-		{"command": "new", "description": "Start a new conversation"},
-		{"command": "stop", "description": "Stop this conversation and its background work"},
+		{"command": "new", "description": "Clear the main context"},
+		{"command": "stop", "description": "Stop the main answer and its background work"},
 		{"command": "help", "description": "List commands"},
 	}}, nil); err != nil {
 		slog.Warn("telegram: command menu", "err", err)

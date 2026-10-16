@@ -189,6 +189,7 @@ func (d *dex) chats(t *testing.T) []chatInfo {
 
 // item is a transcript item of the chat event stream.
 type item struct {
+	Origin string `json:"origin"`
 	Kind   string `json:"kind"`
 	TaskID string `json:"taskId"`
 	Title  string `json:"title"`

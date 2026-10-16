@@ -90,7 +90,7 @@ export const getMainChat = <ThrowOnError extends boolean = false>(options?: Opti
 });
 
 /**
- * Session summaries of the default agent, newest activity first, then highest ID first. Excludes main, dreams and Chat sessions with no message. Task summaries have no reports. Transcripts are not included.
+ * Session summaries of the default agent, newest activity first, then highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no message. Task summaries have no reports. Transcripts are not included.
  *
  */
 export const listChats = <ThrowOnError extends boolean = false>(options?: Options<ListChatsData, ThrowOnError>): RequestResult<ListChatsResponses, ListChatsErrors, ThrowOnError> => (options?.client ?? client).get<ListChatsResponses, ListChatsErrors, ThrowOnError>({

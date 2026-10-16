@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 	"unicode/utf16"
-	"uuid"
 
 	"github.com/recally-io/dex/internal/settings"
 )
@@ -44,6 +43,7 @@ type fakeTelegram struct {
 	files       map[string]string
 	events      chan platformEvent
 	nextID      int64
+	deliveries  []channelSend
 }
 
 type platformFailure struct{ Code, Retry int }
@@ -192,6 +192,9 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		id := f.nextID
 		f.mu.Unlock()
 		if method == "sendMessage" || (method == "editMessageText" && m.ParseMode != "") {
+			f.mu.Lock()
+			f.deliveries = append(f.deliveries, channelSend{Peer: fmt.Sprint("telegram:", m.ChatID), Text: html.UnescapeString(m.Text)})
+			f.mu.Unlock()
 			f.sent <- m.sentMessage
 		}
 		select {
@@ -262,35 +265,33 @@ func TestUserGetsAnswerInTelegram(t *testing.T) {
 		t.Fatalf("sent = %+v", got)
 	}
 
-	// And the web UI shows the chat, but cannot write to it
-	chats := d.chats(t)
-	if len(chats) != 1 || chats[0].Channel != "telegram" || chats[0].Title != "hi" {
-		t.Fatalf("chats = %+v", chats)
+	// The main timeline shows the same input and takes web messages.
+	main := d.mainChat(t)
+	d.watch(t, main).until(t, "channel input in main", answered("echo: hi"))
+	d.send(t, main, "from the web")
+	d.watch(t, main).until(t, "web answer in main", answered("echo: from the web"))
+	if c := d.mainInfo(t); !c.Main || c.ReadOnly || len(d.chats(t)) != 0 {
+		t.Fatalf("main: %+v", c)
 	}
-	d.watch(t, chats[0].ID).until(t, "answer", answered("echo: hi"))
-	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/messages", chats[0].ID),
-		map[string]string{"id": uuid.NewV7().String(), "text": "from the web"})
-	if status != http.StatusForbidden {
-		t.Fatalf("web message to a Telegram chat: %d %s", status, raw)
-	}
-	// Telegram chats follow the agent's settings
-	status, raw = d.call(t, http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", chats[0].ID),
-		map[string]string{"thinkingLevel": "high"})
-	if status != http.StatusForbidden {
-		t.Fatalf("settings of a Telegram chat: %d %s", status, raw)
-	}
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/abort", chats[0].ID), nil, nil, http.StatusForbidden)
+	// Main follows the bot's settings and has no session override.
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", main), map[string]string{"thinkingLevel": "high"}, nil, http.StatusForbidden)
+
 }
 
 func TestTelegramIgnoresUsersWhoAreNotAllowed(t *testing.T) {
 	// Given dex with a Telegram bot that only user 42 can use
 	f := newFakeTelegram(t)
 	dataDir := t.TempDir()
-	startTelegram(t, f, dataDir, 42)
+	d := startTelegram(t, f, dataDir, 42)
 
 	// When user 99 sends a message in chat 8, and then user 42 sends one in chat 7
 	f.message(1, 99, 8, "let me in")
-	f.message(2, 42, 7, "ok")
+	f.mu.Lock()
+	f.updates = append(f.updates, map[string]any{"update_id": int64(2), "message": map[string]any{
+		"from": map[string]any{"id": 42}, "chat": map[string]any{"id": -100, "type": "supergroup"}, "text": "owner in a group",
+	}})
+	f.mu.Unlock()
+	f.message(3, 42, 7, "ok")
 
 	// Then only user 42 gets an answer, and dex stores nothing for chat 8. The bot handles updates
 	// in order, so it handled the first one before the answer to the second.
@@ -304,13 +305,14 @@ func TestTelegramIgnoresUsersWhoAreNotAllowed(t *testing.T) {
 	t.Cleanup(func() { _ = conn.Close() })
 	var n int
 	err = conn.QueryRowContext(t.Context(),
-		"SELECT count(*) FROM conversations WHERE channel_key = 'telegram:8'").Scan(&n)
+		"SELECT count(*) FROM submissions WHERE origin != 'telegram:7'").Scan(&n)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {
-		t.Fatalf("dex stored %d conversations for chat 8", n)
+		t.Fatalf("dex stored %d inputs from a group or another user", n)
 	}
+	d.watch(t, d.mainChat(t)).until(t, "owner input on main", answered("echo: ok"))
 }
 
 func TestTelegramMessageDeliveredTwiceIsAnsweredOnce(t *testing.T) {
@@ -379,8 +381,8 @@ func TestUserPairsTelegramOwnerOnce(t *testing.T) {
 	if got := f.next(t); got.Text != "echo: hello" || got.ChatID != 7 {
 		t.Fatalf("owner reply = %+v", got)
 	}
-	if chats := d.chats(t); len(chats) != 1 {
-		t.Fatalf("chats = %+v", chats)
+	if chats := d.chats(t); len(chats) != 0 {
+		t.Fatalf("channel in Sessions: %+v", chats)
 	}
 }
 
@@ -523,11 +525,7 @@ func TestUserSendsTelegramPhotoAndDocument(t *testing.T) {
 	}
 	f.next(t)
 	f.next(t)
-	chats := d.chats(t)
-	if len(chats) != 1 {
-		t.Fatalf("chats = %+v", chats)
-	}
-	watch := d.watch(t, chats[0].ID)
+	watch := d.watch(t, d.mainChat(t))
 	watch.until(t, "two attachment messages", func(tr *transcript) bool {
 		count := 0
 		for _, item := range tr.items {
@@ -639,6 +637,7 @@ func TestUserCannotSendOversizeTelegramDocument(t *testing.T) {
 	if len(d.chats(t)) != 0 {
 		t.Fatal("oversize file created a conversation")
 	}
+	assertNoStoredInput(t, d)
 	for {
 		select {
 		case ev := <-f.events:

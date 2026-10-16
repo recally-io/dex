@@ -319,10 +319,10 @@ func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 	for _, c := range list.Chats {
 		ids = append(ids, c.ID)
 	}
-	if !slices.Equal(ids, []int64{channel, chat, task, automation}) {
+	if !slices.Equal(ids, []int64{chat, task, automation}) {
 		t.Fatalf("session list order or exclusions: %v; body=%s", ids, raw)
 	}
-	if list.Chats[2].Task == nil || list.Chats[2].Task.ID != "listed-task" || list.Chats[2].Task.ParentConversationID != chat {
+	if list.Chats[1].Task == nil || list.Chats[1].Task.ID != "listed-task" || list.Chats[1].Task.ParentConversationID != chat {
 		t.Fatalf("task summary or Stop scope missing: %s", raw)
 	}
 	for _, c := range list.Chats {

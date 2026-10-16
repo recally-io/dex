@@ -16,9 +16,14 @@ import (
 
 func (d *dex) mainChat(t *testing.T) int64 {
 	t.Helper()
-	var c chatInfo
+	return d.mainInfo(t).ID
+}
+
+func (d *dex) mainInfo(t *testing.T) sessionInfo {
+	t.Helper()
+	var c sessionInfo
 	d.must(t, http.MethodGet, "/api/chats/main", nil, &c)
-	return c.ID
+	return c
 }
 
 func TestUserReturnsToMainAfterRestart(t *testing.T) {

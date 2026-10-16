@@ -271,6 +271,22 @@ func (h *Hub) handle(ctx context.Context, s *stream, w io.Writer, in input) erro
 		case ev.Type == "item" && ev.Item != nil && ev.Item.Kind == "user":
 			s.seen[ev.Item.ID] = true
 			delete(s.extra, ev.Item.ID)
+			var update struct {
+				Type string         `json:"type"`
+				Item jsontext.Value `json:"item"`
+			}
+			if err := json.Unmarshal(raw, &update); err != nil {
+				return err
+			}
+			var err error
+			update.Item, err = h.userItem(ctx, s.chat.ID, update.Item)
+			if err != nil {
+				return err
+			}
+			raw, err = json.Marshal(update)
+			if err != nil {
+				return err
+			}
 		}
 		if err := writeEvent(w, ev.Type, raw); err != nil {
 			return err
@@ -292,6 +308,11 @@ func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items [
 		switch heads[i].Kind {
 		case "user":
 			s.seen[heads[i].ID] = true
+			var err error
+			items[i], err = h.userItem(ctx, s.chat.ID, raw)
+			if err != nil {
+				return err
+			}
 		case "task":
 			var err error
 			items[i], err = h.taskItem(ctx, s, heads[i])
@@ -356,6 +377,24 @@ func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items [
 	return writeEvent(w, "snapshot", raw)
 }
 
+// Origin stays in control. The worker owns only transcript content and execution.
+func (h *Hub) userItem(ctx context.Context, chatID int64, raw jsontext.Value) (jsontext.Value, error) {
+	var item api.UserItem
+	if err := json.Unmarshal(raw, &item); err != nil {
+		return nil, err
+	}
+	// One query per input; batch by chat if snapshots get slow.
+	sub, err := h.q.GetSubmission(ctx, item.Id)
+	if err != nil {
+		return nil, fmt.Errorf("input %s origin: %w", item.Id, err)
+	}
+	if sub.ConversationID != chatID {
+		return nil, fmt.Errorf("input %s does not belong to chat %d", item.Id, chatID)
+	}
+	item.Origin = &sub.Origin
+	return json.Marshal(item)
+}
+
 // taskItem adds metadata owned by control. A missing record is a stream error.
 func (h *Hub) taskItem(ctx context.Context, s *stream, head itemHead) (jsontext.Value, error) {
 	// One query per anchor; batch by chat if snapshots get slow.
@@ -415,7 +454,7 @@ func (h *Hub) extraItems(ctx context.Context, s *stream) ([]extraItem, error) {
 		}
 		at := sub.CreatedAt
 		queued := sub.Status == "pending"
-		item := api.UserItem{Kind: api.User, Id: sub.ID, Text: sub.Content, At: &at, Queued: &queued}
+		item := api.UserItem{Kind: api.User, Id: sub.ID, Text: sub.Content, At: &at, Queued: &queued, Origin: &sub.Origin}
 		var attachments []worker.Attachment
 		if err := json.Unmarshal([]byte(sub.Attachments), &attachments); err != nil {
 			return nil, fmt.Errorf("submission %s attachments: %w", sub.ID, err)
@@ -489,11 +528,14 @@ func (h *Hub) History(ctx context.Context, chatID, before int64, limit int) (wor
 		if err := json.Unmarshal(raw, &head); err != nil {
 			return page, err
 		}
-		if head.Kind == "task" {
+		switch head.Kind {
+		case "user":
+			page.Items[i], err = h.userItem(ctx, c.ID, raw)
+		case "task":
 			page.Items[i], err = h.taskItem(ctx, &stream{chat: c}, head)
-			if err != nil {
-				return page, err
-			}
+		}
+		if err != nil {
+			return page, err
 		}
 	}
 	return page, nil

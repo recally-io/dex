@@ -81,7 +81,7 @@ type Service struct {
 	q       *sqlc.Queries
 	worker  Caller
 	now     func() time.Time
-	notify  func(channelKey string)
+	notify  func(origin string)
 	changed func(chatID int64)
 
 	// The database holds work. A wake can coalesce without losing a submission.
@@ -103,10 +103,10 @@ type Service struct {
 }
 
 // New returns a Service. Connect the worker's settled events to HandleSettled and its start to
-// Replay, and run Run. notify, if not nil, receives the channel key when a submission settles.
+// Replay, and run Run. notify, if not nil, receives the origin when a submission settles.
 // changed, if not nil, learns that a chat has a new message, a settled message, or a worker
 // conversation. Both run on the goroutine that reads the worker, so they must not block.
-func New(db *sql.DB, w Caller, now func() time.Time, notify func(channelKey string), changed func(chatID int64)) *Service {
+func New(db *sql.DB, w Caller, now func() time.Time, notify func(origin string), changed func(chatID int64)) *Service {
 	return &Service{
 		db: db, q: sqlc.New(db), worker: w, now: now, notify: notify, changed: changed,
 		wake: make(chan struct{}, 1),
@@ -196,17 +196,21 @@ func (s *Service) Send(ctx context.Context, agentID, channelKey string, m Messag
 	if model == "" {
 		return 0, ErrNoModel
 	}
-	return s.enqueue(ctx, agentID, channelKey, "", m)
+	return s.enqueue(ctx, agentID, channelKey, "", inputOrigin(channelKey), m)
 }
 
 // SubmitMessage stores a channel update with its attachments and source identity.
-func (s *Service) SubmitMessage(ctx context.Context, agentID, channelKey, sourceKey string, m Message) error {
+func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey string, m Message) error {
+	if _, err := s.Main(ctx, agentID); err != nil {
+		return err
+	}
 	m.ID = uuid.NewV7().String()
-	_, err := s.enqueue(ctx, agentID, channelKey, sourceKey, m)
+	m.Settings = Settings{}
+	_, err := s.enqueue(ctx, agentID, MainKey, sourceKey, peer, m)
 	return err
 }
 
-func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey string, m Message) (int64, error) {
+func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, origin string, m Message) (int64, error) {
 	// Sample time before taking the writer. Delivery follows insertion order.
 	createdAt, submittedAt := s.now().UnixMilli(), s.now().UnixMilli()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -237,7 +241,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey st
 		Content:        m.Content,
 		Attachments:    string(attachments),
 		SourceKey:      sql.NullString{String: sourceKey, Valid: sourceKey != ""},
-		Origin:         inputOrigin(channelKey),
+		Origin:         origin,
 		Kind:           "message",
 		CreatedAt:      submittedAt,
 	})
@@ -485,7 +489,7 @@ func (s *Service) settle(ctx context.Context, event worker.Settled) {
 	}
 	s.signal(reply.ConversationID)
 	if s.notify != nil {
-		s.notify(reply.ChannelKey)
+		s.notify(reply.Origin)
 	}
 	s.Wake()
 }

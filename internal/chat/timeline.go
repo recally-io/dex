@@ -48,7 +48,7 @@ func (s *Service) Main(ctx context.Context, agentID string) (Chat, error) {
 }
 
 // Clear stores a reset only when both owners are idle. Delivery cannot pass this check.
-func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, requestID string) error {
+func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, requestID, origin string) error {
 	s.deliveryMu.Lock()
 	defer s.deliveryMu.Unlock()
 	c, err := s.Get(ctx, agentID, chatID)
@@ -96,7 +96,7 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 		return ErrConversationBusy
 	}
 	created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
-		ID: requestID, ConversationID: chatID, Attachments: "null", Origin: "web", Kind: "context_reset", CreatedAt: s.now().UnixMilli(),
+		ID: requestID, ConversationID: chatID, Attachments: "null", Origin: origin, Kind: "context_reset", CreatedAt: s.now().UnixMilli(),
 	})
 	if err != nil {
 		return err

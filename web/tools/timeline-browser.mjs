@@ -594,7 +594,6 @@ try {
     ["Chat", 1, 1],
     ["Task", 1, 4],
     ["Automation", 0, 1],
-    ["Channel", 0, 1],
     ["All kinds", 2, allSessions.length],
   ]) {
     await selectKind(kind);
@@ -694,6 +693,69 @@ try {
     "Chat context, title, Clear, history, task return, Stop and main Stop scope use the selected session",
   );
 
+  // Channel inputs use the real main queue. The Go tests cover each platform boundary.
+  await model("echo");
+  const entries = ["telegram:7", "wechat:owner", "feishu:owner"];
+  const entryDB = new DatabaseSync(join(data, "control.sqlite"));
+  entryDB.exec("PRAGMA busy_timeout = 5000");
+
+  try {
+    const insert = entryDB.prepare(
+      "INSERT INTO submissions (id, conversation_id, content, origin, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)",
+    );
+
+    for (const origin of entries)
+      insert.run(randomUUID(), main.id, `Input from ${origin}`, origin, Date.now());
+  } finally {
+    entryDB.close();
+  }
+
+  for (const [label, width, height, theme] of [
+    ["desktop-light", 1280, 900, "light"],
+    ["desktop-dark", 1280, 900, "dark"],
+    ["mobile-light", 390, 844, "light"],
+    ["mobile-dark", 390, 844, "dark"],
+  ]) {
+    await viewport(width, height);
+    await call("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
+    await visit("/");
+    await ui("channel answers in main", "document.body.innerText.includes('echo: Input from feishu:owner')");
+    await check(
+      `each channel input has its entry mark (${label})`,
+      `[...document.querySelectorAll('[data-origin]')].filter(node => ['telegram:7', 'wechat:owner', 'feishu:owner'].includes(node.dataset.origin)).map(node => node.textContent.trim()).join(',') === 'Telegram,WeChat,Feishu'`,
+    );
+    await ui(
+      "channel theme applied",
+      `document.documentElement.classList.contains('dark') === ${theme === "dark"}`,
+    );
+    await evaluate(
+      "Promise.all(document.getAnimations().filter(a => a.effect.getTiming().iterations !== Infinity).map(a => a.finished))",
+    );
+    await evaluate(`(() => {
+      const scroll = document.querySelector('textarea').closest('section').querySelector('.overflow-y-auto');
+      scroll.scrollTo({ top: scroll.scrollHeight, behavior: 'instant' });
+    })()`);
+    await check(
+      `channel timeline fits (${label})`,
+      `(() => {
+        const scroll = document.querySelector('textarea').closest('section').querySelector('.overflow-y-auto').getBoundingClientRect();
+        return document.documentElement.scrollWidth <= innerWidth + 1 &&
+          [...document.querySelectorAll('[data-origin]')].every(node => {
+            const rect = node.getBoundingClientRect();
+            return rect.top >= scroll.top && rect.bottom <= scroll.bottom;
+          });
+      })()`,
+    );
+    await shot(`11-channel-main-${label}`);
+    await visit("/sessions");
+    await ui("Sessions after channel input", "!!document.querySelector('select[aria-label=\"Kind\"]')");
+    await check(
+      `Sessions has only Chat, Task and Automation (${label})`,
+      `[...document.querySelector('select[aria-label="Kind"]').options].map(option => option.textContent).join(',') === 'All kinds,Chat,Task,Automation' && ![...document.querySelectorAll('main li')].some(node => /Telegram|WeChat|Feishu/.test(node.textContent))`,
+    );
+    await shot(`12-channel-sessions-${label}`);
+  }
+
   // Bot settings hold the editable name, channels and automations.
   await visit("/agent");
   await ui(
@@ -707,6 +769,10 @@ try {
   await check(
     "settings sections match the bot scope",
     "[...document.querySelectorAll('h2')].map(h => h.textContent).join(',') === 'Profile,Instructions,Channels,Automations'",
+  );
+  await check(
+    "channel settings have no links to old peer contexts",
+    "![...document.querySelectorAll('a')].some(a => a.textContent.trim() === 'Open conversation')",
   );
   await shot("07-bot-settings");
 

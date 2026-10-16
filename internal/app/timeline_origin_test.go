@@ -26,14 +26,14 @@ func TestUserKeepsOriginThroughBackgroundFollowUps(t *testing.T) {
 				d.send(t, main, input)
 			} else {
 				f.message(1, 42, 7, "/new")
-				waitTaskChannelText(t, f, "Started a new chat.")
+				waitTaskChannelText(t, f, "Context cleared.")
 				f.message(2, 42, 7, input)
 				eventually(t, "channel source", func() (bool, any) {
 					err := conn.QueryRowContext(t.Context(), "SELECT parent_conversation_id FROM tasks WHERE title='First'").Scan(&parent)
 					return err == nil, err
 				})
-				if parent == main {
-					t.Fatal("channel input entered main")
+				if parent != main {
+					t.Fatal("channel input missed main")
 				}
 			}
 			// When the first report starts the next execution, its source is a task result.

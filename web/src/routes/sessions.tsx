@@ -5,7 +5,6 @@ import { IconChevronRightSmall } from "@central-icons-react/round-outlined-radiu
 import { IconBubble2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubble2";
 import { IconTasks } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconTasks";
 import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
-import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
 import { IconPlusSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlusSmall";
 import type { Chat, TaskSummary } from "../api/generated/types.gen";
 import {
@@ -92,7 +91,7 @@ export function SessionsPage() {
               value={kind}
               onChange={(event) => setKind(event.target.value)}
             >
-              {["All kinds", "Chat", "Task", "Automation", "Channel"].map((value) => (
+              {["All kinds", "Chat", "Task", "Automation"].map((value) => (
                 <option key={value}>{value}</option>
               ))}
             </Select>
@@ -132,23 +131,7 @@ export function SessionsPage() {
 function SessionRow({ chat }: { chat: Chat }) {
   const kind = sessionKind(chat);
 
-  const Icon =
-    kind === "Chat"
-      ? IconBubble2
-      : kind === "Task"
-        ? IconTasks
-        : kind === "Automation"
-          ? IconClock
-          : IconPaperPlane;
-
-  const label =
-    chat.channel === "telegram"
-      ? "Telegram"
-      : chat.channel === "wechat"
-        ? "WeChat"
-        : chat.channel === "feishu"
-          ? "Feishu"
-          : kind;
+  const Icon = kind === "Chat" ? IconBubble2 : kind === "Task" ? IconTasks : IconClock;
 
   const content = (
     <>
@@ -156,7 +139,7 @@ function SessionRow({ chat }: { chat: Chat }) {
         {chat.title || "New session"}
       </span>
       <span className="mt-0.5 block text-[12px] text-ink-3">
-        {label} · {chat.task ? taskTimes(chat.task) : taskTime(chat.updatedAt)}
+        {kind} · {chat.task ? taskTimes(chat.task) : taskTime(chat.updatedAt)}
       </span>
     </>
   );

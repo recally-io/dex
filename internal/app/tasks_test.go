@@ -63,7 +63,7 @@ func TestUserDelegationSlotsAndToolsRespectConversationOwnership(t *testing.T) {
 	f.message(1, 42, 7, taskJSON(t, map[string]string{"title": "Second", "goal": taskGate(t, dir, "second"), "provider": "faux", "modelId": "bash"}))
 	var secondChat int64
 	eventually(t, "channel conversation", func() (bool, any) {
-		err := conn.QueryRowContext(t.Context(), "SELECT id FROM conversations WHERE channel_key='telegram:7'").Scan(&secondChat)
+		err := conn.QueryRowContext(t.Context(), "SELECT id FROM conversations WHERE channel_key='main'").Scan(&secondChat)
 		return err == nil, err
 	})
 	second := waitExecution(t, conn, secondChat, "Second", "running")
@@ -141,7 +141,7 @@ func waitExecution(t *testing.T, conn *sql.DB, parent int64, title, status strin
 	t.Helper()
 	var task chat.Task
 	eventually(t, title+" "+status, func() (bool, any) {
-		err := conn.QueryRowContext(t.Context(), "SELECT id,title,status,report FROM tasks WHERE parent_conversation_id = ? AND title = ?", parent, title).Scan(&task.ID, &task.Title, &task.Status, &task.Report)
+		err := conn.QueryRowContext(t.Context(), "SELECT id,title,status,report FROM tasks WHERE parent_conversation_id = ? AND title = ? ORDER BY rowid DESC LIMIT 1", parent, title).Scan(&task.ID, &task.Title, &task.Status, &task.Report)
 		return err == nil && task.Status == status, fmt.Sprintf("task=%+v err=%v", task, err)
 	})
 	return task

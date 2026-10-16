@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json/v2"
+	"slices"
 	"strings"
 	"time"
 )
@@ -13,9 +14,10 @@ type preview struct {
 	cancel    context.CancelFunc
 }
 type streamItem struct {
-	Kind string `json:"kind"`
-	ID   string `json:"id"`
-	Text string `json:"text"`
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Text   string `json:"text"`
+	Queued bool   `json:"queued"`
 }
 type streamEvent struct {
 	Type  string       `json:"type"`
@@ -75,8 +77,11 @@ func (b *Bot) stream(ctx context.Context, id string, chatID int64, owner string,
 			}
 			switch event.Type {
 			case "snapshot":
-				items = event.Items
+				items = slices.DeleteFunc(event.Items, func(item streamItem) bool { return item.Kind == "user" && item.Queued })
 			case "item":
+				if event.Item.Kind == "user" && event.Item.Queued {
+					continue
+				}
 				found := false
 				for i := range items {
 					if items[i].ID == event.Item.ID {
@@ -99,7 +104,7 @@ func (b *Bot) stream(ctx context.Context, id string, chatID int64, owner string,
 			active := false
 			var text strings.Builder
 			for _, item := range items {
-				if item.Kind == "user" {
+				if item.Kind == "user" || item.Kind == "task" || item.Kind == "boundary" {
 					if active {
 						break
 					}
