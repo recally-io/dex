@@ -170,6 +170,30 @@ try {
     "!![...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Clear context')",
   );
 
+  // An existing worker conversation waits at the maintenance gate when its stream reconnects.
+  await poll("maintenance before reconnect", async () => {
+    const response = await fetch(`${base}/api/maintenance`, { method: "POST" });
+
+    return response.ok;
+  });
+  await sendFromComposer("queued during reconnect");
+  await poll("input awaits reconnect", async () => (await api(`/api/chats/${main.id}`)).busy);
+  await reload();
+  await ui("composer awaits stream", "!!document.querySelector('textarea:disabled')");
+  await check(
+    "Stop stays available while the stream awaits admission",
+    "!!document.querySelector('button[aria-label=\"Stop run\"]')",
+  );
+  await evaluate("document.querySelector('button[aria-label=\"Stop run\"]').click()");
+  await poll("input stopped before reconnect", async () => !(await api(`/api/chats/${main.id}`)).busy);
+  await api("/api/maintenance", undefined, "DELETE");
+  await ui("stream restored", "!!document.querySelector('textarea:not(:disabled)')");
+  assert.equal(
+    await evaluate("document.body.innerText.includes('echo: queued during reconnect')"),
+    false,
+    "reconnect must not revive withdrawn input",
+  );
+
   // When a real tool holds the run, only the server refuses Clear context.
   await model("bash");
   const busyGate = join(isolated, "busy.gate");

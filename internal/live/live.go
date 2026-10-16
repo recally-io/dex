@@ -65,9 +65,10 @@ type stream struct {
 	once sync.Once
 
 	// Used only by the goroutine that serves the stream.
-	watchID string
-	seen    map[string]bool   // IDs of the user items that the worker sent
-	extra   map[string]string // control's items by ID, as sent
+	watchID      string
+	seen         map[string]bool   // IDs of the user items that the worker sent
+	extra        map[string]string // control's items by ID, as sent
+	snapshotSent bool
 }
 
 func (s *stream) send(in input) {
@@ -238,6 +239,10 @@ func (h *Hub) handle(ctx context.Context, s *stream, w io.Writer, in input) erro
 		if err := h.attach(ctx, s); err != nil {
 			return err
 		}
+		// The first snapshot reads current control state, including changes made while watch waited.
+		if !s.snapshotSent {
+			return nil
+		}
 		return h.writeExtra(ctx, s, w)
 	}
 	for _, raw := range in.events {
@@ -347,6 +352,7 @@ func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items [
 	if err != nil {
 		return err
 	}
+	s.snapshotSent = true
 	return writeEvent(w, "snapshot", raw)
 }
 
