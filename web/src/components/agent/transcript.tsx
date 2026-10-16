@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { IconArrowRight } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowRight";
+import { IconArrowCornerDownRight } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowCornerDownRight";
+import { IconArrowUpRight } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowUpRight";
 import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
 import { IconFileText } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconFileText";
 import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
@@ -207,14 +208,6 @@ function ToolStatus({ status }: { status: ToolItem["status"] }) {
   );
 }
 
-function BackgroundIcon() {
-  return (
-    <span className="flex size-7 shrink-0 items-center justify-center rounded-control bg-accent-tint text-accent-ink">
-      <IconArrowRight size={15} aria-hidden />
-    </span>
-  );
-}
-
 export type ToolFocus = { id: string; at: number };
 
 /** Consecutive tool calls as one step row with a line for each call. */
@@ -255,16 +248,16 @@ export function ToolStep({
     const dispatch = describeTool(tools[0]);
 
     return (
-      <div ref={ref} className="flex min-w-0 items-start gap-2.5 py-1">
-        <BackgroundIcon />
-        <div className="flex min-w-0 flex-col gap-0.5">
+      <div ref={ref} className="flex min-w-0 items-start gap-2 py-1 text-[13px] leading-5">
+        <IconArrowUpRight size={16} aria-hidden className="mt-0.5 shrink-0 text-ink-3" />
+        <p className="min-w-0 [overflow-wrap:anywhere]">
           {working ? (
             <Shimmer>{dispatch.verb}</Shimmer>
           ) : (
-            <span className="text-[11.5px] text-ink-3">{dispatch.verb}</span>
+            <span className="font-medium text-ink-2">{dispatch.verb}</span>
           )}
-          <span className="text-[13px] font-medium text-ink [overflow-wrap:anywhere]">{dispatch.target}</span>
-        </div>
+          <span className="ml-1.5 font-medium text-ink">{dispatch.target}</span>
+        </p>
       </div>
     );
   }
@@ -451,17 +444,19 @@ export function TranscriptItem({
       );
     case "task":
       return (
-        <header className="flex min-w-0 items-start gap-2.5">
-          <BackgroundIcon />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-[11.5px] text-ink-3">Background result</span>
-            <h3 className="text-[13px] font-semibold text-ink [overflow-wrap:anywhere]">{item.title}</h3>
-          </div>
+        <header className="flex min-w-0 items-start gap-2 text-[13px] leading-5">
+          <IconArrowCornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0 text-ink-3" />
+          <h3 className="min-w-0 [overflow-wrap:anywhere]">
+            <span className="mr-1.5 font-medium text-ink-2">Background result</span>
+            <span className="font-semibold text-ink">{item.title}</span>
+          </h3>
         </header>
       );
     case "thinking":
       return <ThinkingStep text={item.text} live={live} />;
     case "assistant":
+      if (!live && !item.text.trim()) return null;
+
       return (
         <article className="group min-w-0">
           <div className="max-w-[640px] text-[13.5px] leading-[1.65] text-ink [overflow-wrap:anywhere]">
@@ -551,11 +546,11 @@ export function Transcript({
       <section
         key={block.item.id}
         aria-label={`Background result: ${block.item.title}`}
-        className="flex min-w-0 flex-col gap-4 rounded-card border border-line bg-surface p-4 shadow-xs"
+        className="flex min-w-0 flex-col gap-2"
       >
         <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />
         {block.blocks.length ? (
-          <div className="flex min-w-0 flex-col gap-4 border-l-2 border-accent-tint pl-3">
+          <div className="ml-2 flex min-w-0 flex-col gap-4 border-l border-line-strong pl-[15px]">
             {block.blocks.map(content)}
           </div>
         ) : null}

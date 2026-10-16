@@ -132,6 +132,26 @@ test("user sees a delegation by its name without internal arguments", () => {
   expect(failed).not.toContain("Sent to background");
 });
 
+test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", (text) => {
+  // Given a tool-only reply before a background dispatch.
+  const items: Item[] = [
+    { kind: "assistant", id: "empty", text },
+    {
+      ...tool("dispatch-1", "done", '{"id":"internal-id"}'),
+      name: "spawn_task",
+      args: { title: "Check logs", goal: "Check the saved logs" },
+    },
+  ];
+
+  // When the finished reply is shown, then only the named dispatch has visible content.
+  const html = renderToStaticMarkup(
+    createElement(Transcript, { items, running: false, retry: () => {}, canRetry: true }),
+  );
+
+  expect(html).toContain("Check logs");
+  expect(html).not.toContain('aria-label="Copy answer"');
+});
+
 test("memory calls read as memory use", () => {
   const memory = "/data/memory";
   const read: ToolItem = { ...tool("t1", "done", ""), name: "read", args: { path: `${memory}/MEMORY.md` } };
