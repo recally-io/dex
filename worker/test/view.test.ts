@@ -471,3 +471,32 @@ it("keeps committed IDs when a snapshot starts after a head boundary", () => {
 	);
 	expect(fresh.items.some((item) => item.kind === "boundary")).toBe(true);
 });
+
+it("keeps the task ID from each completed spawn result with duplicate titles", () => {
+	// Given two successful dispatches with the same title and distinct saved IDs.
+	const records = ["first", "second"].flatMap((taskId, index) => [
+		entry(
+			2 + index * 2,
+			"pi.assistant",
+			assistant(
+				[{ type: "toolCall", id: `call-${index}`, name: "spawn_task", arguments: { title: "Check" } }],
+				"toolUse",
+			),
+		),
+		entry(3 + index * 2, "pi.toolResult", {
+			role: "toolResult",
+			toolCallId: `call-${index}`,
+			toolName: "spawn_task",
+			content: [{ type: "text", text: JSON.stringify({ id: taskId }) }],
+			isError: false,
+			timestamp: 3,
+		}),
+	]);
+	// When a fresh watch renders the calls, each link keeps its own task ID.
+	const event = new ChatView().snapshot(snapshot(records));
+	if (event.type !== "snapshot") throw new Error("expected snapshot");
+	expect(event.items).toMatchObject([
+		{ id: "call-0", taskId: "first" },
+		{ id: "call-1", taskId: "second" },
+	]);
+});

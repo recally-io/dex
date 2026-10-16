@@ -102,6 +102,7 @@ type RecoverTaskStage struct {
 
 // ChatStream is the chat event of a watch: Events holds the ChatEvent objects of api/openapi.yaml
 // from one commit, or End is true when the watch stopped.
+// Completed spawn tools carry taskId. Control adds task IDs and titles to result marks.
 type ChatStream struct {
 	WatchID string           `json:"watchId"`
 	Events  []jsontext.Value `json:"events"`

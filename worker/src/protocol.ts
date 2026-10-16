@@ -144,6 +144,7 @@ export type AbortParams = Static<typeof AbortParams>;
 /**
  * The event of a watch: the chat events of one commit (the first is a snapshot), or `end` when the
  * watch stopped. The chat events are the ChatEvent schema of api/openapi.yaml.
+ * Completed spawn tools carry taskId. Control adds task IDs and titles to result marks.
  */
 export type ChatStreamEvent =
 	| { readonly watchId: string; readonly events: readonly ChatEvent[] }

@@ -37,6 +37,7 @@ export type Item = { entryId?: number } & (
 			output: string;
 			status: "running" | "done" | "error";
 			durationMs?: number;
+			taskId?: string;
 	  }
 	| { kind: "assistant"; id: string; text: string; model?: string; usage?: { input: number; output: number } }
 	| { kind: "error"; id: string; reason: string; aborted?: boolean }
@@ -368,6 +369,8 @@ function toolItem(
 ): Item {
 	if (result !== undefined) {
 		const output = result.content.map((part) => (part.type === "text" ? part.text : "[image]")).join("");
+		const task: { id: string } | undefined =
+			name === "spawn_task" && !result.isError ? JSON.parse(output) : undefined;
 		return {
 			kind: "tool",
 			id,
@@ -376,6 +379,7 @@ function toolItem(
 			output,
 			status: result.isError ? "error" : "done",
 			...(result.durationMs === undefined ? {} : { durationMs: result.durationMs }),
+			...(task === undefined ? {} : { taskId: task.id }),
 		};
 	}
 	if (slot !== undefined && slot.status === "running") {
