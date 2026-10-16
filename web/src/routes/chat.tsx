@@ -299,7 +299,7 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
         }
         files={files}
         running={running}
-        stoppable={running || active > 0 || queued.length > 0}
+        stoppable={running || active > 0 || items.some((item) => item.kind === "user" && item.queued)}
         pending={pending}
         disabledReason={reason}
         placeholder={`Message ${settings.agent.name}`}

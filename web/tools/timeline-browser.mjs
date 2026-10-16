@@ -133,10 +133,38 @@ try {
   await shot("01-empty");
   const main = await api("/api/chats/main");
   await model("echo");
-  await call("Page.reload");
+  await reload();
   await ui("composer ready", "!!document.querySelector('textarea:not(:disabled)')");
+
+  // Given durable input waiting for admission, a reload must keep Stop available.
+  await poll("maintenance holds admission", async () => {
+    const response = await fetch(`${base}/api/maintenance`, { method: "POST" });
+
+    return response.ok;
+  });
+  await sendFromComposer("queued before Stop");
+  await poll("input is queued", async () => (await api(`/api/chats/${main.id}`)).busy);
+  await reload();
+  await ui("queued input after reload", "document.body.innerText.includes('queued before Stop')");
+  await check(
+    "queued input keeps Stop after a reload",
+    "!!document.querySelector('button[aria-label=\"Stop run\"]')",
+  );
+  await evaluate("document.querySelector('button[aria-label=\"Stop run\"]').click()");
+  await poll("queued input stopped", async () => !(await api(`/api/chats/${main.id}`)).busy);
+  await ui(
+    "queued input withdrawn",
+    "document.body.innerText.includes('Stop requested. Earlier actions are not undone. Processes and remote work may continue.')",
+  );
+  await api("/api/maintenance", undefined, "DELETE");
+
   await sendFromComposer("first input");
   await ui("first answer", "document.body.innerText.includes('echo: first input')");
+  assert.equal(
+    await evaluate("document.body.innerText.includes('echo: queued before Stop')"),
+    false,
+    "withdrawn input must not run after release",
+  );
   await ui(
     "clear visible",
     "!![...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Clear context')",
@@ -174,7 +202,7 @@ try {
     "!!document.querySelector('[role=separator]') && ![...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Clear context')",
   );
   results.push("server 409 note, stable reset ID, idle clear, divider, hidden Clear after reset");
-  await call("Page.reload");
+  await reload();
   await ui(
     "fresh history boundary",
     "document.body.innerText.includes('Show earlier messages') && !document.body.innerText.includes('first input')",
@@ -380,6 +408,15 @@ async function check(label, expression) {
 async function visit(path) {
   await call("Page.navigate", { url: base + path });
   await ui("page ready", "document.readyState === 'complete' && !!document.querySelector('main')");
+}
+
+async function reload() {
+  const previous = await evaluate("performance.timeOrigin");
+  await call("Page.reload");
+  await ui(
+    "reload complete",
+    `performance.timeOrigin !== ${previous} && document.readyState === 'complete' && !!document.querySelector('main')`,
+  );
 }
 
 async function viewport(width, height) {
