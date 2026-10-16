@@ -5,7 +5,9 @@ export type ChatState = { items: Item[]; running: boolean; retry?: Retry };
 export const emptyChatState: ChatState = { items: [], running: false };
 
 export function retryMessage(items: Item[], index: number) {
-  return items.slice(0, index).findLast((item) => item.kind === "user");
+  const input = items.slice(0, index).findLast((item) => item.kind === "user" || item.kind === "task");
+
+  return input?.kind === "user" ? input : undefined;
 }
 
 export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
@@ -15,13 +17,23 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
     case "item": {
       const index = state.items.findIndex((item) => item.id === event.item.id);
 
-      return {
-        ...state,
-        items:
-          index < 0
-            ? [...state.items, event.item]
-            : state.items.map((item, i) => (i === index ? event.item : item)),
-      };
+      const queued = state.items.findIndex((item) => item.kind === "user" && item.queued);
+
+      if (index >= 0) {
+        const items = state.items.map((item, i) => (i === index ? event.item : item));
+
+        if (event.item.kind === "user" && !event.item.queued && queued >= 0 && index > queued)
+          items.splice(queued, 0, ...items.splice(index, 1));
+
+        return { ...state, items };
+      }
+
+      const at =
+        !(event.item.kind === "user" && event.item.queued) && queued >= 0 ? queued : state.items.length;
+
+      const items = state.items.toSpliced(at, 0, event.item);
+
+      return { ...state, items };
     }
 
     case "append":

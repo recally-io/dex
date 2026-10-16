@@ -34,10 +34,10 @@ import { queryClient, refreshChats } from "../lib/queries";
 import { chatModel, saveChatSettings, thinkingNames } from "../lib/agent";
 import { useAttachments } from "../lib/attachments";
 import { useApp } from "../lib/app-state";
-import { blocks, describeTool, touchesMemory } from "../lib/tools";
+import { describeTool, touchesMemory } from "../lib/tools";
 import { Composer } from "../components/composer";
 import { ChatControls, chatModelOverride, type SaveChatSettings } from "../components/chat-settings";
-import { RetryNotice, ToolStep, TranscriptItem, type ToolFocus } from "../components/agent/transcript";
+import { RetryNotice, Transcript, type ToolFocus } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
 import { FramedPage, MainPane, MenuButton, Note, Panel, Section } from "../components/page";
@@ -760,8 +760,6 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     </>
   );
 
-  const live = (index: number) => running && index === state.items.length - 1;
-
   const transcript =
     chatId && chat.isPending ? (
       <div className="flex h-60 items-center justify-center">
@@ -804,19 +802,14 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
             </div>
           </div>
         ) : null}
-        {blocks(items).map((block) =>
-          block.kind === "tools" ? (
-            <ToolStep key={block.key} tools={block.tools} memory={memory} focus={focus} />
-          ) : (
-            <TranscriptItem
-              key={block.item.id}
-              item={block.item}
-              live={live(block.index)}
-              retry={() => retryText(block.index)}
-              canRetry={!reason && !pending && retryMessage(state.items, block.index) !== undefined}
-            />
-          ),
-        )}
+        <Transcript
+          items={items}
+          running={running}
+          retry={retryText}
+          canRetry={!reason && !pending}
+          memory={memory}
+          focus={focus}
+        />
         {state.retry ? <RetryNotice retry={state.retry} /> : null}
         {running &&
         !state.retry &&

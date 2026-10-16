@@ -282,15 +282,19 @@ set active executions to `cancelled`. Worker loss sets running executions to
 saved report stay unchanged when a late worker event arrives.
 
 Control passes a trusted submission kind to the worker. The worker stores
-internal results as a separate entry kind and excludes them from the public
-transcript. Control's pending user projection selects only `kind='message'`.
+internal results as a separate entry kind. The public transcript replaces
+that input with a `task` mark that contains no report text. `live.Hub` uses
+the mark's submission ID and chat to read the work's title from control.
+The web groups output after that mark until the next user or task item.
+A failed result reply cannot retry the user message before the mark.
+Control's pending user projection selects only `kind='message'`.
 Neither layer uses message text or an ID pattern to hide results. Ordinary
 user JSON still appears and can use the normal Retry action. Hidden execution
 chats remain absent from public chat lists, chat reads, and dream inputs.
 Dream input selects only ordinary messages, so internal results in a main chat
 cannot enter memory as user text.
-There are no public task endpoints, task streams, task cards, or task commands.
-The normal main-chat SSE stream remains available.
+There are no public task endpoints, separate task streams, or task commands.
+The normal main-chat SSE stream carries the marks and replies.
 
 Result delivery uses the existing submission lifecycle. A provider failure
 leaves the result unanswered. Control never changes a settled submission back
@@ -385,7 +389,11 @@ browser ──EventSource──▶ control  GET /api/chats/{id}/events
 - [`live.Hub`](../../internal/live/live.go) adds the messages that only
   `control.sqlite` has: a `pending` message that the worker has not placed yet
   (a queued user item), and an `unanswered` message that the worker never
-  placed (a user item and an error item).
+  placed (a user item and an error item). It also adds the title to each task
+  mark from the matching result submission. The hub places unanswered messages
+  before the next newer user or task item. It then appends queued messages in
+  receipt order, after all current worker output. The browser inserts new output
+  before those queued messages until the worker places them.
 - The worker's reader never waits for a stream. A stream that is 256 inputs
   behind is closed, and the browser reconnects.
 - A stream sends a comment line every 15 s.

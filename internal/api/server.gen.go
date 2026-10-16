@@ -250,6 +250,21 @@ func (e SnapshotEventType) Valid() bool {
 	}
 }
 
+// Defines values for TaskItemKind.
+const (
+	Task TaskItemKind = "task"
+)
+
+// Valid indicates whether the value is a known member of the TaskItemKind enum.
+func (e TaskItemKind) Valid() bool {
+	switch e {
+	case Task:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ThinkingItemKind.
 const (
 	Thinking ThinkingItemKind = "thinking"
@@ -748,6 +763,17 @@ type SnapshotEvent struct {
 // SnapshotEventType defines model for SnapshotEvent.Type.
 type SnapshotEventType string
 
+// TaskItem Marks a background result. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
+type TaskItem struct {
+	At    *int64       `json:"at,omitempty"`
+	Id    string       `json:"id"`
+	Kind  TaskItemKind `json:"kind"`
+	Title string       `json:"title"`
+}
+
+// TaskItemKind defines model for TaskItem.Kind.
+type TaskItemKind string
+
 // Telegram defines model for Telegram.
 type Telegram struct {
 	AllowedUsers []int64       `json:"allowedUsers"`
@@ -1095,6 +1121,40 @@ func (t *Item) MergeUserItem(v UserItem) error {
 	return err
 }
 
+// AsTaskItem returns the union data inside the Item as a TaskItem
+func (t Item) AsTaskItem() (TaskItem, error) {
+	var body TaskItem
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTaskItem overwrites any union data inside the Item as the provided TaskItem
+func (t *Item) FromTaskItem(v TaskItem) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"task"}`))
+	t.union = b
+	return err
+}
+
+// MergeTaskItem performs a merge with any union data inside the Item, using the provided TaskItem
+func (t *Item) MergeTaskItem(v TaskItem) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"task"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 // AsThinkingItem returns the union data inside the Item as a ThinkingItem
 func (t Item) AsThinkingItem() (ThinkingItem, error) {
 	var body ThinkingItem
@@ -1249,6 +1309,8 @@ func (t Item) ValueByDiscriminator() (interface{}, error) {
 		return t.AsAssistantItem()
 	case "error":
 		return t.AsErrorItem()
+	case "task":
+		return t.AsTaskItem()
 	case "thinking":
 		return t.AsThinkingItem()
 	case "tool":

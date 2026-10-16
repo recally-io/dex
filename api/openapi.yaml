@@ -914,6 +914,7 @@ components:
     Item:
       oneOf:
         - $ref: "#/components/schemas/UserItem"
+        - $ref: "#/components/schemas/TaskItem"
         - $ref: "#/components/schemas/ThinkingItem"
         - $ref: "#/components/schemas/ToolItem"
         - $ref: "#/components/schemas/AssistantItem"
@@ -922,6 +923,7 @@ components:
         propertyName: kind
         mapping:
           user: "#/components/schemas/UserItem"
+          task: "#/components/schemas/TaskItem"
           thinking: "#/components/schemas/ThinkingItem"
           tool: "#/components/schemas/ToolItem"
           assistant: "#/components/schemas/AssistantItem"
@@ -941,6 +943,19 @@ components:
         attachments:
           type: array
           items: { $ref: "#/components/schemas/Attachment" }
+
+    TaskItem:
+      type: object
+      description: >-
+        Marks a background result. Items after this mark belong to the result
+        until the next user or task item. The mark does not confirm that the
+        work reached its goal.
+      required: [kind, id, title]
+      properties:
+        kind: { type: string, enum: [task] }
+        id: { type: string }
+        at: { type: integer, format: int64 }
+        title: { type: string }
 
     ThinkingItem:
       type: object

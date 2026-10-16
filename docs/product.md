@@ -79,7 +79,18 @@ to read in an afternoon.
 - Timers: scheduled messages to an agent.
 
 The main chat shows the user's messages and the main agent's answers.
-Internal reports, IDs, and execution states have no task page or task cards.
+The web chat marks a delegation with the work's title. A returned result has
+a named label and a thin line that groups its replies and tool calls. The mark
+shows where the report belongs; it does not confirm that the work reached its goal.
+The chat does not show the internal report as input or add task controls,
+a task page, or live execution progress.
+The main agent names the work in one brief delegation confirmation, then
+returns to the user without polling for the result. When a report returns,
+the reply first names that work and gives its outcome. If work failed or
+remains incomplete, the reply states that outcome, the blocker, and what
+remains. If the user has changed topics, the reply gives a brief update about
+the earlier work. Channel replies also name the work because channels do not
+show the web result group.
 The main agent checks saved execution records before it reports progress or
 starts follow-up work. The built-in coding skill requires a repository path,
 project rules, independent review, tests of the final revision, and evidence.

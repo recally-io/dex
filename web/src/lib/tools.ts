@@ -2,20 +2,35 @@
 /* eslint-disable anti-slop/no-runtime-typeof */
 import type { Item, ToolItem } from "../api/generated/types.gen";
 
-export type Block =
+export type ContentBlock =
   | { kind: "tools"; tools: ToolItem[]; key: string }
-  | { kind: "item"; item: Exclude<Item, { kind: "tool" }>; index: number };
+  | { kind: "item"; item: Exclude<Item, { kind: "tool" | "task" }>; index: number };
 
-// Consecutive tool calls become one step. Other items keep their index in the transcript.
+type TaskBlock = { kind: "task"; item: Extract<Item, { kind: "task" }>; blocks: ContentBlock[] };
+
+export type Block = ContentBlock | TaskBlock;
+
+// A result owns the items up to the next input. Keep original indices for Retry and streaming.
 export function blocks(items: Item[]): Block[] {
   const out: Block[] = [];
+  let task: TaskBlock | undefined;
 
   items.forEach((item, index) => {
-    const last = out.at(-1);
+    if (item.kind === "task") {
+      task = { kind: "task", item, blocks: [] };
+      out.push(task);
 
-    if (item.kind !== "tool") out.push({ kind: "item", item, index });
-    else if (last?.kind === "tools") last.tools.push(item);
-    else out.push({ kind: "tools", tools: [item], key: item.id });
+      return;
+    }
+
+    if (item.kind === "user") task = undefined;
+    const target = task?.blocks ?? out;
+    const last = target.at(-1);
+
+    if (item.kind !== "tool") target.push({ kind: "item", item, index });
+    else if (last?.kind === "tools" && item.name !== "spawn_task" && last.tools[0].name !== "spawn_task")
+      last.tools.push(item);
+    else target.push({ kind: "tools", tools: [item], key: item.id });
   });
 
   return out;
@@ -41,6 +56,17 @@ export function touchesMemory(tool: ToolItem, memory?: string) {
 // The verb and the main argument of a step row. dex sends only the tool name and its arguments.
 export function describeTool(tool: ToolItem, memory?: string) {
   const path = arg(tool, "path");
+
+  if (tool.name === "spawn_task")
+    return {
+      verb:
+        tool.status === "running"
+          ? "Sending to background"
+          : tool.status === "error"
+            ? "Could not send to background"
+            : "Sent to background",
+      target: arg(tool, "title"),
+    };
 
   if (tool.name === "bash") {
     const command = arg(tool, "command");

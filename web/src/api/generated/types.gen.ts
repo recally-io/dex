@@ -189,6 +189,8 @@ export type AutomationRunList = {
 export type Item = ({
     kind: 'user';
 } & UserItem) | ({
+    kind: 'task';
+} & TaskItem) | ({
     kind: 'thinking';
 } & ThinkingItem) | ({
     kind: 'tool';
@@ -208,6 +210,16 @@ export type UserItem = {
      */
     queued?: boolean;
     attachments?: Array<Attachment>;
+};
+
+/**
+ * Marks a background result. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
+ */
+export type TaskItem = {
+    kind: 'task';
+    id: string;
+    at?: number;
+    title: string;
 };
 
 export type ThinkingItem = {
