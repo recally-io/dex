@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acquireMaintenance, beginFeishu, beginWechatLogin, clearContext, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, getAutomation, getChat, getChatHistory, getExtensions, getFeishu, getHealth, getMainChat, getSettings, getTask, getUpload, listAutomationRuns, listAutomations, listChats, listModels, listTasks, type Options, pollFeishu, pollWechatLogin, previewSchedule, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setAgent, setChatSettings, setFeishu, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTaskData, GetTaskError, GetTaskResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, ListTasksData, ListTasksError, ListTasksResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, beginFeishu, beginWechatLogin, clearContext, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, getAutomation, getChat, getChatHistory, getExtensions, getFeishu, getHealth, getMainChat, getSettings, getTask, getUpload, listAutomationRuns, listAutomations, listChats, listModels, type Options, pollFeishu, pollWechatLogin, previewSchedule, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setAgent, setChatSettings, setFeishu, setProvider, setTelegram, updateAutomation } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTaskData, GetTaskError, GetTaskResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
 
 /**
  * Exchanges the access token for the session cookie.
@@ -102,24 +102,6 @@ export const acquireMaintenanceMutation = (options?: Partial<Options<AcquireMain
     return mutationOptions;
 };
 
-export const listTasksQueryKey = (options?: Options<ListTasksData>) => createQueryKey('listTasks', options);
-
-/**
- * Read the default agent's task summaries, newest first. Reports are available in task details. This API has no task controls.
- */
-export const listTasksOptions = (options?: Options<ListTasksData>) => queryOptions<ListTasksResponse, ListTasksError, ListTasksResponse, ReturnType<typeof listTasksQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await listTasks({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: listTasksQueryKey(options)
-});
-
 export const getTaskQueryKey = (options: Options<GetTaskData>) => createQueryKey('getTask', options);
 
 /**
@@ -159,7 +141,8 @@ export const getMainChatOptions = (options?: Options<GetMainChatData>) => queryO
 export const listChatsQueryKey = (options?: Options<ListChatsData>) => createQueryKey('listChats', options);
 
 /**
- * All chats of the default agent, newest activity first.
+ * Session summaries of the default agent, newest activity first, then highest ID first. Excludes main, dreams and Chat sessions with no message. Task summaries have no reports. Transcripts are not included.
+ *
  */
 export const listChatsOptions = (options?: Options<ListChatsData>) => queryOptions<ListChatsResponse, ListChatsError, ListChatsResponse, ReturnType<typeof listChatsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -175,7 +158,7 @@ export const listChatsOptions = (options?: Options<ListChatsData>) => queryOptio
 });
 
 /**
- * Sends a first message to the main timeline. A repeated ID stores nothing. Chat settings are refused. Use GET /api/chats/main to open it.
+ * Opens a separate writable Chat session. Reuses the newest Chat session with no message, or creates one. No request body or model is needed. The first message sets its title. The session uses the bot's settings.
  *
  */
 export const createChatMutation = (options?: Partial<Options<CreateChatData>>): UseMutationOptions<CreateChatResponse, CreateChatError, Options<CreateChatData>> => {
@@ -208,7 +191,7 @@ export const getChatOptions = (options: Options<GetChatData>) => queryOptions<Ge
 });
 
 /**
- * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message. Only automation chats accept overrides. The main timeline uses agent settings.
+ * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message. Only automation chats accept overrides. Main and Chat sessions use agent settings.
  *
  */
 export const setChatSettingsMutation = (options?: Partial<Options<SetChatSettingsData>>): UseMutationOptions<SetChatSettingsResponse, SetChatSettingsError, Options<SetChatSettingsData>> => {
@@ -226,7 +209,7 @@ export const setChatSettingsMutation = (options?: Partial<Options<SetChatSetting
 };
 
 /**
- * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model. Only the main timeline takes messages from the web. Earlier chats are read-only.
+ * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model. Main and Chat sessions take web messages. Task, automation and channel sessions return 403.
  *
  */
 export const sendMessageMutation = (options?: Partial<Options<SendMessageData>>): UseMutationOptions<SendMessageResponse, SendMessageError, Options<SendMessageData>> => {
@@ -244,7 +227,7 @@ export const sendMessageMutation = (options?: Partial<Options<SendMessageData>>)
 };
 
 /**
- * Stores a context reset in the main timeline's delivery queue. A repeated UUID does not reset again. Refuses busy timelines without a change.
+ * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again. Refuses a busy session without a change. Task, automation and channel sessions return 403.
  *
  */
 export const clearContextMutation = (options?: Partial<Options<ClearContextData>>): UseMutationOptions<ClearContextResponse, ClearContextError, Options<ClearContextData>> => {
@@ -341,7 +324,7 @@ export const getChatHistoryInfiniteOptions = (options: Options<GetChatHistoryDat
 };
 
 /**
- * Withdraws queued input and results, then requests cancellation of the main turn and background execution of this chat. Earlier actions are not undone. Processes and remote work may continue. External channel chats are read-only on the web.
+ * Withdraws queued input and results, then requests cancellation of the current turn and background execution of this session. Earlier actions are not undone. Processes and remote work may continue. Task, automation and channel sessions return 403.
  *
  */
 export const abortChatMutation = (options?: Partial<Options<AbortChatData>>): UseMutationOptions<AbortChatResponse, AbortChatError, Options<AbortChatData>> => {

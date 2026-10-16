@@ -552,6 +552,7 @@ type Chat struct {
 
 	// Settings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
 	Settings ChatSettings `json:"settings"`
+	Task     *TaskSummary `json:"task,omitempty"`
 	Title    string       `json:"title"`
 
 	// UpdatedAt Time of the last message.
@@ -573,12 +574,6 @@ type ChatList struct {
 
 // ChatSettings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
 type ChatSettings = chat.Settings
-
-// CreatedChat defines model for CreatedChat.
-type CreatedChat struct {
-	Chat         Chat   `json:"chat"`
-	SubmissionId string `json:"submissionId"`
-}
 
 // Error defines model for Error.
 type Error struct {
@@ -735,21 +730,6 @@ type ModelInput string
 // ModelList defines model for ModelList.
 type ModelList struct {
 	Models []Model `json:"models"`
-}
-
-// NewChat defines model for NewChat.
-type NewChat struct {
-	// Attachments Upload IDs from POST /api/uploads, at most 10.
-	Attachments *[]string `json:"attachments,omitempty"`
-
-	// Id A new UUID from the client. A retried request uses the same ID.
-	Id string `json:"id"`
-
-	// Settings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
-	Settings *ChatSettings `json:"settings,omitempty"`
-
-	// Text 1 to 32000 characters. It can be empty when the message has an attachment.
-	Text string `json:"text"`
 }
 
 // NewSession defines model for NewSession.
@@ -1064,9 +1044,6 @@ type PreviewScheduleJSONRequestBody = ScheduleInput
 
 // UpdateAutomationJSONRequestBody defines body for UpdateAutomation for application/json ContentType.
 type UpdateAutomationJSONRequestBody = AutomationInput
-
-// CreateChatJSONRequestBody defines body for CreateChat for application/json ContentType.
-type CreateChatJSONRequestBody = NewChat
 
 // ClearContextJSONRequestBody defines body for ClearContext for application/json ContentType.
 type ClearContextJSONRequestBody ClearContextJSONBody
@@ -1680,9 +1657,6 @@ type ServerInterface interface {
 
 	// (POST /api/settings/wechat/login/{loginId}/poll)
 	PollWechatLogin(w http.ResponseWriter, r *http.Request, loginId string)
-
-	// (GET /api/tasks)
-	ListTasks(w http.ResponseWriter, r *http.Request)
 
 	// (GET /api/tasks/{taskId})
 	GetTask(w http.ResponseWriter, r *http.Request, taskId string)
@@ -2472,20 +2446,6 @@ func (siw *ServerInterfaceWrapper) PollWechatLogin(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
-// ListTasks operation middleware
-func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListTasks(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetTask operation middleware
 func (siw *ServerInterfaceWrapper) GetTask(w http.ResponseWriter, r *http.Request) {
 
@@ -2676,7 +2636,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/maintenance", wrapper.ReleaseMaintenance)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/maintenance", wrapper.AcquireMaintenance)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks", wrapper.ListTasks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks/{taskId}", wrapper.GetTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats/main", wrapper.GetMainChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chats", wrapper.ListChats)
@@ -3171,51 +3130,22 @@ func (response ListChatsdefaultJSONResponse) VisitListChatsResponse(w http.Respo
 }
 
 type CreateChatRequestObject struct {
-	Body *CreateChatJSONRequestBody
 }
 
 type CreateChatResponseObject interface {
 	VisitCreateChatResponse(w http.ResponseWriter) error
 }
 
-type CreateChat202JSONResponse CreatedChat
+type CreateChat201JSONResponse Chat
 
-func (response CreateChat202JSONResponse) VisitCreateChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(202)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateChat400JSONResponse struct{ ErrorJSONResponse }
-
-func (response CreateChat400JSONResponse) VisitCreateChatResponse(w http.ResponseWriter) error {
+func (response CreateChat201JSONResponse) VisitCreateChatResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateChat409JSONResponse Error
-
-func (response CreateChat409JSONResponse) VisitCreateChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
+	w.WriteHeader(201)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3350,7 +3280,21 @@ func (response AbortChat200JSONResponse) VisitAbortChatResponse(w http.ResponseW
 	return err
 }
 
-type AbortChat404JSONResponse struct{ ErrorJSONResponse }
+type AbortChat403JSONResponse struct{ ErrorJSONResponse }
+
+func (response AbortChat403JSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AbortChat404JSONResponse Error
 
 func (response AbortChat404JSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
 
@@ -4746,46 +4690,6 @@ func (response PollWechatLogindefaultJSONResponse) VisitPollWechatLoginResponse(
 	return err
 }
 
-type ListTasksRequestObject struct {
-}
-
-type ListTasksResponseObject interface {
-	VisitListTasksResponse(w http.ResponseWriter) error
-}
-
-type ListTasks200JSONResponse struct {
-	Tasks []TaskSummary `json:"tasks"`
-}
-
-func (response ListTasks200JSONResponse) VisitListTasksResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListTasksdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ListTasksdefaultJSONResponse) VisitListTasksResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetTaskRequestObject struct {
 	TaskId string `json:"taskId"`
 }
@@ -5101,9 +5005,6 @@ type StrictServerInterface interface {
 	// (POST /api/settings/wechat/login/{loginId}/poll)
 	PollWechatLogin(ctx context.Context, request PollWechatLoginRequestObject) (PollWechatLoginResponseObject, error)
 
-	// (GET /api/tasks)
-	ListTasks(ctx context.Context, request ListTasksRequestObject) (ListTasksResponseObject, error)
-
 	// (GET /api/tasks/{taskId})
 	GetTask(ctx context.Context, request GetTaskRequestObject) (GetTaskResponseObject, error)
 
@@ -5403,13 +5304,6 @@ func (sh *strictHandler) ListChats(w http.ResponseWriter, r *http.Request) {
 // CreateChat operation middleware
 func (sh *strictHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
 	var request CreateChatRequestObject
-
-	var body CreateChatJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.CreateChat(ctx, request.(CreateChatRequestObject))
@@ -6245,30 +6139,6 @@ func (sh *strictHandler) PollWechatLogin(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PollWechatLoginResponseObject); ok {
 		if err := validResponse.VisitPollWechatLoginResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListTasks operation middleware
-func (sh *strictHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
-	var request ListTasksRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListTasks(ctx, request.(ListTasksRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListTasks")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListTasksResponseObject); ok {
-		if err := validResponse.VisitListTasksResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

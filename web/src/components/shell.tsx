@@ -172,7 +172,7 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
   const name = settings.data?.agent.name ?? "dex";
   const [a] = path.split("/").filter(Boolean);
   const providerErrors = settings.data?.providers.filter((p) => p.error).length ?? 0;
-  const botCurrent = path === "/" || a === "tasks";
+  const botCurrent = path === "/";
   const settingsCurrent = a === "agent" || a === "channels" || a === "automations";
 
   return (

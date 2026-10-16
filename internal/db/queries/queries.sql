@@ -16,6 +16,25 @@ VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
 RETURNING *;
 
+-- name: EnsureEmptyChat :one
+-- One write statement serializes concurrent opens and first-message admission.
+INSERT INTO conversations (agent_id, channel_key, title, created_at)
+VALUES (
+    @agent_id,
+    coalesce((
+        SELECT c.channel_key FROM conversations c
+        WHERE c.agent_id = @agent_id AND c.channel_key LIKE 'chat:%'
+            AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message')
+        ORDER BY c.created_at DESC, c.id DESC LIMIT 1
+    ), @channel_key),
+    '', @created_at
+)
+ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
+RETURNING *;
+
+-- name: SetFirstChatTitle :exec
+UPDATE conversations SET title = ? WHERE id = ? AND title = '';
+
 -- name: GetConversation :one
 SELECT * FROM conversations WHERE id = ?;
 
@@ -78,7 +97,10 @@ SELECT
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'task:%'
+WHERE c.agent_id = ? AND c.channel_key != 'main' AND c.channel_key NOT LIKE 'dream:%'
+    AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
+        SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
+    ))
 GROUP BY c.id
 ORDER BY updated_at DESC, c.id DESC;
 

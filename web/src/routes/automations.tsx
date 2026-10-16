@@ -28,7 +28,7 @@ const runTone = { done: "green", failed: "red", skipped: "neutral", running: "or
 const runLabel = { done: "Done", failed: "Failed", skipped: "Skipped", running: "Running" } as const;
 
 function sessionText(automation: Automation) {
-  return automation.session === "new" ? "New chat each run" : "One chat";
+  return automation.session === "new" ? "New session each run" : "One session";
 }
 
 function nextText(automation: Automation) {
@@ -170,7 +170,7 @@ function RunRow({ run, timeZone, now }: { run: AutomationRun; timeZone: string; 
             params={{ chatId: String(run.chatId) }}
             className="text-[12px] font-medium text-accent-ink hover:underline"
           >
-            Open chat
+            Open session
           </Link>
         ) : null}
       </span>
@@ -288,7 +288,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
                   params={{ chatId: String(latestRun.chatId) }}
                   className="font-medium text-accent-ink hover:underline"
                 >
-                  Open chat
+                  Open session
                 </Link>
               ) : null}
               {latestRun.reason ? (
@@ -312,8 +312,8 @@ export function AutomationPage({ automationId }: { automationId: string }) {
               ["Repeats", scheduleText(data.schedule, data.timeZone)],
               ["Time zone", <Mono key="tz">{data.timeZone}</Mono>],
               [
-                "Chat for each run",
-                data.session === "reuse" ? "One chat for this automation" : "New chat each run",
+                "Session for each run",
+                data.session === "reuse" ? "One session for this automation" : "New session each run",
               ],
               [
                 "Next runs",
@@ -372,7 +372,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
           </Panel>
         )}
       </Section>
-      <Section n={4} title="Delete" caption="The chats of past runs stay.">
+      <Section n={4} title="Delete" caption="The sessions of past runs stay.">
         <Button
           size="sm"
           variant="secondary"
@@ -390,7 +390,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
         <Confirm
           title="Delete automation?"
           confirmLabel="Delete"
-          description="This deletes the automation and its run history. Its chats stay available."
+          description="This deletes the automation and its run history. Its sessions stay available."
           pending={remove.isPending}
           error={remove.error}
           onCancel={() => setConfirm(false)}

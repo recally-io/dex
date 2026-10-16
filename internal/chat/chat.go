@@ -207,14 +207,22 @@ func (s *Service) SubmitMessage(ctx context.Context, agentID, channelKey, source
 }
 
 func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey string, m Message) (int64, error) {
+	// Sample time before taking the writer. Delivery follows insertion order.
+	createdAt, submittedAt := s.now().UnixMilli(), s.now().UnixMilli()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := s.q.WithTx(tx)
 	chatTitle := cmp.Or(m.Title, title(m.Content))
 	if chatTitle == "" && len(m.Attachments) > 0 {
 		chatTitle = title(m.Attachments[0].Name)
 	}
-	conv, err := s.q.EnsureConversation(ctx, sqlc.EnsureConversationParams{
+	conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{
 		AgentID: agentID, ChannelKey: channelKey, Title: chatTitle,
 		ModelProvider: m.Settings.Provider, ModelID: m.Settings.ModelID, ThinkingLevel: m.Settings.ThinkingLevel,
-		CreatedAt: s.now().UnixMilli(),
+		CreatedAt: createdAt,
 	})
 	if err != nil {
 		return 0, err
@@ -223,7 +231,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey st
 	if err != nil {
 		return 0, err
 	}
-	created, err := s.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
+	created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 		ID:             m.ID,
 		ConversationID: conv.ID,
 		Content:        m.Content,
@@ -231,9 +239,17 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey st
 		SourceKey:      sql.NullString{String: sourceKey, Valid: sourceKey != ""},
 		Origin:         inputOrigin(channelKey),
 		Kind:           "message",
-		CreatedAt:      s.now().UnixMilli(),
+		CreatedAt:      submittedAt,
 	})
 	if err != nil {
+		return 0, err
+	}
+	if created > 0 && strings.HasPrefix(channelKey, ChatPrefix) {
+		if err := q.SetFirstChatTitle(ctx, sqlc.SetFirstChatTitleParams{ID: conv.ID, Title: chatTitle}); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 	if created == 0 {

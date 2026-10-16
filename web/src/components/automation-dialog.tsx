@@ -250,10 +250,10 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             )}
           </Field>
           <Field
-            label="Chat for each run"
+            label="Session for each run"
             hint={
               session === "reuse"
-                ? "The agent sees earlier runs. The chat grows with each run. When the chat is busy, the run is skipped."
+                ? "The agent sees earlier runs. The session grows with each run. When the session is busy, the run is skipped."
                 : "Each run starts fresh."
             }
           >
@@ -264,8 +264,8 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
                 value={session}
                 onChange={(e) => setSession(e.target.value === "reuse" ? "reuse" : "new")}
               >
-                <option value="new">New chat each run</option>
-                <option value="reuse">One chat for this automation</option>
+                <option value="new">New session each run</option>
+                <option value="reuse">One session for this automation</option>
               </Select>
             )}
           </Field>

@@ -53,6 +53,7 @@ let chrome;
 let socket;
 const results = [];
 const clears = [];
+const aborts = [];
 const exceptions = [];
 const taskReads = new Map();
 const noticeLayouts = [];
@@ -68,6 +69,8 @@ try {
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-background-networking",
+      // Each visit must close the previous document's SSE connection.
+      "--disable-features=BackForwardCache",
       "--remote-debugging-port=0",
       `--user-data-dir=${profile}`,
       "about:blank",
@@ -110,10 +113,17 @@ try {
 
       if (request.url.endsWith("/clear"))
         clears.push({ request: JSON.parse(request.postData), requestId: event.params.requestId });
+
+      if (request.url.endsWith("/abort"))
+        aborts.push({ url: request.url, requestId: event.params.requestId });
     } else if (event.method === "Network.responseReceived") {
       const clear = clears.find((entry) => entry.requestId === event.params.requestId);
 
       if (clear) clear.status = event.params.response.status;
+
+      const abort = aborts.find((entry) => entry.requestId === event.params.requestId);
+
+      if (abort) abort.status = event.params.response.status;
     }
   });
   await call("Page.enable");
@@ -140,7 +150,34 @@ try {
     "!!document.querySelector('textarea[aria-label=\"Message Dex\"]') && ![...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Clear context')",
   );
   await shot("01-empty");
+  await check(
+    "main opens Sessions without a New session action",
+    "!!document.querySelector('a[href=\"/sessions\"]') && ![...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'New session')",
+  );
   const main = await api("/api/chats/main");
+  await visit("/sessions");
+  await ui("empty Sessions", "document.body.innerText.includes('No sessions yet')");
+  await check(
+    "empty Sessions hides the filter and activity caption",
+    "!document.querySelector('select[aria-label=\"Kind\"]') && !document.body.innerText.includes('active · newest first')",
+  );
+  await click("New session");
+  await ui(
+    "new Chat session",
+    "location.pathname.startsWith('/c/') && document.body.innerText.includes('This session has its own context. It does not see the main timeline.')",
+  );
+  const emptySession = Number((await evaluate("location.pathname")).split("/").at(-1));
+  assert.notEqual(emptySession, main.id);
+  await check(
+    "new Chat has its crumb, title, kind and composer before choosing a model",
+    "!!document.querySelector('header a[href=\"/sessions\"]') && document.querySelector('#page-title').textContent === 'New session' && document.querySelector('header').innerText.includes('Chat') && !!document.querySelector('textarea')",
+  );
+  await visit("/sessions");
+  await ui("abandoned empty Chat stays hidden", "document.body.innerText.includes('No sessions yet')");
+  await click("New session");
+  await ui("empty Chat reused", `location.pathname === '/c/${emptySession}'`);
+  results.push("New session opens and reuses an empty Chat without showing an empty list row");
+  await visit("/");
   await model("echo");
   await reload();
   await ui("composer ready", "!!document.querySelector('textarea:not(:disabled)')");
@@ -305,7 +342,7 @@ try {
   await send(JSON.stringify({ title: "Check", goal: "saved report", provider: "faux", modelId: "echo" }));
 
   const done = await poll("completed task", async () =>
-    (await api("/api/tasks")).tasks.find((task) => task.status === "done"),
+    (await sessionTasks()).find((task) => task.status === "done"),
   );
 
   await ui(
@@ -323,7 +360,7 @@ try {
   );
 
   const running = await poll("running task", async () =>
-    (await api("/api/tasks")).tasks.find((task) => task.status === "running"),
+    (await sessionTasks()).find((task) => task.status === "running"),
   );
 
   assert.notEqual(done.id, running.id);
@@ -335,7 +372,7 @@ try {
   await visit("/tasks");
   await ui("tasks list", `!!document.querySelector('a[href="/tasks/${running.id}"]')`);
   await check(
-    "running task comes before completed task with the same title",
+    "session rows keep newest activity first for same-title tasks",
     `(() => { const links = [...document.querySelectorAll('main a[href^="/tasks/"]')]; return links.length === 2 && links[0].getAttribute('href') === '/tasks/${running.id}' && links[1].getAttribute('href') === '/tasks/${done.id}'; })()`,
   );
   await shot("04-tasks");
@@ -354,8 +391,11 @@ try {
   results.push("running task detail keeps polling");
   await shot("05-task-work");
   await visit("/");
-  await ui("stop background work", "!!document.querySelector('button[aria-label=\"Stop run\"]')");
-  await evaluate("document.querySelector('button[aria-label=\"Stop run\"]').click()");
+  await ui(
+    "stop background work",
+    "!!document.querySelector('button[aria-label=\"Stop run\"]:not(:disabled)')",
+  );
+  await tap('button[aria-label="Stop run"]');
   await poll(
     "background cancellation",
     async () => (await api(`/api/tasks/${running.id}`)).status === "cancelled",
@@ -415,20 +455,243 @@ try {
   }
 
   const channelTask = await poll("channel task running", async () =>
-    (await api("/api/tasks")).tasks.find((task) => task.status === "running"),
+    (await sessionTasks()).find((task) => task.status === "running"),
   );
 
   await visit("/");
   await ui("channel work in bot badge", "!!document.querySelector('[aria-label=\"1 active\"]')");
   await ui("main stream ready", "!!document.querySelector('textarea:not(:disabled)')");
   await check(
-    "channel work counts in Tasks but cannot enable main Stop",
+    "channel work counts in Sessions but cannot enable main Stop",
     "!document.querySelector('button[aria-label=\"Stop run\"]')",
   );
   await writeFile(channelGate, "release");
   await poll(
     "channel work completed",
     async () => (await api(`/api/tasks/${channelTask.id}`)).status === "done",
+  );
+
+  // Sessions shares one list for real automation, channel, task and Chat contexts.
+  await visit("/sessions");
+  await ui("Sessions kind filter", "!!document.querySelector('select[aria-label=\"Kind\"]')");
+  await selectKind("Chat");
+  await ui(
+    "empty kind filter",
+    "document.body.innerText.includes('No sessions of this kind') && document.body.innerText.includes('Choose All kinds to see every session.') && document.body.innerText.includes('0 active · newest first')",
+  );
+  results.push("an empty kind filter keeps its selector and shows the accepted empty copy");
+  await model("echo");
+
+  const automation = await api("/api/automations", {
+    name: "Daily review",
+    prompt: "review the session checks",
+    session: "new",
+    enabled: true,
+    timeZone: "Asia/Shanghai",
+    schedule: { kind: "every", minutes: 60 },
+  });
+
+  const automationRun = await api(`/api/automations/${automation.id}/run`, undefined, "POST");
+  await poll(
+    "automation session settled",
+    async () => !(await api(`/api/chats/${automationRun.chatId}`)).busy,
+  );
+  await model("context");
+  await visit(`/c/${emptySession}`);
+  await ui("Chat composer ready", "!!document.querySelector('textarea:not(:disabled)')");
+  await sendFromComposer("Plan a separate session");
+  await ui(
+    "Chat gets its own model context",
+    "document.body.innerText.includes('context: [\"Plan a separate session\"]')",
+  );
+  await ui(
+    "first input names the Chat",
+    "document.querySelector('#page-title').textContent === 'Plan a separate session'",
+  );
+  await check(
+    "Chat does not highlight main in the sidebar",
+    '!document.querySelector(\'aside a[href="/"][aria-current="page"]\')',
+  );
+  await click("Clear context");
+  await ui("Chat reset divider", "!!document.querySelector('[role=separator]')");
+  await reload();
+  await ui("Chat history is available", "document.body.innerText.includes('Show earlier messages')");
+  await click("Show earlier messages");
+  await ui(
+    "Chat history loaded",
+    "document.body.innerText.includes('context: [\"Plan a separate session\"]')",
+  );
+  await sendFromComposer("Fresh Chat context");
+  await ui(
+    "Chat clear resets only its model context",
+    "document.body.innerText.includes('context: [\"Fresh Chat context\"]')",
+  );
+  await visit("/");
+  await ui("main stream ready after Chat clear", "!!document.querySelector('textarea:not(:disabled)')");
+  await check(
+    "Chat input and reset do not enter main",
+    "!document.body.innerText.includes('Plan a separate session') && !document.body.innerText.includes('Fresh Chat context') && document.body.innerText.includes('after clear')",
+  );
+
+  await model("spawn");
+  await visit(`/c/${emptySession}`);
+  const sessionTaskGate = join(isolated, "session-task.gate");
+  await sendFromComposer(
+    JSON.stringify({
+      title: "Session audit",
+      goal: `while ! test -f '${sessionTaskGate}'; do sleep 0.05; done; echo session-report`,
+      provider: "faux",
+      modelId: "bash",
+    }),
+  );
+
+  const sessionTask = await poll("Chat background work", async () =>
+    (await sessionTasks()).find((task) => task.title === "Session audit" && task.status === "running"),
+  );
+
+  assert.equal(sessionTask.parentConversationId, emptySession);
+  await poll("Chat dispatch reply settled", async () => !(await api(`/api/chats/${emptySession}`)).busy);
+  await visit("/");
+  await ui("Chat task in main badge", "!!document.querySelector('[aria-label=\"1 active\"]')");
+  await ui("main composer ready", "!!document.querySelector('textarea:not(:disabled)')");
+  await check(
+    "Chat background work cannot enable main Stop",
+    "!document.querySelector('button[aria-label=\"Stop run\"]')",
+  );
+  await model("bash");
+  await visit(`/c/${emptySession}`);
+  await ui(
+    "Chat Stop covers its own background work",
+    "!!document.querySelector('button[aria-label=\"Stop run\"]')",
+  );
+  const sessionTurnGate = join(isolated, "session-turn.gate");
+  await sendFromComposer(
+    `while ! test -f '${sessionTurnGate}'; do sleep 0.05; done; echo session-turn-released`,
+  );
+  await poll("Chat turn is busy", async () => (await api(`/api/chats/${emptySession}`)).busy);
+
+  const allSessions = (await api("/api/chats")).chats;
+  assert.ok(
+    allSessions.every((chat) => !chat.main && !("report" in (chat.task ?? {})) && !("items" in chat)),
+  );
+  await visit("/tasks");
+  await ui(
+    "old Tasks address redirects to Sessions",
+    "location.pathname === '/sessions' && !!document.querySelector('select[aria-label=\"Kind\"]')",
+  );
+  await ui(
+    "busy Chat and task count once each",
+    "document.body.innerText.includes('2 active · newest first')",
+  );
+  const targets = allSessions.map((chat) => (chat.task ? `/tasks/${chat.task.id}` : `/c/${chat.id}`));
+  assert.deepEqual(
+    await evaluate("[...document.querySelectorAll('main li a')].map(a => a.getAttribute('href'))"),
+    targets,
+    "Sessions keeps the server's activity order",
+  );
+
+  for (const [kind, active, count] of [
+    ["Chat", 1, 1],
+    ["Task", 1, 4],
+    ["Automation", 0, 1],
+    ["Channel", 0, 1],
+    ["All kinds", 2, allSessions.length],
+  ]) {
+    await selectKind(kind);
+    await ui(
+      `filter ${kind}`,
+      `document.body.innerText.includes('${active} active · newest first') && document.querySelectorAll('main li').length === ${count}`,
+    );
+    results.push(`${kind} filter counts only its visible active rows`);
+  }
+
+  const nextEmpty = await api("/api/chats", undefined, "POST");
+
+  for (const [label, width, height, theme] of [
+    ["desktop-light", 1280, 900, "light"],
+    ["desktop-dark", 1280, 900, "dark"],
+    ["mobile-light", 390, 844, "light"],
+    ["mobile-dark", 390, 844, "dark"],
+  ]) {
+    await viewport(width, height);
+    await call("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
+
+    for (const [view, path, ready] of [
+      ["sessions", "/sessions", "document.body.innerText.includes('2 active · newest first')"],
+      [
+        "chat",
+        `/c/${emptySession}`,
+        "!!document.querySelector('textarea:not(:disabled)') && !!document.querySelector('button[aria-label=\"Stop run\"]')",
+      ],
+      [
+        "task",
+        `/tasks/${sessionTask.id}`,
+        "document.body.innerText.includes('Running bash') && !!document.querySelector('a[href=\"/sessions\"]')",
+      ],
+      [
+        "new-session",
+        `/c/${nextEmpty.id}`,
+        "document.body.innerText.includes('This session has its own context. It does not see the main timeline.')",
+      ],
+    ]) {
+      await visit(path);
+      await ui(`${view} ready (${label})`, ready);
+      await ui(
+        "session theme applied",
+        `document.documentElement.classList.contains('dark') === ${theme === "dark"}`,
+      );
+      await check(
+        `${view} fits the viewport (${label})`,
+        "document.documentElement.scrollWidth <= innerWidth + 1 && [...document.querySelectorAll('main header a, main header button, main textarea, main select')].every(node => { const r = node.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1; })",
+      );
+      await shot(`10-${view}-${label}`);
+    }
+  }
+
+  await writeFile(sessionTurnGate, "release");
+  await poll("Chat turn finished", async () => !(await api(`/api/chats/${emptySession}`)).busy);
+  await model("spawn");
+  await writeFile(sessionTaskGate, "release");
+  await poll("Chat report saved", async () => (await api(`/api/tasks/${sessionTask.id}`)).status === "done");
+  await visit(`/c/${emptySession}`);
+  await ui(
+    "Chat receives its task result",
+    "document.body.innerText.includes('Background result') && document.body.innerText.includes('task-result:') && document.body.innerText.includes('session-report')",
+  );
+  await visit("/");
+  await ui("main snapshot after Chat report", "!!document.querySelector('textarea:not(:disabled)')");
+  await check(
+    "Chat report does not enter main",
+    "!document.body.innerText.includes('Session audit') && !document.body.innerText.includes('session-report')",
+  );
+
+  await visit(`/c/${emptySession}`);
+  const stopGate = join(isolated, "session-stop.gate");
+  await sendFromComposer(
+    JSON.stringify({
+      title: "Session Stop check",
+      goal: `while ! test -f '${stopGate}'; do sleep 0.05; done`,
+      provider: "faux",
+      modelId: "bash",
+    }),
+  );
+
+  const stopTask = await poll("Chat task before Stop", async () =>
+    (await sessionTasks()).find((task) => task.title === "Session Stop check" && task.status === "running"),
+  );
+
+  await poll(
+    "Chat dispatch finished before Stop",
+    async () => !(await api(`/api/chats/${emptySession}`)).busy,
+  );
+  await ui("Chat Stop remains after dispatch", "!!document.querySelector('button[aria-label=\"Stop run\"]')");
+  await tap('button[aria-label="Stop run"]');
+  await poll(
+    "Chat Stop cancels its task",
+    async () => (await api(`/api/tasks/${stopTask.id}`)).status === "cancelled",
+  );
+  results.push(
+    "Chat context, title, Clear, history, task return, Stop and main Stop scope use the selected session",
   );
 
   // Bot settings hold the editable name, channels and automations.
@@ -487,6 +750,7 @@ try {
         profile,
         results,
         clears,
+        aborts,
         exceptions,
         taskReads: Object.fromEntries(taskReads),
         noticeLayouts,
@@ -497,6 +761,11 @@ try {
   );
   console.log(`PASS: ${results.length} timeline browser checks. Evidence: ${artifacts}`);
 } catch (error) {
+  await writeFile(
+    join(artifacts, "browser-network.json"),
+    JSON.stringify({ clears, aborts, exceptions }, null, 2),
+  );
+
   if (socket?.readyState === WebSocket.OPEN) {
     await shot("failure").catch(() => {});
     await writeFile(
@@ -570,8 +839,13 @@ async function check(label, expression) {
 }
 
 async function visit(path) {
+  const previous = await evaluate("performance.timeOrigin");
+
   await call("Page.navigate", { url: base + path });
-  await ui("page ready", "document.readyState === 'complete' && !!document.querySelector('main')");
+  await ui(
+    "page ready",
+    `performance.timeOrigin !== ${previous} && document.readyState === 'complete' && !!document.querySelector('main')`,
+  );
 }
 
 async function reload() {
@@ -613,6 +887,16 @@ async function api(path, body, method = body ? "POST" : "GET") {
 async function model(modelId) {
   const { agent } = await api("/api/settings");
   await api("/api/settings/agent", { ...agent, provider: "faux", modelId }, "PUT");
+}
+
+async function sessionTasks() {
+  return (await api("/api/chats")).chats.flatMap((chat) => (chat.task ? [chat.task] : []));
+}
+
+async function selectKind(kind) {
+  await evaluate(
+    `(() => { const select = document.querySelector('select[aria-label="Kind"]'); select.value = ${JSON.stringify(kind)}; select.dispatchEvent(new Event('change', { bubbles: true })); })()`,
+  );
 }
 
 async function send(text) {

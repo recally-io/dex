@@ -113,7 +113,7 @@ func (s *Service) taskTransaction(ctx context.Context) (*sql.Tx, *sqlc.Queries, 
 	return tx, s.q.WithTx(tx), nil
 }
 
-// HandleTask accepts only worker-owned sources in a main conversation.
+// HandleTask accepts worker-owned sources outside task and dream conversations.
 func (s *Service) HandleTask(ctx context.Context, r worker.TaskRequest) (any, error) {
 	conv, err := s.q.GetConversationByWorker(ctx, sqlc.GetConversationByWorkerParams{
 		AgentID: r.AgentID, WorkerConversationID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})

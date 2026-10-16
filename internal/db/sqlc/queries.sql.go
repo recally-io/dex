@@ -300,6 +300,46 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 	return i, err
 }
 
+const ensureEmptyChat = `-- name: EnsureEmptyChat :one
+INSERT INTO conversations (agent_id, channel_key, title, created_at)
+VALUES (
+    ?1,
+    coalesce((
+        SELECT c.channel_key FROM conversations c
+        WHERE c.agent_id = ?1 AND c.channel_key LIKE 'chat:%'
+            AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message')
+        ORDER BY c.created_at DESC, c.id DESC LIMIT 1
+    ), ?2),
+    '', ?3
+)
+ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
+RETURNING id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level
+`
+
+type EnsureEmptyChatParams struct {
+	AgentID    string      `json:"agent_id"`
+	ChannelKey interface{} `json:"channel_key"`
+	CreatedAt  int64       `json:"created_at"`
+}
+
+// One write statement serializes concurrent opens and first-message admission.
+func (q *Queries) EnsureEmptyChat(ctx context.Context, arg EnsureEmptyChatParams) (Conversation, error) {
+	row := q.db.QueryRowContext(ctx, ensureEmptyChat, arg.AgentID, arg.ChannelKey, arg.CreatedAt)
+	var i Conversation
+	err := row.Scan(
+		&i.ID,
+		&i.AgentID,
+		&i.ChannelKey,
+		&i.WorkerConversationID,
+		&i.CreatedAt,
+		&i.Title,
+		&i.ModelProvider,
+		&i.ModelID,
+		&i.ThinkingLevel,
+	)
+	return i, err
+}
+
 const failAutomationRun = `-- name: FailAutomationRun :exec
 UPDATE automation_runs SET status = 'failed', reason = ? WHERE id = ?
 `
@@ -700,7 +740,10 @@ SELECT
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'task:%'
+WHERE c.agent_id = ? AND c.channel_key != 'main' AND c.channel_key NOT LIKE 'dream:%'
+    AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
+        SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
+    ))
 GROUP BY c.id
 ORDER BY updated_at DESC, c.id DESC
 `
@@ -1071,6 +1114,20 @@ func (q *Queries) SetConversationSettings(ctx context.Context, arg SetConversati
 		arg.ID,
 		arg.AgentID,
 	)
+	return err
+}
+
+const setFirstChatTitle = `-- name: SetFirstChatTitle :exec
+UPDATE conversations SET title = ? WHERE id = ? AND title = ''
+`
+
+type SetFirstChatTitleParams struct {
+	Title string `json:"title"`
+	ID    int64  `json:"id"`
+}
+
+func (q *Queries) SetFirstChatTitle(ctx context.Context, arg SetFirstChatTitleParams) error {
+	_, err := q.db.ExecContext(ctx, setFirstChatTitle, arg.Title, arg.ID)
 	return err
 }
 

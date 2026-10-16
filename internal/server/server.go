@@ -55,7 +55,7 @@ const (
 var errInvalid = errors.New("invalid request")
 
 // errReadOnly is a message to a chat that the web UI cannot write to.
-var errReadOnly = errors.New("this chat is read-only; send messages in the main timeline")
+var errReadOnly = errors.New("this session is read-only; send messages in main or a Chat session")
 
 // New returns the handler for the API under /api/ and the web UI at /. The API requires
 // cfg.Token when it is set. It refuses cross-site writes, so a web page in the user's browser
@@ -179,7 +179,7 @@ func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRe
 func chatView(c chat.Chat) api.Chat {
 	out := api.Chat{
 		Id: c.ID, Channel: api.ChatChannelWeb, Title: c.Title, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Busy: c.Busy,
-		Settings: c.Settings, Main: c.ChannelKey == chat.MainKey, ReadOnly: c.ChannelKey != chat.MainKey,
+		Settings: c.Settings, Main: c.ChannelKey == chat.MainKey, ReadOnly: !chat.Writable(c.ChannelKey),
 	}
 	if strings.HasPrefix(c.ChannelKey, "telegram:") {
 		out.Channel = api.ChatChannelTelegram
@@ -204,9 +204,20 @@ func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (
 	if err != nil {
 		return nil, err
 	}
+	tasks, err := h.Chats.TaskRecords(ctx, h.AgentID)
+	if err != nil {
+		return nil, err
+	}
+	byConversation := make(map[int64]api.TaskSummary, len(tasks))
+	for _, t := range tasks {
+		byConversation[t.ConversationID] = taskSummary(t)
+	}
 	out := api.ListChats200JSONResponse{Chats: make([]api.Chat, len(chats))}
 	for i, c := range chats {
 		out.Chats[i] = chatView(c)
+		if t, ok := byConversation[c.ID]; ok {
+			out.Chats[i].Task = &t
+		}
 	}
 	return out, nil
 }
@@ -253,27 +264,12 @@ func (h *handler) message(in api.MessageInput) (chat.Message, error) {
 	return m, nil
 }
 
-func (h *handler) CreateChat(ctx context.Context, req api.CreateChatRequestObject) (api.CreateChatResponseObject, error) {
-	if req.Body == nil {
-		return nil, errInvalid
-	}
-	b := req.Body
-	m, err := h.message(api.MessageInput{Id: b.Id, Text: b.Text, Attachments: b.Attachments})
+func (h *handler) CreateChat(ctx context.Context, _ api.CreateChatRequestObject) (api.CreateChatResponseObject, error) {
+	c, err := h.Chats.Create(ctx, h.AgentID)
 	if err != nil {
 		return nil, err
 	}
-	if b.Settings != nil && *b.Settings != (chat.Settings{}) {
-		return nil, errReadOnly
-	}
-	chatID, err := h.Chats.Send(ctx, h.AgentID, chat.MainKey, m)
-	if err != nil {
-		return nil, err
-	}
-	c, err := h.Chats.Get(ctx, h.AgentID, chatID)
-	if err != nil {
-		return nil, err
-	}
-	return api.CreateChat202JSONResponse{Chat: chatView(c), SubmissionId: m.ID}, nil
+	return api.CreateChat201JSONResponse(chatView(c)), nil
 }
 
 func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObject) (api.SendMessageResponseObject, error) {
@@ -300,7 +296,7 @@ func (h *handler) writableChat(ctx context.Context, id int64) (chat.Chat, error)
 	if err != nil {
 		return chat.Chat{}, err
 	}
-	if c.ChannelKey != chat.MainKey {
+	if !chat.Writable(c.ChannelKey) {
 		return chat.Chat{}, errReadOnly
 	}
 	return c, nil

@@ -60,7 +60,7 @@ decisions.
 | Skills and MCP servers               | the user's files    | `~/.agents/{skills/,mcp.json}`, `<data dir>/agents/<id>/{skills/,mcp.json}` |
 
 Control also owns internal delegation records (`tasks`). Each record
-has one hidden `task:<execution ID>` conversation and one input. The worker
+has one read-only `task:<execution ID>` session and one input. The worker
 owns its transcript and execution records. Control never reads worker SQLite.
 The records retain the source submission, status, and report. A cancelled
 status records a cancellation request. It does not prove process exit. There
@@ -70,13 +70,32 @@ Each agent has one main conversation with channel key `main`. The unique
 agent/key constraint makes `GET /api/chats/main` safe to repeat. It creates
 the control record on demand. The web opens this conversation at `/` and
 sends through `POST /api/chats/{id}/messages`. It uses agent settings.
+`POST /api/chats` takes no body and returns a writable Chat session (`201`).
+Its channel key starts with `chat:`. One SQLite write reuses the newest Chat
+with no ordinary message, or creates one. Concurrent opens reuse the same row.
+The first message and its title commit together. The title has at most
+60 characters. Longer text uses its first 59 characters and an ellipsis. A file-only
+message uses the first file's name. Each Chat has its own worker conversation.
+It uses the bot's settings, instructions and shared memory. It does not read
+main's model context or send its answers to main.
+
+The timeline header opens `/sessions`. `GET /api/chats` lists session summaries
+by `updatedAt` descending, then ID descending. It excludes main, dreams and
+Chat sessions with no message. Task rows add `task: TaskSummary`, without
+report bodies. The query does not read reports or transcripts. The page
+filters by Chat, Task, Automation or Channel. `/tasks` redirects to `/sessions`.
+The active count includes tasks with status queued or running, and other
+busy sessions. Each row counts once. A kind filter counts only visible rows.
+`New session` appears only on the Sessions page. Other sessions open at
+`/c/{id}`; tasks open at `/tasks/{id}` with Report above Work. Main stays at `/`.
+
 Channel keys and automation conversations stay separate. The sidebar holds the
 bot identity and its settings link. `/agent` holds Profile, Instructions,
 Channels, and Automations. Providers, Extensions, Secrets, and About stay global.
 Channel settings link to that channel's newest conversation. Automation details
 keep their run history. These transcripts have no web composer.
 
-Every enqueue writes `submissions.origin`. Main and web input use `web`.
+Every enqueue writes `submissions.origin`. Main and Chat input use `web`.
 Channel input uses the part of its key before `/`, including the peer ID.
 Automation, task input, and dream input use `automation`, `task`, and `dream`.
 A task result copies its source submission's origin in the same transaction
@@ -135,9 +154,10 @@ are `idle`. `POST /api/extensions/reload` takes the maintenance lease, which
 it refuses when another holder has it, restarts the worker, opens the agent,
 and releases the lease.
 
-The task extension adds delegation tools and a `task-rules` section to main
-chats. Background executions and dreams have no delegation tools. A separate
-extension gives main chats and background executions the `coding-skill`
+The task extension adds delegation tools and a `task-rules` section to
+foreground conversations, including main, Chat, channel and automation sessions.
+Background executions and dreams have no delegation tools. A separate
+extension gives foreground conversations and background executions the `coding-skill`
 section. Bun embeds the full
 [built-in coding skill](../../worker/skills/coding/SKILL.md) in the worker.
 It does not copy the skill into a user directory or add a new extension scope.
@@ -173,8 +193,8 @@ saves it in `control.sqlite`, and then applies it:
 spaces, then accepts 1 to 40 Unicode characters. The web uses the saved name in
 the sidebar, the timeline header, and the composer.
 
-The main timeline uses the agent's model and thinking level. It has no chat
-override. `chat.Service` resolves settings at each `submit`. Channel chats cannot
+Main and Chat sessions use the agent's model and thinking level. They have no
+session override. `chat.Service` resolves settings at each `submit`. Channel chats cannot
 change their settings (403). An automation chat can; an automation that
 reuses its chat then runs with the chat's settings. The thinking levels and
 the `reasoning` and `input` of a model come from pi-ai
@@ -235,7 +255,7 @@ the stdout reader because a task action can call the worker for validation.
 
 `submit` also accepts `whenBusy`, `taskStageId`, and a trusted input kind.
 Task result delivery uses
-`whenBusy: reject`, so it remains in control while the main chat has an active
+`whenBusy: reject`, so it remains in control while the source session has an active
 run or queued inputs. `abort` requests SDK cancellation with a 5 s wait limit.
 The SDK saves the cancellation before it waits for idle. An SDK error or timeout
 returns an RPC error. The wait limit excludes admission and conversation
@@ -266,7 +286,7 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
    [`chat.Service.Send`](../../internal/chat/chat.go) refuses the message when
    neither the chat nor the agent has a model. Otherwise it finds or creates
    the conversation for
-   the channel key (`main` for the web), stores the message as a
+   the channel key (`main` or `chat:<id>` for web input), stores the message as a
    `pending` submission with that UUID as its ID, and returns `202`. A
    retried request with the same UUID stores nothing.
 2. `chat.Service.Run` delivers stored submissions in SQLite insertion order
@@ -317,22 +337,23 @@ A failed result reply cannot retry the user message before the mark.
 Control's pending user projection selects only `kind='message'`.
 Neither layer uses message text or an ID pattern to hide results. Ordinary
 user JSON still appears and can use the normal Retry action. Task conversations
-stay absent from chat lists and dream inputs. The human can read their chat,
+appear in Sessions but stay absent from dream inputs. The human can read their chat,
 history, and normal SSE stream. Web input, settings, clear, and abort are refused.
-Dream input selects only ordinary messages, so internal results in a main chat
+Dream input selects only ordinary messages, so internal results in a source session
 cannot enter memory as user text.
-`GET /api/tasks` lists summaries of all work of the default agent, newest first.
-The query and response omit report bodies. The badge reads only task statuses.
 `GET /api/tasks/{id}` returns one record with its report, times, and conversation
-ID. Both reads check the agent. Model task tools keep their parent conversation
-scope. There are no HTTP task controls or separate task streams. The Tasks page
-polls summaries every 3 s. Its active count includes queued and running records.
+ID. The task and session reads check the agent. Model task tools keep their
+parent conversation scope. There is no `GET /api/tasks` list, HTTP task control,
+or separate task stream. The Sessions page and each writable session poll
+session summaries every 3 s.
 Task details poll every 3 s while queued or running. Terminal details stop polling.
 Task details use the normal read-only chat, history, and SSE paths for Work.
 Successful `spawn_task` items carry the ID from the saved tool result. Result
 marks carry the ID and title from control's matching task record. The web links
 both labels by ID. It never matches tasks by title.
-The normal main-chat SSE stream carries result marks and replies.
+The source session's normal SSE stream carries result marks and replies.
+A task started in Chat keeps that Chat as its parent. Its result returns to
+that Chat, with the source input's origin. Main does not receive the result.
 
 Result delivery uses the existing submission lifecycle. A provider failure
 leaves the result unanswered. Control never changes a settled submission back
@@ -341,8 +362,9 @@ main agent can read the saved report and choose the next action. A user Stop
 withdraws pending results. A later greeting cannot revive those results.
 A new execution must check prior artifacts and side effects.
 
-Web Stop covers only the main timeline. External channel and automation chats
-are read-only on the web.
+Web Stop covers only the selected writable session, main or Chat. Task,
+channel and automation sessions are read-only on the web. Messages, Clear
+and Stop return 403 for those kinds.
 Channel `/stop` covers the current agent and exact channel peer, including
 its chats before `/new`. Other peers, agents, and web chats are outside that
 scope. `/new` changes context without cancelling prior execution.
@@ -359,9 +381,9 @@ record or wake the model.
 
 `POST /api/chats/{chatId}/abort` returns `{status: "ok"}` after withdrawal and the
 cancellation requests. The composer keeps Stop available for queued input,
-an active answer, and active background work started by the main conversation.
-Tasks from other conversations count in the bot's badge but cannot enable main
-Stop. Task records expose `parentConversationId` for this scope check.
+an active answer, and active background work started by that conversation.
+Tasks from other conversations count in the bot's badge but cannot enable
+that session's Stop. Task summaries expose `parentConversationId` for this check.
 Stop needs no model. During a
 reconnect, the chat API's busy state keeps Stop available before the snapshot.
 The reply confirms the request. It does not prove process exit. Processes and
@@ -523,7 +545,7 @@ before they start its replacement. Settings expose runtime status: `off`,
 A peer names a remote destination, such as `telegram:7`. `channel_peers` stores
 its current channel key. `/new` selects `peer/<UUID>` and keeps the old chat.
 Every key keeps its destination, so an old chat can still receive its answer.
-The main timeline is writable on the web. Channel and automation transcripts
+Main and Chat sessions are writable on the web. Channel and automation transcripts
 have no web composer.
 
 `/new`, `/stop`, and `/help` use durable command
