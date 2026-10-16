@@ -61,14 +61,12 @@ type SubmitResult struct {
 
 // Settled is the event the worker sends when a submission has its final answer or has failed.
 type Settled struct {
-	AgentID            string `json:"agentId"`
-	ConversationID     int64  `json:"conversationId"`
-	RequestID          string `json:"requestId"`
-	Status             string `json:"status"` // "done" or "unanswered"
-	Answer             string `json:"answer,omitempty"`
-	Reason             string `json:"reason,omitempty"`
-	ExecutionConfirmed bool   `json:"executionConfirmed,omitzero"`
-	StopNote           string `json:"stopNote,omitempty"`
+	AgentID        string `json:"agentId"`
+	ConversationID int64  `json:"conversationId"`
+	RequestID      string `json:"requestId"`
+	Status         string `json:"status"` // "done" or "unanswered"
+	Answer         string `json:"answer,omitempty"`
+	Reason         string `json:"reason,omitempty"`
 }
 
 // WatchParams are the params of the watch method. The worker sends the chat events of the
@@ -89,12 +87,6 @@ type UnwatchParams struct {
 type AbortParams struct {
 	AgentID        string `json:"agentId"`
 	ConversationID int64  `json:"conversationId"`
-	TaskStageID    string `json:"taskStageId,omitempty"`
-}
-
-type AbortResult struct {
-	ExecutionConfirmed bool   `json:"executionConfirmed,omitzero"`
-	StopNote           string `json:"stopNote,omitempty"`
 }
 
 // RecoverTasksParams registers old task conversations before a Harness can resume.
@@ -182,16 +174,6 @@ type TaskRequest struct {
 	Key             string         `json:"key"`
 	Action          string         `json:"action"`
 	Args            jsontext.Value `json:"args"`
-}
-
-// TaskProgress is an observed change from a task's execution stream.
-type TaskProgress struct {
-	StageID        string `json:"stageId"`
-	AgentID        string `json:"agentId"`
-	ConversationID int64  `json:"conversationId"`
-	CurrentTool    string `json:"currentTool"`
-	LastEventAt    int64  `json:"lastEventAt"`
-	ExecutionState string `json:"executionState"`
 }
 
 // incoming is a response (with ID) or an event (with Event).

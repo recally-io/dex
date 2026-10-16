@@ -37,8 +37,7 @@ type Config struct {
 	// OnSettled receives each settled event, in order, on the goroutine that reads stdout.
 	OnSettled func(context.Context, Settled)
 	// OnTask runs outside the stdout reader, so it can call the worker.
-	OnTask         func(context.Context, TaskRequest) (any, error)
-	OnTaskProgress func(context.Context, TaskProgress)
+	OnTask func(context.Context, TaskRequest) (any, error)
 	// OnChat receives each chat event of a watch, in order, on the goroutine that reads stdout. It
 	// must not block.
 	OnChat func(ChatStream)
@@ -360,14 +359,6 @@ func (p *process) read(ctx context.Context, stdout io.Reader, cfg Config) error 
 				return fmt.Errorf("bad task request: %w", err)
 			}
 			p.callbacks.Go(func() { p.handleTask(ctx, cfg, msg.ID, task) })
-		case msg.Event == "taskProgress":
-			var progress TaskProgress
-			if err := json.Unmarshal(msg.Params, &progress); err != nil {
-				return fmt.Errorf("bad task progress: %w", err)
-			}
-			if cfg.OnTaskProgress != nil {
-				cfg.OnTaskProgress(ctx, progress)
-			}
 		case msg.Event == "settled":
 			var settled Settled
 			if err := json.Unmarshal(msg.Params, &settled); err != nil {

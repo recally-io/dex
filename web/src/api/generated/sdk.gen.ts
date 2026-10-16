@@ -141,7 +141,7 @@ export const sendMessage = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Stops the main turn and all background execution of this chat, and withdraws queued user messages. Old results are not delivered again. This does not confirm that all external side effects have stopped. External channel chats are read-only on the web.
+ * Withdraws queued input and results, then requests cancellation of the main turn and background execution of this chat. Earlier actions are not undone. Processes and remote work may continue. External channel chats are read-only on the web.
  *
  */
 export const abortChat = <ThrowOnError extends boolean = false>(options: Options<AbortChatData, ThrowOnError>): RequestResult<AbortChatResponses, AbortChatErrors, ThrowOnError> => (options.client ?? client).post<AbortChatResponses, AbortChatErrors, ThrowOnError>({

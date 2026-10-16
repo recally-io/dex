@@ -109,7 +109,7 @@ func TestUserStopsCurrentChannelAnswer(t *testing.T) {
 	f.message(2, 42, 7, "/stop")
 	var stopped bool
 	for range 2 {
-		if strings.Contains(f.next(t).Text, "Stopped. Earlier actions are not undone.") {
+		if strings.Contains(f.next(t).Text, "Stop requested. Earlier actions are not undone. Processes and remote work may continue.") {
 			stopped = true
 		}
 	}
@@ -135,7 +135,7 @@ func TestUserStopsChannelMessageBeforeWorkerAdmission(t *testing.T) {
 	f.message(2, 42, 7, "/stop")
 	var stopped bool
 	for range 2 {
-		if f.next(t).Text == "Stopped. Earlier actions are not undone." {
+		if f.next(t).Text == "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
 			stopped = true
 		}
 	}
@@ -245,7 +245,7 @@ func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 	}
 	// When /stop gets a permanent worker error, the command still has an answer.
 	f.message(2, 42, 7, "/stop")
-	if got := f.next(t).Text; got != "Stop requested. Controlled execution has not confirmed exit." {
+	if got := f.next(t).Text; got != "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
 		t.Fatalf("stop reply: %q", got)
 	}
 	// Then the platform advances past /stop and delivers a later peer's answer.
@@ -274,7 +274,7 @@ func TestUserStopsExistingChannelChatDuringMaintenance(t *testing.T) {
 	// Then stop completes while the gate is still closed.
 	var stopped bool
 	for range 2 {
-		if f.next(t).Text == "Stopped. Earlier actions are not undone." {
+		if f.next(t).Text == "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
 			stopped = true
 		}
 	}

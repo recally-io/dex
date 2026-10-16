@@ -748,12 +748,6 @@ type SnapshotEvent struct {
 // SnapshotEventType defines model for SnapshotEvent.Type.
 type SnapshotEventType string
 
-// StopResult defines model for StopResult.
-type StopResult struct {
-	// Confirmed True when controlled execution has stopped. False when the request is accepted but background execution has not confirmed exit. Neither value guarantees that external side effects have stopped.
-	Confirmed bool `json:"confirmed"`
-}
-
 // Telegram defines model for Telegram.
 type Telegram struct {
 	AllowedUsers []int64       `json:"allowedUsers"`
@@ -2861,7 +2855,7 @@ type AbortChatResponseObject interface {
 	VisitAbortChatResponse(w http.ResponseWriter) error
 }
 
-type AbortChat200JSONResponse StopResult
+type AbortChat200JSONResponse Ok
 
 func (response AbortChat200JSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
 

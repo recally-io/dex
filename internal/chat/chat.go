@@ -87,8 +87,6 @@ type Service struct {
 	// The database holds work. A wake can coalesce without losing a submission.
 	wake              chan struct{}
 	inFlight          sync.Map
-	cancelling        sync.Map
-	taskWG            sync.WaitGroup
 	db                *sql.DB
 	taskMu            sync.Mutex // task creation and settlement; per agent if throughput matters
 	checkTaskSettings func(context.Context, Settings) error
@@ -118,12 +116,10 @@ func New(db *sql.DB, w Caller, now func() time.Time, notify func(channelKey stri
 // Run delivers stored submissions to the worker, one at a time and in order, until ctx is done.
 // One queue for all chats; one per chat if a slow delivery delays other chats.
 func (s *Service) Run(ctx context.Context) {
-	defer s.taskWG.Wait()
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for {
 		s.deliverPending(ctx)
-		s.cancelPendingTasks(ctx)
 		select {
 		case <-ctx.Done():
 			return
@@ -293,13 +289,7 @@ func (s *Service) deliver(ctx context.Context, p sqlc.ListPendingSubmissionsRow)
 	case isBusy(err):
 		s.inFlight.Delete(p.ID)
 	default:
-		confirmed := false
-		if strings.HasPrefix(p.ChannelKey, "task:") {
-			if task, e := s.q.GetTask(ctx, p.ID); e == nil {
-				confirmed = !task.StartedAt.Valid
-			}
-		}
-		s.settle(ctx, worker.Settled{RequestID: p.ID, Status: "unanswered", Reason: err.Error(), ExecutionConfirmed: confirmed})
+		s.settle(ctx, worker.Settled{RequestID: p.ID, Status: "unanswered", Reason: err.Error()})
 	}
 }
 
@@ -403,7 +393,7 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 			// Bind before admission so this input cannot wait for a later worker.
 			call, err = s.worker.Bind()
 			if err == nil {
-				_, err = s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: s.now().UnixMilli()})
+				_, err = s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
 			}
 		} else if err == nil {
 			s.inFlight.Delete(p.ID)

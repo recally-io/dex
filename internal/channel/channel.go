@@ -220,14 +220,10 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	case "/new":
 		answer = "Started a new chat."
 	case "/stop":
-		stopped, err := m.chats.StopPeer(ctx, m.agentID, c.Peer)
-		if err != nil {
+		if err := m.chats.StopPeer(ctx, m.agentID, c.Peer); err != nil {
 			return err
 		}
-		answer = "Stop requested. Controlled execution has not confirmed exit."
-		if stopped.Confirmed {
-			answer = "Stopped. Earlier actions are not undone."
-		}
+		answer = "Stop requested. Earlier actions are not undone. Processes and remote work may continue."
 	}
 	if err := m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{Answer: answer, SourceKey: c.SourceKey}); err != nil {
 		return err

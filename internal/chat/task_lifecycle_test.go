@@ -22,6 +22,7 @@ import (
 type taskRuntime struct {
 	service      *chat.Service
 	worker       *worker.Worker
+	conn         *sql.DB
 	q            *sqlc.Queries
 	dir          string
 	parent       int64
@@ -105,7 +106,7 @@ func startTaskRuntime(t *testing.T, beforeInit func(context.Context), onTask fun
 	if err := q.SetWorkerConversation(t.Context(), sqlc.SetWorkerConversationParams{ID: id, WorkerConversationID: sql.NullInt64{Int64: parent.ConversationID, Valid: true}}); err != nil {
 		t.Fatal(err)
 	}
-	return &taskRuntime{service: service, worker: w, q: q, dir: dir, parent: id, workerParent: parent.ConversationID}
+	return &taskRuntime{service: service, worker: w, conn: conn, q: q, dir: dir, parent: id, workerParent: parent.ConversationID}
 }
 
 func (r *taskRuntime) spawnRequest(t *testing.T, key string, args any) (any, error) {
@@ -438,7 +439,7 @@ func (r *taskRuntime) executeQueued(t *testing.T, id string) {
 	if err := r.q.SetWorkerConversation(t.Context(), sqlc.SetWorkerConversationParams{ID: row.ConversationID, WorkerConversationID: sql.NullInt64{Int64: created.ConversationID, Valid: true}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.StartTask(t.Context(), sqlc.StartTaskParams{ID: id, Now: time.Now().UnixMilli()}); err != nil {
+	if _, err := r.q.StartTask(t.Context(), sqlc.StartTaskParams{ID: id, Now: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.worker.Call(t.Context(), "submit", worker.SubmitParams{AgentID: "bot", ConversationID: created.ConversationID, TaskStageID: id, Model: worker.ModelRef{Provider: "faux", ModelID: "echo"}, ThinkingLevel: "off", RequestID: id, Content: "bounded work", Attachments: []worker.Attachment{}}, &worker.SubmitResult{}); err != nil {
@@ -448,21 +449,6 @@ func (r *taskRuntime) executeQueued(t *testing.T, id string) {
 		got, err := r.service.GetTask(t.Context(), "bot", r.parent, id)
 		if err != nil {
 			t.Fatal(err)
-		}
-		if got.Status == "cancelling" {
-			// This fixture has no delivery loop. Get cleanup evidence from the real worker.
-			var stopped worker.AbortResult
-			if err := r.worker.Call(t.Context(), "abort", worker.AbortParams{AgentID: "bot", ConversationID: created.ConversationID, TaskStageID: id}, &stopped); err != nil {
-				t.Fatal(err)
-			}
-			if !stopped.ExecutionConfirmed {
-				t.Fatalf("worker did not confirm cleanup: %+v", stopped)
-			}
-			submission, err := r.q.GetSubmission(t.Context(), id)
-			if err != nil || submission.Status != "done" {
-				t.Fatalf("natural settlement: %+v err=%v", submission, err)
-			}
-			r.service.HandleSettled(t.Context(), worker.Settled{AgentID: "bot", ConversationID: created.ConversationID, RequestID: id, Status: "done", Answer: submission.Answer.String, ExecutionConfirmed: stopped.ExecutionConfirmed, StopNote: stopped.StopNote})
 		}
 		return got.Status == "done", got
 	})
@@ -519,11 +505,64 @@ func TestUserBackgroundExecutionCannotManageDelegations(t *testing.T) {
 	}
 }
 
+func TestUserStopReachesWorkerAfterClientDisconnects(t *testing.T) {
+	// Given a real shell command waiting for a file.
+	settled := make(chan worker.Settled, 1)
+	r := startTaskRuntime(t, nil, nil, nil, func(_ context.Context, event worker.Settled) { settled <- event })
+	started, release := filepath.Join(r.dir, "started"), filepath.Join(r.dir, "release")
+	t.Cleanup(func() {
+		if err := os.WriteFile(release, nil, 0o600); err != nil {
+			t.Error(err)
+		}
+	})
+	command := "touch '" + started + "'; while [ ! -f '" + release + "' ]; do sleep 0.02; done"
+	if err := r.worker.Call(t.Context(), "submit", worker.SubmitParams{
+		AgentID: "bot", ConversationID: r.workerParent,
+		Model: worker.ModelRef{Provider: "faux", ModelID: "bash"}, ThinkingLevel: "off",
+		RequestID: "source", Content: command, Source: "dex:chat/1", Attachments: []worker.Attachment{},
+	}, &worker.SubmitResult{}); err != nil {
+		t.Fatal(err)
+	}
+	taskEventually(t, func() (bool, any) {
+		_, err := os.Stat(started)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+		return err == nil, err
+	})
+	// When the client disconnects after Stop commits, before it requests worker cancellation.
+	ctx, disconnect := context.WithCancel(t.Context())
+	defer disconnect()
+	s := chat.New(r.conn, r.worker, time.Now, nil, func(_ int64) {
+		stored, err := r.q.GetSubmission(t.Context(), "source")
+		if err != nil || stored.Status != "unanswered" || stored.Reason.String != "stopped" {
+			t.Fatalf("Stop has not committed: %+v, %v", stored, err)
+		}
+		disconnect()
+	})
+	if err := s.Stop(ctx, "bot", r.parent); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(ctx.Err(), context.Canceled) {
+		t.Fatal("client did not disconnect after the commit")
+	}
+	// Then the worker ends the active run without waiting for the command's release file.
+	select {
+	case event := <-settled:
+		if event.RequestID != "source" || event.Status != "unanswered" {
+			t.Fatalf("stopped run: %+v", event)
+		}
+		t.Logf("client=%v worker=%s reason=%s", ctx.Err(), event.Status, event.Reason)
+	case <-time.After(10 * time.Second):
+		t.Fatal("client disconnect prevented cancellation of the active worker run")
+	}
+}
+
 func TestUserStoppedSourceCannotDispatchMoreWork(t *testing.T) {
 	// Given a pending source that can create a background execution.
 	r := startTaskRuntime(t, nil, nil, nil)
 	// When Stop withdraws that source before its tool RPC arrives.
-	if _, err := r.service.Stop(t.Context(), "bot", r.parent); err != nil {
+	if err := r.service.Stop(t.Context(), "bot", r.parent); err != nil {
 		t.Fatal(err)
 	}
 	// Then the stale source cannot create another execution.
@@ -572,9 +611,9 @@ func TestUserCancellingCompletedTaskLeavesItsResultAvailable(t *testing.T) {
 	if _, err := r.service.CancelTask(t.Context(), "bot", r.parent, task.ID); err != nil {
 		t.Fatal(err)
 	}
-	// Then cancellation leaves the report, stop intent, and result unchanged.
+	// Then cancellation leaves the report and result unchanged.
 	after, err := r.q.GetTask(t.Context(), task.ID)
-	if err != nil || after.Status != before.Status || after.Report != before.Report || after.StopRequestedAt != before.StopRequestedAt {
+	if err != nil || after != before {
 		t.Fatalf("terminal task changed: before=%+v after=%+v err=%v", before, after, err)
 	}
 	resultAfter, err := r.q.GetSubmission(t.Context(), resultID)
@@ -584,89 +623,96 @@ func TestUserCancellingCompletedTaskLeavesItsResultAvailable(t *testing.T) {
 	t.Logf("terminal=%s status=%s result=%s", task.ID, after.Status, resultAfter.Status)
 }
 
-func TestUserFailureReportSurvivesLaterCleanupConfirmation(t *testing.T) {
-	for _, restart := range []bool{false, true} {
-		name := "cleanup confirms"
-		if restart {
-			name = "worker restarts before confirmation"
+func TestUserCancellationWithdrawsQueuedExecutionImmediately(t *testing.T) {
+	// Given a queued execution before the delivery loop starts.
+	r := startTaskRuntime(t, nil, nil, nil)
+	task, _ := r.spawn(t, "Withdraw queued work")
+	// When the caller cancels it, cancellation needs no cleanup loop or worker receipt.
+	cancelled, err := r.service.CancelTask(t.Context(), "bot", r.parent, task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Then the task and its input are terminal before cancellation returns.
+	if cancelled.Status != "cancelled" || cancelled.EndedAt == nil {
+		t.Fatalf("cancellation left queued work: %+v", cancelled)
+	}
+	sub, err := r.q.GetSubmission(t.Context(), task.ID)
+	if err != nil || sub.Status != "unanswered" || sub.Reason.String != "stopped" {
+		t.Fatalf("cancelled input: %+v err=%v", sub, err)
+	}
+	if _, err := r.q.GetSubmission(t.Context(), "task:"+task.ID+":result"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("cancelled execution delivered a result: %v", err)
+	}
+	t.Logf("cancelled=%s input=%s reason=%s", task.ID, sub.Status, sub.Reason.String)
+}
+
+func TestUserTerminalReportSurvivesLateEventsAndRestart(t *testing.T) {
+	for _, cancel := range []bool{false, true} {
+		name, model, content := "failed", "spawn", "invalid JSON"
+		if cancel {
+			name, model, content = "cancelled", "echo", "late report"
 		}
 		t.Run(name, func(t *testing.T) {
-			// Given a real failed submission whose cleanup receipt arrives separately.
+			// Given a real worker result held before control receives it.
 			settled := make(chan worker.Settled, 1)
 			r := startTaskRuntime(t, nil, nil, nil, func(_ context.Context, event worker.Settled) { settled <- event })
-			task, id := r.spawn(t, "Failed report")
+			task, id := r.spawn(t, "Terminal report")
 			row, err := r.q.GetTask(t.Context(), id)
 			if err != nil {
 				t.Fatal(err)
 			}
 			var created worker.CreateConversationResult
-			if err := r.worker.Call(t.Context(), "createConversation", worker.CreateConversationParams{AgentID: "bot", Model: worker.ModelRef{Provider: "faux", ModelID: "spawn"}, ThinkingLevel: "off"}, &created); err != nil {
+			if err := r.worker.Call(t.Context(), "createConversation", worker.CreateConversationParams{AgentID: "bot", Model: worker.ModelRef{Provider: "faux", ModelID: model}, ThinkingLevel: "off"}, &created); err != nil {
 				t.Fatal(err)
 			}
 			if err := r.q.SetWorkerConversation(t.Context(), sqlc.SetWorkerConversationParams{ID: row.ConversationID, WorkerConversationID: sql.NullInt64{Int64: created.ConversationID, Valid: true}}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := r.q.StartTask(t.Context(), sqlc.StartTaskParams{ID: id, Now: time.Now().UnixMilli()}); err != nil {
+			if _, err := r.q.StartTask(t.Context(), sqlc.StartTaskParams{ID: id, Now: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
 				t.Fatal(err)
 			}
-			if err := r.worker.Call(t.Context(), "submit", worker.SubmitParams{AgentID: "bot", ConversationID: created.ConversationID, TaskStageID: id, Model: worker.ModelRef{Provider: "faux", ModelID: "spawn"}, ThinkingLevel: "off", RequestID: id, Content: "invalid JSON", Attachments: []worker.Attachment{}}, &worker.SubmitResult{}); err != nil {
+			if err := r.worker.Call(t.Context(), "submit", worker.SubmitParams{AgentID: "bot", ConversationID: created.ConversationID, TaskStageID: id, Model: worker.ModelRef{Provider: "faux", ModelID: model}, ThinkingLevel: "off", RequestID: id, Content: content, Attachments: []worker.Attachment{}}, &worker.SubmitResult{}); err != nil {
 				t.Fatal(err)
 			}
 			var event worker.Settled
 			select {
 			case event = <-settled:
 			case <-time.After(10 * time.Second):
-				t.Fatal("worker did not report the model failure")
+				t.Fatal("worker did not return a result")
 			}
-			if event.Status != "unanswered" || event.Reason != "model_error" {
-				t.Fatalf("natural failure: %+v", event)
-			}
-			// When control receives the failure before it receives exit confirmation.
-			event.ExecutionConfirmed = false
-			event.StopNote = "Controlled execution has not ended."
-			r.service.HandleSettled(t.Context(), event)
-			saved, err := r.service.GetTask(t.Context(), "bot", r.parent, id)
-			if err != nil || saved.Report != event.Reason {
-				t.Fatalf("failure was not saved before cleanup: %+v err=%v", saved, err)
-			}
-			if restart {
-				if err := r.worker.Restart(t.Context()); err != nil {
+			// When cancellation or failure becomes terminal, later events cannot change it.
+			if cancel {
+				if _, err := r.service.CancelTask(t.Context(), "bot", r.parent, id); err != nil {
 					t.Fatal(err)
 				}
-				got, err := r.service.GetTask(t.Context(), "bot", r.parent, id)
-				if err != nil || got.Status != "interrupted" || got.Report != event.Reason {
-					t.Fatalf("restart lost failure evidence: %+v err=%v", got, err)
+			} else {
+				if event.Status != "unanswered" || event.Reason != "model_error" {
+					t.Fatalf("natural failure: %+v", event)
 				}
-				if _, err := r.q.GetSubmission(t.Context(), "task:"+id+":result"); !errors.Is(err, sql.ErrNoRows) {
-					t.Fatalf("restart delivered interrupted execution: %v", err)
-				}
-				t.Logf("execution=%s status=%s report=%q", id, got.Status, got.Report)
-				return
+				r.service.HandleSettled(t.Context(), event)
 			}
-			var stopped worker.AbortResult
-			if err := r.worker.Call(t.Context(), "abort", worker.AbortParams{AgentID: "bot", ConversationID: created.ConversationID, TaskStageID: id}, &stopped); err != nil {
+			before, err := r.q.GetTask(t.Context(), id)
+			if err != nil || before.Status != name {
+				t.Fatalf("terminal task: %+v err=%v", before, err)
+			}
+			r.service.HandleSettled(t.Context(), event)
+			if err := r.worker.Restart(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			if !stopped.ExecutionConfirmed {
-				t.Fatalf("cleanup was not confirmed: %+v", stopped)
-			}
-			r.service.HandleSettled(t.Context(), worker.Settled{RequestID: id, Status: "unanswered", Reason: "aborted", ExecutionConfirmed: stopped.ExecutionConfirmed, StopNote: stopped.StopNote})
-			// Then the saved report and delivered result keep the real failure and clear the old note.
-			got, err := r.service.GetTask(t.Context(), "bot", r.parent, id)
-			if err != nil || got.Status != "failed" || got.Report != event.Reason || got.StopNote != stopped.StopNote {
-				t.Fatalf("cleanup changed failure: %+v err=%v", got, err)
+			// Then both the record and its result policy remain unchanged after restart.
+			after, err := r.q.GetTask(t.Context(), id)
+			if err != nil || after != before {
+				t.Fatalf("late event changed task: before=%+v after=%+v err=%v", before, after, err)
 			}
 			result, err := r.q.GetSubmission(t.Context(), "task:"+task.ID+":result")
-			if err != nil || result.Status != "pending" || !strings.Contains(result.Content, `"report":"model_error"`) || strings.Contains(result.Content, "has not ended") {
-				t.Fatalf("failure result: %+v err=%v", result, err)
+			if cancel {
+				if !errors.Is(err, sql.ErrNoRows) || after.Report != "" {
+					t.Fatalf("cancelled task accepted late report: task=%+v result=%+v err=%v", after, result, err)
+				}
+			} else if err != nil || after.Report != "model_error" || !strings.Contains(result.Content, `"report":"model_error"`) {
+				t.Fatalf("failure report lost: task=%+v result=%+v err=%v", after, result, err)
 			}
-			if _, err := r.service.Stop(t.Context(), "bot", r.parent); err != nil {
-				t.Fatal(err)
-			}
-			if after, err := r.service.GetTask(t.Context(), "bot", r.parent, id); err != nil || after.StopRequestedAt != nil || after.Report != event.Reason {
-				t.Fatalf("Stop changed completed failure: %+v err=%v", after, err)
-			}
-			t.Logf("execution=%s report=%q stopNote=%q", id, got.Report, got.StopNote)
+			t.Logf("execution=%s status=%s report=%q", id, after.Status, after.Report)
 		})
 	}
 }

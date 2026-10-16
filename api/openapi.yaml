@@ -169,16 +169,16 @@ paths:
     post:
       operationId: abortChat
       description: >
-        Stops the main turn and all background execution of this chat, and
-        withdraws queued user messages. Old results are not delivered again.
-        This does not confirm that all external side effects have stopped.
+        Withdraws queued input and results, then requests cancellation of the
+        main turn and background execution of this chat. Earlier actions are
+        not undone. Processes and remote work may continue.
         External channel chats are read-only on the web.
       responses:
         "200":
-          description: The stop request is accepted. Check confirmed for execution exit.
+          description: Pending input is withdrawn and cancellation is requested.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/StopResult" }
+              schema: { $ref: "#/components/schemas/Ok" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
@@ -721,17 +721,6 @@ components:
           type: boolean
           description: True while a message of the chat has no answer yet.
         settings: { $ref: "#/components/schemas/ChatSettings" }
-
-    StopResult:
-      type: object
-      required: [confirmed]
-      properties:
-        confirmed:
-          type: boolean
-          description: >
-            True when controlled execution has stopped. False when the request
-            is accepted but background execution has not confirmed exit.
-            Neither value guarantees that external side effects have stopped.
 
     ChatSettings:
       x-go-type: chat.Settings

@@ -630,7 +630,7 @@ func TestUserWechatCommandsStop(t *testing.T) {
 	f.batch("c4", wxText(5, "owner", "/stop"))
 	var stopped bool
 	for range 2 {
-		if wxSentText(f.next(t)) == "Stopped. Earlier actions are not undone." {
+		if wxSentText(f.next(t)) == "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
 			stopped = true
 		}
 	}
@@ -1130,7 +1130,7 @@ func TestUserWechatInterruptedCommandSkipsMediaBeforeCompletion(t *testing.T) {
 	msg := wxText(2, "owner", "")
 	msg["item_list"] = []any{wxFile("unavailable", "unused.txt")}
 	f.batch("command-complete", msg)
-	if got := wxSentText(f.next(t)); got != "Stopped. Earlier actions are not undone." {
+	if got := wxSentText(f.next(t)); got != "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
 		t.Fatal(got)
 	}
 	eventually(t, "command replay cursor", func() (bool, any) {

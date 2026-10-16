@@ -700,9 +700,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
     <>
       {abort.isSuccess ? (
         <p role="status" className="mb-3 text-[12.5px] text-ink-2">
-          {abort.data.confirmed
-            ? "Stopped. Earlier actions are not undone."
-            : "Stop requested. Background execution has not confirmed exit."}
+          Stop requested. Earlier actions are not undone. Processes and remote work may continue.
         </p>
       ) : null}
       {error ? (

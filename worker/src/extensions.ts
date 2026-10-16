@@ -67,7 +67,6 @@ type Scan = {
 export type Loaded = {
 	readonly extension: Extension;
 	readonly hasTools: boolean;
-	hasMcpCalls(conversationId: number): boolean;
 	/** The state of each server. A server that closes its connection changes to "failed". */
 	readonly servers: readonly McpServerInfo[];
 	close(): Promise<void>;
@@ -120,10 +119,9 @@ export class AgentExtensions {
 	async load(): Promise<Loaded> {
 		const scan = await this.#scan();
 		for (const error of scan.errors) console.error("extensions:", error);
-		const mcpCalls = new Set<number>();
 		const servers = await Promise.all(
 			scan.servers.map((entry) =>
-				entry.server.disabled ? Promise.resolve(undefined) : this.#connect(entry, mcpCalls),
+				entry.server.disabled ? Promise.resolve(undefined) : this.#connect(entry),
 			),
 		);
 		const clients = servers.flatMap((s) => (s?.client === undefined ? [] : [s.client]));
@@ -152,7 +150,6 @@ export class AgentExtensions {
 				tools,
 			}),
 			hasTools: tools.length > 0,
-			hasMcpCalls: (conversationId) => mcpCalls.has(conversationId),
 			servers: scan.servers.map((entry, i) => servers[i]?.info ?? serverInfo(entry, "disabled")),
 			close: async () => {
 				await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
@@ -189,7 +186,7 @@ export class AgentExtensions {
 		};
 	}
 
-	async #connect(entry: ServerEntry, mcpCalls: Set<number>) {
+	async #connect(entry: ServerEntry) {
 		const { name, server } = entry;
 		const client = new McpClient({ name: "dex", version: "1", requestTimeoutMs: CONNECT_TIMEOUT_MS });
 		try {
@@ -230,9 +227,7 @@ export class AgentExtensions {
 						deferred: true,
 						// The default replay policy, "unsafe", is required: a call can change data on the
 						// server, so a call that a restart interrupts must not run again.
-						execute: async (args, api, context) => {
-							// Preserve the remote execution boundary in cancellation reports.
-							mcpCalls.add(api.conversationId);
+						execute: async (args, _api, context) => {
 							const result = await client.callTool(tool.name, args, {
 								timeoutMs: CALL_TIMEOUT_MS,
 								...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),

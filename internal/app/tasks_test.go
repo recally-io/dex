@@ -126,7 +126,7 @@ func waitExecution(t *testing.T, conn *sql.DB, parent int64, title, status strin
 	t.Helper()
 	var task chat.Task
 	eventually(t, title+" "+status, func() (bool, any) {
-		err := conn.QueryRowContext(t.Context(), "SELECT id,title,status,report,stop_note FROM tasks WHERE parent_conversation_id = ? AND title = ?", parent, title).Scan(&task.ID, &task.Title, &task.Status, &task.Report, &task.StopNote)
+		err := conn.QueryRowContext(t.Context(), "SELECT id,title,status,report FROM tasks WHERE parent_conversation_id = ? AND title = ?", parent, title).Scan(&task.ID, &task.Title, &task.Status, &task.Report)
 		return err == nil && task.Status == status, fmt.Sprintf("task=%+v err=%v", task, err)
 	})
 	return task
@@ -223,7 +223,7 @@ func TestUserDelegationPreservesMCPReportAndReturnsExecutionFailure(t *testing.T
 	spawnExecution(t, d, parent, "Failed execution", "invalid JSON", "spawn")
 	failed := waitExecution(t, conn, parent, "Failed execution", "failed")
 	result := waitResultSubmission(t, conn, "task:"+failed.ID+":result", "done")
-	if failed.Report != "model_error" || failed.StopNote != "" || !strings.Contains(result.content, `"status":"failed"`) || !strings.Contains(result.answer, failed.ID) {
+	if failed.Report != "model_error" || !strings.Contains(result.content, `"status":"failed"`) || !strings.Contains(result.answer, failed.ID) {
 		t.Fatalf("failure was not returned: %+v %+v", failed, result)
 	}
 	t.Logf("mcp=%s report=%q failed=%s report=%q", task.ID, task.Report, failed.ID, failed.Report)

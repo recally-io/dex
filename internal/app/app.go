@@ -110,14 +110,13 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		bots  *channel.Manager
 	)
 	w := worker.New(worker.Config{
-		Path:           path,
-		Dir:            cfg.CacheDir,
-		Env:            append(cfg.WorkerEnv, "DEX_DATA_DIR="+cfg.DataDir),
-		OnSettled:      func(ctx context.Context, s worker.Settled) { chats.HandleSettled(ctx, s) },
-		OnTask:         func(ctx context.Context, r worker.TaskRequest) (any, error) { return chats.HandleTask(ctx, r) },
-		OnTaskProgress: func(ctx context.Context, p worker.TaskProgress) { chats.HandleTaskProgress(ctx, p) },
-		OnChat:         func(ev worker.ChatStream) { hub.HandleChat(ev) },
-		OnExit:         func() { hub.WorkerExited() },
+		Path:      path,
+		Dir:       cfg.CacheDir,
+		Env:       append(cfg.WorkerEnv, "DEX_DATA_DIR="+cfg.DataDir),
+		OnSettled: func(ctx context.Context, s worker.Settled) { chats.HandleSettled(ctx, s) },
+		OnTask:    func(ctx context.Context, r worker.TaskRequest) (any, error) { return chats.HandleTask(ctx, r) },
+		OnChat:    func(ev worker.ChatStream) { hub.HandleChat(ev) },
+		OnExit:    func() { hub.WorkerExited() },
 		Init: func(ctx context.Context, call worker.CallFunc) error {
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()

@@ -1,6 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm, readFile, mkdir, writeFile } from "node:fs/promises";
-import { watch } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agents } from "../src/agents.ts";
@@ -173,7 +172,7 @@ test("user can spawn a task through the real worker without a browser watch", as
 	expect(task.params?.["key"]).toMatch(/^bot\/\d+$/);
 	const busy = await w.submit("must stay pending", { whenBusy: "reject" });
 	expect(busy.error?.code).toBe("conversation_busy");
-	// Then the tool result reaches the answer, and progress needs no browser watch.
+	// Then the tool result reaches the answer without a browser watch.
 	w.send({ id: task.id, result: { id: "task-1", status: "active" } });
 	const settled = await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-1");
 	expect(settled.params?.["answer"]).toBe('spawn: {"id":"task-1","status":"active"}');
@@ -276,47 +275,7 @@ test("user results complete after a failure with no queued input", async () => {
 	expect(settled.params?.["answer"]).toBe('task-result: {"id":"task-A"}');
 });
 
-test("user can confirm the first execution in an empty conversation after restart", async () => {
-	// Given a queued stage for which control created only an empty conversation.
-	const first = await worker();
-	await first.crash();
-	const restarted = await worker({ dir: first.dir });
-	// When the stage starts for the first time after restart, its shell belongs to this process.
-	expect(
-		(
-			await restarted.submit("printf first > receipt.txt; cat receipt.txt", {
-				conversationId: first.conversationId,
-				model: { provider: "faux", modelId: "bash" },
-				taskStageId: "queued-stage",
-			})
-		).error,
-	).toBeUndefined();
-	const settled = await restarted.wait(
-		(m) => m.event === "settled" && m.params?.["conversationId"] === first.conversationId,
-	);
-	// Then control gets a trusted exit receipt as well as the answer.
-	expect(settled.params?.["answer"]).toBe("bash: first");
-	expect(settled.params?.["executionConfirmed"]).toBe(true);
-	expect(await readFile(join(first.dir, "agents/bot/workspace/receipt.txt"), "utf8")).toBe("first");
-});
-
-test("user cannot confirm a new submission in a recovery-isolated empty conversation", async () => {
-	const first = await worker();
-	await first.crash();
-	const recovered = await worker({
-		dir: first.dir,
-		recover: [{ stageId: "old-stage", agentId: "bot", conversationId: first.conversationId }],
-	});
-	await recovered.submit("ordinary answer", {
-		conversationId: first.conversationId,
-		model: { provider: "faux", modelId: "echo" },
-		taskStageId: "old-stage",
-	});
-	const settled = await recovered.wait((m) => m.event === "settled");
-	expect(settled.params?.["executionConfirmed"]).toBe(false);
-});
-
-test("user recovery never reruns a completed shell stage or confirms its old receipt", async () => {
+test("user recovery never reruns a completed shell stage", async () => {
 	const first = await worker();
 	const command = "echo started >> starts.txt; cat starts.txt";
 	await first.submit(command, {
@@ -337,7 +296,6 @@ test("user recovery never reruns a completed shell stage or confirms its old rec
 	});
 	const settled = await recovered.wait((m) => m.event === "settled");
 	expect(settled.params?.["answer"]).toBe("bash: started");
-	expect(settled.params?.["executionConfirmed"]).toBe(false);
 	expect(await readFile(join(first.dir, "agents/bot/workspace/starts.txt"), "utf8")).toBe("started\n");
 });
 
@@ -359,13 +317,6 @@ test("restart isolates marked task tools and queued inputs before ordinary conve
 	);
 	expect(settled.params?.["answer"]).toBe("echo: normal conversation");
 	expect(recovered.messages.some((m) => m.method === "task")).toBe(false);
-	// Recovery's interrupted tool record cannot prove that an old local CLI exited.
-	const aborted = await recovered.call("abort", {
-		agentId: "bot",
-		conversationId: first.conversationId,
-		taskStageId: "unknown-stage",
-	});
-	expect(aborted.result).toMatchObject({ executionConfirmed: false });
 	await recovered.submit("replay", {
 		conversationId: first.conversationId,
 		requestId: "request-1",
@@ -374,7 +325,7 @@ test("restart isolates marked task tools and queued inputs before ordinary conve
 	const replayed = await recovered.wait(
 		(m) => m.event === "settled" && m.params?.["conversationId"] === first.conversationId,
 	);
-	expect(replayed.params?.["executionConfirmed"]).toBe(false);
+	expect(replayed.params?.["status"]).toBe("unanswered");
 	// The queued shell was withdrawn before resume and remains withdrawn on replay.
 	await recovered.submit("echo restarted > recovered-shell.txt", {
 		conversationId: first.conversationId,
@@ -389,7 +340,6 @@ test("restart isolates marked task tools and queued inputs before ordinary conve
 			m.params?.["requestId"] === "request-2",
 	);
 	expect(queued.params?.["status"]).toBe("unanswered");
-	expect(queued.params?.["executionConfirmed"]).toBe(false);
 	expect(await Bun.file(join(first.dir, "agents/bot/workspace/recovered-shell.txt")).exists()).toBe(false);
 	expect((await recovered.call("recoverTasks", { stages: [] })).error?.message).toContain(
 		"precede agent open",
@@ -451,88 +401,73 @@ test("faux/tool calls each exposed task tool without tool_search", async () => {
 	}
 });
 
-test("abort joins a controlled shell process and silent waits do not refresh progress", async () => {
+test("abort cancels an ordinary shell process group", async () => {
 	const w = await worker();
 	const workspace = join(w.dir, "agents/bot/workspace");
-	const pidFile = join(workspace, "command.pid");
-	const pidReady = new Promise<number>((resolve, reject) => {
-		const inspect = async () => {
+	// Cleanup does not depend on abort succeeding or the command returning.
+	cleanups.push(async () => {
+		for (const name of ["command.pid", "shell.pid"]) {
+			// oxlint-disable-next-line no-await-in-loop
+			const pid = Number(await readFile(join(workspace, name), "utf8").catch(() => "0"));
+			if (pid === 0) continue;
 			try {
-				const value = (await readFile(pidFile, "utf8")).trim();
-				if (!/^\d+$/.test(value)) return;
-				clearTimeout(timer);
-				watcher.close();
-				resolve(Number(value));
+				process.kill(pid, "SIGKILL");
 			} catch (error) {
-				if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") reject(error);
+				if (!(error instanceof Error) || !("code" in error) || error.code !== "ESRCH") throw error;
 			}
-		};
-		const watcher = watch(workspace, () => {
-			void inspect();
-		});
-		const timer = setTimeout(() => {
-			watcher.close();
-			reject(new Error("shell did not record its PID"));
-		}, 10000);
-		cleanups.push(async () => {
-			clearTimeout(timer);
-			watcher.close();
-		});
+		}
+		await writeFile(join(workspace, "release"), "release test gate\n");
 	});
-	await w.submit("echo $$ > command.pid; exec sleep 120", {
-		model: { provider: "faux", modelId: "bash" },
-		taskStageId: "shell-stage",
-	});
-	const pid = await pidReady;
-	await w.wait((m) => m.event === "taskProgress" && m.params?.["currentTool"] === "bash");
-	const progress = w.messages.filter((m) => m.event === "taskProgress");
-	await w.call("ping");
-	expect(w.messages.filter((m) => m.event === "taskProgress")).toEqual(progress);
-	const aborted = await w.call("abort", {
-		agentId: "bot",
-		conversationId: w.conversationId,
-		taskStageId: "shell-stage",
-	});
-	expect(aborted.error).toBeUndefined();
-	expect(aborted.result).toEqual({ executionConfirmed: true });
-	let code;
-	try {
-		process.kill(pid, 0);
-	} catch (error) {
-		if (error instanceof Error && "code" in error) code = error.code;
+	await w.submit(
+		"echo $$ > shell.pid; bash -c 'echo $$ > command.pid; while [ ! -f release ]; do sleep 0.02; done; echo LATE > late'; echo done",
+		{ model: { provider: "faux", modelId: "bash" }, taskStageId: "shell-stage" },
+	);
+	const started = Date.now();
+	let pid = 0;
+	while (pid === 0) {
+		// oxlint-disable-next-line no-await-in-loop
+		pid = Number(await readFile(join(workspace, "command.pid"), "utf8").catch(() => "0"));
+		if (Date.now() - started > 5000) throw new Error("ordinary shell child did not start");
+		// oxlint-disable-next-line no-await-in-loop
+		if (pid === 0) await Bun.sleep(10);
 	}
-	expect(code).toBe("ESRCH");
-	const repeated = await w.call("abort", {
-		agentId: "bot",
-		conversationId: w.conversationId,
-		taskStageId: "shell-stage",
-	});
-	expect(repeated.result).toEqual({ executionConfirmed: true });
-	const unknown = await w.call("abort", {
-		agentId: "bot",
-		conversationId: w.conversationId,
-		taskStageId: "other-stage",
-	});
-	expect(unknown.result).toMatchObject({ executionConfirmed: false });
-	expect((await w.call("abort", { agentId: "bot", conversationId: w.conversationId })).result).toEqual({
-		executionConfirmed: true,
-	});
+	const aborted = await w.call("abort", { agentId: "bot", conversationId: w.conversationId });
+	expect(aborted.error).toBeUndefined();
+	expect(aborted.result).toEqual({});
+	const deadline = Date.now() + 3000;
+	let code;
+	while (code !== "ESRCH") {
+		try {
+			process.kill(pid, 0);
+		} catch (error) {
+			if (error instanceof Error && "code" in error) code = error.code;
+		}
+		if (Date.now() >= deadline) throw new Error("ordinary shell child did not exit");
+		// oxlint-disable-next-line no-await-in-loop
+		if (code !== "ESRCH") await Bun.sleep(10);
+	}
+	expect(await Bun.file(join(workspace, "late")).exists()).toBe(false);
 	const settled = await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-1");
 	expect(settled.params?.["status"]).toBe("unanswered");
-	expect(settled.params?.["executionConfirmed"]).toBe(true);
 });
 
-test("a real submission wait failure does not confirm task execution", async () => {
+test("shutdown suppresses settled events and waits for the real memory commit", async () => {
 	// Given a real harness waiting for a control RPC.
 	const dir = await mkdtemp(join(tmpdir(), "dex-task-wait-"));
 	cleanups.push(() => rm(dir, { recursive: true, force: true }));
 	const called = Promise.withResolvers<void>();
-	const event = Promise.withResolvers<SettledEvent>();
+	const events: SettledEvent[] = [];
+	const previousHome = process.env["HOME"];
+	process.env["HOME"] = dir;
+	cleanups.push(async () => {
+		if (previousHome === undefined) delete process.env["HOME"];
+		else process.env["HOME"] = previousHome;
+	});
 	const rpc = new TaskRpc(() => called.resolve());
 	const agents = new Agents(
 		dir,
 		new Catalog({ DEX_FAKE_MODEL: "1" }).models,
-		(settled) => event.resolve(settled),
+		(settled) => events.push(settled),
 		() => {},
 		(params, signal) => rpc.call(params, signal),
 	);
@@ -560,19 +495,18 @@ test("a real submission wait failure does not confirm task execution", async () 
 	await writeFile(join(dir, "memory/stop-report.md"), "shutdown evidence\n");
 	// When shutdown closes the session, submission.wait rejects instead of returning a settlement.
 	await agents.close();
-	// Then control receives an explicit lack of evidence, even if shutdown cancels the tool.
-	const settled = await event.promise;
-	expect(settled.status).toBe("unanswered");
-	expect(settled.reason).toContain("closed");
-	expect(settled.executionConfirmed).toBeUndefined();
-	// Close must also join the memory commit after the final settlement.
+	// Then shutdown emits no failure, but still commits memory before close returns.
+	expect(events).toEqual([]);
 	expect(await agents.quiesce({ expiresAt: Date.now() + 1000 })).toEqual({ busy: false });
 	const commit = Bun.spawnSync(["git", "log", "-1", "--format=%s"], { cwd: join(dir, "memory") });
 	expect(commit.exitCode).toBe(0);
 	expect(new TextDecoder().decode(commit.stdout).trim()).toBe("Update memory from dex:chat/test");
+	const saved = Bun.spawnSync(["git", "show", "HEAD:stop-report.md"], { cwd: join(dir, "memory") });
+	expect(saved.exitCode).toBe(0);
+	expect(new TextDecoder().decode(saved.stdout)).toBe("shutdown evidence\n");
 });
 
-test("a bot with MCP tools confirms local stages independently of other conversations", async () => {
+test("task reports complete with MCP success, MCP error, and local tools", async () => {
 	// Given a real MCP server with both successful and failed tool results.
 	const dir = await mkdtemp(join(tmpdir(), "dex-task-mcp-local-"));
 	cleanups.push(() => rm(dir, { recursive: true, force: true }));
@@ -616,14 +550,14 @@ test("a bot with MCP tools confirms local stages independently of other conversa
 		JSON.stringify({ mcpServers: { remote: { type: "http", url: server.url.href } } }),
 	);
 	const w = await worker({ dir });
-	// When the main conversation and other stages call MCP, local stages keep their own evidence.
+	// When each conversation completes, its report keeps the tool result.
 	await w.submit("mcp__remote__report {}", { model: { provider: "faux", modelId: "tool" } });
 	await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === "request-1");
-	for (const [index, model, content, confirmed] of [
-		[2, "tool", "mcp__remote__report {}", true],
-		[3, "tool", 'mcp__remote__report {"fail":true}', true],
-		[4, "echo", "local report", true],
-		[5, "bash", "printf DEX_MCP_LOCAL_OK", true],
+	for (const [index, model, content] of [
+		[2, "tool", "mcp__remote__report {}"],
+		[3, "tool", 'mcp__remote__report {"fail":true}'],
+		[4, "echo", "local report"],
+		[5, "bash", "printf DEX_MCP_LOCAL_OK"],
 	] as const) {
 		// oxlint-disable-next-line no-await-in-loop
 		const created = await w.call("createConversation", {
@@ -641,163 +575,15 @@ test("a bot with MCP tools confirms local stages independently of other conversa
 			taskStageId: `mcp-boundary-${index}`,
 		});
 		expect(submitted).not.toHaveProperty("error");
-		// MCP and ordinary tools use the same controlled local execution boundary.
 		// oxlint-disable-next-line no-await-in-loop
 		const settled = await w.wait(
 			(m) => m.event === "settled" && m.params?.["requestId"] === `request-${index}`,
 		);
 		expect(settled.params?.["status"]).toBe("done");
-		expect(settled.params?.["executionConfirmed"]).toBe(confirmed);
 		if (model === "bash") expect(settled.params?.["answer"]).toContain("DEX_MCP_LOCAL_OK");
 		if (model === "tool") expect(settled.params?.["answer"]).toContain("remote report");
 	}
 });
-
-test("MCP cancellation confirms local cleanup and reports the remote boundary", async () => {
-	// Given a real MCP HTTP server whose tool has no execution exit receipt.
-	const dir = await mkdtemp(join(tmpdir(), "dex-task-mcp-"));
-	cleanups.push(() => rm(dir, { recursive: true, force: true }));
-	const called = Promise.withResolvers<void>();
-	const result = Promise.withResolvers<Response>();
-	const server = Bun.serve({
-		port: 0,
-		fetch: async (request) => {
-			if (request.method !== "POST") return new Response(null, { status: 405 });
-			const message = await request.json();
-			if (message.id === undefined) return new Response(null, { status: 202 });
-			if (message.method === "tools/call") {
-				called.resolve();
-				return result.promise;
-			}
-			return Response.json({
-				jsonrpc: "2.0",
-				id: message.id,
-				result:
-					message.method === "initialize"
-						? {
-								protocolVersion: message.params.protocolVersion,
-								capabilities: { tools: {} },
-								serverInfo: { name: "wait", version: "1" },
-							}
-						: {
-								tools: [
-									{
-										name: "wait",
-										description: "Wait for release",
-										inputSchema: { type: "object", properties: {} },
-									},
-								],
-							},
-			});
-		},
-	});
-	cleanups.push(async () => {
-		result.resolve(new Response(null, { status: 503 }));
-		await server.stop(true);
-	});
-	await mkdir(join(dir, ".agents"));
-	await writeFile(
-		join(dir, ".agents/mcp.json"),
-		JSON.stringify({ mcpServers: { remote: { type: "http", url: server.url.href } } }),
-	);
-	const w = await worker({ dir });
-	await w.submit("mcp__remote__wait {}", {
-		model: { provider: "faux", modelId: "tool" },
-		taskStageId: "mcp-stage",
-	});
-	await called.promise;
-	// When the worker cancels its call, the server has still not completed the tool.
-	const aborted = await w.call("abort", {
-		agentId: "bot",
-		conversationId: w.conversationId,
-		taskStageId: "mcp-stage",
-	});
-	expect(aborted.error).toBeUndefined();
-	expect(aborted.result).toMatchObject({
-		executionConfirmed: true,
-		stopNote: expect.stringContaining("remote work may still be running"),
-	});
-	const settled = await w.wait((m) => m.event === "settled");
-	expect(settled.params?.["executionConfirmed"]).toBe(true);
-	expect(settled.params?.["stopNote"]).toContain("remote work may still be running");
-});
-
-/* oxlint-disable no-await-in-loop -- Poll real process and file state with a deadline. */
-for (const mode of ["cancel", "main-cancel", "shutdown", "timeout"])
-	test(`foreground job-control child cannot write after ${mode}`, async () => {
-		const w = await worker();
-		const workspace = join(w.dir, "agents/bot/workspace");
-		let foregroundPID: number | undefined;
-		cleanups.push(async () => {
-			if (foregroundPID === undefined) return;
-			try {
-				process.kill(-foregroundPID, "SIGKILL");
-			} catch {}
-		});
-		const command =
-			"set -m; echo $$ > shell.pid; bash -c 'echo $$ > foreground.pid; while [ ! -f release ]; do sleep 0.02; done; echo AFTER_CANCEL > after-cancel.txt'; echo after";
-		await w.submit(mode === "timeout" ? `bash ${JSON.stringify({ command, timeout: 1 })}` : command, {
-			model: { provider: "faux", modelId: mode === "timeout" ? "tool" : "bash" },
-			...(mode === "main-cancel" ? {} : { taskStageId: "foreground-stage" }),
-		});
-		const deadline = Date.now() + 5000;
-		while (foregroundPID === undefined) {
-			try {
-				foregroundPID =
-					Number((await readFile(join(workspace, "foreground.pid"), "utf8")).trim()) || undefined;
-			} catch {}
-			if (Date.now() >= deadline) throw new Error("foreground PID was not recorded");
-			if (foregroundPID === undefined) await new Promise((resolve) => setTimeout(resolve, 10));
-		}
-		const shellPID = Number((await readFile(join(workspace, "shell.pid"), "utf8")).trim());
-		const describe = Bun.spawnSync([
-			"/bin/ps",
-			"-o",
-			"pid,ppid,pgid,sess,stat,command",
-			"-p",
-			`${shellPID},${foregroundPID}`,
-		]);
-		console.log(new TextDecoder().decode(describe.stdout));
-		const aborted =
-			mode === "shutdown"
-				? (await w.shutdown(), undefined)
-				: mode === "timeout"
-					? undefined
-					: await w.call("abort", {
-							agentId: "bot",
-							conversationId: w.conversationId,
-							...(mode === "main-cancel" ? {} : { taskStageId: "foreground-stage" }),
-						});
-		if (mode === "timeout") {
-			const settled = await w.wait((m) => m.event === "settled");
-			expect(settled.params?.["answer"]).toContain("timed out after 1 seconds");
-			expect(settled.params?.["executionConfirmed"]).toBe(true);
-		}
-		let alive = false;
-		try {
-			process.kill(foregroundPID, 0);
-			alive = true;
-		} catch {}
-		console.log(JSON.stringify({ aborted, foregroundPID, foregroundStillAlive: alive }));
-
-		await writeFile(join(workspace, "release"), "released after executionConfirmed\n");
-		const outputPath = join(workspace, "after-cancel.txt");
-		const outputDeadline = Date.now() + 2000;
-		while (alive && !(await Bun.file(outputPath).exists()) && Date.now() < outputDeadline) {
-			try {
-				process.kill(foregroundPID, 0);
-			} catch {
-				alive = false;
-			}
-			await new Promise((resolve) => setTimeout(resolve, 10));
-		}
-		const lateWrite = await Bun.file(outputPath).exists();
-		if (mode === "cancel" || mode === "main-cancel")
-			expect(aborted?.result).toEqual({ executionConfirmed: true });
-		expect(lateWrite).toBe(false);
-		expect(alive).toBe(false);
-	});
-/* oxlint-enable no-await-in-loop */
 
 test("trusted internal results stay out of user projection and retain their real source", async () => {
 	const w = await worker();
@@ -878,7 +664,7 @@ test("main conversation abort joins its invocation and withdraws queued input", 
 	await w.wait((m) => m.method === "task");
 	await w.submit(JSON.stringify({ title: "Queued", goal: "Must not run" }));
 	const aborted = await w.call("abort", { agentId: "bot", conversationId: w.conversationId });
-	expect(aborted.result).toEqual({ executionConfirmed: true });
+	expect(aborted.result).toEqual({});
 	for (const id of ["request-1", "request-2"]) {
 		// oxlint-disable-next-line no-await-in-loop
 		const settled = await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === id);
@@ -886,5 +672,5 @@ test("main conversation abort joins its invocation and withdraws queued input", 
 	}
 	expect(w.messages.filter((m) => m.method === "task")).toHaveLength(1);
 	const repeated = await w.call("abort", { agentId: "bot", conversationId: w.conversationId });
-	expect(repeated.result).toEqual({ executionConfirmed: true });
+	expect(repeated.result).toEqual({});
 });

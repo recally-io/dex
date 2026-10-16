@@ -30,9 +30,10 @@ to read in an afternoon.
 - Internal background delegation for the default agent. Each delegation has
   one input and fixed model settings. The main agent stays available and
   receives reports to plan review, fixes, tests, and the final answer.
-  Each agent can hold at most 2 executions, including queued execution and
-  cleanup that has not confirmed exit. Background execution cannot delegate
-  more work. The main agent handles failures and decides the next action.
+  Each agent admits at most 2 queued or running executions. Cancellation
+  releases admission, but a tool can still complete actions. Background execution
+  cannot delegate more work. The main agent handles failures and decides the
+  next action.
 - Telegram setup: save a bot token, then open a single-use pairing link to
   allow the owner's account while the bot has no owner. Links expire after
   10 minutes. A paired bot cannot create another pairing link. Manual user-ID
@@ -84,29 +85,31 @@ starts follow-up work. The built-in coding skill requires a repository path,
 project rules, independent review, tests of the final revision, and evidence.
 Writes to one repository must run in order or in separate worktrees.
 
-Web Stop remains available when the main chat is idle. It stops work only in
-that web chat. Channel chats remain read-only on the web. Stop needs no model.
-The reply distinguishes confirmed exit from an accepted request whose
-background execution has not confirmed exit. Stop withdraws queued input and
-prevents old results from starting another model turn. It does not undo prior
-actions or prove that all external side effects have stopped.
+Web Stop remains available when the main chat is idle. Stop covers only that
+web chat. Channel chats remain read-only on the web. Stop needs no model.
+Stop withdraws pending input and results, records cancellation, and requests
+SDK cancellation once. The reply confirms the request. It does not confirm
+process exit. Processes and remote work can continue. Prior actions are not
+undone.
 
 Normal completion and execution failure return a report to the main agent.
-Stop, cancellation, and interrupted execution save reports without automatic
-delivery. The system does not retry failed execution or result delivery.
-The main agent reads saved records and artifacts, then decides whether to
-retry or continue from saved work. A later user message does not retry an
-old result. Result delivery stays in the source chat after `/new`.
+Stop, cancellation, and interrupted execution do not start a result turn.
+A saved report stays unchanged after cancellation or a late worker event.
+The system does not retry failed execution or result delivery. The main agent
+reads saved records and artifacts, then decides whether to retry or continue
+from saved work. After a user Stop, the main agent waits for new user
+authorization. A later user message does not retry an old result. Result
+delivery stays in the source chat after `/new`.
 
-After worker loss, started execution becomes interrupted and does not restart
+After worker loss, running execution becomes interrupted and does not restart
 automatically. Queued execution that never started can start for the first
-time. Cleanup that has not confirmed exit keeps its resource in the current
-worker. Worker loss does not prove that old processes ended. Before another
-execution, the main agent must check prior artifacts and side effects.
-Tools run on the host without a sandbox. Detached daemons and remote jobs
-are outside reliable process tracking. A completed MCP call can return its
-report; cancellation of that call does not prove that remote work ended.
-CLI tools must be logged in and run in the foreground without user input.
+time. Cancelled execution stays cancelled. Worker loss does not prove that old
+processes ended. Before another execution, the main agent must check prior
+artifacts and side effects. Tools run on the host without a sandbox. The SDK
+requests cancellation of local commands and MCP calls. It does not guarantee
+that detached processes or remote jobs stop. A completed MCP call can return
+its report. CLI tools must be logged in and run in the foreground without user
+input.
 
 Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,
 background tasks, timers, skills, MCP servers, and the worker are available.

@@ -126,10 +126,6 @@ type Task struct {
 	Title                string        `json:"title"`
 	Status               string        `json:"status"`
 	Report               string        `json:"report"`
-	StopNote             string        `json:"stop_note"`
-	StopRequestedAt      sql.NullInt64 `json:"stop_requested_at"`
-	CurrentTool          string        `json:"current_tool"`
-	LastEventAt          int64         `json:"last_event_at"`
 	CreatedAt            int64         `json:"created_at"`
 	StartedAt            sql.NullInt64 `json:"started_at"`
 	EndedAt              sql.NullInt64 `json:"ended_at"`

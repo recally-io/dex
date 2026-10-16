@@ -44,7 +44,6 @@ const agents = new Agents(
 	(params) => write({ event: "settled", params }),
 	(params) => write({ event: "chat", params }),
 	(params, signal) => taskRpc.call(params, signal),
-	(params) => write({ event: "taskProgress", params }),
 );
 
 async function handle(request: Request): Promise<unknown> {

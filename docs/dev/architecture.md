@@ -61,8 +61,9 @@ decisions.
 Control also owns internal delegation records (`tasks`). Each record
 has one hidden `task:<execution ID>` conversation and one input. The worker
 owns its transcript and execution records. Control never reads worker SQLite.
-The records retain the source submission, reports, stop intent, and stop
-evidence. There is no user goal lifecycle or automatic retry chain.
+The records retain the source submission, status, and report. A cancelled
+status records a cancellation request. It does not prove process exit. There
+is no user goal lifecycle or automatic retry chain.
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). pi-durable allows one
 process per storage, so only the worker opens an agent directory.
@@ -190,18 +191,18 @@ writes one JSON response or event per line to its stdout. Logs go to stderr.
 The types are in [`worker/src/protocol.ts`](../../worker/src/protocol.ts) and
 [`internal/worker/protocol.go`](../../internal/worker/protocol.go).
 
-| Method               | Params                                                                                                                 | Result                                    |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `ping`               | none                                                                                                                   | `{}`                                      |
-| `createConversation` | `agentId`, `model`, `thinkingLevel`, `instructions`                                                                    | `conversationId`                          |
-| `submit`             | `agentId`, `conversationId`, `model`, `thinkingLevel`, `instructions`, `requestId`, `content`, `attachments`, `source` | `submissionId`                            |
-| `configure`          | `providers`: `id`, `name`, `api`, `baseUrl`, `apiKey`, `models`                                                        | `errors` per provider                     |
-| `listProviders`      | none                                                                                                                   | built-in `providers`                      |
-| `listModels`         | none                                                                                                                   | `models` with credentials                 |
-| `watch`              | `watchId`, `agentId`, `conversationId`                                                                                 | `{}` after the snapshot                   |
-| `unwatch`            | `watchId`                                                                                                              | `{}`                                      |
-| `abort`              | `agentId`, `conversationId`, optional `taskStageId`                                                                    | `executionConfirmed`, optional `stopNote` |
-| `extensions`         | `agentId`                                                                                                              | the Extensions schema                     |
+| Method               | Params                                                                                                                 | Result                    |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `ping`               | none                                                                                                                   | `{}`                      |
+| `createConversation` | `agentId`, `model`, `thinkingLevel`, `instructions`                                                                    | `conversationId`          |
+| `submit`             | `agentId`, `conversationId`, `model`, `thinkingLevel`, `instructions`, `requestId`, `content`, `attachments`, `source` | `submissionId`            |
+| `configure`          | `providers`: `id`, `name`, `api`, `baseUrl`, `apiKey`, `models`                                                        | `errors` per provider     |
+| `listProviders`      | none                                                                                                                   | built-in `providers`      |
+| `listModels`         | none                                                                                                                   | `models` with credentials |
+| `watch`              | `watchId`, `agentId`, `conversationId`                                                                                 | `{}` after the snapshot   |
+| `unwatch`            | `watchId`                                                                                                              | `{}`                      |
+| `abort`              | `agentId`, `conversationId`                                                                                            | `{}`                      |
+| `extensions`         | `agentId`                                                                                                              | the Extensions schema     |
 
 The worker can also send a `task` request to control. Its params contain the
 agent, worker conversation, durable tool key, source request ID, action, and
@@ -212,13 +213,13 @@ the stdout reader because a task action can call the worker for validation.
 `submit` also accepts `whenBusy`, `taskStageId`, and a trusted input kind.
 Task result delivery uses
 `whenBusy: reject`, so it remains in control while the main chat has an active
-run or queued inputs. `abort` returns `executionConfirmed` and an optional
-`stopNote`. `recoverTasks` registers old task conversations before
-the worker opens any Harness. Event `taskProgress` records actual run and tool
-events without a browser watch. A task `settled` event also carries
-`executionConfirmed`.
+run or queued inputs. `abort` requests SDK cancellation with a 5 s wait limit.
+The SDK saves the cancellation before it waits for idle. An SDK error or timeout
+returns an RPC error. The wait limit excludes admission and conversation
+serialization. `recoverTasks` registers started task conversations before the
+worker opens any Harness.
 
-The worker runs the submits of one conversation in order. When `model`,
+The worker runs submits and aborts for one conversation in order. When `model`,
 `thinkingLevel` or `instructions` differ from the conversation's, it changes
 the conversation first; a run in progress keeps its settings until its next
 turn.
@@ -267,17 +268,18 @@ checks this boundary as well as the worker's tool list.
 
 Creation checks source ownership, pending input, deduplication, and capacity
 in one SQLite write transaction. The durable spawn key is the agent ID plus
-pi-durable's tool task ID. Replay returns the same execution. Each agent holds
-at most 2 queued, running, or cancelling executions. The main agent handles
-failure, retry, and continuation from saved artifacts. The prompt requires a
-record check before progress reports or follow-up work.
+pi-durable's tool task ID. Replay returns the same execution. Each agent admits
+at most 2 queued or running executions. Cancellation releases admission, so a
+tool that ignores cancellation can continue after another execution starts.
+The main agent handles failure, retry, and continuation from saved artifacts.
+The prompt requires a record check before progress reports or follow-up work.
 
 Normal completion (`done`) and execution failure (`failed`) create a durable
 `task_result` submission in the same transaction as settlement. The result
-waits in control while the source chat is busy. Stop, directed cancellation,
-and worker interruption save reports without automatic result delivery.
-Reports and stop evidence are separate facts; cancellation cannot replace a
-saved report with a fixed status message.
+waits in control while the source chat is busy. Stop and directed cancellation
+set active executions to `cancelled`. Worker loss sets running executions to
+`interrupted`. These states create no result turn. A terminal record and its
+saved report stay unchanged when a late worker event arrives.
 
 Control passes a trusted submission kind to the worker. The worker stores
 internal results as a separate entry kind and excludes them from the public
@@ -302,36 +304,38 @@ are read-only on the web. The existing automation-chat write boundary remains.
 Channel `/stop` covers the current agent and exact channel peer, including
 its chats before `/new`. Other peers, agents, and web chats are outside that
 scope. `/new` changes context without cancelling prior execution.
-Stop withdraws queued ordinary input, blocks result turns, and records stop
-intent for background executions. Stop and spawn share a write boundary:
-spawn either commits first and receives the stop intent, or fails because its
-source is no longer pending.
-Late reports remain saved but cannot revoke stop intent or wake the model.
+Stop withdraws pending ordinary input and results. The same transaction sets
+active background executions to `cancelled` and withdraws their own input.
+Stop and spawn acquire the SQLite writer before they read: spawn either commits
+first and is cancelled, or fails because its source is no longer pending.
+Submission and Stop share a delivery lock, so cancellation cannot pass an
+input that control still intends to submit. Stop then requests cancellation
+once for each worker conversation through the bound current process. Each RPC
+has a 6 s timeout. RPC failure is logged; saved cancellation stays in effect.
+There is no cancellation retry loop. Late reports cannot change a terminal
+record or wake the model.
 
-`POST /api/chats/{chatId}/abort` returns `{confirmed: boolean}`. A false value
-means that control accepted the request but background execution has not
-confirmed exit. Web Stop stays available while the main chat is idle and
-without a model. The response never guarantees that all external side effects
-have stopped. Cancellation does not undo file writes or remote actions.
+`POST /api/chats/{chatId}/abort` returns `{status: "ok"}` after withdrawal and the
+cancellation requests. Web Stop stays available while the main chat is idle
+and without a model. The reply confirms the request. It does not prove process
+exit. Processes and remote work can continue. Cancellation does not undo file writes
+or remote actions. A directed cancellation of a completed execution leaves its
+report and saved result unchanged.
 
-Control binds admission and receipts to the current worker process. It joins
-old worker callbacks before it starts the next process. Started execution
-lost before confirmed exit becomes `interrupted`, even if a report is saved.
-It does not run again or create a result turn. The main agent can inspect that
-report and the artifacts. Queued execution that never started can start for
-the first time. Completed results already saved for delivery remain pending.
+Control binds admission to the current worker process. It joins old worker
+callbacks before it starts the next process. After worker loss, a running
+execution becomes `interrupted`. It does not run again or create a result turn.
+Before Harness resume, the worker isolates all started task conversations,
+including cancelled executions whose cancellation request could not reach the
+old worker. Queued execution that never started can start for the first time.
+Completed results already saved for delivery retain their submission state.
 Durable spawn replay returns the original record.
 
-Worker cleanup owns termination, waiting, and stop evidence. Known live or
-cancelling local execution keeps a resource until exit is confirmed. The worker
-checks only recorded execution and process identities. It does not scan the
-whole machine or kill processes of unknown ownership. If execution never exits,
-it can hold a resource for the worker's lifetime. After worker loss, interrupted
-execution does not permanently reserve capacity in the new worker. This does
-not prove that the old process ended. Continuation must check existing work.
-A normal local or MCP tool return can settle execution. An aborted remote
-call does not prove that the remote job stopped. Detached daemons and remote
-jobs are outside reliable process tracking.
+The SDK owns cancellation of run invocations and tools. Control does not track
+process trees or confirm exit. A normal local or MCP tool return can settle
+execution. An aborted MCP call ends the local wait and requests remote
+cancellation. It does not prove that the remote job stopped. Before another
+execution, the main agent must check reports, artifacts, and prior actions.
 
 Tools use the local `NodeExecutionEnv`, without a sandbox. CLI tools must be
 logged in and run in the foreground with non-interactive options. Detached
@@ -448,8 +452,8 @@ remain writable.
 receipts. The receipt and a `/new` rotation commit in one transaction.
 `/stop` records stop intent for the exact peer scope described above and
 withdraws queued input and pending results. A repeated Stop is safe. The
-reply states whether controlled execution has confirmed exit. A stop error
-does not block later messages or other replies.
+reply confirms the cancellation request and states that processes and remote
+work can continue. A stop error does not block later messages or other replies.
 
 Each platform has one durable sender. Notify only wakes this sender. At start
 and after a failed send, it reads settled submissions and command replies

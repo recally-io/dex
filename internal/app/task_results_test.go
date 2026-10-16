@@ -162,17 +162,12 @@ func TestUserTaskResultSurvivesStopAfterParentAcceptsIt(t *testing.T) {
 	})
 	before := waitResultSubmission(t, conn, resultID, "pending")
 	// When Stop cancels the accepted result, it revokes further delivery.
-	var stopped struct {
-		Confirmed bool `json:"confirmed"`
-	}
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/abort", parent), nil, &stopped)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/abort", parent), nil, nil)
 	retained := waitResultSubmission(t, conn, resultID, "unanswered")
 	if retained.content != before.content {
 		t.Fatalf("result after Stop: %+v", retained)
 	}
-	if stopped.Confirmed && !taskPIDGone(t, filepath.Join(dir, "accepted-result.pid")) {
-		t.Fatal("confirmed Stop left controlled shell alive")
-	}
+	releaseResultGate(t, dir, "accepted-result")
 	// Then a successful new user turn cannot revive the old result.
 	setTaskChatModel(t, d, parent, "echo")
 	if got := taskTurn(t, d, parent, "hello"); got != "echo: hello" {
@@ -183,7 +178,7 @@ func TestUserTaskResultSurvivesStopAfterParentAcceptsIt(t *testing.T) {
 		t.Fatalf("hello revived result: %+v", after)
 	}
 	assertResultExecution(t, conn, parent, task, 2)
-	t.Logf("stopped result=%s confirmed=%t state=%+v", resultID, stopped.Confirmed, after)
+	t.Logf("stopped result=%s state=%+v", resultID, after)
 }
 
 func resultShellQuote(value string) string {

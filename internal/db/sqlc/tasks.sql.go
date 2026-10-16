@@ -12,7 +12,7 @@ import (
 
 const countTaskSlots = `-- name: CountTaskSlots :one
 SELECT count(*) FROM tasks t JOIN conversations c ON c.id = t.conversation_id
-WHERE c.agent_id = ? AND t.status IN ('queued', 'running', 'cancelling')
+WHERE c.agent_id = ? AND t.status IN ('queued', 'running')
 `
 
 func (q *Queries) CountTaskSlots(ctx context.Context, agentID string) (int64, error) {
@@ -23,8 +23,8 @@ func (q *Queries) CountTaskSlots(ctx context.Context, agentID string) (int64, er
 }
 
 const createTask = `-- name: CreateTask :exec
-INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, last_event_at, created_at)
-VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)
+INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, created_at)
+VALUES (?, ?, ?, ?, ?, ?, 'queued', ?)
 `
 
 type CreateTaskParams struct {
@@ -34,7 +34,6 @@ type CreateTaskParams struct {
 	SpawnKey             string `json:"spawn_key"`
 	SourceRequestID      string `json:"source_request_id"`
 	Title                string `json:"title"`
-	LastEventAt          int64  `json:"last_event_at"`
 	CreatedAt            int64  `json:"created_at"`
 }
 
@@ -46,7 +45,6 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) error {
 		arg.SpawnKey,
 		arg.SourceRequestID,
 		arg.Title,
-		arg.LastEventAt,
 		arg.CreatedAt,
 	)
 	return err
@@ -104,7 +102,7 @@ func (q *Queries) GetConversationByWorker(ctx context.Context, arg GetConversati
 }
 
 const getTask = `-- name: GetTask :one
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, stop_note, stop_requested_at, current_tool, last_event_at, created_at, started_at, ended_at FROM tasks WHERE id = ?
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at FROM tasks WHERE id = ?
 `
 
 func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
@@ -119,10 +117,6 @@ func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
 		&i.Title,
 		&i.Status,
 		&i.Report,
-		&i.StopNote,
-		&i.StopRequestedAt,
-		&i.CurrentTool,
-		&i.LastEventAt,
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.EndedAt,
@@ -131,7 +125,7 @@ func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
 }
 
 const getTaskByKey = `-- name: GetTaskByKey :one
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, stop_note, stop_requested_at, current_tool, last_event_at, created_at, started_at, ended_at FROM tasks WHERE spawn_key = ?
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at FROM tasks WHERE spawn_key = ?
 `
 
 func (q *Queries) GetTaskByKey(ctx context.Context, spawnKey string) (Task, error) {
@@ -146,10 +140,6 @@ func (q *Queries) GetTaskByKey(ctx context.Context, spawnKey string) (Task, erro
 		&i.Title,
 		&i.Status,
 		&i.Report,
-		&i.StopNote,
-		&i.StopRequestedAt,
-		&i.CurrentTool,
-		&i.LastEventAt,
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.EndedAt,
@@ -157,40 +147,19 @@ func (q *Queries) GetTaskByKey(ctx context.Context, spawnKey string) (Task, erro
 	return i, err
 }
 
-const listCancellingTasks = `-- name: ListCancellingTasks :many
-SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.stop_note, t.stop_requested_at, t.current_tool, t.last_event_at, t.created_at, t.started_at, t.ended_at, c.agent_id, c.worker_conversation_id FROM tasks t
-JOIN conversations c ON c.id = t.conversation_id WHERE t.status = 'cancelling'
+const listActiveTasks = `-- name: ListActiveTasks :many
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at FROM tasks WHERE parent_conversation_id = ? AND status IN ('queued', 'running')
 `
 
-type ListCancellingTasksRow struct {
-	ID                   string        `json:"id"`
-	ParentConversationID int64         `json:"parent_conversation_id"`
-	ConversationID       int64         `json:"conversation_id"`
-	SpawnKey             string        `json:"spawn_key"`
-	SourceRequestID      string        `json:"source_request_id"`
-	Title                string        `json:"title"`
-	Status               string        `json:"status"`
-	Report               string        `json:"report"`
-	StopNote             string        `json:"stop_note"`
-	StopRequestedAt      sql.NullInt64 `json:"stop_requested_at"`
-	CurrentTool          string        `json:"current_tool"`
-	LastEventAt          int64         `json:"last_event_at"`
-	CreatedAt            int64         `json:"created_at"`
-	StartedAt            sql.NullInt64 `json:"started_at"`
-	EndedAt              sql.NullInt64 `json:"ended_at"`
-	AgentID              string        `json:"agent_id"`
-	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
-}
-
-func (q *Queries) ListCancellingTasks(ctx context.Context) ([]ListCancellingTasksRow, error) {
-	rows, err := q.db.QueryContext(ctx, listCancellingTasks)
+func (q *Queries) ListActiveTasks(ctx context.Context, parentConversationID int64) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveTasks, parentConversationID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListCancellingTasksRow{}
+	items := []Task{}
 	for rows.Next() {
-		var i ListCancellingTasksRow
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
 			&i.ParentConversationID,
@@ -200,15 +169,9 @@ func (q *Queries) ListCancellingTasks(ctx context.Context) ([]ListCancellingTask
 			&i.Title,
 			&i.Status,
 			&i.Report,
-			&i.StopNote,
-			&i.StopRequestedAt,
-			&i.CurrentTool,
-			&i.LastEventAt,
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.EndedAt,
-			&i.AgentID,
-			&i.WorkerConversationID,
 		); err != nil {
 			return nil, err
 		}
@@ -224,40 +187,18 @@ func (q *Queries) ListCancellingTasks(ctx context.Context) ([]ListCancellingTask
 }
 
 const listLiveTasks = `-- name: ListLiveTasks :many
-SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.stop_note, t.stop_requested_at, t.current_tool, t.last_event_at, t.created_at, t.started_at, t.ended_at, c.agent_id, c.worker_conversation_id FROM tasks t
-JOIN conversations c ON c.id = t.conversation_id
-WHERE t.status IN ('running', 'cancelling')
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at FROM tasks WHERE status = 'running'
 `
 
-type ListLiveTasksRow struct {
-	ID                   string        `json:"id"`
-	ParentConversationID int64         `json:"parent_conversation_id"`
-	ConversationID       int64         `json:"conversation_id"`
-	SpawnKey             string        `json:"spawn_key"`
-	SourceRequestID      string        `json:"source_request_id"`
-	Title                string        `json:"title"`
-	Status               string        `json:"status"`
-	Report               string        `json:"report"`
-	StopNote             string        `json:"stop_note"`
-	StopRequestedAt      sql.NullInt64 `json:"stop_requested_at"`
-	CurrentTool          string        `json:"current_tool"`
-	LastEventAt          int64         `json:"last_event_at"`
-	CreatedAt            int64         `json:"created_at"`
-	StartedAt            sql.NullInt64 `json:"started_at"`
-	EndedAt              sql.NullInt64 `json:"ended_at"`
-	AgentID              string        `json:"agent_id"`
-	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
-}
-
-func (q *Queries) ListLiveTasks(ctx context.Context) ([]ListLiveTasksRow, error) {
+func (q *Queries) ListLiveTasks(ctx context.Context) ([]Task, error) {
 	rows, err := q.db.QueryContext(ctx, listLiveTasks)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListLiveTasksRow{}
+	items := []Task{}
 	for rows.Next() {
-		var i ListLiveTasksRow
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
 			&i.ParentConversationID,
@@ -267,15 +208,9 @@ func (q *Queries) ListLiveTasks(ctx context.Context) ([]ListLiveTasksRow, error)
 			&i.Title,
 			&i.Status,
 			&i.Report,
-			&i.StopNote,
-			&i.StopRequestedAt,
-			&i.CurrentTool,
-			&i.LastEventAt,
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.EndedAt,
-			&i.AgentID,
-			&i.WorkerConversationID,
 		); err != nil {
 			return nil, err
 		}
@@ -371,7 +306,7 @@ func (q *Queries) ListTaskRecoveries(ctx context.Context) ([]ListTaskRecoveriesR
 }
 
 const listTasks = `-- name: ListTasks :many
-SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.stop_note, t.stop_requested_at, t.current_tool, t.last_event_at, t.created_at, t.started_at, t.ended_at FROM tasks t
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.created_at, t.started_at, t.ended_at FROM tasks t
 WHERE t.parent_conversation_id = ?1 AND
 (t.ended_at IS NULL OR t.id IN (SELECT recent.id FROM tasks recent WHERE recent.parent_conversation_id = ?1
 AND recent.ended_at IS NOT NULL ORDER BY recent.ended_at DESC, recent.id DESC LIMIT 10))
@@ -396,10 +331,6 @@ func (q *Queries) ListTasks(ctx context.Context, parentID int64) ([]Task, error)
 			&i.Title,
 			&i.Status,
 			&i.Report,
-			&i.StopNote,
-			&i.StopRequestedAt,
-			&i.CurrentTool,
-			&i.LastEventAt,
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.EndedAt,
@@ -417,55 +348,39 @@ func (q *Queries) ListTasks(ctx context.Context, parentID int64) ([]Task, error)
 	return items, nil
 }
 
-const requestTaskStop = `-- name: RequestTaskStop :exec
-UPDATE tasks SET stop_requested_at = coalesce(stop_requested_at, ?1), status = 'cancelling'
-WHERE id = ?2 AND status IN ('queued', 'running', 'cancelling')
-`
-
-type RequestTaskStopParams struct {
-	Now sql.NullInt64 `json:"now"`
-	ID  string        `json:"id"`
-}
-
-func (q *Queries) RequestTaskStop(ctx context.Context, arg RequestTaskStopParams) error {
-	_, err := q.db.ExecContext(ctx, requestTaskStop, arg.Now, arg.ID)
-	return err
-}
-
-const settleTask = `-- name: SettleTask :exec
-UPDATE tasks SET status = ?, report = ?, stop_note = ?, current_tool = '', last_event_at = ?, ended_at = ?
-WHERE id = ?
+const settleTask = `-- name: SettleTask :execrows
+UPDATE tasks SET status = ?, report = ?, ended_at = ?
+WHERE id = ? AND status IN ('queued', 'running')
 `
 
 type SettleTaskParams struct {
-	Status      string        `json:"status"`
-	Report      string        `json:"report"`
-	StopNote    string        `json:"stop_note"`
-	LastEventAt int64         `json:"last_event_at"`
-	EndedAt     sql.NullInt64 `json:"ended_at"`
-	ID          string        `json:"id"`
+	Status  string        `json:"status"`
+	Report  string        `json:"report"`
+	EndedAt sql.NullInt64 `json:"ended_at"`
+	ID      string        `json:"id"`
 }
 
-func (q *Queries) SettleTask(ctx context.Context, arg SettleTaskParams) error {
-	_, err := q.db.ExecContext(ctx, settleTask,
+func (q *Queries) SettleTask(ctx context.Context, arg SettleTaskParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, settleTask,
 		arg.Status,
 		arg.Report,
-		arg.StopNote,
-		arg.LastEventAt,
 		arg.EndedAt,
 		arg.ID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const startTask = `-- name: StartTask :execrows
-UPDATE tasks SET status = 'running', started_at = coalesce(started_at, ?1), last_event_at = ?1
+UPDATE tasks SET status = 'running', started_at = ?1
 WHERE id = ?2 AND status = 'queued'
 `
 
 type StartTaskParams struct {
-	Now int64  `json:"now"`
-	ID  string `json:"id"`
+	Now sql.NullInt64 `json:"now"`
+	ID  string        `json:"id"`
 }
 
 func (q *Queries) StartTask(ctx context.Context, arg StartTaskParams) (int64, error) {
@@ -492,35 +407,4 @@ func (q *Queries) StopConversationSubmissions(ctx context.Context, arg StopConve
 		return 0, err
 	}
 	return result.RowsAffected()
-}
-
-const stopConversationTasks = `-- name: StopConversationTasks :exec
-UPDATE tasks SET stop_requested_at = coalesce(stop_requested_at, ?1), status = 'cancelling'
-WHERE parent_conversation_id = ?2 AND status IN ('queued', 'running', 'cancelling')
-`
-
-type StopConversationTasksParams struct {
-	Now      sql.NullInt64 `json:"now"`
-	ParentID int64         `json:"parent_id"`
-}
-
-func (q *Queries) StopConversationTasks(ctx context.Context, arg StopConversationTasksParams) error {
-	_, err := q.db.ExecContext(ctx, stopConversationTasks, arg.Now, arg.ParentID)
-	return err
-}
-
-const updateTaskProgress = `-- name: UpdateTaskProgress :exec
-UPDATE tasks SET current_tool = ?, last_event_at = ?
-WHERE id = ? AND status IN ('running', 'cancelling')
-`
-
-type UpdateTaskProgressParams struct {
-	CurrentTool string `json:"current_tool"`
-	LastEventAt int64  `json:"last_event_at"`
-	ID          string `json:"id"`
-}
-
-func (q *Queries) UpdateTaskProgress(ctx context.Context, arg UpdateTaskProgressParams) error {
-	_, err := q.db.ExecContext(ctx, updateTaskProgress, arg.CurrentTool, arg.LastEventAt, arg.ID)
-	return err
 }

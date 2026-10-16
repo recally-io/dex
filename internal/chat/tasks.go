@@ -7,7 +7,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"uuid"
 
@@ -23,20 +22,16 @@ var (
 
 // Task is one internal execution. Its ID is used only by the dispatching agent.
 type Task struct {
-	ID              string `json:"id"`
-	Title           string `json:"title"`
-	Status          string `json:"status"`
-	Provider        string `json:"provider"`
-	ModelID         string `json:"modelId"`
-	ThinkingLevel   string `json:"thinkingLevel"`
-	CreatedAt       int64  `json:"createdAt"`
-	StartedAt       *int64 `json:"startedAt,omitempty"`
-	EndedAt         *int64 `json:"endedAt,omitempty"`
-	StopRequestedAt *int64 `json:"stopRequestedAt,omitempty"`
-	LastEventAt     int64  `json:"lastEventAt"`
-	CurrentTool     string `json:"currentTool"`
-	Report          string `json:"report"`
-	StopNote        string `json:"stopNote,omitempty"`
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	Status        string `json:"status"`
+	Provider      string `json:"provider"`
+	ModelID       string `json:"modelId"`
+	ThinkingLevel string `json:"thinkingLevel"`
+	CreatedAt     int64  `json:"createdAt"`
+	StartedAt     *int64 `json:"startedAt,omitempty"`
+	EndedAt       *int64 `json:"endedAt,omitempty"`
+	Report        string `json:"report"`
 }
 
 func (s *Service) ConfigureTasks(check func(context.Context, Settings) error) {
@@ -58,8 +53,7 @@ func taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task) (Task, error)
 	return Task{ID: row.ID, Title: row.Title, Status: row.Status,
 		Provider: c.ModelProvider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel,
 		CreatedAt: row.CreatedAt, StartedAt: taskTime(row.StartedAt), EndedAt: taskTime(row.EndedAt),
-		StopRequestedAt: taskTime(row.StopRequestedAt), LastEventAt: row.LastEventAt,
-		CurrentTool: row.CurrentTool, Report: row.Report, StopNote: row.StopNote}, nil
+		Report: row.Report}, nil
 }
 
 func (s *Service) ListTasks(ctx context.Context, agentID string, parentID int64) ([]Task, error) {
@@ -238,6 +232,7 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r wor
 	if err != nil {
 		return nil, err
 	}
+	// Cancellation frees admission; a tool that ignores abort can outlive this limit.
 	count, err := q.CountTaskSlots(ctx, r.AgentID)
 	if err != nil {
 		return nil, err
@@ -253,7 +248,7 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r wor
 	if _, err = q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: id, ConversationID: conv.ID, Content: a.Goal, Attachments: "null", CreatedAt: now}); err != nil {
 		return nil, err
 	}
-	if err = q.CreateTask(ctx, sqlc.CreateTaskParams{ID: id, ParentConversationID: parent.ID, ConversationID: conv.ID, SpawnKey: r.Key, SourceRequestID: source.ID, Title: a.Title, LastEventAt: now, CreatedAt: now}); err != nil {
+	if err = q.CreateTask(ctx, sqlc.CreateTaskParams{ID: id, ParentConversationID: parent.ID, ConversationID: conv.ID, SpawnKey: r.Key, SourceRequestID: source.ID, Title: a.Title, CreatedAt: now}); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -270,7 +265,7 @@ func spawnReply(id string) any {
 }
 
 func occupied(status string) bool {
-	return status == "queued" || status == "running" || status == "cancelling"
+	return status == "queued" || status == "running"
 }
 
 func (s *Service) CancelTask(ctx context.Context, agentID string, parentID int64, id string) (Task, error) {
@@ -278,45 +273,58 @@ func (s *Service) CancelTask(ctx context.Context, agentID string, parentID int64
 }
 
 func (s *Service) cancelTask(ctx context.Context, agentID string, parentID int64, id string, caller *worker.TaskRequest) (Task, error) {
-	s.taskMu.Lock()
-	defer s.taskMu.Unlock()
-	tx, q, err := s.taskTransaction(ctx)
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	t, target, call, err := s.withdrawTask(ctx, agentID, parentID, id, caller)
 	if err != nil {
 		return Task{}, err
 	}
-	defer func() { _ = tx.Rollback() }()
-	row, err := ownedTask(ctx, q, agentID, parentID, id)
-	if err != nil {
-		return Task{}, err
+	if target.ConversationID != 0 {
+		s.abort(ctx, call, target)
 	}
-	if caller != nil {
-		if _, err := taskSource(ctx, q, *caller); err != nil {
-			return Task{}, err
-		}
-	}
-	now := s.now().UnixMilli()
-	if err := q.RequestTaskStop(ctx, sqlc.RequestTaskStopParams{ID: row.ID, Now: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
-		return Task{}, err
-	}
-	row, err = q.GetTask(ctx, row.ID)
-	if err != nil {
-		return Task{}, err
-	}
-	t, err := taskView(ctx, q, row)
-	if err != nil {
-		return Task{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return Task{}, err
-	}
+	s.inFlight.Delete(id)
 	s.Wake()
 	return t, nil
 }
 
-func (s *Service) HandleTaskProgress(ctx context.Context, p worker.TaskProgress) {
-	if err := s.q.UpdateTaskProgress(ctx, sqlc.UpdateTaskProgressParams{ID: p.StageID, CurrentTool: p.CurrentTool, LastEventAt: p.LastEventAt}); err != nil {
-		slog.Error("save task progress", "task", p.StageID, "err", err)
+func (s *Service) withdrawTask(ctx context.Context, agentID string, parentID int64, id string, caller *worker.TaskRequest) (Task, worker.AbortParams, worker.CallFunc, error) {
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	tx, q, err := s.taskTransaction(ctx)
+	if err != nil {
+		return Task{}, worker.AbortParams{}, nil, err
 	}
+	defer func() { _ = tx.Rollback() }()
+	row, err := ownedTask(ctx, q, agentID, parentID, id)
+	if err != nil {
+		return Task{}, worker.AbortParams{}, nil, err
+	}
+	if caller != nil {
+		if _, err := taskSource(ctx, q, *caller); err != nil {
+			return Task{}, worker.AbortParams{}, nil, err
+		}
+	}
+	var target worker.AbortParams
+	var call worker.CallFunc
+	if occupied(row.Status) {
+		now := sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}
+		target, err = cancelTaskInput(ctx, q, row, now)
+		if err != nil {
+			return Task{}, target, nil, err
+		}
+		row.Status, row.EndedAt = "cancelled", now
+		if target.ConversationID != 0 {
+			call, _ = s.worker.Bind()
+		}
+	}
+	t, err := taskView(ctx, q, row)
+	if err != nil {
+		return Task{}, target, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Task{}, target, nil, err
+	}
+	return t, target, call, nil
 }
 
 // RecoverTasks isolates admitted executions before any Harness can resume them.
@@ -334,11 +342,8 @@ func (s *Service) RecoverTasks(ctx context.Context, call worker.CallFunc) error 
 	}
 	now := s.now().UnixMilli()
 	for _, t := range live {
-		if !t.StartedAt.Valid {
-			continue
-		}
-		note := "The worker restarted. Execution was interrupted and may have changed files or remote data. Check artifacts before starting new work."
-		if err = q.SettleTask(ctx, sqlc.SettleTaskParams{ID: t.ID, Status: "interrupted", Report: t.Report, StopNote: note, LastEventAt: now, EndedAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
+		report := cmp.Or(t.Report, "The worker restarted. Check artifacts and prior side effects before starting new work.")
+		if _, err = q.SettleTask(ctx, sqlc.SettleTaskParams{ID: t.ID, Status: "interrupted", Report: report, EndedAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
 			return err
 		}
 		if _, err = q.SettleSubmission(ctx, sqlc.SettleSubmissionParams{ID: t.ID, Status: "unanswered", Reason: sql.NullString{String: "interrupted", Valid: true}, SettledAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {

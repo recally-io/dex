@@ -384,11 +384,10 @@ func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject)
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	result, err := h.Chats.Stop(ctx, h.AgentID, req.ChatId)
-	if err != nil {
+	if err := h.Chats.Stop(ctx, h.AgentID, req.ChatId); err != nil {
 		return nil, err
 	}
-	return api.AbortChat200JSONResponse{Confirmed: result.Confirmed}, nil
+	return api.AbortChat200JSONResponse{Status: api.OkStatusOk}, nil
 }
 
 func (h *handler) WatchChat(ctx context.Context, req api.WatchChatRequestObject) (api.WatchChatResponseObject, error) {

@@ -9,12 +9,8 @@ CREATE TABLE tasks (
     spawn_key TEXT NOT NULL UNIQUE,
     source_request_id TEXT NOT NULL REFERENCES submissions (id),
     title TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'cancelling', 'done', 'failed', 'cancelled', 'interrupted')),
+    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed', 'cancelled', 'interrupted')),
     report TEXT NOT NULL DEFAULT '',
-    stop_note TEXT NOT NULL DEFAULT '',
-    stop_requested_at INTEGER,
-    current_tool TEXT NOT NULL DEFAULT '',
-    last_event_at INTEGER NOT NULL,
     created_at INTEGER NOT NULL,
     started_at INTEGER,
     ended_at INTEGER

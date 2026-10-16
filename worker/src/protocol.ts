@@ -29,15 +29,6 @@ export type TaskRequest = {
 	readonly method: "task";
 	readonly params: TaskRequestParams;
 };
-export type TaskProgressEvent = {
-	readonly stageId: string;
-	readonly agentId: string;
-	readonly conversationId: number;
-	readonly currentTool: string;
-	readonly lastEventAt: number;
-	readonly executionState: "running" | "idle";
-};
-
 export type Event = {
 	readonly event: string;
 	readonly params: unknown;
@@ -122,11 +113,8 @@ export type UnwatchParams = Static<typeof UnwatchParams>;
 export const AbortParams = Type.Object({
 	agentId: Type.String(),
 	conversationId: Type.Number(),
-	taskStageId: Type.Optional(Type.String()),
 });
 export type AbortParams = Static<typeof AbortParams>;
-/** Confirms cleanup of this conversation's controlled local execution only. */
-export type AbortResult = { readonly executionConfirmed?: boolean; readonly stopNote?: string };
 
 /**
  * The event of a watch: the chat events of one commit (the first is a snapshot), or `end` when the
@@ -143,9 +131,6 @@ export type SettledEvent = {
 	readonly status: "done" | "unanswered";
 	readonly answer?: string;
 	readonly reason?: string;
-	/** Task submissions only. False preserves uncertainty about execution. */
-	readonly executionConfirmed?: boolean;
-	readonly stopNote?: string;
 };
 
 /**

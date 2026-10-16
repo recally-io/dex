@@ -52,14 +52,6 @@ export type Chat = {
     settings: ChatSettings;
 };
 
-export type StopResult = {
-    /**
-     * True when controlled execution has stopped. False when the request is accepted but background execution has not confirmed exit. Neither value guarantees that external side effects have stopped.
-     *
-     */
-    confirmed: boolean;
-};
-
 /**
  * The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
  *
@@ -861,9 +853,9 @@ export type AbortChatError = AbortChatErrors[keyof AbortChatErrors];
 
 export type AbortChatResponses = {
     /**
-     * The stop request is accepted. Check confirmed for execution exit.
+     * Pending input is withdrawn and cancellation is requested.
      */
-    200: StopResult;
+    200: Ok;
 };
 
 export type AbortChatResponse = AbortChatResponses[keyof AbortChatResponses];
