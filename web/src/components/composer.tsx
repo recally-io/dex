@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
 import { IconFileText } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconFileText";
-import { IconLock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconLock";
 import { IconPlusMedium } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlusMedium";
 import { formatSize, type Attachments, type DraftFile } from "../lib/attachments";
 import { Spinner } from "./feedback";
@@ -56,6 +55,7 @@ export function Composer({
   fix,
   files,
   running,
+  stoppable,
   disabledReason,
   pending,
   onSend,
@@ -64,15 +64,15 @@ export function Composer({
   onTextChange,
   placeholder,
   autoFocus = false,
-  readOnly = false,
 }: {
-  /** The model and thinking controls. */
+  /** Actions for the current context. */
   controls?: ReactNode;
   /** The action after the disabled reason, for example a model picker. */
   fix?: ReactNode;
-  /** The attachments; none for a read-only chat. */
+  /** The attachments for this input. */
   files?: Attachments;
   running: boolean;
+  stoppable: boolean;
   disabledReason?: string;
   pending: boolean;
   onSend: (text: string) => Promise<void>;
@@ -81,7 +81,6 @@ export function Composer({
   onTextChange: (text: string) => void;
   placeholder: string;
   autoFocus?: boolean;
-  readOnly?: boolean;
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -133,7 +132,6 @@ export function Composer({
         }}
         className={cn(
           "relative isolate flex flex-col gap-2.5 overflow-hidden rounded-[22px] border border-line bg-surface p-3.5 shadow-card transition-[border-color] duration-150 focus-within:border-line-strong",
-          readOnly && "opacity-80",
           dropping && "border-accent focus-within:border-accent",
         )}
       >
@@ -165,8 +163,8 @@ export function Composer({
           rows={1}
           className="min-h-[52px] w-full min-w-0 resize-none bg-transparent px-2 py-1.5 text-[14px] leading-5 text-ink outline-none [overflow-wrap:anywhere] placeholder:text-ink-3 disabled:cursor-not-allowed"
           maxLength={32000}
-          placeholder={readOnly ? "Reply in Telegram" : running ? "Queue a follow-up…" : placeholder}
-          aria-label="Message dex"
+          placeholder={running ? "Queue a follow-up…" : placeholder}
+          aria-label={running ? "Queue a follow-up…" : placeholder}
           aria-describedby={descriptionId}
           value={text}
           disabled={!!disabledReason}
@@ -196,55 +194,47 @@ export function Composer({
           }}
         />
         <div className="flex min-w-0 items-center gap-1">
-          {readOnly ? (
-            <span className="flex h-7 items-center gap-1.5 px-1.5 text-[12px] font-medium text-ink-3">
-              <IconLock size={13} /> Read-only on the web
-            </span>
-          ) : (
+          {files ? (
             <>
-              {files ? (
-                <>
-                  <button
-                    type="button"
-                    aria-label="Attach files"
-                    title="Attach files"
-                    disabled={!canAttach}
-                    onClick={() => picker.current?.click()}
-                    className="flex size-7 shrink-0 items-center justify-center rounded-[8px] text-ink-3 transition-[background-color,color,transform] duration-150 enabled:hover:bg-hover enabled:hover:text-ink enabled:active:scale-[0.94] disabled:opacity-40"
-                  >
-                    <IconPlusMedium size={16} />
-                  </button>
-                  <input
-                    ref={picker}
-                    type="file"
-                    multiple
-                    hidden
-                    onChange={(e) => {
-                      files.add([...(e.target.files ?? [])]);
-                      // The same file can be picked again after a remove.
-                      e.target.value = "";
-                    }}
-                  />
-                </>
-              ) : null}
-              {controls}
+              <button
+                type="button"
+                aria-label="Attach files"
+                title="Attach files"
+                disabled={!canAttach}
+                onClick={() => picker.current?.click()}
+                className="flex size-7 shrink-0 items-center justify-center rounded-[8px] text-ink-3 transition-[background-color,color,transform] duration-150 enabled:hover:bg-hover enabled:hover:text-ink enabled:active:scale-[0.94] disabled:opacity-40"
+              >
+                <IconPlusMedium size={16} />
+              </button>
+              <input
+                ref={picker}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => {
+                  files.add([...(e.target.files ?? [])]);
+                  // The same file can be picked again after a remove.
+                  e.target.value = "";
+                }}
+              />
             </>
-          )}
+          ) : null}
+          {controls}
           <span className="min-w-2 flex-1" />
-          {running ? (
+          {stoppable ? (
             <button
               type="button"
               aria-label="Stop run"
-              title="Stop this chat and its background execution"
+              title="Stop this run and its background work"
               // A missing model blocks new messages, not stopping the current run.
-              disabled={pending || readOnly}
+              disabled={pending}
               onClick={onStop}
               className="flex size-8 shrink-0 items-center justify-center rounded-full bg-ink text-surface transition-[transform,opacity] duration-150 enabled:active:scale-[0.94] disabled:opacity-40"
             >
               <span aria-hidden className="size-2.5 rounded-[2px] bg-current" />
             </button>
           ) : null}
-          {!readOnly && (!running || text.trim() || files?.files.length) ? (
+          {!stoppable || text.trim() || files?.files.length ? (
             <button
               type="submit"
               aria-label={running ? "Queue message" : "Send message"}
@@ -274,7 +264,7 @@ export function Composer({
       </form>
       <p id={descriptionId} className="mt-2 px-2 text-center text-[11.5px] text-ink-3">
         {disabledReason || "Tools run on this computer without a sandbox. Review commands and results."}
-        {fix && !readOnly ? <> {fix}</> : null}
+        {fix ? <> {fix}</> : null}
       </p>
     </div>
   );

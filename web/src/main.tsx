@@ -14,6 +14,7 @@ import { errorText, queryClient } from "./lib/queries";
 import { Shell } from "./components/shell";
 import { ChatPage } from "./routes/chat";
 import { AutomationPage } from "./routes/automations";
+import { TasksPage, TaskPage } from "./routes/tasks";
 import { AgentPage } from "./routes/agent";
 import { ProvidersPage } from "./routes/providers";
 import { ChannelPage } from "./routes/channels";
@@ -145,10 +146,21 @@ function AutomationRoute() {
   return <AutomationPage key={automationId} automationId={automationId} />;
 }
 
+const tasks = page("/tasks", TasksPage);
+const task = createRoute({ getParentRoute: () => root, path: "/tasks/$taskId", component: TaskRoute });
+
+function TaskRoute() {
+  const { taskId } = task.useParams();
+
+  return <TaskPage key={taskId} taskId={taskId} />;
+}
+
 const router = createRouter({
   routeTree: root.addChildren([
     home,
     chat,
+    tasks,
+    task,
     automations,
     automation,
     agent,

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Test the timeline in an isolated Chrome profile with the real app and faux provider"
+#MISE depends=["build:worker", "build:web"]
+set -euo pipefail
+
+timeline_bin="$(mktemp -d)"
+trap 'rm -rf "$timeline_bin"' EXIT
+go build -tags dex_e2e -o "$timeline_bin/dex" ./cmd/dex
+node web/tools/timeline-browser.mjs "$timeline_bin/dex" "$@"

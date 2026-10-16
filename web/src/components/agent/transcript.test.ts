@@ -1,5 +1,6 @@
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { expect, test } from "vite-plus/test";
 import type { Item, ToolItem } from "../../api/generated/types.gen";
 import { blocks } from "../../lib/tools";
@@ -15,7 +16,7 @@ const tool = (id: string, status: ToolItem["status"], output: string): ToolItem 
   durationMs: 1200,
 });
 
-test("consecutive tool calls make one step", () => {
+test("consecutive tool calls make one step", async () => {
   const first = [tool("t1", "done", "one"), tool("t2", "done", "two")];
 
   const items: Item[] = [
@@ -33,14 +34,14 @@ test("consecutive tool calls make one step", () => {
   ]);
 
   // A finished step is closed. Its header counts the calls.
-  const html = renderToStaticMarkup(createElement(ToolStep, { tools: first }));
+  const html = await render(createElement(ToolStep, { tools: first }));
   expect(html).toContain("Ran 2 tools");
   expect(html).toContain('aria-expanded="false"');
   expect(html).not.toContain("printf one");
 });
 
-test("user sees the failed call of a step, with its command, time and output", () => {
-  const html = renderToStaticMarkup(
+test("user sees the failed call of a step, with its command, time and output", async () => {
+  const html = await render(
     createElement(ToolStep, { tools: [tool("t1", "done", "one"), tool("t2", "error", "boom")] }),
   );
 
@@ -52,7 +53,7 @@ test("user sees the failed call of a step, with its command, time and output", (
   expect(html).not.toContain(">one</pre>");
 });
 
-test("user sees which background work returned after a topic change", () => {
+test("user sees which background work returned after a topic change", async () => {
   // Given a result after an unrelated answer, followed by another user message.
   const items: Item[] = [
     { kind: "user", id: "u1", text: "Check the logs in the background" },
@@ -81,7 +82,7 @@ test("user sees which background work returned after a topic change", () => {
   });
 
   // The title remains visible even when the model's reply does not name the work.
-  const html = renderToStaticMarkup(
+  const html = await render(
     createElement(Transcript, { items, running: false, retry: () => {}, canRetry: true }),
   );
 
@@ -91,7 +92,7 @@ test("user sees which background work returned after a topic change", () => {
   expect(html).not.toContain("Completed");
 });
 
-test("user sees two returned results as separate groups", () => {
+test("user sees two returned results as separate groups", async () => {
   // Given two results that arrive together.
   const items: Item[] = [
     { kind: "task", id: "result-1", taskId: "task-1", title: "Access logs" },
@@ -107,24 +108,25 @@ test("user sees two returned results as separate groups", () => {
   ]);
 });
 
-test("user sees a delegation by its name without internal arguments", () => {
+test("user sees a delegation by its name without internal arguments", async () => {
   // Given a successful background dispatch.
   const dispatch: ToolItem = {
     ...tool("dispatch-1", "done", '{"id":"internal-id"}'),
     name: "spawn_task",
+    taskId: "internal-id",
     args: { title: "检查日志写入", goal: "private execution instructions" },
   };
 
   // When the call is shown, then the user sees the work name and dispatch outcome.
-  const html = renderToStaticMarkup(createElement(ToolStep, { tools: [dispatch] }));
+  const html = await render(createElement(ToolStep, { tools: [dispatch] }));
   expect(html).toContain("Sent to background");
   expect(html).toContain("检查日志写入");
-  expect(html).not.toContain("internal-id");
+  expect(html).toContain('href="/tasks/internal-id"');
   expect(html).not.toContain("private execution instructions");
   expect(html).not.toContain("spawn_task");
 
   // A failed dispatch still exposes its cause through the existing tool trace.
-  const failed = renderToStaticMarkup(
+  const failed = await render(
     createElement(ToolStep, { tools: [{ ...dispatch, status: "error", output: "No capacity" }] }),
   );
 
@@ -132,7 +134,7 @@ test("user sees a delegation by its name without internal arguments", () => {
   expect(failed).not.toContain("Sent to background");
 });
 
-test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", (text) => {
+test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", async (text) => {
   // Given a tool-only reply before a background dispatch.
   const items: Item[] = [
     { kind: "assistant", id: "empty", text },
@@ -144,7 +146,7 @@ test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", (tex
   ];
 
   // When the finished reply is shown, then only the named dispatch has visible content.
-  const html = renderToStaticMarkup(
+  const html = await render(
     createElement(Transcript, { items, running: false, retry: () => {}, canRetry: true }),
   );
 
@@ -152,10 +154,36 @@ test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", (tex
   expect(html).not.toContain('aria-label="Copy answer"');
 });
 
-test("memory calls read as memory use", () => {
+test("memory calls read as memory use", async () => {
   const memory = "/data/memory";
   const read: ToolItem = { ...tool("t1", "done", ""), name: "read", args: { path: `${memory}/MEMORY.md` } };
-  const html = renderToStaticMarkup(createElement(ToolStep, { tools: [read], memory }));
+  const html = await render(createElement(ToolStep, { tools: [read], memory }));
 
   expect(html).toContain("Read memory");
+});
+
+async function render(children: ReactNode) {
+  const router = createRouter({
+    routeTree: createRootRoute({ component: () => children }),
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+  });
+
+  await router.load();
+
+  return renderToStaticMarkup(createElement(RouterProvider, { router }));
+}
+
+test("user sees reset dividers while compaction stays a history boundary", async () => {
+  const items: Item[] = [
+    { kind: "boundary", id: "e1", boundary: "compaction" },
+    { kind: "boundary", id: "e2", boundary: "reset", at: 1 },
+  ];
+
+  const html = await render(
+    createElement(Transcript, { items, running: false, retry: () => {}, canRetry: false }),
+  );
+
+  expect(html.match(/role="separator"/g)).toHaveLength(1);
+  expect(html).toContain("Context cleared");
+  expect(html).not.toContain("compacted");
 });
