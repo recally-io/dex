@@ -80,6 +80,12 @@ to read in an afternoon.
 
 The main chat shows the user's messages and the main agent's answers.
 Internal reports, IDs, and execution states have no task page or task cards.
+The main agent names the work in one brief delegation confirmation, then
+returns to the user without polling for the result. When a report returns,
+the reply first names that work and gives its outcome. If work failed or
+remains incomplete, the reply states that outcome, the blocker, and what
+remains. If the user has changed topics, the reply gives a brief update about
+the earlier work.
 The main agent checks saved execution records before it reports progress or
 starts follow-up work. The built-in coding skill requires a repository path,
 project rules, independent review, tests of the final revision, and evidence.
