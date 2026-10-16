@@ -24,6 +24,7 @@ import (
 // Caller sends requests to the worker. *worker.Worker implements it.
 type Caller interface {
 	Call(ctx context.Context, method string, params, result any) error
+	Bind() (worker.CallFunc, error)
 }
 
 // Reply is the outcome of one message.
@@ -83,8 +84,12 @@ type Service struct {
 	notify  func(channelKey string)
 	changed func(chatID int64)
 
-	// Stored submissions wait here for Run, which delivers them in order.
-	queue chan sqlc.ListPendingSubmissionsRow
+	// The database holds work. A wake can coalesce without losing a submission.
+	wake              chan struct{}
+	inFlight          sync.Map
+	db                *sql.DB
+	taskMu            sync.Mutex // task creation and settlement; per agent if throughput matters
+	checkTaskSettings func(context.Context, Settings) error
 
 	// Serializes worker conversation creation, so two first messages of one chat create one worker
 	// conversation. Global lock; per conversation if throughput matters.
@@ -101,23 +106,60 @@ type Service struct {
 // Replay, and run Run. notify, if not nil, receives the channel key when a submission settles.
 // changed, if not nil, learns that a chat has a new message, a settled message, or a worker
 // conversation. Both run on the goroutine that reads the worker, so they must not block.
-func New(q *sqlc.Queries, w Caller, now func() time.Time, notify func(channelKey string), changed func(chatID int64)) *Service {
+func New(db *sql.DB, w Caller, now func() time.Time, notify func(channelKey string), changed func(chatID int64)) *Service {
 	return &Service{
-		q: q, worker: w, now: now, notify: notify, changed: changed,
-		queue: make(chan sqlc.ListPendingSubmissionsRow, 1024),
+		db: db, q: sqlc.New(db), worker: w, now: now, notify: notify, changed: changed,
+		wake: make(chan struct{}, 1),
 	}
 }
 
 // Run delivers stored submissions to the worker, one at a time and in order, until ctx is done.
 // One queue for all chats; one per chat if a slow delivery delays other chats.
 func (s *Service) Run(ctx context.Context) {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
 	for {
+		s.deliverPending(ctx)
 		select {
 		case <-ctx.Done():
 			return
-		case p := <-s.queue:
-			s.deliver(ctx, p)
+		case <-s.wake:
+		case <-tick.C:
 		}
+	}
+}
+
+func (s *Service) Wake() {
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Service) deliverPending(ctx context.Context) {
+	pending, err := s.q.ListPendingSubmissions(ctx)
+	if err != nil {
+		slog.Error("list pending submissions", "err", err)
+		return
+	}
+	for _, p := range pending {
+		if ctx.Err() != nil {
+			return
+		}
+		if _, ok := s.inFlight.Load(p.ID); ok {
+			continue
+		}
+		if strings.HasPrefix(p.ChannelKey, "task:") {
+			task, err := s.q.GetTask(ctx, p.ID)
+			if err != nil {
+				slog.Error("read pending task", "task", p.ID, "err", err)
+				continue
+			}
+			if task.Status != "queued" {
+				continue
+			}
+		}
+		s.deliver(ctx, p)
 	}
 }
 
@@ -190,15 +232,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey st
 		return conv.ID, nil // the channel delivered this message before
 	}
 	s.signal(conv.ID)
-	select {
-	case s.queue <- sqlc.ListPendingSubmissionsRow{
-		ID: m.ID, Content: m.Content, Attachments: string(attachments), ConversationID: conv.ID, AgentID: agentID,
-		ChannelKey: channelKey,
-	}:
-	case <-ctx.Done():
-		// The message is stored; the next Replay delivers it.
-		return conv.ID, nil
-	}
+	s.Wake()
 	return conv.ID, nil
 }
 
@@ -242,43 +276,26 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	}, nil
 }
 
-// Abort settles pending messages as unanswered and aborts the worker run.
-// Queued messages cannot enter the worker after this change.
-func (s *Service) Abort(ctx context.Context, agentID string, id int64) error {
-	s.deliveryMu.Lock()
-	defer s.deliveryMu.Unlock()
-	c, err := s.Get(ctx, agentID, id)
-	if err != nil {
-		return err
-	}
-	count, err := s.q.StopChatSubmissions(ctx, sqlc.StopChatSubmissionsParams{ConversationID: id, SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		s.signal(id)
-		if s.notify != nil {
-			s.notify(c.ChannelKey)
-		}
-	}
-	// A confirmed maintenance lease proves the worker has no active run. Its abort call also waits
-	// for admission, so only control's queue needs to be withdrawn while the lease is held.
-	if c.WorkerConversationID == 0 || s.leaseUntil.Load() > s.now().UnixMilli() {
-		return nil
-	}
-	return s.worker.Call(ctx, "abort", worker.AbortParams{AgentID: agentID, ConversationID: c.WorkerConversationID}, &struct{}{})
-}
-
 // deliver sends a stored submission to the worker. When the worker exits first, the submission
 // stays pending for Replay. Any other failure settles it as unanswered.
 func (s *Service) deliver(ctx context.Context, p sqlc.ListPendingSubmissionsRow) {
+	s.inFlight.Store(p.ID, struct{}{})
 	err := s.submit(ctx, p)
 	switch {
+	case err == nil:
 	case errors.Is(err, worker.ErrUnavailable), ctx.Err() != nil:
-		slog.Warn("worker exited; the message waits for replay", "submission", p.ID)
-	case err != nil:
+		s.inFlight.Delete(p.ID)
+		slog.Warn("worker exited; the message waits for reconciliation", "submission", p.ID)
+	case isBusy(err):
+		s.inFlight.Delete(p.ID)
+	default:
 		s.settle(ctx, worker.Settled{RequestID: p.ID, Status: "unanswered", Reason: err.Error()})
 	}
+}
+
+func isBusy(err error) bool {
+	failure, ok := errors.AsType[*worker.CallError](err)
+	return ok && failure.Code == "conversation_busy"
 }
 
 // HandleSettled records a settled event from the worker. When the record fails, the submission
@@ -295,12 +312,9 @@ func (s *Service) Replay(ctx context.Context) {
 		return
 	}
 	for _, p := range pending {
-		select {
-		case s.queue <- p:
-		case <-ctx.Done():
-			return
-		}
+		s.inFlight.Delete(p.ID)
 	}
+	s.Wake()
 }
 
 func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) error {
@@ -327,6 +341,10 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 	}
 	if strings.HasPrefix(p.ChannelKey, dream.Channel) {
 		settings.Instructions = dream.Instructions(settings.Instructions)
+	}
+	isTask := strings.HasPrefix(p.ChannelKey, "task:")
+	if isTask {
+		settings.Instructions = taskInstructions(settings.Instructions)
 	}
 	var attachments []worker.Attachment
 	if err := json.Unmarshal([]byte(p.Attachments), &attachments); err != nil {
@@ -355,20 +373,41 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 		return err
 	}
 	if current.Status != "pending" {
+		s.inFlight.Delete(p.ID)
 		return nil
 	}
+	params := worker.SubmitParams{
+		Kind: current.Kind, AgentID: p.AgentID, ConversationID: conversation, Model: model,
+		ThinkingLevel: settings.ThinkingLevel, Instructions: settings.Instructions,
+		RequestID: p.ID, Content: p.Content,
+		Attachments: attachments, Source: source(p),
+	}
+	if p.Kind == "task_result" {
+		params.WhenBusy = "reject"
+	}
+	call := s.worker.Call
+	if isTask {
+		s.taskMu.Lock()
+		task, err := s.q.GetTask(ctx, p.ID)
+		if err == nil && task.Status == "queued" {
+			// Bind before admission so this input cannot wait for a later worker.
+			call, err = s.worker.Bind()
+			if err == nil {
+				_, err = s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+			}
+		} else if err == nil {
+			s.inFlight.Delete(p.ID)
+			s.taskMu.Unlock()
+			return nil
+		}
+		s.taskMu.Unlock()
+		if err != nil {
+			return err
+		}
+		params.TaskStageID = p.ID
+	}
 	var result worker.SubmitResult
-	return s.worker.Call(ctx, "submit", worker.SubmitParams{
-		AgentID:        p.AgentID,
-		ConversationID: conversation,
-		Model:          model,
-		ThinkingLevel:  settings.ThinkingLevel,
-		Instructions:   settings.Instructions,
-		RequestID:      p.ID,
-		Content:        p.Content,
-		Attachments:    attachments,
-		Source:         source(p),
-	}, &result)
+	return call(ctx, "submit", params, &result)
 }
 
 // source names a submission's chat in the memory: dex:chat/<chat ID>, or dex:dream/<dream ID> for a
@@ -381,30 +420,40 @@ func source(p sqlc.ListPendingSubmissionsRow) string {
 }
 
 func (s *Service) settle(ctx context.Context, event worker.Settled) {
-	// The worker sends settled again when Replay resends a submission it already settled; only the
-	// first event changes the row.
+	handled, err := s.settleTask(ctx, event)
+	if err != nil {
+		slog.Error("settle task", "submission", event.RequestID, "err", err)
+		return
+	}
+	if handled {
+		s.inFlight.Delete(event.RequestID)
+		return
+	}
 	changed, err := s.q.SettleSubmission(ctx, sqlc.SettleSubmissionParams{
-		ID:        event.RequestID,
-		Status:    event.Status,
+		ID: event.RequestID, Status: event.Status,
 		Answer:    sql.NullString{String: event.Answer, Valid: event.Status == "done"},
 		Reason:    sql.NullString{String: event.Reason, Valid: event.Reason != ""},
 		SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true},
 	})
 	if err != nil {
 		slog.Error("settle submission", "submission", event.RequestID, "err", err)
+		return
 	}
+	// Submissions never return to pending, so late receipts cannot restore stopped work.
+	s.inFlight.Delete(event.RequestID)
 	if changed == 0 {
 		return
 	}
-	row, err := s.q.GetSubmissionReply(ctx, event.RequestID)
+	reply, err := s.q.GetSubmissionReply(ctx, event.RequestID)
 	if err != nil {
 		slog.Error("read settled submission", "submission", event.RequestID, "err", err)
 		return
 	}
-	s.signal(row.ConversationID)
+	s.signal(reply.ConversationID)
 	if s.notify != nil {
-		s.notify(row.ChannelKey)
+		s.notify(reply.ChannelKey)
 	}
+	s.Wake()
 }
 
 func (s *Service) signal(chatID int64) {

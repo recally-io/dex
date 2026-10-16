@@ -1,3 +1,4 @@
+import { SpawnTaskArgs } from "./tasks.ts";
 import {
 	createProvider,
 	getSupportedThinkingLevels,
@@ -50,6 +51,7 @@ export class Catalog {
 					{ id: "memory" },
 					{ id: "section" },
 					{ id: "tool" },
+					{ id: "spawn" },
 					{ id: "think", reasoning: true },
 				],
 				// Streams the answer in small parts, as a real provider does.
@@ -61,6 +63,7 @@ export class Catalog {
 				if (model.id === "memory") return fauxAssistantMessage(`memory: ${section(transcript, "memory")}`);
 				if (model.id === "section")
 					return fauxAssistantMessage(`section: ${section(transcript, lastUserText(transcript))}`);
+				if (model.id === "spawn") return spawnStep(transcript);
 				if (model.id === "tool") return toolStep(transcript);
 				if (model.id === "think") {
 					return fauxAssistantMessage(`think ${options?.reasoning ?? "off"}: ${lastUserText(transcript)}`);
@@ -176,6 +179,8 @@ function customProvider(p: ProviderSettings) {
 		// Fallbacks for endpoints that do not report limits.
 		contextWindow: 128_000,
 		maxTokens: 16_384,
+		// Send strict:false for optional tool arguments on Responses gateways.
+		...(api === "openai-responses" ? { compat: { supportsStrictMode: true } } : {}),
 		...extra,
 	});
 	return createProvider<CustomApi>({
@@ -266,8 +271,50 @@ function toolStep(transcript: TranscriptContext) {
 		return fauxAssistantMessage(`tool${last.isError ? " error" : ""}: ${output.trim()}`);
 	}
 	const call =
-		last?.role === "toolResult"
+		last?.role === "toolResult" || exposedTool(transcript, name)
 			? fauxToolCall(name, space === -1 ? {} : JSON.parse(text.slice(space + 1)))
 			: fauxToolCall("tool_search", { query: name });
 	return fauxAssistantMessage(call, { stopReason: "toolUse" });
+}
+
+/** Tool declarations are incremental system messages. */
+function exposedTool(transcript: TranscriptContext, name: string): boolean {
+	let exposed = false;
+	for (const message of transcript.messages) {
+		if (message.role !== "system") continue;
+		if (message.toolsRemoved?.some((tool) => tool.name === name)) exposed = false;
+		if (message.toolsAdded?.some((tool) => tool.name === name)) exposed = true;
+	}
+	return exposed;
+}
+
+/** Fixed task script: spawn, report results, optionally request one follow-up. */
+function spawnStep(transcript: TranscriptContext) {
+	const text = lastUserText(transcript);
+	const last = transcript.messages.findLast((message) => message.role !== "system");
+	if (last?.role === "toolResult") {
+		const output = last.content.map((block) => (block.type === "text" ? block.text : "")).join("");
+		return fauxAssistantMessage(`spawn${last.isError ? " error" : ""}: ${output.trim()}`);
+	}
+	const input: unknown = JSON.parse(text);
+	if (typeof input !== "object" || input === null || Array.isArray(input))
+		throw new Error("faux/spawn requires a JSON object");
+	if ("task-result" in input) {
+		if ("nextTask" in input)
+			return fauxAssistantMessage(
+				fauxToolCall(
+					"spawn_task",
+					Value.Parse(Type.Record(Type.String(), Type.String()), Value.Parse(SpawnTaskArgs, input.nextTask)),
+				),
+				{ stopReason: "toolUse" },
+			);
+		return fauxAssistantMessage(`task-result: ${JSON.stringify(input["task-result"])}`);
+	}
+	return fauxAssistantMessage(
+		fauxToolCall(
+			"spawn_task",
+			Value.Parse(Type.Record(Type.String(), Type.String()), Value.Parse(SpawnTaskArgs, input)),
+		),
+		{ stopReason: "toolUse" },
+	);
 }

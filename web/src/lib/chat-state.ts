@@ -4,6 +4,10 @@ export type ChatState = { items: Item[]; running: boolean; retry?: Retry };
 
 export const emptyChatState: ChatState = { items: [], running: false };
 
+export function retryMessage(items: Item[], index: number) {
+  return items.slice(0, index).findLast((item) => item.kind === "user");
+}
+
 export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
   switch (event.type) {
     case "snapshot":

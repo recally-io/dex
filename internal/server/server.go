@@ -381,10 +381,13 @@ func (h *handler) GetUpload(_ context.Context, req api.GetUploadRequestObject) (
 }
 
 func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject) (api.AbortChatResponseObject, error) {
-	if err := h.Chats.Abort(ctx, h.AgentID, req.ChatId); err != nil {
+	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	return api.AbortChat200JSONResponse(ok), nil
+	if err := h.Chats.Stop(ctx, h.AgentID, req.ChatId); err != nil {
+		return nil, err
+	}
+	return api.AbortChat200JSONResponse{Status: api.OkStatusOk}, nil
 }
 
 func (h *handler) WatchChat(ctx context.Context, req api.WatchChatRequestObject) (api.WatchChatResponseObject, error) {

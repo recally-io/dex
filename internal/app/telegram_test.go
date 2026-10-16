@@ -169,8 +169,16 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		var m struct {
 			sentMessage
 			MessageID int64 `json:"message_id"`
+			Commands  []struct {
+				Command string `json:"command"`
+			} `json:"commands"`
 		}
 		_ = json.UnmarshalRead(r.Body, &m)
+		if method == "setMyCommands" {
+			for _, command := range m.Commands {
+				m.Text += "/" + command.Command + " "
+			}
+		}
 		if f.permanentChat.Load() == m.ChatID && m.ChatID != 0 {
 			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 403, "description": "bot was blocked by the user"})
 			return
@@ -271,6 +279,7 @@ func TestUserGetsAnswerInTelegram(t *testing.T) {
 	if status != http.StatusForbidden {
 		t.Fatalf("settings of a Telegram chat: %d %s", status, raw)
 	}
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/abort", chats[0].ID), nil, nil, http.StatusForbidden)
 }
 
 func TestTelegramIgnoresUsersWhoAreNotAllowed(t *testing.T) {

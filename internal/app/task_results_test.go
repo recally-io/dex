@@ -1,0 +1,331 @@
+package app_test
+
+import (
+	"database/sql"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/recally-io/dex/internal/chat"
+)
+
+func TestUserTaskResultWaitsForBusyParent(t *testing.T) {
+	// Given independent shell gates for the background execution and its parent.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	d.setModel(t, "spawn")
+	parent := d.newChat(t, taskJSON(t, map[string]string{
+		"title": "Busy parent", "goal": taskGate(t, dir, "background"), "provider": "faux", "modelId": "bash",
+	}))
+	waitExecution(t, conn, parent, "Busy parent", "running")
+	w := d.watch(t, parent)
+	w.until(t, "spawn answer", answeredWith("spawn: "))
+	waitTaskFile(t, filepath.Join(dir, "background.pid"))
+	setTaskChatModel(t, d, parent, "bash")
+	foreground := d.send(t, parent, taskGate(t, dir, "parent"))
+	waitTaskFile(t, filepath.Join(dir, "parent.pid"))
+	w.until(t, "parent tool running", resultParentToolRunning)
+
+	// When the execution completes, its report is durable while the parent stays in its tool.
+	releaseResultGate(t, dir, "background")
+	task := waitExecution(t, conn, parent, "Busy parent", "done")
+	resultID := "task:" + task.ID + ":result"
+	result := waitResultSubmission(t, conn, resultID, "pending")
+	// The later answer proves control attempted delivery before the parent changes model.
+	d.setModel(t, "echo")
+	barrier := d.newChat(t, "busy result delivery attempted")
+	d.watch(t, barrier).until(t, "busy delivery barrier", answered("echo: busy result delivery attempted"))
+	if !strings.Contains(task.Report, "gate released") {
+		t.Fatalf("completed report missing: %+v", task)
+	}
+	w.cancel()
+	w = d.watch(t, parent)
+	w.until(t, "result waits beside running parent", func(tr *transcript) bool {
+		return tr.snapshots > 0 && resultParentToolRunning(tr) && !slices.ContainsFunc(tr.items, func(it item) bool {
+			return it.ID == resultID && it.Kind == "user"
+		})
+	})
+	if taskPIDGone(t, filepath.Join(dir, "parent.pid")) {
+		t.Fatal("parent shell ended before its gate was released")
+	}
+	if got := resultSubmission(t, conn, foreground); got.status != "pending" {
+		t.Fatalf("parent ended while gated: %+v", got)
+	}
+
+	// Then releasing the parent processes the saved result without another user input.
+	// A result already in the worker inbox would keep bash and could not return this spawn answer.
+	setTaskChatModel(t, d, parent, "spawn")
+	releaseResultGate(t, dir, "parent")
+	w.until(t, "background result answer", answeredWith(`"id":"`+task.ID+`"`))
+	processed := waitResultSubmission(t, conn, resultID, "done")
+	if !strings.HasPrefix(processed.answer, "task-result: ") || !strings.Contains(processed.answer, task.ID) || processed.content != result.content {
+		t.Fatalf("result was not processed intact: before=%+v after=%+v", result, processed)
+	}
+	for _, entry := range w.tr.items {
+		if entry.ID == resultID && entry.Kind == "user" {
+			t.Fatalf("internal result became user content: %+v", entry)
+		}
+	}
+	assertResultExecution(t, conn, parent, task, 2)
+	t.Logf("artifact: execution=%s report=%q result=%s answer=%q", task.ID, task.Report, resultID, processed.answer)
+}
+
+func TestUserTaskResultRecoversFailedParentWithQueuedInput(t *testing.T) {
+	// Given a parent in a shell tool and a separate background execution.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	d.setModel(t, "spawn")
+	parent := d.newChat(t, taskJSON(t, map[string]string{
+		"title": "Failed parent", "goal": taskGate(t, dir, "background"), "provider": "faux", "modelId": "bash",
+	}))
+	task := waitExecution(t, conn, parent, "Failed parent", "running")
+	w := d.watch(t, parent)
+	w.until(t, "spawn answer", answeredWith("spawn: "))
+	waitTaskFile(t, filepath.Join(dir, "background.pid"))
+	setTaskChatModel(t, d, parent, "bash")
+	d.send(t, parent, taskGate(t, dir, "parent"))
+	waitTaskFile(t, filepath.Join(dir, "parent.pid"))
+	setTaskChatModel(t, d, parent, "spawn")
+	invalid := d.send(t, parent, "invalid JSON")
+	continuation := d.send(t, parent, `{"task-result":{"report":"queued continuation"}}`)
+	w.until(t, "both inputs queued behind the shell", func(tr *transcript) bool {
+		return resultParentToolRunning(tr) && slices.ContainsFunc(tr.items, func(it item) bool { return it.ID == invalid && it.Queued }) &&
+			slices.ContainsFunc(tr.items, func(it item) bool { return it.ID == continuation && it.Queued })
+	})
+	// A later chat answer is a delivery-loop barrier: earlier queued inputs have been submitted.
+	d.setModel(t, "echo")
+	barrier := d.newChat(t, "queued inputs admitted")
+	d.watch(t, barrier).until(t, "admission barrier", answered("echo: queued inputs admitted"))
+
+	// When the shell ends, the next model turn fails on actual invalid JSON.
+	releaseResultGate(t, dir, "parent")
+	failed := waitResultSubmission(t, conn, invalid, "unanswered")
+	if failed.reason == "" || failed.reason == "aborted" {
+		t.Fatalf("parent did not fail at the model boundary: %+v", failed)
+	}
+
+	// Then the inbox advances after failure and the background result gets its own answer.
+	releaseResultGate(t, dir, "background")
+	task = waitExecution(t, conn, parent, "Failed parent", "done")
+	resultID := "task:" + task.ID + ":result"
+	continued := waitResultSubmission(t, conn, continuation, "done")
+	if continued.answer != `task-result: {"report":"queued continuation"}` {
+		t.Fatalf("queued input answer: %+v", continued)
+	}
+	processed := waitResultSubmission(t, conn, resultID, "done")
+	w.until(t, "result after failed run", answeredWith(`"id":"`+task.ID+`"`))
+	if !strings.Contains(processed.answer, task.ID) || !strings.Contains(processed.answer, "gate released") {
+		t.Fatalf("lost result after model failure: %+v", processed)
+	}
+	assertResultExecution(t, conn, parent, task, 4)
+	t.Logf("artifact: failed=%s reason=%q continuation=%q result=%q", invalid, failed.reason, continued.answer, processed.answer)
+}
+
+func TestUserTaskResultSurvivesStopAfterParentAcceptsIt(t *testing.T) {
+	// Given a report that starts a real shell gate when faux/bash reads the result envelope.
+	// Shell substitution is intentional here: the model boundary executes the report text.
+	dir := t.TempDir()
+	gate := taskGate(t, dir, "accepted-result")
+	script := filepath.Join(dir, "result-gate.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/bash\n"+gate+"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	report := "$(" + resultShellQuote(script) + ")"
+	goal := taskGate(t, dir, "background") + "; printf '%s\\n' " + resultShellQuote(report)
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	d.setModel(t, "spawn")
+	parent := d.newChat(t, taskJSON(t, map[string]string{
+		"title": "Stopped result", "goal": goal, "provider": "faux", "modelId": "bash",
+	}))
+	waitExecution(t, conn, parent, "Stopped result", "running")
+	w := d.watch(t, parent)
+	w.until(t, "spawn answer", answeredWith("spawn: "))
+	waitTaskFile(t, filepath.Join(dir, "background.pid"))
+	setTaskChatModel(t, d, parent, "bash")
+	releaseResultGate(t, dir, "background")
+	task := waitExecution(t, conn, parent, "Stopped result", "done")
+	resultID := "task:" + task.ID + ":result"
+	waitTaskFile(t, filepath.Join(dir, "accepted-result.pid"))
+	w.until(t, "accepted result executing a tool", func(tr *transcript) bool {
+		return resultParentToolRunning(tr) && !slices.ContainsFunc(tr.items, func(it item) bool { return it.ID == resultID && it.Kind == "user" })
+	})
+	before := waitResultSubmission(t, conn, resultID, "pending")
+	// When Stop cancels the accepted result, it revokes further delivery.
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/abort", parent), nil, nil)
+	retained := waitResultSubmission(t, conn, resultID, "unanswered")
+	if retained.content != before.content {
+		t.Fatalf("result after Stop: %+v", retained)
+	}
+	releaseResultGate(t, dir, "accepted-result")
+	// Then a successful new user turn cannot revive the old result.
+	setTaskChatModel(t, d, parent, "echo")
+	if got := taskTurn(t, d, parent, "hello"); got != "echo: hello" {
+		t.Fatal(got)
+	}
+	after := resultSubmission(t, conn, resultID)
+	if after.status != "unanswered" || after.content != before.content || after.reason != retained.reason {
+		t.Fatalf("hello revived result: %+v", after)
+	}
+	assertResultExecution(t, conn, parent, task, 2)
+	t.Logf("stopped result=%s state=%+v", resultID, after)
+}
+
+func resultShellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func resultParentToolRunning(tr *transcript) bool {
+	return tr.running && slices.ContainsFunc(tr.items, func(it item) bool {
+		return it.Kind == "tool" && it.Name == "bash" && it.Status == "running"
+	})
+}
+
+func releaseResultGate(t *testing.T, dir, name string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name+".gate"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func taskResultDB(t *testing.T, dir string) *sql.DB {
+	t.Helper()
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn
+}
+
+type resultSubmissionState struct {
+	status, content, answer, reason string
+}
+
+func resultSubmission(t *testing.T, conn *sql.DB, id string) resultSubmissionState {
+	t.Helper()
+	var row resultSubmissionState
+	if err := conn.QueryRowContext(t.Context(), `SELECT status, content, coalesce(answer, ''), coalesce(reason, '') FROM submissions WHERE id = ?`, id).
+		Scan(&row.status, &row.content, &row.answer, &row.reason); err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
+
+func waitResultSubmission(t *testing.T, conn *sql.DB, id, status string) resultSubmissionState {
+	t.Helper()
+	var row resultSubmissionState
+	eventually(t, fmt.Sprintf("submission %s %s", id, status), func() (bool, any) {
+		err := conn.QueryRowContext(t.Context(), `SELECT status, content, coalesce(answer, ''), coalesce(reason, '') FROM submissions WHERE id = ?`, id).Scan(&row.status, &row.content, &row.answer, &row.reason)
+		return err == nil && row.status == status, fmt.Sprintf("row=%+v err=%v", row, err)
+	})
+	return row
+}
+
+func assertResultExecution(t *testing.T, conn *sql.DB, parent int64, task chat.Task, userInputs int) {
+	t.Helper()
+	got := waitExecution(t, conn, parent, task.Title, "done")
+	if got.ID != task.ID || got.Report != task.Report {
+		t.Fatalf("report changed: %+v", got)
+	}
+	var inputs, results int
+	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FILTER (WHERE kind = 'message'), count(*) FILTER (WHERE kind = 'task_result') FROM submissions WHERE conversation_id = ?`, parent).Scan(&inputs, &results); err != nil {
+		t.Fatal(err)
+	}
+	if inputs != userInputs || results != 1 {
+		t.Fatalf("inputs=%d want=%d results=%d", inputs, userInputs, results)
+	}
+}
+
+func TestUserFailedTaskResultStaysUnansweredAfterSuccessfulMessage(t *testing.T) {
+	// Given a provider that answers ordinary messages but fails result turns.
+	var calls atomic.Int64
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			Messages []struct {
+				Role    string         `json:"role"`
+				Content jsontext.Value `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.UnmarshalRead(r.Body, &input); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var last string
+		for _, message := range input.Messages {
+			if message.Role == "user" {
+				last = string(message.Content)
+			}
+		}
+		if strings.Contains(last, "task-result") {
+			calls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"result provider failed on purpose","type":"invalid_request_error"}}`))
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w, `data: {"id":"test","object":"chat.completion.chunk","created":0,"model":"test","choices":[{"index":0,"delta":{"role":"assistant","content":"hello"},"finish_reason":null}]}
+
+data: {"id":"test","object":"chat.completion.chunk","created":0,"model":"test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+`)
+	}))
+	defer provider.Close()
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	d.setModel(t, "spawn")
+	parent := d.newChat(t, taskJSON(t, map[string]string{"title": "Saved report", "goal": taskGate(t, dir, "result"), "provider": "faux", "modelId": "bash"}))
+	waitExecution(t, conn, parent, "Saved report", "running")
+	waitTaskFile(t, filepath.Join(dir, "result.pid"))
+	d.watch(t, parent).until(t, "spawn answer", answeredWith("spawn: "))
+	d.must(t, http.MethodPut, "/api/settings/providers/result-test", map[string]any{"api": "openai-completions", "baseUrl": provider.URL, "models": []string{"test"}}, nil)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", parent), map[string]string{"provider": "result-test", "modelId": "test", "thinkingLevel": "off"}, nil)
+	releaseResultGate(t, dir, "result")
+	task := waitExecution(t, conn, parent, "Saved report", "done")
+	id := "task:" + task.ID + ":result"
+	failed := waitResultSubmission(t, conn, id, "unanswered")
+	if failed.reason == "" {
+		t.Fatalf("failed result: %+v", failed)
+	}
+	// When an ordinary message succeeds, the failed result stays unanswered.
+	ordinary := d.send(t, parent, "hello")
+	ordinaryResult := waitResultSubmission(t, conn, ordinary, "done")
+	if ordinaryResult.answer != "hello" {
+		t.Fatalf("ordinary turn: %+v", ordinaryResult)
+	}
+	// Reading through the main agent also completes a later delivery-loop turn.
+	got := taskTool(t, d, parent, "get_task", map[string]string{"id": task.ID})
+	if !strings.Contains(got, "gate released") {
+		t.Fatalf("get_task lost report: %s", got)
+	}
+	if got := taskTool(t, d, parent, "list_tasks", map[string]string{}); !strings.Contains(got, task.ID) {
+		t.Fatalf("list_tasks lost execution: %s", got)
+	}
+	// Then control preserves the one failed result and the complete report.
+	after := resultSubmission(t, conn, id)
+	if after != failed {
+		t.Fatalf("successful input changed failed result: before=%+v after=%+v", failed, after)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("result calls=%d want=1", got)
+	}
+	saved := waitExecution(t, conn, parent, "Saved report", "done")
+	if saved.Report != task.Report || !strings.Contains(saved.Report, "gate released") {
+		t.Fatalf("lost report: %+v", saved)
+	}
+	t.Logf("result=%s calls=%d report=%q", id, calls.Load(), saved.Report)
+}

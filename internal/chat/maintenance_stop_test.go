@@ -27,6 +27,10 @@ func (call maintenanceCall) Call(ctx context.Context, method string, params, res
 	return call(ctx, method, params, result)
 }
 
+func (call maintenanceCall) Bind() (worker.CallFunc, error) {
+	return worker.CallFunc(call), nil
+}
+
 func TestUserStopsWhileMaintenanceCheckReportsBusy(t *testing.T) {
 	// Given a real worker with an active tool and a delayed quiesce response.
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -109,7 +113,7 @@ func TestUserStopsWhileMaintenanceCheckReportsBusy(t *testing.T) {
 		}
 		return err
 	})
-	s := chat.New(q, call, time.Now, nil, nil)
+	s := chat.New(conn, call, time.Now, nil, nil)
 	m := channel.New(ctx, conn, s, "default")
 	defer m.Close()
 	acquired := make(chan error, 1)

@@ -27,6 +27,9 @@ type CreateConversationResult struct {
 // SubmitParams are the params of the submit method. Model, ThinkingLevel and Instructions are the
 // chat's current settings; the worker applies them to the conversation when they changed.
 type SubmitParams struct {
+	Kind           string   `json:"kind,omitempty"`
+	WhenBusy       string   `json:"whenBusy,omitempty"`
+	TaskStageID    string   `json:"taskStageId,omitempty"`
 	AgentID        string   `json:"agentId"`
 	ConversationID int64    `json:"conversationId"`
 	Model          ModelRef `json:"model"`
@@ -82,6 +85,17 @@ type UnwatchParams struct {
 // AbortParams are the params of the abort method, which stops the conversation's run and
 // withdraws its queued messages.
 type AbortParams struct {
+	AgentID        string `json:"agentId"`
+	ConversationID int64  `json:"conversationId"`
+}
+
+// RecoverTasksParams registers old task conversations before a Harness can resume.
+type RecoverTasksParams struct {
+	Stages []RecoverTaskStage `json:"stages"`
+}
+
+type RecoverTaskStage struct {
+	StageID        string `json:"stageId"`
 	AgentID        string `json:"agentId"`
 	ConversationID int64  `json:"conversationId"`
 }
@@ -152,12 +166,24 @@ type request struct {
 	Params any    `json:"params"`
 }
 
+// TaskRequest identifies a durable tool call and its initiating submission.
+type TaskRequest struct {
+	AgentID         string         `json:"agentId"`
+	ConversationID  int64          `json:"conversationId"`
+	SourceRequestID string         `json:"sourceRequestId"`
+	Key             string         `json:"key"`
+	Action          string         `json:"action"`
+	Args            jsontext.Value `json:"args"`
+}
+
 // incoming is a response (with ID) or an event (with Event).
 type incoming struct {
 	ID     int64          `json:"id"`
+	Method string         `json:"method"`
 	Result jsontext.Value `json:"result"`
 	Error  *struct {
 		Message string `json:"message"`
+		Code    string `json:"code,omitempty"`
 	} `json:"error"`
 	Event  string         `json:"event"`
 	Params jsontext.Value `json:"params"`

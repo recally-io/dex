@@ -114,11 +114,15 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		Dir:       cfg.CacheDir,
 		Env:       append(cfg.WorkerEnv, "DEX_DATA_DIR="+cfg.DataDir),
 		OnSettled: func(ctx context.Context, s worker.Settled) { chats.HandleSettled(ctx, s) },
+		OnTask:    func(ctx context.Context, r worker.TaskRequest) (any, error) { return chats.HandleTask(ctx, r) },
 		OnChat:    func(ev worker.ChatStream) { hub.HandleChat(ev) },
 		OnExit:    func() { hub.WorkerExited() },
 		Init: func(ctx context.Context, call worker.CallFunc) error {
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
+			if err := chats.RecoverTasks(ctx, call); err != nil {
+				return err
+			}
 			if err := chats.RestoreMaintenance(ctx, call); err != nil {
 				return err
 			}
@@ -134,7 +138,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		},
 		OnStart: func(ctx context.Context) { chats.Replay(ctx) },
 	})
-	chats = chat.New(q, w, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
+	chats = chat.New(conn, w, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
 	hub = live.New(q, chats, w, DefaultAgentID)
 	bots = channel.New(runCtx, conn, chats, DefaultAgentID)
 	uploads := upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID))
@@ -171,6 +175,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		bots.Set("telegram", telegram.New(*cfg, bots))
 	}
 	prefs = settings.New(q, w.Call, DefaultAgentID, cfg.TelegramAPIURL, setTelegram)
+	chats.ConfigureTasks(prefs.CheckChat)
 	setFeishu := func(config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
 		if config == nil {
 			bots.Set("feishu", nil)

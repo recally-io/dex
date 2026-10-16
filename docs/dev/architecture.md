@@ -58,6 +58,13 @@ decisions.
 | Memory (git repo)                    | the agent's tools   | `<data dir>/memory/`                                                        |
 | Skills and MCP servers               | the user's files    | `~/.agents/{skills/,mcp.json}`, `<data dir>/agents/<id>/{skills/,mcp.json}` |
 
+Control also owns internal delegation records (`tasks`). Each record
+has one hidden `task:<execution ID>` conversation and one input. The worker
+owns its transcript and execution records. Control never reads worker SQLite.
+The records retain the source submission, status, and report. A cancelled
+status records a cancellation request. It does not prove process exit. There
+is no user goal lifecycle or automatic retry chain.
+
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). pi-durable allows one
 process per storage, so only the worker opens an agent directory.
 
@@ -110,6 +117,16 @@ are `idle`. `POST /api/extensions/reload` takes the maintenance lease, which
 it refuses when another holder has it, restarts the worker, opens the agent,
 and releases the lease.
 
+The task extension adds delegation tools and a `task-rules` section to main
+chats. Background executions and dreams have no delegation tools. A separate
+extension gives main chats and background executions the `coding-skill`
+section. Bun embeds the full
+[built-in coding skill](../../worker/skills/coding/SKILL.md) in the worker.
+It does not copy the skill into a user directory or add a new extension scope.
+The skill requires a repository path, project rules, independent review, tests
+of the final revision, and evidence in the report. It requires serial writes
+or separate worktrees for tasks that change the same repository.
+
 ## Automations
 
 An automation runs a prompt on a schedule; see
@@ -156,6 +173,9 @@ their models. A provider is one of:
   `/models` (OpenAI) or `/v1/models` (Anthropic) returns. A custom provider
   without a key sends the key `none`, for local servers.
 
+For task tools, custom `openai-responses` providers send `strict:false`.
+This keeps optional parameters optional at Responses endpoints.
+
 The worker keeps the providers only in memory (built-in keys in pi-ai's
 `InMemoryCredentialStore`) and gets no provider environment variables. When a
 custom provider's model list fails, the provider stays saved and the API
@@ -184,7 +204,22 @@ The types are in [`worker/src/protocol.ts`](../../worker/src/protocol.ts) and
 | `abort`              | `agentId`, `conversationId`                                                                                            | `{}`                      |
 | `extensions`         | `agentId`                                                                                                              | the Extensions schema     |
 
-The worker runs the submits of one conversation in order. When `model`,
+The worker can also send a `task` request to control. Its params contain the
+agent, worker conversation, durable tool key, source request ID, action, and
+arguments. Control returns a response with the same ID. IDs in the two pipe
+directions have separate namespaces. Control handles these requests outside
+the stdout reader because a task action can call the worker for validation.
+
+`submit` also accepts `whenBusy`, `taskStageId`, and a trusted input kind.
+Task result delivery uses
+`whenBusy: reject`, so it remains in control while the main chat has an active
+run or queued inputs. `abort` requests SDK cancellation with a 5 s wait limit.
+The SDK saves the cancellation before it waits for idle. An SDK error or timeout
+returns an RPC error. The wait limit excludes admission and conversation
+serialization. `recoverTasks` registers started task conversations before the
+worker opens any Harness.
+
+The worker runs submits and aborts for one conversation in order. When `model`,
 `thinkingLevel` or `instructions` differ from the conversation's, it changes
 the conversation first; a run in progress keeps its settings until its next
 turn.
@@ -220,6 +255,95 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
    the chat's event stream (next section).
 5. The worker sends `settled`. Control marks the submission `done` or
    `unanswered`, and the channel sender reads the answer from durable storage.
+
+## Internal delegation
+
+The main agent uses `spawn_task`, `list_tasks`, `get_task`, and `cancel_task`.
+Each spawn creates one execution with fixed model and thinking settings.
+There is no goal acceptance lifecycle. The main agent checks saved records
+before it reports progress or starts another execution. The main agent owns
+implementation, independent review, fixes, final tests, and the user report.
+Background conversations cannot call delegation management tools. Control
+checks this boundary as well as the worker's tool list.
+
+Creation checks source ownership, pending input, deduplication, and capacity
+in one SQLite write transaction. The durable spawn key is the agent ID plus
+pi-durable's tool task ID. Replay returns the same execution. Each agent admits
+at most 2 queued or running executions. Cancellation releases admission, so a
+tool that ignores cancellation can continue after another execution starts.
+The main agent handles failure, retry, and continuation from saved artifacts.
+The prompt requires a record check before progress reports or follow-up work.
+
+Normal completion (`done`) and execution failure (`failed`) create a durable
+`task_result` submission in the same transaction as settlement. The result
+waits in control while the source chat is busy. Stop and directed cancellation
+set active executions to `cancelled`. Worker loss sets running executions to
+`interrupted`. These states create no result turn. A terminal record and its
+saved report stay unchanged when a late worker event arrives.
+
+Control passes a trusted submission kind to the worker. The worker stores
+internal results as a separate entry kind and excludes them from the public
+transcript. Control's pending user projection selects only `kind='message'`.
+Neither layer uses message text or an ID pattern to hide results. Ordinary
+user JSON still appears and can use the normal Retry action. Hidden execution
+chats remain absent from public chat lists, chat reads, and dream inputs.
+Dream input selects only ordinary messages, so internal results in a main chat
+cannot enter memory as user text.
+There are no public task endpoints, task streams, task cards, or task commands.
+The normal main-chat SSE stream remains available.
+
+Result delivery uses the existing submission lifecycle. A provider failure
+leaves the result unanswered. Control never changes a settled submission back
+to pending, so no retry counter or delivery recovery state is needed. The
+main agent can read the saved report and choose the next action. A user Stop
+withdraws pending results. A later greeting cannot revive those results.
+A new execution must check prior artifacts and side effects.
+
+Web Stop covers only the current writable web chat. External channel chats
+are read-only on the web. The existing automation-chat write boundary remains.
+Channel `/stop` covers the current agent and exact channel peer, including
+its chats before `/new`. Other peers, agents, and web chats are outside that
+scope. `/new` changes context without cancelling prior execution.
+Stop withdraws pending ordinary input and results. The same transaction sets
+active background executions to `cancelled` and withdraws their own input.
+Stop and spawn acquire the SQLite writer before they read: spawn either commits
+first and is cancelled, or fails because its source is no longer pending.
+Submission and Stop share a delivery lock, so cancellation cannot pass an
+input that control still intends to submit. Stop then requests cancellation
+once for each worker conversation through the bound current process. Each RPC
+has a 6 s timeout. RPC failure is logged; saved cancellation stays in effect.
+There is no cancellation retry loop. Late reports cannot change a terminal
+record or wake the model.
+
+`POST /api/chats/{chatId}/abort` returns `{status: "ok"}` after withdrawal and the
+cancellation requests. Web Stop stays available while the main chat is idle
+and without a model. The reply confirms the request. It does not prove process
+exit. Processes and remote work can continue. Cancellation does not undo file writes
+or remote actions. A directed cancellation of a completed execution leaves its
+report and saved result unchanged.
+
+Control binds admission to the current worker process. It joins old worker
+callbacks before it starts the next process. After worker loss, a running
+execution becomes `interrupted`. It does not run again or create a result turn.
+Before Harness resume, the worker isolates all started task conversations,
+including cancelled executions whose cancellation request could not reach the
+old worker. Queued execution that never started can start for the first time.
+Completed results already saved for delivery retain their submission state.
+Durable spawn replay returns the original record.
+
+The SDK owns cancellation of run invocations and tools. Control does not track
+process trees or confirm exit. A normal local or MCP tool return can settle
+execution. An aborted MCP call ends the local wait and requests remote
+cancellation. It does not prove that the remote job stopped. Before another
+execution, the main agent must check reports, artifacts, and prior actions.
+
+Tools use the local `NodeExecutionEnv`, without a sandbox. CLI tools must be
+logged in and run in the foreground with non-interactive options. Detached
+processes and daemons are outside the supported lifecycle. Bash has no default
+timeout. Its visible output keeps at most the last 2000 lines or 50 KiB,
+whichever limit comes first; complete output goes to a temporary file.
+A durable checkpoint does not attach a CLI after restart or guarantee that
+external actions occurred once.
 
 ## Attachments
 
@@ -284,7 +408,8 @@ so dex needs no public URL.
   change cancels the previous code. Manual user-ID entry remains available.
   An allowed user who repeats a pairing command receives an already-paired
   reply, including after a lost acknowledgement or restart.
-- The bot registers `/new`, `/stop`, and `/help` with `setMyCommands`.
+- The bot registers `/new`, `/stop`, and `/help`
+  with `setMyCommands`.
   The channel manager owns command execution and deduplication.
 - Each update has a stable source key: `telegram:<bot id>:<update id>`.
   A repeated update does not create another submission.
@@ -323,21 +448,20 @@ Every key keeps its destination, so an old chat can still receive its answer.
 External channel chats are read-only on the web. Web and automation chats
 remain writable.
 
-`/new`, `/stop`, and `/help` use durable command receipts. The receipt and a
-`/new` rotation commit in one transaction. `/stop` settles queued submissions
-as unanswered with reason `stopped`, prevents later admission, and aborts the
-worker run. An interrupted stop can run again; abort is safe to repeat.
-If abort fails, control logs the error and completes the command with a failure
-answer. The platform can then receive more messages and deliver other replies.
+`/new`, `/stop`, and `/help` use durable command
+receipts. The receipt and a `/new` rotation commit in one transaction.
+`/stop` records stop intent for the exact peer scope described above and
+withdraws queued input and pending results. A repeated Stop is safe. The
+reply confirms the cancellation request and states that processes and remote
+work can continue. A stop error does not block later messages or other replies.
 
 Each platform has one durable sender. Notify only wakes this sender. At start
-and after a failed send, the same sender reads settled, undelivered submissions.
-It records progress after each confirmed part and marks the whole reply as
+and after a failed send, it reads settled submissions and command replies
+that remain undelivered. It records each confirmed part and marks the reply
 delivered after its last part. A permanent rejection skips that part and does
 not block later replies. A transient error retries with a delay from 5 s to
-60 s. Each bot receives the stable submission or command ID and the part index
-through `Bot.Send`. Fixed command replies record only whole-reply delivery.
-Worker replay still reads only pending messages.
+60 s. Each bot receives a stable delivery ID and part index through `Bot.Send`.
+Worker replay still reads only pending submissions.
 Delivery is at least once: a crash between platform success and the local
 commit can duplicate one part. Migration marks old settled replies as delivered
 because earlier versions did not record delivery success.
@@ -377,8 +501,7 @@ The bot ignores groups and other users. Text mentions are removed. Rich posts
 become text and image attachments. Code blocks keep their text and language
 in Markdown fences. Repeated `/pair` messages never reach the agent.
 Message resources pass through `upload.Store`, with its 20 MB file limit and 10 attachments per message.
-The shared channel manager handles `/new`, `/stop`, and `/help`. A source key
-contains `feishu:<app ID>:<message ID>`. The bot acknowledges valid agent
+The shared channel manager handles `/new`, `/stop`, and `/help`. A source key contains `feishu:<app ID>:<message ID>`. The bot acknowledges valid agent
 input after durable admission succeeds. Invalid content, rejected resource access,
 and files with invalid names or excessive size are acknowledged and ignored.
 Storage and temporary platform failures get a 500 acknowledgement for retry.
@@ -466,9 +589,12 @@ the saved context token before each send, including after a restart.
 
 - **Worker exits.** [`worker.Worker.Run`](../../internal/worker/worker.go)
   restarts it with a backoff from 1 s to 30 s. Calls wait for the new process.
-  After each start, `chat.Service.Replay` sends every `pending` submission
-  again with the same `requestId`. pi-durable finds the same submission and
-  continues it from its last checkpoint, so no message runs twice.
+  After each start, control isolates old task conversations before any Harness
+  resumes. Started execution lost with the worker becomes interrupted and does not
+  restart automatically. `chat.Service.Replay`
+  re-admits pending ordinary messages and eligible normal results with
+  their stable request IDs. pi-durable deduplicates input admission. This does not guarantee that
+  an external tool action occurs once.
 - **Control exits.** Pending submissions stay in `control.sqlite`. The next
   start replays them.
 - **Crash between `createConversation` and storing its ID.** The worker keeps
@@ -574,10 +700,11 @@ Provider responses keep their own API type. The service's provider input can
 hold an API key. The response type cannot hold that key. Keep this conversion
 as the boundary that prevents secrets from reaching the browser.
 
-Keep the delivery queue. A pending submission can be waiting for delivery or
-waiting for an answer. A loop that scans pending rows would resend messages
-that the worker already accepted. Avoiding those repeats would need another
-state or cursor.
+Keep work in SQLite and use a coalesced wake signal. The delivery loop scans
+pending submissions. An in-memory `inFlight` set prevents repeated delivery
+after the worker accepted an input. Replay clears that set after a worker
+restart; stable request IDs make input admission safe to repeat. Task results
+that receive a busy response stay pending outside the worker inbox.
 
 Keep the live hub's merge state. It joins the worker's transcript with queued
 or failed messages that only control has. Each browser stream has its own

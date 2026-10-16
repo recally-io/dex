@@ -169,11 +169,13 @@ paths:
     post:
       operationId: abortChat
       description: >
-        Stops the run of the chat and withdraws its queued messages. The
-        current tool call stops first.
+        Withdraws queued input and results, then requests cancellation of the
+        main turn and background execution of this chat. Earlier actions are
+        not undone. Processes and remote work may continue.
+        External channel chats are read-only on the web.
       responses:
         "200":
-          description: The run is stopped, or no run was active.
+          description: Pending input is withdrawn and cancellation is requested.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Ok" }

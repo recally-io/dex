@@ -29,7 +29,7 @@ import {
   abortChatMutation,
   listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
-import { applyChatEvent, emptyChatState } from "../lib/chat-state";
+import { applyChatEvent, emptyChatState, retryMessage } from "../lib/chat-state";
 import { queryClient, refreshChats } from "../lib/queries";
 import { chatModel, saveChatSettings, thinkingNames } from "../lib/agent";
 import { useAttachments } from "../lib/attachments";
@@ -646,6 +646,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
   const error = create.error ?? send.error ?? abort.error;
 
   async function sendText(text: string, attachments: Attachment[]) {
+    abort.reset();
     const ids = attachments.map((a) => a.id);
     const failed = failedMessage.current?.body;
 
@@ -685,7 +686,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
   }
 
   function retryText(index: number) {
-    const previous = state.items.slice(0, index).findLast((item) => item.kind === "user");
+    const previous = retryMessage(state.items, index);
 
     if (previous?.kind === "user") {
       failedMessage.current = null;
@@ -697,6 +698,11 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
 
   const composer = (
     <>
+      {abort.isSuccess ? (
+        <p role="status" className="mb-3 text-[12.5px] text-ink-2">
+          Stop requested. Earlier actions are not undone. Processes and remote work may continue.
+        </p>
+      ) : null}
       {error ? (
         <div className="mb-3">
           <Failure
@@ -807,9 +813,7 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
               item={block.item}
               live={live(block.index)}
               retry={() => retryText(block.index)}
-              canRetry={
-                !reason && !pending && state.items.slice(0, block.index).some((i) => i.kind === "user")
-              }
+              canRetry={!reason && !pending && retryMessage(state.items, block.index) !== undefined}
             />
           ),
         )}
@@ -881,6 +885,16 @@ function Chat({ chatId, settings }: { chatId?: number; settings: Settings }) {
             </StatusPill>
           ) : null}
           <span className="flex-1" />
+          {chat.data && !readOnly ? (
+            <Button
+              size="xs"
+              variant="secondary"
+              disabled={abort.isPending}
+              onClick={() => abort.mutate({ path: { chatId } })}
+            >
+              {abort.isPending ? "Requesting stop…" : "Stop"}
+            </Button>
+          ) : null}
           {chat.data && !contextOpen ? (
             <button
               type="button"

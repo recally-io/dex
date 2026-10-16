@@ -24,8 +24,16 @@ to read in an afternoon.
   About. The Extensions and Secrets pages and the Slack
   channel show that dex does not support them yet.
 - Agents with a model, instructions, and a workspace directory.
-- Durable conversations: a crash or a restart does not lose a message or a
-  started run.
+- Durable conversations: control stores each message before delivery. Saved
+  messages, reports, and execution records survive a restart. A restart does
+  not attach an old CLI process or prove that its actions occurred once.
+- Internal background delegation for the default agent. Each delegation has
+  one input and fixed model settings. The main agent stays available and
+  receives reports to plan review, fixes, tests, and the final answer.
+  Each agent admits at most 2 queued or running executions. Cancellation
+  releases admission, but a tool can still complete actions. Background execution
+  cannot delegate more work. The main agent handles failures and decides the
+  next action.
 - Telegram setup: save a bot token, then open a single-use pairing link to
   allow the owner's account while the bot has no owner. Links expire after
   10 minutes. A paired bot cannot create another pairing link. Manual user-ID
@@ -33,8 +41,11 @@ to read in an afternoon.
   Earlier versions accepted group messages from allowed users. The bot now
   ignores all non-private chats, including messages from allowed users.
 - Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. External channel chats are read-only
-  on the web. `/new` starts another chat. `/stop` stops pending work. `/help`
-  lists commands. Reply delivery resumes after a restart and skips confirmed
+  on the web. `/new` starts another chat without cancelling old work.
+  `/stop` stops the current answer and background execution for the current
+  agent and exact channel peer, including chats before `/new`. Other peers
+  and web chats are outside that stop scope. `/help` lists commands.
+  Reply delivery resumes after a restart and skips confirmed
   parts. A crash after remote success can duplicate one part. The Channels
   page shows each bot's runtime status.
 - In a web chat, the user can attach files and images (at most 10 per
@@ -67,9 +78,44 @@ to read in an afternoon.
   outbound media are not supported.
 - Timers: scheduled messages to an agent.
 
-Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages, timers, skills,
-MCP servers, and the worker are available. Named secrets and other chat
-channels are not available.
+The main chat shows the user's messages and the main agent's answers.
+Internal reports, IDs, and execution states have no task page or task cards.
+The main agent checks saved execution records before it reports progress or
+starts follow-up work. The built-in coding skill requires a repository path,
+project rules, independent review, tests of the final revision, and evidence.
+Writes to one repository must run in order or in separate worktrees.
+
+Web Stop remains available when the main chat is idle. Stop covers only that
+web chat. Channel chats remain read-only on the web. Stop needs no model.
+Stop withdraws pending input and results, records cancellation, and requests
+SDK cancellation once. The reply confirms the request. It does not confirm
+process exit. Processes and remote work can continue. Prior actions are not
+undone.
+
+Normal completion and execution failure return a report to the main agent.
+Stop, cancellation, and interrupted execution do not start a result turn.
+A saved report stays unchanged after cancellation or a late worker event.
+The system does not retry failed execution or result delivery. The main agent
+reads saved records and artifacts, then decides whether to retry or continue
+from saved work. After a user Stop, the main agent waits for new user
+authorization. A later user message does not retry an old result. Result
+delivery stays in the source chat after `/new`.
+
+After worker loss, running execution becomes interrupted and does not restart
+automatically. Queued execution that never started can start for the first
+time. Cancelled execution stays cancelled. Worker loss does not prove that old
+processes ended. Before another execution, the main agent must check prior
+artifacts and side effects. Tools run on the host without a sandbox. The SDK
+requests cancellation of local commands and MCP calls. It does not guarantee
+that detached processes or remote jobs stop. A completed MCP call can return
+its report. CLI tools must be logged in and run in the foreground without user
+input.
+
+Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,
+background tasks, timers, skills, MCP servers, and the worker are available.
+The current task milestone uses one default agent. Project bindings, task
+routing between agents, group chats, and task-specific automation result
+routing are later work. Named secrets and other chat channels are not available.
 
 ## Non-goals
 

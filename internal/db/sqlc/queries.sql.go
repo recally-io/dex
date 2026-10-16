@@ -371,7 +371,7 @@ SELECT
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
+WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'task:%'
 GROUP BY c.id
 `
 
@@ -478,7 +478,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, kind FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -497,6 +497,7 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.Attachments,
 		&i.DeliveredAt,
 		&i.DeliveredParts,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -683,7 +684,7 @@ SELECT
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
+WHERE c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'task:%'
 GROUP BY c.id
 ORDER BY updated_at DESC, c.id DESC
 `
@@ -748,7 +749,8 @@ FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE
     c.agent_id = ?1
-    AND c.channel_key NOT LIKE 'dream:%'
+    AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'task:%'
+    AND s.kind = 'message'
     AND s.status != 'pending'
     AND (s.settled_at > ?2 OR (s.settled_at = ?2 AND s.id > ?3))
 ORDER BY s.settled_at, s.id
@@ -854,7 +856,7 @@ func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt6
 
 const listOpenSubmissions = `-- name: ListOpenSubmissions :many
 SELECT id, content, attachments, status, reason, created_at FROM submissions
-WHERE conversation_id = ? AND status != 'done'
+WHERE conversation_id = ? AND status != 'done' AND kind = 'message'
 ORDER BY created_at
 `
 
@@ -903,6 +905,7 @@ SELECT
     s.id,
     s.content,
     s.attachments,
+    s.kind,
     s.conversation_id,
     c.agent_id,
     c.channel_key
@@ -916,6 +919,7 @@ type ListPendingSubmissionsRow struct {
 	ID             string `json:"id"`
 	Content        string `json:"content"`
 	Attachments    string `json:"attachments"`
+	Kind           string `json:"kind"`
 	ConversationID int64  `json:"conversation_id"`
 	AgentID        string `json:"agent_id"`
 	ChannelKey     string `json:"channel_key"`
@@ -934,6 +938,7 @@ func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubm
 			&i.ID,
 			&i.Content,
 			&i.Attachments,
+			&i.Kind,
 			&i.ConversationID,
 			&i.AgentID,
 			&i.ChannelKey,

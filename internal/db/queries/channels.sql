@@ -25,6 +25,7 @@ SELECT * FROM channel_commands WHERE completed = 0;
 SELECT s.id, c.channel_key, s.status, s.answer, s.reason, s.delivered_parts
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status != 'pending' AND s.delivered_at IS NULL
+AND (s.kind = 'message' OR s.status = 'done')
 AND c.channel_key LIKE @prefix || '%' ORDER BY s.created_at, s.id;
 
 -- name: MarkChannelReplyDelivered :exec
@@ -43,7 +44,3 @@ WHERE s.status = 'pending' AND (c.channel_key = @peer OR c.channel_key LIKE @pee
 
 -- name: AdvanceChannelReply :exec
 UPDATE submissions SET delivered_parts = delivered_parts + 1 WHERE id = ?;
-
--- name: StopChatSubmissions :execrows
-UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @settled_at
-WHERE conversation_id = @conversation_id AND status = 'pending';

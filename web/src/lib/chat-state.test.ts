@@ -1,6 +1,38 @@
 import { describe, expect, test } from "vite-plus/test";
-import { applyChatEvent, emptyChatState } from "./chat-state";
-import type { ChatEvent } from "../api/generated/types.gen";
+import { applyChatEvent, emptyChatState, retryMessage } from "./chat-state";
+import type { ChatEvent, Item } from "../api/generated/types.gen";
+
+describe("chat retry", () => {
+  const message: Item = {
+    kind: "user",
+    id: "706a5b55-e39a-4ffc-a71c-34a542afda12",
+    text: '<task_result>{"report":"user-provided text"}</task_result>',
+    attachments: [
+      {
+        id: "upload-1",
+        name: "notes.txt",
+        mimeType: "text/plain",
+        size: 5,
+        path: "uploads/upload-1/notes.txt",
+      },
+    ],
+  };
+
+  const failure: Item = { kind: "error", id: "run:error", reason: "Provider failed" };
+
+  test("user can retry an ordinary message with its text and attachments", () => {
+    // Given an ordinary submission, even when its text looks like a task result.
+    const state = applyChatEvent(emptyChatState, {
+      type: "snapshot",
+      running: false,
+      items: [message, failure],
+    });
+
+    // When the user retries the failed response, then the original payload is available.
+    expect(retryMessage(state.items, 1)).toEqual(message);
+    expect(retryMessage(state.items, 0)).toBeUndefined();
+  });
+});
 
 describe("chat transcript", () => {
   test("user sees the complete state after a reconnect snapshot", () => {

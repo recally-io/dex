@@ -1,3 +1,5 @@
+import { ConversationBusy } from "@earendil-works/pi-durable";
+import { TaskRpc } from "./tasks.ts";
 import { createInterface } from "node:readline";
 import { Value } from "typebox/value";
 import { Agents } from "./agents.ts";
@@ -10,10 +12,12 @@ import {
 	type Event,
 	Request,
 	type Response,
+	type TaskRequest,
 	SubmitParams,
 	UnwatchParams,
 	WatchParams,
 	QuiesceParams,
+	RecoverTasksParams,
 } from "./protocol.ts";
 
 // stdout carries the protocol. Send every console method that writes to stdout to stderr, so a
@@ -28,20 +32,24 @@ if (dataDir === undefined || dataDir === "") {
 	process.exit(2);
 }
 
-function write(message: Response | Event): void {
+function write(message: Response | Event | TaskRequest): void {
 	process.stdout.write(`${JSON.stringify(message)}\n`);
 }
 
 const catalog = new Catalog(process.env);
+const taskRpc = new TaskRpc(write);
 const agents = new Agents(
 	dataDir,
 	catalog.models,
 	(params) => write({ event: "settled", params }),
 	(params) => write({ event: "chat", params }),
+	(params, signal) => taskRpc.call(params, signal),
 );
 
 async function handle(request: Request): Promise<unknown> {
 	switch (request.method) {
+		case "recoverTasks":
+			return agents.recoverTasks(Value.Parse(RecoverTasksParams, request.params));
 		case "quiesce":
 			return agents.quiesce(Value.Parse(QuiesceParams, request.params));
 		case "resume":
@@ -75,18 +83,28 @@ const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 lines.on("line", (line) => {
 	let request: Request;
 	try {
-		request = Value.Parse(Request, JSON.parse(line));
-	} catch (error) {
-		console.error("dropping a line that is not a request:", line, error);
+		const message: unknown = JSON.parse(line);
+		if (taskRpc.respond(message)) return;
+		request = Value.Parse(Request, message);
+	} catch {
+		console.error("dropping an invalid protocol line");
 		return;
 	}
 	handle(request).then(
 		(result) => write({ id: request.id, result: result ?? {} }),
-		(error: unknown) => write({ id: request.id, error: { message: String(error) } }),
+		(error: unknown) =>
+			write({
+				id: request.id,
+				error: {
+					message: String(error),
+					...(error instanceof ConversationBusy ? { code: "conversation_busy" } : {}),
+				},
+			}),
 	);
 });
 // Control closes stdin to stop the worker, and the pipe closes when control dies.
 lines.on("close", () => {
+	taskRpc.close();
 	agents.close().then(
 		() => process.exit(0),
 		(error: unknown) => {

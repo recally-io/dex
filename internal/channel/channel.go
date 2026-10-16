@@ -10,7 +10,7 @@
 // ErrPermanent skips a rejected part. Report updates
 // runtime status; Status returns it for the settings API. Connect chat's notify to Notify.
 //
-// Receive handles /new, /stop, and /help before submitting messages. /new preserves old chats
+// Receive handles shared commands before submitting messages. /new preserves old chats
 // and selects a key of the form "peer/uuid". Platforms must route by peer, not by channel key.
 // Pending reports whether the peer has work, for typing indicators. Delivery retries after a
 // failed send and after restart. It is at least once: a crash after the remote service accepts
@@ -46,7 +46,8 @@ type Status struct {
 type Bot interface {
 	Run(context.Context) error
 	Parts(chat.Reply) []string
-	// Replies use the submission ID; commands use the source key. Part is zero-based.
+	// Replies use the submission ID; commands use the source key.
+	// Part is zero-based.
 	Send(ctx context.Context, peer, deliveryID string, part int, text string) error
 }
 
@@ -214,22 +215,15 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	if c.Completed != 0 {
 		return nil
 	}
-	answer := "/new starts a new chat. /stop stops the current answer. /help shows these commands."
+	answer := "/new starts a new chat. /stop stops the current answer and background work in this conversation. /help shows these commands."
 	switch c.Command {
 	case "/new":
 		answer = "Started a new chat."
 	case "/stop":
-		answer = "Stopped the current answer."
-		conv, err := m.q.GetConversationByKey(ctx, sqlc.GetConversationByKeyParams{AgentID: m.agentID, ChannelKey: c.ChannelKey})
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if err := m.chats.StopPeer(ctx, m.agentID, c.Peer); err != nil {
 			return err
 		}
-		if err == nil {
-			if err = m.chats.Abort(ctx, m.agentID, conv.ID); err != nil {
-				slog.Warn("channel: could not stop the current answer", "source", c.SourceKey, "err", err)
-				answer = "Could not stop the current answer."
-			}
-		}
+		answer = "Stop requested. Earlier actions are not undone. Processes and remote work may continue."
 	}
 	if err := m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{Answer: answer, SourceKey: c.SourceKey}); err != nil {
 		return err
@@ -315,8 +309,8 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 		return err
 	}
 	for _, r := range acks {
-		// Fixed command replies fit one part; add progress if commands gain long replies.
-		for i, part := range bot.Parts(chat.Reply{Status: "done", Answer: r.Answer}) {
+		parts := bot.Parts(chat.Reply{Status: "done", Answer: r.Answer})
+		for i, part := range parts {
 			if err = sendPart(ctx, bot, r.Peer, r.SourceKey, i, part); err != nil {
 				return fmt.Errorf("send command reply: %w", err)
 			}

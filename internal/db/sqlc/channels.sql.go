@@ -189,6 +189,7 @@ const listChannelReplies = `-- name: ListChannelReplies :many
 SELECT s.id, c.channel_key, s.status, s.answer, s.reason, s.delivered_parts
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status != 'pending' AND s.delivered_at IS NULL
+AND (s.kind = 'message' OR s.status = 'done')
 AND c.channel_key LIKE ?1 || '%' ORDER BY s.created_at, s.id
 `
 
@@ -271,22 +272,4 @@ type SetChannelPeerParams struct {
 func (q *Queries) SetChannelPeer(ctx context.Context, arg SetChannelPeerParams) error {
 	_, err := q.db.ExecContext(ctx, setChannelPeer, arg.ChannelKey, arg.Peer)
 	return err
-}
-
-const stopChatSubmissions = `-- name: StopChatSubmissions :execrows
-UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = ?1
-WHERE conversation_id = ?2 AND status = 'pending'
-`
-
-type StopChatSubmissionsParams struct {
-	SettledAt      sql.NullInt64 `json:"settled_at"`
-	ConversationID int64         `json:"conversation_id"`
-}
-
-func (q *Queries) StopChatSubmissions(ctx context.Context, arg StopChatSubmissionsParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, stopChatSubmissions, arg.SettledAt, arg.ConversationID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
 }

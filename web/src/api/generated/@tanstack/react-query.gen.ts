@@ -190,7 +190,7 @@ export const sendMessageMutation = (options?: Partial<Options<SendMessageData>>)
 };
 
 /**
- * Stops the run of the chat and withdraws its queued messages. The current tool call stops first.
+ * Withdraws queued input and results, then requests cancellation of the main turn and background execution of this chat. Earlier actions are not undone. Processes and remote work may continue. External channel chats are read-only on the web.
  *
  */
 export const abortChatMutation = (options?: Partial<Options<AbortChatData>>): UseMutationOptions<AbortChatResponse, AbortChatError, Options<AbortChatData>> => {

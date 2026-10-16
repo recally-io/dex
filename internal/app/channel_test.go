@@ -62,7 +62,7 @@ func TestUserGetsUndeliveredTelegramReplyAfterRestart(t *testing.T) {
 	if got := f.next(t).Text; got != "echo: retry after restart" {
 		t.Fatal(got)
 	}
-	conn, err := sql.Open("sqlite", filepath.Join(dir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestUserStopsCurrentChannelAnswer(t *testing.T) {
 	f.message(2, 42, 7, "/stop")
 	var stopped bool
 	for range 2 {
-		if strings.Contains(f.next(t).Text, "Stopped the current answer.") {
+		if strings.Contains(f.next(t).Text, "Stop requested. Earlier actions are not undone. Processes and remote work may continue.") {
 			stopped = true
 		}
 	}
@@ -135,7 +135,7 @@ func TestUserStopsChannelMessageBeforeWorkerAdmission(t *testing.T) {
 	f.message(2, 42, 7, "/stop")
 	var stopped bool
 	for range 2 {
-		if f.next(t).Text == "Stopped the current answer." {
+		if f.next(t).Text == "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
 			stopped = true
 		}
 	}
@@ -178,7 +178,7 @@ func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "echo")
-	conn, err := sql.Open("sqlite", filepath.Join(dir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 	if got := f.next(t).Text; got != "echo: initial" {
 		t.Fatal(got)
 	}
-	conn, err := sql.Open("sqlite", filepath.Join(dir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 	}
 	// When /stop gets a permanent worker error, the command still has an answer.
 	f.message(2, 42, 7, "/stop")
-	if got := f.next(t).Text; got != "Could not stop the current answer." {
+	if got := f.next(t).Text; got != "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
 		t.Fatalf("stop reply: %q", got)
 	}
 	// Then the platform advances past /stop and delivers a later peer's answer.
@@ -274,7 +274,7 @@ func TestUserStopsExistingChannelChatDuringMaintenance(t *testing.T) {
 	// Then stop completes while the gate is still closed.
 	var stopped bool
 	for range 2 {
-		if f.next(t).Text == "Stopped the current answer." {
+		if f.next(t).Text == "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
 			stopped = true
 		}
 	}

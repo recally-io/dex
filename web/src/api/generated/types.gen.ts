@@ -853,7 +853,7 @@ export type AbortChatError = AbortChatErrors[keyof AbortChatErrors];
 
 export type AbortChatResponses = {
     /**
-     * The run is stopped, or no run was active.
+     * Pending input is withdrawn and cancellation is requested.
      */
     200: Ok;
 };

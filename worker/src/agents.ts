@@ -1,10 +1,13 @@
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import type { Message, Models } from "@earendil-works/pi-ai";
 import {
 	AssistantEntry,
+	ConversationBusy,
+	InboxDoc,
+	LiveDoc,
 	type Conversation,
 	type ConversationId,
 	createRegistry,
@@ -18,8 +21,9 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
 import { AgentExtensions, type Loaded } from "./extensions.ts";
+import { CodingSkill, taskExtension } from "./tasks.ts";
 import { MemoryRepo } from "./memory.ts";
-import { ChatView, messageText, USER_ENTRY } from "./view.ts";
+import { ChatView, messageText, USER_ENTRY, TASK_RESULT_ENTRY } from "./view.ts";
 import type {
 	AbortParams,
 	AgentParams,
@@ -34,6 +38,8 @@ import type {
 	WatchParams,
 	QuiesceParams,
 	QuiesceResult,
+	RecoverTasksParams,
+	TaskRequestParams,
 } from "./protocol.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -54,6 +60,8 @@ export class Agents {
 	readonly #emit: (event: SettledEvent) => void;
 	readonly #emitChat: (event: ChatStreamEvent) => void;
 	readonly #memory: MemoryRepo;
+	readonly #taskCall: (params: TaskRequestParams, signal?: AbortSignal) => Promise<unknown>;
+	readonly #recovering = new Map<string, Set<number>>();
 	// The source of each conversation, by "<agent>/<conversation>", from its last submit. A run that
 	// resumes after a restart has none until control submits to it again.
 	readonly #sources = new Map<string, string>();
@@ -62,9 +70,11 @@ export class Agents {
 	readonly #harnesses = new Map<string, Promise<Harness>>();
 	// The MCP servers of each open agent.
 	readonly #loaded = new Map<string, Loaded>();
-	// The tail of each conversation's submit chain; see #serial.
+	// The tail of each conversation's submit and abort chain; see #serial.
 	readonly #chains = new Map<string, Promise<unknown>>();
+	readonly #settlements = new Set<Promise<void>>();
 	#checking = false;
+	#closing = false;
 	#operations = 0;
 	#gateUntil = 0;
 	readonly #gateWaiters = new Set<() => void>();
@@ -133,12 +143,32 @@ export class Agents {
 		models: Models,
 		emit: (event: SettledEvent) => void,
 		emitChat: (event: ChatStreamEvent) => void,
+		taskCall: (params: TaskRequestParams, signal?: AbortSignal) => Promise<unknown> = async () => {
+			throw new Error("task control RPC is unavailable");
+		},
 	) {
 		this.#dataDir = dataDir;
 		this.#models = models;
 		this.#emit = emit;
 		this.#emitChat = emitChat;
+		this.#taskCall = taskCall;
 		this.#memory = new MemoryRepo(join(dataDir, "memory"));
+	}
+
+	recoverTasks(params: RecoverTasksParams): Record<string, never> {
+		if (this.#harnesses.size > 0) throw new Error("recoverTasks must precede agent open");
+		for (const stage of params.stages) {
+			if (!AGENT_ID.test(stage.agentId)) throw new Error("invalid recovery agent ID");
+		}
+		for (const stage of params.stages) {
+			let ids = this.#recovering.get(stage.agentId);
+			if (ids === undefined) {
+				ids = new Set();
+				this.#recovering.set(stage.agentId, ids);
+			}
+			ids.add(stage.conversationId);
+		}
+		return {};
 	}
 
 	createConversation(params: CreateConversationParams): Promise<CreateConversationResult> {
@@ -172,6 +202,33 @@ export class Agents {
 		const key = `${params.agentId}/${params.conversationId}`;
 		this.#sources.set(key, params.source);
 		return this.#serial(key, async () => {
+			// All worker admission uses this chain. Tools cannot submit to this conversation.
+			const admission = await conversation.commit(async (tx) => {
+				const existing = await tx.submissionByRequest(conversation.id, params.requestId);
+				const live = await tx.doc(LiveDoc, conversation.id);
+				const inbox = await tx.doc(InboxDoc, conversation.id);
+				return {
+					existing,
+					queued: inbox.items.length > 0,
+					idle: live.run === undefined,
+				};
+			}, context);
+			if (admission.idle && admission.queued) {
+				// pi-durable 1.2.0 ends failed runs without advancing the inbox. An empty model
+				// write triggers a final boundary without adding input to the next run.
+				await conversation.submit(
+					{ type: "write", entry: { kind: "dex.inbox_progress", model: [] } },
+					context,
+				);
+			}
+			if (params.whenBusy === "reject" && admission.existing === undefined && admission.queued)
+				throw new ConversationBusy(conversation.id);
+			if (params.taskStageId !== undefined || params.source.startsWith("dex:dream/")) {
+				await conversation.configure(
+					{ extensions: { remove: [taskExtension(params.agentId, this.#taskCall)] } },
+					context,
+				);
+			}
 			const agent = await conversation.agent(context);
 			const instructions = params.instructions === "" ? undefined : params.instructions;
 			if (
@@ -189,21 +246,24 @@ export class Agents {
 			const submission = await conversation.submit(
 				{
 					type: "input",
+					...(params.whenBusy === undefined ? {} : { whenBusy: params.whenBusy }),
 					// The model gets the paths; its tools read the files.
 					content: messageText(params.content, params.attachments),
 					requestId: params.requestId,
 					// The chat view shows the message with control's ID and its attachments.
 					entry: {
-						kind: USER_ENTRY,
+						kind: params.kind === "task_result" ? TASK_RESULT_ENTRY : USER_ENTRY,
 						data: { requestId: params.requestId, attachments: params.attachments },
 					},
 				},
 				context,
 			);
 			this.#operations++;
-			void this.#settle(params, conversation, submission).finally(() => {
+			const settlement = this.#settle(params, conversation, submission).finally(() => {
 				this.#operations--;
+				this.#settlements.delete(settlement);
 			});
+			this.#settlements.add(settlement);
 			return { submissionId: submission.id };
 		});
 	}
@@ -260,15 +320,18 @@ export class Agents {
 		this.#emitChat({ watchId, end: true });
 	}
 
-	/** Stops the conversation's run and withdraws its queued messages. */
+	/** Requests cancellation and withdraws the conversation's queued messages. */
 	abort(params: AbortParams): Promise<Record<string, never>> {
 		return this.#admit(() => this.#abort(params));
 	}
 
 	async #abort(params: AbortParams): Promise<Record<string, never>> {
 		const conversation = await this.#conversation(params.agentId, params.conversationId);
-		await conversation.abort(context);
-		return {};
+		return this.#serial(`${params.agentId}/${conversation.id}`, async () => {
+			// The SDK persists cancellation before waiting. Bound the wait and preserve its error.
+			await conversation.abort(withAbortSignal(AbortSignal.timeout(5000), BACKGROUND_CONTEXT));
+			return {};
+		});
 	}
 
 	/**
@@ -308,9 +371,23 @@ export class Agents {
 	}
 
 	async close(): Promise<void> {
+		this.#closing = true;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		try {
+			await Promise.race([
+				this.#close(),
+				new Promise<never>((_, reject) => {
+					timer = setTimeout(() => reject(new Error("worker shutdown timed out")), 10_000);
+				}),
+			]);
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+
+	async #close(): Promise<void> {
 		await Promise.all([...this.#watches.values()].map((stream) => stream.stop()));
 		const opening = [...this.#harnesses.values()];
-		this.#harnesses.clear();
 		await Promise.all(
 			opening.map(async (pending) => {
 				// A harness that failed to open has nothing to close; its request already got the error.
@@ -318,24 +395,40 @@ export class Agents {
 				await harness?.close(context);
 			}),
 		);
+		// Settlement can commit memory during shutdown; wait for those writes.
+		await Promise.all(this.#settlements);
 		await Promise.all([...this.#loaded.values()].map((loaded) => loaded.close()));
 		this.#loaded.clear();
+		this.#harnesses.clear();
 	}
 
 	// Runs in the background after submit() returns. A replayed requestId finds the same
 	// submission, so a settled one emits its event again at once.
 	async #settle(params: SubmitParams, conversation: Conversation, submission: Submission): Promise<void> {
-		const base = { agentId: params.agentId, conversationId: conversation.id, requestId: params.requestId };
+		const base: SettledEvent = {
+			agentId: params.agentId,
+			conversationId: conversation.id,
+			requestId: params.requestId,
+			status: "unanswered",
+		};
 		try {
 			const settled = await submission.wait(context);
 			if (settled.status === "done" && settled.type === "input") {
 				const entry = await conversation.commit((tx) => tx.entry(AssistantEntry, settled.answer), context);
-				this.#emit({ ...base, status: "done", answer: answerText(entry?.model?.[0]) });
+				this.#emit({
+					...base,
+					status: "done",
+					answer: answerText(entry?.model?.[0]),
+				});
 			} else {
-				this.#emit({ ...base, status: "unanswered", reason: settled.reason ?? settled.status });
+				this.#emit({
+					...base,
+					status: "unanswered",
+					reason: settled.reason ?? settled.status,
+				});
 			}
 		} catch (error) {
-			this.#emit({ ...base, status: "unanswered", reason: String(error) });
+			if (!this.#closing) this.#emit({ ...base, status: "unanswered", reason: String(error) });
 		}
 		// A stopped or failed run can also have changed the memory.
 		await this.#memory
@@ -347,6 +440,7 @@ export class Agents {
 		if (!AGENT_ID.test(agentId)) throw new Error(`invalid agent ID: ${agentId}`);
 		let harness = this.#harnesses.get(agentId);
 		if (harness === undefined) {
+			if (this.#closing) return Promise.reject(new Error("worker is closing"));
 			harness = this.#open(agentId);
 			// A failed open must not stay cached, so the next request tries again.
 			harness.catch(() => this.#harnesses.delete(agentId));
@@ -361,6 +455,8 @@ export class Agents {
 		await mkdir(workspace, { recursive: true });
 		const registry = createRegistry();
 		registry.install(CodingTools);
+		registry.install(CodingSkill);
+		registry.install(taskExtension(agentId, this.#taskCall));
 		await this.#memory.open();
 		registry.install(this.#memory.extension((id) => this.#sources.get(`${agentId}/${id}`)));
 		// A run that resumes after a restart needs its MCP tools, so they load before resume().
@@ -381,6 +477,27 @@ export class Agents {
 				context,
 			);
 		} catch (error) {
+			await loaded.close();
+			throw error;
+		}
+		try {
+			const isolated = this.#recovering.get(agentId);
+			if (isolated !== undefined) {
+				const state = await harness.inspect(context);
+				// abortTask marks without enabling scheduling. Mark tools too before resume.
+				for (const task of state.tasks) {
+					if (!isolated.has(task.record.conversationId)) continue;
+					// oxlint-disable-next-line no-await-in-loop
+					await harness.abortTask(task.record.id, context);
+				}
+				for (const submission of state.submissions) {
+					if (!isolated.has(submission.conversationId) || submission.status !== "queued") continue;
+					// oxlint-disable-next-line no-await-in-loop
+					await harness.abortSubmission(submission.id, context, submission.conversationId);
+				}
+			}
+		} catch (error) {
+			await harness.close(context);
 			await loaded.close();
 			throw error;
 		}

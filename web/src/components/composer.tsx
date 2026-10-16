@@ -235,7 +235,7 @@ export function Composer({
             <button
               type="button"
               aria-label="Stop run"
-              title="Stop the run and withdraw queued messages"
+              title="Stop this chat and its background execution"
               // A missing model blocks new messages, not stopping the current run.
               disabled={pending || readOnly}
               onClick={onStop}

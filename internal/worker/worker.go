@@ -20,6 +20,15 @@ import (
 // ErrUnavailable means that the worker process exited before it answered a call.
 var ErrUnavailable = errors.New("worker exited")
 
+// CallError preserves the worker's failure code at the protocol boundary.
+type CallError struct {
+	Method  string
+	Code    string
+	Message string
+}
+
+func (e *CallError) Error() string { return fmt.Sprintf("worker %s: %s", e.Method, e.Message) }
+
 // Config configures a Worker.
 type Config struct {
 	Path string   // executable from Install
@@ -27,6 +36,8 @@ type Config struct {
 	Env  []string // the complete environment; the process inherits nothing else
 	// OnSettled receives each settled event, in order, on the goroutine that reads stdout.
 	OnSettled func(context.Context, Settled)
+	// OnTask runs outside the stdout reader, so it can call the worker.
+	OnTask func(context.Context, TaskRequest) (any, error)
 	// OnChat receives each chat event of a watch, in order, on the goroutine that reads stdout. It
 	// must not block.
 	OnChat func(ChatStream)
@@ -108,15 +119,19 @@ func (w *Worker) runOnce(ctx context.Context) error {
 	}
 
 	_ = childStdin.Close()
+	processCtx, cancelProcess := context.WithCancel(ctx)
+	defer cancelProcess()
 	p := &process{stdin: stdin, writer: make(chan struct{}, 1), pending: map[int64]chan incoming{}, done: make(chan struct{})}
+	defer p.callbacks.Wait()
 	readErr := make(chan error, 1)
 	go func() {
-		err := p.read(ctx, stdout, w.cfg)
+		err := p.read(processCtx, stdout, w.cfg)
+		cancelProcess()
 		close(p.done)
 		readErr <- err
 	}()
 	if w.cfg.Init != nil {
-		if err := w.cfg.Init(ctx, p.call); err != nil {
+		if err := w.cfg.Init(processCtx, p.call); err != nil {
 			_ = stdin.Close()
 			_ = cmd.Process.Kill()
 			<-readErr
@@ -126,7 +141,7 @@ func (w *Worker) runOnce(ctx context.Context) error {
 	// When the process exited during Init, Call fails with ErrUnavailable until setProc(nil).
 	w.setProc(p)
 	if w.cfg.OnStart != nil {
-		go w.cfg.OnStart(ctx)
+		go w.cfg.OnStart(processCtx)
 	}
 	err = <-readErr
 	w.setProc(nil)
@@ -202,10 +217,26 @@ func (w *Worker) Call(ctx context.Context, method string, params, result any) er
 	}
 }
 
+// Bind returns a caller for the current process. It never waits for or switches to another process.
+func (w *Worker) Bind() (CallFunc, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.proc == nil {
+		return nil, ErrUnavailable
+	}
+	select {
+	case <-w.proc.done:
+		return nil, ErrUnavailable
+	default:
+		return w.proc.call, nil
+	}
+}
+
 type process struct {
-	stdin  *os.File
-	writer chan struct{}
-	nextID atomic.Int64
+	stdin     *os.File
+	writer    chan struct{}
+	nextID    atomic.Int64
+	callbacks sync.WaitGroup
 
 	mu      sync.Mutex
 	pending map[int64]chan incoming
@@ -248,7 +279,7 @@ func (p *process) call(ctx context.Context, method string, params, result any) e
 		return ErrUnavailable
 	case msg := <-reply:
 		if msg.Error != nil {
-			return fmt.Errorf("worker %s: %s", method, msg.Error.Message)
+			return &CallError{Method: method, Code: msg.Error.Code, Message: msg.Error.Message}
 		}
 		return json.Unmarshal(msg.Result, result)
 	}
@@ -276,6 +307,42 @@ func (p *process) write(ctx context.Context, line []byte) error {
 	return err
 }
 
+func (p *process) handleTask(processCtx context.Context, cfg Config, id int64, task TaskRequest) {
+	ctx, cancel := context.WithTimeout(processCtx, 30*time.Second)
+	defer cancel()
+	var result any
+	var err error
+	if cfg.OnTask == nil {
+		err = errors.New("task tools are unavailable")
+	} else {
+		result, err = cfg.OnTask(ctx, task)
+	}
+	reply := map[string]any{"id": id, "result": result}
+	if err != nil {
+		reply = map[string]any{"id": id, "error": map[string]string{"message": err.Error()}}
+	}
+	line, err := json.Marshal(reply)
+	if err != nil {
+		slog.Error("encode task response", "err", err)
+		return
+	}
+	// Handler expiry must still reach the worker. Its process lifetime remains the outer limit.
+	sendCtx, endSend := context.WithTimeout(processCtx, 5*time.Second)
+	defer endSend()
+	select {
+	case p.writer <- struct{}{}:
+	case <-sendCtx.Done():
+		return
+	case <-p.done:
+		return
+	}
+	err = p.write(sendCtx, append(line, '\n'))
+	<-p.writer
+	if err != nil {
+		slog.Warn("write task response", "err", err)
+	}
+}
+
 func (p *process) read(ctx context.Context, stdout io.Reader, cfg Config) error {
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(nil, 64<<20) // one line holds a whole answer
@@ -286,6 +353,12 @@ func (p *process) read(ctx context.Context, stdout io.Reader, cfg Config) error 
 			continue
 		}
 		switch {
+		case msg.Method == "task":
+			var task TaskRequest
+			if err := json.Unmarshal(msg.Params, &task); err != nil {
+				return fmt.Errorf("bad task request: %w", err)
+			}
+			p.callbacks.Go(func() { p.handleTask(ctx, cfg, msg.ID, task) })
 		case msg.Event == "settled":
 			var settled Settled
 			if err := json.Unmarshal(msg.Params, &settled); err != nil {

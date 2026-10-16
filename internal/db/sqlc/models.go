@@ -114,6 +114,21 @@ type Submission struct {
 	Attachments    string         `json:"attachments"`
 	DeliveredAt    sql.NullInt64  `json:"delivered_at"`
 	DeliveredParts int64          `json:"delivered_parts"`
+	Kind           string         `json:"kind"`
+}
+
+type Task struct {
+	ID                   string        `json:"id"`
+	ParentConversationID int64         `json:"parent_conversation_id"`
+	ConversationID       int64         `json:"conversation_id"`
+	SpawnKey             string        `json:"spawn_key"`
+	SourceRequestID      string        `json:"source_request_id"`
+	Title                string        `json:"title"`
+	Status               string        `json:"status"`
+	Report               string        `json:"report"`
+	CreatedAt            int64         `json:"created_at"`
+	StartedAt            sql.NullInt64 `json:"started_at"`
+	EndedAt              sql.NullInt64 `json:"ended_at"`
 }
 
 type TelegramSetting struct {
