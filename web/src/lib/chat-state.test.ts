@@ -88,10 +88,15 @@ describe("chat transcript", () => {
     expect(retryMessage(final.items, 4)?.id).toBe("next");
   });
 
-  test.each(["user", "task"] as const)(
-    "user sees a failed queued question with its own error after a %s input",
-    (kind) => {
-      // Given two questions queued while the current reply is still running.
+  test.each([
+    ["user", true],
+    ["user", false],
+    ["task", true],
+    ["task", false],
+  ] as const)(
+    "user sees a failed question with its own error after a %s input (queued shown: %s)",
+    (kind, queuedShown) => {
+      // Given a running reply and a queued question.
       const input: Item =
         kind === "user"
           ? { kind, id: "earlier", text: "Earlier question" }
@@ -103,10 +108,15 @@ describe("chat transcript", () => {
       const initial = applyChatEvent(emptyChatState, {
         type: "snapshot",
         running: true,
-        items: [input, { kind: "assistant", id: "answer", text: "Working" }, first, second],
+        items: [
+          input,
+          { kind: "assistant", id: "answer", text: "Working" },
+          first,
+          ...(queuedShown ? [second] : []),
+        ],
       });
 
-      // When the second question fails first, then its error stays beside that question.
+      // When a later question fails first, then its error stays beside that question.
       const events: ChatEvent[] = [
         { type: "item", item: { ...second, queued: false } },
         { type: "item", item: { kind: "error", id: "second:error", reason: "Could not submit" } },

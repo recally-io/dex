@@ -28,7 +28,9 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         return { ...state, items };
       }
 
-      const at = event.item.kind !== "user" && queued >= 0 ? queued : state.items.length;
+      const at =
+        !(event.item.kind === "user" && event.item.queued) && queued >= 0 ? queued : state.items.length;
+
       const items = state.items.toSpliced(at, 0, event.item);
 
       return { ...state, items };
