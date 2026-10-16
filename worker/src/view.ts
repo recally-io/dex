@@ -26,6 +26,7 @@ export function messageText(text: string, attachments: readonly Attachment[]): s
 export type Retry = { readonly attempt: number; readonly at: number; readonly reason: string };
 
 export type Item =
+	| { kind: "task"; id: string; at?: number }
 	| { kind: "user"; id: string; text: string; at?: number; attachments?: Attachment[] }
 	| { kind: "thinking"; id: string; text: string }
 	| {
@@ -234,6 +235,9 @@ export function render(state: State): Item[] {
 		if (message === undefined) return;
 		if (message.role === "user" && (entry.kind === USER_ENTRY || entry.kind === "pi.user")) {
 			items.push(userItem(entry, message));
+		} else if (entry.kind === TASK_RESULT_ENTRY) {
+			const id = userData(entry.data)?.requestId;
+			if (typeof id === "string") items.push({ kind: "task", id, at: message.timestamp });
 		} else if (message.role === "assistant") {
 			// The tools of the newest assistant message of a run in progress can still run.
 			const live = state.running && state.partial === undefined && index === lastAssistant;

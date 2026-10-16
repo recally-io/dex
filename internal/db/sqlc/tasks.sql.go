@@ -147,6 +147,25 @@ func (q *Queries) GetTaskByKey(ctx context.Context, spawnKey string) (Task, erro
 	return i, err
 }
 
+const getTaskResultTitle = `-- name: GetTaskResultTitle :one
+SELECT t.title FROM submissions s
+JOIN tasks t ON s.id = 'task:' || t.id || ':result'
+WHERE s.id = ?1 AND s.conversation_id = ?2 AND s.kind = 'task_result'
+AND t.parent_conversation_id = s.conversation_id
+`
+
+type GetTaskResultTitleParams struct {
+	ResultID string `json:"result_id"`
+	ChatID   int64  `json:"chat_id"`
+}
+
+func (q *Queries) GetTaskResultTitle(ctx context.Context, arg GetTaskResultTitleParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getTaskResultTitle, arg.ResultID, arg.ChatID)
+	var title string
+	err := row.Scan(&title)
+	return title, err
+}
+
 const listActiveTasks = `-- name: ListActiveTasks :many
 SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at FROM tasks WHERE parent_conversation_id = ? AND status IN ('queued', 'running')
 `

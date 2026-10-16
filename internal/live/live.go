@@ -248,6 +248,18 @@ func (h *Hub) handle(ctx context.Context, s *stream, w io.Writer, in input) erro
 				return err
 			}
 			continue
+		case ev.Type == "item" && ev.Item != nil && ev.Item.Kind == "task":
+			item, err := h.taskItem(ctx, s, *ev.Item)
+			if err != nil {
+				return err
+			}
+			raw, err = json.Marshal(struct {
+				Type string         `json:"type"`
+				Item jsontext.Value `json:"item"`
+			}{"item", item})
+			if err != nil {
+				return err
+			}
 		case ev.Type == "item" && ev.Item != nil && ev.Item.Kind == "user":
 			s.seen[ev.Item.ID] = true
 			delete(s.extra, ev.Item.ID)
@@ -259,8 +271,8 @@ func (h *Hub) handle(ctx context.Context, s *stream, w io.Writer, in input) erro
 	return nil
 }
 
-// writeSnapshot writes a snapshot of the worker's items and control's items. Control's items go
-// before the first worker user item that is newer.
+// writeSnapshot merges unanswered messages before newer worker inputs. Queued messages stay last
+// because the worker has not placed them yet.
 func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items []jsontext.Value, running bool, retry jsontext.Value) error {
 	clear(s.seen)
 	clear(s.extra)
@@ -269,8 +281,15 @@ func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items [
 		if err := json.Unmarshal(raw, &heads[i]); err != nil {
 			return fmt.Errorf("snapshot item: %w", err)
 		}
-		if heads[i].Kind == "user" {
+		switch heads[i].Kind {
+		case "user":
 			s.seen[heads[i].ID] = true
+		case "task":
+			var err error
+			items[i], err = h.taskItem(ctx, s, heads[i])
+			if err != nil {
+				return err
+			}
 		}
 	}
 	extra, err := h.extraItems(ctx, s)
@@ -280,7 +299,7 @@ func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items [
 	merged := make([]jsontext.Value, 0, len(items)+len(extra))
 	i := 0
 	for _, x := range extra {
-		for i < len(items) && (heads[i].Kind != "user" || heads[i].At <= x.at) {
+		for i < len(items) && (x.queued || (heads[i].Kind != "user" && heads[i].Kind != "task") || heads[i].At <= x.at) {
 			merged = append(merged, items[i])
 			i++
 		}
@@ -299,6 +318,16 @@ func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items [
 		return err
 	}
 	return writeEvent(w, "snapshot", raw)
+}
+
+// taskItem adds metadata owned by control. A missing record is a stream error.
+func (h *Hub) taskItem(ctx context.Context, s *stream, head itemHead) (jsontext.Value, error) {
+	// One query per anchor; batch by chat if snapshots get slow.
+	title, err := h.q.GetTaskResultTitle(ctx, sqlc.GetTaskResultTitleParams{ResultID: head.ID, ChatID: s.chat.ID})
+	if err != nil {
+		return nil, fmt.Errorf("task result %s title: %w", head.ID, err)
+	}
+	return json.Marshal(api.TaskItem{Kind: api.Task, Id: head.ID, At: new(head.At), Title: title})
 }
 
 // writeExtra writes control's items that changed since the stream sent them.
@@ -331,10 +360,11 @@ func (h *Hub) writeExtra(ctx context.Context, s *stream, w io.Writer) error {
 // extraItem is one message that only control has: a user item, and an error item when the message
 // failed.
 type extraItem struct {
-	id    string
-	at    int64
-	key   string // changes when the items change
-	items []jsontext.Value
+	id     string
+	at     int64
+	key    string // changes when the items change
+	queued bool
+	items  []jsontext.Value
 }
 
 func (h *Hub) extraItems(ctx context.Context, s *stream) ([]extraItem, error) {
@@ -361,7 +391,7 @@ func (h *Hub) extraItems(ctx context.Context, s *stream) ([]extraItem, error) {
 		if err != nil {
 			return nil, err
 		}
-		x := extraItem{id: sub.ID, at: at, key: sub.Status, items: []jsontext.Value{user}}
+		x := extraItem{id: sub.ID, at: at, key: sub.Status, queued: queued, items: []jsontext.Value{user}}
 		if sub.Status == "unanswered" {
 			aborted := sub.Reason.String == "aborted"
 			failed, err := json.Marshal(api.ErrorItem{
@@ -374,6 +404,17 @@ func (h *Hub) extraItems(ctx context.Context, s *stream) ([]extraItem, error) {
 		}
 		out = append(out, x)
 	}
+	// Keep receipt order within each group. A queued input must not move later unanswered inputs.
+	slices.SortStableFunc(out, func(a, b extraItem) int {
+		switch {
+		case a.queued == b.queued:
+			return 0
+		case a.queued:
+			return 1
+		default:
+			return -1
+		}
+	})
 	return out, nil
 }
 

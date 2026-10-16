@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { IconArrowRight } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowRight";
 import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
 import { IconFileText } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconFileText";
 import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
 import { formatSize, isImage } from "../../lib/attachments";
-import { describeTool, seconds, stepTitle } from "../../lib/tools";
+import { blocks, describeTool, seconds, stepTitle, type ContentBlock } from "../../lib/tools";
+import { retryMessage } from "../../lib/chat-state";
 import { Chip } from "../atoms/Chip";
 import { StreamText } from "../atoms/StreamText";
 import { Button } from "../atoms/Button";
@@ -205,6 +207,14 @@ function ToolStatus({ status }: { status: ToolItem["status"] }) {
   );
 }
 
+function BackgroundIcon() {
+  return (
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-control bg-accent-tint text-accent-ink">
+      <IconArrowRight size={15} aria-hidden />
+    </span>
+  );
+}
+
 export type ToolFocus = { id: string; at: number };
 
 /** Consecutive tool calls as one step row with a line for each call. */
@@ -240,6 +250,24 @@ export function ToolStep({
   useEffect(() => {
     if (focused) ref.current?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [focused]);
+
+  if (tools.length === 1 && tools[0].name === "spawn_task" && !failed) {
+    const dispatch = describeTool(tools[0]);
+
+    return (
+      <div ref={ref} className="flex min-w-0 items-start gap-2.5 py-1">
+        <BackgroundIcon />
+        <div className="flex min-w-0 flex-col gap-0.5">
+          {working ? (
+            <Shimmer>{dispatch.verb}</Shimmer>
+          ) : (
+            <span className="text-[11.5px] text-ink-3">{dispatch.verb}</span>
+          )}
+          <span className="text-[13px] font-medium text-ink [overflow-wrap:anywhere]">{dispatch.target}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={ref} className="flex w-full flex-col">
@@ -421,6 +449,16 @@ export function TranscriptItem({
           ) : null}
         </div>
       );
+    case "task":
+      return (
+        <header className="flex min-w-0 items-start gap-2.5">
+          <BackgroundIcon />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-[11.5px] text-ink-3">Background result</span>
+            <h3 className="text-[13px] font-semibold text-ink [overflow-wrap:anywhere]">{item.title}</h3>
+          </div>
+        </header>
+      );
     case "thinking":
       return <ThinkingStep text={item.text} live={live} />;
     case "assistant":
@@ -467,20 +505,65 @@ export function TranscriptItem({
             </span>
           </div>
           <p className="pl-3.5 text-[12.5px] text-ink-2 [overflow-wrap:anywhere]">{item.reason}</p>
-          <div className="pl-3.5">
-            {canRetry ? (
+          {canRetry ? (
+            <div className="pl-3.5">
               <Button size="xs" variant="secondary" onClick={retry}>
                 Retry
               </Button>
-            ) : (
-              <p className="text-[12px] text-ink-3">
-                Retry is unavailable while the chat cannot accept messages.
-              </p>
-            )}
-          </div>
+            </div>
+          ) : null}
         </div>
       );
   }
+}
+
+export function Transcript({
+  items,
+  running,
+  retry,
+  canRetry,
+  memory,
+  focus,
+}: {
+  items: Item[];
+  running: boolean;
+  retry: (index: number) => void;
+  canRetry: boolean;
+  memory?: string;
+  focus?: ToolFocus;
+}) {
+  function content(block: ContentBlock) {
+    return block.kind === "tools" ? (
+      <ToolStep key={block.key} tools={block.tools} memory={memory} focus={focus} />
+    ) : (
+      <TranscriptItem
+        key={block.item.id}
+        item={block.item}
+        live={running && block.index === items.length - 1}
+        retry={() => retry(block.index)}
+        canRetry={canRetry && retryMessage(items, block.index) !== undefined}
+      />
+    );
+  }
+
+  return blocks(items).map((block) =>
+    block.kind === "task" ? (
+      <section
+        key={block.item.id}
+        aria-label={`Background result: ${block.item.title}`}
+        className="flex min-w-0 flex-col gap-4 rounded-card border border-line bg-surface p-4 shadow-xs"
+      >
+        <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />
+        {block.blocks.length ? (
+          <div className="flex min-w-0 flex-col gap-4 border-l-2 border-accent-tint pl-3">
+            {block.blocks.map(content)}
+          </div>
+        ) : null}
+      </section>
+    ) : (
+      content(block)
+    ),
+  );
 }
 
 export function RetryNotice({ retry }: { retry: Retry }) {
