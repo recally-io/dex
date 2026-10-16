@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"uuid"
 
 	"github.com/recally-io/dex/internal/chat"
 )
@@ -370,7 +371,7 @@ data: [DONE]
 	waitTaskFile(t, filepath.Join(dir, "result.pid"))
 	d.watch(t, parent).until(t, "spawn answer", answeredWith("spawn: "))
 	d.must(t, http.MethodPut, "/api/settings/providers/result-test", map[string]any{"api": "openai-completions", "baseUrl": provider.URL, "models": []string{"test"}}, nil)
-	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"provider": "result-test", "modelId": "test", "thinkingLevel": "off"}, nil)
+	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"name": "Dex", "provider": "result-test", "modelId": "test", "thinkingLevel": "off"}, nil)
 	releaseResultGate(t, dir, "result")
 	task := waitExecution(t, conn, parent, "Saved report", "done")
 	id := "task:" + task.ID + ":result"
@@ -451,7 +452,7 @@ func TestUserSeesBackgroundResultTitleRealtimeAndAfterReconnect(t *testing.T) {
 	if idx < 0 {
 		t.Fatalf("live result has no task anchor: %+v", w.tr.items)
 	}
-	if it := w.tr.items[idx]; it.Title != task.Title || it.At == 0 || it.Status != "" || it.Text != "" {
+	if it := w.tr.items[idx]; it.Title != task.Title || it.TaskID != task.ID || it.At == 0 || it.Status != "" || it.Text != "" {
 		t.Fatalf("live anchor must contain only identity, time and real title: %+v", it)
 	}
 	if idx+1 >= len(w.tr.items) || w.tr.items[idx+1].Kind != "assistant" {
@@ -464,13 +465,26 @@ func TestUserSeesBackgroundResultTitleRealtimeAndAfterReconnect(t *testing.T) {
 	w.until(t, "historical snapshot", func(tr *transcript) bool { return tr.snapshots > 0 })
 	idx = slices.IndexFunc(w.tr.items, func(it item) bool { return it.ID == id })
 	old := slices.IndexFunc(w.tr.items, func(it item) bool { return it.ID == "old-unanswered" })
-	if idx < 0 || w.tr.items[idx].Title != anchor.Title || w.tr.items[idx].At != anchor.At || w.tr.items[idx].Kind != "task" || old < 0 || old >= idx {
+	if idx < 0 || w.tr.items[idx].Title != anchor.Title || w.tr.items[idx].TaskID != task.ID || w.tr.items[idx].At != anchor.At || w.tr.items[idx].Kind != "task" || old < 0 || old >= idx {
 		t.Fatalf("snapshot lost title or time boundary: %+v", w.tr.items)
 	}
 	for _, it := range w.tr.items {
 		if it.ID == id && it.Kind == "user" {
 			t.Fatalf("internal result became user content: %+v", it)
 		}
+	}
+	// A clear moves the result into history without changing its link or item ID.
+	d.clearMain(t, parent, uuid.NewV7().String())
+	w.until(t, "reset after result", func(tr *transcript) bool {
+		return slices.ContainsFunc(tr.items, func(it item) bool { return it.Kind == "boundary" })
+	})
+	var page struct {
+		Items []item `json:"items"`
+	}
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/history?before=9007199254740991&limit=100", parent), nil, &page)
+	idx = slices.IndexFunc(page.Items, func(it item) bool { return it.ID == anchor.ID })
+	if idx < 0 || page.Items[idx].TaskID != task.ID || page.Items[idx].Title != anchor.Title || page.Items[idx].At != anchor.At {
+		t.Fatalf("history lost the stable task link: %+v", page.Items)
 	}
 	t.Logf("artifact: result=%s title=%q live=%+v snapshot=%+v", id, task.Title, anchor, w.tr.items)
 }

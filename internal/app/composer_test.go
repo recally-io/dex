@@ -91,7 +91,7 @@ type chatWithSettings struct {
 func (d *dex) setThinking(t *testing.T, thinkingLevel string) {
 	t.Helper()
 	d.must(t, http.MethodPut, "/api/settings/agent",
-		map[string]string{"provider": "faux", "modelId": "think", "thinkingLevel": thinkingLevel, "instructions": ""}, nil)
+		map[string]string{"name": "Dex", "provider": "faux", "modelId": "think", "thinkingLevel": thinkingLevel, "instructions": ""}, nil)
 }
 
 func TestUserSetsAgentThinkingLevel(t *testing.T) {
@@ -151,7 +151,7 @@ func TestUserSetsAgentThinkingLevel(t *testing.T) {
 
 	// And an unknown level is refused
 	status, raw := d.call(t, http.MethodPut, "/api/settings/agent",
-		map[string]string{"provider": "faux", "modelId": "think", "thinkingLevel": "huge", "instructions": ""})
+		map[string]string{"name": "Dex", "provider": "faux", "modelId": "think", "thinkingLevel": "huge", "instructions": ""})
 	if status != http.StatusBadRequest {
 		t.Fatalf("unknown level: %d %s", status, raw)
 	}

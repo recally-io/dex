@@ -262,6 +262,10 @@ export type TaskItem = {
     entryId?: number;
     at?: number;
     title: string;
+    /**
+     * The saved task ID.
+     */
+    taskId: string;
 };
 
 export type ThinkingItem = {
@@ -291,6 +295,10 @@ export type ToolItem = {
      */
     status: 'running' | 'done' | 'error';
     durationMs?: number;
+    /**
+     * The saved task ID of a successful spawn_task call.
+     */
+    taskId?: string;
 };
 
 export type AssistantItem = {
@@ -398,7 +406,10 @@ export type Settings = {
 };
 
 export type Agent = {
-    readonly name?: string;
+    /**
+     * The bot name. Trim spaces before validation.
+     */
+    name: string;
     provider: string;
     /**
      * Empty when no model is chosen.
@@ -612,36 +623,6 @@ export type FeishuBrand = {
 
 export type FeishuPoll = {
     session: string;
-};
-
-export type SettingsWritable = {
-    agent: AgentWritable;
-    /**
-     * The providers that the user added, in the order of addition.
-     */
-    providers: Array<Provider>;
-    /**
-     * All pi-ai built-in providers that take an API key.
-     */
-    builtins: Array<ProviderInfo>;
-    /**
-     * The APIs of custom providers, ID → name.
-     */
-    apis: {
-        [key: string]: string;
-    };
-    telegram: Telegram;
-    wechat: Wechat;
-};
-
-export type AgentWritable = {
-    provider: string;
-    /**
-     * Empty when no model is chosen.
-     */
-    modelId: string;
-    thinkingLevel: ThinkingLevel;
-    instructions: string;
 };
 
 export type AutomationId = string;
@@ -1324,7 +1305,7 @@ export type ListModelsResponses = {
 export type ListModelsResponse = ListModelsResponses[keyof ListModelsResponses];
 
 export type SetAgentData = {
-    body: AgentWritable;
+    body: Agent;
     path?: never;
     query?: never;
     url: '/api/settings/agent';

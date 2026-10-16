@@ -59,7 +59,7 @@ test("user sees which background work returned after a topic change", () => {
     { kind: "assistant", id: "a1", text: "I will report back." },
     { kind: "user", id: "u2", text: "What does HTTP 202 mean?" },
     { kind: "assistant", id: "a2", text: "The server accepted the request." },
-    { kind: "task", id: "result-1", title: "检查日志写入" },
+    { kind: "task", id: "result-1", taskId: "task-1", title: "检查日志写入" },
     { kind: "assistant", id: "a3", text: "The check passed." },
     tool("t1", "done", "verified"),
     { kind: "assistant", id: "a4", text: "The file contains hello-dex." },
@@ -94,9 +94,9 @@ test("user sees which background work returned after a topic change", () => {
 test("user sees two returned results as separate groups", () => {
   // Given two results that arrive together.
   const items: Item[] = [
-    { kind: "task", id: "result-1", title: "Access logs" },
+    { kind: "task", id: "result-1", taskId: "task-1", title: "Access logs" },
     { kind: "assistant", id: "a1", text: "First report" },
-    { kind: "task", id: "result-2", title: "Error logs" },
+    { kind: "task", id: "result-2", taskId: "task-2", title: "Error logs" },
     { kind: "error", id: "error-2", reason: "The provider failed" },
   ];
 

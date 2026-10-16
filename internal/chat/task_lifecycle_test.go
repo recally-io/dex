@@ -54,7 +54,7 @@ func startTaskRuntime(t *testing.T, beforeInit func(context.Context), onTask fun
 	if err := q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "bot", Name: "Dex"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: "bot", ModelProvider: "faux", ModelID: "spawn", ThinkingLevel: "off"}); err != nil {
+	if err := q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: "bot", Name: "Bot", ModelProvider: "faux", ModelID: "spawn", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
 	path, err := worker.Install(t.TempDir(), workerbin.Gzip)

@@ -1111,13 +1111,15 @@ components:
         Marks a background result. Items after this mark belong to the result
         until the next user or task item. The mark does not confirm that the
         work reached its goal.
-      required: [kind, id, title]
+      required: [kind, id, title, taskId]
       properties:
         kind: { type: string, enum: [task] }
         id: { type: string }
         entryId: { type: integer, format: int64 }
         at: { type: integer, format: int64 }
         title: { type: string }
+
+        taskId: { type: string, description: The saved task ID. }
 
     ThinkingItem:
       type: object
@@ -1147,6 +1149,10 @@ components:
           enum: [running, done, error]
           description: A call that ended without a result is an error.
         durationMs: { type: integer, format: int64 }
+        taskId: {
+          type: string,
+          description: The saved task ID of a successful spawn_task call.,
+        }
 
     AssistantItem:
       type: object
@@ -1273,9 +1279,14 @@ components:
       x-go-type-import:
         path: github.com/recally-io/dex/internal/settings
       type: object
-      required: [provider, modelId, thinkingLevel, instructions]
+      required: [name, provider, modelId, thinkingLevel, instructions]
       properties:
-        name: { type: string, readOnly: true }
+        name: {
+          type: string,
+          minLength: 1,
+          maxLength: 40,
+          description: The bot name. Trim spaces before validation.,
+        }
         provider: { type: string }
         modelId: { type: string, description: Empty when no model is chosen. }
         thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }

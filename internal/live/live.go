@@ -353,11 +353,11 @@ func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items [
 // taskItem adds metadata owned by control. A missing record is a stream error.
 func (h *Hub) taskItem(ctx context.Context, s *stream, head itemHead) (jsontext.Value, error) {
 	// One query per anchor; batch by chat if snapshots get slow.
-	title, err := h.q.GetTaskResultTitle(ctx, sqlc.GetTaskResultTitleParams{ResultID: head.ID, ChatID: s.chat.ID})
+	task, err := h.q.GetTaskResultLabel(ctx, sqlc.GetTaskResultLabelParams{ResultID: head.ID, ChatID: s.chat.ID})
 	if err != nil {
 		return nil, fmt.Errorf("task result %s title: %w", head.ID, err)
 	}
-	return json.Marshal(api.TaskItem{Kind: api.TaskItemKindTask, Id: head.ID, At: new(head.At), Title: title, EntryId: head.EntryID})
+	return json.Marshal(api.TaskItem{Kind: api.TaskItemKindTask, Id: head.ID, TaskId: task.ID, At: new(head.At), Title: task.Title, EntryId: head.EntryID})
 }
 
 // writeExtra writes control's items that changed since the stream sent them.

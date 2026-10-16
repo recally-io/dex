@@ -180,23 +180,28 @@ func (q *Queries) GetTaskByKey(ctx context.Context, spawnKey string) (Task, erro
 	return i, err
 }
 
-const getTaskResultTitle = `-- name: GetTaskResultTitle :one
-SELECT t.title FROM submissions s
+const getTaskResultLabel = `-- name: GetTaskResultLabel :one
+SELECT t.id, t.title FROM submissions s
 JOIN tasks t ON s.id = 'task:' || t.id || ':result'
 WHERE s.id = ?1 AND s.conversation_id = ?2 AND s.kind = 'task_result'
 AND t.parent_conversation_id = s.conversation_id
 `
 
-type GetTaskResultTitleParams struct {
+type GetTaskResultLabelParams struct {
 	ResultID string `json:"result_id"`
 	ChatID   int64  `json:"chat_id"`
 }
 
-func (q *Queries) GetTaskResultTitle(ctx context.Context, arg GetTaskResultTitleParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, getTaskResultTitle, arg.ResultID, arg.ChatID)
-	var title string
-	err := row.Scan(&title)
-	return title, err
+type GetTaskResultLabelRow struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+func (q *Queries) GetTaskResultLabel(ctx context.Context, arg GetTaskResultLabelParams) (GetTaskResultLabelRow, error) {
+	row := q.db.QueryRowContext(ctx, getTaskResultLabel, arg.ResultID, arg.ChatID)
+	var i GetTaskResultLabelRow
+	err := row.Scan(&i.ID, &i.Title)
+	return i, err
 }
 
 const listActiveTasks = `-- name: ListActiveTasks :many

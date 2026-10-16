@@ -4,7 +4,7 @@ VALUES (?, ?, '', '', ?)
 ON CONFLICT (id) DO NOTHING;
 
 -- name: UpdateAgentSettings :exec
-UPDATE agents SET model_provider = ?, model_id = ?, thinking_level = ?, instructions = ? WHERE id = ?;
+UPDATE agents SET name = ?, model_provider = ?, model_id = ?, thinking_level = ?, instructions = ? WHERE id = ?;
 
 -- name: GetAgent :one
 SELECT * FROM agents WHERE id = ?;

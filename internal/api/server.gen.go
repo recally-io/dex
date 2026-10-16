@@ -884,7 +884,10 @@ type TaskItem struct {
 	EntryId *int64       `json:"entryId,omitempty"`
 	Id      string       `json:"id"`
 	Kind    TaskItemKind `json:"kind"`
-	Title   string       `json:"title"`
+
+	// TaskId The saved task ID.
+	TaskId string `json:"taskId"`
+	Title  string `json:"title"`
 }
 
 // TaskItemKind defines model for TaskItem.Kind.
@@ -936,6 +939,9 @@ type ToolItem struct {
 
 	// Status A call that ended without a result is an error.
 	Status ToolItemStatus `json:"status"`
+
+	// TaskId The saved task ID of a successful spawn_task call.
+	TaskId *string `json:"taskId,omitempty"`
 }
 
 // ToolItemKind defines model for ToolItem.Kind.

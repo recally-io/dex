@@ -65,8 +65,8 @@ ORDER BY id;
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @now
 WHERE conversation_id = @chat_id AND status = 'pending';
 
--- name: GetTaskResultTitle :one
-SELECT t.title FROM submissions s
+-- name: GetTaskResultLabel :one
+SELECT t.id, t.title FROM submissions s
 JOIN tasks t ON s.id = 'task:' || t.id || ':result'
 WHERE s.id = @result_id AND s.conversation_id = @chat_id AND s.kind = 'task_result'
 AND t.parent_conversation_id = s.conversation_id;

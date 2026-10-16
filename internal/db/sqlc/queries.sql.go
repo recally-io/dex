@@ -1145,10 +1145,11 @@ func (q *Queries) SettleSubmission(ctx context.Context, arg SettleSubmissionPara
 }
 
 const updateAgentSettings = `-- name: UpdateAgentSettings :exec
-UPDATE agents SET model_provider = ?, model_id = ?, thinking_level = ?, instructions = ? WHERE id = ?
+UPDATE agents SET name = ?, model_provider = ?, model_id = ?, thinking_level = ?, instructions = ? WHERE id = ?
 `
 
 type UpdateAgentSettingsParams struct {
+	Name          string `json:"name"`
 	ModelProvider string `json:"model_provider"`
 	ModelID       string `json:"model_id"`
 	ThinkingLevel string `json:"thinking_level"`
@@ -1158,6 +1159,7 @@ type UpdateAgentSettingsParams struct {
 
 func (q *Queries) UpdateAgentSettings(ctx context.Context, arg UpdateAgentSettingsParams) error {
 	_, err := q.db.ExecContext(ctx, updateAgentSettings,
+		arg.Name,
 		arg.ModelProvider,
 		arg.ModelID,
 		arg.ThinkingLevel,

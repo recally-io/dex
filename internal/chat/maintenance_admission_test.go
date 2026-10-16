@@ -37,7 +37,7 @@ func TestUserStopsAtSuccessfulQuiesceBoundary(t *testing.T) {
 				t.Fatal(err)
 			}
 			if err := q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
-				ID: "default", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off",
+				ID: "default", Name: "Dex", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off",
 			}); err != nil {
 				t.Fatal(err)
 			}

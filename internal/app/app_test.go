@@ -151,7 +151,7 @@ func cmpOr(want []int, def int) int {
 func (d *dex) setModel(t *testing.T, modelID string) {
 	t.Helper()
 	d.must(t, http.MethodPut, "/api/settings/agent",
-		map[string]string{"provider": "faux", "modelId": modelID, "thinkingLevel": "off", "instructions": ""}, nil)
+		map[string]string{"name": "Dex", "provider": "faux", "modelId": modelID, "thinkingLevel": "off", "instructions": ""}, nil)
 }
 
 type chatInfo struct {
@@ -193,6 +193,7 @@ func (d *dex) chats(t *testing.T) []chatInfo {
 // item is a transcript item of the chat event stream.
 type item struct {
 	Kind   string `json:"kind"`
+	TaskID string `json:"taskId"`
 	Title  string `json:"title"`
 	At     int64  `json:"at"`
 	ID     string `json:"id"`
@@ -734,7 +735,7 @@ func TestUserAddsCustomProviders(t *testing.T) {
 	if got := d.models(t); !containsAll(got, want) {
 		t.Fatalf("models = %q, want %q in them", got, want)
 	}
-	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"provider": "local", "modelId": "m2", "thinkingLevel": "off", "instructions": ""}, nil)
+	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"name": "Dex", "provider": "local", "modelId": "m2", "thinkingLevel": "off", "instructions": ""}, nil)
 
 	// When the user removes the gateway
 	d.must(t, http.MethodDelete, "/api/settings/providers/gw", nil, nil)
@@ -802,7 +803,7 @@ func TestInvalidRequestsAreRefused(t *testing.T) {
 		body               any
 		status             int
 	}{
-		{"unknown model", http.MethodPut, "/api/settings/agent", map[string]string{"provider": "faux", "modelId": "nope", "thinkingLevel": "off"}, 400},
+		{"unknown model", http.MethodPut, "/api/settings/agent", map[string]string{"name": "Dex", "provider": "faux", "modelId": "nope", "thinkingLevel": "off"}, 400},
 		{"unknown built-in provider", http.MethodPut, "/api/settings/providers/nope", map[string]string{"api": "", "apiKey": "k"}, 400},
 		{"unknown API", http.MethodPut, "/api/settings/providers/x", map[string]string{"api": "bogus", "baseUrl": "http://127.0.0.1:1"}, 400},
 		{"custom ID of a built-in provider", http.MethodPut, "/api/settings/providers/anthropic",

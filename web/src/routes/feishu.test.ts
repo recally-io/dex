@@ -41,7 +41,7 @@ test("user sees Feishu runtime status in the channels list", async () => {
   // Given an enabled bot that still needs pairing.
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
   client.setQueryData(getSettingsOptions().queryKey, {
-    agent: { provider: "", modelId: "", thinkingLevel: "off", instructions: "" },
+    agent: { name: "Dex", provider: "", modelId: "", thinkingLevel: "off", instructions: "" },
     providers: [],
     builtins: [],
     apis: {},

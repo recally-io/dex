@@ -25,7 +25,7 @@ describe("chat retry", () => {
     const items: Item[] = [
       message,
       { kind: "assistant", id: "answer", text: "I will report back." },
-      { kind: "task", id: "result", title: "Check logs" },
+      { kind: "task", id: "result", taskId: "task-1", title: "Check logs" },
       failure,
     ];
 
@@ -157,7 +157,7 @@ describe("earlier transcript pages", () => {
 describe("chat transcript", () => {
   test("user can queue a question while a background result keeps its output", () => {
     // Given a result that is still running when the next question is queued.
-    const result: Item = { kind: "task", id: "result", title: "Check logs" };
+    const result: Item = { kind: "task", id: "result", taskId: "task-1", title: "Check logs" };
     const question: Item = { kind: "user", id: "next", text: "What does HTTP 202 mean?", queued: true };
 
     const initial = applyChatEvent(emptyChatState, {
@@ -204,7 +204,7 @@ describe("chat transcript", () => {
       const input: Item =
         kind === "user"
           ? { kind, id: "earlier", text: "Earlier question" }
-          : { kind, id: "earlier", title: "Check logs" };
+          : { kind, id: "earlier", taskId: "task-1", title: "Check logs" };
 
       const first: Item = { kind: "user", id: "first", text: "First question", queued: true };
       const second: Item = { kind: "user", id: "second", text: "Second question", queued: true };
