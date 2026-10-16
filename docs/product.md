@@ -5,7 +5,7 @@ the problem, the scope, and the non-goals.
 
 ## Users and problem
 
-dex is for one person or a small team who wants personal AI agents that they
+dex is for one person who wants personal AI agents that they
 can reach from chat apps and a browser, and that keep working over long
 tasks. Hosted agent platforms keep the data elsewhere and are hard to change.
 dex runs on one machine, keeps all data in local files, and stays small enough
@@ -33,7 +33,7 @@ to read in an afternoon.
   the earlier transcript. Only a clear shows a divider. The sidebar holds the
   bot name, its settings, and global settings. It has no chat list or New chat
   action.
-  Channels and automation runs open as read-only transcripts from bot settings.
+  Channel input shares main. Automation runs have separate read-only transcripts.
 - Internal background delegation for the default agent. Each delegation has
   one input and fixed model settings. The main agent stays available and
   receives reports to plan review, fixes, tests, and the final answer.
@@ -47,14 +47,19 @@ to read in an afternoon.
   entry is an advanced option. The bot ignores other users and group chats.
   Earlier versions accepted group messages from allowed users. The bot now
   ignores all non-private chats, including messages from allowed users.
-- Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. External channel chats are read-only
-  on the web. `/new` starts another chat without cancelling old work.
-  `/stop` stops the current answer and background execution for the current
-  agent and exact channel peer, including chats before `/new`. Other peers
-  and web chats are outside that stop scope. `/help` lists commands.
+- Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. All channels
+  are for the owner. All entries share main's context. Input from one entry can
+  affect an answer at another entry. Channel messages show their channel name
+  in the web timeline. Replies return only to the input's origin. Web input
+  sends no channel reply. Each input gets its own answer, in admission order.
+  `/new` clears main's context when main is idle. A repeated command cannot
+  clear again. A busy refusal leaves the context unchanged.
+  `/stop` stops main's current answer, pending input and background work from
+  every main entry. Chat and automation sessions stay outside that scope.
+  `/help` lists commands.
   Reply delivery resumes after a restart and skips confirmed
   parts. A crash after remote success can duplicate one part. Bot settings
-  show each channel's runtime status and open its current conversation.
+  show each channel's runtime status and setup.
 - In main and Chat sessions, the user can attach files and images (at most 10 per
   message, 20 MB each). The agent reads them with its tools. Telegram
   chats and automations use the agent's settings. Telegram accepts photos and
@@ -87,8 +92,10 @@ to read in an afternoon.
 Inputs store their origin. Web input uses `web`. Channel input uses the exact
 peer, such as `telegram:7`. A background result keeps the origin of its source
 input, also when that source is another result. Automation, internal execution,
-and memory consolidation use `automation`, `task`, and `dream`. Origin does
-not change routing. Channel input stays in its own conversation in this step.
+and memory consolidation use `automation`, `task`, and `dream`. Channel delivery
+uses origin, including for results that finish after a newer input from another
+entry. Channel input cannot reach a separate Chat session. Old per-peer
+conversations receive no new channel input and do not show in Sessions.
 
 The main chat shows the user's messages and the main agent's answers.
 The web chat marks a delegation with the work's title. A returned result has
@@ -96,8 +103,9 @@ a named label and a thin line that groups its replies and tool calls. The mark
 shows where the report belongs; it does not confirm that the work reached its goal.
 The chat does not show the internal report as input. Read-only task records
 give the human the saved report, status, times, and work transcript. The Sessions
-link opens one list of Chat, Task, Automation and Channel sessions, newest
-activity first. The list excludes main, internal dreams and empty Chat sessions.
+link opens one list of Chat, Task and Automation sessions, newest
+activity first. The list excludes main, old channel conversations, internal dreams
+and empty Chat sessions.
 The user can filter by kind. Its active count includes queued or running tasks
 and other busy sessions. Each row counts once. A filter counts only visible rows.
 Named dispatch and result labels open the task by its ID.
@@ -109,8 +117,8 @@ newest empty Chat, so an abandoned click leaves no list row. The first message
 sets the title. Chat uses the bot's settings, instructions and shared memory.
 Chat does not read the main timeline's context. A task started in Chat returns
 its result to that Chat. Clear context, Stop and earlier messages work within
-the selected session. Other sessions cannot enable its Stop. Task, Automation
-and Channel sessions stay read-only. Main stays the default view, and the
+the selected session. Other sessions cannot enable its Stop. Task and Automation
+sessions stay read-only. Main stays the default view, and the
 sidebar keeps only the bot and global settings.
 
 The main agent names the work in one brief delegation confirmation, then
@@ -127,7 +135,7 @@ Writes to one repository must run in order or in separate worktrees.
 
 Web Stop stays in the composer for queued input, an active answer, and active
 background work. Stop covers the selected writable session and its background
-work. Task, Automation and Channel sessions stay read-only. Stop needs no model.
+work. Task and Automation sessions stay read-only. Stop needs no model.
 Stop withdraws pending input and results, records cancellation, and requests
 SDK cancellation once. The reply confirms the request. It does not confirm
 process exit. Processes and remote work can continue. Prior actions are not
@@ -140,7 +148,7 @@ The system does not retry failed execution or result delivery. The main agent
 reads saved records and artifacts, then decides whether to retry or continue
 from saved work. After a user Stop, the main agent waits for new user
 authorization. A later user message does not retry an old result. Result
-delivery stays in the source chat after `/new`.
+delivery keeps the source input's origin after `/new`.
 
 After worker loss, running execution becomes interrupted and does not restart
 automatically. Queued execution that never started can start for the first

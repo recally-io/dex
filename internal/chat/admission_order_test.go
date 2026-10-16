@@ -108,7 +108,7 @@ func TestUserKeepsInputAdmittedAfterClear(t *testing.T) {
 			case <-ctx.Done():
 				t.Fatal("input did not sample its time")
 			}
-			err = service.Clear(ctx, "bot", c.ID, "reset-first")
+			err = service.Clear(ctx, "bot", c.ID, "reset-first", "web")
 			release()
 			if err != nil {
 				t.Fatal(err)

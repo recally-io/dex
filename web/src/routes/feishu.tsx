@@ -228,8 +228,9 @@ export function FeishuChannel() {
       </Section>
       <Section n={4} title="Use the bot" caption="Groups and threads are not supported.">
         <Note>
-          Send text, rich text, images or files up to 20 MB. Use /new for a new chat, /stop to stop the
-          current run, and /help for help. Replies also appear on the web.
+          Send text, rich text, images or files up to 20 MB. Feishu shares the main timeline. Use /new to
+          clear main's context when it is idle. Use /stop to stop the main answer and its background work. Use
+          /help for commands.
         </Note>
       </Section>
       {saved.data?.enabled ? (

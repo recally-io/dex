@@ -63,7 +63,7 @@ WHERE id = ? AND status = 'pending';
 
 -- name: GetSubmissionReply :one
 SELECT
-    c.channel_key,
+    s.origin,
     c.id AS conversation_id
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
@@ -104,7 +104,8 @@ SELECT
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN tasks t ON t.conversation_id = c.id
-WHERE c.agent_id = ? AND c.channel_key != 'main' AND c.channel_key NOT LIKE 'dream:%'
+WHERE c.agent_id = ?
+    AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
     AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
     ))
@@ -137,7 +138,7 @@ GROUP BY c.id;
 
 -- name: ListOpenSubmissions :many
 -- The messages of a chat that have no answer: pending, or unanswered with a reason.
-SELECT id, content, attachments, status, reason, created_at FROM submissions
+SELECT id, content, attachments, origin, status, reason, created_at FROM submissions
 WHERE conversation_id = ? AND status != 'done' AND kind = 'message'
 ORDER BY created_at;
 

@@ -242,6 +242,10 @@ export type Item = ({
 export type UserItem = {
     kind: 'user';
     id: string;
+    /**
+     * The input entry, such as web, telegram:7, wechat:owner or feishu:owner.
+     */
+    origin?: string;
     entryId?: number;
     text: string;
     at?: number;

@@ -1,4 +1,4 @@
-// Package channel owns peer-to-chat mapping, commands, bot lifetime, and reply delivery.
+// Package channel owns commands, bot lifetime, and reply delivery.
 //
 // New connects a Manager to control's database and chat service. A platform passes inbound
 // messages to Receive. Peer names have the form "platform:remote-id" and
@@ -10,8 +10,8 @@
 // ErrPermanent skips a rejected part. Report updates
 // runtime status; Status returns it for the settings API. Connect chat's notify to Notify.
 //
-// Receive handles shared commands before submitting messages. /new preserves old chats
-// and selects a key of the form "peer/uuid". Platforms must route by peer, not by channel key.
+// Receive sends channel input to main. /new clears main's context; /stop stops main's work.
+// Replies use the input's origin, including results from background work.
 // Pending reports whether the peer has work, for typing indicators. Delivery retries after a
 // failed send and after restart. It is at least once: a crash after the remote service accepts
 // a part but before control records success can send that part again.
@@ -26,7 +26,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"uuid"
 
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -62,19 +61,18 @@ type runtime struct {
 // Manager runs bots and sends replies from durable storage.
 type Manager struct {
 	ctx       context.Context
-	db        *sql.DB
 	q         *sqlc.Queries
 	chats     *chat.Service
 	agentID   string
 	setMu     sync.Mutex
-	receiveMu sync.Mutex // command and peer changes; per peer if throughput matters
+	receiveMu sync.Mutex // command receipts; per peer if throughput matters
 	mu        sync.Mutex
 	bots      map[string]*runtime
 }
 
 // New creates a manager. Close it before closing the database.
 func New(ctx context.Context, db *sql.DB, chats *chat.Service, agentID string) *Manager {
-	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), chats: chats, agentID: agentID, bots: make(map[string]*runtime)}
+	return &Manager{ctx: ctx, q: sqlc.New(db), chats: chats, agentID: agentID, bots: make(map[string]*runtime)}
 }
 
 // Set replaces one platform's bot. Callers must not call it from Bot.Run or Bot.Send.
@@ -142,12 +140,15 @@ func (m *Manager) Status(name string) Status {
 	return Status{State: "off"}
 }
 
-// Notify wakes delivery without blocking the worker's reader. The database holds the reply.
+// Notify wakes a reply's origin. Stopping main wakes all senders for withdrawn input.
 func (m *Manager) Notify(key string) {
 	name, _, _ := strings.Cut(key, ":")
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if r := m.bots[name]; r != nil {
+	for platform, r := range m.bots {
+		if key != chat.MainKey && platform != name {
+			continue
+		}
 		select {
 		case r.wake <- struct{}{}:
 		default:
@@ -177,31 +178,11 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	key, err := m.q.EnsureChannelPeer(ctx, sqlc.EnsureChannelPeerParams{Peer: peer, ChannelKey: peer})
-	if err != nil {
-		return err
-	}
 	cmd := strings.TrimSpace(msg.Content)
 	if cmd != "/new" && cmd != "/stop" && cmd != "/help" {
-		return m.chats.SubmitMessage(ctx, m.agentID, key, source, msg)
+		return m.chats.SubmitMessage(ctx, m.agentID, peer, source, msg)
 	}
-	// The command and rotation commit together. A crash cannot rotate the same command twice.
-	tx, err := m.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	q := m.q.WithTx(tx)
-	if err = q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{SourceKey: source, Peer: peer, ChannelKey: key, Command: cmd}); err != nil {
-		return err
-	}
-	if cmd == "/new" {
-		err = q.SetChannelPeer(ctx, sqlc.SetChannelPeerParams{Peer: peer, ChannelKey: peer + "/" + uuid.NewV7().String()})
-	}
-	if err != nil {
-		return err
-	}
-	if err = tx.Commit(); err != nil {
+	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd}); err != nil {
 		return err
 	}
 	command, err = m.q.GetChannelCommand(ctx, source)
@@ -215,15 +196,38 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	if c.Completed != 0 {
 		return nil
 	}
-	answer := "/new starts a new chat. /stop stops the current answer and background work in this conversation. /help shows these commands."
-	switch c.Command {
-	case "/new":
-		answer = "Started a new chat."
-	case "/stop":
-		if err := m.chats.StopPeer(ctx, m.agentID, c.Peer); err != nil {
+	answer := "/new clears the main timeline's context. /stop stops the main answer and its background work. /help shows these commands."
+	switch {
+	case c.ChannelKey != chat.MainKey:
+		// A saved peer command cannot acquire main's scope after an upgrade.
+		answer = "This command is from an earlier version. Send a new command if needed."
+	case c.Command == "/new":
+		main, err := m.chats.Main(ctx, m.agentID)
+		if err != nil {
 			return err
 		}
-		answer = "Stop requested. Earlier actions are not undone. Processes and remote work may continue."
+		// A stable reset ID closes the crash window before command completion.
+		err = m.chats.Clear(ctx, m.agentID, main.ID, "channel:"+c.SourceKey, c.Peer)
+		switch {
+		case errors.Is(err, chat.ErrConversationBusy):
+			answer = "Context not cleared. The main timeline is busy. Wait for the reply or stop it, then send /new again."
+		case err != nil:
+			return err
+		default:
+			answer = "Context cleared."
+		}
+	case c.Command == "/stop":
+		answer = c.Answer
+		if answer == "" {
+			main, err := m.chats.Main(ctx, m.agentID)
+			if err != nil {
+				return err
+			}
+			answer = "Stop requested. Earlier actions are not undone. Processes and remote work may continue."
+			if err := m.chats.StopChannelCommand(ctx, m.agentID, main.ID, c.SourceKey, answer); err != nil {
+				return err
+			}
+		}
 	}
 	if err := m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{Answer: answer, SourceKey: c.SourceKey}); err != nil {
 		return err
@@ -232,9 +236,9 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	return nil
 }
 
-// Pending reports work in the peer's current or previous chats.
+// Pending reports input whose answer returns to this peer.
 func (m *Manager) Pending(ctx context.Context, peer string) (bool, error) {
-	n, err := m.q.CountChannelPending(ctx, peer)
+	n, err := m.q.CountChannelPending(ctx, sqlc.CountChannelPendingParams{AgentID: m.agentID, Peer: peer})
 	return n > 0, err
 }
 
@@ -285,15 +289,14 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 	if err != nil {
 		return err
 	}
-	replies, err := m.q.ListChannelReplies(ctx, sql.NullString{String: name + ":", Valid: true})
+	replies, err := m.q.ListChannelReplies(ctx, sqlc.ListChannelRepliesParams{AgentID: m.agentID, OriginStart: name + ":", OriginEnd: name + ";"})
 	if err != nil {
 		return err
 	}
 	for _, r := range replies {
-		peer, _, _ := strings.Cut(r.ChannelKey, "/")
 		parts := bot.Parts(chat.Reply{Status: r.Status, Answer: r.Answer.String, Reason: r.Reason.String})
 		for i := int(r.DeliveredParts); i < len(parts); i++ {
-			if err = sendPart(ctx, bot, peer, r.ID, i, parts[i]); err != nil {
+			if err = sendPart(ctx, bot, r.Origin, r.ID, i, parts[i]); err != nil {
 				return err
 			}
 			if err = m.q.AdvanceChannelReply(ctx, r.ID); err != nil {

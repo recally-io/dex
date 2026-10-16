@@ -83,27 +83,31 @@ The timeline header opens `/sessions`. `GET /api/chats` lists session summaries
 by `updatedAt` descending, then ID descending. `updatedAt` is the latest
 conversation creation, input creation or settlement, or task start or end time.
 Task times apply only to the task's own conversation. List and detail use the
-same rule. The list excludes main, dreams and
+same rule. The list excludes main, old channel conversations, dreams and
 Chat sessions with no message. Task rows add `task: TaskSummary`, without
 report bodies. The query does not read reports or transcripts. The page
-filters by Chat, Task, Automation or Channel. `/tasks` redirects to `/sessions`.
+filters by Chat, Task or Automation. `/tasks` redirects to `/sessions`.
 The active count includes tasks with status queued or running, and other
 busy sessions. Each row counts once. A kind filter counts only visible rows.
 `New session` appears only on the Sessions page. Other sessions open at
 `/c/{id}`; tasks open at `/tasks/{id}` with Report above Work. Main stays at `/`.
 
-Channel keys and automation conversations stay separate. The sidebar holds the
+Channel input enters main. Chat and automation contexts stay separate. The sidebar holds the
 bot identity and its settings link. `/agent` holds Profile, Instructions,
 Channels, and Automations. Providers, Extensions, Secrets, and About stay global.
-Channel settings link to that channel's newest conversation. Automation details
-keep their run history. These transcripts have no web composer.
+Channel settings show setup and runtime status. Automation details
+keep their run history. Automation transcripts have no web composer.
 
-Every enqueue writes `submissions.origin`. Main and Chat input use `web`.
-Channel input uses the part of its key before `/`, including the peer ID.
+Every enqueue writes `submissions.origin`. Web input in main and Chat uses `web`.
+Channel input uses the exact peer, such as `telegram:7`, and always enters main.
 Automation, task input, and dream input use `automation`, `task`, and `dream`.
 A task result copies its source submission's origin in the same transaction
 that saves the report and inserts the result. A result chain thus keeps the
-first input's origin. Existing rows use `unknown`. Routing does not use origin.
+first input's origin. Existing rows use `unknown`. The durable channel sender
+routes ordinary replies and task results by origin. Web input sends no channel reply.
+The live hub adds origin to user items in queued input, snapshots, live events
+and history pages. The web shows the channel name beside each channel input.
+The worker protocol has no channel fields.
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). pi-durable allows one
 process per storage, so only the worker opens an agent directory.
@@ -158,7 +162,7 @@ it refuses when another holder has it, restarts the worker, opens the agent,
 and releases the lease.
 
 The task extension adds delegation tools and a `task-rules` section to
-foreground conversations, including main, Chat, channel and automation sessions.
+foreground conversations, including main, Chat and automation sessions.
 Background executions and dreams have no delegation tools. A separate
 extension gives foreground conversations and background executions the `coding-skill`
 section. Bun embeds the full
@@ -366,11 +370,12 @@ withdraws pending results. A later greeting cannot revive those results.
 A new execution must check prior artifacts and side effects.
 
 Web Stop covers only the selected writable session, main or Chat. Task,
-channel and automation sessions are read-only on the web. Messages, Clear
+old channel and automation sessions are read-only on the web. Messages, Clear
 and Stop return 403 for those kinds.
-Channel `/stop` covers the current agent and exact channel peer, including
-its chats before `/new`. Other peers, agents, and web chats are outside that
-scope. `/new` changes context without cancelling prior execution.
+Channel `/stop` calls main Stop. It covers main input from every entry and
+tasks started in main. Chat, automation and other agents stay outside that scope.
+Channel `/new` calls main Clear with the same busy check and reset ordering.
+It does not cancel background work. The result keeps the work's original peer.
 Stop withdraws pending ordinary input and results. The same transaction sets
 active background executions to `cancelled` and withdraws their own input.
 Stop and spawn acquire the SQLite writer before they read: spawn either commits
@@ -541,26 +546,34 @@ so dex needs no public URL.
 ## Shared channels
 
 [`channel.Manager`](../../internal/channel/channel.go) owns bot lifetime,
-peer mapping, commands, and reply delivery. Settings changes stop the old bot
+commands, and reply delivery. Settings changes stop the old bot
 before they start its replacement. Settings expose runtime status: `off`,
 `running`, `error` with a reason, or `needs_login`.
 
-A peer names a remote destination, such as `telegram:7`. `channel_peers` stores
-its current channel key. `/new` selects `peer/<UUID>` and keeps the old chat.
-Every key keeps its destination, so an old chat can still receive its answer.
-Main and Chat sessions are writable on the web. Channel and automation transcripts
-have no web composer.
+A peer names a remote destination, such as `telegram:7`. Owner input from all
+channels enters the agent's `main` conversation with that peer as origin.
+Channel input cannot select a Chat session. Old `channel_peers` records and
+per-peer conversations remain stored but receive no new channel input. The
+Sessions list excludes those conversations. Main and Chat are writable on
+the web. Automation transcripts have no web composer.
 
 `/new`, `/stop`, and `/help` use durable command
-receipts. The receipt and a `/new` rotation commit in one transaction.
-`/stop` records stop intent for the exact peer scope described above and
-withdraws queued input and pending results. A repeated Stop is safe. The
-reply confirms the cancellation request and states that processes and remote
+receipts. `/new` uses `channel:<source key>` as its stable reset request ID.
+A crash after reset admission but before command completion reuses that reset.
+A busy refusal is saved in the command receipt; replay cannot clear it later.
+The command sends one short notice. Reset submissions have no model reply.
+An incomplete command with an old peer channel key gets a notice with no action.
+`/stop` records stop intent for main and
+withdraws queued input and pending results. A channel Stop saves its answer
+in the same transaction as the withdrawal. If command completion fails,
+replay uses that answer without another withdrawal or worker abort. The reply
+confirms the cancellation request and states that processes and remote
 work can continue. A stop error does not block later messages or other replies.
 
-Each platform has one durable sender. Notify only wakes this sender. At start
+Each platform has one durable sender. Settlement wakes the origin's sender.
+Main Stop wakes all senders for withdrawn input. At start
 and after a failed send, it reads settled submissions and command replies
-that remain undelivered. It records each confirmed part and marks the reply
+that remain undelivered, in submission admission order. It records each confirmed part and marks the reply
 delivered after its last part. A permanent rejection skips that part and does
 not block later replies. A transient error retries with a delay from 5 s to
 60 s. Each bot receives a stable delivery ID and part index through `Bot.Send`.

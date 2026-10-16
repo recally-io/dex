@@ -41,11 +41,13 @@ type fakeFeishu struct {
 	textAttempts         int
 	resourceStatus       int
 	resourceSize         int
+	deliveries           []channelSend
+	destinations         map[string]string
 }
 
 func newFakeFeishu(t *testing.T) *fakeFeishu {
 	t.Helper()
-	f := &fakeFeishu{pingInterval: 120, events: make(chan []byte, 32), ack: make(chan struct{}, 32)}
+	f := &fakeFeishu{pingInterval: 120, events: make(chan []byte, 32), ack: make(chan struct{}, 32), destinations: map[string]string{}}
 	f.server = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.server.Close)
 	return f
@@ -153,7 +155,8 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			Content string `json:"content"`
+			Content   string `json:"content"`
+			ReceiveID string `json:"receive_id"`
 		}
 		if err := json.UnmarshalRead(r.Body, &body); err != nil {
 			http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -186,6 +189,23 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 		f.methods = append(f.methods, r.Method)
 		f.messages = append(f.messages, body.Content)
 		f.next++
+		peer := "feishu:" + body.ReceiveID
+		if r.Method == http.MethodPatch {
+			peer = f.destinations[strings.TrimPrefix(r.URL.Path, "/open-apis/im/v1/messages/")]
+		} else {
+			f.destinations[fmt.Sprint("reply-", f.next)] = peer
+		}
+		var content struct {
+			Text     string `json:"text"`
+			Elements []struct {
+				Content string `json:"content"`
+			} `json:"elements"`
+		}
+		_ = json.Unmarshal([]byte(body.Content), &content)
+		for _, element := range content.Elements {
+			content.Text += element.Content
+		}
+		f.deliveries = append(f.deliveries, channelSend{Peer: peer, Text: content.Text})
 		_ = json.MarshalWrite(w, map[string]any{"code": 0, "data": map[string]string{"message_id": fmt.Sprint("reply-", f.next)}})
 	}
 }
@@ -253,13 +273,14 @@ func pairFeishu(t *testing.T, d *dex, f *fakeFeishu) {
 	if chats := d.chats(t); len(chats) != 0 {
 		t.Fatalf("pair retry reached agent: %+v", chats)
 	}
+	assertNoStoredInput(t, d)
 	_, body := d.call(t, http.MethodGet, "/api/settings/feishu", nil)
 	if strings.Contains(body, "app-secret") || strings.Contains(body, result.PairingCode) || !strings.Contains(body, `"paired":true`) {
 		t.Fatalf("unsafe settings response: %s", body)
 	}
 }
 
-func TestUserChatsWithFeishuOwnerOnlyAndStartsNewChat(t *testing.T) {
+func TestUserChatsWithFeishuOwnerOnlyAndClearsMain(t *testing.T) {
 	// Given a manually configured bot, paired by the owner in a private chat.
 	f := newFakeFeishu(t)
 	dataDir := t.TempDir()
@@ -271,6 +292,7 @@ func TestUserChatsWithFeishuOwnerOnlyAndStartsNewChat(t *testing.T) {
 	if chats := d.chats(t); len(chats) != 0 {
 		t.Fatalf("unauthorized chats: %+v", chats)
 	}
+	assertNoStoredInput(t, d)
 	// When the platform repeats an owner's input, then dex stores one message.
 	f.text(t, "first", "owner", "p2p", "hello owner")
 	f.text(t, "first", "owner", "p2p", "hello owner")
@@ -287,17 +309,17 @@ func TestUserChatsWithFeishuOwnerOnlyAndStartsNewChat(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("duplicate input stored %d submissions", count)
 	}
-	chats := d.chats(t)
-	if len(chats) != 1 {
-		t.Fatalf("chats=%+v", chats)
+	if chats := d.chats(t); len(chats) != 0 {
+		t.Fatalf("channel in Sessions: %+v", chats)
 	}
-	// When /new is repeated, then the next message starts one new chat.
+	d.watch(t, d.mainChat(t)).until(t, "owner input in main", answered("echo: hello owner"))
+	// When /new is repeated, main clears once and keeps the same timeline.
 	f.text(t, "new-command", "owner", "p2p", "/new")
 	f.text(t, "new-command", "owner", "p2p", "/new")
 	f.text(t, "second", "owner", "p2p", "second chat")
 	f.waitReply(t, "echo: second chat")
-	if chats = d.chats(t); len(chats) != 2 {
-		t.Fatalf("chats=%+v", chats)
+	if chats := d.chats(t); len(chats) != 0 {
+		t.Fatalf("channel in Sessions: %+v", chats)
 	}
 	f.text(t, "help", "owner", "p2p", "/help")
 	f.waitReply(t, "/stop stops")
@@ -318,11 +340,7 @@ func TestUserReceivesFeishuFileAndReplyAfterRestart(t *testing.T) {
 	defer deadline.Stop()
 	tick := time.NewTicker(20 * time.Millisecond)
 	defer tick.Stop()
-	for {
-		chats := d.chats(t)
-		if len(chats) == 1 && !chats[0].Busy {
-			break
-		}
+	for d.mainInfo(t).Busy {
 		select {
 		case <-tick.C:
 		case <-deadline.C:
@@ -346,8 +364,8 @@ func TestUserReceivesFeishuFileAndReplyAfterRestart(t *testing.T) {
 	f.waitReply(t, "echo:")
 	// The owner remains authorized; the same source cannot create another submission.
 	f.message(t, "file", "owner", "p2p", "file", `{"file_key":"file-key","file_name":"notes.txt"}`)
-	if chats := d.chats(t); len(chats) != 1 {
-		t.Fatalf("chats=%+v", chats)
+	if chats := d.chats(t); len(chats) != 0 {
+		t.Fatalf("channel in Sessions: %+v", chats)
 	}
 	f.text(t, "after-restart", "owner", "p2p", "owner survived restart")
 	f.waitReply(t, "echo: owner survived restart")
@@ -462,6 +480,7 @@ func TestUserCreatesFeishuAppAndPairsTheCreator(t *testing.T) {
 	if chats := d.chats(t); len(chats) != 0 {
 		t.Fatal("stranger was admitted")
 	}
+	assertNoStoredInput(t, d)
 	f.text(t, "qr-owner", "creator", "p2p", "hello from creator")
 	f.waitReply(t, "echo: hello from creator")
 }
@@ -603,6 +622,7 @@ func TestUserInvalidFeishuMessageDoesNotBlockLaterInput(t *testing.T) {
 	if chats := d.chats(t); len(chats) != 0 {
 		t.Fatalf("invalid input stored: %+v", chats)
 	}
+	assertNoStoredInput(t, d)
 	// Then valid input still gets a reply.
 	f.text(t, "valid-later", "owner", "p2p", "valid later")
 	f.waitReply(t, "echo: valid later")

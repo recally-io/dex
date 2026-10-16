@@ -64,7 +64,7 @@ func TestUserStopsAtSuccessfulQuiesceBoundary(t *testing.T) {
 			}, &created); err != nil {
 				t.Fatal(err)
 			}
-			conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: "default", ChannelKey: "telegram:7"})
+			conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: "default", ChannelKey: chat.MainKey})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -228,7 +228,7 @@ func TestUserStopsAtSuccessfulQuiesceBoundary(t *testing.T) {
 			// must not execute when submit rechecks its status.
 			if mode == "submit_before_lease_store" {
 				id := uuid.NewV7().String()
-				if _, err := s.Post(ctx, "default", "telegram:7", "", id, "after release"); err != nil {
+				if _, err := s.Post(ctx, "default", chat.MainKey, "", id, "after release"); err != nil {
 					t.Fatal(err)
 				}
 				select {

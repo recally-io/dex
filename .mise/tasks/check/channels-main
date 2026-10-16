@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Test channel input and reply routing on the main timeline"
+#MISE depends=["build:worker", "build:web"]
+set -euo pipefail
+go test -count=1 -v ./internal/app -run 'TestUserChannelMain|TestUserSessionListShowsOrderedSummariesOnly' "$@"

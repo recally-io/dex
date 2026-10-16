@@ -151,8 +151,8 @@ export function WechatChannel({ settings }: { settings: Settings }) {
           <Failure title="WeChat login did not finish" error={start.error ?? poll.error} />
         ) : null}
         <p className="text-[12px] text-ink-3">
-          Use /new for a new chat, /stop to stop an answer, and /help for commands. Past chats stay read-only
-          on the web.
+          WeChat shares the main timeline. Use /new to clear main's context when it is idle. Use /stop to stop
+          the main answer and its background work. Use /help for commands.
         </p>
       </Panel>
       {off ? (

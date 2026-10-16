@@ -29,8 +29,8 @@ func TestUserChannelHelpHasNoTaskManagementCommands(t *testing.T) {
 	}
 }
 
-func TestUserChannelStopCoversOldContextAndPreservesOtherPeer(t *testing.T) {
-	// Given two peers with running executions under the same agent.
+func TestUserChannelStopCoversMainAcrossClearAndPreservesChat(t *testing.T) {
+	// Given two channel entries with running work on main and a separate Chat.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
 	d := startTelegram(t, f, dir, 42)
@@ -46,6 +46,7 @@ func TestUserChannelStopCoversOldContextAndPreservesOtherPeer(t *testing.T) {
 		})
 		waitExecution(t, conn, parent, name, "running")
 		waitTaskFile(t, filepath.Join(dir, name+".pid"))
+		waitTaskChannelText(t, f, "spawn: ")
 		return parent
 	}
 	old := spawn(1, 7, "old-peer")
@@ -55,18 +56,16 @@ func TestUserChannelStopCoversOldContextAndPreservesOtherPeer(t *testing.T) {
 	waitTaskFile(t, filepath.Join(dir, "web-main.pid"))
 	// When /new changes context and /stop is sent before another model input.
 	f.message(3, 42, 7, "/new")
-	waitTaskChannelText(t, f, "Started a new chat.")
+	waitTaskChannelText(t, f, "Context cleared.")
 	if got := waitExecution(t, conn, old, "old-peer", "running"); got.Status != "running" {
 		t.Fatal(got)
 	}
 	f.message(4, 42, 7, "/stop")
 	waitExecution(t, conn, old, "old-peer", "cancelled")
 	waitTaskPIDGone(t, filepath.Join(dir, "old-peer.pid"))
-	// Then Stop covers the previous context but does not cross the exact peer boundary.
-	waitExecution(t, conn, other, "other-peer", "running")
-	if taskPIDGone(t, filepath.Join(dir, "other-peer.pid")) {
-		t.Fatal("Stop crossed peer boundary")
-	}
+	// Then Stop covers both main entries across Clear and preserves the separate Chat.
+	waitExecution(t, conn, other, "other-peer", "cancelled")
+	waitTaskPIDGone(t, filepath.Join(dir, "other-peer.pid"))
 	if taskPIDGone(t, filepath.Join(dir, "web-main.pid")) {
 		t.Fatal("channel Stop crossed into Web chat")
 	}
@@ -82,7 +81,7 @@ func TestUserChannelStopCoversOldContextAndPreservesOtherPeer(t *testing.T) {
 	if resultCount != 0 {
 		t.Fatalf("stopped execution delivered %d results", resultCount)
 	}
-	t.Logf("stopped_parent=%d unaffected_parent=%d results=%d", old, other, resultCount)
+	t.Logf("stopped_parent=%d second_entry_parent=%d results=%d", old, other, resultCount)
 }
 
 func waitTaskChannelText(t *testing.T, f *fakeTelegram, text string) {

@@ -1,10 +1,3 @@
--- name: EnsureChannelPeer :one
-INSERT INTO channel_peers (peer, channel_key) VALUES (?, ?)
-ON CONFLICT (peer) DO UPDATE SET peer = excluded.peer RETURNING channel_key;
-
--- name: SetChannelPeer :exec
-UPDATE channel_peers SET channel_key = ? WHERE peer = ?;
-
 -- name: GetSubmissionBySource :one
 SELECT id FROM submissions WHERE source_key = ?;
 
@@ -18,15 +11,19 @@ SELECT * FROM channel_commands WHERE source_key = ?;
 -- name: CompleteChannelCommand :exec
 UPDATE channel_commands SET completed = 1, answer = ? WHERE source_key = ?;
 
+-- name: SaveChannelCommandAnswer :exec
+UPDATE channel_commands SET answer = ? WHERE source_key = ?;
+
 -- name: ListChannelCommands :many
 SELECT * FROM channel_commands WHERE completed = 0;
 
 -- name: ListChannelReplies :many
-SELECT s.id, c.channel_key, s.status, s.answer, s.reason, s.delivered_parts
+SELECT s.id, s.origin, s.status, s.answer, s.reason, s.delivered_parts
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status != 'pending' AND s.delivered_at IS NULL
-AND (s.kind = 'message' OR s.status = 'done')
-AND c.channel_key LIKE @prefix || '%' ORDER BY s.created_at, s.id;
+AND (s.kind = 'message' OR (s.kind = 'task_result' AND s.status = 'done'))
+AND c.agent_id = @agent_id AND s.origin >= @origin_start AND s.origin < @origin_end
+ORDER BY s.rowid;
 
 -- name: MarkChannelReplyDelivered :exec
 UPDATE submissions SET delivered_at = ? WHERE id = ?;
@@ -40,7 +37,7 @@ UPDATE channel_commands SET delivered_at = ? WHERE source_key = ?;
 
 -- name: CountChannelPending :one
 SELECT count(*) FROM submissions s JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status = 'pending' AND (c.channel_key = @peer OR c.channel_key LIKE @peer || '/%');
+WHERE s.status = 'pending' AND c.agent_id = @agent_id AND s.origin = @peer;
 
 -- name: AdvanceChannelReply :exec
 UPDATE submissions SET delivered_parts = delivered_parts + 1 WHERE id = ?;

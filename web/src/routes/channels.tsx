@@ -9,7 +9,6 @@ import {
   deleteTelegramMutation,
   getFeishuOptions,
   getSettingsOptions,
-  listChatsOptions,
   setTelegramMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { errorText, refreshSettings } from "../lib/queries";
@@ -20,7 +19,7 @@ import { Modal } from "../components/dialog";
 import { Failure, Spinner } from "../components/feedback";
 import { Field, Input, SavedSecret, Textarea } from "../components/form";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
-import { Button, buttonVariants } from "../components/atoms/Button";
+import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import { FeishuChannel } from "./feishu";
 import { BotCrumb } from "../components/bot-crumb";
@@ -31,13 +30,11 @@ function ChannelRow({
   name,
   text,
   status,
-  chatId,
 }: {
   channel: "telegram" | "wechat" | "feishu";
   name: string;
   text: string;
   status: ReactNode;
-  chatId?: number;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
@@ -55,27 +52,18 @@ function ChannelRow({
         <span className="block text-[12px] text-ink-3">{text}</span>
       </span>
       {status}
-      {chatId ? (
-        <Link
-          to="/c/$chatId"
-          params={{ chatId: String(chatId) }}
-          className={buttonVariants({ size: "xs", variant: "secondary" })}
-        >
-          Open conversation
-        </Link>
-      ) : null}
       <IconChevronRightSmall size={16} className="shrink-0 text-ink-3" />
     </div>
   );
 }
 
-// A channel gives its allowed people the whole agent.
+// All channel input shares the owner's main context.
 function Boundary() {
   return (
     <Note tone="warn">
-      <strong className="font-medium">A channel gives its allowed people the whole agent.</strong> They reach
-      the same model, instructions and memory as you. The agent can run read, write, edit and bash on this
-      computer for them. Allow only people you trust.
+      <strong className="font-medium">Channels are for the owner.</strong> Use only your own accounts. Channel
+      input shares the main timeline's context. The agent can read and change files and run commands on this
+      computer.
     </Note>
   );
 }
@@ -83,13 +71,7 @@ function Boundary() {
 export function ChannelsSection({ settings }: { settings: Settings }) {
   const saved = useQuery({ ...getSettingsOptions(), refetchInterval: 3000 });
   const feishu = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
-  const chats = useQuery({ ...listChatsOptions(), refetchInterval: 3000 });
   const current = saved.data ?? settings;
-
-  const latest = (channel: "telegram" | "wechat" | "feishu") =>
-    chats.data?.chats
-      .filter((chat) => chat.channel === channel)
-      .toSorted((a, b) => b.createdAt - a.createdAt || b.id - a.id)[0]?.id;
 
   const status = (state: string) => (
     <StatusPill tone={state === "running" ? "green" : "neutral"} className="h-5 shrink-0 px-2 text-[11.5px]">
@@ -98,7 +80,7 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
   );
 
   return (
-    <Section n={3} title="Channels" caption="Open a channel to set it up.">
+    <Section n={3} title="Channels" caption="Channels share the main timeline. Open a channel to set it up.">
       <Panel>
         <div className="divide-y divide-line">
           <ChannelRow
@@ -106,33 +88,21 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
             name="Telegram"
             text="Private messages from allowed people."
             status={status(current.telegram.status.state)}
-            chatId={latest("telegram")}
           />
           <ChannelRow
             channel="wechat"
             name="WeChat"
             text="Private messages from the paired owner."
             status={status(current.wechat.status.state)}
-            chatId={latest("wechat")}
           />
           <ChannelRow
             channel="feishu"
             name="Feishu / Lark"
             text="Private messages from the paired owner."
             status={status(feishu.isError ? "unavailable" : (feishu.data?.status ?? "Loading…"))}
-            chatId={latest("feishu")}
           />
         </div>
       </Panel>
-      {chats.isError ? (
-        <div className="mt-3">
-          <Failure
-            title="Could not load channel conversations"
-            error={chats.error}
-            retry={() => void chats.refetch()}
-          />
-        </div>
-      ) : null}
     </Section>
   );
 }
@@ -155,8 +125,6 @@ export function ChannelPage({ channel }: { channel: "telegram" | "wechat" | "fei
 
 function TelegramChannel() {
   const saved = useQuery({ ...getSettingsOptions(), refetchInterval: 2000 });
-  const chats = useQuery(listChatsOptions());
-  const telegramChats = chats.data?.chats.filter((c) => c.channel === "telegram").length;
 
   return (
     <FramedPage
@@ -171,14 +139,12 @@ function TelegramChannel() {
       }
       description="Talk to dex from your phone. Only the users that you allow can use the bot."
     >
-      <WithSettings>
-        {(settings) => <Telegram settings={settings} telegramChats={telegramChats} />}
-      </WithSettings>
+      <WithSettings>{(settings) => <Telegram settings={settings} />}</WithSettings>
     </FramedPage>
   );
 }
 
-function Telegram({ settings, telegramChats }: { settings: Settings; telegramChats?: number }) {
+function Telegram({ settings }: { settings: Settings }) {
   const { notify } = useApp();
   const telegram = settings.telegram;
   const [edit, setEdit] = useState(false);
@@ -225,12 +191,6 @@ function Telegram({ settings, telegramChats }: { settings: Settings; telegramCha
                   "Allowed user IDs",
                   <span key="users" className="font-mono text-[12px] text-ink-2 tabular-nums">
                     {telegram.allowedUsers.join(", ") || "None. Pair your account below."}
-                  </span>,
-                ],
-                [
-                  "Chats from Telegram",
-                  <span key="chats" className="font-mono text-[12px] tabular-nums">
-                    {telegramChats ?? "…"}
                   </span>,
                 ],
               ]}
@@ -280,14 +240,16 @@ function Telegram({ settings, telegramChats }: { settings: Settings; telegramCha
           </div>
         ) : null}
       </Section>
-      <Section n={2} title="How chats work" caption="Telegram chats are read-only here.">
+      <Section n={2} title="How messages work" caption="Telegram shares the main timeline.">
         <Panel className="px-4 py-3.5">
           <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] text-ink-2 marker:text-ink-3">
             <li>
-              Each private Telegram chat becomes a dex chat. /new starts a separate chat and keeps the old
-              chat.
+              Telegram and web input share the main context. /new clears that context when main is idle.
             </li>
-            <li>dex replies in Telegram. On the web, you can read these chats with their tool calls.</li>
+            <li>
+              dex replies to the entry that sent the input. The web shows all main input and tool calls.
+            </li>
+            <li>/stop stops the main answer and its background work.</li>
             <li>dex ignores messages from user IDs that are not allowed.</li>
             <li>The agent, its tools and its memory are the same as on the web.</li>
           </ul>
@@ -297,7 +259,7 @@ function Telegram({ settings, telegramChats }: { settings: Settings; telegramCha
         </div>
       </Section>
       {telegram.enabled ? (
-        <Section n={3} title="Turn off" caption="The bot stops answering. Past chats stay.">
+        <Section n={3} title="Turn off" caption="The bot stops answering. The main timeline stays.">
           <Button
             size="sm"
             variant="secondary"
@@ -321,7 +283,7 @@ function Telegram({ settings, telegramChats }: { settings: Settings; telegramCha
       {off ? (
         <Confirm
           title="Turn off Telegram?"
-          description="dex stops reading the bot and forgets the saved token. Telegram chats stay, read-only. To turn Telegram on again, enter the token again."
+          description="dex stops reading the bot and forgets the saved token. The main timeline stays. To turn Telegram on again, enter the token again."
           confirmLabel="Turn off"
           onCancel={() => setOff(false)}
           onConfirm={() => deletion.mutate({})}

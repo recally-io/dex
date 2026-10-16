@@ -567,7 +567,7 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 
 const getSubmissionReply = `-- name: GetSubmissionReply :one
 SELECT
-    c.channel_key,
+    s.origin,
     c.id AS conversation_id
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
@@ -575,14 +575,14 @@ WHERE s.id = ?
 `
 
 type GetSubmissionReplyRow struct {
-	ChannelKey     string `json:"channel_key"`
+	Origin         string `json:"origin"`
 	ConversationID int64  `json:"conversation_id"`
 }
 
 func (q *Queries) GetSubmissionReply(ctx context.Context, id string) (GetSubmissionReplyRow, error) {
 	row := q.db.QueryRowContext(ctx, getSubmissionReply, id)
 	var i GetSubmissionReplyRow
-	err := row.Scan(&i.ChannelKey, &i.ConversationID)
+	err := row.Scan(&i.Origin, &i.ConversationID)
 	return i, err
 }
 
@@ -754,7 +754,8 @@ SELECT
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN tasks t ON t.conversation_id = c.id
-WHERE c.agent_id = ? AND c.channel_key != 'main' AND c.channel_key NOT LIKE 'dream:%'
+WHERE c.agent_id = ?
+    AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
     AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
     ))
@@ -928,7 +929,7 @@ func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt6
 }
 
 const listOpenSubmissions = `-- name: ListOpenSubmissions :many
-SELECT id, content, attachments, status, reason, created_at FROM submissions
+SELECT id, content, attachments, origin, status, reason, created_at FROM submissions
 WHERE conversation_id = ? AND status != 'done' AND kind = 'message'
 ORDER BY created_at
 `
@@ -937,6 +938,7 @@ type ListOpenSubmissionsRow struct {
 	ID          string         `json:"id"`
 	Content     string         `json:"content"`
 	Attachments string         `json:"attachments"`
+	Origin      string         `json:"origin"`
 	Status      string         `json:"status"`
 	Reason      sql.NullString `json:"reason"`
 	CreatedAt   int64          `json:"created_at"`
@@ -956,6 +958,7 @@ func (q *Queries) ListOpenSubmissions(ctx context.Context, conversationID int64)
 			&i.ID,
 			&i.Content,
 			&i.Attachments,
+			&i.Origin,
 			&i.Status,
 			&i.Reason,
 			&i.CreatedAt,

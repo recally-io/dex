@@ -31,11 +31,7 @@ func TestUserQueuedTelegramMessageDoesNotTakeFirstPreview(t *testing.T) {
 	// When a second message arrives before the first answer starts.
 	f.message(2, 42, 7, "printf second")
 	f.nextEvent(t, "sendChatAction")
-	chats := d.chats(t)
-	if len(chats) != 1 {
-		t.Fatalf("chats = %+v", chats)
-	}
-	d.watch(t, chats[0].ID).until(t, "second message queued", func(tr *transcript) bool {
+	d.watch(t, d.mainChat(t)).until(t, "second message queued", func(tr *transcript) bool {
 		for _, item := range tr.items {
 			if item.Kind == "user" && item.Text == "printf second" && item.Queued {
 				return true

@@ -42,7 +42,7 @@ test("user keeps the saved Lark platform when opening settings", async () => {
   client.clear();
 });
 
-test("user sees Feishu status and opens its newest conversation", async () => {
+test("user sees Feishu status and shared main context without a peer link", async () => {
   // Given an enabled bot that still needs pairing.
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
   client.setQueryData(getSettingsOptions().queryKey, {
@@ -88,17 +88,18 @@ test("user sees Feishu status and opens its newest conversation", async () => {
 
   await router.load();
 
-  // Then the row opens the newest Feishu chat, even when an older chat has a later reply.
+  // Then the row shows setup and status without a link to an old peer conversation.
   const html = renderToStaticMarkup(
     createElement(QueryClientProvider, { client }, createElement(RouterProvider, { router })),
   );
 
   expect(html).toContain("needs_login");
   expect(html).not.toContain(">Configure<");
-  expect(html).toContain('href="/c/3"');
+  expect(html).not.toContain('href="/c/3"');
   expect(html).not.toContain('href="/c/2"');
   expect(html).not.toContain('href="/c/4"');
-  expect(html.match(/Open conversation/g)).toHaveLength(1);
+  expect(html).not.toContain("Open conversation");
+  expect(html).toContain("Channels share the main timeline.");
 
   client.clear();
 });

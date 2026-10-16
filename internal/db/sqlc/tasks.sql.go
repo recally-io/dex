@@ -334,18 +334,17 @@ func (q *Queries) ListLiveTasks(ctx context.Context) ([]Task, error) {
 
 const listStopConversations = `-- name: ListStopConversations :many
 SELECT id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level FROM conversations WHERE agent_id = ?1
-AND (id = ?2 OR (?3 != '' AND (channel_key = ?3 OR substr(channel_key, 1, length(?3) + 1) = ?3 || '/')))
+AND id = ?2
 ORDER BY id
 `
 
 type ListStopConversationsParams struct {
-	AgentID string      `json:"agent_id"`
-	ChatID  int64       `json:"chat_id"`
-	Peer    interface{} `json:"peer"`
+	AgentID string `json:"agent_id"`
+	ChatID  int64  `json:"chat_id"`
 }
 
 func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConversationsParams) ([]Conversation, error) {
-	rows, err := q.db.QueryContext(ctx, listStopConversations, arg.AgentID, arg.ChatID, arg.Peer)
+	rows, err := q.db.QueryContext(ctx, listStopConversations, arg.AgentID, arg.ChatID)
 	if err != nil {
 		return nil, err
 	}

@@ -13,6 +13,7 @@ import { retryMessage } from "../../lib/chat-state";
 import { Chip } from "../atoms/Chip";
 import { StreamText } from "../atoms/StreamText";
 import { Button } from "../atoms/Button";
+import { StatusPill } from "../atoms/StatusPill";
 import CodeBlock from "../atoms/CodeBlock";
 import { Spinner } from "../feedback";
 import { cn } from "../../lib/utils";
@@ -66,6 +67,19 @@ const markdown: Components = {
     );
   },
 };
+
+function entryName(origin?: string) {
+  switch (origin?.split(":", 1)[0]) {
+    case "telegram":
+      return "Telegram";
+    case "wechat":
+      return "WeChat";
+    case "feishu":
+      return "Feishu";
+    default:
+      return undefined;
+  }
+}
 
 function Chevron({ open }: { open: boolean }) {
   return (
@@ -417,6 +431,13 @@ export function TranscriptItem({
     case "user":
       return (
         <div className="flex animate-[fade-up_300ms_var(--ease-out-strong)_both] flex-col items-end gap-1 pl-10 sm:pl-24">
+          {entryName(item.origin) ? (
+            <span data-origin={item.origin}>
+              <StatusPill tone="neutral" className="h-5 px-2 text-[11.5px]">
+                {entryName(item.origin)}
+              </StatusPill>
+            </span>
+          ) : null}
           {item.attachments?.length ? (
             <div className={cn("max-w-full", item.queued && "opacity-70")}>
               <Files files={item.attachments} />

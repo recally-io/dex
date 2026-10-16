@@ -66,7 +66,7 @@ func TestUserStopsWhileMaintenanceCheckReportsBusy(t *testing.T) {
 	if err := w.Call(ctx, "createConversation", worker.CreateConversationParams{AgentID: "default", Model: model, ThinkingLevel: "off"}, &created); err != nil {
 		t.Fatal(err)
 	}
-	conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: "default", ChannelKey: "telegram:7"})
+	conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: "default", ChannelKey: chat.MainKey})
 	if err != nil {
 		t.Fatal(err)
 	}

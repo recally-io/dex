@@ -60,7 +60,7 @@ WHERE c.worker_conversation_id IS NOT NULL AND t.started_at IS NOT NULL;
 
 -- name: ListStopConversations :many
 SELECT * FROM conversations WHERE agent_id = @agent_id
-AND (id = @chat_id OR (@peer != '' AND (channel_key = @peer OR substr(channel_key, 1, length(@peer) + 1) = @peer || '/')))
+AND id = @chat_id
 ORDER BY id;
 
 -- name: StopConversationSubmissions :execrows

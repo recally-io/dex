@@ -37,7 +37,7 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 	f.message(1, 42, 7, taskJSON(t, map[string]string{"title": "Check", "goal": taskGate(t, dir, "task-api"), "provider": "faux", "modelId": "bash"}))
 	waitTaskFile(t, filepath.Join(dir, "task-api.pid"))
 	var channel int64
-	if err := conn.QueryRowContext(t.Context(), "SELECT id FROM conversations WHERE channel_key='telegram:7'").Scan(&channel); err != nil {
+	if err := conn.QueryRowContext(t.Context(), "SELECT id FROM conversations WHERE channel_key='main'").Scan(&channel); err != nil {
 		t.Fatal(err)
 	}
 	second := waitExecution(t, conn, channel, "Check", "running")
@@ -98,8 +98,8 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 	releaseResultGate(t, dir, "task-api")
 	work.until(t, "saved work answer", answeredWith("gate released"))
 	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/history?before=9007199254740991", detail.ConversationID), nil, nil)
-	if len(d.chats(t)) != 3 {
-		t.Fatal("Sessions must contain both tasks and the channel, without main")
+	if len(d.chats(t)) != 2 {
+		t.Fatal("Sessions must contain both tasks, without main")
 	}
 	d.must(t, http.MethodGet, "/api/tasks/missing", nil, nil, http.StatusNotFound)
 	t.Logf("artifact: main task=%s channel task=%s work=%d", first.ID, second.ID, detail.ConversationID)

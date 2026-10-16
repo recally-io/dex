@@ -576,7 +576,7 @@ func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestO
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Clear(ctx, h.AgentID, req.ChatId, id.String()); err != nil {
+	if err := h.Chats.Clear(ctx, h.AgentID, req.ChatId, id.String(), "web"); err != nil {
 		return nil, err
 	}
 	return api.ClearContext202JSONResponse{SubmissionId: id.String()}, nil
