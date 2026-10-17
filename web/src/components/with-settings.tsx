@@ -1,7 +1,8 @@
+import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Settings } from "../api/generated/types.gen";
+
 import { Failure, Loading } from "./feedback";
 
 // Shows the page only with the saved settings; it has no fallback data.

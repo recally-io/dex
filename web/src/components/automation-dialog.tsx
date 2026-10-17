@@ -3,8 +3,8 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Automation, AutomationInput, Schedule, ScheduleInput } from "../api/generated/types.gen";
 import {
-  agentCreateAutomationMutation,
-  agentUpdateAutomationMutation,
+  createAutomationMutation,
+  updateAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { previewSchedule } from "../api/generated/sdk.gen";
 import { refreshAutomations } from "../lib/queries";
@@ -88,8 +88,8 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
     onClose();
   };
 
-  const create = useMutation({ ...agentCreateAutomationMutation(), onSuccess: saved });
-  const update = useMutation({ ...agentUpdateAutomationMutation(), onSuccess: saved });
+  const create = useMutation({ ...createAutomationMutation(), onSuccess: saved });
+  const update = useMutation({ ...updateAutomationMutation(), onSuccess: saved });
   const pending = create.isPending || update.isPending;
   const error = create.error ?? update.error;
 

@@ -1,5 +1,6 @@
+import type { AgentSettings as Settings } from "./agent-scope";
 import { useQuery } from "@tanstack/react-query";
-import type { Agent, Model, Settings, ThinkingLevel } from "../api/generated/types.gen";
+import type { Agent, Model, ThinkingLevel } from "../api/generated/types.gen";
 import { updateAgent } from "../api/generated/sdk.gen";
 import {
   getAgentOptions,

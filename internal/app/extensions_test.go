@@ -57,7 +57,7 @@ func (e extensions) server(name string) serverInfo {
 func (d *dex) extensions(t *testing.T) extensions {
 	t.Helper()
 	var out extensions
-	d.must(t, http.MethodGet, "/api/extensions", nil, &out)
+	d.must(t, http.MethodGet, "/api/agents/default/extensions", nil, &out)
 	return out
 }
 
@@ -68,7 +68,7 @@ func (d *dex) reload(t *testing.T) (int, string) {
 	var status int
 	var body string
 	eventually(t, "reload", func() (bool, any) {
-		status, body = d.call(t, http.MethodPost, "/api/extensions/reload", nil)
+		status, body = d.call(t, http.MethodPost, "/api/agents/default/extensions/reload", nil)
 		return status != http.StatusConflict, body
 	})
 	return status, body
@@ -256,7 +256,7 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 	eventually(t, "started call", func() (bool, any) {
 		return strings.Contains(readNotes(t, filesDir), "started slow"), readNotes(t, filesDir)
 	})
-	status, body := d.call(t, http.MethodPost, "/api/extensions/reload", nil)
+	status, body := d.call(t, http.MethodPost, "/api/agents/default/extensions/reload", nil)
 
 	// Then dex refuses, because the agent is busy
 	if status != http.StatusConflict {
@@ -270,7 +270,7 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 		status, body := d.call(t, http.MethodPost, "/api/maintenance", nil)
 		return status == http.StatusOK, body
 	})
-	status, body = d.call(t, http.MethodPost, "/api/extensions/reload", nil)
+	status, body = d.call(t, http.MethodPost, "/api/agents/default/extensions/reload", nil)
 
 	// Then dex refuses, and the update keeps its lease until it releases it
 	if status != http.StatusConflict {

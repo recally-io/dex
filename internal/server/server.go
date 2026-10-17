@@ -96,7 +96,7 @@ func New(cfg Config) http.Handler {
 	small, uploads := http.MaxBytesHandler(mux, 256<<10), http.MaxBytesHandler(mux, upload.MaxSize+64<<10)
 	limited := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(r.URL.Path, "/")
-		if r.URL.Path == "/api/uploads" || (len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads") {
+		if len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads" {
 			uploads.ServeHTTP(w, r)
 		} else {
 			small.ServeHTTP(w, r)
@@ -118,10 +118,7 @@ type handler struct{ Config }
 type agentKey struct{}
 
 func agentID(ctx context.Context) string {
-	if id, ok := ctx.Value(agentKey{}).(string); ok {
-		return id
-	}
-	return "default"
+	return ctx.Value(agentKey{}).(string) //nolint:forcetypeassert // withAgent sets this value on every agent route.
 }
 
 // withAgent checks the path before the strict handler decodes the body or opens storage.
@@ -437,7 +434,6 @@ func (h *handler) GetSettings(ctx context.Context, _ api.GetSettingsRequestObjec
 		return nil, err
 	}
 	out := api.GetSettings200JSONResponse{
-		Agent:     s.Agent,
 		Wechat:    s.Wechat,
 		Providers: make([]api.Provider, len(s.Providers)),
 		Builtins:  make([]api.ProviderInfo, len(s.Builtins)),
@@ -490,17 +486,6 @@ func (h *handler) ListModels(ctx context.Context, _ api.ListModelsRequestObject)
 		}
 	}
 	return out, nil
-}
-
-func (h *handler) SetAgent(ctx context.Context, req api.SetAgentRequestObject) (api.SetAgentResponseObject, error) {
-	if req.Body == nil {
-		return nil, errInvalid
-	}
-	err := h.Settings.SaveAgent(ctx, agentID(ctx), *req.Body)
-	if err != nil {
-		return nil, err
-	}
-	return api.SetAgent200JSONResponse(ok), nil
 }
 
 func (h *handler) SetProvider(ctx context.Context, req api.SetProviderRequestObject) (api.SetProviderResponseObject, error) {

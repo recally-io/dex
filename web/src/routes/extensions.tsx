@@ -3,9 +3,9 @@ import type { ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Extensions, McpServer, Skill } from "../api/generated/types.gen";
 import {
-  agentGetExtensionsOptions,
-  agentGetExtensionsQueryKey,
-  agentReloadExtensionsMutation,
+  getExtensionsOptions,
+  getExtensionsQueryKey,
+  reloadExtensionsMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { errorText, queryClient } from "../lib/queries";
 import { useApp } from "../lib/app-state";
@@ -17,12 +17,12 @@ import { StatusPill } from "../components/atoms/StatusPill";
 export function ExtensionsPage() {
   const agentId = useAgentId();
   const { notify } = useApp();
-  const query = useQuery(agentGetExtensionsOptions({ path: { agentId } }));
+  const query = useQuery(getExtensionsOptions({ path: { agentId } }));
 
   const reload = useMutation({
-    ...agentReloadExtensionsMutation(),
+    ...reloadExtensionsMutation(),
     onSuccess: (data) => {
-      queryClient.setQueryData(agentGetExtensionsQueryKey({ path: { agentId } }), data);
+      queryClient.setQueryData(getExtensionsQueryKey({ path: { agentId } }), data);
       notify("MCP servers reloaded. The worker restarted for every agent.");
     },
     onError: (error) => notify(errorText(error)),

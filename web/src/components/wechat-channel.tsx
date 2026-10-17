@@ -1,7 +1,8 @@
+import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Settings, WechatLogin } from "../api/generated/types.gen";
+import type { WechatLogin } from "../api/generated/types.gen";
 import {
   beginWechatLoginMutation,
   deleteWechatMutation,

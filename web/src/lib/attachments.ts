@@ -1,7 +1,7 @@
 import { useAgentId } from "./agent-scope";
 import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "../api/generated/types.gen";
-import { agentCreateUpload } from "../api/generated/sdk.gen";
+import { createUpload } from "../api/generated/sdk.gen";
 import { errorText } from "./queries";
 import { newId } from "./utils";
 
@@ -83,7 +83,7 @@ export function useAttachments() {
       if (file.size > maxSize)
         return { key, name: file.name, size: file.size, preview, error: "Larger than 20 MB" };
 
-      agentCreateUpload({ path: { agentId }, body: { file }, signal: abort.signal, throwOnError: true }).then(
+      createUpload({ path: { agentId }, body: { file }, signal: abort.signal, throwOnError: true }).then(
         ({ data }) => update(key, { upload: data }),
         (cause: unknown) => {
           if (!abort.signal.aborted) update(key, { error: errorText(cause) });

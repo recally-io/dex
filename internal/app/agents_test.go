@@ -65,17 +65,10 @@ func TestUserCreatesAndValidatesAgents(t *testing.T) {
 	if len(listed.Agents) != 2 || listed.Agents[1] != saved {
 		t.Fatalf("listed=%+v", listed)
 	}
-	var global struct {
-		Agent apiAgent `json:"agent"`
-	}
-	d.must(t, http.MethodGet, "/api/settings", nil, &global)
-	if global.Agent.ID != "default" || global.Agent.Name != "Dex" {
-		t.Fatalf("default changed: %+v", global)
-	}
-	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"name": "Legacy", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &global.Agent)
-	if global.Agent.Name != "Legacy" {
-		t.Fatalf("legacy save=%+v", global)
+	var defaultAgent apiAgent
+	d.must(t, http.MethodGet, "/api/agents/default", nil, &defaultAgent)
+	if defaultAgent.ID != "default" || defaultAgent.Name != "Dex" {
+		t.Fatalf("default changed: %+v", defaultAgent)
 	}
 	t.Logf("artifact: created agent=%s; list=%+v", created.ID, listed.Agents)
 }
@@ -168,7 +161,6 @@ func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
 		t.Fatalf("download: status=%d bytes=%d", status, len(downloaded))
 	}
 	d.must(t, http.MethodGet, aBase+"/uploads/"+uploaded.ID, nil, nil, http.StatusNotFound)
-	d.must(t, http.MethodGet, "/api/uploads/"+uploaded.ID, nil, nil, http.StatusNotFound)
 	d.must(t, http.MethodPost, bPath+"/messages", map[string]any{"id": uuid.NewV7().String(), "text": "B attachment", "attachments": []string{uploaded.ID}}, nil, http.StatusAccepted)
 	bWatch.until(t, "B attachment answer", answered("shout: B attachment\n\nAttached files:\n- "+uploaded.Path))
 	if !slices.ContainsFunc(bWatch.tr.items, func(i item) bool { return len(i.Attachments) == 1 && i.Attachments[0].ID == uploaded.ID }) {
@@ -196,7 +188,7 @@ func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
 	if status != http.StatusOK || !strings.Contains(list, "B session") {
 		t.Fatalf("B list: %d %s", status, list)
 	}
-	status, list = d.call(t, http.MethodGet, "/api/chats", nil)
+	status, list = d.call(t, http.MethodGet, "/api/agents/default/chats", nil)
 	if status != http.StatusOK || strings.Contains(list, "B session") {
 		t.Fatalf("A list: %d %s", status, list)
 	}
@@ -223,7 +215,7 @@ func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
 	if len(listed.Automations) != 1 || listed.Automations[0].ID != auto.ID {
 		t.Fatalf("B automations=%+v", listed)
 	}
-	d.must(t, http.MethodGet, "/api/automations", nil, &listed)
+	d.must(t, http.MethodGet, "/api/agents/default/automations", nil, &listed)
 	if len(listed.Automations) != 0 {
 		t.Fatalf("default automations=%+v", listed)
 	}
@@ -251,7 +243,6 @@ func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
 		t.Fatalf("task=%+v", detail)
 	}
 	d.must(t, http.MethodGet, "/api/agents/default/tasks/"+task.ID, nil, nil, http.StatusNotFound)
-	d.must(t, http.MethodGet, "/api/tasks/"+task.ID, nil, nil, http.StatusNotFound)
 	// And B can run and remove its automation without changing the default list.
 	d.must(t, http.MethodPut, base, map[string]string{"name": "B", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
 	input["prompt"] = "no delegated work"
@@ -294,4 +285,52 @@ func TestUserGetsNotFoundForUnknownAgents(t *testing.T) {
 	} {
 		d.must(t, tc.method, base+tc.path, tc.body, nil, http.StatusNotFound)
 	}
+}
+
+func TestUserDefaultAgentRequiresExplicitAPIPath(t *testing.T) {
+	// Given a new installation with the default agent.
+	d := startDex(t, t.TempDir(), "")
+	// When a caller uses a removed agent route, then it gets 404.
+	for _, route := range []struct{ method, path string }{
+		{http.MethodGet, "/api/chats/main"},
+		{http.MethodGet, "/api/chats"},
+		{http.MethodPost, "/api/chats"},
+		{http.MethodGet, "/api/chats/1"},
+		{http.MethodPut, "/api/chats/1/settings"},
+		{http.MethodPost, "/api/chats/1/messages"},
+		{http.MethodPost, "/api/chats/1/clear"},
+		{http.MethodGet, "/api/chats/1/history"},
+		{http.MethodPost, "/api/chats/1/abort"},
+		{http.MethodGet, "/api/chats/1/events"},
+		{http.MethodGet, "/api/tasks/old"},
+		{http.MethodPost, "/api/uploads"},
+		{http.MethodGet, "/api/uploads/old"},
+		{http.MethodGet, "/api/extensions"},
+		{http.MethodPost, "/api/extensions/reload"},
+		{http.MethodGet, "/api/automations"},
+		{http.MethodPost, "/api/automations"},
+		{http.MethodGet, "/api/automations/old"},
+		{http.MethodPut, "/api/automations/old"},
+		{http.MethodDelete, "/api/automations/old"},
+		{http.MethodPost, "/api/automations/old/run"},
+		{http.MethodGet, "/api/automations/old/runs"},
+		{http.MethodPut, "/api/settings/agent"},
+	} {
+		status, body := d.call(t, route.method, route.path, nil)
+		if status != http.StatusNotFound {
+			t.Fatalf("%s %s: status=%d body=%s", route.method, route.path, status, body)
+		}
+	}
+	// Global settings have no implicit agent. The explicit default agent still exists.
+	var global map[string]any
+	d.must(t, http.MethodGet, "/api/settings", nil, &global)
+	if _, exists := global["agent"]; exists {
+		t.Fatal("global settings contain an agent")
+	}
+	var agent apiAgent
+	d.must(t, http.MethodGet, "/api/agents/default", nil, &agent)
+	if agent.ID != "default" {
+		t.Fatalf("default agent=%+v", agent)
+	}
+	t.Logf("artifact: removed routes return 404; global settings omit agent; explicit agent=%s", agent.ID)
 }

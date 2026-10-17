@@ -25,7 +25,8 @@ to read in an afternoon.
 - Several agents for one owner, each with a name, model, thinking level,
   instructions, conversations, automations, and workspace directory. The API
   can create, list, read, and update agents. Each agent's API paths include its
-  ID. A resource from another agent returns 404. The web sidebar lists agents
+  ID, including default. Old API aliases return 404. Global settings contain no
+  implicit agent. A resource from another agent returns 404. The web sidebar lists agents
   with default first. Its `+` dialog creates an agent with a name and model,
   then opens its empty timeline. Providers and channels stay global.
   Extension reload restarts the whole worker and affects every agent.

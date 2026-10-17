@@ -161,7 +161,7 @@ func TestUserTaskResultSurvivesStopAfterParentAcceptsIt(t *testing.T) {
 	})
 	before := waitResultSubmission(t, conn, resultID, "pending")
 	// When Stop cancels the accepted result, it revokes further delivery.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/abort", parent), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent), nil, nil)
 	retained := waitResultSubmission(t, conn, resultID, "unanswered")
 	if retained.content != before.content {
 		t.Fatalf("result after Stop: %+v", retained)
@@ -371,7 +371,7 @@ data: [DONE]
 	waitTaskFile(t, filepath.Join(dir, "result.pid"))
 	d.watch(t, parent).until(t, "spawn answer", answeredWith("spawn: "))
 	d.must(t, http.MethodPut, "/api/settings/providers/result-test", map[string]any{"api": "openai-completions", "baseUrl": provider.URL, "models": []string{"test"}}, nil)
-	d.must(t, http.MethodPut, "/api/settings/agent", map[string]string{"name": "Dex", "provider": "result-test", "modelId": "test", "thinkingLevel": "off"}, nil)
+	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "result-test", "modelId": "test", "thinkingLevel": "off"}, nil)
 	releaseResultGate(t, dir, "result")
 	task := waitExecution(t, conn, parent, "Saved report", "done")
 	id := "task:" + task.ID + ":result"
@@ -481,7 +481,7 @@ func TestUserSeesBackgroundResultTitleRealtimeAndAfterReconnect(t *testing.T) {
 	var page struct {
 		Items []item `json:"items"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/history?before=9007199254740991&limit=100", parent), nil, &page)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9007199254740991&limit=100", parent), nil, &page)
 	idx = slices.IndexFunc(page.Items, func(it item) bool { return it.ID == anchor.ID })
 	if idx < 0 || page.Items[idx].TaskID != task.ID || page.Items[idx].Title != anchor.Title || page.Items[idx].At != anchor.At {
 		t.Fatalf("history lost the stable task link: %+v", page.Items)

@@ -26,7 +26,7 @@ type sessionInfo struct {
 func (d *dex) newSession(t *testing.T) sessionInfo {
 	t.Helper()
 	var c sessionInfo
-	d.must(t, http.MethodPost, "/api/chats", nil, &c, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/agents/default/chats", nil, &c, http.StatusCreated)
 	return c
 }
 
@@ -72,7 +72,7 @@ func TestUserCreatesAndReusesEmptyChatSession(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 6 {
 		wg.Go(func() {
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/chats", nil)
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/agents/default/chats", nil)
 			if err != nil {
 				t.Error(err)
 				return
@@ -100,7 +100,7 @@ func TestUserCreatesAndReusesEmptyChatSession(t *testing.T) {
 	d.watch(t, first.ID).until(t, "first Chat answer", answered("echo: "+text))
 	d.send(t, first.ID, "keep the title")
 	d.watch(t, first.ID).until(t, "second Chat answer", answered("echo: keep the title"))
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d", first.ID), nil, &first)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", first.ID), nil, &first)
 	if first.Title != strings.Repeat("会", 59)+"…" {
 		t.Fatalf("first-message title changed: %q", first.Title)
 	}
@@ -152,7 +152,7 @@ func TestUserChatContextAndClearStaySeparateFromMain(t *testing.T) {
 	var page struct {
 		Items []item `json:"items"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/history?before=9007199254740991&limit=100", side), nil, &page)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9007199254740991&limit=100", side), nil, &page)
 	for _, it := range before {
 		if !slices.ContainsFunc(page.Items, func(got item) bool { return got.ID == it.ID && got.Text == it.Text }) {
 			t.Fatalf("Chat history lost %+v: %+v", it, page.Items)
@@ -192,7 +192,7 @@ func TestUserTaskResultReturnsToItsChatSession(t *testing.T) {
 		t.Fatalf("Chat result leaked into main: %+v", mw.tr.items)
 	}
 	var detail taskInfo
-	d.must(t, http.MethodGet, "/api/tasks/"+task.ID, nil, &detail)
+	d.must(t, http.MethodGet, "/api/agents/default/tasks/"+task.ID, nil, &detail)
 	if detail.ParentConversationID != side || detail.Report != "echo: only for this Chat" {
 		t.Fatalf("Chat task detail: %+v", detail)
 	}
@@ -222,8 +222,8 @@ func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
 	d.send(t, side, taskGate(t, dir, "scope-chat-turn"))
 	waitTaskFile(t, filepath.Join(dir, "scope-chat-turn.pid"))
 	queued := d.send(t, side, "echo must-not-run")
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/clear", side), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusConflict)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/abort", side), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", side), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", side), nil, nil)
 	waitExecution(t, conn, side, "scope-chat-task", "cancelled")
 	waitTaskPIDGone(t, filepath.Join(dir, "scope-chat-task.pid"))
 	waitTaskPIDGone(t, filepath.Join(dir, "scope-chat-turn.pid"))
@@ -247,7 +247,7 @@ func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
 	d.setModel(t, "bash")
 	d.send(t, side, taskGate(t, dir, "scope-chat-next-turn"))
 	waitTaskFile(t, filepath.Join(dir, "scope-chat-next-turn.pid"))
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/abort", main), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", main), nil, nil)
 	waitExecution(t, conn, main, "scope-main-task", "cancelled")
 	waitTaskPIDGone(t, filepath.Join(dir, "scope-main-task.pid"))
 	waitTaskPIDGone(t, filepath.Join(dir, "scope-main-turn.pid"))
@@ -257,7 +257,7 @@ func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
 			t.Fatalf("main Stop crossed into %s", gate)
 		}
 	}
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/abort", side), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", side), nil, nil)
 	waitTaskPIDGone(t, filepath.Join(dir, "scope-chat-next.pid"))
 	waitTaskPIDGone(t, filepath.Join(dir, "scope-chat-next-turn.pid"))
 	t.Logf("artifact: stopped_chat=%d preserved_main=%d withdrawn=%s", side, main, queued)
@@ -270,13 +270,13 @@ func TestUserCannotWriteReadOnlySessionKinds(t *testing.T) {
 	for _, key := range []string{"task:readonly", "automation:readonly", "telegram:7", "wechat:8", "feishu:9"} {
 		id := sessionFixture(t, d, key, 1)
 		var c sessionInfo
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d", id), nil, &c)
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", id), nil, &c)
 		if !c.ReadOnly {
 			t.Fatalf("writable read-only kind: %+v", c)
 		}
 		// When the web sends input or requests Stop or Clear, it gets 403.
 		for _, action := range []string{"messages", "clear", "abort"} {
-			d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/%s", id, action), map[string]string{"id": uuid.NewV7().String(), "text": "must not run"}, nil, http.StatusForbidden)
+			d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/%s", id, action), map[string]string{"id": uuid.NewV7().String(), "text": "must not run"}, nil, http.StatusForbidden)
 		}
 	}
 }
@@ -305,7 +305,7 @@ func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the caller lists Sessions, rows follow activity time with a stable ID tie-break.
-	status, raw := d.call(t, http.MethodGet, "/api/chats", nil)
+	status, raw := d.call(t, http.MethodGet, "/api/agents/default/chats", nil)
 	if status != http.StatusOK || strings.Contains(raw, `"report":`) || strings.Contains(raw, "private report") || strings.Contains(raw, "private transcript") || strings.Contains(raw, `"items":`) {
 		t.Fatalf("session summaries: %d %s", status, raw)
 	}
@@ -332,11 +332,11 @@ func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 	}
 	// Then task detail keeps the report, and the old task-list API is gone.
 	var detail taskInfo
-	d.must(t, http.MethodGet, "/api/tasks/listed-task", nil, &detail)
+	d.must(t, http.MethodGet, "/api/agents/default/tasks/listed-task", nil, &detail)
 	if detail.Report != "private report body" {
 		t.Fatalf("task detail lost report: %+v", detail)
 	}
-	status, raw = d.call(t, http.MethodGet, "/api/tasks", nil)
+	status, raw = d.call(t, http.MethodGet, "/api/agents/default/tasks", nil)
 	if status != http.StatusNotFound {
 		t.Fatalf("obsolete task list still exists: %d %s", status, raw)
 	}
@@ -384,7 +384,7 @@ func TestUserSeesSessionActivityThroughTaskCompletion(t *testing.T) {
 			var list struct {
 				Chats []sessionInfo `json:"chats"`
 			}
-			d.must(t, http.MethodGet, "/api/chats", nil, &list)
+			d.must(t, http.MethodGet, "/api/agents/default/chats", nil, &list)
 			var ids []int64
 			for _, c := range list.Chats {
 				ids = append(ids, c.ID)
@@ -399,13 +399,13 @@ func TestUserSeesSessionActivityThroughTaskCompletion(t *testing.T) {
 					want = tc.want
 				}
 				var detail sessionInfo
-				d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d", c.ID), nil, &detail)
+				d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", c.ID), nil, &detail)
 				if c.UpdatedAt != want || detail.UpdatedAt != want {
 					t.Errorf("session %d activity: list=%d detail=%d want=%d", c.ID, c.UpdatedAt, detail.UpdatedAt, want)
 				}
 			}
 			// Main uses its own settlement, without inheriting child task times.
-			for _, path := range []string{"/api/chats/main", fmt.Sprintf("/api/chats/%d", main)} {
+			for _, path := range []string{"/api/agents/default/chats/main", fmt.Sprintf("/api/agents/default/chats/%d", main)} {
 				var c sessionInfo
 				d.must(t, http.MethodGet, path, nil, &c)
 				if c.ID != main || !c.Main || c.UpdatedAt != 60 {

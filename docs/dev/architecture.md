@@ -166,8 +166,10 @@ with the saved agent ID. Extension reload restarts the whole worker and affects
 every agent.
 
 The web UI uses the nested agent routes, including live events and upload
-links. The un-nested routes remain temporary aliases for the default agent.
-Telegram, WeChat, and Feishu stay on the default agent.
+links. Agent resources require an explicit ID, including the default agent.
+The old un-nested API routes return 404. `GET /api/settings` returns only global
+settings and has no `agent` field. Telegram, WeChat, and Feishu stay on the
+default agent.
 
 ## Memory
 
@@ -267,8 +269,7 @@ saves it in `control.sqlite`, and then applies it:
 | Telegram token, allowed users           | `telegram_settings` | a restart of the bot                                         |
 
 `PUT /api/agents/{agentId}` saves the name with the other bot settings.
-`PUT /api/settings/agent` remains the default-agent alias. It trims
-spaces, then accepts 1 to 40 Unicode characters. The web uses the saved name in
+The API trims spaces, then accepts 1 to 40 Unicode characters. The web uses the saved name in
 the sidebar, the timeline header, and the composer.
 
 Main and Chat sessions use the agent's model and thinking level. They have no
@@ -359,8 +360,8 @@ ID, so the user item in the transcript has the ID that the browser sent.
 
 Source: [message-flow.puml](../../assets/src/message-flow.puml)
 
-1. The browser opens `GET /api/chats/main`, then sends
-   `POST /api/chats/{id}/messages` with a UUID that it makes.
+1. The browser opens `GET /api/agents/{agentId}/chats/main`, then sends
+   `POST /api/agents/{agentId}/chats/{id}/messages` with a UUID that it makes.
    [`chat.Service.Send`](../../internal/chat/chat.go) refuses the message when
    neither the chat nor the agent has a model. Otherwise it finds or creates
    the conversation for
@@ -419,9 +420,9 @@ appear in Sessions but stay absent from dream inputs. The human can read their c
 history, and normal SSE stream. Web input, settings, clear, and abort are refused.
 Dream input selects only ordinary messages, so internal results in a source session
 cannot enter memory as user text.
-`GET /api/tasks/{id}` returns one record with its report, times, and conversation
+`GET /api/agents/{agentId}/tasks/{id}` returns one record with its report, times, and conversation
 ID. The task and session reads check the agent. Model task tools keep their
-parent conversation scope. There is no `GET /api/tasks` list, HTTP task control,
+parent conversation scope. There is no `GET /api/agents/{agentId}/tasks` list, HTTP task control,
 or separate task stream. The Sessions page and each writable session poll
 session summaries every 3 s.
 Task details poll every 3 s while queued or running. Terminal details stop polling.
@@ -458,7 +459,7 @@ has a 6 s timeout. RPC failure is logged; saved cancellation stays in effect.
 There is no cancellation retry loop. Late reports cannot change a terminal
 record or wake the model.
 
-`POST /api/chats/{chatId}/abort` returns `{status: "ok"}` after withdrawal and the
+`POST /api/agents/{agentId}/chats/{chatId}/abort` returns `{status: "ok"}` after withdrawal and the
 cancellation requests. The composer keeps Stop available for queued input,
 an active answer, and active background work started by that conversation.
 Tasks from other conversations count in the bot's badge but cannot enable
@@ -514,7 +515,7 @@ The contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas `Item`
 and `ChatEvent`. See [ADR 0003](decisions/0003-web-ui-stack-and-live-transcript.md).
 
 ```
-browser ──EventSource──▶ control  GET /api/chats/{id}/events
+browser ──EventSource──▶ control  GET /api/agents/{agentId}/chats/{id}/events
                            │ watch / unwatch, one watch ID per stream
                            ▼
                          worker  watchEvents() and ChatView (worker/src/view.ts)
@@ -543,7 +544,7 @@ browser ──EventSource──▶ control  GET /api/chats/{id}/events
   behind is closed, and the browser reconnects.
 - A stream sends a comment line every 15 s.
 
-`POST /api/chats/{id}/clear` uses the delivery lock and a SQLite writer
+`POST /api/agents/{agentId}/chats/{id}/clear` uses the delivery lock and a SQLite writer
 transaction to check pending input and insert `context_reset` together. The
 worker also checks its active run and inbox. A refused request stores nothing.
 Delivery uses `submit({type: "write", requestId, entry: {kind: "pi.reset",
@@ -560,7 +561,7 @@ The action is hidden when the last non-compaction item is a reset or is absent.
 A snapshot contains only the active worker context. Reset entries show dividers.
 Compaction entries stay in the data but have no divider. `historyBefore` points
 to the head entry. The browser requests
-`GET /api/chats/{id}/history?before=<entry ID>&limit=100` on demand. The worker
+`GET /api/agents/{agentId}/chats/{id}/history?before=<entry ID>&limit=100` on demand. The worker
 reads `Conversation.entries` before that exclusive cursor and returns items
 in entry order with `nextBefore`. A page can extend to the previous assistant
 or input so a tool call keeps its result. Committed assistant block IDs use

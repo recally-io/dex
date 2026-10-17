@@ -1,8 +1,9 @@
+import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Settings } from "../api/generated/types.gen";
+
 import { saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { ModelPicker } from "../components/model-picker";

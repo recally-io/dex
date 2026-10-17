@@ -9,9 +9,9 @@ import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2
 import { IconPlusSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlusSmall";
 import type { Chat, TaskSummary } from "../api/generated/types.gen";
 import {
-  agentGetTaskOptions,
-  agentListChatsOptions,
-  agentCreateChatMutation,
+  getTaskOptions,
+  listChatsOptions,
+  createChatMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { activeSessionCount, sessionKind, taskTime, taskTimes } from "../lib/tasks";
 import { refreshChats } from "../lib/queries";
@@ -54,11 +54,11 @@ function TaskPill({ task }: { task: Pick<TaskSummary, "status"> }) {
 export function SessionsPage() {
   const agentId = useAgentId();
   const settings = useQuery(scopedSettingsOptions(agentId));
-  const sessions = useQuery({ ...agentListChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
+  const sessions = useQuery({ ...listChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
   const navigate = useNavigate();
 
   const create = useMutation({
-    ...agentCreateChatMutation(),
+    ...createChatMutation(),
     onSuccess: async (chat) => {
       await refreshChats(agentId);
       await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chat.id) } });
@@ -187,7 +187,7 @@ export function TaskPage({ taskId }: { taskId: string }) {
   const agentId = useAgentId();
 
   const task = useQuery({
-    ...agentGetTaskOptions({ path: { agentId, taskId } }),
+    ...getTaskOptions({ path: { agentId, taskId } }),
     refetchInterval: ({ state }) =>
       state.data?.status === "queued" || state.data?.status === "running" ? 3000 : false,
   });

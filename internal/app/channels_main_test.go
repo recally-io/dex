@@ -120,7 +120,7 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 				t.Fatal(err)
 			}
 			var chat chatInfo
-			d.must(t, http.MethodPost, "/api/chats", nil, &chat, http.StatusCreated)
+			d.must(t, http.MethodPost, "/api/agents/default/chats", nil, &chat, http.StatusCreated)
 			d.setModel(t, "context")
 			d.send(t, chat.ID, "Chat secret")
 			d.watch(t, chat.ID).until(t, "separate Chat", answered(`context: ["Chat secret"]`))
@@ -179,7 +179,7 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 			var page struct {
 				Items []item `json:"items"`
 			}
-			d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/history?before=9007199254740991", main), nil, &page)
+			d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9007199254740991", main), nil, &page)
 			if !slices.ContainsFunc(page.Items, func(it item) bool { return it.ID == id && it.Origin == e.peer }) {
 				t.Fatalf("history lost channel entry: %+v", page.Items)
 			}

@@ -189,7 +189,7 @@ func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 			if method == http.MethodPut {
 				suffix = "settings"
 			}
-			status, raw := d.call(t, method, fmt.Sprintf("/api/chats/%d/%s", id, suffix), body)
+			status, raw := d.call(t, method, fmt.Sprintf("/api/agents/default/chats/%d/%s", id, suffix), body)
 			if status != http.StatusForbidden {
 				t.Fatalf("%s %s: %d %s", platform, method, status, raw)
 			}

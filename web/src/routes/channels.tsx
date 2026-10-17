@@ -1,10 +1,11 @@
+import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { IconChevronRightSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronRightSmall";
 import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
-import type { Settings } from "../api/generated/types.gen";
+
 import {
   createTelegramPairingMutation,
   deleteTelegramMutation,

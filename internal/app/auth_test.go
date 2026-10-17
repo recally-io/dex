@@ -48,7 +48,7 @@ func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
 	d := startDexWith(t, app.Config{DataDir: dataDir, RequireToken: true})
 
 	// When a client has no token, then the API refuses it, health included.
-	for _, path := range []string{"/api/chats", "/api/health", "/api/uploads/x", "/api/chats/1/events"} {
+	for _, path := range []string{"/api/agents/default/chats", "/api/health", "/api/agents/default/uploads/x", "/api/agents/default/chats/1/events"} {
 		if resp := d.request(t, http.MethodGet, path, "", nil); resp.StatusCode != http.StatusUnauthorized {
 			t.Fatalf("GET %s without a token: %d", path, resp.StatusCode)
 		}
@@ -67,7 +67,7 @@ func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
 	if resp := d.request(t, http.MethodGet, "/api/health", "", bearer); resp.StatusCode != http.StatusOK {
 		t.Fatalf("health with the token: %d", resp.StatusCode)
 	}
-	if resp := d.request(t, http.MethodGet, "/api/chats", "", map[string]string{"Authorization": "Bearer " + token + "x"}); resp.StatusCode != http.StatusUnauthorized {
+	if resp := d.request(t, http.MethodGet, "/api/agents/default/chats", "", map[string]string{"Authorization": "Bearer " + token + "x"}); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("a wrong token: %d", resp.StatusCode)
 	}
 
@@ -86,7 +86,7 @@ func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
 		t.Fatalf("session cookie: %+v", c)
 	}
 	session := map[string]string{"Cookie": c.String()}
-	for _, path := range []string{"/api/chats", "/api/health"} {
+	for _, path := range []string{"/api/agents/default/chats", "/api/health"} {
 		if resp := d.request(t, http.MethodGet, path, "", session); resp.StatusCode/100 != 2 {
 			t.Fatalf("GET %s with the cookie: %d", path, resp.StatusCode)
 		}
@@ -101,7 +101,7 @@ func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
 	// When dex restarts, then the stored token stays the same.
 	d.stop()
 	d = startDexWith(t, app.Config{DataDir: dataDir, RequireToken: true})
-	if resp := d.request(t, http.MethodGet, "/api/chats", "", bearer); resp.StatusCode != http.StatusOK {
+	if resp := d.request(t, http.MethodGet, "/api/agents/default/chats", "", bearer); resp.StatusCode != http.StatusOK {
 		t.Fatalf("the token after a restart: %d", resp.StatusCode)
 	}
 }
@@ -117,10 +117,10 @@ func TestUserTokenFromTheEnvironmentReplacesTheStoredToken(t *testing.T) {
 	}
 
 	// Then only the user's token opens the API.
-	if resp := d.request(t, http.MethodGet, "/api/chats", "", map[string]string{"Authorization": "Bearer " + own}); resp.StatusCode != http.StatusOK {
+	if resp := d.request(t, http.MethodGet, "/api/agents/default/chats", "", map[string]string{"Authorization": "Bearer " + own}); resp.StatusCode != http.StatusOK {
 		t.Fatalf("the user's token: %d", resp.StatusCode)
 	}
-	if resp := d.request(t, http.MethodGet, "/api/chats", "", map[string]string{"Authorization": "Bearer " + stored}); resp.StatusCode != http.StatusUnauthorized {
+	if resp := d.request(t, http.MethodGet, "/api/agents/default/chats", "", map[string]string{"Authorization": "Bearer " + stored}); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("the stored token: %d", resp.StatusCode)
 	}
 }
@@ -128,8 +128,8 @@ func TestUserTokenFromTheEnvironmentReplacesTheStoredToken(t *testing.T) {
 func TestUserOnLoopbackNeedsNoToken(t *testing.T) {
 	// Given dex on loopback without DEX_TOKEN, then the API needs no token.
 	d := startDex(t, t.TempDir(), "")
-	if resp := d.request(t, http.MethodGet, "/api/chats", "", nil); resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /api/chats: %d", resp.StatusCode)
+	if resp := d.request(t, http.MethodGet, "/api/agents/default/chats", "", nil); resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/agents/default/chats: %d", resp.StatusCode)
 	}
 }
 

@@ -1,9 +1,10 @@
+import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
 import { useState, type ReactElement } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
-import type { Model, Settings } from "../api/generated/types.gen";
+import type { Model } from "../api/generated/types.gen";
 import { saveModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { Popover } from "@base-ui/react/popover";

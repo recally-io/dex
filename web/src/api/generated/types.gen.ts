@@ -107,7 +107,7 @@ export type MessageInput = {
      */
     text: string;
     /**
-     * Upload IDs from POST /api/uploads, at most 10.
+     * Upload IDs from POST /api/agents/{agentId}/uploads, at most 10.
      */
     attachments?: Array<string>;
 };
@@ -389,7 +389,6 @@ export type RunEvent = {
 };
 
 export type Settings = {
-    agent: Agent;
     /**
      * The providers that the user added, in the order of addition.
      */
@@ -646,26 +645,6 @@ export type FeishuPoll = {
     session: string;
 };
 
-export type SettingsWritable = {
-    agent: AgentWritable;
-    /**
-     * The providers that the user added, in the order of addition.
-     */
-    providers: Array<Provider>;
-    /**
-     * All pi-ai built-in providers that take an API key.
-     */
-    builtins: Array<ProviderInfo>;
-    /**
-     * The APIs of custom providers, ID → name.
-     */
-    apis: {
-        [key: string]: string;
-    };
-    telegram: Telegram;
-    wechat: Wechat;
-};
-
 export type AgentWritable = {
     /**
      * The bot name. Trim spaces before validation.
@@ -787,497 +766,6 @@ export type AcquireMaintenanceResponses = {
 
 export type AcquireMaintenanceResponse = AcquireMaintenanceResponses[keyof AcquireMaintenanceResponses];
 
-export type GetTaskData = {
-    body?: never;
-    path: {
-        taskId: string;
-    };
-    query?: never;
-    url: '/api/tasks/{taskId}';
-};
-
-export type GetTaskErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetTaskError = GetTaskErrors[keyof GetTaskErrors];
-
-export type GetTaskResponses = {
-    /**
-     * The task. Done means that it returned a report.
-     */
-    200: Task;
-};
-
-export type GetTaskResponse = GetTaskResponses[keyof GetTaskResponses];
-
-export type GetMainChatData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/chats/main';
-};
-
-export type GetMainChatErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetMainChatError = GetMainChatErrors[keyof GetMainChatErrors];
-
-export type GetMainChatResponses = {
-    /**
-     * The main timeline.
-     */
-    200: Chat;
-};
-
-export type GetMainChatResponse = GetMainChatResponses[keyof GetMainChatResponses];
-
-export type ListChatsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/chats';
-};
-
-export type ListChatsErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type ListChatsError = ListChatsErrors[keyof ListChatsErrors];
-
-export type ListChatsResponses = {
-    /**
-     * The sessions.
-     */
-    200: ChatList;
-};
-
-export type ListChatsResponse = ListChatsResponses[keyof ListChatsResponses];
-
-export type CreateChatData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/chats';
-};
-
-export type CreateChatErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type CreateChatError = CreateChatErrors[keyof CreateChatErrors];
-
-export type CreateChatResponses = {
-    /**
-     * The new or reused Chat session.
-     */
-    201: Chat;
-};
-
-export type CreateChatResponse = CreateChatResponses[keyof CreateChatResponses];
-
-export type GetChatData = {
-    body?: never;
-    path: {
-        chatId: number;
-    };
-    query?: never;
-    url: '/api/chats/{chatId}';
-};
-
-export type GetChatErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetChatError = GetChatErrors[keyof GetChatErrors];
-
-export type GetChatResponses = {
-    /**
-     * The chat.
-     */
-    200: Chat;
-};
-
-export type GetChatResponse = GetChatResponses[keyof GetChatResponses];
-
-export type SetChatSettingsData = {
-    body: ChatSettings;
-    path: {
-        chatId: number;
-    };
-    query?: never;
-    url: '/api/chats/{chatId}/settings';
-};
-
-export type SetChatSettingsErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    403: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type SetChatSettingsError = SetChatSettingsErrors[keyof SetChatSettingsErrors];
-
-export type SetChatSettingsResponses = {
-    /**
-     * Saved.
-     */
-    200: Chat;
-};
-
-export type SetChatSettingsResponse = SetChatSettingsResponses[keyof SetChatSettingsResponses];
-
-export type SendMessageData = {
-    body: MessageInput;
-    path: {
-        chatId: number;
-    };
-    query?: never;
-    url: '/api/chats/{chatId}/messages';
-};
-
-export type SendMessageErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    403: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    409: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type SendMessageError = SendMessageErrors[keyof SendMessageErrors];
-
-export type SendMessageResponses = {
-    /**
-     * The message is stored.
-     */
-    202: SentMessage;
-};
-
-export type SendMessageResponse = SendMessageResponses[keyof SendMessageResponses];
-
-export type ClearContextData = {
-    body: {
-        /**
-         * A stable client UUID for this reset.
-         */
-        id: string;
-    };
-    path: {
-        chatId: number;
-    };
-    query?: never;
-    url: '/api/chats/{chatId}/clear';
-};
-
-export type ClearContextErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    403: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    409: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type ClearContextError = ClearContextErrors[keyof ClearContextErrors];
-
-export type ClearContextResponses = {
-    /**
-     * The reset is stored.
-     */
-    202: SentMessage;
-};
-
-export type ClearContextResponse = ClearContextResponses[keyof ClearContextResponses];
-
-export type GetChatHistoryData = {
-    body?: never;
-    path: {
-        chatId: number;
-    };
-    query: {
-        before: number;
-        limit?: number;
-    };
-    url: '/api/chats/{chatId}/history';
-};
-
-export type GetChatHistoryErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetChatHistoryError = GetChatHistoryErrors[keyof GetChatHistoryErrors];
-
-export type GetChatHistoryResponses = {
-    /**
-     * A history page. No nextBefore means the start was reached.
-     */
-    200: HistoryPage;
-};
-
-export type GetChatHistoryResponse = GetChatHistoryResponses[keyof GetChatHistoryResponses];
-
-export type AbortChatData = {
-    body?: never;
-    path: {
-        chatId: number;
-    };
-    query?: never;
-    url: '/api/chats/{chatId}/abort';
-};
-
-export type AbortChatErrors = {
-    /**
-     * The request failed.
-     */
-    403: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type AbortChatError = AbortChatErrors[keyof AbortChatErrors];
-
-export type AbortChatResponses = {
-    /**
-     * Pending input is withdrawn and cancellation is requested.
-     */
-    200: Ok;
-};
-
-export type AbortChatResponse = AbortChatResponses[keyof AbortChatResponses];
-
-export type WatchChatData = {
-    body?: never;
-    path: {
-        chatId: number;
-    };
-    query?: never;
-    url: '/api/chats/{chatId}/events';
-};
-
-export type WatchChatErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-};
-
-export type WatchChatError = WatchChatErrors[keyof WatchChatErrors];
-
-export type WatchChatResponses = {
-    /**
-     * The event stream.
-     */
-    200: ChatEvent;
-};
-
-export type WatchChatResponse = WatchChatResponses[keyof WatchChatResponses];
-
-export type CreateUploadData = {
-    body: {
-        file: Blob | File;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/uploads';
-};
-
-export type CreateUploadErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    413: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type CreateUploadError = CreateUploadErrors[keyof CreateUploadErrors];
-
-export type CreateUploadResponses = {
-    /**
-     * Stored.
-     */
-    201: Attachment;
-};
-
-export type CreateUploadResponse = CreateUploadResponses[keyof CreateUploadResponses];
-
-export type GetUploadData = {
-    body?: never;
-    path: {
-        uploadId: string;
-    };
-    query?: never;
-    url: '/api/uploads/{uploadId}';
-};
-
-export type GetUploadErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetUploadError = GetUploadErrors[keyof GetUploadErrors];
-
-export type GetUploadResponses = {
-    /**
-     * The file.
-     */
-    200: Blob | File;
-};
-
-export type GetUploadResponse = GetUploadResponses[keyof GetUploadResponses];
-
-export type GetExtensionsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/extensions';
-};
-
-export type GetExtensionsErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetExtensionsError = GetExtensionsErrors[keyof GetExtensionsErrors];
-
-export type GetExtensionsResponses = {
-    /**
-     * The extensions.
-     */
-    200: Extensions;
-};
-
-export type GetExtensionsResponse = GetExtensionsResponses[keyof GetExtensionsResponses];
-
-export type ReloadExtensionsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/extensions/reload';
-};
-
-export type ReloadExtensionsErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    409: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type ReloadExtensionsError = ReloadExtensionsErrors[keyof ReloadExtensionsErrors];
-
-export type ReloadExtensionsResponses = {
-    /**
-     * The loaded extensions.
-     */
-    200: Extensions;
-};
-
-export type ReloadExtensionsResponse = ReloadExtensionsResponses[keyof ReloadExtensionsResponses];
-
 export type GetSettingsData = {
     body?: never;
     path?: never;
@@ -1327,35 +815,6 @@ export type ListModelsResponses = {
 };
 
 export type ListModelsResponse = ListModelsResponses[keyof ListModelsResponses];
-
-export type SetAgentData = {
-    body: AgentWritable;
-    path?: never;
-    query?: never;
-    url: '/api/settings/agent';
-};
-
-export type SetAgentErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type SetAgentError = SetAgentErrors[keyof SetAgentErrors];
-
-export type SetAgentResponses = {
-    /**
-     * Saved.
-     */
-    200: Ok;
-};
-
-export type SetAgentResponse = SetAgentResponses[keyof SetAgentResponses];
 
 export type DeleteProviderData = {
     body?: never;
@@ -1705,60 +1164,6 @@ export type PollFeishuResponses = {
 
 export type PollFeishuResponse = PollFeishuResponses[keyof PollFeishuResponses];
 
-export type ListAutomationsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/automations';
-};
-
-export type ListAutomationsErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type ListAutomationsError = ListAutomationsErrors[keyof ListAutomationsErrors];
-
-export type ListAutomationsResponses = {
-    /**
-     * The automations.
-     */
-    200: AutomationList;
-};
-
-export type ListAutomationsResponse = ListAutomationsResponses[keyof ListAutomationsResponses];
-
-export type CreateAutomationData = {
-    body: AutomationInput;
-    path?: never;
-    query?: never;
-    url: '/api/automations';
-};
-
-export type CreateAutomationErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type CreateAutomationError = CreateAutomationErrors[keyof CreateAutomationErrors];
-
-export type CreateAutomationResponses = {
-    /**
-     * Created.
-     */
-    201: Automation;
-};
-
-export type CreateAutomationResponse = CreateAutomationResponses[keyof CreateAutomationResponses];
-
 export type PreviewScheduleData = {
     body: ScheduleInput;
     path?: never;
@@ -1787,161 +1192,6 @@ export type PreviewScheduleResponses = {
 };
 
 export type PreviewScheduleResponse = PreviewScheduleResponses[keyof PreviewScheduleResponses];
-
-export type DeleteAutomationData = {
-    body?: never;
-    path: {
-        automationId: string;
-    };
-    query?: never;
-    url: '/api/automations/{automationId}';
-};
-
-export type DeleteAutomationErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type DeleteAutomationError = DeleteAutomationErrors[keyof DeleteAutomationErrors];
-
-export type DeleteAutomationResponses = {
-    /**
-     * Removed.
-     */
-    200: Ok;
-};
-
-export type DeleteAutomationResponse = DeleteAutomationResponses[keyof DeleteAutomationResponses];
-
-export type GetAutomationData = {
-    body?: never;
-    path: {
-        automationId: string;
-    };
-    query?: never;
-    url: '/api/automations/{automationId}';
-};
-
-export type GetAutomationErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetAutomationError = GetAutomationErrors[keyof GetAutomationErrors];
-
-export type GetAutomationResponses = {
-    /**
-     * The automation.
-     */
-    200: Automation;
-};
-
-export type GetAutomationResponse = GetAutomationResponses[keyof GetAutomationResponses];
-
-export type UpdateAutomationData = {
-    body: AutomationInput;
-    path: {
-        automationId: string;
-    };
-    query?: never;
-    url: '/api/automations/{automationId}';
-};
-
-export type UpdateAutomationErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type UpdateAutomationError = UpdateAutomationErrors[keyof UpdateAutomationErrors];
-
-export type UpdateAutomationResponses = {
-    /**
-     * Saved.
-     */
-    200: Automation;
-};
-
-export type UpdateAutomationResponse = UpdateAutomationResponses[keyof UpdateAutomationResponses];
-
-export type RunAutomationData = {
-    body?: never;
-    path: {
-        automationId: string;
-    };
-    query?: never;
-    url: '/api/automations/{automationId}/run';
-};
-
-export type RunAutomationErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type RunAutomationError = RunAutomationErrors[keyof RunAutomationErrors];
-
-export type RunAutomationResponses = {
-    /**
-     * The run, started or skipped.
-     */
-    202: AutomationRun;
-};
-
-export type RunAutomationResponse = RunAutomationResponses[keyof RunAutomationResponses];
-
-export type ListAutomationRunsData = {
-    body?: never;
-    path: {
-        automationId: string;
-    };
-    query?: never;
-    url: '/api/automations/{automationId}/runs';
-};
-
-export type ListAutomationRunsErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type ListAutomationRunsError = ListAutomationRunsErrors[keyof ListAutomationRunsErrors];
-
-export type ListAutomationRunsResponses = {
-    /**
-     * The runs.
-     */
-    200: AutomationRunList;
-};
-
-export type ListAutomationRunsResponse = ListAutomationRunsResponses[keyof ListAutomationRunsResponses];
 
 export type ListAgentsData = {
     body?: never;
@@ -2065,7 +1315,7 @@ export type UpdateAgentResponses = {
 
 export type UpdateAgentResponse = UpdateAgentResponses[keyof UpdateAgentResponses];
 
-export type AgentGetTaskData = {
+export type GetTaskData = {
     body?: never;
     path: {
         agentId: string;
@@ -2075,7 +1325,7 @@ export type AgentGetTaskData = {
     url: '/api/agents/{agentId}/tasks/{taskId}';
 };
 
-export type AgentGetTaskErrors = {
+export type GetTaskErrors = {
     /**
      * The request failed.
      */
@@ -2086,18 +1336,18 @@ export type AgentGetTaskErrors = {
     default: Error;
 };
 
-export type AgentGetTaskError = AgentGetTaskErrors[keyof AgentGetTaskErrors];
+export type GetTaskError = GetTaskErrors[keyof GetTaskErrors];
 
-export type AgentGetTaskResponses = {
+export type GetTaskResponses = {
     /**
      * The task. Done means that it returned a report.
      */
     200: Task;
 };
 
-export type AgentGetTaskResponse = AgentGetTaskResponses[keyof AgentGetTaskResponses];
+export type GetTaskResponse = GetTaskResponses[keyof GetTaskResponses];
 
-export type AgentGetMainChatData = {
+export type GetMainChatData = {
     body?: never;
     path: {
         agentId: string;
@@ -2106,7 +1356,7 @@ export type AgentGetMainChatData = {
     url: '/api/agents/{agentId}/chats/main';
 };
 
-export type AgentGetMainChatErrors = {
+export type GetMainChatErrors = {
     /**
      * The request failed.
      */
@@ -2117,18 +1367,18 @@ export type AgentGetMainChatErrors = {
     default: Error;
 };
 
-export type AgentGetMainChatError = AgentGetMainChatErrors[keyof AgentGetMainChatErrors];
+export type GetMainChatError = GetMainChatErrors[keyof GetMainChatErrors];
 
-export type AgentGetMainChatResponses = {
+export type GetMainChatResponses = {
     /**
      * The main timeline.
      */
     200: Chat;
 };
 
-export type AgentGetMainChatResponse = AgentGetMainChatResponses[keyof AgentGetMainChatResponses];
+export type GetMainChatResponse = GetMainChatResponses[keyof GetMainChatResponses];
 
-export type AgentListChatsData = {
+export type ListChatsData = {
     body?: never;
     path: {
         agentId: string;
@@ -2137,7 +1387,7 @@ export type AgentListChatsData = {
     url: '/api/agents/{agentId}/chats';
 };
 
-export type AgentListChatsErrors = {
+export type ListChatsErrors = {
     /**
      * The request failed.
      */
@@ -2148,18 +1398,18 @@ export type AgentListChatsErrors = {
     default: Error;
 };
 
-export type AgentListChatsError = AgentListChatsErrors[keyof AgentListChatsErrors];
+export type ListChatsError = ListChatsErrors[keyof ListChatsErrors];
 
-export type AgentListChatsResponses = {
+export type ListChatsResponses = {
     /**
      * The sessions.
      */
     200: ChatList;
 };
 
-export type AgentListChatsResponse = AgentListChatsResponses[keyof AgentListChatsResponses];
+export type ListChatsResponse = ListChatsResponses[keyof ListChatsResponses];
 
-export type AgentCreateChatData = {
+export type CreateChatData = {
     body?: never;
     path: {
         agentId: string;
@@ -2168,7 +1418,7 @@ export type AgentCreateChatData = {
     url: '/api/agents/{agentId}/chats';
 };
 
-export type AgentCreateChatErrors = {
+export type CreateChatErrors = {
     /**
      * The request failed.
      */
@@ -2179,18 +1429,18 @@ export type AgentCreateChatErrors = {
     default: Error;
 };
 
-export type AgentCreateChatError = AgentCreateChatErrors[keyof AgentCreateChatErrors];
+export type CreateChatError = CreateChatErrors[keyof CreateChatErrors];
 
-export type AgentCreateChatResponses = {
+export type CreateChatResponses = {
     /**
      * The new or reused Chat session.
      */
     201: Chat;
 };
 
-export type AgentCreateChatResponse = AgentCreateChatResponses[keyof AgentCreateChatResponses];
+export type CreateChatResponse = CreateChatResponses[keyof CreateChatResponses];
 
-export type AgentGetChatData = {
+export type GetChatData = {
     body?: never;
     path: {
         agentId: string;
@@ -2200,7 +1450,7 @@ export type AgentGetChatData = {
     url: '/api/agents/{agentId}/chats/{chatId}';
 };
 
-export type AgentGetChatErrors = {
+export type GetChatErrors = {
     /**
      * The request failed.
      */
@@ -2211,18 +1461,18 @@ export type AgentGetChatErrors = {
     default: Error;
 };
 
-export type AgentGetChatError = AgentGetChatErrors[keyof AgentGetChatErrors];
+export type GetChatError = GetChatErrors[keyof GetChatErrors];
 
-export type AgentGetChatResponses = {
+export type GetChatResponses = {
     /**
      * The chat.
      */
     200: Chat;
 };
 
-export type AgentGetChatResponse = AgentGetChatResponses[keyof AgentGetChatResponses];
+export type GetChatResponse = GetChatResponses[keyof GetChatResponses];
 
-export type AgentSetChatSettingsData = {
+export type SetChatSettingsData = {
     body: ChatSettings;
     path: {
         agentId: string;
@@ -2232,7 +1482,7 @@ export type AgentSetChatSettingsData = {
     url: '/api/agents/{agentId}/chats/{chatId}/settings';
 };
 
-export type AgentSetChatSettingsErrors = {
+export type SetChatSettingsErrors = {
     /**
      * The request failed.
      */
@@ -2251,18 +1501,18 @@ export type AgentSetChatSettingsErrors = {
     default: Error;
 };
 
-export type AgentSetChatSettingsError = AgentSetChatSettingsErrors[keyof AgentSetChatSettingsErrors];
+export type SetChatSettingsError = SetChatSettingsErrors[keyof SetChatSettingsErrors];
 
-export type AgentSetChatSettingsResponses = {
+export type SetChatSettingsResponses = {
     /**
      * Saved.
      */
     200: Chat;
 };
 
-export type AgentSetChatSettingsResponse = AgentSetChatSettingsResponses[keyof AgentSetChatSettingsResponses];
+export type SetChatSettingsResponse = SetChatSettingsResponses[keyof SetChatSettingsResponses];
 
-export type AgentSendMessageData = {
+export type SendMessageData = {
     body: MessageInput;
     path: {
         agentId: string;
@@ -2272,7 +1522,7 @@ export type AgentSendMessageData = {
     url: '/api/agents/{agentId}/chats/{chatId}/messages';
 };
 
-export type AgentSendMessageErrors = {
+export type SendMessageErrors = {
     /**
      * The request failed.
      */
@@ -2295,18 +1545,18 @@ export type AgentSendMessageErrors = {
     default: Error;
 };
 
-export type AgentSendMessageError = AgentSendMessageErrors[keyof AgentSendMessageErrors];
+export type SendMessageError = SendMessageErrors[keyof SendMessageErrors];
 
-export type AgentSendMessageResponses = {
+export type SendMessageResponses = {
     /**
      * The message is stored.
      */
     202: SentMessage;
 };
 
-export type AgentSendMessageResponse = AgentSendMessageResponses[keyof AgentSendMessageResponses];
+export type SendMessageResponse = SendMessageResponses[keyof SendMessageResponses];
 
-export type AgentClearContextData = {
+export type ClearContextData = {
     body: {
         /**
          * A stable client UUID for this reset.
@@ -2321,7 +1571,7 @@ export type AgentClearContextData = {
     url: '/api/agents/{agentId}/chats/{chatId}/clear';
 };
 
-export type AgentClearContextErrors = {
+export type ClearContextErrors = {
     /**
      * The request failed.
      */
@@ -2344,18 +1594,18 @@ export type AgentClearContextErrors = {
     default: Error;
 };
 
-export type AgentClearContextError = AgentClearContextErrors[keyof AgentClearContextErrors];
+export type ClearContextError = ClearContextErrors[keyof ClearContextErrors];
 
-export type AgentClearContextResponses = {
+export type ClearContextResponses = {
     /**
      * The reset is stored.
      */
     202: SentMessage;
 };
 
-export type AgentClearContextResponse = AgentClearContextResponses[keyof AgentClearContextResponses];
+export type ClearContextResponse = ClearContextResponses[keyof ClearContextResponses];
 
-export type AgentGetChatHistoryData = {
+export type GetChatHistoryData = {
     body?: never;
     path: {
         agentId: string;
@@ -2368,7 +1618,7 @@ export type AgentGetChatHistoryData = {
     url: '/api/agents/{agentId}/chats/{chatId}/history';
 };
 
-export type AgentGetChatHistoryErrors = {
+export type GetChatHistoryErrors = {
     /**
      * The request failed.
      */
@@ -2383,18 +1633,18 @@ export type AgentGetChatHistoryErrors = {
     default: Error;
 };
 
-export type AgentGetChatHistoryError = AgentGetChatHistoryErrors[keyof AgentGetChatHistoryErrors];
+export type GetChatHistoryError = GetChatHistoryErrors[keyof GetChatHistoryErrors];
 
-export type AgentGetChatHistoryResponses = {
+export type GetChatHistoryResponses = {
     /**
      * A history page. No nextBefore means the start was reached.
      */
     200: HistoryPage;
 };
 
-export type AgentGetChatHistoryResponse = AgentGetChatHistoryResponses[keyof AgentGetChatHistoryResponses];
+export type GetChatHistoryResponse = GetChatHistoryResponses[keyof GetChatHistoryResponses];
 
-export type AgentAbortChatData = {
+export type AbortChatData = {
     body?: never;
     path: {
         agentId: string;
@@ -2404,7 +1654,7 @@ export type AgentAbortChatData = {
     url: '/api/agents/{agentId}/chats/{chatId}/abort';
 };
 
-export type AgentAbortChatErrors = {
+export type AbortChatErrors = {
     /**
      * The request failed.
      */
@@ -2419,18 +1669,18 @@ export type AgentAbortChatErrors = {
     default: Error;
 };
 
-export type AgentAbortChatError = AgentAbortChatErrors[keyof AgentAbortChatErrors];
+export type AbortChatError = AbortChatErrors[keyof AbortChatErrors];
 
-export type AgentAbortChatResponses = {
+export type AbortChatResponses = {
     /**
      * Pending input is withdrawn and cancellation is requested.
      */
     200: Ok;
 };
 
-export type AgentAbortChatResponse = AgentAbortChatResponses[keyof AgentAbortChatResponses];
+export type AbortChatResponse = AbortChatResponses[keyof AbortChatResponses];
 
-export type AgentWatchChatData = {
+export type WatchChatData = {
     body?: never;
     path: {
         agentId: string;
@@ -2440,25 +1690,25 @@ export type AgentWatchChatData = {
     url: '/api/agents/{agentId}/chats/{chatId}/events';
 };
 
-export type AgentWatchChatErrors = {
+export type WatchChatErrors = {
     /**
      * The request failed.
      */
     404: Error;
 };
 
-export type AgentWatchChatError = AgentWatchChatErrors[keyof AgentWatchChatErrors];
+export type WatchChatError = WatchChatErrors[keyof WatchChatErrors];
 
-export type AgentWatchChatResponses = {
+export type WatchChatResponses = {
     /**
      * The event stream.
      */
     200: ChatEvent;
 };
 
-export type AgentWatchChatResponse = AgentWatchChatResponses[keyof AgentWatchChatResponses];
+export type WatchChatResponse = WatchChatResponses[keyof WatchChatResponses];
 
-export type AgentCreateUploadData = {
+export type CreateUploadData = {
     body: {
         file: Blob | File;
     };
@@ -2469,7 +1719,7 @@ export type AgentCreateUploadData = {
     url: '/api/agents/{agentId}/uploads';
 };
 
-export type AgentCreateUploadErrors = {
+export type CreateUploadErrors = {
     /**
      * The request failed.
      */
@@ -2488,18 +1738,18 @@ export type AgentCreateUploadErrors = {
     default: Error;
 };
 
-export type AgentCreateUploadError = AgentCreateUploadErrors[keyof AgentCreateUploadErrors];
+export type CreateUploadError = CreateUploadErrors[keyof CreateUploadErrors];
 
-export type AgentCreateUploadResponses = {
+export type CreateUploadResponses = {
     /**
      * Stored.
      */
     201: Attachment;
 };
 
-export type AgentCreateUploadResponse = AgentCreateUploadResponses[keyof AgentCreateUploadResponses];
+export type CreateUploadResponse = CreateUploadResponses[keyof CreateUploadResponses];
 
-export type AgentGetUploadData = {
+export type GetUploadData = {
     body?: never;
     path: {
         agentId: string;
@@ -2509,7 +1759,7 @@ export type AgentGetUploadData = {
     url: '/api/agents/{agentId}/uploads/{uploadId}';
 };
 
-export type AgentGetUploadErrors = {
+export type GetUploadErrors = {
     /**
      * The request failed.
      */
@@ -2520,18 +1770,18 @@ export type AgentGetUploadErrors = {
     default: Error;
 };
 
-export type AgentGetUploadError = AgentGetUploadErrors[keyof AgentGetUploadErrors];
+export type GetUploadError = GetUploadErrors[keyof GetUploadErrors];
 
-export type AgentGetUploadResponses = {
+export type GetUploadResponses = {
     /**
      * The file.
      */
     200: Blob | File;
 };
 
-export type AgentGetUploadResponse = AgentGetUploadResponses[keyof AgentGetUploadResponses];
+export type GetUploadResponse = GetUploadResponses[keyof GetUploadResponses];
 
-export type AgentGetExtensionsData = {
+export type GetExtensionsData = {
     body?: never;
     path: {
         agentId: string;
@@ -2540,7 +1790,7 @@ export type AgentGetExtensionsData = {
     url: '/api/agents/{agentId}/extensions';
 };
 
-export type AgentGetExtensionsErrors = {
+export type GetExtensionsErrors = {
     /**
      * The request failed.
      */
@@ -2551,18 +1801,18 @@ export type AgentGetExtensionsErrors = {
     default: Error;
 };
 
-export type AgentGetExtensionsError = AgentGetExtensionsErrors[keyof AgentGetExtensionsErrors];
+export type GetExtensionsError = GetExtensionsErrors[keyof GetExtensionsErrors];
 
-export type AgentGetExtensionsResponses = {
+export type GetExtensionsResponses = {
     /**
      * The extensions.
      */
     200: Extensions;
 };
 
-export type AgentGetExtensionsResponse = AgentGetExtensionsResponses[keyof AgentGetExtensionsResponses];
+export type GetExtensionsResponse = GetExtensionsResponses[keyof GetExtensionsResponses];
 
-export type AgentReloadExtensionsData = {
+export type ReloadExtensionsData = {
     body?: never;
     path: {
         agentId: string;
@@ -2571,7 +1821,7 @@ export type AgentReloadExtensionsData = {
     url: '/api/agents/{agentId}/extensions/reload';
 };
 
-export type AgentReloadExtensionsErrors = {
+export type ReloadExtensionsErrors = {
     /**
      * The request failed.
      */
@@ -2590,18 +1840,18 @@ export type AgentReloadExtensionsErrors = {
     default: Error;
 };
 
-export type AgentReloadExtensionsError = AgentReloadExtensionsErrors[keyof AgentReloadExtensionsErrors];
+export type ReloadExtensionsError = ReloadExtensionsErrors[keyof ReloadExtensionsErrors];
 
-export type AgentReloadExtensionsResponses = {
+export type ReloadExtensionsResponses = {
     /**
      * The loaded extensions.
      */
     200: Extensions;
 };
 
-export type AgentReloadExtensionsResponse = AgentReloadExtensionsResponses[keyof AgentReloadExtensionsResponses];
+export type ReloadExtensionsResponse = ReloadExtensionsResponses[keyof ReloadExtensionsResponses];
 
-export type AgentListAutomationsData = {
+export type ListAutomationsData = {
     body?: never;
     path: {
         agentId: string;
@@ -2610,7 +1860,7 @@ export type AgentListAutomationsData = {
     url: '/api/agents/{agentId}/automations';
 };
 
-export type AgentListAutomationsErrors = {
+export type ListAutomationsErrors = {
     /**
      * The request failed.
      */
@@ -2621,18 +1871,18 @@ export type AgentListAutomationsErrors = {
     default: Error;
 };
 
-export type AgentListAutomationsError = AgentListAutomationsErrors[keyof AgentListAutomationsErrors];
+export type ListAutomationsError = ListAutomationsErrors[keyof ListAutomationsErrors];
 
-export type AgentListAutomationsResponses = {
+export type ListAutomationsResponses = {
     /**
      * The automations.
      */
     200: AutomationList;
 };
 
-export type AgentListAutomationsResponse = AgentListAutomationsResponses[keyof AgentListAutomationsResponses];
+export type ListAutomationsResponse = ListAutomationsResponses[keyof ListAutomationsResponses];
 
-export type AgentCreateAutomationData = {
+export type CreateAutomationData = {
     body: AutomationInput;
     path: {
         agentId: string;
@@ -2641,7 +1891,7 @@ export type AgentCreateAutomationData = {
     url: '/api/agents/{agentId}/automations';
 };
 
-export type AgentCreateAutomationErrors = {
+export type CreateAutomationErrors = {
     /**
      * The request failed.
      */
@@ -2656,18 +1906,18 @@ export type AgentCreateAutomationErrors = {
     default: Error;
 };
 
-export type AgentCreateAutomationError = AgentCreateAutomationErrors[keyof AgentCreateAutomationErrors];
+export type CreateAutomationError = CreateAutomationErrors[keyof CreateAutomationErrors];
 
-export type AgentCreateAutomationResponses = {
+export type CreateAutomationResponses = {
     /**
      * Created.
      */
     201: Automation;
 };
 
-export type AgentCreateAutomationResponse = AgentCreateAutomationResponses[keyof AgentCreateAutomationResponses];
+export type CreateAutomationResponse = CreateAutomationResponses[keyof CreateAutomationResponses];
 
-export type AgentDeleteAutomationData = {
+export type DeleteAutomationData = {
     body?: never;
     path: {
         agentId: string;
@@ -2677,7 +1927,7 @@ export type AgentDeleteAutomationData = {
     url: '/api/agents/{agentId}/automations/{automationId}';
 };
 
-export type AgentDeleteAutomationErrors = {
+export type DeleteAutomationErrors = {
     /**
      * The request failed.
      */
@@ -2688,18 +1938,18 @@ export type AgentDeleteAutomationErrors = {
     default: Error;
 };
 
-export type AgentDeleteAutomationError = AgentDeleteAutomationErrors[keyof AgentDeleteAutomationErrors];
+export type DeleteAutomationError = DeleteAutomationErrors[keyof DeleteAutomationErrors];
 
-export type AgentDeleteAutomationResponses = {
+export type DeleteAutomationResponses = {
     /**
      * Removed.
      */
     200: Ok;
 };
 
-export type AgentDeleteAutomationResponse = AgentDeleteAutomationResponses[keyof AgentDeleteAutomationResponses];
+export type DeleteAutomationResponse = DeleteAutomationResponses[keyof DeleteAutomationResponses];
 
-export type AgentGetAutomationData = {
+export type GetAutomationData = {
     body?: never;
     path: {
         agentId: string;
@@ -2709,7 +1959,7 @@ export type AgentGetAutomationData = {
     url: '/api/agents/{agentId}/automations/{automationId}';
 };
 
-export type AgentGetAutomationErrors = {
+export type GetAutomationErrors = {
     /**
      * The request failed.
      */
@@ -2720,18 +1970,18 @@ export type AgentGetAutomationErrors = {
     default: Error;
 };
 
-export type AgentGetAutomationError = AgentGetAutomationErrors[keyof AgentGetAutomationErrors];
+export type GetAutomationError = GetAutomationErrors[keyof GetAutomationErrors];
 
-export type AgentGetAutomationResponses = {
+export type GetAutomationResponses = {
     /**
      * The automation.
      */
     200: Automation;
 };
 
-export type AgentGetAutomationResponse = AgentGetAutomationResponses[keyof AgentGetAutomationResponses];
+export type GetAutomationResponse = GetAutomationResponses[keyof GetAutomationResponses];
 
-export type AgentUpdateAutomationData = {
+export type UpdateAutomationData = {
     body: AutomationInput;
     path: {
         agentId: string;
@@ -2741,7 +1991,7 @@ export type AgentUpdateAutomationData = {
     url: '/api/agents/{agentId}/automations/{automationId}';
 };
 
-export type AgentUpdateAutomationErrors = {
+export type UpdateAutomationErrors = {
     /**
      * The request failed.
      */
@@ -2756,18 +2006,18 @@ export type AgentUpdateAutomationErrors = {
     default: Error;
 };
 
-export type AgentUpdateAutomationError = AgentUpdateAutomationErrors[keyof AgentUpdateAutomationErrors];
+export type UpdateAutomationError = UpdateAutomationErrors[keyof UpdateAutomationErrors];
 
-export type AgentUpdateAutomationResponses = {
+export type UpdateAutomationResponses = {
     /**
      * Saved.
      */
     200: Automation;
 };
 
-export type AgentUpdateAutomationResponse = AgentUpdateAutomationResponses[keyof AgentUpdateAutomationResponses];
+export type UpdateAutomationResponse = UpdateAutomationResponses[keyof UpdateAutomationResponses];
 
-export type AgentRunAutomationData = {
+export type RunAutomationData = {
     body?: never;
     path: {
         agentId: string;
@@ -2777,7 +2027,7 @@ export type AgentRunAutomationData = {
     url: '/api/agents/{agentId}/automations/{automationId}/run';
 };
 
-export type AgentRunAutomationErrors = {
+export type RunAutomationErrors = {
     /**
      * The request failed.
      */
@@ -2788,18 +2038,18 @@ export type AgentRunAutomationErrors = {
     default: Error;
 };
 
-export type AgentRunAutomationError = AgentRunAutomationErrors[keyof AgentRunAutomationErrors];
+export type RunAutomationError = RunAutomationErrors[keyof RunAutomationErrors];
 
-export type AgentRunAutomationResponses = {
+export type RunAutomationResponses = {
     /**
      * The run, started or skipped.
      */
     202: AutomationRun;
 };
 
-export type AgentRunAutomationResponse = AgentRunAutomationResponses[keyof AgentRunAutomationResponses];
+export type RunAutomationResponse = RunAutomationResponses[keyof RunAutomationResponses];
 
-export type AgentListAutomationRunsData = {
+export type ListAutomationRunsData = {
     body?: never;
     path: {
         agentId: string;
@@ -2809,7 +2059,7 @@ export type AgentListAutomationRunsData = {
     url: '/api/agents/{agentId}/automations/{automationId}/runs';
 };
 
-export type AgentListAutomationRunsErrors = {
+export type ListAutomationRunsErrors = {
     /**
      * The request failed.
      */
@@ -2820,13 +2070,13 @@ export type AgentListAutomationRunsErrors = {
     default: Error;
 };
 
-export type AgentListAutomationRunsError = AgentListAutomationRunsErrors[keyof AgentListAutomationRunsErrors];
+export type ListAutomationRunsError = ListAutomationRunsErrors[keyof ListAutomationRunsErrors];
 
-export type AgentListAutomationRunsResponses = {
+export type ListAutomationRunsResponses = {
     /**
      * The runs.
      */
     200: AutomationRunList;
 };
 
-export type AgentListAutomationRunsResponse = AgentListAutomationRunsResponses[keyof AgentListAutomationRunsResponses];
+export type ListAutomationRunsResponse = ListAutomationRunsResponses[keyof ListAutomationRunsResponses];

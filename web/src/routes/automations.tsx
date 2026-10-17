@@ -4,12 +4,12 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Automation, AutomationRun } from "../api/generated/types.gen";
 import {
-  agentListAutomationsOptions,
-  agentGetAutomationOptions,
-  agentListAutomationRunsOptions,
-  agentUpdateAutomationMutation,
-  agentDeleteAutomationMutation,
-  agentRunAutomationMutation,
+  listAutomationsOptions,
+  getAutomationOptions,
+  listAutomationRunsOptions,
+  updateAutomationMutation,
+  deleteAutomationMutation,
+  runAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { refreshAutomations } from "../lib/queries";
 import { useAgentModel } from "../lib/agent";
@@ -51,7 +51,7 @@ function EnabledSwitch({ automation }: { automation: Automation }) {
   const agentId = useAgentId();
 
   const update = useMutation({
-    ...agentUpdateAutomationMutation(),
+    ...updateAutomationMutation(),
     onSuccess: () => refreshAutomations(agentId),
   });
 
@@ -98,7 +98,7 @@ function AutomationsSection() {
   const agentId = useAgentId();
 
   const automations = useQuery({
-    ...agentListAutomationsOptions({ path: { agentId } }),
+    ...listAutomationsOptions({ path: { agentId } }),
     refetchInterval: 10_000,
   });
 
@@ -214,12 +214,12 @@ export function AutomationPage({ automationId }: { automationId: string }) {
   const navigate = useNavigate();
 
   const automation = useQuery({
-    ...agentGetAutomationOptions({ path: { agentId, automationId } }),
+    ...getAutomationOptions({ path: { agentId, automationId } }),
     refetchInterval: 10_000,
   });
 
   const runs = useQuery({
-    ...agentListAutomationRunsOptions({ path: { agentId, automationId } }),
+    ...listAutomationRunsOptions({ path: { agentId, automationId } }),
     refetchInterval: 10_000,
   });
 
@@ -228,10 +228,10 @@ export function AutomationPage({ automationId }: { automationId: string }) {
   const [edit, setEdit] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [filter, setFilter] = useState<Filter>("All");
-  const run = useMutation({ ...agentRunAutomationMutation(), onSuccess: () => refreshAutomations(agentId) });
+  const run = useMutation({ ...runAutomationMutation(), onSuccess: () => refreshAutomations(agentId) });
 
   const remove = useMutation({
-    ...agentDeleteAutomationMutation(),
+    ...deleteAutomationMutation(),
     onSuccess: async () => {
       await refreshAutomations(agentId);
       await navigate({ to: "/a/$agentId/automations", params: { agentId } });

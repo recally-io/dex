@@ -274,7 +274,7 @@ func TestUserGetsAnswerInTelegram(t *testing.T) {
 		t.Fatalf("main: %+v", c)
 	}
 	// Main follows the bot's settings and has no session override.
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", main), map[string]string{"thinkingLevel": "high"}, nil, http.StatusForbidden)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", main), map[string]string{"thinkingLevel": "high"}, nil, http.StatusForbidden)
 
 }
 

@@ -1,13 +1,14 @@
+import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { AgentContext, scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import type { Settings } from "../api/generated/types.gen";
+
 import {
   getFeishuOptions,
   listAgentsOptions,
-  agentListAutomationsOptions,
-  agentListChatsOptions,
+  listAutomationsOptions,
+  listChatsOptions,
   listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { agentModel, saveAgent, thinkingNames, type AgentModel } from "../lib/agent";
@@ -53,11 +54,11 @@ export function useAgentActivity() {
   const feishu = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
 
   const automations = useQuery({
-    ...agentListAutomationsOptions({ path: { agentId } }),
+    ...listAutomationsOptions({ path: { agentId } }),
     refetchInterval: 10_000,
   });
 
-  const sessions = useQuery({ ...agentListChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
+  const sessions = useQuery({ ...listChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
 
   const states = [
     settings.data?.telegram.status.state,

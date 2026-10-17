@@ -1,3 +1,4 @@
+import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
 import { useContext, useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -7,20 +8,14 @@ import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2
 import { IconLock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconLock";
 import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
 import { IconBubble2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubble2";
-import type {
-  Attachment,
-  Settings,
-  UserItem,
-  MessageInput,
-  Chat as ChatInfo,
-} from "../api/generated/types.gen";
+import type { Attachment, UserItem, MessageInput, Chat as ChatInfo } from "../api/generated/types.gen";
 import {
   getHealthOptions,
-  agentGetMainChatOptions,
-  agentSendMessageMutation,
-  agentAbortChatMutation,
+  getMainChatOptions,
+  sendMessageMutation,
+  abortChatMutation,
   listModelsOptions,
-  agentListChatsOptions,
+  listChatsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
@@ -66,7 +61,7 @@ export function ChatPage({ chatId }: { chatId?: number }) {
 
 export function MainTimeline({ settings }: { settings: Settings }) {
   const agentId = useAgentId();
-  const main = useQuery(agentGetMainChatOptions({ path: { agentId } }));
+  const main = useQuery(getMainChatOptions({ path: { agentId } }));
 
   return main.isPending ? (
     <MainPane>
@@ -130,7 +125,7 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const readOnly = chat.data?.readOnly ?? true;
 
   const sessions = useQuery({
-    ...agentListChatsOptions({ path: { agentId } }),
+    ...listChatsOptions({ path: { agentId } }),
     enabled: !readOnly,
     refetchInterval: 3000,
   });
@@ -150,13 +145,13 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const failedMessage = useRef<{ body: MessageInput; attachments: Attachment[] } | null>(null);
-  const send = useMutation(agentSendMessageMutation());
+  const send = useMutation(sendMessageMutation());
   const models = useQuery(listModelsOptions());
   const files = useAttachments();
   const model = agentModel(settings.agent, models.data?.models);
 
   const abort = useMutation({
-    ...agentAbortChatMutation(),
+    ...abortChatMutation(),
     onSuccess: async () => {
       setQueued([]);
       await refreshChats(agentId);

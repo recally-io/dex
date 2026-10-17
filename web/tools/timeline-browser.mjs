@@ -1083,8 +1083,24 @@ try {
     `!document.body.innerText.includes('All channels') && document.querySelector('${agentTab("Channels")}').textContent.trim() === 'Channels' && !!document.querySelector('main a[href="/a/default/channels"]:not([inert] *)')`,
   );
   await shot("13-multi-agent-desktop");
+  await tap(agentTab("Extensions"));
+  await ui(
+    "second agent extensions",
+    `document.body.innerText.includes('/agents/${second.id}/skills') && !!document.querySelector('main button:not([inert] *)')`,
+  );
+  await check(
+    "extensions belong to the selected agent",
+    `!document.querySelector('aside a[href="/extensions"]') && document.body.innerText.includes('restarts worker for all agents')`,
+  );
+  await shot("13a-agent-extensions-desktop");
   await viewport(390, 844);
+  await check("extensions fit phone", "document.documentElement.scrollWidth <= innerWidth + 1");
+  await shot("13b-agent-extensions-phone");
   await tap(agentTab("Chat"));
+  await ui(
+    "second timeline restored on phone",
+    `location.pathname === '${secondPath}' && document.querySelector('${visibleComposer}')?.value === 'second unsent text' && document.body.innerText.includes('echo: only the second agent sees this')`,
+  );
   await ui("second timeline fits phone", "document.documentElement.scrollWidth <= innerWidth + 1");
   await shot("14-multi-agent-phone");
   await tap('button[aria-label="Open navigation"]:not([inert] *)');
@@ -1291,6 +1307,10 @@ async function click(text) {
 }
 
 async function tap(selector) {
+  await evaluate(
+    `document.querySelector(${JSON.stringify(selector)}).scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' })`,
+  );
+
   const point = await evaluate(`(() => {
     const rect = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
     return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };

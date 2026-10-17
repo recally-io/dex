@@ -29,7 +29,7 @@ type runInfo struct {
 func (d *dex) createAutomation(t *testing.T, name, prompt, session string, schedule map[string]any) automationInfo {
 	t.Helper()
 	var a automationInfo
-	d.must(t, http.MethodPost, "/api/automations", map[string]any{
+	d.must(t, http.MethodPost, "/api/agents/default/automations", map[string]any{
 		"name": name, "prompt": prompt, "schedule": schedule, "timeZone": "Asia/Shanghai", "session": session,
 		"enabled": true,
 	}, &a, http.StatusCreated)
@@ -41,14 +41,14 @@ func (d *dex) runs(t *testing.T, id string) []runInfo {
 	var list struct {
 		Runs []runInfo `json:"runs"`
 	}
-	d.must(t, http.MethodGet, "/api/automations/"+id+"/runs", nil, &list)
+	d.must(t, http.MethodGet, "/api/agents/default/automations/"+id+"/runs", nil, &list)
 	return list.Runs
 }
 
 func (d *dex) runNow(t *testing.T, id string) runInfo {
 	t.Helper()
 	var run runInfo
-	d.must(t, http.MethodPost, "/api/automations/"+id+"/run", nil, &run, http.StatusAccepted)
+	d.must(t, http.MethodPost, "/api/agents/default/automations/"+id+"/run", nil, &run, http.StatusAccepted)
 	return run
 }
 
@@ -84,14 +84,14 @@ func TestUserAutomationRunsAtItsTimeInANewChat(t *testing.T) {
 		chatInfo
 		AutomationID string `json:"automationId"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d", run.ChatID), nil, &chat)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", run.ChatID), nil, &chat)
 	if chat.Channel != "automation" || chat.AutomationID != a.ID || chat.Title != "Morning brief" {
 		t.Fatalf("chat = %+v", chat)
 	}
 
 	// And a once automation has no next run
 	var after automationInfo
-	d.must(t, http.MethodGet, "/api/automations/"+a.ID, nil, &after)
+	d.must(t, http.MethodGet, "/api/agents/default/automations/"+a.ID, nil, &after)
 	if after.NextRuns == nil || len(after.NextRuns) != 0 {
 		t.Fatalf("next runs = %v", after.NextRuns)
 	}
@@ -138,7 +138,7 @@ func TestUserAutomationReusesItsChatAndSkipsWhileBusy(t *testing.T) {
 	})
 
 	// The run stays readable; web input goes to the main timeline.
-	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/messages", first.ChatID),
+	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", first.ChatID),
 		map[string]string{"id": uuid.NewV7().String(), "text": "echo reply"})
 	if status != http.StatusForbidden {
 		t.Fatalf("automation reply: %d %s", status, raw)
@@ -163,7 +163,7 @@ func TestInvalidAutomationsAreRefused(t *testing.T) {
 	} {
 		body := valid()
 		change(body)
-		if status, raw := d.call(t, http.MethodPost, "/api/automations", body); status != http.StatusBadRequest {
+		if status, raw := d.call(t, http.MethodPost, "/api/agents/default/automations", body); status != http.StatusBadRequest {
 			t.Errorf("%s: %d %s", name, status, raw)
 		}
 	}
@@ -181,7 +181,7 @@ func TestUserAutomationResponsesKeepTheirFields(t *testing.T) {
 		t.Run(schedule["kind"].(string), func(t *testing.T) {
 			// When the user creates a disabled automation
 			var a map[string]any
-			d.must(t, http.MethodPost, "/api/automations", map[string]any{
+			d.must(t, http.MethodPost, "/api/agents/default/automations", map[string]any{
 				"name": "Check", "prompt": "check", "schedule": schedule, "timeZone": "Asia/Shanghai",
 				"session": "new", "enabled": false,
 			}, &a, http.StatusCreated)
@@ -197,7 +197,7 @@ func TestUserAutomationResponsesKeepTheirFields(t *testing.T) {
 			}
 			// And a manual run skipped without a model omits absent IDs and times
 			var run map[string]any
-			d.must(t, http.MethodPost, "/api/automations/"+a["id"].(string)+"/run", nil, &run, http.StatusAccepted)
+			d.must(t, http.MethodPost, "/api/agents/default/automations/"+a["id"].(string)+"/run", nil, &run, http.StatusAccepted)
 			if run["status"] != "skipped" || run["reason"] != "the agent has no model" {
 				t.Fatalf("run = %v", run)
 			}

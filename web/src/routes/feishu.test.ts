@@ -1,14 +1,12 @@
+import { scopedSettingsOptions } from "../lib/agent-scope";
+import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
 import { expect, test } from "vite-plus/test";
-import type { Settings } from "../api/generated/types.gen";
-import {
-  getFeishuOptions,
-  getSettingsOptions,
-  listChatsOptions,
-} from "../api/generated/@tanstack/react-query.gen";
+
+import { getFeishuOptions, listChatsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { FeishuChannel } from "./feishu";
 import { ChannelsSection } from "./channels";
 
@@ -45,7 +43,7 @@ test("user keeps the saved Lark platform when opening settings", async () => {
 test("user sees Feishu status and shared main context without a peer link", async () => {
   // Given an enabled bot that still needs pairing.
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
-  client.setQueryData(getSettingsOptions().queryKey, {
+  client.setQueryData(scopedSettingsOptions("default").queryKey, {
     agent: { name: "Dex", provider: "", modelId: "", thinkingLevel: "off", instructions: "" },
     providers: [],
     builtins: [],
@@ -61,7 +59,7 @@ test("user sees Feishu status and shared main context without a peer link", asyn
     status: "needs_login",
     error: "",
   });
-  client.setQueryData(listChatsOptions().queryKey, {
+  client.setQueryData(listChatsOptions({ path: { agentId: "default" } }).queryKey, {
     chats: [
       { id: 2, channel: "feishu" as const, createdAt: 10, updatedAt: 40 },
       { id: 3, channel: "feishu" as const, createdAt: 20, updatedAt: 20 },
@@ -80,7 +78,7 @@ test("user sees Feishu status and shared main context without a peer link", asyn
     routeTree: createRootRoute({
       component: () =>
         createElement(ChannelsSection, {
-          settings: client.getQueryData<Settings>(getSettingsOptions().queryKey)!,
+          settings: client.getQueryData<Settings>(scopedSettingsOptions("default").queryKey)!,
         }),
     }),
     history: createMemoryHistory({ initialEntries: ["/"] }),

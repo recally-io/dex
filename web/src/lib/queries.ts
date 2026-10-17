@@ -18,17 +18,17 @@ export async function refreshSettings() {
 
 export async function refreshChats(agentId: string) {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: [{ _id: "agentListChats", path: { agentId } }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "agentGetChat", path: { agentId } }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listChats", path: { agentId } }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getChat", path: { agentId } }] }),
   ]);
 }
 
 export async function refreshAutomations(agentId: string) {
   await Promise.all([
     refreshChats(agentId),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "agentListAutomations", path: { agentId } }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "agentGetAutomation", path: { agentId } }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "agentListAutomationRuns", path: { agentId } }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listAutomations", path: { agentId } }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getAutomation", path: { agentId } }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listAutomationRuns", path: { agentId } }] }),
   ]);
 }
 

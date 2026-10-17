@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acquireMaintenance, agentAbortChat, agentClearContext, agentCreateAutomation, agentCreateChat, agentCreateUpload, agentDeleteAutomation, agentGetAutomation, agentGetChat, agentGetChatHistory, agentGetExtensions, agentGetMainChat, agentGetTask, agentGetUpload, agentListAutomationRuns, agentListAutomations, agentListChats, agentReloadExtensions, agentRunAutomation, agentSendMessage, agentSetChatSettings, agentUpdateAutomation, beginFeishu, beginWechatLogin, clearContext, createAgent, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, getAgent, getAutomation, getChat, getChatHistory, getExtensions, getFeishu, getHealth, getMainChat, getSettings, getTask, getUpload, listAgents, listAutomationRuns, listAutomations, listChats, listModels, type Options, pollFeishu, pollWechatLogin, previewSchedule, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setAgent, setChatSettings, setFeishu, setProvider, setTelegram, updateAgent, updateAutomation } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, AgentAbortChatData, AgentAbortChatError, AgentAbortChatResponse, AgentClearContextData, AgentClearContextError, AgentClearContextResponse, AgentCreateAutomationData, AgentCreateAutomationError, AgentCreateAutomationResponse, AgentCreateChatData, AgentCreateChatError, AgentCreateChatResponse, AgentCreateUploadData, AgentCreateUploadError, AgentCreateUploadResponse, AgentDeleteAutomationData, AgentDeleteAutomationError, AgentDeleteAutomationResponse, AgentGetAutomationData, AgentGetAutomationError, AgentGetAutomationResponse, AgentGetChatData, AgentGetChatError, AgentGetChatHistoryData, AgentGetChatHistoryError, AgentGetChatHistoryResponse, AgentGetChatResponse, AgentGetExtensionsData, AgentGetExtensionsError, AgentGetExtensionsResponse, AgentGetMainChatData, AgentGetMainChatError, AgentGetMainChatResponse, AgentGetTaskData, AgentGetTaskError, AgentGetTaskResponse, AgentGetUploadData, AgentGetUploadError, AgentGetUploadResponse, AgentListAutomationRunsData, AgentListAutomationRunsError, AgentListAutomationRunsResponse, AgentListAutomationsData, AgentListAutomationsError, AgentListAutomationsResponse, AgentListChatsData, AgentListChatsError, AgentListChatsResponse, AgentReloadExtensionsData, AgentReloadExtensionsError, AgentReloadExtensionsResponse, AgentRunAutomationData, AgentRunAutomationError, AgentRunAutomationResponse, AgentSendMessageData, AgentSendMessageError, AgentSendMessageResponse, AgentSetChatSettingsData, AgentSetChatSettingsError, AgentSetChatSettingsResponse, AgentUpdateAutomationData, AgentUpdateAutomationError, AgentUpdateAutomationResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTaskData, GetTaskError, GetTaskResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetAgentData, SetAgentError, SetAgentResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, beginFeishu, beginWechatLogin, clearContext, createAgent, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, getAgent, getAutomation, getChat, getChatHistory, getExtensions, getFeishu, getHealth, getMainChat, getSettings, getTask, getUpload, listAgents, listAutomationRuns, listAutomations, listChats, listModels, type Options, pollFeishu, pollWechatLogin, previewSchedule, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setChatSettings, setFeishu, setProvider, setTelegram, updateAgent, updateAutomation } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTaskData, GetTaskError, GetTaskResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
 
 /**
  * Exchanges the access token for the session cookie.
@@ -102,6 +102,328 @@ export const acquireMaintenanceMutation = (options?: Partial<Options<AcquireMain
     return mutationOptions;
 };
 
+export const getSettingsQueryKey = (options?: Options<GetSettingsData>) => createQueryKey('getSettings', options);
+
+export const getSettingsOptions = (options?: Options<GetSettingsData>) => queryOptions<GetSettingsResponse, GetSettingsError, GetSettingsResponse, ReturnType<typeof getSettingsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getSettings({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getSettingsQueryKey(options)
+});
+
+export const listModelsQueryKey = (options?: Options<ListModelsData>) => createQueryKey('listModels', options);
+
+/**
+ * The models of the providers that have credentials.
+ */
+export const listModelsOptions = (options?: Options<ListModelsData>) => queryOptions<ListModelsResponse, ListModelsError, ListModelsResponse, ReturnType<typeof listModelsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listModels({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listModelsQueryKey(options)
+});
+
+export const deleteProviderMutation = (options?: Partial<Options<DeleteProviderData>>): UseMutationOptions<DeleteProviderResponse, DeleteProviderError, Options<DeleteProviderData>> => {
+    const mutationOptions: UseMutationOptions<DeleteProviderResponse, DeleteProviderError, Options<DeleteProviderData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteProvider({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Adds or changes a provider. An empty apiKey keeps the saved key. When the model list of a custom provider fails, the provider is saved and the response has the reason in `error`.
+ *
+ */
+export const setProviderMutation = (options?: Partial<Options<SetProviderData>>): UseMutationOptions<SetProviderResponse, SetProviderError, Options<SetProviderData>> => {
+    const mutationOptions: UseMutationOptions<SetProviderResponse, SetProviderError, Options<SetProviderData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await setProvider({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Creates a single-use owner pairing link. The link expires in 10 minutes.
+ */
+export const createTelegramPairingMutation = (options?: Partial<Options<CreateTelegramPairingData>>): UseMutationOptions<CreateTelegramPairingResponse, CreateTelegramPairingError, Options<CreateTelegramPairingData>> => {
+    const mutationOptions: UseMutationOptions<CreateTelegramPairingResponse, CreateTelegramPairingError, Options<CreateTelegramPairingData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createTelegramPairing({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Starts QR login. The person who confirms becomes the only allowed sender.
+ */
+export const beginWechatLoginMutation = (options?: Partial<Options<BeginWechatLoginData>>): UseMutationOptions<BeginWechatLoginResponse, BeginWechatLoginError, Options<BeginWechatLoginData>> => {
+    const mutationOptions: UseMutationOptions<BeginWechatLoginResponse, BeginWechatLoginError, Options<BeginWechatLoginData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await beginWechatLogin({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Polls for up to 35 seconds. Saves credentials only after confirmed login.
+ */
+export const pollWechatLoginMutation = (options?: Partial<Options<PollWechatLoginData>>): UseMutationOptions<PollWechatLoginResponse, PollWechatLoginError, Options<PollWechatLoginData>> => {
+    const mutationOptions: UseMutationOptions<PollWechatLoginResponse, PollWechatLoginError, Options<PollWechatLoginData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await pollWechatLogin({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Stops WeChat and forgets its credentials. Past chats stay read-only.
+ */
+export const deleteWechatMutation = (options?: Partial<Options<DeleteWechatData>>): UseMutationOptions<DeleteWechatResponse, DeleteWechatError, Options<DeleteWechatData>> => {
+    const mutationOptions: UseMutationOptions<DeleteWechatResponse, DeleteWechatError, Options<DeleteWechatData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteWechat({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Turns Telegram off and forgets the token.
+ */
+export const deleteTelegramMutation = (options?: Partial<Options<DeleteTelegramData>>): UseMutationOptions<DeleteTelegramResponse, DeleteTelegramError, Options<DeleteTelegramData>> => {
+    const mutationOptions: UseMutationOptions<DeleteTelegramResponse, DeleteTelegramError, Options<DeleteTelegramData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteTelegram({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Saves the bot and restarts it. An empty token keeps the saved token.
+ */
+export const setTelegramMutation = (options?: Partial<Options<SetTelegramData>>): UseMutationOptions<SetTelegramResponse, SetTelegramError, Options<SetTelegramData>> => {
+    const mutationOptions: UseMutationOptions<SetTelegramResponse, SetTelegramError, Options<SetTelegramData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await setTelegram({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const deleteFeishuMutation = (options?: Partial<Options<DeleteFeishuData>>): UseMutationOptions<DeleteFeishuResponse, DeleteFeishuError, Options<DeleteFeishuData>> => {
+    const mutationOptions: UseMutationOptions<DeleteFeishuResponse, DeleteFeishuError, Options<DeleteFeishuData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteFeishu({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getFeishuQueryKey = (options?: Options<GetFeishuData>) => createQueryKey('getFeishu', options);
+
+export const getFeishuOptions = (options?: Options<GetFeishuData>) => queryOptions<GetFeishuResponse, GetFeishuError, GetFeishuResponse, ReturnType<typeof getFeishuQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getFeishu({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getFeishuQueryKey(options)
+});
+
+export const setFeishuMutation = (options?: Partial<Options<SetFeishuData>>): UseMutationOptions<SetFeishuResponse, SetFeishuError, Options<SetFeishuData>> => {
+    const mutationOptions: UseMutationOptions<SetFeishuResponse, SetFeishuError, Options<SetFeishuData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await setFeishu({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const beginFeishuMutation = (options?: Partial<Options<BeginFeishuData>>): UseMutationOptions<BeginFeishuResponse, BeginFeishuError, Options<BeginFeishuData>> => {
+    const mutationOptions: UseMutationOptions<BeginFeishuResponse, BeginFeishuError, Options<BeginFeishuData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await beginFeishu({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const pollFeishuMutation = (options?: Partial<Options<PollFeishuData>>): UseMutationOptions<PollFeishuResponse, PollFeishuError, Options<PollFeishuData>> => {
+    const mutationOptions: UseMutationOptions<PollFeishuResponse, PollFeishuError, Options<PollFeishuData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await pollFeishu({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * The next times of a schedule, as the scheduler computes them.
+ */
+export const previewScheduleMutation = (options?: Partial<Options<PreviewScheduleData>>): UseMutationOptions<PreviewScheduleResponse, PreviewScheduleError, Options<PreviewScheduleData>> => {
+    const mutationOptions: UseMutationOptions<PreviewScheduleResponse, PreviewScheduleError, Options<PreviewScheduleData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await previewSchedule({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listAgentsQueryKey = (options?: Options<ListAgentsData>) => createQueryKey('listAgents', options);
+
+/**
+ * List the owner's agents in creation order.
+ */
+export const listAgentsOptions = (options?: Options<ListAgentsData>) => queryOptions<ListAgentsResponse, ListAgentsError, ListAgentsResponse, ReturnType<typeof listAgentsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listAgents({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listAgentsQueryKey(options)
+});
+
+/**
+ * Create an agent without changing global providers or channels.
+ */
+export const createAgentMutation = (options?: Partial<Options<CreateAgentData>>): UseMutationOptions<CreateAgentResponse, CreateAgentError, Options<CreateAgentData>> => {
+    const mutationOptions: UseMutationOptions<CreateAgentResponse, CreateAgentError, Options<CreateAgentData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createAgent({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getAgentQueryKey = (options: Options<GetAgentData>) => createQueryKey('getAgent', options);
+
+export const getAgentOptions = (options: Options<GetAgentData>) => queryOptions<GetAgentResponse, GetAgentError, GetAgentResponse, ReturnType<typeof getAgentQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getAgent({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getAgentQueryKey(options)
+});
+
+/**
+ * Save this agent's settings. Its next message uses them.
+ */
+export const updateAgentMutation = (options?: Partial<Options<UpdateAgentData>>): UseMutationOptions<UpdateAgentResponse, UpdateAgentError, Options<UpdateAgentData>> => {
+    const mutationOptions: UseMutationOptions<UpdateAgentResponse, UpdateAgentError, Options<UpdateAgentData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await updateAgent({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 export const getTaskQueryKey = (options: Options<GetTaskData>) => createQueryKey('getTask', options);
 
 /**
@@ -120,12 +442,12 @@ export const getTaskOptions = (options: Options<GetTaskData>) => queryOptions<Ge
     queryKey: getTaskQueryKey(options)
 });
 
-export const getMainChatQueryKey = (options?: Options<GetMainChatData>) => createQueryKey('getMainChat', options);
+export const getMainChatQueryKey = (options: Options<GetMainChatData>) => createQueryKey('getMainChat', options);
 
 /**
- * Find or create the default agent's main timeline.
+ * Find or create the requested agent's main timeline.
  */
-export const getMainChatOptions = (options?: Options<GetMainChatData>) => queryOptions<GetMainChatResponse, GetMainChatError, GetMainChatResponse, ReturnType<typeof getMainChatQueryKey>>({
+export const getMainChatOptions = (options: Options<GetMainChatData>) => queryOptions<GetMainChatResponse, GetMainChatError, GetMainChatResponse, ReturnType<typeof getMainChatQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
         const { data } = await getMainChat({
             ...options,
@@ -138,13 +460,13 @@ export const getMainChatOptions = (options?: Options<GetMainChatData>) => queryO
     queryKey: getMainChatQueryKey(options)
 });
 
-export const listChatsQueryKey = (options?: Options<ListChatsData>) => createQueryKey('listChats', options);
+export const listChatsQueryKey = (options: Options<ListChatsData>) => createQueryKey('listChats', options);
 
 /**
- * Session summaries of the default agent, newest activity first, then highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no message. Task summaries have no reports. Transcripts are not included.
+ * Session summaries of the requested agent, newest activity first, then highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no message. Task summaries have no reports. Transcripts are not included.
  *
  */
-export const listChatsOptions = (options?: Options<ListChatsData>) => queryOptions<ListChatsResponse, ListChatsError, ListChatsResponse, ReturnType<typeof listChatsQueryKey>>({
+export const listChatsOptions = (options: Options<ListChatsData>) => queryOptions<ListChatsResponse, ListChatsError, ListChatsResponse, ReturnType<typeof listChatsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
         const { data } = await listChats({
             ...options,
@@ -378,13 +700,13 @@ export const getUploadOptions = (options: Options<GetUploadData>) => queryOption
     queryKey: getUploadQueryKey(options)
 });
 
-export const getExtensionsQueryKey = (options?: Options<GetExtensionsData>) => createQueryKey('getExtensions', options);
+export const getExtensionsQueryKey = (options: Options<GetExtensionsData>) => createQueryKey('getExtensions', options);
 
 /**
  * The agent's skills and MCP servers, from ~/.agents/ and the agent directory. It does not start MCP servers: before the agent starts, the servers are idle.
  *
  */
-export const getExtensionsOptions = (options?: Options<GetExtensionsData>) => queryOptions<GetExtensionsResponse, GetExtensionsError, GetExtensionsResponse, ReturnType<typeof getExtensionsQueryKey>>({
+export const getExtensionsOptions = (options: Options<GetExtensionsData>) => queryOptions<GetExtensionsResponse, GetExtensionsError, GetExtensionsResponse, ReturnType<typeof getExtensionsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
         const { data } = await getExtensions({
             ...options,
@@ -415,268 +737,12 @@ export const reloadExtensionsMutation = (options?: Partial<Options<ReloadExtensi
     return mutationOptions;
 };
 
-export const getSettingsQueryKey = (options?: Options<GetSettingsData>) => createQueryKey('getSettings', options);
-
-export const getSettingsOptions = (options?: Options<GetSettingsData>) => queryOptions<GetSettingsResponse, GetSettingsError, GetSettingsResponse, ReturnType<typeof getSettingsQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await getSettings({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: getSettingsQueryKey(options)
-});
-
-export const listModelsQueryKey = (options?: Options<ListModelsData>) => createQueryKey('listModels', options);
+export const listAutomationsQueryKey = (options: Options<ListAutomationsData>) => createQueryKey('listAutomations', options);
 
 /**
- * The models of the providers that have credentials.
+ * All automations of this agent, oldest first.
  */
-export const listModelsOptions = (options?: Options<ListModelsData>) => queryOptions<ListModelsResponse, ListModelsError, ListModelsResponse, ReturnType<typeof listModelsQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await listModels({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: listModelsQueryKey(options)
-});
-
-/**
- * Changes the default model, thinking level and instructions. Each chat uses them from its next message, except the settings that the chat overrides. An empty modelId clears the model.
- *
- */
-export const setAgentMutation = (options?: Partial<Options<SetAgentData>>): UseMutationOptions<SetAgentResponse, SetAgentError, Options<SetAgentData>> => {
-    const mutationOptions: UseMutationOptions<SetAgentResponse, SetAgentError, Options<SetAgentData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await setAgent({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const deleteProviderMutation = (options?: Partial<Options<DeleteProviderData>>): UseMutationOptions<DeleteProviderResponse, DeleteProviderError, Options<DeleteProviderData>> => {
-    const mutationOptions: UseMutationOptions<DeleteProviderResponse, DeleteProviderError, Options<DeleteProviderData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await deleteProvider({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Adds or changes a provider. An empty apiKey keeps the saved key. When the model list of a custom provider fails, the provider is saved and the response has the reason in `error`.
- *
- */
-export const setProviderMutation = (options?: Partial<Options<SetProviderData>>): UseMutationOptions<SetProviderResponse, SetProviderError, Options<SetProviderData>> => {
-    const mutationOptions: UseMutationOptions<SetProviderResponse, SetProviderError, Options<SetProviderData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await setProvider({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Creates a single-use owner pairing link. The link expires in 10 minutes.
- */
-export const createTelegramPairingMutation = (options?: Partial<Options<CreateTelegramPairingData>>): UseMutationOptions<CreateTelegramPairingResponse, CreateTelegramPairingError, Options<CreateTelegramPairingData>> => {
-    const mutationOptions: UseMutationOptions<CreateTelegramPairingResponse, CreateTelegramPairingError, Options<CreateTelegramPairingData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await createTelegramPairing({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Starts QR login. The person who confirms becomes the only allowed sender.
- */
-export const beginWechatLoginMutation = (options?: Partial<Options<BeginWechatLoginData>>): UseMutationOptions<BeginWechatLoginResponse, BeginWechatLoginError, Options<BeginWechatLoginData>> => {
-    const mutationOptions: UseMutationOptions<BeginWechatLoginResponse, BeginWechatLoginError, Options<BeginWechatLoginData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await beginWechatLogin({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Polls for up to 35 seconds. Saves credentials only after confirmed login.
- */
-export const pollWechatLoginMutation = (options?: Partial<Options<PollWechatLoginData>>): UseMutationOptions<PollWechatLoginResponse, PollWechatLoginError, Options<PollWechatLoginData>> => {
-    const mutationOptions: UseMutationOptions<PollWechatLoginResponse, PollWechatLoginError, Options<PollWechatLoginData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await pollWechatLogin({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Stops WeChat and forgets its credentials. Past chats stay read-only.
- */
-export const deleteWechatMutation = (options?: Partial<Options<DeleteWechatData>>): UseMutationOptions<DeleteWechatResponse, DeleteWechatError, Options<DeleteWechatData>> => {
-    const mutationOptions: UseMutationOptions<DeleteWechatResponse, DeleteWechatError, Options<DeleteWechatData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await deleteWechat({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Turns Telegram off and forgets the token.
- */
-export const deleteTelegramMutation = (options?: Partial<Options<DeleteTelegramData>>): UseMutationOptions<DeleteTelegramResponse, DeleteTelegramError, Options<DeleteTelegramData>> => {
-    const mutationOptions: UseMutationOptions<DeleteTelegramResponse, DeleteTelegramError, Options<DeleteTelegramData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await deleteTelegram({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Saves the bot and restarts it. An empty token keeps the saved token.
- */
-export const setTelegramMutation = (options?: Partial<Options<SetTelegramData>>): UseMutationOptions<SetTelegramResponse, SetTelegramError, Options<SetTelegramData>> => {
-    const mutationOptions: UseMutationOptions<SetTelegramResponse, SetTelegramError, Options<SetTelegramData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await setTelegram({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const deleteFeishuMutation = (options?: Partial<Options<DeleteFeishuData>>): UseMutationOptions<DeleteFeishuResponse, DeleteFeishuError, Options<DeleteFeishuData>> => {
-    const mutationOptions: UseMutationOptions<DeleteFeishuResponse, DeleteFeishuError, Options<DeleteFeishuData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await deleteFeishu({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const getFeishuQueryKey = (options?: Options<GetFeishuData>) => createQueryKey('getFeishu', options);
-
-export const getFeishuOptions = (options?: Options<GetFeishuData>) => queryOptions<GetFeishuResponse, GetFeishuError, GetFeishuResponse, ReturnType<typeof getFeishuQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await getFeishu({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: getFeishuQueryKey(options)
-});
-
-export const setFeishuMutation = (options?: Partial<Options<SetFeishuData>>): UseMutationOptions<SetFeishuResponse, SetFeishuError, Options<SetFeishuData>> => {
-    const mutationOptions: UseMutationOptions<SetFeishuResponse, SetFeishuError, Options<SetFeishuData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await setFeishu({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const beginFeishuMutation = (options?: Partial<Options<BeginFeishuData>>): UseMutationOptions<BeginFeishuResponse, BeginFeishuError, Options<BeginFeishuData>> => {
-    const mutationOptions: UseMutationOptions<BeginFeishuResponse, BeginFeishuError, Options<BeginFeishuData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await beginFeishu({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const pollFeishuMutation = (options?: Partial<Options<PollFeishuData>>): UseMutationOptions<PollFeishuResponse, PollFeishuError, Options<PollFeishuData>> => {
-    const mutationOptions: UseMutationOptions<PollFeishuResponse, PollFeishuError, Options<PollFeishuData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await pollFeishu({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const listAutomationsQueryKey = (options?: Options<ListAutomationsData>) => createQueryKey('listAutomations', options);
-
-/**
- * All automations of the default agent, oldest first.
- */
-export const listAutomationsOptions = (options?: Options<ListAutomationsData>) => queryOptions<ListAutomationsResponse, ListAutomationsError, ListAutomationsResponse, ReturnType<typeof listAutomationsQueryKey>>({
+export const listAutomationsOptions = (options: Options<ListAutomationsData>) => queryOptions<ListAutomationsResponse, ListAutomationsError, ListAutomationsResponse, ReturnType<typeof listAutomationsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
         const { data } = await listAutomations({
             ...options,
@@ -693,23 +759,6 @@ export const createAutomationMutation = (options?: Partial<Options<CreateAutomat
     const mutationOptions: UseMutationOptions<CreateAutomationResponse, CreateAutomationError, Options<CreateAutomationData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await createAutomation({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * The next times of a schedule, as the scheduler computes them.
- */
-export const previewScheduleMutation = (options?: Partial<Options<PreviewScheduleData>>): UseMutationOptions<PreviewScheduleResponse, PreviewScheduleError, Options<PreviewScheduleData>> => {
-    const mutationOptions: UseMutationOptions<PreviewScheduleResponse, PreviewScheduleError, Options<PreviewScheduleData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await previewSchedule({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -804,473 +853,4 @@ export const listAutomationRunsOptions = (options: Options<ListAutomationRunsDat
         return data;
     },
     queryKey: listAutomationRunsQueryKey(options)
-});
-
-export const listAgentsQueryKey = (options?: Options<ListAgentsData>) => createQueryKey('listAgents', options);
-
-/**
- * List the owner's agents in creation order.
- */
-export const listAgentsOptions = (options?: Options<ListAgentsData>) => queryOptions<ListAgentsResponse, ListAgentsError, ListAgentsResponse, ReturnType<typeof listAgentsQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await listAgents({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: listAgentsQueryKey(options)
-});
-
-/**
- * Create an agent without changing global providers or channels.
- */
-export const createAgentMutation = (options?: Partial<Options<CreateAgentData>>): UseMutationOptions<CreateAgentResponse, CreateAgentError, Options<CreateAgentData>> => {
-    const mutationOptions: UseMutationOptions<CreateAgentResponse, CreateAgentError, Options<CreateAgentData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await createAgent({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const getAgentQueryKey = (options: Options<GetAgentData>) => createQueryKey('getAgent', options);
-
-export const getAgentOptions = (options: Options<GetAgentData>) => queryOptions<GetAgentResponse, GetAgentError, GetAgentResponse, ReturnType<typeof getAgentQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await getAgent({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: getAgentQueryKey(options)
-});
-
-/**
- * Save this agent's settings. Its next message uses them.
- */
-export const updateAgentMutation = (options?: Partial<Options<UpdateAgentData>>): UseMutationOptions<UpdateAgentResponse, UpdateAgentError, Options<UpdateAgentData>> => {
-    const mutationOptions: UseMutationOptions<UpdateAgentResponse, UpdateAgentError, Options<UpdateAgentData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await updateAgent({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const agentGetTaskQueryKey = (options: Options<AgentGetTaskData>) => createQueryKey('agentGetTask', options);
-
-/**
- * Read one task and the ID of its read-only work conversation.
- */
-export const agentGetTaskOptions = (options: Options<AgentGetTaskData>) => queryOptions<AgentGetTaskResponse, AgentGetTaskError, AgentGetTaskResponse, ReturnType<typeof agentGetTaskQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await agentGetTask({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: agentGetTaskQueryKey(options)
-});
-
-export const agentGetMainChatQueryKey = (options: Options<AgentGetMainChatData>) => createQueryKey('agentGetMainChat', options);
-
-/**
- * Find or create the requested agent's main timeline.
- */
-export const agentGetMainChatOptions = (options: Options<AgentGetMainChatData>) => queryOptions<AgentGetMainChatResponse, AgentGetMainChatError, AgentGetMainChatResponse, ReturnType<typeof agentGetMainChatQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await agentGetMainChat({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: agentGetMainChatQueryKey(options)
-});
-
-export const agentListChatsQueryKey = (options: Options<AgentListChatsData>) => createQueryKey('agentListChats', options);
-
-/**
- * Session summaries of the requested agent, newest activity first, then highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no message. Task summaries have no reports. Transcripts are not included.
- *
- */
-export const agentListChatsOptions = (options: Options<AgentListChatsData>) => queryOptions<AgentListChatsResponse, AgentListChatsError, AgentListChatsResponse, ReturnType<typeof agentListChatsQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await agentListChats({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: agentListChatsQueryKey(options)
-});
-
-/**
- * Opens a separate writable Chat session. Reuses the newest Chat session with no message, or creates one. No request body or model is needed. The first message sets its title. The session uses the bot's settings.
- *
- */
-export const agentCreateChatMutation = (options?: Partial<Options<AgentCreateChatData>>): UseMutationOptions<AgentCreateChatResponse, AgentCreateChatError, Options<AgentCreateChatData>> => {
-    const mutationOptions: UseMutationOptions<AgentCreateChatResponse, AgentCreateChatError, Options<AgentCreateChatData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await agentCreateChat({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const agentGetChatQueryKey = (options: Options<AgentGetChatData>) => createQueryKey('agentGetChat', options);
-
-export const agentGetChatOptions = (options: Options<AgentGetChatData>) => queryOptions<AgentGetChatResponse, AgentGetChatError, AgentGetChatResponse, ReturnType<typeof agentGetChatQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await agentGetChat({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: agentGetChatQueryKey(options)
-});
-
-/**
- * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message. Only automation chats accept overrides. Main and Chat sessions use agent settings.
- *
- */
-export const agentSetChatSettingsMutation = (options?: Partial<Options<AgentSetChatSettingsData>>): UseMutationOptions<AgentSetChatSettingsResponse, AgentSetChatSettingsError, Options<AgentSetChatSettingsData>> => {
-    const mutationOptions: UseMutationOptions<AgentSetChatSettingsResponse, AgentSetChatSettingsError, Options<AgentSetChatSettingsData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await agentSetChatSettings({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model. Main and Chat sessions take web messages. Task, automation and channel sessions return 403.
- *
- */
-export const agentSendMessageMutation = (options?: Partial<Options<AgentSendMessageData>>): UseMutationOptions<AgentSendMessageResponse, AgentSendMessageError, Options<AgentSendMessageData>> => {
-    const mutationOptions: UseMutationOptions<AgentSendMessageResponse, AgentSendMessageError, Options<AgentSendMessageData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await agentSendMessage({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again. Refuses a busy session without a change. Task, automation and channel sessions return 403.
- *
- */
-export const agentClearContextMutation = (options?: Partial<Options<AgentClearContextData>>): UseMutationOptions<AgentClearContextResponse, AgentClearContextError, Options<AgentClearContextData>> => {
-    const mutationOptions: UseMutationOptions<AgentClearContextResponse, AgentClearContextError, Options<AgentClearContextData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await agentClearContext({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const agentGetChatHistoryQueryKey = (options: Options<AgentGetChatHistoryData>) => createQueryKey('agentGetChatHistory', options);
-
-/**
- * Reads committed items before an entry ID, oldest first. Pages can overlap the live snapshot. Merge by item ID. The entry limit extends to an assistant or input boundary to keep tool results with their call.
- *
- */
-export const agentGetChatHistoryOptions = (options: Options<AgentGetChatHistoryData>) => queryOptions<AgentGetChatHistoryResponse, AgentGetChatHistoryError, AgentGetChatHistoryResponse, ReturnType<typeof agentGetChatHistoryQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await agentGetChatHistory({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: agentGetChatHistoryQueryKey(options)
-});
-
-export const agentGetChatHistoryInfiniteQueryKey = (options: Options<AgentGetChatHistoryData>): QueryKey<Options<AgentGetChatHistoryData>> => createQueryKey('agentGetChatHistory', options, true);
-
-/**
- * Reads committed items before an entry ID, oldest first. Pages can overlap the live snapshot. Merge by item ID. The entry limit extends to an assistant or input boundary to keep tool results with their call.
- *
- */
-export const agentGetChatHistoryInfiniteOptions = (options: Options<AgentGetChatHistoryData>) => {
-    const opts = infiniteQueryOptions<AgentGetChatHistoryResponse, AgentGetChatHistoryError, InfiniteData<AgentGetChatHistoryResponse>, QueryKey<Options<AgentGetChatHistoryData>>, number | Pick<QueryKey<Options<AgentGetChatHistoryData>>[0], 'body' | 'headers' | 'path' | 'query'>>(
-    // @ts-ignore
-    {
-        queryFn: async ({ pageParam, queryKey, signal }) => {
-            // @ts-ignore
-            const page: Pick<QueryKey<Options<AgentGetChatHistoryData>>[0], 'body' | 'headers' | 'path' | 'query'> = typeof pageParam === 'object' ? pageParam : {
-                query: {
-                    before: pageParam
-                }
-            };
-            const params = createInfiniteParams(queryKey, page);
-            const { data } = await agentGetChatHistory({
-                ...options,
-                ...params,
-                signal,
-                throwOnError: true
-            });
-            return data;
-        },
-        queryKey: agentGetChatHistoryInfiniteQueryKey(options)
-    });
-    return opts as Omit<typeof opts, 'initialData'>;
-};
-
-/**
- * Withdraws queued input and results, then requests cancellation of the current turn and background execution of this session. Earlier actions are not undone. Processes and remote work may continue. Task, automation and channel sessions return 403.
- *
- */
-export const agentAbortChatMutation = (options?: Partial<Options<AgentAbortChatData>>): UseMutationOptions<AgentAbortChatResponse, AgentAbortChatError, Options<AgentAbortChatData>> => {
-    const mutationOptions: UseMutationOptions<AgentAbortChatResponse, AgentAbortChatError, Options<AgentAbortChatData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await agentAbortChat({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Stores one file for a later message, in the agent workspace at `uploads/<id>/<name>`. The agent reads it with its tools. The largest file is 20 MB.
- *
- */
-export const agentCreateUploadMutation = (options?: Partial<Options<AgentCreateUploadData>>): UseMutationOptions<AgentCreateUploadResponse, AgentCreateUploadError, Options<AgentCreateUploadData>> => {
-    const mutationOptions: UseMutationOptions<AgentCreateUploadResponse, AgentCreateUploadError, Options<AgentCreateUploadData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await agentCreateUpload({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const agentGetUploadQueryKey = (options: Options<AgentGetUploadData>) => createQueryKey('agentGetUpload', options);
-
-/**
- * The file of an upload. PNG, JPEG, GIF and WebP images come inline with their type; all other files come as a download of type application/octet-stream.
- *
- */
-export const agentGetUploadOptions = (options: Options<AgentGetUploadData>) => queryOptions<AgentGetUploadResponse, AgentGetUploadError, AgentGetUploadResponse, ReturnType<typeof agentGetUploadQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await agentGetUpload({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: agentGetUploadQueryKey(options)
-});
-
-export const agentGetExtensionsQueryKey = (options: Options<AgentGetExtensionsData>) => createQueryKey('agentGetExtensions', options);
-
-/**
- * The agent's skills and MCP servers, from ~/.agents/ and the agent directory. It does not start MCP servers: before the agent starts, the servers are idle.
- *
- */
-export const agentGetExtensionsOptions = (options: Options<AgentGetExtensionsData>) => queryOptions<AgentGetExtensionsResponse, AgentGetExtensionsError, AgentGetExtensionsResponse, ReturnType<typeof agentGetExtensionsQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await agentGetExtensions({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: agentGetExtensionsQueryKey(options)
-});
-
-/**
- * Restarts the whole worker and affects every agent. It connects the MCP servers again. Skills need no reload. 409 when any agent has unfinished work. 400 when a file is not valid; the agent then keeps its MCP servers.
- *
- */
-export const agentReloadExtensionsMutation = (options?: Partial<Options<AgentReloadExtensionsData>>): UseMutationOptions<AgentReloadExtensionsResponse, AgentReloadExtensionsError, Options<AgentReloadExtensionsData>> => {
-    const mutationOptions: UseMutationOptions<AgentReloadExtensionsResponse, AgentReloadExtensionsError, Options<AgentReloadExtensionsData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await agentReloadExtensions({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const agentListAutomationsQueryKey = (options: Options<AgentListAutomationsData>) => createQueryKey('agentListAutomations', options);
-
-/**
- * All automations of the default agent, oldest first.
- */
-export const agentListAutomationsOptions = (options: Options<AgentListAutomationsData>) => queryOptions<AgentListAutomationsResponse, AgentListAutomationsError, AgentListAutomationsResponse, ReturnType<typeof agentListAutomationsQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await agentListAutomations({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: agentListAutomationsQueryKey(options)
-});
-
-export const agentCreateAutomationMutation = (options?: Partial<Options<AgentCreateAutomationData>>): UseMutationOptions<AgentCreateAutomationResponse, AgentCreateAutomationError, Options<AgentCreateAutomationData>> => {
-    const mutationOptions: UseMutationOptions<AgentCreateAutomationResponse, AgentCreateAutomationError, Options<AgentCreateAutomationData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await agentCreateAutomation({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Removes the automation and its run history. Its chats stay.
- */
-export const agentDeleteAutomationMutation = (options?: Partial<Options<AgentDeleteAutomationData>>): UseMutationOptions<AgentDeleteAutomationResponse, AgentDeleteAutomationError, Options<AgentDeleteAutomationData>> => {
-    const mutationOptions: UseMutationOptions<AgentDeleteAutomationResponse, AgentDeleteAutomationError, Options<AgentDeleteAutomationData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await agentDeleteAutomation({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const agentGetAutomationQueryKey = (options: Options<AgentGetAutomationData>) => createQueryKey('agentGetAutomation', options);
-
-export const agentGetAutomationOptions = (options: Options<AgentGetAutomationData>) => queryOptions<AgentGetAutomationResponse, AgentGetAutomationError, AgentGetAutomationResponse, ReturnType<typeof agentGetAutomationQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await agentGetAutomation({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: agentGetAutomationQueryKey(options)
-});
-
-/**
- * Changes the automation. The next run is computed again from now, so a change never runs a past time.
- *
- */
-export const agentUpdateAutomationMutation = (options?: Partial<Options<AgentUpdateAutomationData>>): UseMutationOptions<AgentUpdateAutomationResponse, AgentUpdateAutomationError, Options<AgentUpdateAutomationData>> => {
-    const mutationOptions: UseMutationOptions<AgentUpdateAutomationResponse, AgentUpdateAutomationError, Options<AgentUpdateAutomationData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await agentUpdateAutomation({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Runs the automation now, outside its schedule. The run is skipped when the agent has no model or the previous run is still busy.
- *
- */
-export const agentRunAutomationMutation = (options?: Partial<Options<AgentRunAutomationData>>): UseMutationOptions<AgentRunAutomationResponse, AgentRunAutomationError, Options<AgentRunAutomationData>> => {
-    const mutationOptions: UseMutationOptions<AgentRunAutomationResponse, AgentRunAutomationError, Options<AgentRunAutomationData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await agentRunAutomation({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const agentListAutomationRunsQueryKey = (options: Options<AgentListAutomationRunsData>) => createQueryKey('agentListAutomationRuns', options);
-
-/**
- * The last 50 runs, newest first.
- */
-export const agentListAutomationRunsOptions = (options: Options<AgentListAutomationRunsData>) => queryOptions<AgentListAutomationRunsResponse, AgentListAutomationRunsError, AgentListAutomationRunsResponse, ReturnType<typeof agentListAutomationRunsQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await agentListAutomationRuns({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: agentListAutomationRunsQueryKey(options)
 });

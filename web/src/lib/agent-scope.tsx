@@ -1,7 +1,10 @@
+import type { Agent, Settings } from "../api/generated/types.gen";
 import { createContext, useContext } from "react";
 import { queryOptions } from "@tanstack/react-query";
 import { getAgentOptions, getSettingsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { queryClient } from "./queries";
+
+export type AgentSettings = Settings & { agent: Agent };
 
 export const AgentContext = createContext("default");
 export const useAgentId = () => useContext(AgentContext);

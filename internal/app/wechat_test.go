@@ -423,7 +423,7 @@ func TestUserWechatMediaBecomesUploadsAndVoiceBecomesText(t *testing.T) {
 		t.Fatalf("attachments: %s", raw)
 	}
 	for i, a := range attachments {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, d.srv.URL+"/api/uploads/"+a.ID, nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, d.srv.URL+"/api/agents/default/uploads/"+a.ID, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

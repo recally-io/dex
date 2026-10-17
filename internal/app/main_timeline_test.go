@@ -22,7 +22,7 @@ func (d *dex) mainChat(t *testing.T) int64 {
 func (d *dex) mainInfo(t *testing.T) sessionInfo {
 	t.Helper()
 	var c sessionInfo
-	d.must(t, http.MethodGet, "/api/chats/main", nil, &c)
+	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &c)
 	return c
 }
 
@@ -56,7 +56,7 @@ func TestUserReturnsToMainAfterRestart(t *testing.T) {
 func (d *dex) clearMain(t *testing.T, chatID int64, id string) {
 	t.Helper()
 	eventually(t, "idle timeline accepts clear", func() (bool, any) {
-		status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/clear", chatID), map[string]string{"id": id})
+		status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", chatID), map[string]string{"id": id})
 		return status == http.StatusAccepted, fmt.Sprintf("%d %s", status, raw)
 	})
 }
@@ -107,7 +107,7 @@ func TestUserClearsMainAndReadsEarlierHistory(t *testing.T) {
 		Items      []item `json:"items"`
 		NextBefore *int64 `json:"nextBefore"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/history?before=9223372036854775807&limit=1", id), nil, &history)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9223372036854775807&limit=1", id), nil, &history)
 	all := map[string]item{}
 	for _, it := range fresh.tr.items {
 		all[it.ID] = it
@@ -121,7 +121,7 @@ func TestUserClearsMainAndReadsEarlierHistory(t *testing.T) {
 		}
 		cursor := *history.NextBefore
 		history.NextBefore = nil
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/history?before=%d&limit=1", id, cursor), nil, &history)
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=%d&limit=1", id, cursor), nil, &history)
 		if history.NextBefore != nil && *history.NextBefore >= cursor {
 			t.Fatal("history cursor did not advance")
 		}
@@ -159,7 +159,7 @@ func TestUserCannotClearBusyMain(t *testing.T) {
 	resetID := uuid.NewV7().String()
 
 	// When the owner clears, the server refuses without storing a command.
-	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/clear", id), map[string]string{"id": resetID})
+	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", id), map[string]string{"id": resetID})
 	if status != http.StatusConflict {
 		t.Fatalf("busy clear: %d %s", status, raw)
 	}
@@ -201,7 +201,7 @@ func TestUserReadsFailedInputAcrossClear(t *testing.T) {
 	var page struct {
 		Items []item `json:"items"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/history?before=9007199254740991&limit=100", id), nil, &page)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9007199254740991&limit=100", id), nil, &page)
 	all := map[string]item{}
 	for _, it := range append(fresh.tr.items, page.Items...) {
 		all[it.ID] = it

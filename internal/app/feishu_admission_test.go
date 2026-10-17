@@ -83,7 +83,7 @@ waitReconnect:
 	t.Logf("connections before=%d after=%d", before, f.connections)
 	f.mu.Unlock()
 	// Stop the filler chat so the real worker can drain this queue without 1025 model runs.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/abort", fillChat), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", fillChat), nil, nil)
 	d.must(t, http.MethodDelete, "/api/maintenance", nil, nil)
 	f.text(t, "after-window", "owner", "p2p", "after queue drains")
 	f.waitReply(t, "echo: after queue drains")

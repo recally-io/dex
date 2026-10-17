@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, AgentAbortChatData, AgentAbortChatErrors, AgentAbortChatResponses, AgentClearContextData, AgentClearContextErrors, AgentClearContextResponses, AgentCreateAutomationData, AgentCreateAutomationErrors, AgentCreateAutomationResponses, AgentCreateChatData, AgentCreateChatErrors, AgentCreateChatResponses, AgentCreateUploadData, AgentCreateUploadErrors, AgentCreateUploadResponses, AgentDeleteAutomationData, AgentDeleteAutomationErrors, AgentDeleteAutomationResponses, AgentGetAutomationData, AgentGetAutomationErrors, AgentGetAutomationResponses, AgentGetChatData, AgentGetChatErrors, AgentGetChatHistoryData, AgentGetChatHistoryErrors, AgentGetChatHistoryResponses, AgentGetChatResponses, AgentGetExtensionsData, AgentGetExtensionsErrors, AgentGetExtensionsResponses, AgentGetMainChatData, AgentGetMainChatErrors, AgentGetMainChatResponses, AgentGetTaskData, AgentGetTaskErrors, AgentGetTaskResponses, AgentGetUploadData, AgentGetUploadErrors, AgentGetUploadResponses, AgentListAutomationRunsData, AgentListAutomationRunsErrors, AgentListAutomationRunsResponses, AgentListAutomationsData, AgentListAutomationsErrors, AgentListAutomationsResponses, AgentListChatsData, AgentListChatsErrors, AgentListChatsResponses, AgentReloadExtensionsData, AgentReloadExtensionsErrors, AgentReloadExtensionsResponses, AgentRunAutomationData, AgentRunAutomationErrors, AgentRunAutomationResponses, AgentSendMessageData, AgentSendMessageErrors, AgentSendMessageResponses, AgentSetChatSettingsData, AgentSetChatSettingsErrors, AgentSetChatSettingsResponses, AgentUpdateAutomationData, AgentUpdateAutomationErrors, AgentUpdateAutomationResponses, AgentWatchChatData, AgentWatchChatErrors, AgentWatchChatResponse, AgentWatchChatResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetTaskData, GetTaskErrors, GetTaskResponses, GetUploadData, GetUploadErrors, GetUploadResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetAgentData, SetAgentErrors, SetAgentResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
+import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetTaskData, GetTaskErrors, GetTaskResponses, GetUploadData, GetUploadErrors, GetUploadResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -63,227 +63,6 @@ export const acquireMaintenance = <ThrowOnError extends boolean = false>(options
     ...options
 });
 
-/**
- * Read one task and the ID of its read-only work conversation.
- */
-export const getTask = <ThrowOnError extends boolean = false>(options: Options<GetTaskData, ThrowOnError>): RequestResult<GetTaskResponses, GetTaskErrors, ThrowOnError> => (options.client ?? client).get<GetTaskResponses, GetTaskErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/tasks/{taskId}',
-    ...options
-});
-
-/**
- * Find or create the default agent's main timeline.
- */
-export const getMainChat = <ThrowOnError extends boolean = false>(options?: Options<GetMainChatData, ThrowOnError>): RequestResult<GetMainChatResponses, GetMainChatErrors, ThrowOnError> => (options?.client ?? client).get<GetMainChatResponses, GetMainChatErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/chats/main',
-    ...options
-});
-
-/**
- * Session summaries of the default agent, newest activity first, then highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no message. Task summaries have no reports. Transcripts are not included.
- *
- */
-export const listChats = <ThrowOnError extends boolean = false>(options?: Options<ListChatsData, ThrowOnError>): RequestResult<ListChatsResponses, ListChatsErrors, ThrowOnError> => (options?.client ?? client).get<ListChatsResponses, ListChatsErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/chats',
-    ...options
-});
-
-/**
- * Opens a separate writable Chat session. Reuses the newest Chat session with no message, or creates one. No request body or model is needed. The first message sets its title. The session uses the bot's settings.
- *
- */
-export const createChat = <ThrowOnError extends boolean = false>(options?: Options<CreateChatData, ThrowOnError>): RequestResult<CreateChatResponses, CreateChatErrors, ThrowOnError> => (options?.client ?? client).post<CreateChatResponses, CreateChatErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/chats',
-    ...options
-});
-
-export const getChat = <ThrowOnError extends boolean = false>(options: Options<GetChatData, ThrowOnError>): RequestResult<GetChatResponses, GetChatErrors, ThrowOnError> => (options.client ?? client).get<GetChatResponses, GetChatErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/chats/{chatId}',
-    ...options
-});
-
-/**
- * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message. Only automation chats accept overrides. Main and Chat sessions use agent settings.
- *
- */
-export const setChatSettings = <ThrowOnError extends boolean = false>(options: Options<SetChatSettingsData, ThrowOnError>): RequestResult<SetChatSettingsResponses, SetChatSettingsErrors, ThrowOnError> => (options.client ?? client).put<SetChatSettingsResponses, SetChatSettingsErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/chats/{chatId}/settings',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-/**
- * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model. Main and Chat sessions take web messages. Task, automation and channel sessions return 403.
- *
- */
-export const sendMessage = <ThrowOnError extends boolean = false>(options: Options<SendMessageData, ThrowOnError>): RequestResult<SendMessageResponses, SendMessageErrors, ThrowOnError> => (options.client ?? client).post<SendMessageResponses, SendMessageErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/chats/{chatId}/messages',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-/**
- * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again. Refuses a busy session without a change. Task, automation and channel sessions return 403.
- *
- */
-export const clearContext = <ThrowOnError extends boolean = false>(options: Options<ClearContextData, ThrowOnError>): RequestResult<ClearContextResponses, ClearContextErrors, ThrowOnError> => (options.client ?? client).post<ClearContextResponses, ClearContextErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/chats/{chatId}/clear',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-/**
- * Reads committed items before an entry ID, oldest first. Pages can overlap the live snapshot. Merge by item ID. The entry limit extends to an assistant or input boundary to keep tool results with their call.
- *
- */
-export const getChatHistory = <ThrowOnError extends boolean = false>(options: Options<GetChatHistoryData, ThrowOnError>): RequestResult<GetChatHistoryResponses, GetChatHistoryErrors, ThrowOnError> => (options.client ?? client).get<GetChatHistoryResponses, GetChatHistoryErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/chats/{chatId}/history',
-    ...options
-});
-
-/**
- * Withdraws queued input and results, then requests cancellation of the current turn and background execution of this session. Earlier actions are not undone. Processes and remote work may continue. Task, automation and channel sessions return 403.
- *
- */
-export const abortChat = <ThrowOnError extends boolean = false>(options: Options<AbortChatData, ThrowOnError>): RequestResult<AbortChatResponses, AbortChatErrors, ThrowOnError> => (options.client ?? client).post<AbortChatResponses, AbortChatErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/chats/{chatId}/abort',
-    ...options
-});
-
-/**
- * Server-sent events. Each event has `event: <type>` and one `data:` line with a ChatEvent as JSON. The first event is a snapshot; a later snapshot replaces all state. A comment line comes every 15 s. The server closes the stream when the worker restarts or when the client is too slow; the client reconnects and gets a new snapshot.
- *
- */
-export const watchChat = <ThrowOnError extends boolean = false>(options: Options<WatchChatData, ThrowOnError, WatchChatResponse>): Promise<ServerSentEventsResult<WatchChatResponses>> => (options.client ?? client).sse.get<WatchChatResponses, WatchChatErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/chats/{chatId}/events',
-    ...options
-});
-
-/**
- * Stores one file for a later message, in the agent workspace at `uploads/<id>/<name>`. The agent reads it with its tools. The largest file is 20 MB.
- *
- */
-export const createUpload = <ThrowOnError extends boolean = false>(options: Options<CreateUploadData, ThrowOnError>): RequestResult<CreateUploadResponses, CreateUploadErrors, ThrowOnError> => (options.client ?? client).post<CreateUploadResponses, CreateUploadErrors, ThrowOnError>({
-    ...formDataBodySerializer,
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/uploads',
-    ...options,
-    headers: {
-        'Content-Type': null,
-        ...options.headers
-    }
-});
-
-/**
- * The file of an upload. PNG, JPEG, GIF and WebP images come inline with their type; all other files come as a download of type application/octet-stream.
- *
- */
-export const getUpload = <ThrowOnError extends boolean = false>(options: Options<GetUploadData, ThrowOnError>): RequestResult<GetUploadResponses, GetUploadErrors, ThrowOnError> => (options.client ?? client).get<GetUploadResponses, GetUploadErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/uploads/{uploadId}',
-    ...options
-});
-
-/**
- * The agent's skills and MCP servers, from ~/.agents/ and the agent directory. It does not start MCP servers: before the agent starts, the servers are idle.
- *
- */
-export const getExtensions = <ThrowOnError extends boolean = false>(options?: Options<GetExtensionsData, ThrowOnError>): RequestResult<GetExtensionsResponses, GetExtensionsErrors, ThrowOnError> => (options?.client ?? client).get<GetExtensionsResponses, GetExtensionsErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/extensions',
-    ...options
-});
-
-/**
- * Restarts the whole worker and affects every agent. It connects the MCP servers again. Skills need no reload. 409 when any agent has unfinished work. 400 when a file is not valid; the agent then keeps its MCP servers.
- *
- */
-export const reloadExtensions = <ThrowOnError extends boolean = false>(options?: Options<ReloadExtensionsData, ThrowOnError>): RequestResult<ReloadExtensionsResponses, ReloadExtensionsErrors, ThrowOnError> => (options?.client ?? client).post<ReloadExtensionsResponses, ReloadExtensionsErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/extensions/reload',
-    ...options
-});
-
 export const getSettings = <ThrowOnError extends boolean = false>(options?: Options<GetSettingsData, ThrowOnError>): RequestResult<GetSettingsResponses, GetSettingsErrors, ThrowOnError> => (options?.client ?? client).get<GetSettingsResponses, GetSettingsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
@@ -305,24 +84,6 @@ export const listModels = <ThrowOnError extends boolean = false>(options?: Optio
         }],
     url: '/api/models',
     ...options
-});
-
-/**
- * Changes the default model, thinking level and instructions. Each chat uses them from its next message, except the settings that the chat overrides. An empty modelId clears the model.
- *
- */
-export const setAgent = <ThrowOnError extends boolean = false>(options: Options<SetAgentData, ThrowOnError>): RequestResult<SetAgentResponses, SetAgentErrors, ThrowOnError> => (options.client ?? client).put<SetAgentResponses, SetAgentErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/settings/agent',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
 });
 
 export const deleteProvider = <ThrowOnError extends boolean = false>(options: Options<DeleteProviderData, ThrowOnError>): RequestResult<DeleteProviderResponses, DeleteProviderErrors, ThrowOnError> => (options.client ?? client).delete<DeleteProviderResponses, DeleteProviderErrors, ThrowOnError>({
@@ -502,33 +263,6 @@ export const pollFeishu = <ThrowOnError extends boolean = false>(options: Option
 });
 
 /**
- * All automations of the default agent, oldest first.
- */
-export const listAutomations = <ThrowOnError extends boolean = false>(options?: Options<ListAutomationsData, ThrowOnError>): RequestResult<ListAutomationsResponses, ListAutomationsErrors, ThrowOnError> => (options?.client ?? client).get<ListAutomationsResponses, ListAutomationsErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/automations',
-    ...options
-});
-
-export const createAutomation = <ThrowOnError extends boolean = false>(options: Options<CreateAutomationData, ThrowOnError>): RequestResult<CreateAutomationResponses, CreateAutomationErrors, ThrowOnError> => (options.client ?? client).post<CreateAutomationResponses, CreateAutomationErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/automations',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-/**
  * The next times of a schedule, as the scheduler computes them.
  */
 export const previewSchedule = <ThrowOnError extends boolean = false>(options: Options<PreviewScheduleData, ThrowOnError>): RequestResult<PreviewScheduleResponses, PreviewScheduleErrors, ThrowOnError> => (options.client ?? client).post<PreviewScheduleResponses, PreviewScheduleErrors, ThrowOnError>({
@@ -543,74 +277,6 @@ export const previewSchedule = <ThrowOnError extends boolean = false>(options: O
         'Content-Type': 'application/json',
         ...options.headers
     }
-});
-
-/**
- * Removes the automation and its run history. Its chats stay.
- */
-export const deleteAutomation = <ThrowOnError extends boolean = false>(options: Options<DeleteAutomationData, ThrowOnError>): RequestResult<DeleteAutomationResponses, DeleteAutomationErrors, ThrowOnError> => (options.client ?? client).delete<DeleteAutomationResponses, DeleteAutomationErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/automations/{automationId}',
-    ...options
-});
-
-export const getAutomation = <ThrowOnError extends boolean = false>(options: Options<GetAutomationData, ThrowOnError>): RequestResult<GetAutomationResponses, GetAutomationErrors, ThrowOnError> => (options.client ?? client).get<GetAutomationResponses, GetAutomationErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/automations/{automationId}',
-    ...options
-});
-
-/**
- * Changes the automation. The next run is computed again from now, so a change never runs a past time.
- *
- */
-export const updateAutomation = <ThrowOnError extends boolean = false>(options: Options<UpdateAutomationData, ThrowOnError>): RequestResult<UpdateAutomationResponses, UpdateAutomationErrors, ThrowOnError> => (options.client ?? client).put<UpdateAutomationResponses, UpdateAutomationErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/automations/{automationId}',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-/**
- * Runs the automation now, outside its schedule. The run is skipped when the agent has no model or the previous run is still busy.
- *
- */
-export const runAutomation = <ThrowOnError extends boolean = false>(options: Options<RunAutomationData, ThrowOnError>): RequestResult<RunAutomationResponses, RunAutomationErrors, ThrowOnError> => (options.client ?? client).post<RunAutomationResponses, RunAutomationErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/automations/{automationId}/run',
-    ...options
-});
-
-/**
- * The last 50 runs, newest first.
- */
-export const listAutomationRuns = <ThrowOnError extends boolean = false>(options: Options<ListAutomationRunsData, ThrowOnError>): RequestResult<ListAutomationRunsResponses, ListAutomationRunsErrors, ThrowOnError> => (options.client ?? client).get<ListAutomationRunsResponses, ListAutomationRunsErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/automations/{automationId}/runs',
-    ...options
 });
 
 /**
@@ -673,7 +339,7 @@ export const updateAgent = <ThrowOnError extends boolean = false>(options: Optio
 /**
  * Read one task and the ID of its read-only work conversation.
  */
-export const agentGetTask = <ThrowOnError extends boolean = false>(options: Options<AgentGetTaskData, ThrowOnError>): RequestResult<AgentGetTaskResponses, AgentGetTaskErrors, ThrowOnError> => (options.client ?? client).get<AgentGetTaskResponses, AgentGetTaskErrors, ThrowOnError>({
+export const getTask = <ThrowOnError extends boolean = false>(options: Options<GetTaskData, ThrowOnError>): RequestResult<GetTaskResponses, GetTaskErrors, ThrowOnError> => (options.client ?? client).get<GetTaskResponses, GetTaskErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -686,7 +352,7 @@ export const agentGetTask = <ThrowOnError extends boolean = false>(options: Opti
 /**
  * Find or create the requested agent's main timeline.
  */
-export const agentGetMainChat = <ThrowOnError extends boolean = false>(options: Options<AgentGetMainChatData, ThrowOnError>): RequestResult<AgentGetMainChatResponses, AgentGetMainChatErrors, ThrowOnError> => (options.client ?? client).get<AgentGetMainChatResponses, AgentGetMainChatErrors, ThrowOnError>({
+export const getMainChat = <ThrowOnError extends boolean = false>(options: Options<GetMainChatData, ThrowOnError>): RequestResult<GetMainChatResponses, GetMainChatErrors, ThrowOnError> => (options.client ?? client).get<GetMainChatResponses, GetMainChatErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -700,7 +366,7 @@ export const agentGetMainChat = <ThrowOnError extends boolean = false>(options: 
  * Session summaries of the requested agent, newest activity first, then highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no message. Task summaries have no reports. Transcripts are not included.
  *
  */
-export const agentListChats = <ThrowOnError extends boolean = false>(options: Options<AgentListChatsData, ThrowOnError>): RequestResult<AgentListChatsResponses, AgentListChatsErrors, ThrowOnError> => (options.client ?? client).get<AgentListChatsResponses, AgentListChatsErrors, ThrowOnError>({
+export const listChats = <ThrowOnError extends boolean = false>(options: Options<ListChatsData, ThrowOnError>): RequestResult<ListChatsResponses, ListChatsErrors, ThrowOnError> => (options.client ?? client).get<ListChatsResponses, ListChatsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -714,7 +380,7 @@ export const agentListChats = <ThrowOnError extends boolean = false>(options: Op
  * Opens a separate writable Chat session. Reuses the newest Chat session with no message, or creates one. No request body or model is needed. The first message sets its title. The session uses the bot's settings.
  *
  */
-export const agentCreateChat = <ThrowOnError extends boolean = false>(options: Options<AgentCreateChatData, ThrowOnError>): RequestResult<AgentCreateChatResponses, AgentCreateChatErrors, ThrowOnError> => (options.client ?? client).post<AgentCreateChatResponses, AgentCreateChatErrors, ThrowOnError>({
+export const createChat = <ThrowOnError extends boolean = false>(options: Options<CreateChatData, ThrowOnError>): RequestResult<CreateChatResponses, CreateChatErrors, ThrowOnError> => (options.client ?? client).post<CreateChatResponses, CreateChatErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -724,7 +390,7 @@ export const agentCreateChat = <ThrowOnError extends boolean = false>(options: O
     ...options
 });
 
-export const agentGetChat = <ThrowOnError extends boolean = false>(options: Options<AgentGetChatData, ThrowOnError>): RequestResult<AgentGetChatResponses, AgentGetChatErrors, ThrowOnError> => (options.client ?? client).get<AgentGetChatResponses, AgentGetChatErrors, ThrowOnError>({
+export const getChat = <ThrowOnError extends boolean = false>(options: Options<GetChatData, ThrowOnError>): RequestResult<GetChatResponses, GetChatErrors, ThrowOnError> => (options.client ?? client).get<GetChatResponses, GetChatErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -738,7 +404,7 @@ export const agentGetChat = <ThrowOnError extends boolean = false>(options: Opti
  * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message. Only automation chats accept overrides. Main and Chat sessions use agent settings.
  *
  */
-export const agentSetChatSettings = <ThrowOnError extends boolean = false>(options: Options<AgentSetChatSettingsData, ThrowOnError>): RequestResult<AgentSetChatSettingsResponses, AgentSetChatSettingsErrors, ThrowOnError> => (options.client ?? client).put<AgentSetChatSettingsResponses, AgentSetChatSettingsErrors, ThrowOnError>({
+export const setChatSettings = <ThrowOnError extends boolean = false>(options: Options<SetChatSettingsData, ThrowOnError>): RequestResult<SetChatSettingsResponses, SetChatSettingsErrors, ThrowOnError> => (options.client ?? client).put<SetChatSettingsResponses, SetChatSettingsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -756,7 +422,7 @@ export const agentSetChatSettings = <ThrowOnError extends boolean = false>(optio
  * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model. Main and Chat sessions take web messages. Task, automation and channel sessions return 403.
  *
  */
-export const agentSendMessage = <ThrowOnError extends boolean = false>(options: Options<AgentSendMessageData, ThrowOnError>): RequestResult<AgentSendMessageResponses, AgentSendMessageErrors, ThrowOnError> => (options.client ?? client).post<AgentSendMessageResponses, AgentSendMessageErrors, ThrowOnError>({
+export const sendMessage = <ThrowOnError extends boolean = false>(options: Options<SendMessageData, ThrowOnError>): RequestResult<SendMessageResponses, SendMessageErrors, ThrowOnError> => (options.client ?? client).post<SendMessageResponses, SendMessageErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -774,7 +440,7 @@ export const agentSendMessage = <ThrowOnError extends boolean = false>(options: 
  * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again. Refuses a busy session without a change. Task, automation and channel sessions return 403.
  *
  */
-export const agentClearContext = <ThrowOnError extends boolean = false>(options: Options<AgentClearContextData, ThrowOnError>): RequestResult<AgentClearContextResponses, AgentClearContextErrors, ThrowOnError> => (options.client ?? client).post<AgentClearContextResponses, AgentClearContextErrors, ThrowOnError>({
+export const clearContext = <ThrowOnError extends boolean = false>(options: Options<ClearContextData, ThrowOnError>): RequestResult<ClearContextResponses, ClearContextErrors, ThrowOnError> => (options.client ?? client).post<ClearContextResponses, ClearContextErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -792,7 +458,7 @@ export const agentClearContext = <ThrowOnError extends boolean = false>(options:
  * Reads committed items before an entry ID, oldest first. Pages can overlap the live snapshot. Merge by item ID. The entry limit extends to an assistant or input boundary to keep tool results with their call.
  *
  */
-export const agentGetChatHistory = <ThrowOnError extends boolean = false>(options: Options<AgentGetChatHistoryData, ThrowOnError>): RequestResult<AgentGetChatHistoryResponses, AgentGetChatHistoryErrors, ThrowOnError> => (options.client ?? client).get<AgentGetChatHistoryResponses, AgentGetChatHistoryErrors, ThrowOnError>({
+export const getChatHistory = <ThrowOnError extends boolean = false>(options: Options<GetChatHistoryData, ThrowOnError>): RequestResult<GetChatHistoryResponses, GetChatHistoryErrors, ThrowOnError> => (options.client ?? client).get<GetChatHistoryResponses, GetChatHistoryErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -806,7 +472,7 @@ export const agentGetChatHistory = <ThrowOnError extends boolean = false>(option
  * Withdraws queued input and results, then requests cancellation of the current turn and background execution of this session. Earlier actions are not undone. Processes and remote work may continue. Task, automation and channel sessions return 403.
  *
  */
-export const agentAbortChat = <ThrowOnError extends boolean = false>(options: Options<AgentAbortChatData, ThrowOnError>): RequestResult<AgentAbortChatResponses, AgentAbortChatErrors, ThrowOnError> => (options.client ?? client).post<AgentAbortChatResponses, AgentAbortChatErrors, ThrowOnError>({
+export const abortChat = <ThrowOnError extends boolean = false>(options: Options<AbortChatData, ThrowOnError>): RequestResult<AbortChatResponses, AbortChatErrors, ThrowOnError> => (options.client ?? client).post<AbortChatResponses, AbortChatErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -820,7 +486,7 @@ export const agentAbortChat = <ThrowOnError extends boolean = false>(options: Op
  * Server-sent events. Each event has `event: <type>` and one `data:` line with a ChatEvent as JSON. The first event is a snapshot; a later snapshot replaces all state. A comment line comes every 15 s. The server closes the stream when the worker restarts or when the client is too slow; the client reconnects and gets a new snapshot.
  *
  */
-export const agentWatchChat = <ThrowOnError extends boolean = false>(options: Options<AgentWatchChatData, ThrowOnError, AgentWatchChatResponse>): Promise<ServerSentEventsResult<AgentWatchChatResponses>> => (options.client ?? client).sse.get<AgentWatchChatResponses, AgentWatchChatErrors, ThrowOnError>({
+export const watchChat = <ThrowOnError extends boolean = false>(options: Options<WatchChatData, ThrowOnError, WatchChatResponse>): Promise<ServerSentEventsResult<WatchChatResponses>> => (options.client ?? client).sse.get<WatchChatResponses, WatchChatErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -834,7 +500,7 @@ export const agentWatchChat = <ThrowOnError extends boolean = false>(options: Op
  * Stores one file for a later message, in the agent workspace at `uploads/<id>/<name>`. The agent reads it with its tools. The largest file is 20 MB.
  *
  */
-export const agentCreateUpload = <ThrowOnError extends boolean = false>(options: Options<AgentCreateUploadData, ThrowOnError>): RequestResult<AgentCreateUploadResponses, AgentCreateUploadErrors, ThrowOnError> => (options.client ?? client).post<AgentCreateUploadResponses, AgentCreateUploadErrors, ThrowOnError>({
+export const createUpload = <ThrowOnError extends boolean = false>(options: Options<CreateUploadData, ThrowOnError>): RequestResult<CreateUploadResponses, CreateUploadErrors, ThrowOnError> => (options.client ?? client).post<CreateUploadResponses, CreateUploadErrors, ThrowOnError>({
     ...formDataBodySerializer,
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
@@ -853,7 +519,7 @@ export const agentCreateUpload = <ThrowOnError extends boolean = false>(options:
  * The file of an upload. PNG, JPEG, GIF and WebP images come inline with their type; all other files come as a download of type application/octet-stream.
  *
  */
-export const agentGetUpload = <ThrowOnError extends boolean = false>(options: Options<AgentGetUploadData, ThrowOnError>): RequestResult<AgentGetUploadResponses, AgentGetUploadErrors, ThrowOnError> => (options.client ?? client).get<AgentGetUploadResponses, AgentGetUploadErrors, ThrowOnError>({
+export const getUpload = <ThrowOnError extends boolean = false>(options: Options<GetUploadData, ThrowOnError>): RequestResult<GetUploadResponses, GetUploadErrors, ThrowOnError> => (options.client ?? client).get<GetUploadResponses, GetUploadErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -867,7 +533,7 @@ export const agentGetUpload = <ThrowOnError extends boolean = false>(options: Op
  * The agent's skills and MCP servers, from ~/.agents/ and the agent directory. It does not start MCP servers: before the agent starts, the servers are idle.
  *
  */
-export const agentGetExtensions = <ThrowOnError extends boolean = false>(options: Options<AgentGetExtensionsData, ThrowOnError>): RequestResult<AgentGetExtensionsResponses, AgentGetExtensionsErrors, ThrowOnError> => (options.client ?? client).get<AgentGetExtensionsResponses, AgentGetExtensionsErrors, ThrowOnError>({
+export const getExtensions = <ThrowOnError extends boolean = false>(options: Options<GetExtensionsData, ThrowOnError>): RequestResult<GetExtensionsResponses, GetExtensionsErrors, ThrowOnError> => (options.client ?? client).get<GetExtensionsResponses, GetExtensionsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -881,7 +547,7 @@ export const agentGetExtensions = <ThrowOnError extends boolean = false>(options
  * Restarts the whole worker and affects every agent. It connects the MCP servers again. Skills need no reload. 409 when any agent has unfinished work. 400 when a file is not valid; the agent then keeps its MCP servers.
  *
  */
-export const agentReloadExtensions = <ThrowOnError extends boolean = false>(options: Options<AgentReloadExtensionsData, ThrowOnError>): RequestResult<AgentReloadExtensionsResponses, AgentReloadExtensionsErrors, ThrowOnError> => (options.client ?? client).post<AgentReloadExtensionsResponses, AgentReloadExtensionsErrors, ThrowOnError>({
+export const reloadExtensions = <ThrowOnError extends boolean = false>(options: Options<ReloadExtensionsData, ThrowOnError>): RequestResult<ReloadExtensionsResponses, ReloadExtensionsErrors, ThrowOnError> => (options.client ?? client).post<ReloadExtensionsResponses, ReloadExtensionsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -892,9 +558,9 @@ export const agentReloadExtensions = <ThrowOnError extends boolean = false>(opti
 });
 
 /**
- * All automations of the default agent, oldest first.
+ * All automations of this agent, oldest first.
  */
-export const agentListAutomations = <ThrowOnError extends boolean = false>(options: Options<AgentListAutomationsData, ThrowOnError>): RequestResult<AgentListAutomationsResponses, AgentListAutomationsErrors, ThrowOnError> => (options.client ?? client).get<AgentListAutomationsResponses, AgentListAutomationsErrors, ThrowOnError>({
+export const listAutomations = <ThrowOnError extends boolean = false>(options: Options<ListAutomationsData, ThrowOnError>): RequestResult<ListAutomationsResponses, ListAutomationsErrors, ThrowOnError> => (options.client ?? client).get<ListAutomationsResponses, ListAutomationsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -904,7 +570,7 @@ export const agentListAutomations = <ThrowOnError extends boolean = false>(optio
     ...options
 });
 
-export const agentCreateAutomation = <ThrowOnError extends boolean = false>(options: Options<AgentCreateAutomationData, ThrowOnError>): RequestResult<AgentCreateAutomationResponses, AgentCreateAutomationErrors, ThrowOnError> => (options.client ?? client).post<AgentCreateAutomationResponses, AgentCreateAutomationErrors, ThrowOnError>({
+export const createAutomation = <ThrowOnError extends boolean = false>(options: Options<CreateAutomationData, ThrowOnError>): RequestResult<CreateAutomationResponses, CreateAutomationErrors, ThrowOnError> => (options.client ?? client).post<CreateAutomationResponses, CreateAutomationErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -921,7 +587,7 @@ export const agentCreateAutomation = <ThrowOnError extends boolean = false>(opti
 /**
  * Removes the automation and its run history. Its chats stay.
  */
-export const agentDeleteAutomation = <ThrowOnError extends boolean = false>(options: Options<AgentDeleteAutomationData, ThrowOnError>): RequestResult<AgentDeleteAutomationResponses, AgentDeleteAutomationErrors, ThrowOnError> => (options.client ?? client).delete<AgentDeleteAutomationResponses, AgentDeleteAutomationErrors, ThrowOnError>({
+export const deleteAutomation = <ThrowOnError extends boolean = false>(options: Options<DeleteAutomationData, ThrowOnError>): RequestResult<DeleteAutomationResponses, DeleteAutomationErrors, ThrowOnError> => (options.client ?? client).delete<DeleteAutomationResponses, DeleteAutomationErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -931,7 +597,7 @@ export const agentDeleteAutomation = <ThrowOnError extends boolean = false>(opti
     ...options
 });
 
-export const agentGetAutomation = <ThrowOnError extends boolean = false>(options: Options<AgentGetAutomationData, ThrowOnError>): RequestResult<AgentGetAutomationResponses, AgentGetAutomationErrors, ThrowOnError> => (options.client ?? client).get<AgentGetAutomationResponses, AgentGetAutomationErrors, ThrowOnError>({
+export const getAutomation = <ThrowOnError extends boolean = false>(options: Options<GetAutomationData, ThrowOnError>): RequestResult<GetAutomationResponses, GetAutomationErrors, ThrowOnError> => (options.client ?? client).get<GetAutomationResponses, GetAutomationErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -945,7 +611,7 @@ export const agentGetAutomation = <ThrowOnError extends boolean = false>(options
  * Changes the automation. The next run is computed again from now, so a change never runs a past time.
  *
  */
-export const agentUpdateAutomation = <ThrowOnError extends boolean = false>(options: Options<AgentUpdateAutomationData, ThrowOnError>): RequestResult<AgentUpdateAutomationResponses, AgentUpdateAutomationErrors, ThrowOnError> => (options.client ?? client).put<AgentUpdateAutomationResponses, AgentUpdateAutomationErrors, ThrowOnError>({
+export const updateAutomation = <ThrowOnError extends boolean = false>(options: Options<UpdateAutomationData, ThrowOnError>): RequestResult<UpdateAutomationResponses, UpdateAutomationErrors, ThrowOnError> => (options.client ?? client).put<UpdateAutomationResponses, UpdateAutomationErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -963,7 +629,7 @@ export const agentUpdateAutomation = <ThrowOnError extends boolean = false>(opti
  * Runs the automation now, outside its schedule. The run is skipped when the agent has no model or the previous run is still busy.
  *
  */
-export const agentRunAutomation = <ThrowOnError extends boolean = false>(options: Options<AgentRunAutomationData, ThrowOnError>): RequestResult<AgentRunAutomationResponses, AgentRunAutomationErrors, ThrowOnError> => (options.client ?? client).post<AgentRunAutomationResponses, AgentRunAutomationErrors, ThrowOnError>({
+export const runAutomation = <ThrowOnError extends boolean = false>(options: Options<RunAutomationData, ThrowOnError>): RequestResult<RunAutomationResponses, RunAutomationErrors, ThrowOnError> => (options.client ?? client).post<RunAutomationResponses, RunAutomationErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
@@ -976,7 +642,7 @@ export const agentRunAutomation = <ThrowOnError extends boolean = false>(options
 /**
  * The last 50 runs, newest first.
  */
-export const agentListAutomationRuns = <ThrowOnError extends boolean = false>(options: Options<AgentListAutomationRunsData, ThrowOnError>): RequestResult<AgentListAutomationRunsResponses, AgentListAutomationRunsErrors, ThrowOnError> => (options.client ?? client).get<AgentListAutomationRunsResponses, AgentListAutomationRunsErrors, ThrowOnError>({
+export const listAutomationRuns = <ThrowOnError extends boolean = false>(options: Options<ListAutomationRunsData, ThrowOnError>): RequestResult<ListAutomationRunsResponses, ListAutomationRunsErrors, ThrowOnError> => (options.client ?? client).get<ListAutomationRunsResponses, ListAutomationRunsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
