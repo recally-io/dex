@@ -21,8 +21,14 @@ export function MenuButton() {
   );
 }
 
+/** True inside the agent pane, which already draws the frame and the drawer button. */
+export const InPaneContext = createContext(false);
+
 /** The rounded main pane. Below lg it has a small bar with the drawer button. */
 export function MainPane({ children, bar = true }: { children: ReactNode; bar?: boolean }) {
+  if (useContext(InPaneContext))
+    return <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>;
+
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line">
       {bar ? (
@@ -36,22 +42,21 @@ export function MainPane({ children, bar = true }: { children: ReactNode; bar?: 
   );
 }
 
-/** A configuration page: hatch gutters, a dashed frame, a header, then numbered sections. */
-export function FramedPage({
-  eyebrow,
-  title,
-  description,
-  badge,
-  actions,
-  children,
-}: {
+type PageProps = {
   eyebrow?: ReactNode;
   title: string;
   description?: ReactNode;
   badge?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
-}) {
+};
+
+/** A configuration page: hatch gutters, a dashed frame, a header, then numbered sections. */
+export function FramedPage(props: PageProps) {
+  if (useContext(InPaneContext)) return <PanePage {...props} />;
+
+  const { eyebrow, title, description, badge, actions, children } = props;
+
   return (
     <MainPane>
       <div className="hatch flex min-h-full flex-col">
@@ -84,6 +89,45 @@ export function FramedPage({
   );
 }
 
+/**
+ * A page inside the agent pane: no frame, and a compact header. The tab already names a top page,
+ * so only a page opened from a tab, which has an eyebrow, shows its title.
+ */
+function PanePage({ eyebrow, title, description, badge, actions, children }: PageProps) {
+  return (
+    <MainPane>
+      <div className="mx-auto w-full max-w-[800px] pb-10">
+        <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 px-5 pt-6 sm:px-8">
+          <div className="min-w-0">
+            {eyebrow ? <div className="mb-2 text-[12px] text-ink-3">{eyebrow}</div> : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <h1
+                id="page-title"
+                tabIndex={-1}
+                className={
+                  eyebrow
+                    ? "text-[17px] leading-snug font-semibold tracking-[-0.01em] text-ink outline-none [overflow-wrap:anywhere]"
+                    : "sr-only"
+                }
+              >
+                {title}
+              </h1>
+              {badge}
+              {description ? (
+                <p className="max-w-[560px] basis-full text-[12.5px] leading-relaxed text-ink-3">
+                  {description}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+        </header>
+        {children}
+      </div>
+    </MainPane>
+  );
+}
+
 /** One numbered section: mono number, bold title, muted caption, then the content. */
 export function Section({
   n,
@@ -99,11 +143,15 @@ export function Section({
   children: ReactNode;
 }) {
   const id = useId();
+  const inPane = useContext(InPaneContext);
 
   return (
     <section
       aria-labelledby={id}
-      className="border-b border-dashed border-line-strong px-5 py-8 last:border-b-0 sm:px-8 sm:py-9"
+      className={cn(
+        "border-b border-dashed border-line-strong px-5 last:border-b-0 sm:px-8",
+        inPane ? "py-6" : "py-8 sm:py-9",
+      )}
     >
       <div className="mb-3 flex items-start gap-2 sm:items-baseline">
         <span className="mt-0.5 font-mono text-[11px] text-ink-3 tabular-nums sm:mt-0">

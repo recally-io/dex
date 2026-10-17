@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useContext, useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { IconArrowDown } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowDown";
@@ -30,15 +30,14 @@ import { useAttachments } from "../lib/attachments";
 import { activeSessionCount } from "../lib/tasks";
 import { Composer } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
-import { SessionsLink } from "../components/session-link";
 import { RetryNotice, Transcript } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
-import { MainPane, MenuButton, Note } from "../components/page";
+import { InPaneContext, MainPane, MenuButton, Note } from "../components/page";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import LoadingState from "../components/primitives/LoadingState";
-import { newId } from "../lib/utils";
+import { cn, newId } from "../lib/utils";
 
 export function ChatPage({ chatId }: { chatId?: number }) {
   const settings = useQuery(getSettingsOptions());
@@ -64,7 +63,7 @@ export function ChatPage({ chatId }: { chatId?: number }) {
   );
 }
 
-function MainTimeline({ settings }: { settings: Settings }) {
+export function MainTimeline({ settings }: { settings: Settings }) {
   const main = useQuery(getMainChatOptions());
 
   return main.isPending ? (
@@ -130,8 +129,6 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
     refetchInterval: 3000,
   });
 
-  const active = activeSessionCount(sessions.data?.chats ?? []);
-
   const activeHere = activeSessionCount(
     (sessions.data?.chats ?? []).filter((session) => session.task?.parentConversationId === chatId),
   );
@@ -139,6 +136,7 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const health = useQuery(getHealthOptions());
   const memory = health.data ? `${health.data.dataDir}/memory` : undefined;
   const [draft, setDraft] = useState("");
+  const embedded = useContext(InPaneContext);
   const [jump, setJump] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const clear = useClearContext(chatId, state.running, () => setAnnouncement("Context cleared."));
@@ -415,72 +413,83 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
 
   return (
     <>
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
-          <MenuButton />
-          {chat.data && !chat.data.main ? (
-            <>
-              <Link to="/sessions" className="shrink-0 text-[13px] text-ink-3 hover:text-ink hover:underline">
-                Sessions
-              </Link>
-              <span aria-hidden className="text-line-strong">
-                /
-              </span>
-            </>
-          ) : null}
-          <h1
-            id="page-title"
-            tabIndex={-1}
-            className="min-w-0 truncate text-[13px] font-semibold text-ink outline-none"
-          >
-            {chat.data?.main ? settings.agent.name : chat.data?.title || "New session"}
-          </h1>
-          {chat.data && !chat.data.main ? <OriginPill chat={chat.data} /> : null}
-          <span className="flex-1" />
-          {chat.data?.main ? <SessionsLink active={active} /> : null}
-        </header>
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          <div
-            ref={scroller}
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-            onScroll={() => {
-              const el = scroller.current;
+      <section
+        className={cn(
+          "flex min-w-0 flex-1 flex-col overflow-hidden bg-page",
+          embedded ? "min-h-0" : "lg:rounded-window lg:border lg:border-line",
+        )}
+      >
+        {/* The agent pane names the main timeline; a session names itself under the agent tabs. */}
+        {chat.data?.main ? null : (
+          <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
+            {embedded ? null : <MenuButton />}
+            {chat.data ? (
+              <>
+                <Link
+                  to="/sessions"
+                  className="shrink-0 text-[13px] text-ink-3 hover:text-ink hover:underline"
+                >
+                  Sessions
+                </Link>
+                <span aria-hidden className="text-line-strong">
+                  /
+                </span>
+              </>
+            ) : null}
+            <h1
+              id="page-title"
+              tabIndex={-1}
+              className="min-w-0 truncate text-[13px] font-semibold text-ink outline-none"
+            >
+              {chat.data?.title || "New session"}
+            </h1>
+            {chat.data ? <OriginPill chat={chat.data} /> : null}
+          </header>
+        )}
+        <div className="flex min-h-0 flex-1">
+          <div className="relative flex min-w-0 flex-1 flex-col">
+            <div
+              ref={scroller}
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              onScroll={() => {
+                const el = scroller.current;
 
-              if (el) {
-                pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
-                setJump(!pinned.current);
-              }
-            }}
-          >
-            <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col gap-6 px-4 py-8 sm:px-8">
-              {transcript}
-            </div>
-          </div>
-          {readOnly ? null : (
-            <div className="shrink-0 px-3 pb-3 sm:px-8 sm:pb-5">
-              <div className="relative mx-auto max-w-[720px]">
-                {jump ? (
-                  <Button
-                    size="xs"
-                    variant="secondary"
-                    className="absolute -top-10 left-1/2 -translate-x-1/2 gap-1"
-                    onClick={() => {
-                      pinned.current = true;
-                      setJump(false);
-                      scroller.current?.scrollTo({
-                        top: scroller.current.scrollHeight,
-                        behavior: "smooth",
-                      });
-                    }}
-                  >
-                    <IconArrowDown size={14} />
-                    Jump to latest
-                  </Button>
-                ) : null}
-                {composer}
+                if (el) {
+                  pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+                  setJump(!pinned.current);
+                }
+              }}
+            >
+              <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col gap-6 px-4 py-8 sm:px-8">
+                {transcript}
               </div>
             </div>
-          )}
+            {readOnly ? null : (
+              <div className="shrink-0 px-3 pb-3 sm:px-8 sm:pb-5">
+                <div className="relative mx-auto max-w-[720px]">
+                  {jump ? (
+                    <Button
+                      size="xs"
+                      variant="secondary"
+                      className="absolute -top-10 left-1/2 -translate-x-1/2 gap-1"
+                      onClick={() => {
+                        pinned.current = true;
+                        setJump(false);
+                        scroller.current?.scrollTo({
+                          top: scroller.current.scrollHeight,
+                          behavior: "smooth",
+                        });
+                      }}
+                    >
+                      <IconArrowDown size={14} />
+                      Jump to latest
+                    </Button>
+                  ) : null}
+                  {composer}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         {status}
       </section>

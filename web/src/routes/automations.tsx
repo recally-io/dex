@@ -15,7 +15,7 @@ import { refreshAutomations } from "../lib/queries";
 import { useAgentModel } from "../lib/agent";
 import { ago, runTime, scheduleText } from "../lib/automations";
 import { Failure, Loading, Spinner } from "../components/feedback";
-import { BotCrumb } from "../components/bot-crumb";
+import { Crumb } from "../components/crumb";
 import { Confirm } from "../components/confirm";
 import { AutomationDialog } from "../components/automation-dialog";
 import { Empty, Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
@@ -78,7 +78,18 @@ function EnabledSwitch({ automation }: { automation: Automation }) {
   );
 }
 
-export function AutomationsSection() {
+export function AutomationsPage() {
+  return (
+    <FramedPage
+      title="Automations"
+      description="Prompts that the agent runs on a schedule. Each run has its own session."
+    >
+      <AutomationsSection />
+    </FramedPage>
+  );
+}
+
+function AutomationsSection() {
   const automations = useQuery({ ...listAutomationsOptions(), refetchInterval: 10_000 });
   const settings = useQuery(getSettingsOptions());
   const [create, setCreate] = useState(false);
@@ -90,8 +101,8 @@ export function AutomationsSection() {
   return (
     <>
       <Section
-        n={4}
-        title="Automations"
+        n={1}
+        title="All automations"
         caption={`${on} of ${list.length} on. Open one to see its runs.`}
         action={
           <Button size="sm" variant="primary" disabled={noModel} onClick={() => setCreate(true)}>
@@ -209,7 +220,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
     ...deleteAutomationMutation(),
     onSuccess: async () => {
       await refreshAutomations();
-      await navigate({ to: "/agent" });
+      await navigate({ to: "/automations" });
     },
   });
 
@@ -222,7 +233,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
   const busy = history.some((h) => h.status === "running");
   const blocked = model && !model.ok ? "Choose an available agent model first." : undefined;
 
-  const crumb = <BotCrumb />;
+  const crumb = <Crumb to="/automations">Automations</Crumb>;
 
   if (automation.isPending || automation.isError)
     return (

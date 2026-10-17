@@ -12,12 +12,13 @@ import {
 } from "@tanstack/react-router";
 import { errorText, queryClient } from "./lib/queries";
 import { Shell } from "./components/shell";
+import { AgentLayout } from "./components/agent-layout";
 import { ChatPage } from "./routes/chat";
-import { AutomationPage } from "./routes/automations";
+import { AutomationPage, AutomationsPage } from "./routes/automations";
 import { SessionsPage, TaskPage } from "./routes/sessions";
-import { AgentPage } from "./routes/agent";
+import { AgentPage, InstructionsPage } from "./routes/agent";
 import { ProvidersPage } from "./routes/providers";
-import { ChannelPage } from "./routes/channels";
+import { ChannelPage, ChannelsPage } from "./routes/channels";
 import { ExtensionsPage } from "./routes/extensions";
 import { SecretsPage } from "./routes/secrets";
 import { AboutPage } from "./routes/about";
@@ -46,8 +47,11 @@ const root = createRootRoute({
   notFoundComponent: () => <Missing title="Page not found" description="dex has no page at this address." />,
 });
 
-const home = createRoute({ getParentRoute: () => root, path: "/", component: () => <ChatPage /> });
-const chat = createRoute({ getParentRoute: () => root, path: "/c/$chatId", component: ChatRoute });
+// The pages of the agent share its tabs. The agent pane draws the main timeline itself.
+const agentPages = createRoute({ getParentRoute: () => root, id: "agent-pages", component: AgentLayout });
+
+const home = createRoute({ getParentRoute: () => agentPages, path: "/", component: () => null });
+const chat = createRoute({ getParentRoute: () => agentPages, path: "/c/$chatId", component: ChatRoute });
 
 function ChatRoute() {
   const { chatId } = chat.useParams();
@@ -63,23 +67,21 @@ function ChatRoute() {
 const page = <P extends string>(path: P, component: () => React.ReactNode) =>
   createRoute({ getParentRoute: () => root, path, component });
 
-const agent = page("/agent", AgentPage);
-const providers = page("/providers", ProvidersPage);
+const agentPage = <P extends string>(path: P, component: () => React.ReactNode) =>
+  createRoute({ getParentRoute: () => agentPages, path, component });
 
-const channels = createRoute({
-  getParentRoute: () => root,
-  path: "/channels",
-  beforeLoad: () => {
-    throw redirect({ to: "/agent", replace: true });
-  },
-});
+const agent = agentPage("/agent", AgentPage);
+const instructions = agentPage("/instructions", InstructionsPage);
+const channels = agentPage("/channels", ChannelsPage);
+const automations = agentPage("/automations", AutomationsPage);
+const providers = page("/providers", ProvidersPage);
 
 const extensions = page("/extensions", ExtensionsPage);
 const secrets = page("/secrets", SecretsPage);
 const about = page("/about", AboutPage);
 
 const channel = createRoute({
-  getParentRoute: () => root,
+  getParentRoute: () => agentPages,
   path: "/channels/$channelId",
   beforeLoad: ({ params }) => {
     if (params.channelId !== "wechat" && params.channelId !== "telegram" && params.channelId !== "feishu")
@@ -126,16 +128,8 @@ const defaultSettings = createRoute({
   },
 });
 
-const automations = createRoute({
-  getParentRoute: () => root,
-  path: "/automations",
-  beforeLoad: () => {
-    throw redirect({ to: "/agent", replace: true });
-  },
-});
-
 const automation = createRoute({
-  getParentRoute: () => root,
+  getParentRoute: () => agentPages,
   path: "/automations/$automationId",
   component: AutomationRoute,
 });
@@ -146,7 +140,7 @@ function AutomationRoute() {
   return <AutomationPage key={automationId} automationId={automationId} />;
 }
 
-const sessions = page("/sessions", SessionsPage);
+const sessions = agentPage("/sessions", SessionsPage);
 
 const tasks = createRoute({
   getParentRoute: () => root,
@@ -156,7 +150,7 @@ const tasks = createRoute({
   },
 });
 
-const task = createRoute({ getParentRoute: () => root, path: "/tasks/$taskId", component: TaskRoute });
+const task = createRoute({ getParentRoute: () => agentPages, path: "/tasks/$taskId", component: TaskRoute });
 
 function TaskRoute() {
   const { taskId } = task.useParams();
@@ -166,17 +160,20 @@ function TaskRoute() {
 
 const router = createRouter({
   routeTree: root.addChildren([
-    home,
-    chat,
-    sessions,
+    agentPages.addChildren([
+      home,
+      chat,
+      sessions,
+      task,
+      instructions,
+      channels,
+      channel,
+      automations,
+      automation,
+      agent,
+    ]),
     tasks,
-    task,
-    automations,
-    automation,
-    agent,
     providers,
-    channels,
-    channel,
     extensions,
     secrets,
     about,

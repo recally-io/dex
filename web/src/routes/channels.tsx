@@ -22,7 +22,7 @@ import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/pag
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import { FeishuChannel } from "./feishu";
-import { BotCrumb } from "../components/bot-crumb";
+import { Crumb } from "../components/crumb";
 import { WithSettings } from "../components/with-settings";
 
 function ChannelRow({
@@ -80,7 +80,11 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
   );
 
   return (
-    <Section n={3} title="Channels" caption="Channels share the main timeline. Open a channel to set it up.">
+    <Section
+      n={1}
+      title="All channels"
+      caption="Channels share the main timeline. Open a channel to set it up."
+    >
       <Panel>
         <div className="divide-y divide-line">
           <ChannelRow
@@ -107,10 +111,18 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
   );
 }
 
+export function ChannelsPage() {
+  return (
+    <FramedPage title="Channels">
+      <WithSettings>{(settings) => <ChannelsSection settings={settings} />}</WithSettings>
+    </FramedPage>
+  );
+}
+
 export function ChannelPage({ channel }: { channel: "telegram" | "wechat" | "feishu" }) {
   return channel === "wechat" ? (
     <FramedPage
-      eyebrow={<BotCrumb />}
+      eyebrow={<Crumb to="/channels">Channels</Crumb>}
       title="WeChat"
       description="Scan once. dex recognizes the owner from the login."
     >
@@ -128,7 +140,7 @@ function TelegramChannel() {
 
   return (
     <FramedPage
-      eyebrow={<BotCrumb />}
+      eyebrow={<Crumb to="/channels">Channels</Crumb>}
       title="Telegram"
       badge={
         saved.data ? (
