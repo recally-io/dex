@@ -1,6 +1,22 @@
 import { useAgentId } from "../lib/agent-scope";
 import { Link } from "@tanstack/react-router";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
+import { useRef, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import type { Extensions } from "../api/generated/types.gen";
+import {
+  getExtensionsOptions,
+  getExtensionsQueryKey,
+  putExtensionEnvMutation,
+  deleteExtensionEnvMutation,
+  reloadExtensionsMutation,
+} from "../api/generated/@tanstack/react-query.gen";
+import { useApp } from "../lib/app-state";
+import { errorText, queryClient } from "../lib/queries";
+import { Failure, Loading, Spinner } from "../components/feedback";
+import { Field, Input, Select } from "../components/form";
+import { Button } from "../components/atoms/Button";
+import { StatusPill } from "../components/atoms/StatusPill";
 import { buttonVariants } from "../components/atoms/Button";
 import { WithSettings } from "../components/with-settings";
 
@@ -10,11 +26,16 @@ export function SecretsPage() {
   return (
     <FramedPage
       title="Secrets"
-      description="Tool credentials come from .env files in $HOME/.agents, $DEX_HOME/.agents, and $AGENT_HOME/.agents. Narrower values win."
+      description="Set tool credentials for the current agent or all dex agents. Values stay in .env files. Narrower values win."
     >
+      <ToolEnvironment key={agentId} agentId={agentId} />
       <WithSettings>
         {(settings) => (
-          <Section n={1} title="What dex stores now" caption="Only the credentials that dex itself needs.">
+          <Section
+            n={3}
+            title="Provider and channel credentials"
+            caption="Credentials that dex itself needs."
+          >
             <Panel>
               <Facts
                 rows={[
@@ -43,8 +64,67 @@ export function SecretsPage() {
           </Section>
         )}
       </WithSettings>
-      <Section n={2} title="Tool environment">
-        <div className="mb-3">
+      <Section n={4} title="Secret storage">
+        <Note tone="warn">
+          Use mode 0600 for .env files and keep them out of Git. The model can read the files or run env. Tool
+          output becomes part of the transcript. dex stores credentials as plain text. Do not put passwords in
+          chats, instructions or memory. Memory is a git repository, so a password stays in its history.
+        </Note>
+      </Section>
+    </FramedPage>
+  );
+}
+
+function ToolEnvironment({ agentId }: { agentId: string }) {
+  const { notify } = useApp();
+  const query = useQuery(getExtensionsOptions({ path: { agentId } }));
+  const [scope, setScope] = useState<"agent" | "dex">("agent");
+  const [key, setKey] = useState("");
+  const [value, setValue] = useState("");
+  const [changed, setChanged] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
+
+  const saved = (data: Extensions) => {
+    queryClient.setQueryData(getExtensionsQueryKey({ path: { agentId } }), data);
+    void queryClient.invalidateQueries({ queryKey: [{ _id: "getExtensions" }] });
+    setChanged(true);
+  };
+
+  const save = useMutation({
+    ...putExtensionEnvMutation(),
+    gcTime: 0,
+    onSuccess: saved,
+    onError: (error) => notify(errorText(error)),
+  });
+
+  const remove = useMutation({
+    ...deleteExtensionEnvMutation(),
+    onSuccess: saved,
+    onError: (error) => notify(errorText(error)),
+  });
+
+  const reload = useMutation({
+    ...reloadExtensionsMutation(),
+    onSuccess: (data) => {
+      queryClient.setQueryData(getExtensionsQueryKey({ path: { agentId } }), data);
+      void queryClient.invalidateQueries({ queryKey: [{ _id: "getExtensions" }] });
+      setChanged(false);
+      notify("Extensions reloaded. The worker restarted for all agents.");
+    },
+    onError: (error) => notify(errorText(error)),
+  });
+
+  const busy = save.isPending || remove.isPending || reload.isPending;
+  const catalog = query.data;
+
+  return (
+    <>
+      <Section
+        n={1}
+        title="Tool environment"
+        caption="Values are write-only. Dex scope applies to all agents."
+      >
+        <div className="mb-4 flex flex-wrap gap-2">
           <Link
             to="/a/$agentId/extensions"
             params={{ agentId }}
@@ -53,12 +133,185 @@ export function SecretsPage() {
             Current agent’s Extensions
           </Link>
         </div>
-        <Note tone="warn">
-          Use mode 0600 for .env files and keep them out of Git. The model can read the files or run env. Tool
-          output becomes part of the transcript. dex stores credentials as plain text. Do not put passwords in
-          chats, instructions or memory. Memory is a git repository, so a password stays in its history.
-        </Note>
+        <Panel>
+          <form
+            ref={form}
+            className="grid gap-4 p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              save.mutate({ path: { agentId }, body: { scope, key, value } });
+              setValue("");
+            }}
+          >
+            <Field label="Scope">
+              {({ id }) => (
+                <Select
+                  id={id}
+                  name="scope"
+                  value={scope}
+                  disabled={busy}
+                  onChange={(event) => setScope(event.target.value === "dex" ? "dex" : "agent")}
+                >
+                  <option value="agent">This agent</option>
+                  <option value="dex">All agents (dex)</option>
+                </Select>
+              )}
+            </Field>
+            <Field
+              label="Key"
+              hint="Use letters, numbers, and underscores. Start with a letter or underscore."
+            >
+              {({ id, describedBy }) => (
+                <Input
+                  id={id}
+                  name="key"
+                  value={key}
+                  onChange={(event) => setKey(event.target.value)}
+                  aria-describedby={describedBy}
+                  required
+                  pattern="[A-Za-z_][A-Za-z0-9_]*"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={busy}
+                />
+              )}
+            </Field>
+            <Field label="Value" hint="An empty value is allowed. Saved values are never shown.">
+              {({ id, describedBy }) => (
+                <Input
+                  id={id}
+                  name="value"
+                  type="password"
+                  value={value}
+                  onChange={(event) => setValue(event.target.value)}
+                  aria-describedby={describedBy}
+                  autoComplete="new-password"
+                  disabled={busy}
+                />
+              )}
+            </Field>
+            <div>
+              <Button type="submit" size="sm" variant="primary" disabled={busy || !key}>
+                {save.isPending ? <Spinner /> : null}Save key
+              </Button>
+            </div>
+          </form>
+        </Panel>
+        {changed ? (
+          <div className="mt-4" role="status">
+            <Note>
+              <p>The change applies after Reload. Reload restarts the worker for all agents.</p>
+              <Button
+                className="mt-3"
+                size="sm"
+                disabled={busy}
+                onClick={() => reload.mutate({ path: { agentId } })}
+              >
+                {reload.isPending ? <Spinner /> : null}Reload
+              </Button>
+            </Note>
+          </div>
+        ) : null}
       </Section>
-    </FramedPage>
+      {catalog ? (
+        <Section n={2} title="Saved keys" caption="Names only. A narrower level wins.">
+          <div className="space-y-4">
+            {(["agent", "dex", "home"] as const).map((level) => (
+              <Panel key={level}>
+                <div className="border-b border-line px-4 py-3">
+                  <p className="text-[13px] font-medium text-ink">
+                    {level === "agent"
+                      ? "This agent"
+                      : level === "dex"
+                        ? "All agents (dex)"
+                        : "Home · Read-only"}
+                  </p>
+                  <p className="mt-1 text-[11.5px] text-ink-3 [overflow-wrap:anywhere]">
+                    <Mono>
+                      {catalog.paths[level === "agent" ? "agentEnv" : level === "dex" ? "dexEnv" : "homeEnv"]}
+                    </Mono>
+                  </p>
+                </div>
+                {catalog.env.some((entry) => entry.scope === level) ? (
+                  <ul className="divide-y divide-line">
+                    {catalog.env
+                      .filter((entry) => entry.scope === level)
+                      .map((entry) => (
+                        <li
+                          key={entry.key}
+                          data-env-key={entry.key}
+                          data-env-scope={level}
+                          className="flex flex-wrap items-center gap-2 px-4 py-3"
+                        >
+                          <span className="min-w-0 w-full text-[12.5px] [overflow-wrap:anywhere] sm:w-auto sm:flex-1">
+                            <Mono>{entry.key}</Mono>
+                          </span>
+                          {entry.shadowed ? (
+                            <StatusPill className="h-5 px-2 text-[11.5px]">Shadowed</StatusPill>
+                          ) : null}
+                          {level !== "home" ? (
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                size="xs"
+                                disabled={busy}
+                                onClick={() => {
+                                  setScope(level);
+                                  setKey(entry.key);
+                                  setValue("");
+
+                                  const input =
+                                    form.current?.querySelector<HTMLInputElement>('input[name="value"]');
+
+                                  input?.focus();
+                                  input?.scrollIntoView({ block: "center", behavior: "smooth" });
+                                }}
+                              >
+                                Replace
+                              </Button>
+                              <Button
+                                type="button"
+                                size="xs"
+                                disabled={busy}
+                                onClick={() =>
+                                  remove.mutate({
+                                    path: { agentId },
+                                    query: { scope: level, key: entry.key },
+                                  })
+                                }
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          ) : null}
+                        </li>
+                      ))}
+                  </ul>
+                ) : (
+                  <p className="px-4 py-3 text-[12.5px] text-ink-3">No keys in this file.</p>
+                )}
+              </Panel>
+            ))}
+          </div>
+          {catalog.errors.length ? (
+            <div className="mt-4">
+              <Failure title="dex cannot read some files">
+                <ul className="[overflow-wrap:anywhere]">
+                  {catalog.errors.map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
+                </ul>
+              </Failure>
+            </div>
+          ) : null}
+        </Section>
+      ) : query.isError ? (
+        <div className="px-5 py-4 sm:px-8">
+          <Failure error={query.error} retry={() => void query.refetch()} />
+        </div>
+      ) : (
+        <Loading />
+      )}
+    </>
   );
 }
