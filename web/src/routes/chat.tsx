@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useContext, useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { IconArrowDown } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowDown";
@@ -6,9 +6,6 @@ import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2
 import { IconLock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconLock";
 import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
 import { IconBubble2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubble2";
-import { IconChevronDownSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronDownSmall";
-import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
-import { IconAlignmentLeft } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconAlignmentLeft";
 import type {
   Attachment,
   Settings,
@@ -28,21 +25,15 @@ import {
 import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
 import { refreshChats } from "../lib/queries";
-import { agentModel, saveAgent, thinkingNames, type AgentModel } from "../lib/agent";
-import { instructionsDirty } from "../lib/instructions";
-import { useApp } from "../lib/app-state";
+import { agentModel } from "../lib/agent";
 import { useAttachments } from "../lib/attachments";
 import { activeSessionCount } from "../lib/tasks";
 import { Composer } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
-import { SessionsLink } from "../components/session-link";
 import { RetryNotice, Transcript } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
-import { ThinkingPicker } from "../components/thinking-picker";
-import { InstructionsEditor } from "../components/instructions-editor";
-import { AgentDashboard, AgentDashboardSheet, useDashboardOpen } from "../components/agent-dashboard";
 import { Failure, Loading } from "../components/feedback";
-import { MainPane, MenuButton, Note } from "../components/page";
+import { InPaneContext, MainPane, MenuButton, Note } from "../components/page";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import LoadingState from "../components/primitives/LoadingState";
@@ -72,7 +63,7 @@ export function ChatPage({ chatId }: { chatId?: number }) {
   );
 }
 
-function MainTimeline({ settings }: { settings: Settings }) {
+export function MainTimeline({ settings }: { settings: Settings }) {
   const main = useQuery(getMainChatOptions());
 
   return main.isPending ? (
@@ -86,25 +77,6 @@ function MainTimeline({ settings }: { settings: Settings }) {
   ) : (
     <Chat key={main.data.id} chatId={main.data.id} settings={settings} />
   );
-}
-
-/** The width of the pane, measured from a callback ref so it is known on the first commit. */
-function usePaneWidth() {
-  const [width, setWidth] = useState(0);
-
-  const ref = useCallback((pane: HTMLElement | null) => {
-    if (!pane) return;
-
-    setWidth(pane.getBoundingClientRect().width);
-
-    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
-
-    observer.observe(pane);
-
-    return () => observer.disconnect();
-  }, []);
-
-  return [ref, width] as const;
 }
 
 function OriginPill({ chat }: { chat: ChatInfo }) {
@@ -157,8 +129,6 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
     refetchInterval: 3000,
   });
 
-  const active = activeSessionCount(sessions.data?.chats ?? []);
-
   const activeHere = activeSessionCount(
     (sessions.data?.chats ?? []).filter((session) => session.task?.parentConversationId === chatId),
   );
@@ -166,13 +136,7 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const health = useQuery(getHealthOptions());
   const memory = health.data ? `${health.data.dataDir}/memory` : undefined;
   const [draft, setDraft] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [pane, width] = usePaneWidth();
-  // The side panel needs room for the transcript beside it; the tiles need room for five columns.
-  const wide = width >= 960;
-  const roomy = width >= 720;
-  const [dashboard, toggleDashboard] = useDashboardOpen();
-  const [sheet, setSheet] = useState(false);
+  const embedded = useContext(InPaneContext);
   const [jump, setJump] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const clear = useClearContext(chatId, state.running, () => setAnnouncement("Context cleared."));
@@ -184,8 +148,6 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const models = useQuery(listModelsOptions());
   const files = useAttachments();
   const model = agentModel(settings.agent, models.data?.models);
-  const { draft: instructions } = useApp();
-  const dirty = instructionsDirty(instructions, settings.agent.instructions);
 
   const abort = useMutation({
     ...abortChatMutation(),
@@ -452,74 +414,38 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   return (
     <>
       <section
-        ref={pane}
-        className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line"
+        className={cn(
+          "flex min-w-0 flex-1 flex-col overflow-hidden bg-page",
+          embedded ? "min-h-0" : "lg:rounded-window lg:border lg:border-line",
+        )}
       >
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
-          <MenuButton />
-          {chat.data && !chat.data.main ? (
-            <>
-              <Link to="/sessions" className="shrink-0 text-[13px] text-ink-3 hover:text-ink hover:underline">
-                Sessions
-              </Link>
-              <span aria-hidden className="text-line-strong">
-                /
-              </span>
-            </>
-          ) : null}
-          <h1
-            id="page-title"
-            tabIndex={-1}
-            className="min-w-0 truncate text-[13px] font-semibold text-ink outline-none"
-          >
-            {chat.data?.main ? settings.agent.name : chat.data?.title || "New session"}
-          </h1>
-          {chat.data && !chat.data.main ? <OriginPill chat={chat.data} /> : null}
-          {chat.data?.main ? (
-            <AgentStrip
-              settings={settings}
-              model={model}
-              dirty={dirty}
-              editing={editing}
-              onEdit={() => setEditing(!editing)}
-              wide={wide}
-            />
-          ) : null}
-          <span className="flex-1" />
-          {chat.data?.main ? <SessionsLink active={active} /> : null}
-          {chat.data?.main ? (
-            <button
-              type="button"
-              aria-expanded={roomy ? dashboard : sheet}
-              aria-controls={(roomy ? dashboard : sheet) ? "agent-dashboard" : undefined}
-              aria-label={`${roomy && dashboard ? "Hide" : "Show"} ${settings.agent.name} dashboard`}
-              title="Dashboard"
-              onClick={() => (roomy ? toggleDashboard() : setSheet(true))}
-              className="flex size-7 shrink-0 items-center justify-center rounded-control text-ink-3 transition-colors hover:bg-hover-2 hover:text-ink"
+        {/* The agent pane names the main timeline; a session names itself under the agent tabs. */}
+        {chat.data?.main ? null : (
+          <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
+            {embedded ? null : <MenuButton />}
+            {chat.data ? (
+              <>
+                <Link
+                  to="/sessions"
+                  className="shrink-0 text-[13px] text-ink-3 hover:text-ink hover:underline"
+                >
+                  Sessions
+                </Link>
+                <span aria-hidden className="text-line-strong">
+                  /
+                </span>
+              </>
+            ) : null}
+            <h1
+              id="page-title"
+              tabIndex={-1}
+              className="min-w-0 truncate text-[13px] font-semibold text-ink outline-none"
             >
-              <IconChevronDownSmall
-                size={18}
-                className={cn("transition-transform duration-200", roomy && dashboard && "rotate-180")}
-              />
-            </button>
-          ) : null}
-        </header>
-        {chat.data?.main && roomy && dashboard ? (
-          <AgentDashboard
-            settings={settings}
-            model={model}
-            dirty={dirty}
-            onEditInstructions={wide ? () => setEditing(true) : undefined}
-          />
-        ) : null}
-        {chat.data?.main && !roomy && sheet ? (
-          <AgentDashboardSheet
-            settings={settings}
-            model={model}
-            dirty={dirty}
-            onClose={() => setSheet(false)}
-          />
-        ) : null}
+              {chat.data?.title || "New session"}
+            </h1>
+            {chat.data ? <OriginPill chat={chat.data} /> : null}
+          </header>
+        )}
         <div className="flex min-h-0 flex-1">
           <div className="relative flex min-w-0 flex-1 flex-col">
             <div
@@ -564,144 +490,10 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
               </div>
             )}
           </div>
-          {/* The editor sits beside the transcript, so the answer being fixed stays readable. */}
-          {chat.data?.main && editing && wide ? (
-            <aside
-              aria-label="Agent instructions"
-              className="flex w-[400px] shrink-0 flex-col border-l border-line"
-            >
-              <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-3">
-                <h2 className="text-[13px] font-semibold text-ink">Instructions</h2>
-                {dirty ? (
-                  <StatusPill tone="orange" className="h-5 px-2 text-[11.5px]">
-                    Draft
-                  </StatusPill>
-                ) : null}
-                <span className="flex-1" />
-                <Link to="/agent" className="text-[12px] text-ink-3 hover:text-ink hover:underline">
-                  All settings
-                </Link>
-                <button
-                  type="button"
-                  aria-label="Close instructions"
-                  onClick={() => setEditing(false)}
-                  className="flex size-7 shrink-0 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink"
-                >
-                  <IconCrossSmall size={16} />
-                </button>
-              </div>
-              <div className="flex min-h-0 flex-1 flex-col p-2">
-                <InstructionsEditor saved={settings.agent.instructions} grow />
-              </div>
-            </aside>
-          ) : null}
         </div>
         {status}
       </section>
     </>
-  );
-}
-
-/**
- * The model, the thinking level and the instructions of the bot, in the header of its own
- * timeline. A gear in the sidebar was the only way to these, and an icon without text is not
- * findable.
- */
-function AgentStrip({
-  settings,
-  model,
-  dirty,
-  editing,
-  onEdit,
-  wide,
-}: {
-  settings: Settings;
-  model: AgentModel;
-  dirty: boolean;
-  editing: boolean;
-  onEdit: () => void;
-  wide: boolean;
-}) {
-  const { notify } = useApp();
-
-  const caret = (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-      className="text-ink-3"
-    >
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-
-  const chip =
-    "flex h-7 min-w-0 items-center gap-1 rounded-control px-2 text-[12.5px] text-ink-2 transition-colors hover:bg-hover-2 hover:text-ink aria-expanded:bg-hover-2";
-
-  return (
-    <div className="flex min-w-0 items-center gap-0.5">
-      <ModelPicker
-        trigger={
-          <button type="button" aria-label="Change model" className={chip}>
-            <span className={cn("min-w-0 truncate font-medium", model.ok ? "text-ink" : "text-orange")}>
-              {settings.agent.modelId ? model.label : "No model"}
-            </span>
-            {caret}
-          </button>
-        }
-      />
-      {model.model?.reasoning ? (
-        <ThinkingPicker
-          value={settings.agent.thinkingLevel}
-          levels={model.model.thinkingLevels}
-          save={async (level) => {
-            if (!level) return;
-            await saveAgent((agent) => ({ ...agent, thinkingLevel: level }));
-            notify(`Thinking is now ${thinkingNames[level]}. It applies from the next message.`);
-          }}
-          trigger={
-            <button type="button" aria-label="Change thinking level" className={cn(chip, "hidden sm:flex")}>
-              {thinkingNames[settings.agent.thinkingLevel]}
-              {caret}
-            </button>
-          }
-        />
-      ) : null}
-      {/* Below the width that fits the side panel, the settings page takes over. */}
-      {wide ? (
-        <button
-          type="button"
-          aria-expanded={editing}
-          aria-label="Edit instructions"
-          onClick={onEdit}
-          className={cn(chip, editing && "bg-hover-2 text-ink")}
-        >
-          <IconAlignmentLeft size={14} className="shrink-0" />
-          <span className="hidden md:inline">Instructions</span>
-          {dirty ? (
-            <StatusPill tone="orange" className="h-[18px] px-1.5 text-[11px]">
-              Draft
-            </StatusPill>
-          ) : null}
-        </button>
-      ) : (
-        <Link to="/agent" aria-label="Edit instructions" className={chip}>
-          <IconAlignmentLeft size={14} className="shrink-0" />
-          <span className="hidden md:inline">Instructions</span>
-          {dirty ? (
-            <StatusPill tone="orange" className="h-[18px] px-1.5 text-[11px]">
-              Draft
-            </StatusPill>
-          ) : null}
-        </Link>
-      )}
-    </div>
   );
 }
 

@@ -30,11 +30,11 @@ to read in an afternoon.
   model settings. Clear context starts a new model context when the timeline
   is idle. Earlier messages stay readable with Show earlier messages. A clear
   keeps long-term memory. After a summary, Show earlier messages can load
-  the earlier transcript. Only a clear shows a divider. Its header shows the
-  model and the thinking level, opens the instructions beside the
-  transcript, and opens a dashboard of the bot's model, name, channels,
-  automations, and instructions above the transcript. The sidebar holds the bot name, a labeled Agent row, and global
-  settings. It has no chat list or New chat action.
+  the earlier transcript. Only a clear shows a divider. The bot is one page
+  with tabs: Chat, Instructions, Channels, Automations, Sessions, and
+  Settings. Its header shows the name, the tabs, the model, and the thinking
+  level. The sidebar lists the agents and the global settings. It has no chat
+  list or New chat action.
   Channel input shares main. Automation runs have separate read-only transcripts.
 - Internal background delegation for the default agent. Each delegation has
   one input and fixed model settings. The main agent stays available and

@@ -15,8 +15,6 @@ import { InstructionsEditor } from "../components/instructions-editor";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import { WithSettings } from "../components/with-settings";
-import { ChannelsSection } from "./channels";
-import { AutomationsSection } from "./automations";
 import { cn } from "../lib/utils";
 
 export function AgentPage() {
@@ -25,8 +23,8 @@ export function AgentPage() {
 
   return (
     <FramedPage
-      title={saved.data?.agent.name ?? "dex"}
-      description="Settings for this bot. The timeline, its channels and its automations use them."
+      title="Settings"
+      description={`The name and the model of ${saved.data?.agent.name ?? "dex"}. The timeline, its channels and its automations use them.`}
       badge={
         model && !model.ok ? (
           <StatusPill tone="orange" className="h-5 px-2 text-[11.5px]">
@@ -40,10 +38,39 @@ export function AgentPage() {
   );
 }
 
+export function InstructionsPage() {
+  const saved = useQuery(getSettingsOptions());
+  const { draft } = useApp();
+  const dirty = instructionsDirty(draft, saved.data?.agent.instructions);
+
+  return (
+    <FramedPage
+      title="Instructions"
+      description={`Added to the system prompt of every run of ${saved.data?.agent.name ?? "dex"}. A change applies from the next message.`}
+      badge={
+        saved.data ? (
+          <StatusPill tone={dirty ? "orange" : "green"} className="h-5 px-2 text-[11.5px]">
+            {dirty ? "Draft" : "Saved"}
+          </StatusPill>
+        ) : null
+      }
+    >
+      <WithSettings>
+        {(settings) => (
+          <div className="px-5 py-8 sm:px-8">
+            <Panel className="p-1">
+              <InstructionsEditor saved={settings.agent.instructions} rows={18} />
+            </Panel>
+          </div>
+        )}
+      </WithSettings>
+    </FramedPage>
+  );
+}
+
 function Agent({ settings }: { settings: Settings }) {
-  const { draft, notify } = useApp();
+  const { notify } = useApp();
   const model = useAgentModel(settings);
-  const dirty = instructionsDirty(draft, settings.agent.instructions);
   const provider = settings.providers.find((p) => p.id === settings.agent.provider);
 
   return (
@@ -156,30 +183,6 @@ function Agent({ settings }: { settings: Settings }) {
           ) : null}
         </Panel>
       </Section>
-
-      <Section
-        n={2}
-        title="Instructions"
-        caption="Added to the system prompt of every run."
-        action={
-          dirty ? (
-            <StatusPill tone="orange" className="h-5 px-2 text-[11.5px]">
-              Draft
-            </StatusPill>
-          ) : (
-            <StatusPill tone="green" className="h-5 px-2 text-[11.5px]">
-              Saved
-            </StatusPill>
-          )
-        }
-      >
-        <Panel className="p-1">
-          <InstructionsEditor saved={settings.agent.instructions} rows={7} />
-        </Panel>
-      </Section>
-
-      <ChannelsSection settings={settings} />
-      <AutomationsSection />
     </>
   );
 }

@@ -21,8 +21,14 @@ export function MenuButton() {
   );
 }
 
+/** True inside the agent pane, which already draws the frame and the drawer button. */
+export const InPaneContext = createContext(false);
+
 /** The rounded main pane. Below lg it has a small bar with the drawer button. */
 export function MainPane({ children, bar = true }: { children: ReactNode; bar?: boolean }) {
+  if (useContext(InPaneContext))
+    return <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>;
+
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line">
       {bar ? (

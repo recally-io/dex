@@ -6,7 +6,6 @@ import { IconCircleInfo } from "@central-icons-react/round-outlined-radius-2-str
 import { IconCloudApi } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCloudApi";
 import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
 import { IconKey2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconKey2";
-import { IconSettingsGear1 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsGear1";
 import { IconPuzzle } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPuzzle";
 import { getSettingsOptions } from "../api/generated/@tanstack/react-query.gen";
 import GlideMenu from "./primitives/GlideMenu";
@@ -14,6 +13,7 @@ import { ShellContext } from "./page";
 import { ThemeToggle, useSystemTheme } from "./theme";
 import { useApp } from "../lib/app-state";
 import { instructionsDirty } from "../lib/instructions";
+import { isAgentPath } from "./agent-layout";
 import { cn } from "../lib/utils";
 
 export function Shell() {
@@ -104,7 +104,6 @@ function Row({
   trailing,
   small,
   title,
-  ariaLabel,
 }: {
   to: LinkProps["to"];
   params?: LinkProps["params"];
@@ -114,14 +113,12 @@ function Row({
   trailing?: ReactNode;
   small?: boolean;
   title?: string;
-  ariaLabel?: string;
 }) {
   return (
     <Link
       to={to}
       params={params}
       title={title}
-      aria-label={ariaLabel}
       data-row
       aria-current={current ? "page" : undefined}
       className={cn(
@@ -166,7 +163,6 @@ function Dot({ tone, label }: { tone: "orange" | "red"; label: string }) {
 }
 
 const configure = [
-  { to: "/agent", label: "Agent", icon: <IconSettingsGear1 size={16} /> },
   { to: "/providers", label: "Providers", icon: <IconCloudApi size={16} /> },
   { to: "/extensions", label: "Extensions", icon: <IconPuzzle size={16} /> },
   { to: "/secrets", label: "Secrets", icon: <IconKey2 size={16} /> },
@@ -180,18 +176,19 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
   const dirty = instructionsDirty(draft, settings.data?.agent.instructions);
   const [a] = path.split("/").filter(Boolean);
   const providerErrors = settings.data?.providers.filter((p) => p.error).length ?? 0;
-  const botCurrent = path === "/";
-  const settingsCurrent = a === "agent" || a === "channels" || a === "automations";
+  // Every tab of the agent belongs to its row; only the global settings have rows of their own.
+  const agentCurrent = isAgentPath(path);
 
   return (
     <aside aria-label="Navigation" className={cn("flex h-full w-[232px] shrink-0 flex-col", className)}>
-      <div className="mx-2 mb-2.5 flex h-11 shrink-0 items-center">
+      <p className="mx-2 mt-1 flex h-8 items-center px-2 text-[12.5px] font-medium text-ink-3">Agents</p>
+      <div className="mx-2 mb-2.5 flex h-10 shrink-0 items-center">
         <Link
           to="/"
-          aria-current={botCurrent ? "page" : undefined}
+          aria-current={agentCurrent ? "page" : undefined}
           className={cn(
             "flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-control px-2 hover:bg-hover-2",
-            botCurrent && "bg-hover-2",
+            agentCurrent && "bg-hover-2",
           )}
         >
           <span
@@ -200,13 +197,16 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
           >
             d
           </span>
-          <span className="truncate text-[14px] font-semibold text-ink">{name}</span>
+          <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">{name}</span>
+          {dirty ? <span className="shrink-0 text-[11px] text-ink-3">Draft</span> : null}
         </Link>
       </div>
       <div className="flex-1" />
 
       <div className="mt-2 shrink-0 border-t border-dashed border-line-strong pt-2">
-        <p className="mx-2 mb-1 flex h-8 items-center px-2 text-[12.5px] font-medium text-ink-3">Settings</p>
+        <p className="mx-2 mb-1 flex h-8 items-center px-2 text-[12.5px] font-medium text-ink-3">
+          Global settings
+        </p>
         <GlideGroup>
           {configure.map((item) => (
             <Row
@@ -215,12 +215,9 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
               icon={item.icon}
               label={item.label}
               to={item.to}
-              current={item.to === "/agent" ? settingsCurrent : `/${a}` === item.to}
-              ariaLabel={item.to === "/agent" ? `${name} settings` : undefined}
+              current={`/${a}` === item.to}
               trailing={
-                item.to === "/agent" && dirty ? (
-                  <span className="text-[11px] text-ink-3">Draft</span>
-                ) : item.to === "/providers" && providerErrors ? (
+                item.to === "/providers" && providerErrors ? (
                   <Dot
                     tone="red"
                     label={`${providerErrors} ${providerErrors === 1 ? "provider needs" : "providers need"} attention`}

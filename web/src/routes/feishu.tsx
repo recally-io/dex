@@ -7,7 +7,7 @@ import {
   pollFeishuMutation,
   setFeishuMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { BotCrumb } from "../components/bot-crumb";
+import { Crumb } from "../components/crumb";
 import { Button } from "../components/atoms/Button";
 import { Failure } from "../components/feedback";
 import { Field, Input } from "../components/form";
@@ -102,7 +102,7 @@ export function FeishuChannel() {
 
   return (
     <FramedPage
-      eyebrow={<BotCrumb />}
+      eyebrow={<Crumb to="/channels">Channels</Crumb>}
       title="Feishu / Lark"
       description="Talk to dex in a private chat. Only the paired owner can use the bot."
     >

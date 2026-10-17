@@ -92,22 +92,22 @@ busy sessions. Each row counts once. A kind filter counts only visible rows.
 `New session` appears only on the Sessions page. Other sessions open at
 `/c/{id}`; tasks open at `/tasks/{id}` with Report above Work. Main stays at `/`.
 
-Channel input enters main. Chat and automation contexts stay separate. The header
-of the main timeline holds the model, the thinking level of a reasoning model,
-and the instructions. A draft marks the header and the sidebar. The instructions
-open in a 400px side panel while the pane holds at least 960px, so the answer
-being fixed stays readable; below that width the control opens `/agent`. The
-panel and `/agent` share one editor and one draft, and the draft lives in app
-state, so it follows a route change and a reload starts from the saved
-instructions. A toggle at the end of the header opens a 132px dashboard
-between the header and the transcript, with tiles for the model, the name, the
-channels, the automations, and the instructions. Its tiles hold only one-step
-changes: a channel tile links to its page, because turning a channel off
-forgets its credentials. The open state is kept per device in localStorage.
-A pane under 720px opens the same tiles as a bottom sheet each time. The
-sidebar holds the bot identity and a labeled Agent row.
-`/agent` holds Profile, Instructions, Channels, and Automations. Providers,
-Extensions, Secrets, and About stay global.
+Channel input enters main. Chat and automation contexts stay separate.
+
+The agent is one page with tabs: Chat (`/`), Instructions (`/instructions`),
+Channels (`/channels`), Automations (`/automations`), Sessions (`/sessions`,
+with `/c/{id}` and `/tasks/{id}`), and Settings (`/agent`, the name). A pathless
+layout route holds them, so the header with the name, the tabs, the model, and
+the thinking level of a reasoning model stays in place. The main timeline stays
+mounted and `inert` under the other tabs, so its stream and the unsent message
+survive a tab change. Browser checks must skip `[inert]` subtrees. The
+instructions draft lives in app state; it marks the Instructions tab and the
+sidebar until it is saved, and a reload starts from the saved instructions. On
+a phone the tabs scroll and the current tab is centered.
+
+The sidebar lists the agents at the top and the global settings at the bottom:
+Providers, Extensions, Secrets, and About. The agent row is current on every
+tab. `/settings` redirects to `/agent`.
 Channel settings show setup and runtime status. Automation details
 keep their run history. Automation transcripts have no web composer.
 
