@@ -99,7 +99,13 @@ open in a 400px side panel while the pane holds at least 960px, so the answer
 being fixed stays readable; below that width the control opens `/agent`. The
 panel and `/agent` share one editor and one draft, and the draft lives in app
 state, so it follows a route change and a reload starts from the saved
-instructions. The sidebar holds the bot identity and a labeled Agent row.
+instructions. A toggle at the end of the header opens a 132px dashboard
+between the header and the transcript, with tiles for the model, the name, the
+channels, the automations, and the instructions. Its tiles hold only one-step
+changes: a channel tile links to its page, because turning a channel off
+forgets its credentials. The open state is kept per device in localStorage.
+A pane under 720px opens the same tiles as a bottom sheet each time. The
+sidebar holds the bot identity and a labeled Agent row.
 `/agent` holds Profile, Instructions, Channels, and Automations. Providers,
 Extensions, Secrets, and About stay global.
 Channel settings show setup and runtime status. Automation details

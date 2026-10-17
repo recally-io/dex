@@ -796,13 +796,13 @@ try {
   );
   await model("think");
   await visit("/");
-  await check(
+  await ui(
     "a reasoning model adds the thinking level to the header",
-    `document.querySelector('header [aria-label="Change thinking level"]').innerText.trim().length > 0`,
+    `document.querySelector('header [aria-label="Change thinking level"]')?.innerText.trim().length > 0`,
   );
   await model(chosen);
   await visit("/");
-  await check(
+  await ui(
     "a model without reasoning leaves the thinking level out",
     `!document.querySelector('header [aria-label="Change thinking level"]')`,
   );
@@ -847,6 +847,88 @@ try {
     "document.querySelector('textarea[aria-label=\"Agent instructions\"]').value === ''",
   );
 
+  // The dashboard opens between the header and the transcript, and keeps its state per device.
+  await visit("/");
+  const toggle = 'header button[aria-controls], header button[aria-label$="dashboard"]';
+  await ui(
+    "dashboard starts closed",
+    `!document.querySelector('#agent-dashboard') && !!document.querySelector(${JSON.stringify(toggle)})`,
+  );
+  await tap(toggle);
+  await ui(
+    "dashboard opens above the transcript with five tiles",
+    `[...document.querySelectorAll('#agent-dashboard section')].map(n => n.getAttribute('aria-label')).join(',') === 'Model,Name,Channels,Automations,Instructions' &&
+      document.querySelector(${JSON.stringify(toggle)}).getAttribute('aria-expanded') === 'true' &&
+      !!document.querySelector('textarea[aria-label="Message Browser Bot"]')`,
+  );
+  await check(
+    "dashboard costs at most 140px of the transcript",
+    "document.querySelector('#agent-dashboard').getBoundingClientRect().height <= 140",
+  );
+  await check(
+    "channel tiles link to their settings instead of switching them",
+    `[...document.querySelectorAll('#agent-dashboard section[aria-label="Channels"] a')].map(a => a.getAttribute('href')).join(',') === '/channels/telegram,/channels/wechat,/channels/feishu' &&
+      !document.querySelector('#agent-dashboard section[aria-label="Channels"] [role=switch]')`,
+  );
+  await shot("07b-dashboard");
+
+  const switchSelector = '#agent-dashboard section[aria-label="Automations"] [role=switch]';
+
+  const before = await evaluate(
+    `document.querySelector(${JSON.stringify(switchSelector)})?.getAttribute('aria-label') ?? ''`,
+  );
+
+  if (before) {
+    const name = before.replace(/^Enable /, "");
+    const was = (await api("/api/automations")).automations.find((a) => a.name === name).enabled;
+    await tap(switchSelector);
+    await poll(
+      "automation switch saves",
+      async () => (await api("/api/automations")).automations.find((a) => a.name === name).enabled === !was,
+    );
+    await ui(
+      "switch follows the saved state",
+      `document.querySelector(${JSON.stringify(switchSelector)}).getAttribute('aria-checked') === '${!was}'`,
+    );
+    await tap(switchSelector);
+    await poll(
+      "automation switch restores",
+      async () => (await api("/api/automations")).automations.find((a) => a.name === name).enabled === was,
+    );
+  }
+
+  await evaluate(
+    "document.querySelector('#agent-dashboard input[aria-label=\"Bot name\"]').focus(); document.querySelector('#agent-dashboard input[aria-label=\"Bot name\"]').select()",
+  );
+  await call("Input.insertText", { text: "Tile Bot" });
+  await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter" });
+  await poll("tile rename saves", async () => (await api("/api/settings")).agent.name === "Tile Bot");
+  await ui(
+    "the header follows the new name",
+    "document.querySelector('#page-title').textContent === 'Tile Bot'",
+  );
+  await evaluate(
+    "document.querySelector('#agent-dashboard input[aria-label=\"Bot name\"]').focus(); document.querySelector('#agent-dashboard input[aria-label=\"Bot name\"]').select()",
+  );
+  await call("Input.insertText", { text: "Browser Bot" });
+  await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter" });
+  await poll("tile rename restores", async () => (await api("/api/settings")).agent.name === "Browser Bot");
+
+  await tap('#agent-dashboard section[aria-label="Instructions"] button');
+  await ui(
+    "the instructions tile opens the side panel",
+    "!!document.querySelector('aside[aria-label=\"Agent instructions\"] textarea')",
+  );
+  await visit("/");
+  await ui("an open dashboard stays open after a reload", "!!document.querySelector('#agent-dashboard')");
+  await tap(toggle);
+  await ui("dashboard closes", "!document.querySelector('#agent-dashboard')");
+  await visit("/");
+  await ui(
+    "a closed dashboard stays closed after a reload",
+    `!document.querySelector('#agent-dashboard') && !!document.querySelector(${JSON.stringify(toggle)})`,
+  );
+
   await visit("/");
   await viewport(390, 844);
   await shot("08-mobile");
@@ -866,6 +948,23 @@ try {
     "the narrow header sends instructions to the settings page",
     `document.querySelector('header [aria-label="Edit instructions"]').getAttribute('href') === '/agent'`,
   );
+  // A phone has no room above the transcript, so the dashboard opens as a sheet each time.
+  await ui(
+    "a phone does not reopen the saved dashboard inline",
+    "!document.querySelector('#agent-dashboard')",
+  );
+  await tap('header button[aria-label$="dashboard"]');
+  await ui(
+    "the phone dashboard is a sheet with the same tiles",
+    "document.querySelector('#agent-dashboard')?.getAttribute('role') === 'dialog' && document.querySelectorAll('#agent-dashboard section').length === 5",
+  );
+  await ui(
+    "the sheet finishes opening",
+    `document.getAnimations().every(a => a.playState !== 'running') && !!document.querySelector('#agent-dashboard section[aria-label="Automations"] [role=switch]')`,
+  );
+  await shot("09a-mobile-dashboard");
+  await tap('#agent-dashboard button[aria-label="Close dashboard"]');
+  await ui("the phone dashboard closes", "!document.querySelector('#agent-dashboard')");
   await evaluate("document.querySelector('button[aria-label=\"Open navigation\"]').click()");
   await ui("mobile drawer reopened", "!!document.querySelector('[role=dialog]')");
   await tap('[role="dialog"] button[aria-label="Close navigation"]');

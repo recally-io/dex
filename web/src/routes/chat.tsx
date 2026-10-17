@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { IconArrowDown } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowDown";
@@ -6,6 +6,7 @@ import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2
 import { IconLock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconLock";
 import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
 import { IconBubble2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubble2";
+import { IconChevronDownSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronDownSmall";
 import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
 import { IconAlignmentLeft } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconAlignmentLeft";
 import type {
@@ -39,6 +40,7 @@ import { RetryNotice, Transcript } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { ThinkingPicker } from "../components/thinking-picker";
 import { InstructionsEditor } from "../components/instructions-editor";
+import { AgentDashboard, AgentDashboardSheet, useDashboardOpen } from "../components/agent-dashboard";
 import { Failure, Loading } from "../components/feedback";
 import { MainPane, MenuButton, Note } from "../components/page";
 import { Button } from "../components/atoms/Button";
@@ -86,30 +88,23 @@ function MainTimeline({ settings }: { settings: Settings }) {
   );
 }
 
-/**
- * True while the pane can hold the transcript and a 400px panel side by side. Below that the
- * panel would squeeze the transcript, so the settings page takes over. The pane arrives through
- * state, not a ref, because it mounts after the first render.
- */
-function useWideEnough(pane: HTMLElement | null) {
-  const [wide, setWide] = useState(false);
+/** The width of the pane, measured from a callback ref so it is known on the first commit. */
+function usePaneWidth() {
+  const [width, setWidth] = useState(0);
 
-  useEffect(() => {
+  const ref = useCallback((pane: HTMLElement | null) => {
     if (!pane) return;
 
-    const measure = (width: number) => setWide(width >= 960);
+    setWidth(pane.getBoundingClientRect().width);
 
-    // The first measure is synchronous, so the header does not render the wrong control once.
-    measure(pane.getBoundingClientRect().width);
-
-    const observer = new ResizeObserver(([entry]) => measure(entry.contentRect.width));
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
 
     observer.observe(pane);
 
     return () => observer.disconnect();
-  }, [pane]);
+  }, []);
 
-  return wide;
+  return [ref, width] as const;
 }
 
 function OriginPill({ chat }: { chat: ChatInfo }) {
@@ -172,8 +167,12 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const memory = health.data ? `${health.data.dataDir}/memory` : undefined;
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState(false);
-  const [pane, setPane] = useState<HTMLElement | null>(null);
-  const wide = useWideEnough(pane);
+  const [pane, width] = usePaneWidth();
+  // The side panel needs room for the transcript beside it; the tiles need room for five columns.
+  const wide = width >= 960;
+  const roomy = width >= 720;
+  const [dashboard, toggleDashboard] = useDashboardOpen();
+  const [sheet, setSheet] = useState(false);
   const [jump, setJump] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const clear = useClearContext(chatId, state.running, () => setAnnouncement("Context cleared."));
@@ -453,7 +452,7 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   return (
     <>
       <section
-        ref={setPane}
+        ref={pane}
         className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line"
       >
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
@@ -488,7 +487,39 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
           ) : null}
           <span className="flex-1" />
           {chat.data?.main ? <SessionsLink active={active} /> : null}
+          {chat.data?.main ? (
+            <button
+              type="button"
+              aria-expanded={roomy ? dashboard : sheet}
+              aria-controls={(roomy ? dashboard : sheet) ? "agent-dashboard" : undefined}
+              aria-label={`${roomy && dashboard ? "Hide" : "Show"} ${settings.agent.name} dashboard`}
+              title="Dashboard"
+              onClick={() => (roomy ? toggleDashboard() : setSheet(true))}
+              className="flex size-7 shrink-0 items-center justify-center rounded-control text-ink-3 transition-colors hover:bg-hover-2 hover:text-ink"
+            >
+              <IconChevronDownSmall
+                size={18}
+                className={cn("transition-transform duration-200", roomy && dashboard && "rotate-180")}
+              />
+            </button>
+          ) : null}
         </header>
+        {chat.data?.main && roomy && dashboard ? (
+          <AgentDashboard
+            settings={settings}
+            model={model}
+            dirty={dirty}
+            onEditInstructions={wide ? () => setEditing(true) : undefined}
+          />
+        ) : null}
+        {chat.data?.main && !roomy && sheet ? (
+          <AgentDashboardSheet
+            settings={settings}
+            model={model}
+            dirty={dirty}
+            onClose={() => setSheet(false)}
+          />
+        ) : null}
         <div className="flex min-h-0 flex-1">
           <div className="relative flex min-w-0 flex-1 flex-col">
             <div

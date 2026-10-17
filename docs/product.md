@@ -31,8 +31,9 @@ to read in an afternoon.
   is idle. Earlier messages stay readable with Show earlier messages. A clear
   keeps long-term memory. After a summary, Show earlier messages can load
   the earlier transcript. Only a clear shows a divider. Its header shows the
-  model and the thinking level, and opens the instructions beside the
-  transcript. The sidebar holds the bot name, a labeled Agent row, and global
+  model and the thinking level, opens the instructions beside the
+  transcript, and opens a dashboard of the bot's model, name, channels,
+  automations, and instructions above the transcript. The sidebar holds the bot name, a labeled Agent row, and global
   settings. It has no chat list or New chat action.
   Channel input shares main. Automation runs have separate read-only transcripts.
 - Internal background delegation for the default agent. Each delegation has

@@ -47,7 +47,7 @@ function RunPill({ run, className = "" }: { run: AutomationRun; className?: stri
   );
 }
 
-function EnabledSwitch({ automation }: { automation: Automation }) {
+export function EnabledSwitch({ automation }: { automation: Automation }) {
   const update = useMutation({ ...updateAutomationMutation(), onSuccess: refreshAutomations });
 
   return (
