@@ -488,13 +488,12 @@ async function readEnv(path: string, errors: string[]): Promise<Record<string, s
 		return undefined;
 	}
 	const vars: Record<string, string> = Object.create(null);
+	// As in dotenv, a comment after a value starts with whitespace, so a token can hold `#`.
 	for (const [i, raw] of text.split(/\r?\n/).entries()) {
 		const line = raw.trim();
 		if (line === "" || line.startsWith("#")) continue;
 		const match =
-			/^(?:export +)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:'([^']*)'|"([^"]*)"|([^'"#]*?))\s*(?:#.*)?$/.exec(
-				line,
-			);
+			/^(?:export +)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:'([^']*)'|"([^"]*)"|([^'"]*?))(?:\s+#.*)?$/.exec(line);
 		if (match === null || line.includes("\0")) {
 			errors.push(`${path}: line ${i + 1} is not a valid KEY=VALUE assignment`);
 			return undefined;

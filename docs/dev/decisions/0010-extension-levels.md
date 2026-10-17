@@ -28,7 +28,8 @@ Each agent gets a separate snapshot: worker environment, then home, dex,
 and agent `.env`, merged per key. The worker never changes `process.env`.
 The snapshot goes to tool processes and stdio MCP servers. A server's own
 `env` wins over the snapshot. Files accept `KEY=VALUE`, blank lines, `#`
-comment lines, optional `export `, and single or double quotes. There is
+comment lines, optional `export `, and single or double quotes. A comment
+after a value starts with whitespace, so `KEY=a#b` keeps `a#b`. There is
 no interpolation, escape processing, or multiline value. Invalid lines or
 keys are configuration errors. Any invalid `.env` removes all `.env` values
 and prevents MCP startup for that agent. The worker environment remains.

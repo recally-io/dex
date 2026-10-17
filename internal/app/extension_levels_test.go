@@ -21,14 +21,14 @@ func TestUserReadsExtensionLevelsAndPrivateEnvironment(t *testing.T) {
 	for _, root := range []string{home, data, filepath.Join(data, "agents", "default")} {
 		writeSkill(t, filepath.Join(root, ".agents", "skills"), "review", "description: "+root)
 	}
-	writeFile(t, filepath.Join(home, ".agents", ".env"), "DEX_LEVEL=home\nDEX_HOME_ONLY=home\n")
+	writeFile(t, filepath.Join(home, ".agents", ".env"), "DEX_LEVEL=home\nDEX_HOME_ONLY=home#frag # comment\n")
 	writeFile(t, filepath.Join(data, ".agents", ".env"), "# Shared environment\n\nDEX_LEVEL=\"dex\" # replaced by agent\n")
 	writeFile(t, filepath.Join(data, "agents", "default", ".agents", ".env"), "export DEX_LEVEL='agent'\nHOME=/does-not-move-roots\n")
 	d := startDexHome(t, app.Config{DataDir: data}, home)
 	d.setModel(t, "bash")
 	// When the agent runs a tool, it gets its own environment snapshot.
 	w := d.watch(t, d.newChat(t, `printf '%s/%s' "$DEX_LEVEL" "$DEX_HOME_ONLY"`))
-	w.until(t, "layered environment", answered("bash: agent/home"))
+	w.until(t, "layered environment", answered("bash: agent/home#frag"))
 	// Then the API shows the winning skill, but no values.
 	got := d.extensions(t)
 	if len(got.Skills) != 1 || got.Skills[0].Scope != "agent" || !got.Skills[0].Overrides {
