@@ -236,10 +236,13 @@ Invalid `.env` or MCP files prevent all MCP startup for that agent. Invalid
 `.env` also removes all file environment values from that snapshot.
 [`AgentExtensions`](../../worker/src/extensions.ts) connects the servers when
 the worker opens the agent, before `resume()`. It installs one pi-durable
-extension: a `skills` prompt section, which reads the skill files before each
-model request, and the MCP tools, as deferred tools named
+extension: an always-present `extension-guide` prompt section, a `skills`
+section that reads the skill files before each model request, and the MCP
+tools, as deferred tools named
 `mcp__<server>__<tool>`. When an agent has MCP tools, the worker also installs
-`tool_search`.
+`tool_search`. The guide lists the fixed paths and explains file formats,
+environment use, secrecy, and Reload. It contains no environment key names
+or values. Environment edits do not change its text.
 
 `PUT` and `DELETE /api/agents/{agentId}/extensions/env` forward write-only
 agent and dex environment edits to the worker's `editEnv` RPC. The worker

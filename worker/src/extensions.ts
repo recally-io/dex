@@ -16,7 +16,7 @@ import Type, { type Static } from "typebox";
 import { Value } from "typebox/value";
 import type { Extensions, McpServerInfo, Scope, SkillInfo, EditEnvParams } from "./protocol.ts";
 
-/** The name of the pi-durable extension with the skills section and the MCP tools. */
+/** The extension with the file guide, skills section, and MCP tools. */
 export const EXTENSION_NAME = "extensions";
 
 // A server name is part of each tool name, and providers allow 64 characters of [A-Za-z0-9_-].
@@ -163,6 +163,7 @@ export class AgentExtensions {
 	 */
 	async load(): Promise<Loaded> {
 		const scan = await this.#scan();
+		const guide = extensionGuide(await this.#roots);
 		for (const error of scan.errors) console.error("extensions:", error);
 		const servers = await Promise.all(
 			scan.servers.map((entry) =>
@@ -192,7 +193,10 @@ export class AgentExtensions {
 			env: scan.env,
 			extension: defineExtension({
 				name: EXTENSION_NAME,
-				sections: [section("skills", async () => skillsText(await this.#skills([])))],
+				sections: [
+					section("extension-guide", () => guide),
+					section("skills", async () => skillsText(await this.#skills([]))),
+				],
 				tools,
 			}),
 			hasTools: tools.length > 0,
@@ -605,4 +609,19 @@ function quoteEnv(value: string): string {
 	if (value.includes("'")) return `"${value}"`;
 	if (value.includes('"') || value.includes("#") || value.trim() !== value) return `'${value}'`;
 	return value;
+}
+
+/** Only fixed paths affect this text, so environment edits keep the prompt cache stable. */
+function extensionGuide(roots: readonly { scope: Scope; paths: Paths }[]): string {
+	return [
+		"Extension levels for this agent, from wide to narrow:",
+		...roots.map(({ scope, paths }) => `- ${scope}: ${dirname(paths.env)}/; environment file: ${paths.env}`),
+		"Narrower levels win. A skill or MCP server with the same name replaces the wider entry as a whole. Environment values merge per key.",
+		"",
+		"Skills: use <level>/skills/<name>/SKILL.md. Start with YAML front matter fields name and description. Skill edits apply on the next request. Use the skills list when it is present.",
+		'MCP: use <level>/mcp.json with a mcpServers object. For stdio, use command, args, env, and cwd. For HTTP, use "type": "http", url, and headers. {"disabled": true} turns off a wider server with the same name.',
+		"",
+		".env: values are in the tool environment. Use $KEY in bash and ${KEY} in mcp.json headers. Never print, echo, or write a value into chat, memory, or files. The user sets values on the Secrets page.",
+		"mcp.json and .env changes apply after the user presses Reload in the Extensions tab. You cannot reload. Ask the user to press Reload when needed.",
+	].join("\n");
 }

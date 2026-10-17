@@ -193,6 +193,11 @@ directories: the user home, the resolved dex data directory, and the agent
 home (`<data dir>/agents/<id>`). The narrower level wins. Tools still start
 in the agent workspace. Memory stays in `<data dir>/memory`.
 
+The system prompt always includes a guide to these files, even with no
+skills. It explains paths, file formats, environment use, and Reload. It
+contains no environment key names or values. The user sets values on the
+Secrets page.
+
 The Secrets page writes tool credentials to the current agent or dex `.env`
 file. Dex scope applies to all agents. The page shows key names and shadowed
 state, with Replace and Delete actions. Values are write-only. Home keys are
