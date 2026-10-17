@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Extensions } from "../api/generated/types.gen";
 import {
   getExtensionsOptions,
+  listAgentsOptions,
   getExtensionsQueryKey,
   putExtensionEnvMutation,
   deleteExtensionEnvMutation,
@@ -78,6 +79,9 @@ export function SecretsPage() {
 function ToolEnvironment({ agentId }: { agentId: string }) {
   const { notify } = useApp();
   const query = useQuery(getExtensionsOptions({ path: { agentId } }));
+  // Secrets is a global page, so name the agent that "agent" scope writes to.
+  const agentName = useQuery(listAgentsOptions()).data?.agents.find((agent) => agent.id === agentId)?.name;
+  const agentLabel = agentName ? `Agent: ${agentName}` : "This agent";
   const [scope, setScope] = useState<"agent" | "dex">("agent");
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
@@ -152,7 +156,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
                   disabled={busy}
                   onChange={(event) => setScope(event.target.value === "dex" ? "dex" : "agent")}
                 >
-                  <option value="agent">This agent</option>
+                  <option value="agent">{agentLabel}</option>
                   <option value="dex">All agents (dex)</option>
                 </Select>
               )}
@@ -221,7 +225,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
                 <div className="border-b border-line px-4 py-3">
                   <p className="text-[13px] font-medium text-ink">
                     {level === "agent"
-                      ? "This agent"
+                      ? agentLabel
                       : level === "dex"
                         ? "All agents (dex)"
                         : "Home · Read-only"}
