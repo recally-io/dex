@@ -85,7 +85,7 @@ func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
 				`SELECT agent_id || '|' || token || '|' || allowed_users FROM telegram_settings`:                                                      "default|7:upgrade|",
 				`SELECT token || '|' || base_url || '|' || bot_id || '|' || owner FROM wechat_settings`:                                               "wx-token|https://example.com|wx-bot|wx-owner",
 				`SELECT cursor || '|' || context_token || '|' || context_message_id || '|' || pause_until FROM wechat_runtime`:                        "cursor|context|18446744073709551615|123",
-				`SELECT agent_id || '|' || peer || '|' || channel_key FROM channel_peers`:                                                             "default|wechat:wx-owner|peer/saved",
+				`SELECT peer || '|' || channel_key FROM channel_peers`:                                                                                "wechat:wx-owner|peer/saved",
 				`SELECT agent_id || '|' || channel_key FROM conversations`:                                                                            "default|peer/saved",
 				`SELECT content || '|' || status || '|' || answer || '|' || delivered_parts || '|' || COALESCE(delivered_at,'null') FROM submissions`: "hi|done|answer|1|null",
 				`SELECT source_key || '|' || peer || '|' || channel_key || '|' || command || '|' || answer || '|' || completed FROM channel_commands`: "command|wechat:wx-owner|peer/saved|/help|help|1",

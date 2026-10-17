@@ -34,16 +34,6 @@ INSERT INTO feishu_settings_agent (agent_id, app_id, app_secret, brand, owner_id
 DROP TABLE feishu_settings;
 ALTER TABLE feishu_settings_agent RENAME TO feishu_settings;
 
-CREATE TABLE channel_peers_agent (
-    agent_id TEXT NOT NULL REFERENCES agents(id),
-    peer TEXT NOT NULL,
-    channel_key TEXT NOT NULL,
-    PRIMARY KEY (agent_id, peer)
-) STRICT;
-INSERT INTO channel_peers_agent (agent_id, peer, channel_key) SELECT 'default', peer, channel_key FROM channel_peers;
-DROP TABLE channel_peers;
-ALTER TABLE channel_peers_agent RENAME TO channel_peers;
-
 CREATE TABLE channel_commands_agent (
     agent_id TEXT NOT NULL REFERENCES agents(id),
     source_key TEXT PRIMARY KEY,
@@ -73,14 +63,6 @@ CREATE TABLE channel_commands_global (
 INSERT INTO channel_commands_global (source_key, peer, channel_key, command, answer, completed, delivered_at) SELECT source_key, peer, channel_key, command, answer, completed, delivered_at FROM channel_commands WHERE agent_id = 'default';
 DROP TABLE channel_commands;
 ALTER TABLE channel_commands_global RENAME TO channel_commands;
-
-CREATE TABLE channel_peers_global (
-    peer TEXT PRIMARY KEY,
-    channel_key TEXT NOT NULL
-) STRICT;
-INSERT INTO channel_peers_global (peer, channel_key) SELECT peer, channel_key FROM channel_peers WHERE agent_id = 'default';
-DROP TABLE channel_peers;
-ALTER TABLE channel_peers_global RENAME TO channel_peers;
 
 CREATE TABLE feishu_settings_global (
     id INTEGER PRIMARY KEY CHECK (id = 1),

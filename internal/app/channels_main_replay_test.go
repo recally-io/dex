@@ -20,14 +20,9 @@ func TestUserChannelMainLegacyNewReplayPreservesContext(t *testing.T) {
 	waitResultSubmission(t, conn, seed, "done")
 	sessionFixture(t, d, "telegram:7", 1)
 	d.stop()
-	// The previous version committed the receipt and peer rotation before completion.
-	for _, stmt := range []string{
-		"INSERT INTO channel_commands (agent_id,source_key,peer,channel_key,command) VALUES ('default','telegram:123:1','telegram:7','telegram:7','/new')",
-		"INSERT INTO channel_peers (agent_id,peer,channel_key) VALUES ('default','telegram:7','telegram:7/old-new-context')",
-	} {
-		if _, err := conn.ExecContext(t.Context(), stmt); err != nil {
-			t.Fatal(err)
-		}
+	// The previous version committed the receipt before completion.
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_commands (agent_id,source_key,peer,channel_key,command) VALUES ('default','telegram:123:1','telegram:7','telegram:7','/new')"); err != nil {
+		t.Fatal(err)
 	}
 
 	// When dex restarts and replays the old command.

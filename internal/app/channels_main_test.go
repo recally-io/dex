@@ -116,9 +116,6 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 			if _, err := conn.ExecContext(t.Context(), "UPDATE conversations SET model_provider='faux', model_id='shout' WHERE id=?", old); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_peers (agent_id, peer, channel_key) VALUES ('default', ?, ?)", e.peer, e.peer+"/old"); err != nil {
-				t.Fatal(err)
-			}
 			var chat chatInfo
 			d.must(t, http.MethodPost, "/api/agents/default/chats", nil, &chat, http.StatusCreated)
 			d.setModel(t, "context")

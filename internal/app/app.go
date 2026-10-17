@@ -141,23 +141,22 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	chats = chat.New(conn, w, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
 	hub = live.New(q, chats, w)
 	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
-	cfgDataDir := cfg.DataDir
-	setTelegram := func(agentID string, cfg *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
+	setTelegram := func(agentID string, config *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
 		manager := bots.Agent(agentID)
-		uploads := upload.New(filepath.Join(cfgDataDir, "agents", agentID))
-		if cfg == nil {
+		uploads := upload.New(filepath.Join(cfg.DataDir, "agents", agentID))
+		if config == nil {
 			manager.Set("telegram", nil)
 			return
 		}
-		cfg.Uploads = uploads
-		cfg.Seen = func(ctx context.Context, source string) (bool, error) {
+		config.Uploads = uploads
+		config.Seen = func(ctx context.Context, source string) (bool, error) {
 			_, err := q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
 			if errors.Is(err, sql.ErrNoRows) {
 				return false, nil
 			}
 			return err == nil, err
 		}
-		cfg.Watch = func(ctx context.Context, source string) (string, io.ReadCloser, error) {
+		config.Watch = func(ctx context.Context, source string) (string, io.ReadCloser, error) {
 			id, err := q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
 			if err != nil {
 				return "", nil, err
@@ -172,11 +171,10 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 			stream, err := hub.Open(ctx, agentID, sub.ConversationID)
 			return id, stream, err
 		}
-		cfg.Report = func(state, reason string) { manager.Report("telegram", channel.Status{State: state, Reason: reason}) }
-		manager.Set("telegram", telegram.New(*cfg, manager))
+		config.Report = func(state, reason string) { manager.Report("telegram", channel.Status{State: state, Reason: reason}) }
+		manager.Set("telegram", telegram.New(*config, manager))
 	}
 	prefs = settings.New(q, w.Call, cfg.TelegramAPIURL, setTelegram)
-	prefs.AgentCreated = func(id string) { bots.Agent(id) }
 	chats.ConfigureTasks(prefs.CheckChat)
 	setFeishu := func(agentID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
 		manager := bots.Agent(agentID)
@@ -192,22 +190,20 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	prefs.ConfigureFeishu(cfg.FeishuAPIURL, cfg.FeishuAccountsURL, setFeishu)
 	prefs.ChannelStatus = bots.Status
 	wxOptions := wechat.Options{APIURL: cfg.WechatAPIURL, CDNURL: cfg.WechatCDNURL, HTTPClient: cfg.WechatHTTPClient, Version: cfg.Version}
-	prefs.ConfigureWechat(wxOptions, conn, func(agentID string, cfg *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
+	setWechat := func(agentID string, config *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
 		manager := bots.Agent(agentID)
-		uploads := upload.New(filepath.Join(cfgDataDir, "agents", agentID))
-		if cfg == nil {
+		uploads := upload.New(filepath.Join(cfg.DataDir, "agents", agentID))
+		if config == nil {
 			manager.Set("wechat", nil)
 			return
 		}
-		manager.Set("wechat", wechat.New(*cfg, wxOptions, q, manager, uploads))
-	})
+		manager.Set("wechat", wechat.New(*config, wxOptions, q, manager, uploads))
+	}
+	prefs.ConfigureWechat(wxOptions, conn, setWechat)
 	agents, err := q.ListAgents(ctx)
 	if err != nil {
 		cancel()
 		return nil, errors.Join(err, conn.Close())
-	}
-	for _, agent := range agents {
-		bots.Agent(agent.ID)
 	}
 	// The stored token always exists, so `dex token` works before the host changes.
 	stored, err := prefs.AccessToken(ctx)
@@ -256,9 +252,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		}
 		setTelegram(agent.ID, tg)
 		setFeishu(agent.ID, fs)
-		if wx != nil {
-			bots.Agent(agent.ID).Set("wechat", wechat.New(*wx, wxOptions, q, bots.Agent(agent.ID), upload.New(filepath.Join(cfg.DataDir, "agents", agent.ID)))) //nolint:contextcheck // The registry owns bot lifetime.
-		}
+		setWechat(agent.ID, wx)
 	}
 	return a, nil
 }

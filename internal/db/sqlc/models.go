@@ -58,7 +58,6 @@ type ChannelCommand struct {
 }
 
 type ChannelPeer struct {
-	AgentID    string `json:"agent_id"`
 	Peer       string `json:"peer"`
 	ChannelKey string `json:"channel_key"`
 }

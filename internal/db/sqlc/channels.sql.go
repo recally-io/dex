@@ -135,15 +135,16 @@ WITH active AS (
 ), enabled AS (
     SELECT agent_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY agent_id
 )
-SELECT a.id, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
+SELECT a.id, a.name, a.model_provider, a.model_id, a.instructions, a.created_at, a.thinking_level, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
     CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations
 FROM agents a LEFT JOIN active ON active.agent_id = a.id LEFT JOIN enabled ON enabled.agent_id = a.id
+ORDER BY a.created_at, a.id
 `
 
 type ListAgentActivityRow struct {
-	ID                 string `json:"id"`
-	ActiveSessions     int64  `json:"active_sessions"`
-	EnabledAutomations int64  `json:"enabled_automations"`
+	Agent              Agent `json:"agent"`
+	ActiveSessions     int64 `json:"active_sessions"`
+	EnabledAutomations int64 `json:"enabled_automations"`
 }
 
 func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow, error) {
@@ -155,7 +156,17 @@ func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow
 	items := []ListAgentActivityRow{}
 	for rows.Next() {
 		var i ListAgentActivityRow
-		if err := rows.Scan(&i.ID, &i.ActiveSessions, &i.EnabledAutomations); err != nil {
+		if err := rows.Scan(
+			&i.Agent.ID,
+			&i.Agent.Name,
+			&i.Agent.ModelProvider,
+			&i.Agent.ModelID,
+			&i.Agent.Instructions,
+			&i.Agent.CreatedAt,
+			&i.Agent.ThinkingLevel,
+			&i.ActiveSessions,
+			&i.EnabledAutomations,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

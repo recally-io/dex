@@ -46,7 +46,6 @@ var customID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 
 // Settings is the complete view for the web UI. It never holds a secret.
 type Settings struct {
-	Agent Agent `json:"agent"`
 	// Providers are the providers that the user added, in the order of addition.
 	Providers []Provider `json:"providers"`
 	// Builtins are all pi-ai built-in providers that take an API key, for the UI to add one.
@@ -103,7 +102,6 @@ type Telegram struct {
 
 // Service reads and changes settings.
 type Service struct {
-	AgentCreated  func(string)
 	wechatOptions wechat.Options
 	onWechat      func(string, *wechat.Config)
 	wechatDB      *sql.DB
@@ -133,10 +131,6 @@ func New(q *sqlc.Queries, call worker.CallFunc, telegramAPIURL string, onTelegra
 
 // Get returns all settings. It asks the worker which providers exist.
 func (s *Service) Get(ctx context.Context) (Settings, error) {
-	agent, err := s.Agent(ctx, "default")
-	if err != nil {
-		return Settings{}, err
-	}
 	rows, err := s.q.ListProviders(ctx)
 	if err != nil {
 		return Settings{}, err
@@ -158,7 +152,6 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 		}
 	}
 	return Settings{
-		Agent:     agent,
 		Providers: providers,
 		Builtins:  builtins,
 		APIs:      APIs,
@@ -215,25 +208,17 @@ func agentView(row sqlc.Agent) Agent {
 
 // ListAgents returns agents and their activity in creation order.
 func (s *Service) ListAgents(ctx context.Context) ([]Agent, error) {
-	rows, err := s.q.ListAgents(ctx)
+	rows, err := s.q.ListAgentActivity(ctx)
 	if err != nil {
 		return nil, err
-	}
-	counts, err := s.q.ListAgentActivity(ctx)
-	if err != nil {
-		return nil, err
-	}
-	activity := make(map[string]Activity, len(counts))
-	for _, count := range counts {
-		activity[count.ID] = Activity{ActiveSessions: count.ActiveSessions, EnabledAutomations: count.EnabledAutomations}
 	}
 	agents := make([]Agent, len(rows))
 	for i, row := range rows {
-		agents[i] = agentView(row)
-		current := activity[row.ID]
+		agents[i] = agentView(row.Agent)
+		current := Activity{ActiveSessions: row.ActiveSessions, EnabledAutomations: row.EnabledAutomations}
 		if s.ChannelStatus != nil {
 			for _, platform := range []string{"telegram", "wechat", "feishu"} {
-				if s.ChannelStatus(row.ID, platform).State == "running" {
+				if s.ChannelStatus(row.Agent.ID, platform).State == "running" {
 					current.RunningChannels++
 				}
 			}
@@ -272,9 +257,6 @@ func (s *Service) CreateAgent(ctx context.Context, a Agent) (Agent, error) {
 		ID: uuid.NewV7().String(), Name: a.Name, ModelProvider: a.Provider, ModelID: a.ModelID,
 		ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions, CreatedAt: time.Now().UnixMilli(),
 	})
-	if err == nil && s.AgentCreated != nil {
-		s.AgentCreated(row.ID)
-	}
 	return agentView(row), err
 }
 

@@ -65,6 +65,7 @@ WITH active AS (
 ), enabled AS (
     SELECT agent_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY agent_id
 )
-SELECT a.id, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
+SELECT sqlc.embed(a), CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
     CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations
-FROM agents a LEFT JOIN active ON active.agent_id = a.id LEFT JOIN enabled ON enabled.agent_id = a.id;
+FROM agents a LEFT JOIN active ON active.agent_id = a.id LEFT JOIN enabled ON enabled.agent_id = a.id
+ORDER BY a.created_at, a.id;
