@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { createAgentMutation, listAgentsQueryKey } from "../api/generated/@tanstack/react-query.gen";
-import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
+import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { queryClient } from "../lib/queries";
 import { Modal } from "./dialog";
 import { Field, Input } from "./form";
@@ -13,7 +13,7 @@ import type { Agent, Model } from "../api/generated/types.gen";
 
 export function AgentCreateDialog({ onClose }: { onClose: () => void }) {
   const agentId = useAgentId();
-  const settings = useQuery(scopedSettingsOptions(agentId));
+  const settings = useAgentSettings(agentId);
 
   return settings.data ? (
     <CreateForm initial={settings.data.agent} onClose={onClose} />

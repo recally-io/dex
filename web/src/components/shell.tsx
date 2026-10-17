@@ -43,7 +43,7 @@ export function Shell() {
     shown.current = path;
 
     const frame = requestAnimationFrame(() =>
-      document.querySelector<HTMLElement>('[id="page-title"]:not([inert] *)')?.focus(),
+      document.querySelector<HTMLElement>('[id="page-title"]')?.focus(),
     );
 
     return () => cancelAnimationFrame(frame);

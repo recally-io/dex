@@ -1,4 +1,4 @@
-import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
+import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -102,7 +102,7 @@ function AutomationsSection() {
     refetchInterval: 10_000,
   });
 
-  const settings = useQuery(scopedSettingsOptions(agentId));
+  const settings = useAgentSettings(agentId);
   const [create, setCreate] = useState(false);
   const list = automations.data?.automations ?? [];
   const on = list.filter((a) => a.enabled).length;
@@ -223,7 +223,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
     refetchInterval: 10_000,
   });
 
-  const settings = useQuery(scopedSettingsOptions(agentId));
+  const settings = useAgentSettings(agentId);
   const model = useAgentModel(settings.data);
   const [edit, setEdit] = useState(false);
   const [confirm, setConfirm] = useState(false);

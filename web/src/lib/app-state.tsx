@@ -1,10 +1,30 @@
+import type { DraftFile, Uploads } from "./attachments";
 import { useAgentId } from "./agent-scope";
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useEffect,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+  type ReactNode,
+} from "react";
 import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
 
 type Notice = { id: number; text: string };
 
+type ComposerDraft = { text: string; files: DraftFile[] };
+
+const emptyComposer: ComposerDraft = { text: "", files: [] };
+
 type AppState = {
+  composers: Record<string, ComposerDraft>;
+  setComposer: (agentId: string, change: (draft: ComposerDraft) => ComposerDraft) => void;
+  composerUploads: { current: Uploads };
+
   // The unsaved instructions. It lives above the routes, so it survives navigation.
   drafts: Record<string, string | null>;
   setDraft: (agentId: string, draft: string | null) => void;
@@ -23,8 +43,27 @@ export function useApp() {
 
   const agentId = useAgentId();
 
+  const setComposerText: Dispatch<SetStateAction<string>> = (value) =>
+    state.setComposer(agentId, (draft) => ({
+      ...draft,
+      // React state setters accept a value or an updater.
+      // eslint-disable-next-line anti-slop/no-runtime-typeof
+      text: typeof value === "function" ? value(draft.text) : value,
+    }));
+
+  const setComposerFiles: Dispatch<SetStateAction<DraftFile[]>> = (value) =>
+    state.setComposer(agentId, (draft) => ({
+      ...draft,
+      // React state setters accept a value or an updater.
+      // eslint-disable-next-line anti-slop/no-runtime-typeof
+      files: typeof value === "function" ? value(draft.files) : value,
+    }));
+
   return {
     ...state,
+    composer: state.composers[agentId] ?? emptyComposer,
+    setComposerText,
+    setComposerFiles,
     draft: state.drafts[agentId] ?? null,
     setDraft: (value: string | null) => state.setDraft(agentId, value),
     settleDraft: (saved: string) => state.settleDraft(agentId, saved),
@@ -32,6 +71,25 @@ export function useApp() {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const [composers, setComposers] = useState<Record<string, ComposerDraft>>({});
+  const composerUploads = useRef<Uploads>(new Map());
+
+  const setComposer = useCallback((agentId: string, change: (draft: ComposerDraft) => ComposerDraft) => {
+    setComposers((previous) => ({ ...previous, [agentId]: change(previous[agentId] ?? emptyComposer) }));
+  }, []);
+
+  useEffect(() => {
+    const uploads = composerUploads.current;
+
+    return () => {
+      for (const upload of uploads.values()) {
+        upload.abort.abort();
+
+        if (upload.preview) URL.revokeObjectURL(upload.preview);
+      }
+    };
+  }, []);
+
   const [drafts, setDraftState] = useState<Record<string, string | null>>({});
   const current = useRef<Record<string, string | null>>({});
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -65,8 +123,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const state = useMemo(
-    () => ({ drafts, setDraft, settleDraft, notify }),
-    [drafts, setDraft, settleDraft, notify],
+    () => ({ composers, setComposer, composerUploads, drafts, setDraft, settleDraft, notify }),
+    [composers, setComposer, drafts, setDraft, settleDraft, notify],
   );
 
   return (

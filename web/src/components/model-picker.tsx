@@ -1,5 +1,5 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
-import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
+import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useState, type ReactElement } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -136,7 +136,7 @@ function ModelList({
   onLeave: () => void;
 }) {
   const agentId = useAgentId();
-  const settings = useQuery(scopedSettingsOptions(agentId));
+  const settings = useAgentSettings(agentId);
   const models = useQuery({ ...listModelsOptions(), refetchOnMount: "always" });
   const { draft } = useApp();
   const [query, setQuery] = useState("");

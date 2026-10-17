@@ -74,7 +74,6 @@ export const thinkingNames: Record<ThinkingLevel, string> = {
 async function refreshAgent(agentId: string) {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: getAgentQueryKey({ path: { agentId } }) }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "getSettings", path: { agentId } }] }),
     queryClient.invalidateQueries({ queryKey: listAgentsQueryKey() }),
   ]);
 }

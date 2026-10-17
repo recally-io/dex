@@ -1,5 +1,5 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
-import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
+import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useContext, useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -21,6 +21,7 @@ import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
 import { refreshChats } from "../lib/queries";
 import { agentModel } from "../lib/agent";
+import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
 import { activeSessionCount } from "../lib/tasks";
 import { Composer } from "../components/composer";
@@ -36,7 +37,7 @@ import { cn, newId } from "../lib/utils";
 
 export function ChatPage({ chatId }: { chatId?: number }) {
   const agentId = useAgentId();
-  const settings = useQuery(scopedSettingsOptions(agentId));
+  const settings = useAgentSettings(agentId);
 
   return settings.isPending ? (
     <MainPane>
@@ -72,7 +73,7 @@ export function MainTimeline({ settings }: { settings: Settings }) {
       <Failure title="Could not open the timeline" error={main.error} retry={() => void main.refetch()} />
     </MainPane>
   ) : (
-    <Chat key={main.data.id} chatId={main.data.id} settings={settings} />
+    <Chat key={main.data.id} chatId={main.data.id} settings={settings} main />
   );
 }
 
@@ -116,7 +117,7 @@ function OriginPill({ chat }: { chat: ChatInfo }) {
   return null;
 }
 
-function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
+function Chat({ chatId, settings, main = false }: { chatId: number; settings: Settings; main?: boolean }) {
   const agentId = useAgentId();
 
   const { chat, state, setState, queued, setQueued, connection, streamError, reconnect } =
@@ -136,7 +137,10 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
 
   const health = useQuery(getHealthOptions());
   const memory = health.data ? `${health.data.dataDir}/memory` : undefined;
-  const [draft, setDraft] = useState("");
+  const app = useApp();
+  const [localDraft, setLocalDraft] = useState("");
+  const draft = main ? app.composer.text : localDraft;
+  const setDraft = main ? app.setComposerText : setLocalDraft;
   const embedded = useContext(InPaneContext);
   const [jump, setJump] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -147,7 +151,7 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const failedMessage = useRef<{ body: MessageInput; attachments: Attachment[] } | null>(null);
   const send = useMutation(sendMessageMutation());
   const models = useQuery(listModelsOptions());
-  const files = useAttachments();
+  const files = useAttachments(main);
   const model = agentModel(settings.agent, models.data?.models);
 
   const abort = useMutation({

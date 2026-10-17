@@ -1,8 +1,8 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
-import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
+import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 
 import { saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
@@ -19,7 +19,7 @@ import { cn } from "../lib/utils";
 
 export function AgentPage() {
   const agentId = useAgentId();
-  const saved = useQuery(scopedSettingsOptions(agentId));
+  const saved = useAgentSettings(agentId);
   const model = useAgentModel(saved.data);
 
   return (
@@ -41,7 +41,7 @@ export function AgentPage() {
 
 export function InstructionsPage() {
   const agentId = useAgentId();
-  const saved = useQuery(scopedSettingsOptions(agentId));
+  const saved = useAgentSettings(agentId);
 
   return (
     <FramedPage

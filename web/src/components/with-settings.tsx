@@ -1,14 +1,13 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
-import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
+import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import type { ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
 
 import { Failure, Loading } from "./feedback";
 
 // Shows the page only with the saved settings; it has no fallback data.
 export function WithSettings({ children }: { children: (settings: Settings) => ReactNode }) {
   const agentId = useAgentId();
-  const settings = useQuery(scopedSettingsOptions(agentId));
+  const settings = useAgentSettings(agentId);
 
   return settings.isPending ? (
     <Loading />

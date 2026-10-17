@@ -1,3 +1,4 @@
+import { useApp } from "./app-state";
 import { useAgentId } from "./agent-scope";
 import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "../api/generated/types.gen";
@@ -32,11 +33,17 @@ export type DraftFile = {
   error?: string;
 };
 
-export function useAttachments() {
+export type Uploads = Map<string, { abort: AbortController; preview?: string }>;
+
+export function useAttachments(persist = false) {
   const agentId = useAgentId();
-  const [files, setFiles] = useState<DraftFile[]>([]);
+  const app = useApp();
+  const [localFiles, setLocalFiles] = useState<DraftFile[]>([]);
+  const files = persist ? app.composer.files : localFiles;
+  const setFiles = persist ? app.setComposerFiles : setLocalFiles;
   const [notice, setNotice] = useState("");
-  const uploads = useRef(new Map<string, { abort: AbortController; preview?: string }>());
+  const localUploads = useRef<Uploads>(new Map());
+  const uploads = persist ? app.composerUploads : localUploads;
 
   const release = (key: string) => {
     const upload = uploads.current.get(key);
@@ -48,7 +55,8 @@ export function useAttachments() {
   };
 
   useEffect(() => {
-    const current = uploads.current;
+    if (persist) return;
+    const current = localUploads.current;
 
     return () => {
       for (const upload of current.values()) {
@@ -57,7 +65,7 @@ export function useAttachments() {
         if (upload.preview) URL.revokeObjectURL(upload.preview);
       }
     };
-  }, []);
+  }, [persist]);
 
   function update(key: string, change: Partial<DraftFile>) {
     setFiles((previous) => previous.map((f) => (f.key === key ? { ...f, ...change } : f)));

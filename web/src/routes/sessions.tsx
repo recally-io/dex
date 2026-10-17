@@ -1,4 +1,4 @@
-import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
+import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -53,7 +53,7 @@ function TaskPill({ task }: { task: Pick<TaskSummary, "status"> }) {
 
 export function SessionsPage() {
   const agentId = useAgentId();
-  const settings = useQuery(scopedSettingsOptions(agentId));
+  const settings = useAgentSettings(agentId);
   const sessions = useQuery({ ...listChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
   const navigate = useNavigate();
 

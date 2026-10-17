@@ -60,6 +60,7 @@ const exceptions = [];
 const taskReads = new Map();
 const noticeLayouts = [];
 let heldAgentSave;
+let heldUpload;
 let serial = 0;
 const pending = new Map();
 
@@ -109,6 +110,7 @@ try {
       else promise.accept(event.result);
     } else if (event.method === "Fetch.requestPaused") {
       if (event.params.request.method === "PUT") heldAgentSave = event.params.requestId;
+      else if (event.params.request.url.endsWith("/uploads")) heldUpload = event.params.requestId;
       else void call("Fetch.continueRequest", { requestId: event.params.requestId });
     } else if (event.method === "Runtime.exceptionThrown") exceptions.push(event.params.exceptionDetails);
     else if (event.method === "Network.requestWillBeSent") {
@@ -1077,6 +1079,40 @@ try {
     "late save preserves second draft",
     `document.querySelector('${visibleInstructions}')?.value === 'Second instructions draft' && !document.querySelector('${defaultLink}').textContent.includes('Draft') && document.querySelector('${secondLink}').textContent.includes('Draft')`,
   );
+  await tap(defaultLink);
+  await ui("default composer before upload", `!!document.querySelector('${visibleComposer}')`);
+  await call("Fetch.enable", {
+    patterns: [{ urlPattern: `${base}/api/agents/default/uploads`, requestStage: "Response" }],
+  });
+  await evaluate(`(() => {
+    const input = document.querySelector('input[type=file]:not([inert] *)');
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(['late attachment'], 'late-draft.txt', {type: 'text/plain'}));
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', {bubbles: true}));
+  })()`);
+  await poll("upload response held", async () => heldUpload);
+  await tap(secondLink);
+  await ui(
+    "second composer while default uploads",
+    `document.querySelector('${visibleComposer}')?.value === 'second unsent text'`,
+  );
+  await call("Fetch.continueRequest", { requestId: heldUpload });
+  await call("Fetch.disable");
+  await check(
+    "late upload stays out of second agent draft",
+    "!document.body.innerText.includes('late-draft.txt')",
+  );
+  await tap(defaultLink);
+  await ui(
+    "late upload restores to its own agent",
+    "document.body.innerText.includes('late-draft.txt') && !document.body.innerText.includes('Uploading')",
+  );
+  await tap(secondLink);
+  await ui(
+    "second draft after late upload",
+    `document.querySelector('${visibleComposer}')?.value === 'second unsent text'`,
+  );
   await tap(agentTab("Channels"));
   await ui("second agent channel controls", "document.body.innerText.includes('All channels')");
   await check(
@@ -1125,6 +1161,41 @@ try {
   results.push(
     "create second agent, echo isolation, separate composer/instructions/upload drafts, channels boundary, legacy redirect and unknown agent",
   );
+
+  // Seven client-side agent switches must leave a connection for ordinary requests.
+  await viewport(1280, 900);
+  const connectionAgents = [];
+
+  for (let index = 0; index < 7; index++) {
+    connectionAgents.push(
+      await api("/api/agents", {
+        name: `Connection ${index + 1}`,
+        provider: "faux",
+        modelId: "echo",
+        thinkingLevel: "off",
+        instructions: "",
+      }),
+    );
+  }
+
+  await visit("/a/default");
+
+  for (const agent of connectionAgents) {
+    await ui("agent appears in sidebar", `!!document.querySelector('aside a[href="/a/${agent.id}"]')`);
+    await tap(`aside a[href="/a/${agent.id}"]`);
+    await ui(
+      `Chat works after switching to ${agent.name}`,
+      `!!document.querySelector('textarea[aria-label="Message ${agent.name}"]:not(:disabled)')`,
+    );
+  }
+
+  await tap('nav a[data-tab="Sessions"]');
+  await ui(
+    "Sessions loads after seven agent switches",
+    "document.body.innerText.includes('No sessions yet')",
+  );
+  results.push("seven agent Chat visits leave ordinary Sessions requests working");
+  await shot("16-seven-agents");
 
   await visit("/providers");
   await ui(

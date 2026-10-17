@@ -1,6 +1,6 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
-import { AgentContext, scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
-import { useEffect, useRef, useState } from "react";
+import { AgentContext, useAgentSettings, useAgentId } from "../lib/agent-scope";
+import { useEffect, useRef } from "react";
 import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
@@ -61,24 +61,19 @@ export function useAgentActivity() {
  */
 export function AgentLayout() {
   const { agentId = "default" } = useParams({ strict: false });
-  const [visited, setVisited] = useState([agentId]);
 
-  if (!visited.includes(agentId)) setVisited([...visited, agentId]);
-
-  return visited.map((id) => (
-    <AgentContext.Provider key={id} value={id}>
-      <div inert={id !== agentId} className={id === agentId ? "flex min-w-0 flex-1" : "hidden"}>
-        <AgentView active={id === agentId} />
-      </div>
+  return (
+    <AgentContext.Provider key={agentId} value={agentId}>
+      <AgentView />
     </AgentContext.Provider>
-  ));
+  );
 }
 
-function AgentView({ active }: { active: boolean }) {
+function AgentView() {
   const agentId = useAgentId();
   const agents = useQuery(listAgentsOptions());
   const missing = agents.data && !agents.data.agents.some((agent) => agent.id === agentId);
-  const settings = useQuery(scopedSettingsOptions(agentId));
+  const settings = useAgentSettings(agentId);
 
   return missing ? (
     <MainPane>
@@ -107,11 +102,11 @@ function AgentView({ active }: { active: boolean }) {
       </div>
     </MainPane>
   ) : (
-    <AgentPane settings={settings.data} active={active} />
+    <AgentPane settings={settings.data} />
   );
 }
 
-function AgentPane({ settings, active }: { settings: Settings; active: boolean }) {
+function AgentPane({ settings }: { settings: Settings }) {
   const agentId = useAgentId();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const segment = path.split("/").filter(Boolean)[2];
@@ -138,7 +133,7 @@ function AgentPane({ settings, active }: { settings: Settings; active: boolean }
   useEffect(() => {
     const element = nav.current;
 
-    if (!active || !element) return;
+    if (!element) return;
 
     const center = () =>
       element.querySelector(`[data-tab="${label}"]`)?.scrollIntoView({ block: "nearest", inline: "center" });
@@ -150,7 +145,7 @@ function AgentPane({ settings, active }: { settings: Settings; active: boolean }
     center();
 
     return () => observer.disconnect();
-  }, [active, label]);
+  }, [label]);
 
   return (
     <InPaneContext.Provider value>
@@ -158,7 +153,7 @@ function AgentPane({ settings, active }: { settings: Settings; active: boolean }
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line pr-2 pl-3 sm:pl-4 lg:h-11">
           <MenuButton />
           <Name
-            id={active && onChat ? "page-title" : undefined}
+            id={onChat ? "page-title" : undefined}
             tabIndex={onChat ? -1 : undefined}
             className="max-w-[40%] shrink-0 truncate text-[13px] font-semibold text-ink outline-none sm:max-w-[200px]"
           >
@@ -213,7 +208,7 @@ function AgentPane({ settings, active }: { settings: Settings; active: boolean }
         <div inert={!onChat} className={cn("min-h-0 flex-1 flex-col", onChat ? "flex" : "hidden")}>
           <MainTimeline settings={settings} />
         </div>
-        {active && !onChat ? <Outlet /> : null}
+        {!onChat ? <Outlet /> : null}
       </section>
     </InPaneContext.Provider>
   );
