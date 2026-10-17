@@ -231,9 +231,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
                         : "Home · Read-only"}
                   </p>
                   <p className="mt-1 text-[11.5px] text-ink-3 [overflow-wrap:anywhere]">
-                    <Mono>
-                      {catalog.paths[level === "agent" ? "agentEnv" : level === "dex" ? "dexEnv" : "homeEnv"]}
-                    </Mono>
+                    <Mono>{catalog.levels.find((l) => l.scope === level)?.dir}/.env</Mono>
                   </p>
                 </div>
                 {catalog.env.some((entry) => entry.scope === level) ? (

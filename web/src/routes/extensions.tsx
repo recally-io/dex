@@ -1,5 +1,6 @@
 import { useAgentId } from "../lib/agent-scope";
 import type { ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Extensions, McpServer, Skill } from "../api/generated/types.gen";
 import {
@@ -86,29 +87,27 @@ export function ExtensionsPage() {
 }
 
 function Catalog({ extensions: e }: { extensions: Extensions }) {
-  const levels = [
-    { name: "home", skills: e.paths.homeSkills, mcp: e.paths.homeMcp, env: e.paths.homeEnv },
-    { name: "dex", skills: e.paths.dexSkills, mcp: e.paths.dexMcp, env: e.paths.dexEnv },
-    { name: "agent", skills: e.paths.agentSkills, mcp: e.paths.agentMcp, env: e.paths.agentEnv },
-  ];
-
   return (
     <>
-      <Section n={2} title="File levels" caption="Order: home, dex, agent. Narrower wins.">
+      <Section
+        n={2}
+        title="File levels"
+        caption={
+          <>
+            Each holds skills/, mcp.json and .env. Set .env values on the{" "}
+            <Link to="/secrets" className="underline">
+              Secrets
+            </Link>{" "}
+            page.
+          </>
+        }
+      >
         <Panel>
           <ul className="divide-y divide-line">
-            {levels.map((level) => (
-              <li key={level.name} className="px-4 py-3 text-[12px] [overflow-wrap:anywhere]">
-                <p className="mb-1 font-medium text-ink">{level.name}</p>
-                <p>
-                  <Mono>{level.skills}</Mono>
-                </p>
-                <p>
-                  <Mono>{level.mcp}</Mono>
-                </p>
-                <p>
-                  <Mono>{level.env}</Mono>
-                </p>
+            {e.levels.map((level) => (
+              <li key={level.scope} className="px-4 py-3 text-[12px] [overflow-wrap:anywhere]">
+                <p className="mb-1 font-medium text-ink">{level.scope}</p>
+                <Mono>{level.dir}/</Mono>
               </li>
             ))}
           </ul>
@@ -138,52 +137,29 @@ function Catalog({ extensions: e }: { extensions: Extensions }) {
           ) : null}
         </Section>
       ) : null}
-      <Section n={4} title="Skills on disk" caption="Edits apply to the next model request.">
+      <Section n={4} title="Skills" caption="Edits apply to the next model request.">
         <List
           items={e.skills.map((skill) => (
             <SkillRow key={skill.name} skill={skill} />
           ))}
-          empty={<>Add &lt;name&gt;/SKILL.md in a skills directory above.</>}
-        />
-      </Section>
-      <Section n={5} title="MCP servers on disk" caption="Reload to apply these declarations.">
-        <List
-          items={e.declaredServers.map((server) => (
-            <ServerRow key={server.name} server={server} declared />
-          ))}
-          empty={
-            <>
-              Add mcpServers to an mcp.json file above. A narrower {'{ "disabled": true }'} entry turns off a
-              wider server.
-            </>
-          }
+          empty={<>Add skills/&lt;name&gt;/SKILL.md in a level above.</>}
         />
       </Section>
       <Section
-        n={6}
-        title="MCP servers now"
-        caption="Current connections. Tools are available through tool_search."
+        n={5}
+        title="MCP servers"
+        caption="Reload to apply mcp.json changes. Tools are available through tool_search."
       >
         <List
           items={e.servers.map((server) => (
             <ServerRow key={server.name} server={server} />
           ))}
-          empty="No servers are loaded."
-        />
-      </Section>
-      <Section n={7} title="Environment keys on disk" caption="Names only. Reload to apply changes.">
-        <List
-          items={e.env.map((entry) => (
-            <li
-              key={`${entry.scope}:${entry.key}`}
-              className="flex flex-wrap items-center gap-2 px-4 py-3 [overflow-wrap:anywhere]"
-            >
-              <Mono>{entry.key}</Mono>
-              <span className="text-[11.5px] text-ink-3">{entry.scope}</span>
-              {entry.shadowed ? <StatusPill className="h-5 px-2 text-[11.5px]">Shadowed</StatusPill> : null}
-            </li>
-          ))}
-          empty="Add KEY=VALUE lines to an .env file above. The narrower value wins. A server's own env wins over .env."
+          empty={
+            <>
+              Add mcpServers to an mcp.json file in a level above. A narrower {'{ "disabled": true }'} entry
+              turns off a wider server.
+            </>
+          }
         />
       </Section>
     </>
@@ -234,7 +210,7 @@ const STATE: Record<McpServer["state"], { tone: "green" | "red" | "neutral"; lab
   idle: { tone: "neutral", label: "Starts with the agent" },
 };
 
-function ServerRow({ server: s, declared = false }: { server: McpServer; declared?: boolean }) {
+function ServerRow({ server: s }: { server: McpServer }) {
   const state = STATE[s.state];
 
   return (
@@ -243,7 +219,7 @@ function ServerRow({ server: s, declared = false }: { server: McpServer; declare
         <Header name={s.name} scope={s.scope} overrides={s.overrides} />
         <span className="flex-1" />
         <StatusPill tone={state.tone} className="h-5 px-2 text-[11.5px]">
-          {declared ? (s.state === "disabled" ? "Off on disk" : "Declared") : state.label}
+          {state.label}
         </StatusPill>
       </div>
       {s.tools.length ? (

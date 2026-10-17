@@ -523,19 +523,13 @@ export type Model = {
 
 export type Extensions = {
     /**
-     * Fixed scan paths, before loading .env.
+     * The .agents directories, from wide to narrow. Each can hold skills/, mcp.json and .env. Two levels can have the same directory.
+     *
      */
-    paths: {
-        homeSkills: string;
-        homeMcp: string;
-        homeEnv: string;
-        dexSkills: string;
-        dexMcp: string;
-        dexEnv: string;
-        agentSkills: string;
-        agentMcp: string;
-        agentEnv: string;
-    };
+    levels: Array<{
+        scope: ExtensionScope;
+        dir: string;
+    }>;
     /**
      * Current disk declarations; skills are read before each model request.
      */
@@ -544,10 +538,6 @@ export type Extensions = {
      * Loaded servers, or idle declarations before the agent opens.
      */
     servers: Array<McpServer>;
-    /**
-     * Current disk declarations. Reload to apply changes to loaded servers.
-     */
-    declaredServers: Array<McpServer>;
     /**
      * Names only. Values never leave the loader through this API.
      */

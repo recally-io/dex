@@ -248,20 +248,10 @@ export type McpServerInfo = {
 };
 
 export type Extensions = {
-	readonly paths: {
-		readonly homeSkills: string;
-		readonly homeMcp: string;
-		readonly homeEnv: string;
-		readonly dexSkills: string;
-		readonly dexMcp: string;
-		readonly dexEnv: string;
-		readonly agentEnv: string;
-		readonly agentSkills: string;
-		readonly agentMcp: string;
-	};
+	/** The `.agents` directories, from wide to narrow. Two levels can have the same directory. */
+	readonly levels: readonly { readonly scope: Scope; readonly dir: string }[];
 	readonly skills: readonly SkillInfo[];
 	readonly servers: readonly McpServerInfo[];
-	readonly declaredServers: readonly McpServerInfo[];
 	readonly env: readonly { key: string; scope: Scope; shadowed: boolean }[];
 	readonly warnings: readonly string[];
 	/** Files that dex cannot read now. When an mcp.json file is one of them, no server starts. */

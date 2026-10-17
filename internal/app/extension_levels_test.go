@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"uuid"
@@ -166,7 +167,7 @@ func TestUserReloadChecksOtherOpenAgentsAndKeepsEnvironmentsSeparate(t *testing.
 		d.must(t, http.MethodPost, path+"/messages", map[string]string{"id": uuid.NewV7().String(), "text": `printf '%s' "$DEX_ISOLATED"`}, nil, http.StatusAccepted)
 		w.until(t, "agent env", answered("bash: "+id))
 	}
-	// When B has either invalid file, reloading A is refused and names B.
+	// When B has either invalid file, reloading A is refused and names the file of B.
 	for _, kind := range []string{"mcp.json", ".env"} {
 		path := filepath.Join(data, "agents", b.ID, ".agents", kind)
 		before, err := os.ReadFile(path)
@@ -175,7 +176,7 @@ func TestUserReloadChecksOtherOpenAgentsAndKeepsEnvironmentsSeparate(t *testing.
 		}
 		writeFile(t, path, "invalid-private-token")
 		status, body := d.reload(t)
-		if status != http.StatusBadRequest || !strings.Contains(body, "Other agent") || strings.Contains(body, "invalid-private-token") {
+		if status != http.StatusBadRequest || !strings.Contains(body, path) || strings.Contains(body, "invalid-private-token") {
 			t.Fatalf("reload: %d %s", status, body)
 		}
 		if before == nil {
@@ -216,65 +217,26 @@ func TestUserReadsEqualHomeAndDexOnce(t *testing.T) {
 	}
 }
 
-func TestUserUpgradesOldAgentExtensionsWithoutOverwrite(t *testing.T) {
-	for _, scenario := range []string{"move", "both", "relative", "internal-link", "symlink", "interrupted"} {
-		t.Run(scenario, func(t *testing.T) {
-			// Given old extension files, with a possible interrupted or conflicting upgrade.
-			data, home := t.TempDir(), t.TempDir()
-			root := filepath.Join(data, "agents", "default")
-			writeSkill(t, filepath.Join(root, "skills"), "old", "description: Old skill")
-			writeMCP(t, filepath.Join(root, "mcp.json"), map[string]any{})
-			switch scenario {
-			case "both":
-				writeSkill(t, filepath.Join(root, ".agents", "skills"), "new", "description: New skill")
-			case "relative":
-				if err := os.Symlink("../../outside", filepath.Join(root, "skills", "link")); err != nil {
-					t.Fatal(err)
-				}
-			case "internal-link":
-				if err := os.Symlink("old", filepath.Join(root, "skills", "alias")); err != nil {
-					t.Fatal(err)
-				}
-			case "symlink":
-				if err := os.Rename(filepath.Join(root, "skills"), filepath.Join(root, "external")); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Symlink(filepath.Join(root, "external"), filepath.Join(root, "skills")); err != nil {
-					t.Fatal(err)
-				}
-			case "interrupted":
-				if err := os.MkdirAll(filepath.Join(root, ".agents"), 0o700); err != nil {
-					t.Fatal(err)
-				}
-			}
-			d := startDexHome(t, app.Config{DataDir: data}, home)
-			// When the worker reads extensions twice, each move happens at most once.
-			first := d.extensions(t)
-			second := d.extensions(t)
-			warn := scenario == "both" || scenario == "relative"
-			if (len(first.Warnings) > 0) != warn || len(first.Errors) > 0 || len(second.Warnings) != len(first.Warnings) {
-				t.Fatalf("first=%+v second=%+v", first, second)
-			}
-			_, oldErr := os.Lstat(filepath.Join(root, "skills"))
-			if warn && oldErr != nil || !warn && !os.IsNotExist(oldErr) {
-				t.Fatalf("old tree: %v", oldErr)
-			}
-			if _, err := os.Lstat(filepath.Join(root, ".agents", "mcp.json")); err != nil {
-				t.Fatal(err)
-			}
-			if scenario == "symlink" {
-				entry, err := os.Lstat(filepath.Join(root, ".agents", "skills"))
-				if err != nil || entry.Mode()&os.ModeSymlink == 0 {
-					t.Fatalf("symlink: %v %v", entry, err)
-				}
-			}
-			// Then a worker restart also leaves the migration stable.
-			d.stop()
-			d = startDexHome(t, app.Config{DataDir: data}, home)
-			third := d.extensions(t)
-			if len(third.Errors) > 0 || (len(third.Warnings) > 0) != warn {
-				t.Fatalf("restart: %+v", third)
-			}
-		})
+func TestUserIsToldToMoveOldAgentExtensions(t *testing.T) {
+	// Given skills and an mcp.json in the agent directory, where dex read them before the levels.
+	data, home := t.TempDir(), t.TempDir()
+	root := filepath.Join(data, "agents", "default")
+	writeSkill(t, filepath.Join(root, "skills"), "old", "description: Old skill")
+	writeMCP(t, filepath.Join(root, "mcp.json"), map[string]any{})
+	d := startDexHome(t, app.Config{DataDir: data}, home)
+	// When the user opens the extensions, dex warns about each entry with its new place.
+	got := d.extensions(t)
+	want := []string{
+		filepath.Join(root, "skills") + ": dex no longer reads this; move it to " + filepath.Join(root, ".agents", "skills"),
+		filepath.Join(root, "mcp.json") + ": dex no longer reads this; move it to " + filepath.Join(root, ".agents", "mcp.json"),
+	}
+	if !slices.Equal(got.Warnings, want) || len(got.Errors) > 0 || len(got.Skills) > 0 {
+		t.Fatalf("extensions = %+v", got)
+	}
+	// Then dex leaves the files where they are.
+	for _, name := range []string{"skills", "mcp.json"} {
+		if _, err := os.Lstat(filepath.Join(root, name)); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

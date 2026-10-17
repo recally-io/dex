@@ -254,7 +254,7 @@ Saving does not reload. The file remains the only store.
 the servers are `idle`. `POST /api/agents/{agentId}/extensions/reload` takes the
 maintenance lease, which it refuses when another holder has it. It validates
 the files of every open agent and the requested agent. If any
-configuration is invalid, it refuses with the agent name and error. It restarts the
+configuration is invalid, it refuses with each error once. It restarts the
 whole worker, opens the agent, and releases the lease. The restart affects every
 agent.
 

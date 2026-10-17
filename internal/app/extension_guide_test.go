@@ -18,15 +18,7 @@ func TestUserGetsExtensionGuideWithoutSkillsOrSecretNames(t *testing.T) {
 	}
 	d := startDexHome(t, app.Config{DataDir: data}, home)
 	d.setModel(t, "section")
-	var catalog struct {
-		Paths struct {
-			HomeEnv  string `json:"homeEnv"`
-			DexEnv   string `json:"dexEnv"`
-			AgentEnv string `json:"agentEnv"`
-		} `json:"paths"`
-		Skills []any `json:"skills"`
-	}
-	d.must(t, http.MethodGet, "/api/agents/default/extensions", nil, &catalog)
+	catalog := d.extensions(t)
 	if len(catalog.Skills) != 0 {
 		t.Fatal("fixture has skills")
 	}
@@ -36,7 +28,7 @@ func TestUserGetsExtensionGuideWithoutSkillsOrSecretNames(t *testing.T) {
 	w.until(t, "extension guide", answeredWith("section: "))
 	guide := w.tr.items[len(w.tr.items)-1].Text
 	// Then paths, file formats, secrecy, and reload rules are present, without key names or values.
-	for _, text := range []string{catalog.Paths.HomeEnv, catalog.Paths.DexEnv, catalog.Paths.AgentEnv,
+	for _, text := range []string{catalog.dir("home"), catalog.dir("dex"), catalog.dir("agent"), ".env",
 		"Narrower levels win", "as a whole", "skills/<name>/SKILL.md", "name", "description", "next request",
 		"mcp.json", "mcpServers", "command", "args", "env", "cwd", `"type": "http"`, "url", "headers", `{"disabled": true}`,
 		"$KEY", "${KEY}", "Never print", "chat", "memory", "files", "Secrets page", "Reload", "Extensions tab", "Ask the user"} {

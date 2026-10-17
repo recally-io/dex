@@ -43,20 +43,21 @@ This changes ADR 0008's credential isolation claim: a home `.env` token can
 reach an agent server. Disabling a server does not withdraw environment keys.
 Keep credential names specific to their use.
 
-Before loading extensions or resuming work, the worker moves old agent
-`skills/` and `mcp.json` into `.agents/` when the target is absent. Each rename
-can complete independently. Restart repeats the remaining moves. Existing
-targets win and produce warnings. Relative links in an old skills tree that
-would change meaning prevent the move and produce warnings. Symlinks move
-as links. Warnings do not prevent reload.
+dex no longer reads `skills/` and `mcp.json` directly in the agent directory.
+When they exist, the API returns a warning that names the new place. The user
+moves them by hand: dex has one user, and an automatic move must handle
+races, conflicts and relative links for a step that happens once. Warnings do
+not prevent reload.
 
 Reload keeps the maintenance lease and restarts the whole worker. Preflight
 checks every open agent and the requested agent. Any invalid configuration
-refuses reload with the agent name and error. Old MCP connections close on
+refuses reload. Each error names its file once, also when several agents
+share it. Old MCP connections close on
 shutdown. The new worker loads tools before it resumes work.
 
-The API lists current skill declarations, current server declarations,
-loaded servers, warnings, and `.env` key names with level and shadowed state.
+The API lists the level directories, skills, servers (loaded, or declared
+before the agent opens), warnings, and `.env` key names with level and
+shadowed state.
 A shadowed key has a declaration at a narrower level. Edit MCP or `.env`
 files, then reload. Skills are read before each model request.
 

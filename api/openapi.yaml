@@ -1629,32 +1629,19 @@ components:
 
     Extensions:
       type: object
-      required: [paths, skills, servers, declaredServers, env, warnings, errors]
+      required: [levels, skills, servers, env, warnings, errors]
       properties:
-        paths:
-          type: object
-          description: Fixed scan paths, before loading .env.
-          required: [
-            homeSkills,
-            homeMcp,
-            homeEnv,
-            dexSkills,
-            dexMcp,
-            dexEnv,
-            agentSkills,
-            agentMcp,
-            agentEnv,
-          ]
-          properties:
-            homeSkills: { type: string }
-            homeMcp: { type: string }
-            homeEnv: { type: string }
-            dexSkills: { type: string }
-            dexMcp: { type: string }
-            dexEnv: { type: string }
-            agentSkills: { type: string }
-            agentMcp: { type: string }
-            agentEnv: { type: string }
+        levels:
+          type: array
+          description: >
+            The .agents directories, from wide to narrow. Each can hold skills/,
+            mcp.json and .env. Two levels can have the same directory.
+          items:
+            type: object
+            required: [scope, dir]
+            properties:
+              scope: { $ref: "#/components/schemas/ExtensionScope" }
+              dir: { type: string }
         skills:
           type: array
           description: Current disk declarations; skills are read before each model request.
@@ -1662,10 +1649,6 @@ components:
         servers:
           type: array
           description: Loaded servers, or idle declarations before the agent opens.
-          items: { $ref: "#/components/schemas/McpServer" }
-        declaredServers:
-          type: array
-          description: Current disk declarations. Reload to apply changes to loaded servers.
           items: { $ref: "#/components/schemas/McpServer" }
         env:
           type: array

@@ -204,8 +204,8 @@ state, with Replace and Delete actions. Values are write-only. Home keys are
 read-only. File changes apply after Reload in the Extensions tab or Secrets
 page. The files remain the only store.
 
-The Extensions tab shows file paths, skills, declared and loaded servers,
-environment key names, and configuration warnings. Reload restarts the worker
+The Extensions tab shows the level directories, skills, MCP servers, and
+configuration warnings. Environment key names are on the Secrets page. Reload restarts the worker
 for all agents. Invalid configuration in any open agent prevents reload.
 Keep `.env` files out of Git and set mode `0600`. The API hides values, but
 the model can read files and run `env`. Tool output becomes part of the transcript.

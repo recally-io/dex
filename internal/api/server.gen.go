@@ -647,9 +647,6 @@ type ExtensionScope string
 
 // Extensions defines model for Extensions.
 type Extensions struct {
-	// DeclaredServers Current disk declarations. Reload to apply changes to loaded servers.
-	DeclaredServers []McpServer `json:"declaredServers"`
-
 	// Env Names only. Values never leave the loader through this API.
 	Env []struct {
 		Key string `json:"key"`
@@ -662,18 +659,13 @@ type Extensions struct {
 	// Errors Invalid configuration prevents MCP startup and reload.
 	Errors []string `json:"errors"`
 
-	// Paths Fixed scan paths, before loading .env.
-	Paths struct {
-		AgentEnv    string `json:"agentEnv"`
-		AgentMcp    string `json:"agentMcp"`
-		AgentSkills string `json:"agentSkills"`
-		DexEnv      string `json:"dexEnv"`
-		DexMcp      string `json:"dexMcp"`
-		DexSkills   string `json:"dexSkills"`
-		HomeEnv     string `json:"homeEnv"`
-		HomeMcp     string `json:"homeMcp"`
-		HomeSkills  string `json:"homeSkills"`
-	} `json:"paths"`
+	// Levels The .agents directories, from wide to narrow. Each can hold skills/, mcp.json and .env. Two levels can have the same directory.
+	Levels []struct {
+		Dir string `json:"dir"`
+
+		// Scope Home, resolved data directory, or agent home, each under .agents/.
+		Scope ExtensionScope `json:"scope"`
+	} `json:"levels"`
 
 	// Servers Loaded servers, or idle declarations before the agent opens.
 	Servers []McpServer `json:"servers"`

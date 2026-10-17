@@ -81,7 +81,6 @@ export class Agents {
 	readonly #baseEnv = Object.fromEntries(
 		Object.entries(process.env).filter((pair): pair is [string, string] => pair[1] !== undefined),
 	);
-	readonly #extensionFiles = new Map<string, AgentExtensions>();
 	readonly #loaded = new Map<string, Loaded>();
 	// The tail of each conversation's submit and abort chain; see #serial.
 	readonly #chains = new Map<string, Promise<unknown>>();
@@ -456,14 +455,11 @@ export class Agents {
 		const files = this.#files(params.agentId);
 		const info = await files.info(this.#loaded.get(params.agentId)?.servers);
 		if (!params.preflight) return info;
+		// A reload restarts every agent, so check every open agent. Agents share the home and dex
+		// files, and each error names its file, so report each error once.
 		const ids = new Set([...this.#harnesses.keys(), params.agentId]);
-		const errors: string[] = [];
-		for (const id of ids) {
-			// oxlint-disable-next-line no-await-in-loop
-			const check = await this.#files(id).info();
-			errors.push(...check.errors.map((error) => `${id}: ${error}`));
-		}
-		return { ...info, errors };
+		const checks = await Promise.all([...ids].map((id) => this.#files(id).info()));
+		return { ...info, errors: [...new Set(checks.flatMap((check) => check.errors))] };
 	}
 
 	async editEnv(params: EditEnvParams): Promise<Extensions> {
@@ -474,12 +470,7 @@ export class Agents {
 	#files(agentId: string): AgentExtensions {
 		if (!AGENT_ID.test(agentId)) throw new Error(`invalid agent ID: ${agentId}`);
 		const dir = agentHome(this.#dataDir, agentId);
-		let files = this.#extensionFiles.get(agentId);
-		if (files === undefined) {
-			files = new AgentExtensions(this.#home, this.#dataDir, dir, join(dir, "workspace"), this.#baseEnv);
-			this.#extensionFiles.set(agentId, files);
-		}
-		return files;
+		return new AgentExtensions(this.#home, this.#dataDir, dir, join(dir, "workspace"), this.#baseEnv);
 	}
 
 	async #conversation(agentId: string, conversationId: number): Promise<Conversation> {

@@ -1,5 +1,5 @@
-import { readdir, readFile, stat, realpath, mkdir, open, rename, unlink } from "node:fs/promises";
-import { join, resolve, dirname, relative, isAbsolute } from "node:path";
+import { lstat, readdir, readFile, stat, realpath, mkdir, open, rename, unlink } from "node:fs/promises";
+import { join, resolve, dirname } from "node:path";
 import { defineExtension, defineTool, type Extension, section } from "@earendil-works/pi-durable";
 import {
 	McpAuthRequiredError,
@@ -11,7 +11,6 @@ import {
 	StreamableHttpTransport,
 	toLlmContent,
 } from "@earendil-works/pi-mcp";
-import { upgradeExtensions } from "./extension-upgrade.ts";
 import Type, { type Static } from "typebox";
 import { Value } from "typebox/value";
 import type { Extensions, McpServerInfo, Scope, SkillInfo, EditEnvParams } from "./protocol.ts";
@@ -52,7 +51,7 @@ const SkillMeta = Type.Object({
 // The envelope of Claude Code and Cursor. dex reads the subset above and ignores other fields.
 const McpFile = Type.Object({ mcpServers: Type.Record(Type.String(), Server) });
 
-type Paths = { readonly skills: string; readonly mcp: string; readonly env: string };
+type Level = { readonly scope: Scope; readonly dir: string };
 
 type Declared = { readonly name: string; readonly scope: Scope; readonly server: Server };
 type ServerEntry = Declared & { readonly overrides: boolean };
@@ -76,14 +75,19 @@ export type Loaded = {
 	close(): Promise<void>;
 };
 
-/** Owns fixed scan roots and one agent's extension files. */
+/**
+ * The skills, MCP servers and environment of one agent, from three `.agents` levels: home, dex
+ * (the data directory) and the agent directory. A narrower entry replaces a wider entry with the
+ * same name as a whole, so levels never merge credentials. The files are the configuration; dex
+ * keeps no copy of them.
+ */
 export class AgentExtensions {
-	readonly #roots: Promise<readonly { scope: Scope; paths: Paths }[]>;
+	readonly #levels: Promise<readonly Level[]>;
+	readonly #agentDir: string;
 	readonly #workspace: string;
-	readonly #dataDir: Promise<string>;
-	static readonly #writes = new Map<string, Promise<void>>();
-	readonly #warnings: Promise<string[]>;
 	readonly #baseEnv: Record<string, string>;
+	// One queue for each .env file, so agents that share the dex file write one at a time.
+	static readonly #writes = new Map<string, Promise<void>>();
 
 	constructor(
 		home: string,
@@ -93,30 +97,23 @@ export class AgentExtensions {
 		baseEnv: Record<string, string>,
 	) {
 		this.#baseEnv = { ...baseEnv };
-		this.#dataDir = canonical(dataDir);
+		this.#agentDir = agentDir;
 		this.#workspace = workspace;
-		this.#warnings = upgradeExtensions(agentDir);
-		this.#roots = Promise.all(
+		this.#levels = Promise.all(
 			(
 				[
 					["home", home],
 					["dex", dataDir],
 					["agent", agentDir],
 				] as const
-			).map(async ([scope, dir]) => {
-				const root = await canonical(join(dir, ".agents"));
-				return {
-					scope,
-					paths: { skills: join(root, "skills"), mcp: join(root, "mcp.json"), env: join(root, ".env") },
-				};
-			}),
+			).map(async ([scope, dir]) => ({ scope, dir: await canonical(join(dir, ".agents")) })),
 		);
 	}
 
-	async #levels() {
-		await this.#warnings;
-		const roots = await this.#roots;
-		return roots.filter((root, i) => !roots.slice(i + 1).some((next) => next.paths.env === root.paths.env));
+	/** The levels to read. When two levels have the same directory, such as a data directory equal to $HOME, read it once as the narrower one. */
+	async #distinct(): Promise<readonly Level[]> {
+		const levels = await this.#levels;
+		return levels.filter((level, i) => !levels.slice(i + 1).some((next) => next.dir === level.dir));
 	}
 
 	/**
@@ -125,33 +122,15 @@ export class AgentExtensions {
 	 */
 	async info(servers?: readonly McpServerInfo[]): Promise<Extensions> {
 		const scan = await this.#scan();
-		const roots = await this.#roots;
-		// The constructor always supplies these three levels, including equal paths.
-		const home = roots.find((root) => root.scope === "home")!.paths;
-		const dex = roots.find((root) => root.scope === "dex")!.paths;
-		const agent = roots.find((root) => root.scope === "agent")!.paths;
-		const paths = {
-			homeSkills: home.skills,
-			homeMcp: home.mcp,
-			homeEnv: home.env,
-			dexSkills: dex.skills,
-			dexMcp: dex.mcp,
-			dexEnv: dex.env,
-			agentSkills: agent.skills,
-			agentMcp: agent.mcp,
-			agentEnv: agent.env,
-		};
-		const declared = scan.servers.map((entry) =>
-			serverInfo(entry, entry.server.disabled ? "disabled" : "idle"),
-		);
 		return {
-			paths,
+			levels: await this.#levels,
 			skills: scan.skills,
-			servers: servers ?? declared,
-			declaredServers: declared,
+			servers:
+				servers ??
+				scan.servers.map((entry) => serverInfo(entry, entry.server.disabled ? "disabled" : "idle")),
 			env: scan.keys,
 			errors: scan.errors,
-			warnings: await this.#warnings,
+			warnings: await oldEntries(this.#agentDir),
 		};
 	}
 
@@ -163,7 +142,7 @@ export class AgentExtensions {
 	 */
 	async load(): Promise<Loaded> {
 		const scan = await this.#scan();
-		const guide = extensionGuide(await this.#roots);
+		const guide = extensionGuide(await this.#levels);
 		for (const error of scan.errors) console.error("extensions:", error);
 		const servers = await Promise.all(
 			scan.servers.map((entry) =>
@@ -214,12 +193,7 @@ export class AgentExtensions {
 		if (!/^[A-Za-z_][A-Za-z0-9_]*(?![\s\S])/.test(params.key))
 			throw new EnvEditError("the environment key is not valid");
 		const assignment = params.value === undefined ? undefined : `${params.key}=${quoteEnv(params.value)}`;
-		await this.#warnings;
-		const roots = await this.#roots;
-		const path = roots.find((root) => root.scope === params.scope)!.paths.env;
-		const within = relative(await this.#dataDir, dirname(path));
-		if (within === ".." || within.startsWith("../") || isAbsolute(within))
-			throw new EnvEditError("the environment file must be inside the data directory");
+		const path = join((await this.#levels).find((level) => level.scope === params.scope)!.dir, ".env");
 		const result = (AgentExtensions.#writes.get(path) ?? Promise.resolve()).then(async () => {
 			const errors: string[] = [];
 			if ((await readEnv(path, errors)) === undefined) throw new EnvEditError(errors.join("\n"));
@@ -282,9 +256,9 @@ export class AgentExtensions {
 
 	async #skills(errors: string[]): Promise<SkillInfo[]> {
 		let skills: SkillInfo[] = [];
-		for (const { scope, paths } of await this.#levels()) {
+		for (const { scope, dir } of await this.#distinct()) {
 			// oxlint-disable-next-line no-await-in-loop
-			const next = await readSkills(paths.skills, scope, errors);
+			const next = await readSkills(join(dir, "skills"), scope, errors);
 			skills = merge(skills, next, (skill, overrides) => ({
 				...skill,
 				overrides: overrides || skill.overrides,
@@ -302,11 +276,11 @@ export class AgentExtensions {
 		const keys: { key: string; scope: Scope; shadowed: boolean }[] = [];
 		let valid = true;
 		let validEnv = true;
-		for (const { scope, paths } of await this.#levels()) {
+		for (const { scope, dir } of await this.#distinct()) {
 			// oxlint-disable-next-line no-await-in-loop
-			const mcp = await readMcp(paths.mcp, errors);
+			const mcp = await readMcp(join(dir, "mcp.json"), errors);
 			// oxlint-disable-next-line no-await-in-loop
-			const vars = await readEnv(paths.env, errors);
+			const vars = await readEnv(join(dir, ".env"), errors);
 			if (mcp === undefined || vars === undefined) valid = false;
 			if (vars === undefined) validEnv = false;
 			servers = merge(
@@ -547,6 +521,28 @@ function errorText(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Before the levels, the agent directory held skills/ and mcp.json. dex no longer reads them there.
+ * Moving them is left to the user: dex has one user, and a move can break relative links.
+ */
+async function oldEntries(agentDir: string): Promise<string[]> {
+	const warnings: string[] = [];
+	for (const name of ["skills", "mcp.json"]) {
+		const old = join(agentDir, name);
+		// oxlint-disable-next-line no-await-in-loop
+		const found = await lstat(old).then(
+			() => true,
+			(error: unknown) => {
+				if (errorCode(error) === "ENOENT") return false;
+				throw error;
+			},
+		);
+		if (found)
+			warnings.push(`${old}: dex no longer reads this; move it to ${join(agentDir, ".agents", name)}`);
+	}
+	return warnings;
+}
+
 /** Resolve existing ancestors too, so absent .agents directories still compare correctly. */
 async function canonical(path: string): Promise<string> {
 	try {
@@ -612,10 +608,10 @@ function quoteEnv(value: string): string {
 }
 
 /** Only fixed paths affect this text, so environment edits keep the prompt cache stable. */
-function extensionGuide(roots: readonly { scope: Scope; paths: Paths }[]): string {
+function extensionGuide(levels: readonly Level[]): string {
 	return [
-		"Extension levels for this agent, from wide to narrow:",
-		...roots.map(({ scope, paths }) => `- ${scope}: ${dirname(paths.env)}/; environment file: ${paths.env}`),
+		"Extension levels for this agent, from wide to narrow. Each can hold skills/, mcp.json, and .env:",
+		...levels.map(({ scope, dir }) => `- ${scope}: ${dir}/`),
 		"Narrower levels win. A skill or MCP server with the same name replaces the wider entry as a whole. Environment values merge per key.",
 		"",
 		"Skills: use <level>/skills/<name>/SKILL.md. Start with YAML front matter fields name and description. Skill edits apply on the next request. Use the skills list when it is present.",

@@ -19,10 +19,10 @@ import (
 // are internal/mcptest: this test binary over stdio, or an HTTP test server.
 
 type extensions struct {
-	Paths struct {
-		GlobalSkills string `json:"homeSkills"`
-		AgentMcp     string `json:"agentMcp"`
-	} `json:"paths"`
+	Levels []struct {
+		Scope string `json:"scope"`
+		Dir   string `json:"dir"`
+	} `json:"levels"`
 	Skills []struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
@@ -39,7 +39,16 @@ type extensions struct {
 		Scope    string `json:"scope"`
 		Shadowed bool   `json:"shadowed"`
 	} `json:"env"`
-	DeclaredServers []serverInfo `json:"declaredServers"`
+}
+
+// dir returns the .agents directory of a level.
+func (e extensions) dir(scope string) string {
+	for _, level := range e.Levels {
+		if level.Scope == scope {
+			return level.Dir
+		}
+	}
+	return ""
 }
 
 type serverInfo struct {
@@ -167,8 +176,8 @@ func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(rows, want) || got.Paths.GlobalSkills != resolvedGlobal {
-		t.Fatalf("skills = %+v, paths = %+v", got.Skills, got.Paths)
+	if !slices.Equal(rows, want) || filepath.Join(got.dir("home"), "skills") != resolvedGlobal {
+		t.Fatalf("skills = %+v, levels = %+v", got.Skills, got.Levels)
 	}
 
 	// When the agent reads its skills section

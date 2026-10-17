@@ -228,18 +228,6 @@ func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRe
 		return nil, err
 	}
 	if len(files.Errors) > 0 {
-		agents, err := h.Agents.ListAgents(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for i, message := range files.Errors {
-			for _, a := range agents {
-				if tail, found := strings.CutPrefix(message, a.ID+": "); found {
-					files.Errors[i] = a.Name + ": " + tail
-					break
-				}
-			}
-		}
 		return nil, fmt.Errorf("%w: %s", errInvalid, strings.Join(files.Errors, "\n"))
 	}
 	if err := h.RestartWorker(ctx); err != nil {
