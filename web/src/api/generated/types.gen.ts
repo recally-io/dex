@@ -523,27 +523,50 @@ export type Model = {
 
 export type Extensions = {
     /**
-     * Where the agent reads its extensions.
+     * Fixed scan paths, before loading .env.
      */
     paths: {
-        globalSkills: string;
-        globalMcp: string;
+        homeSkills: string;
+        homeMcp: string;
+        homeEnv: string;
+        dexSkills: string;
+        dexMcp: string;
+        dexEnv: string;
         agentSkills: string;
         agentMcp: string;
+        agentEnv: string;
     };
+    /**
+     * Current disk declarations; skills are read before each model request.
+     */
     skills: Array<Skill>;
+    /**
+     * Loaded servers, or idle declarations before the agent opens.
+     */
     servers: Array<McpServer>;
     /**
-     * Files that dex cannot read. When an mcp.json file is one of them, no MCP server starts.
-     *
+     * Current disk declarations. Reload to apply changes to loaded servers.
+     */
+    declaredServers: Array<McpServer>;
+    /**
+     * Names only. Values never leave the loader through this API.
+     */
+    env: Array<{
+        key: string;
+        scope: ExtensionScope;
+        shadowed: boolean;
+    }>;
+    warnings: Array<string>;
+    /**
+     * Invalid configuration prevents MCP startup and reload.
      */
     errors: Array<string>;
 };
 
 /**
- * global is ~/.agents/; agent is the agent directory.
+ * Home, resolved data directory, or agent home, each under .agents/.
  */
-export type ExtensionScope = 'global' | 'agent';
+export type ExtensionScope = 'home' | 'dex' | 'agent';
 
 export type Skill = {
     name: string;
@@ -554,7 +577,7 @@ export type Skill = {
      */
     path: string;
     /**
-     * The agent skill replaces a global skill with the same name.
+     * The skill replaces a wider skill with the same name.
      */
     overrides: boolean;
     /**
@@ -571,7 +594,7 @@ export type McpServer = {
     name: string;
     scope: ExtensionScope;
     /**
-     * The agent server replaces a global server with the same name.
+     * The server replaces a wider server with the same name.
      */
     overrides: boolean;
     /**

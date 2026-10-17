@@ -203,7 +203,8 @@ type QuiesceResult struct {
 type AgentParams struct {
 	AgentID string `json:"agentId"`
 	// Open opens the agent first, which connects its MCP servers.
-	Open bool `json:"open,omitzero"`
+	Open      bool `json:"open,omitzero"`
+	Preflight bool `json:"preflight,omitzero"`
 }
 
 // ResetParams writes one reset through the conversation's admission chain.

@@ -1,5 +1,5 @@
-import { readdir, readFile, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { readdir, readFile, stat, realpath } from "node:fs/promises";
+import { join, resolve, dirname } from "node:path";
 import { defineExtension, defineTool, type Extension, section } from "@earendil-works/pi-durable";
 import {
 	McpAuthRequiredError,
@@ -11,6 +11,7 @@ import {
 	StreamableHttpTransport,
 	toLlmContent,
 } from "@earendil-works/pi-mcp";
+import { upgradeExtensions } from "./extension-upgrade.ts";
 import Type, { type Static } from "typebox";
 import { Value } from "typebox/value";
 import type { Extensions, McpServerInfo, Scope, SkillInfo } from "./protocol.ts";
@@ -40,7 +41,7 @@ const HttpServer = Type.Object({
 	headers: Type.Optional(Type.Record(Type.String(), Type.String())),
 	...Common,
 });
-// An agent entry that only turns off a global server with the same name.
+// A narrower entry that only turns off a wider server with the same name.
 const Off = Type.Object({ disabled: Type.Literal(true) });
 const Server = Type.Union([HttpServer, StdioServer, Off]);
 type Server = Static<typeof Server>;
@@ -51,7 +52,7 @@ const SkillMeta = Type.Object({
 // The envelope of Claude Code and Cursor. dex reads the subset above and ignores other fields.
 const McpFile = Type.Object({ mcpServers: Type.Record(Type.String(), Server) });
 
-type Paths = { readonly skills: string; readonly mcp: string };
+type Paths = { readonly skills: string; readonly mcp: string; readonly env: string };
 
 type Declared = { readonly name: string; readonly scope: Scope; readonly server: Server };
 type ServerEntry = Declared & { readonly overrides: boolean };
@@ -61,32 +62,58 @@ type Scan = {
 	readonly skills: SkillInfo[];
 	readonly servers: readonly ServerEntry[];
 	readonly errors: string[];
+	readonly env: Record<string, string>;
+	readonly keys: Extensions["env"];
 };
 
 /** The extension to install, and the MCP servers that it holds open. */
 export type Loaded = {
 	readonly extension: Extension;
+	readonly env: Record<string, string>;
 	readonly hasTools: boolean;
 	/** The state of each server. A server that closes its connection changes to "failed". */
 	readonly servers: readonly McpServerInfo[];
 	close(): Promise<void>;
 };
 
-/**
- * The skills and MCP servers of one agent, from two scopes: global (`~/.agents/`) and the agent
- * directory. An agent entry replaces a global entry with the same name as a whole, so the two never
- * merge credentials. The files are the configuration; dex keeps no copy of them.
- */
+/** Owns fixed scan roots and one agent's extension files. */
 export class AgentExtensions {
-	readonly #scopes: Readonly<Record<Scope, Paths>>;
+	readonly #roots: Promise<readonly { scope: Scope; paths: Paths }[]>;
 	readonly #workspace: string;
+	readonly #warnings: Promise<string[]>;
+	readonly #baseEnv: Record<string, string>;
 
-	constructor(home: string, agentDir: string, workspace: string) {
-		this.#scopes = {
-			global: { skills: join(home, ".agents", "skills"), mcp: join(home, ".agents", "mcp.json") },
-			agent: { skills: join(agentDir, "skills"), mcp: join(agentDir, "mcp.json") },
-		};
+	constructor(
+		home: string,
+		dataDir: string,
+		agentDir: string,
+		workspace: string,
+		baseEnv: Record<string, string>,
+	) {
+		this.#baseEnv = { ...baseEnv };
 		this.#workspace = workspace;
+		this.#warnings = upgradeExtensions(agentDir);
+		this.#roots = Promise.all(
+			(
+				[
+					["home", home],
+					["dex", dataDir],
+					["agent", agentDir],
+				] as const
+			).map(async ([scope, dir]) => {
+				const root = await canonical(join(dir, ".agents"));
+				return {
+					scope,
+					paths: { skills: join(root, "skills"), mcp: join(root, "mcp.json"), env: join(root, ".env") },
+				};
+			}),
+		);
+	}
+
+	async #levels() {
+		await this.#warnings;
+		const roots = await this.#roots;
+		return roots.filter((root, i) => !roots.slice(i + 1).some((next) => next.paths.env === root.paths.env));
 	}
 
 	/**
@@ -95,25 +122,40 @@ export class AgentExtensions {
 	 */
 	async info(servers?: readonly McpServerInfo[]): Promise<Extensions> {
 		const scan = await this.#scan();
+		const roots = await this.#roots;
+		// The constructor always supplies these three levels, including equal paths.
+		const home = roots.find((root) => root.scope === "home")!.paths;
+		const dex = roots.find((root) => root.scope === "dex")!.paths;
+		const agent = roots.find((root) => root.scope === "agent")!.paths;
+		const paths = {
+			homeSkills: home.skills,
+			homeMcp: home.mcp,
+			homeEnv: home.env,
+			dexSkills: dex.skills,
+			dexMcp: dex.mcp,
+			dexEnv: dex.env,
+			agentSkills: agent.skills,
+			agentMcp: agent.mcp,
+			agentEnv: agent.env,
+		};
+		const declared = scan.servers.map((entry) =>
+			serverInfo(entry, entry.server.disabled ? "disabled" : "idle"),
+		);
 		return {
-			paths: {
-				globalSkills: this.#scopes.global.skills,
-				globalMcp: this.#scopes.global.mcp,
-				agentSkills: this.#scopes.agent.skills,
-				agentMcp: this.#scopes.agent.mcp,
-			},
+			paths,
 			skills: scan.skills,
-			servers:
-				servers ??
-				scan.servers.map((entry) => serverInfo(entry, entry.server.disabled ? "disabled" : "idle")),
+			servers: servers ?? declared,
+			declaredServers: declared,
+			env: scan.keys,
 			errors: scan.errors,
+			warnings: await this.#warnings,
 		};
 	}
 
 	/**
 	 * Connects the MCP servers. A server that fails is reported and has no tools; the others still
 	 * work. When an mcp.json file is not valid, no server starts, because its entries could replace or
-	 * turn off global ones. The skills section reads the skill files before each model request, so an
+	 * turn off wider ones. The skills section reads the skill files before each model request, so an
 	 * edit to a skill applies without a restart.
 	 */
 	async load(): Promise<Loaded> {
@@ -121,7 +163,7 @@ export class AgentExtensions {
 		for (const error of scan.errors) console.error("extensions:", error);
 		const servers = await Promise.all(
 			scan.servers.map((entry) =>
-				entry.server.disabled ? Promise.resolve(undefined) : this.#connect(entry),
+				entry.server.disabled ? Promise.resolve(undefined) : this.#connect(entry, scan.env),
 			),
 		);
 		const clients = servers.flatMap((s) => (s?.client === undefined ? [] : [s.client]));
@@ -144,6 +186,7 @@ export class AgentExtensions {
 			return kept;
 		});
 		return {
+			env: scan.env,
 			extension: defineExtension({
 				name: EXTENSION_NAME,
 				sections: [section("skills", async () => skillsText(await this.#skills([])))],
@@ -158,35 +201,55 @@ export class AgentExtensions {
 	}
 
 	async #skills(errors: string[]): Promise<SkillInfo[]> {
-		const [global, agent] = await Promise.all([
-			readSkills(this.#scopes.global.skills, "global", errors),
-			readSkills(this.#scopes.agent.skills, "agent", errors),
-		]);
-		return merge(global, agent, (skill, overrides) => ({ ...skill, overrides }));
+		let skills: SkillInfo[] = [];
+		for (const { scope, paths } of await this.#levels()) {
+			// oxlint-disable-next-line no-await-in-loop
+			const next = await readSkills(paths.skills, scope, errors);
+			skills = merge(skills, next, (skill, overrides) => ({
+				...skill,
+				overrides: overrides || skill.overrides,
+			}));
+		}
+		return skills;
 	}
 
 	async #scan(): Promise<Scan> {
 		const errors: string[] = [];
 		const skills = await this.#skills(errors);
-		const [globalMcp, agentMcp] = await Promise.all([
-			readMcp(this.#scopes.global.mcp, errors),
-			readMcp(this.#scopes.agent.mcp, errors),
-		]);
-		const valid = globalMcp !== undefined && agentMcp !== undefined;
+		let servers: ServerEntry[] = [];
+		const env: Record<string, string> = Object.create(null);
+		Object.assign(env, this.#baseEnv);
+		const keys: { key: string; scope: Scope; shadowed: boolean }[] = [];
+		let valid = true;
+		let validEnv = true;
+		for (const { scope, paths } of await this.#levels()) {
+			// oxlint-disable-next-line no-await-in-loop
+			const mcp = await readMcp(paths.mcp, errors);
+			// oxlint-disable-next-line no-await-in-loop
+			const vars = await readEnv(paths.env, errors);
+			if (mcp === undefined || vars === undefined) valid = false;
+			if (vars === undefined) validEnv = false;
+			servers = merge(
+				servers,
+				Object.entries(mcp ?? {}).map(([name, server]) => ({ name, scope, server, overrides: false })),
+				(entry, overrides) => ({ ...entry, overrides: overrides || entry.overrides }),
+			);
+			for (const key of Object.keys(vars ?? {})) {
+				for (const old of keys) if (old.key === key) old.shadowed = true;
+				keys.push({ key, scope, shadowed: false });
+			}
+			Object.assign(env, vars);
+		}
 		return {
 			skills,
-			servers: valid
-				? merge<Declared, ServerEntry>(
-						Object.entries(globalMcp).map(([name, server]) => ({ name, scope: "global", server })),
-						Object.entries(agentMcp).map(([name, server]) => ({ name, scope: "agent", server })),
-						(entry, overrides) => ({ ...entry, overrides }),
-					)
-				: [],
+			servers: valid ? servers : [],
+			env: validEnv ? env : { ...this.#baseEnv },
+			keys,
 			errors,
 		};
 	}
 
-	async #connect(entry: ServerEntry) {
+	async #connect(entry: ServerEntry, env: Record<string, string>) {
 		const { name, server } = entry;
 		const client = new McpClient({ name: "dex", version: "1", requestTimeoutMs: CONNECT_TIMEOUT_MS });
 		try {
@@ -194,12 +257,14 @@ export class AgentExtensions {
 				throw new Error("a server without a command or URL is off");
 			const transport =
 				server.type === "http"
-					? new StreamableHttpTransport({ url: server.url, headers: server.headers ?? {} })
+					? new StreamableHttpTransport({
+							url: server.url,
+							headers: substituteHeaders(server.headers ?? {}, env),
+						})
 					: new StdioTransport({
 							command: server.command,
 							args: server.args ?? [],
-							// The worker environment has no credentials; a server gets its own in `env`.
-							env: server.env ?? {},
+							env: { ...env, ...server.env },
 							cwd: resolve(this.#workspace, server.cwd ?? "."),
 							// "inherit" would put the server's output, which can hold its credentials, in the log.
 							stderr: "pipe",
@@ -272,16 +337,16 @@ function serverInfo(entry: ServerEntry, state: McpServerInfo["state"], tools: st
 	};
 }
 
-/** Global items, with the agent items that replace them by name. Sorted, so the prompt stays stable. */
+/** Narrower items replace wider items by name. Sort them to keep the prompt stable. */
 function merge<T extends { readonly name: string }, R>(
-	global: readonly T[],
-	agent: readonly T[],
+	wider: readonly T[],
+	narrower: readonly T[],
 	result: (item: T, overrides: boolean) => R,
 ): R[] {
-	const local = new Set(agent.map((item) => item.name));
+	const local = new Set(narrower.map((item) => item.name));
 	return [
-		...global.filter((item) => !local.has(item.name)).map((item) => ({ item, overrides: false })),
-		...agent.map((item) => ({ item, overrides: global.some((g) => g.name === item.name) })),
+		...wider.filter((item) => !local.has(item.name)).map((item) => ({ item, overrides: false })),
+		...narrower.map((item) => ({ item, overrides: wider.some((g) => g.name === item.name) })),
 	]
 		.toSorted((a, b) => (a.item.name < b.item.name ? -1 : 1))
 		.map(({ item, overrides }) => result(item, overrides));
@@ -289,8 +354,8 @@ function merge<T extends { readonly name: string }, R>(
 
 /**
  * Reads `<dir>/<name>/SKILL.md` in the Agent Skills format. The directory name is the skill name.
- * A skill that is not valid is reported with its error and still replaces a global skill, so a
- * broken agent skill never brings back the global one.
+ * A skill that is not valid is reported with its error and still replaces a wider skill, so a
+ * broken agent skill never brings back the wider one.
  */
 async function readSkills(dir: string, scope: Scope, errors: string[]): Promise<SkillInfo[]> {
 	let names: string[];
@@ -383,6 +448,7 @@ function skillsText(skills: readonly SkillInfo[]): string | undefined {
 
 /** A failure of a server connection, as a category without values from the configuration. */
 function failure(error: unknown): string {
+	if (error instanceof MissingHeaderKey) return "a header environment key is missing";
 	if (error instanceof McpAuthRequiredError)
 		return "the server requires authorization, and dex does not support OAuth";
 	if (error instanceof McpHttpError) return `the server answered with HTTP status ${error.status}`;
@@ -399,4 +465,57 @@ function errorCode(error: unknown): unknown {
 
 function errorText(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
+}
+
+/** Resolve existing ancestors too, so absent .agents directories still compare correctly. */
+async function canonical(path: string): Promise<string> {
+	try {
+		return await realpath(path);
+	} catch (error) {
+		if (errorCode(error) !== "ENOENT") throw error;
+		const parent = dirname(path);
+		return join(await canonical(parent), path.slice(parent.length + 1));
+	}
+}
+
+async function readEnv(path: string, errors: string[]): Promise<Record<string, string> | undefined> {
+	let text: string;
+	try {
+		text = await readFile(path, "utf8");
+	} catch (error) {
+		if (errorCode(error) === "ENOENT") return {};
+		errors.push(`${path}: cannot read environment file`);
+		return undefined;
+	}
+	const vars: Record<string, string> = Object.create(null);
+	for (const [i, raw] of text.split(/\r?\n/).entries()) {
+		const line = raw.trim();
+		if (line === "" || line.startsWith("#")) continue;
+		const match =
+			/^(?:export +)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:'([^']*)'|"([^"]*)"|([^'"#]*?))\s*(?:#.*)?$/.exec(
+				line,
+			);
+		if (match === null || line.includes("\0")) {
+			errors.push(`${path}: line ${i + 1} is not a valid KEY=VALUE assignment`);
+			return undefined;
+		}
+		vars[match[1]!] = match[2] ?? match[3] ?? match[4]!.trimEnd();
+	}
+	return vars;
+}
+
+class MissingHeaderKey extends Error {}
+function substituteHeaders(
+	headers: Record<string, string>,
+	env: Record<string, string>,
+): Record<string, string> {
+	return Object.fromEntries(
+		Object.entries(headers).map(([key, value]) => [
+			key,
+			value.replaceAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => {
+				if (!Object.hasOwn(env, name)) throw new MissingHeaderKey();
+				return env[name]!;
+			}),
+		]),
+	);
 }

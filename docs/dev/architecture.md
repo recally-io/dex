@@ -50,14 +50,14 @@ decisions.
 
 ## Sources of truth
 
-| Data                                 | Owner               | Location                                                                    |
-| ------------------------------------ | ------------------- | --------------------------------------------------------------------------- |
-| Agents, chats, submissions, settings | control             | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))   |
-| Transcripts, runs, tool calls, usage | worker (pi-durable) | `<data dir>/agents/<id>/state.sqlite`                                       |
-| Agent files                          | the agent's tools   | `<data dir>/agents/<id>/workspace/`                                         |
-| Uploaded files                       | control             | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`               |
-| Memory (git repo)                    | the agent's tools   | `<data dir>/memory/`                                                        |
-| Skills and MCP servers               | the user's files    | `~/.agents/{skills/,mcp.json}`, `<data dir>/agents/<id>/{skills/,mcp.json}` |
+| Data                                 | Owner               | Location                                                                   |
+| ------------------------------------ | ------------------- | -------------------------------------------------------------------------- |
+| Agents, chats, submissions, settings | control             | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))  |
+| Transcripts, runs, tool calls, usage | worker (pi-durable) | `<data dir>/agents/<id>/state.sqlite`                                      |
+| Agent files                          | the agent's tools   | `<data dir>/agents/<id>/workspace/`                                        |
+| Uploaded files                       | control             | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`              |
+| Memory (git repo)                    | the agent's tools   | `<data dir>/memory/`                                                       |
+| Skills and MCP servers               | the user's files    | `$HOME/.agents/`, `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/` |
 
 Control also owns internal delegation records (`tasks`). Each record
 has one read-only `task:<execution ID>` session and one input. The worker
@@ -221,9 +221,13 @@ share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
 
 ## Extensions
 
-Skills and MCP servers come from files in two scopes, global (`~/.agents/`)
-and agent (`<data dir>/agents/<id>/`); see
-[ADR 0008](decisions/0008-agent-extensions.md).
+Skills, MCP servers, and `.env` come from three levels: home (`$HOME/.agents/`),
+dex (`<resolved data dir>/.agents/`), and agent (`<data dir>/agents/<id>/.agents/`).
+Narrower levels win. Paths are fixed before `.env` is read. Equal real paths
+are read once as the narrower level. See [ADR 0010](decisions/0010-extension-levels.md).
+Each agent has its own environment snapshot for tools and stdio MCP servers.
+Invalid `.env` or MCP files prevent all MCP startup for that agent. Invalid
+`.env` also removes all file environment values from that snapshot.
 [`AgentExtensions`](../../worker/src/extensions.ts) connects the servers when
 the worker opens the agent, before `resume()`. It installs one pi-durable
 extension: a `skills` prompt section, which reads the skill files before each
@@ -233,7 +237,9 @@ model request, and the MCP tools, as deferred tools named
 
 `GET /api/agents/{agentId}/extensions` reads the files. Before the agent opens,
 the servers are `idle`. `POST /api/agents/{agentId}/extensions/reload` takes the
-maintenance lease, which it refuses when another holder has it. It restarts the
+maintenance lease, which it refuses when another holder has it. It validates
+the files of every open agent and the requested agent. If any
+configuration is invalid, it refuses with the agent name and error. It restarts the
 whole worker, opens the agent, and releases the lease. The restart affects every
 agent.
 

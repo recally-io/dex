@@ -135,8 +135,9 @@ func (e ErrorItemKind) Valid() bool {
 
 // Defines values for ExtensionScope.
 const (
-	ExtensionScopeAgent  ExtensionScope = "agent"
-	ExtensionScopeGlobal ExtensionScope = "global"
+	ExtensionScopeAgent ExtensionScope = "agent"
+	ExtensionScopeDex   ExtensionScope = "dex"
+	ExtensionScopeHome  ExtensionScope = "home"
 )
 
 // Valid indicates whether the value is a known member of the ExtensionScope enum.
@@ -144,7 +145,9 @@ func (e ExtensionScope) Valid() bool {
 	switch e {
 	case ExtensionScopeAgent:
 		return true
-	case ExtensionScopeGlobal:
+	case ExtensionScopeDex:
+		return true
+	case ExtensionScopeHome:
 		return true
 	default:
 		return false
@@ -603,23 +606,45 @@ type ErrorItem struct {
 // ErrorItemKind defines model for ErrorItem.Kind.
 type ErrorItemKind string
 
-// ExtensionScope global is ~/.agents/; agent is the agent directory.
+// ExtensionScope Home, resolved data directory, or agent home, each under .agents/.
 type ExtensionScope string
 
 // Extensions defines model for Extensions.
 type Extensions struct {
-	// Errors Files that dex cannot read. When an mcp.json file is one of them, no MCP server starts.
+	// DeclaredServers Current disk declarations. Reload to apply changes to loaded servers.
+	DeclaredServers []McpServer `json:"declaredServers"`
+
+	// Env Names only. Values never leave the loader through this API.
+	Env []struct {
+		Key string `json:"key"`
+
+		// Scope Home, resolved data directory, or agent home, each under .agents/.
+		Scope    ExtensionScope `json:"scope"`
+		Shadowed bool           `json:"shadowed"`
+	} `json:"env"`
+
+	// Errors Invalid configuration prevents MCP startup and reload.
 	Errors []string `json:"errors"`
 
-	// Paths Where the agent reads its extensions.
+	// Paths Fixed scan paths, before loading .env.
 	Paths struct {
-		AgentMcp     string `json:"agentMcp"`
-		AgentSkills  string `json:"agentSkills"`
-		GlobalMcp    string `json:"globalMcp"`
-		GlobalSkills string `json:"globalSkills"`
+		AgentEnv    string `json:"agentEnv"`
+		AgentMcp    string `json:"agentMcp"`
+		AgentSkills string `json:"agentSkills"`
+		DexEnv      string `json:"dexEnv"`
+		DexMcp      string `json:"dexMcp"`
+		DexSkills   string `json:"dexSkills"`
+		HomeEnv     string `json:"homeEnv"`
+		HomeMcp     string `json:"homeMcp"`
+		HomeSkills  string `json:"homeSkills"`
 	} `json:"paths"`
+
+	// Servers Loaded servers, or idle declarations before the agent opens.
 	Servers []McpServer `json:"servers"`
-	Skills  []Skill     `json:"skills"`
+
+	// Skills Current disk declarations; skills are read before each model request.
+	Skills   []Skill  `json:"skills"`
+	Warnings []string `json:"warnings"`
 }
 
 // Feishu defines model for Feishu.
@@ -683,10 +708,10 @@ type McpServer struct {
 	Error *string `json:"error,omitempty"`
 	Name  string  `json:"name"`
 
-	// Overrides The agent server replaces a global server with the same name.
+	// Overrides The server replaces a wider server with the same name.
 	Overrides bool `json:"overrides"`
 
-	// Scope global is ~/.agents/; agent is the agent directory.
+	// Scope Home, resolved data directory, or agent home, each under .agents/.
 	Scope ExtensionScope `json:"scope"`
 
 	// State idle means that the agent has not started, so dex has not connected.
@@ -853,13 +878,13 @@ type Skill struct {
 	Error *string `json:"error,omitempty"`
 	Name  string  `json:"name"`
 
-	// Overrides The agent skill replaces a global skill with the same name.
+	// Overrides The skill replaces a wider skill with the same name.
 	Overrides bool `json:"overrides"`
 
 	// Path The SKILL.md file.
 	Path string `json:"path"`
 
-	// Scope global is ~/.agents/; agent is the agent directory.
+	// Scope Home, resolved data directory, or agent home, each under .agents/.
 	Scope ExtensionScope `json:"scope"`
 }
 

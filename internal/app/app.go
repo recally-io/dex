@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
@@ -143,7 +144,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
 	setTelegram := func(agentID string, config *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
 		manager := bots.Agent(agentID)
-		uploads := upload.New(filepath.Join(cfg.DataDir, "agents", agentID))
+		uploads := upload.New(agent.Home(cfg.DataDir, agentID))
 		if config == nil {
 			manager.Set("telegram", nil)
 			return
@@ -178,7 +179,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	chats.ConfigureTasks(prefs.CheckChat)
 	setFeishu := func(agentID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
 		manager := bots.Agent(agentID)
-		uploads := upload.New(filepath.Join(cfg.DataDir, "agents", agentID))
+		uploads := upload.New(agent.Home(cfg.DataDir, agentID))
 		if config == nil {
 			manager.Set("feishu", nil)
 			return
@@ -192,7 +193,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	wxOptions := wechat.Options{APIURL: cfg.WechatAPIURL, CDNURL: cfg.WechatCDNURL, HTTPClient: cfg.WechatHTTPClient, Version: cfg.Version}
 	setWechat := func(agentID string, config *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
 		manager := bots.Agent(agentID)
-		uploads := upload.New(filepath.Join(cfg.DataDir, "agents", agentID))
+		uploads := upload.New(agent.Home(cfg.DataDir, agentID))
 		if config == nil {
 			manager.Set("wechat", nil)
 			return

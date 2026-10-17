@@ -10,13 +10,13 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 	"uuid"
 
+	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/chat"
@@ -142,7 +142,7 @@ func (h *handler) withAgent(next http.Handler) http.Handler {
 }
 
 func (h *handler) uploads(ctx context.Context) *upload.Store {
-	return upload.New(filepath.Join(h.DataDir, "agents", agentID(ctx)))
+	return upload.New(agent.Home(h.DataDir, agentID(ctx)))
 }
 
 var ok = api.Ok{Status: api.OkStatusOk}
@@ -176,14 +176,6 @@ func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestO
 	return out, nil
 }
 func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRequestObject) (api.ReloadExtensionsResponseObject, error) {
-	// A worker that starts with an mcp.json that is not valid has no MCP servers. Keep the loaded ones.
-	var files api.Extensions
-	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx)}, &files); err != nil {
-		return nil, err
-	}
-	if len(files.Errors) > 0 {
-		return nil, fmt.Errorf("%w: %s", errInvalid, strings.Join(files.Errors, "\n"))
-	}
 	// The maintenance lease refuses a reload while the agent has work, and holds new work until the
 	// new worker runs. The new worker gets the lease again before it accepts calls.
 	if err := h.Chats.AcquireReload(ctx); err != nil {
@@ -196,6 +188,26 @@ func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRe
 			slog.Error("release maintenance after an extension reload", "err", err)
 		}
 	}()
+	// A worker that starts with an mcp.json that is not valid has no MCP servers. Keep the loaded ones.
+	var files api.Extensions
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx), Preflight: true}, &files); err != nil {
+		return nil, err
+	}
+	if len(files.Errors) > 0 {
+		agents, err := h.Settings.ListAgents(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for i, message := range files.Errors {
+			for _, a := range agents {
+				if tail, found := strings.CutPrefix(message, a.ID+": "); found {
+					files.Errors[i] = a.Name + ": " + tail
+					break
+				}
+			}
+		}
+		return nil, fmt.Errorf("%w: %s", errInvalid, strings.Join(files.Errors, "\n"))
+	}
 	if err := h.RestartWorker(ctx); err != nil {
 		return nil, err
 	}

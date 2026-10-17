@@ -20,7 +20,7 @@ import (
 
 type extensions struct {
 	Paths struct {
-		GlobalSkills string `json:"globalSkills"`
+		GlobalSkills string `json:"homeSkills"`
 		AgentMcp     string `json:"agentMcp"`
 	} `json:"paths"`
 	Skills []struct {
@@ -31,8 +31,15 @@ type extensions struct {
 		Overrides   bool   `json:"overrides"`
 		Error       string `json:"error"`
 	} `json:"skills"`
-	Servers []serverInfo `json:"servers"`
-	Errors  []string     `json:"errors"`
+	Servers  []serverInfo `json:"servers"`
+	Errors   []string     `json:"errors"`
+	Warnings []string     `json:"warnings"`
+	Env      []struct {
+		Key      string `json:"key"`
+		Scope    string `json:"scope"`
+		Shadowed bool   `json:"shadowed"`
+	} `json:"env"`
+	DeclaredServers []serverInfo `json:"declaredServers"`
 }
 
 type serverInfo struct {
@@ -88,7 +95,11 @@ func writeSkill(t *testing.T, dir, name, frontMatter string) string {
 	t.Helper()
 	path := filepath.Join(dir, name, "SKILL.md")
 	writeFile(t, path, "---\n"+frontMatter+"\n---\n\nSteps of "+name+".\n")
-	return path
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
 }
 
 // stdioServer is an mcp.json entry that starts this test binary as an MCP server on dir.
@@ -131,7 +142,7 @@ func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
 	// Given global skills review and notes, and agent skills review and broken
 	dataDir, home := t.TempDir(), t.TempDir()
 	globalDir := filepath.Join(home, ".agents", "skills")
-	agentDir := filepath.Join(dataDir, "agents", app.DefaultAgentID, "skills")
+	agentDir := filepath.Join(dataDir, "agents", app.DefaultAgentID, ".agents", "skills")
 	writeSkill(t, globalDir, "review", "name: review\ndescription: Global review steps")
 	notes := writeSkill(t, globalDir, "notes", "description: Take notes")
 	review := writeSkill(t, agentDir, "review", "description: Agent review steps")
@@ -151,8 +162,12 @@ func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
 	for _, s := range got.Skills {
 		rows = append(rows, row{s.Name, s.Scope, s.Overrides, s.Error != ""})
 	}
-	want := []row{{"broken", "agent", false, true}, {"notes", "global", false, false}, {"review", "agent", true, false}}
-	if !slices.Equal(rows, want) || got.Paths.GlobalSkills != globalDir {
+	want := []row{{"broken", "agent", false, true}, {"notes", "home", false, false}, {"review", "agent", true, false}}
+	resolvedGlobal, err := filepath.EvalSymlinks(globalDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(rows, want) || got.Paths.GlobalSkills != resolvedGlobal {
 		t.Fatalf("skills = %+v, paths = %+v", got.Skills, got.Paths)
 	}
 
@@ -191,7 +206,7 @@ func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
 		"shared": stdioServer(t, globalShared),
 		"old":    stdioServer(t, t.TempDir()),
 	})
-	writeMCP(t, filepath.Join(dataDir, "agents", app.DefaultAgentID, "mcp.json"), map[string]any{
+	writeMCP(t, filepath.Join(dataDir, "agents", app.DefaultAgentID, ".agents", "mcp.json"), map[string]any{
 		"shared":  stdioServer(t, agentShared),
 		"old":     map[string]any{"disabled": true},
 		"missing": map[string]any{"command": filepath.Join(home, "no-such-server")},
@@ -243,7 +258,7 @@ func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
 func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 	// Given an agent with one MCP server that has answered
 	dataDir, home, filesDir := t.TempDir(), t.TempDir(), t.TempDir()
-	agentMCP := filepath.Join(dataDir, "agents", app.DefaultAgentID, "mcp.json")
+	agentMCP := filepath.Join(dataDir, "agents", app.DefaultAgentID, ".agents", "mcp.json")
 	writeMCP(t, agentMCP, map[string]any{"files": stdioServer(t, filesDir)})
 	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
 	d.setModel(t, "tool")

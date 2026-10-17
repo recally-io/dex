@@ -42,8 +42,10 @@ data.
   then a dependency the repository already has.
 - Settings live only in `control.sqlite` and change only through
   `internal/settings`. Do not add an environment variable or a file for a
-  setting. The one exception is skills and MCP servers, which come from files
-  ([ADR 0008](../../docs/dev/decisions/0008-agent-extensions.md)). The worker gets provider credentials only through `configure`.
+  setting. The exceptions are skills, MCP servers, and tool environment values
+  in `.env`, which come from files
+  ([ADR 0010](../../docs/dev/decisions/0010-extension-levels.md)). The worker
+  gets provider credentials only through `configure`.
 - Do not edit generated code: `internal/db/sqlc/` (`mise run generate:db`),
   `internal/api/server.gen.go` and `web/src/api/generated/`
   (`mise run generate:api`).

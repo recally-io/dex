@@ -209,11 +209,15 @@ export const QuiesceParams = Type.Object({ expiresAt: Type.Number() });
 export type QuiesceParams = Static<typeof QuiesceParams>;
 export type QuiesceResult = { readonly busy: boolean; readonly reason?: string };
 
-export const AgentParams = Type.Object({ agentId: Type.String(), open: Type.Optional(Type.Boolean()) });
+export const AgentParams = Type.Object({
+	agentId: Type.String(),
+	open: Type.Optional(Type.Boolean()),
+	preflight: Type.Optional(Type.Boolean()),
+});
 export type AgentParams = Static<typeof AgentParams>;
 
-/** Where an extension comes from: `~/.agents/` or the agent directory. */
-export type Scope = "global" | "agent";
+/** Where an extension comes from: home, dex, or agent `.agents/`. */
+export type Scope = "home" | "dex" | "agent";
 
 /** A skill: `<scope dir>/skills/<name>/SKILL.md`. A skill with an error is not in the prompt. */
 export type SkillInfo = {
@@ -221,7 +225,7 @@ export type SkillInfo = {
 	description: string;
 	readonly scope: Scope;
 	readonly path: string;
-	/** An agent skill that replaces a global skill with the same name. */
+	/** A skill that replaces a wider skill with the same name. */
 	readonly overrides: boolean;
 	error?: string;
 };
@@ -235,7 +239,7 @@ export type McpServerInfo = {
 	readonly name: string;
 	readonly scope: Scope;
 	readonly overrides: boolean;
-	/** Absent for an entry that only turns off a global server. */
+	/** Absent for an entry that only turns off a wider server. */
 	readonly transport?: "stdio" | "http";
 	/** "idle": the agent has not started yet, so dex has not connected. */
 	state: "idle" | "connected" | "failed" | "disabled";
@@ -245,13 +249,21 @@ export type McpServerInfo = {
 
 export type Extensions = {
 	readonly paths: {
-		readonly globalSkills: string;
-		readonly globalMcp: string;
+		readonly homeSkills: string;
+		readonly homeMcp: string;
+		readonly homeEnv: string;
+		readonly dexSkills: string;
+		readonly dexMcp: string;
+		readonly dexEnv: string;
+		readonly agentEnv: string;
 		readonly agentSkills: string;
 		readonly agentMcp: string;
 	};
 	readonly skills: readonly SkillInfo[];
 	readonly servers: readonly McpServerInfo[];
+	readonly declaredServers: readonly McpServerInfo[];
+	readonly env: readonly { key: string; scope: Scope; shadowed: boolean }[];
+	readonly warnings: readonly string[];
 	/** Files that dex cannot read now. When an mcp.json file is one of them, no server starts. */
 	readonly errors: readonly string[];
 };

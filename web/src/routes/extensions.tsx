@@ -92,7 +92,7 @@ function Catalog({ extensions: e }: { extensions: Extensions }) {
           ))}
           empty={
             <>
-              Add <Mono>{e.paths.globalSkills}/&lt;name&gt;/SKILL.md</Mono> or{" "}
+              Add <Mono>{e.paths.homeSkills}/&lt;name&gt;/SKILL.md</Mono> or{" "}
               <Mono>{e.paths.agentSkills}/&lt;name&gt;/SKILL.md</Mono>.
             </>
           }
@@ -120,7 +120,7 @@ function Catalog({ extensions: e }: { extensions: Extensions }) {
           ))}
           empty={
             <>
-              Add servers to <Mono>{e.paths.globalMcp}</Mono> or <Mono>{e.paths.agentMcp}</Mono>, in the
+              Add servers to <Mono>{e.paths.homeMcp}</Mono> or <Mono>{e.paths.agentMcp}</Mono>, in the
               mcpServers format of Claude Code. In the agent file, <Mono>{'{ "disabled": true }'}</Mono> turns
               off a global server.
             </>
@@ -148,7 +148,7 @@ function Header({ name, scope, overrides }: { name: string; scope: Skill["scope"
     <>
       <span className="font-mono text-[12.5px] font-medium text-ink">{name}</span>
       <span className="text-[11.5px] text-ink-3">
-        {scope === "global" ? "global" : overrides ? "agent, replaces global" : "agent"}
+        {scope === "home" ? "global" : overrides ? "agent, replaces global" : "agent"}
       </span>
     </>
   );

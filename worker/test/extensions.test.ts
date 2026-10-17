@@ -34,16 +34,17 @@ test("a failed MCP server shows no values of its entry", async () => {
 				denied: {
 					type: "http",
 					url: `${echo.url.href}mcp?token=SECRET-QUERY`,
-					headers: { Authorization: "Bearer SECRET-HEADER" },
+					headers: { Authorization: "Bearer ${TOKEN}" },
 				},
 				badurl: { type: "http", url: "SECRET-URL" },
 			},
 		}),
 	);
+	await writeFile(join(dir, "home", ".agents", ".env"), "TOKEN=SECRET-HEADER\n");
 	const log = spyOn(console, "error").mockImplementation(() => undefined);
 	cleanups.push(async () => log.mockRestore());
 
-	const loaded = await new AgentExtensions(join(dir, "home"), join(dir, "agent"), dir).load();
+	const loaded = await new AgentExtensions(join(dir, "home"), dir, join(dir, "agent"), dir, {}).load();
 	await loaded.close();
 
 	expect(loaded.servers.map((s) => s.state)).toEqual(["failed", "failed", "failed", "failed"]);

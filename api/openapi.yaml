@@ -1578,34 +1578,66 @@ components:
 
     Extensions:
       type: object
-      required: [paths, skills, servers, errors]
+      required: [paths, skills, servers, declaredServers, env, warnings, errors]
       properties:
         paths:
           type: object
-          description: Where the agent reads its extensions.
-          required: [globalSkills, globalMcp, agentSkills, agentMcp]
+          description: Fixed scan paths, before loading .env.
+          required: [
+            homeSkills,
+            homeMcp,
+            homeEnv,
+            dexSkills,
+            dexMcp,
+            dexEnv,
+            agentSkills,
+            agentMcp,
+            agentEnv,
+          ]
           properties:
-            globalSkills: { type: string }
-            globalMcp: { type: string }
+            homeSkills: { type: string }
+            homeMcp: { type: string }
+            homeEnv: { type: string }
+            dexSkills: { type: string }
+            dexMcp: { type: string }
+            dexEnv: { type: string }
             agentSkills: { type: string }
             agentMcp: { type: string }
+            agentEnv: { type: string }
         skills:
           type: array
+          description: Current disk declarations; skills are read before each model request.
           items: { $ref: "#/components/schemas/Skill" }
         servers:
           type: array
+          description: Loaded servers, or idle declarations before the agent opens.
           items: { $ref: "#/components/schemas/McpServer" }
+        declaredServers:
+          type: array
+          description: Current disk declarations. Reload to apply changes to loaded servers.
+          items: { $ref: "#/components/schemas/McpServer" }
+        env:
+          type: array
+          description: Names only. Values never leave the loader through this API.
+          items:
+            type: object
+            required: [key, scope, shadowed]
+            properties:
+              key: { type: string }
+              scope: { $ref: "#/components/schemas/ExtensionScope" }
+              shadowed: { type: boolean }
+        warnings:
+          type: array
+          items: { type: string }
         errors:
           type: array
-          description: >
-            Files that dex cannot read. When an mcp.json file is one of them,
-            no MCP server starts.
+          description: Invalid configuration prevents MCP startup and reload.
           items: { type: string }
 
     ExtensionScope:
       type: string
-      description: global is ~/.agents/; agent is the agent directory.
-      enum: [global, agent]
+      description: Home, resolved data directory, or agent home, each under .agents/.
+      enum: [home, dex, agent]
 
     Skill:
       type: object
@@ -1617,7 +1649,7 @@ components:
         path: { type: string, description: The SKILL.md file. }
         overrides:
           type: boolean
-          description: The agent skill replaces a global skill with the same name.
+          description: The skill replaces a wider skill with the same name.
         error:
           type: string
           description: Why the skill is not valid. The prompt does not list it.
@@ -1633,7 +1665,7 @@ components:
         scope: { $ref: "#/components/schemas/ExtensionScope" }
         overrides:
           type: boolean
-          description: The agent server replaces a global server with the same name.
+          description: The server replaces a wider server with the same name.
         transport:
           type: string
           description: Absent for an agent entry that only turns off a global server.

@@ -186,3 +186,17 @@ other chat channels are not available.
 - Sandboxes. Agent tools run on the host, inside the agent workspace.
 - Shared object storage. Agent files are local directories.
 - Automatic failover or data replication.
+
+## Extension files
+
+Each agent reads skills, `mcp.json`, and `.env` from three `.agents/`
+directories: the user home, the resolved dex data directory, and the agent
+home (`<data dir>/agents/<id>`). The narrower level wins. Tools still start
+in the agent workspace. Memory stays in `<data dir>/memory`.
+
+The Extensions tab shows file paths, skills, declared and loaded servers,
+environment key names, and configuration warnings. Reload restarts the worker
+for all agents. Invalid configuration in any open agent prevents reload.
+Keep `.env` files out of Git and set mode `0600`. The API hides values, but
+the model can read files and run `env`. Tool output becomes part of the transcript.
+See [ADR 0010](dev/decisions/0010-extension-levels.md).
