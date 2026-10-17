@@ -60,6 +60,17 @@ loaded servers, warnings, and `.env` key names with level and shadowed state.
 A shadowed key has a declaration at a narrower level. Edit MCP or `.env`
 files, then reload. Skills are read before each model request.
 
+The Secrets page can write and delete keys in agent and dex `.env` files
+through `PUT` and `DELETE /api/agents/{agentId}/extensions/env`. Dex scope
+applies to all agents. Home is read-only through this API. Values are
+write-only: responses contain key names, never values. Control validates the
+request and forwards it. The worker edits the file in place and serializes
+writes per file path. It preserves unrelated lines and refuses invalid
+files. It writes a same-directory temporary file with mode `0600`, then
+renames it. A new `.agents/` directory has mode `0700`. Reload applies the
+change; saving does not reload. The file is the only store. No copy goes
+into `control.sqlite`.
+
 ## Consequences
 
 The loader, extensions API, errors, and logs do not expose `.env` values or

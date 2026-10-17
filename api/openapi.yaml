@@ -751,6 +751,57 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/extensions/env:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    put:
+      operationId: putExtensionEnv
+      description: Write an agent or dex .env key. Values are write-only. Reload applies changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, key, value]
+              properties:
+                scope: { type: string, enum: [agent, dex] }
+                key: { type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
+                value: { type: string, writeOnly: true }
+      responses:
+        "200":
+          description: Current extension declarations, with key names only.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Extensions" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteExtensionEnv
+      description: Remove an agent or dex .env key. Reload applies changes. Home is read-only.
+      parameters:
+        - in: query
+          name: scope
+          required: true
+          schema: { type: string, enum: [agent, dex] }
+        - in: query
+          name: key
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
+      responses:
+        "200":
+          description: Current extension declarations, with key names only.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Extensions" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/extensions/reload:
     parameters:
       - in: path

@@ -275,3 +275,12 @@ export const RecoverTasksParams = Type.Object({
 	),
 });
 export type RecoverTasksParams = Static<typeof RecoverTasksParams>;
+
+/** No value means delete. Values never return through the protocol. */
+export const EditEnvParams = Type.Object({
+	agentId: Type.String(),
+	scope: Type.Union([Type.Literal("agent"), Type.Literal("dex")]),
+	key: Type.String(),
+	value: Type.Optional(Type.String()),
+});
+export type EditEnvParams = Static<typeof EditEnvParams>;

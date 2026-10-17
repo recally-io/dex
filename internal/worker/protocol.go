@@ -233,3 +233,11 @@ type InputEntriesParams struct {
 	ConversationID int64    `json:"conversationId"`
 	RequestIDs     []string `json:"requestIds"`
 }
+
+// EditEnvParams changes one key. An absent Value removes it.
+type EditEnvParams struct {
+	AgentID string  `json:"agentId"`
+	Scope   string  `json:"scope"`
+	Key     string  `json:"key"`
+	Value   *string `json:"value,omitempty"`
+}

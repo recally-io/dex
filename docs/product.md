@@ -20,8 +20,8 @@ to read in an afternoon.
 - Bot settings in the web UI: name, model, thinking level, instructions,
   channels, and automations with their runs. The name has 1 to 40 characters
   after spaces are trimmed. Providers, Secrets, and About are global pages.
-  Named secrets are not available yet. The CLI manages the service
-  address, data directory, and update policy.
+  Tool secrets can be set for the current agent or for all dex agents.
+  The CLI manages the service address, data directory, and update policy.
 - Several agents for one owner, each with a name, model, thinking level,
   instructions, conversations, automations, and workspace directory. The API
   can create, list, read, and update agents. Each agent's API paths include its
@@ -177,8 +177,7 @@ Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,
 background tasks, timers, skills, MCP servers, and the worker are available.
 The API, web UI, and channels support several agents. One bot credential can
 belong to only one agent. A conflict names the agent that already uses it. Project bindings, task routing between agents, group chats,
-and task-specific automation result routing are later work. Named secrets and
-other chat channels are not available.
+and task-specific automation result routing are later work. Other chat channels are not available.
 
 ## Non-goals
 
@@ -193,6 +192,12 @@ Each agent reads skills, `mcp.json`, and `.env` from three `.agents/`
 directories: the user home, the resolved dex data directory, and the agent
 home (`<data dir>/agents/<id>`). The narrower level wins. Tools still start
 in the agent workspace. Memory stays in `<data dir>/memory`.
+
+The Secrets page writes tool credentials to the current agent or dex `.env`
+file. Dex scope applies to all agents. The page shows key names and shadowed
+state, with Replace and Delete actions. Values are write-only. Home keys are
+read-only. File changes apply after Reload in the Extensions tab or Secrets
+page. The files remain the only store.
 
 The Extensions tab shows file paths, skills, declared and loaded servers,
 environment key names, and configuration warnings. Reload restarts the worker

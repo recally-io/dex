@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acquireMaintenance, beginFeishu, beginWechatLogin, clearContext, createAgent, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, getAgent, getAutomation, getChannels, getChat, getChatHistory, getExtensions, getFeishu, getHealth, getMainChat, getSettings, getTask, getUpload, listAgents, listAutomationRuns, listAutomations, listChats, listModels, type Options, pollFeishu, pollWechatLogin, previewSchedule, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setChatSettings, setFeishu, setProvider, setTelegram, updateAgent, updateAutomation } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTaskData, GetTaskError, GetTaskResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, beginFeishu, beginWechatLogin, clearContext, createAgent, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteExtensionEnv, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, getAgent, getAutomation, getChannels, getChat, getChatHistory, getExtensions, getFeishu, getHealth, getMainChat, getSettings, getTask, getUpload, listAgents, listAutomationRuns, listAutomations, listChats, listModels, type Options, pollFeishu, pollWechatLogin, previewSchedule, putExtensionEnv, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setChatSettings, setFeishu, setProvider, setTelegram, updateAgent, updateAutomation } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteExtensionEnvData, DeleteExtensionEnvError, DeleteExtensionEnvResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTaskData, GetTaskError, GetTaskResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, PutExtensionEnvData, PutExtensionEnvError, PutExtensionEnvResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
 
 /**
  * Exchanges the access token for the session cookie.
@@ -733,6 +733,40 @@ export const getExtensionsOptions = (options: Options<GetExtensionsData>) => que
     },
     queryKey: getExtensionsQueryKey(options)
 });
+
+/**
+ * Remove an agent or dex .env key. Reload applies changes. Home is read-only.
+ */
+export const deleteExtensionEnvMutation = (options?: Partial<Options<DeleteExtensionEnvData>>): UseMutationOptions<DeleteExtensionEnvResponse, DeleteExtensionEnvError, Options<DeleteExtensionEnvData>> => {
+    const mutationOptions: UseMutationOptions<DeleteExtensionEnvResponse, DeleteExtensionEnvError, Options<DeleteExtensionEnvData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteExtensionEnv({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Write an agent or dex .env key. Values are write-only. Reload applies changes.
+ */
+export const putExtensionEnvMutation = (options?: Partial<Options<PutExtensionEnvData>>): UseMutationOptions<PutExtensionEnvResponse, PutExtensionEnvError, Options<PutExtensionEnvData>> => {
+    const mutationOptions: UseMutationOptions<PutExtensionEnvResponse, PutExtensionEnvError, Options<PutExtensionEnvData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await putExtensionEnv({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 /**
  * Restarts the whole worker and affects every agent. It connects the MCP servers again. Skills need no reload. 409 when any agent has unfinished work. 400 when a file is not valid; the agent then keeps its MCP servers.

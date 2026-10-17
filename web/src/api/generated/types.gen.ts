@@ -1899,6 +1899,83 @@ export type GetExtensionsResponses = {
 
 export type GetExtensionsResponse = GetExtensionsResponses[keyof GetExtensionsResponses];
 
+export type DeleteExtensionEnvData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query: {
+        scope: 'agent' | 'dex';
+        key: string;
+    };
+    url: '/api/agents/{agentId}/extensions/env';
+};
+
+export type DeleteExtensionEnvErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteExtensionEnvError = DeleteExtensionEnvErrors[keyof DeleteExtensionEnvErrors];
+
+export type DeleteExtensionEnvResponses = {
+    /**
+     * Current extension declarations, with key names only.
+     */
+    200: Extensions;
+};
+
+export type DeleteExtensionEnvResponse = DeleteExtensionEnvResponses[keyof DeleteExtensionEnvResponses];
+
+export type PutExtensionEnvData = {
+    body: {
+        scope: 'agent' | 'dex';
+        key: string;
+        value: string;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/extensions/env';
+};
+
+export type PutExtensionEnvErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type PutExtensionEnvError = PutExtensionEnvErrors[keyof PutExtensionEnvErrors];
+
+export type PutExtensionEnvResponses = {
+    /**
+     * Current extension declarations, with key names only.
+     */
+    200: Extensions;
+};
+
+export type PutExtensionEnvResponse = PutExtensionEnvResponses[keyof PutExtensionEnvResponses];
+
 export type ReloadExtensionsData = {
     body?: never;
     path: {

@@ -1,5 +1,5 @@
-import { readdir, readFile, stat, realpath } from "node:fs/promises";
-import { join, resolve, dirname } from "node:path";
+import { readdir, readFile, stat, realpath, mkdir, open, rename, unlink } from "node:fs/promises";
+import { join, resolve, dirname, relative, isAbsolute } from "node:path";
 import { defineExtension, defineTool, type Extension, section } from "@earendil-works/pi-durable";
 import {
 	McpAuthRequiredError,
@@ -14,7 +14,7 @@ import {
 import { upgradeExtensions } from "./extension-upgrade.ts";
 import Type, { type Static } from "typebox";
 import { Value } from "typebox/value";
-import type { Extensions, McpServerInfo, Scope, SkillInfo } from "./protocol.ts";
+import type { Extensions, McpServerInfo, Scope, SkillInfo, EditEnvParams } from "./protocol.ts";
 
 /** The name of the pi-durable extension with the skills section and the MCP tools. */
 export const EXTENSION_NAME = "extensions";
@@ -80,6 +80,8 @@ export type Loaded = {
 export class AgentExtensions {
 	readonly #roots: Promise<readonly { scope: Scope; paths: Paths }[]>;
 	readonly #workspace: string;
+	readonly #dataDir: Promise<string>;
+	static readonly #writes = new Map<string, Promise<void>>();
 	readonly #warnings: Promise<string[]>;
 	readonly #baseEnv: Record<string, string>;
 
@@ -91,6 +93,7 @@ export class AgentExtensions {
 		baseEnv: Record<string, string>,
 	) {
 		this.#baseEnv = { ...baseEnv };
+		this.#dataDir = canonical(dataDir);
 		this.#workspace = workspace;
 		this.#warnings = upgradeExtensions(agentDir);
 		this.#roots = Promise.all(
@@ -198,6 +201,79 @@ export class AgentExtensions {
 				await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
 			},
 		};
+	}
+
+	/** The file remains the only store. Writes to a shared dex path use the same queue. */
+	async editEnv(params: EditEnvParams): Promise<void> {
+		if (params.scope !== "agent" && params.scope !== "dex")
+			throw new EnvEditError("only agent and dex environment files are writable");
+		if (!/^[A-Za-z_][A-Za-z0-9_]*(?![\s\S])/.test(params.key))
+			throw new EnvEditError("the environment key is not valid");
+		const assignment = params.value === undefined ? undefined : `${params.key}=${quoteEnv(params.value)}`;
+		await this.#warnings;
+		const roots = await this.#roots;
+		const path = roots.find((root) => root.scope === params.scope)!.paths.env;
+		const within = relative(await this.#dataDir, dirname(path));
+		if (within === ".." || within.startsWith("../") || isAbsolute(within))
+			throw new EnvEditError("the environment file must be inside the data directory");
+		const result = (AgentExtensions.#writes.get(path) ?? Promise.resolve()).then(async () => {
+			const errors: string[] = [];
+			if ((await readEnv(path, errors)) === undefined) throw new EnvEditError(errors.join("\n"));
+			let text: string;
+			try {
+				text = await readFile(path, "utf8");
+			} catch (error) {
+				if (errorCode(error) !== "ENOENT") throw error;
+				text = "";
+			}
+			// Keep each untouched line, including its original line ending.
+			const lines = text.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+			let found = false;
+			const output = lines.flatMap((line) => {
+				const key = /^(?:export +)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line.trim())?.[1];
+				if (key !== params.key) return [line];
+				const first = !found;
+				found = true;
+				return first && assignment !== undefined
+					? [assignment + (line.endsWith("\r\n") ? "\r\n" : line.endsWith("\n") ? "\n" : "")]
+					: [];
+			});
+			if (!found && assignment !== undefined) {
+				if (text !== "" && !text.endsWith("\n")) output.push("\n");
+				output.push(`${assignment}\n`);
+			}
+			await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+			const temp = join(dirname(path), `.env-${crypto.randomUUID()}.tmp`);
+			try {
+				const file = await open(temp, "wx", 0o600);
+				try {
+					await file.writeFile(output.join(""), "utf8");
+					await file.chmod(0o600);
+				} finally {
+					await file.close();
+				}
+				await rename(temp, path);
+			} finally {
+				await unlink(temp).catch((error: unknown) => {
+					if (errorCode(error) !== "ENOENT") throw error;
+				});
+			}
+		});
+		const tail = result.catch(() => undefined);
+		AgentExtensions.#writes.set(path, tail);
+		try {
+			await result;
+		} catch (error) {
+			if (error instanceof EnvEditError) throw error;
+			// File errors need no assignment text or raw runtime error.
+			const code = errorCode(error);
+			throw new Error(
+				`${path}: cannot write environment file (${typeof code === "string" ? code : "I/O error"})`,
+				{ cause: error },
+			);
+		} finally {
+			if (AgentExtensions.#writes.get(path) === tail) AgentExtensions.#writes.delete(path);
+		}
 	}
 
 	async #skills(errors: string[]): Promise<SkillInfo[]> {
@@ -517,4 +593,16 @@ function substituteHeaders(
 			}),
 		]),
 	);
+}
+
+/** An input or file format error that control can return as HTTP 400. */
+export class EnvEditError extends Error {}
+
+function quoteEnv(value: string): string {
+	if (/[\n\r\0]/.test(value)) throw new EnvEditError("the value must not contain LF, CR, or NUL");
+	if (value.includes("'") && value.includes('"'))
+		throw new EnvEditError("the value must not contain both single and double quotes");
+	if (value.includes("'")) return `"${value}"`;
+	if (value.includes('"') || value.includes("#") || value.trim() !== value) return `'${value}'`;
+	return value;
 }

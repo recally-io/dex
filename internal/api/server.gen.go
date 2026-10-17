@@ -463,6 +463,42 @@ func (e UserItemKind) Valid() bool {
 	}
 }
 
+// Defines values for DeleteExtensionEnvParamsScope.
+const (
+	DeleteExtensionEnvParamsScopeAgent DeleteExtensionEnvParamsScope = "agent"
+	DeleteExtensionEnvParamsScopeDex   DeleteExtensionEnvParamsScope = "dex"
+)
+
+// Valid indicates whether the value is a known member of the DeleteExtensionEnvParamsScope enum.
+func (e DeleteExtensionEnvParamsScope) Valid() bool {
+	switch e {
+	case DeleteExtensionEnvParamsScopeAgent:
+		return true
+	case DeleteExtensionEnvParamsScopeDex:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PutExtensionEnvJSONBodyScope.
+const (
+	PutExtensionEnvJSONBodyScopeAgent PutExtensionEnvJSONBodyScope = "agent"
+	PutExtensionEnvJSONBodyScopeDex   PutExtensionEnvJSONBodyScope = "dex"
+)
+
+// Valid indicates whether the value is a known member of the PutExtensionEnvJSONBodyScope enum.
+func (e PutExtensionEnvJSONBodyScope) Valid() bool {
+	switch e {
+	case PutExtensionEnvJSONBodyScopeAgent:
+		return true
+	case PutExtensionEnvJSONBodyScopeDex:
+		return true
+	default:
+		return false
+	}
+}
+
 // Agent defines model for Agent.
 type Agent = agent.Agent
 
@@ -1067,6 +1103,25 @@ type GetChatHistoryParams struct {
 	Limit  *int  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// DeleteExtensionEnvParams defines parameters for DeleteExtensionEnv.
+type DeleteExtensionEnvParams struct {
+	Scope DeleteExtensionEnvParamsScope `form:"scope" json:"scope"`
+	Key   string                        `form:"key" json:"key"`
+}
+
+// DeleteExtensionEnvParamsScope defines parameters for DeleteExtensionEnv.
+type DeleteExtensionEnvParamsScope string
+
+// PutExtensionEnvJSONBody defines parameters for PutExtensionEnv.
+type PutExtensionEnvJSONBody struct {
+	Key   string                       `json:"key"`
+	Scope PutExtensionEnvJSONBodyScope `json:"scope"`
+	Value *string                      `json:"value,omitempty"`
+}
+
+// PutExtensionEnvJSONBodyScope defines parameters for PutExtensionEnv.
+type PutExtensionEnvJSONBodyScope string
+
 // CreateUploadMultipartBody defines parameters for CreateUpload.
 type CreateUploadMultipartBody struct {
 	File openapi_types.File `json:"file"`
@@ -1107,6 +1162,9 @@ type SendMessageJSONRequestBody = MessageInput
 
 // SetChatSettingsJSONRequestBody defines body for SetChatSettings for application/json ContentType.
 type SetChatSettingsJSONRequestBody = ChatSettings
+
+// PutExtensionEnvJSONRequestBody defines body for PutExtensionEnv for application/json ContentType.
+type PutExtensionEnvJSONRequestBody PutExtensionEnvJSONBody
 
 // CreateUploadMultipartRequestBody defines body for CreateUpload for multipart/form-data ContentType.
 type CreateUploadMultipartRequestBody CreateUploadMultipartBody
@@ -1678,6 +1736,12 @@ type ServerInterface interface {
 
 	// (GET /api/agents/{agentId}/extensions)
 	GetExtensions(w http.ResponseWriter, r *http.Request, agentId string)
+
+	// (DELETE /api/agents/{agentId}/extensions/env)
+	DeleteExtensionEnv(w http.ResponseWriter, r *http.Request, agentId string, params DeleteExtensionEnvParams)
+
+	// (PUT /api/agents/{agentId}/extensions/env)
+	PutExtensionEnv(w http.ResponseWriter, r *http.Request, agentId string)
 
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(w http.ResponseWriter, r *http.Request, agentId string)
@@ -2734,6 +2798,87 @@ func (siw *ServerInterfaceWrapper) GetExtensions(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteExtensionEnv operation middleware
+func (siw *ServerInterfaceWrapper) DeleteExtensionEnv(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteExtensionEnvParams
+
+	// ------------- Required query parameter "scope" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "scope", r.URL.Query(), &params.Scope, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scope"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scope", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "key" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "key", r.URL.Query(), &params.Key, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "key"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteExtensionEnv(w, r, agentId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutExtensionEnv operation middleware
+func (siw *ServerInterfaceWrapper) PutExtensionEnv(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutExtensionEnv(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReloadExtensions operation middleware
 func (siw *ServerInterfaceWrapper) ReloadExtensions(w http.ResponseWriter, r *http.Request) {
 
@@ -3165,6 +3310,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/uploads", wrapper.CreateUpload)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/uploads/{uploadId}", wrapper.GetUpload)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/extensions", wrapper.GetExtensions)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/extensions/env", wrapper.DeleteExtensionEnv)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/extensions/env", wrapper.PutExtensionEnv)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/extensions/reload", wrapper.ReloadExtensions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/automations", wrapper.ListAutomations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/automations", wrapper.CreateAutomation)
@@ -5047,6 +5194,142 @@ func (response GetExtensionsdefaultJSONResponse) VisitGetExtensionsResponse(w ht
 	return err
 }
 
+type DeleteExtensionEnvRequestObject struct {
+	AgentId string `json:"agentId"`
+	Params  DeleteExtensionEnvParams
+}
+
+type DeleteExtensionEnvResponseObject interface {
+	VisitDeleteExtensionEnvResponse(w http.ResponseWriter) error
+}
+
+type DeleteExtensionEnv200JSONResponse Extensions
+
+func (response DeleteExtensionEnv200JSONResponse) VisitDeleteExtensionEnvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteExtensionEnv400JSONResponse struct{ ErrorJSONResponse }
+
+func (response DeleteExtensionEnv400JSONResponse) VisitDeleteExtensionEnvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteExtensionEnv404JSONResponse Error
+
+func (response DeleteExtensionEnv404JSONResponse) VisitDeleteExtensionEnvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteExtensionEnvdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteExtensionEnvdefaultJSONResponse) VisitDeleteExtensionEnvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExtensionEnvRequestObject struct {
+	AgentId string `json:"agentId"`
+	Body    *PutExtensionEnvJSONRequestBody
+}
+
+type PutExtensionEnvResponseObject interface {
+	VisitPutExtensionEnvResponse(w http.ResponseWriter) error
+}
+
+type PutExtensionEnv200JSONResponse Extensions
+
+func (response PutExtensionEnv200JSONResponse) VisitPutExtensionEnvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExtensionEnv400JSONResponse struct{ ErrorJSONResponse }
+
+func (response PutExtensionEnv400JSONResponse) VisitPutExtensionEnvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExtensionEnv404JSONResponse Error
+
+func (response PutExtensionEnv404JSONResponse) VisitPutExtensionEnvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExtensionEnvdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response PutExtensionEnvdefaultJSONResponse) VisitPutExtensionEnvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReloadExtensionsRequestObject struct {
 	AgentId string `json:"agentId"`
 }
@@ -5843,6 +6126,12 @@ type StrictServerInterface interface {
 
 	// (GET /api/agents/{agentId}/extensions)
 	GetExtensions(ctx context.Context, request GetExtensionsRequestObject) (GetExtensionsResponseObject, error)
+
+	// (DELETE /api/agents/{agentId}/extensions/env)
+	DeleteExtensionEnv(ctx context.Context, request DeleteExtensionEnvRequestObject) (DeleteExtensionEnvResponseObject, error)
+
+	// (PUT /api/agents/{agentId}/extensions/env)
+	PutExtensionEnv(ctx context.Context, request PutExtensionEnvRequestObject) (PutExtensionEnvResponseObject, error)
 
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(ctx context.Context, request ReloadExtensionsRequestObject) (ReloadExtensionsResponseObject, error)
@@ -6897,6 +7186,66 @@ func (sh *strictHandler) GetExtensions(w http.ResponseWriter, r *http.Request, a
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetExtensionsResponseObject); ok {
 		if err := validResponse.VisitGetExtensionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteExtensionEnv operation middleware
+func (sh *strictHandler) DeleteExtensionEnv(w http.ResponseWriter, r *http.Request, agentId string, params DeleteExtensionEnvParams) {
+	var request DeleteExtensionEnvRequestObject
+
+	request.AgentId = agentId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteExtensionEnv(ctx, request.(DeleteExtensionEnvRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteExtensionEnv")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteExtensionEnvResponseObject); ok {
+		if err := validResponse.VisitDeleteExtensionEnvResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutExtensionEnv operation middleware
+func (sh *strictHandler) PutExtensionEnv(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request PutExtensionEnvRequestObject
+
+	request.AgentId = agentId
+
+	var body PutExtensionEnvJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutExtensionEnv(ctx, request.(PutExtensionEnvRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutExtensionEnv")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutExtensionEnvResponseObject); ok {
+		if err := validResponse.VisitPutExtensionEnvResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

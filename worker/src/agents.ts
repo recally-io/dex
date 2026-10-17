@@ -34,6 +34,7 @@ import type {
 	HistoryResult,
 	InputEntriesParams,
 	AgentParams,
+	EditEnvParams,
 	ChatStreamEvent,
 	CreateConversationParams,
 	CreateConversationResult,
@@ -463,6 +464,11 @@ export class Agents {
 			errors.push(...check.errors.map((error) => `${id}: ${error}`));
 		}
 		return { ...info, errors };
+	}
+
+	async editEnv(params: EditEnvParams): Promise<Extensions> {
+		await this.#files(params.agentId).editEnv(params);
+		return this.extensions({ agentId: params.agentId });
 	}
 
 	#files(agentId: string): AgentExtensions {

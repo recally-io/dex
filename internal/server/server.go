@@ -64,7 +64,12 @@ func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
 	h := &handler{cfg}
 	strict := api.NewStrictHandlerWithOptions(h, nil, api.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			// Decoder errors can quote a value with the wrong JSON type.
+			if strings.HasSuffix(r.URL.Path, "/extensions/env") {
+				writeError(w, http.StatusBadRequest, "the request is not valid")
+				return
+			}
 			writeError(w, http.StatusBadRequest, "the request is not valid: "+err.Error())
 		},
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
@@ -176,6 +181,34 @@ func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestO
 	}
 	return out, nil
 }
+func (h *handler) PutExtensionEnv(ctx context.Context, req api.PutExtensionEnvRequestObject) (api.PutExtensionEnvResponseObject, error) {
+	if req.Body == nil || req.Body.Value == nil {
+		return nil, errInvalid
+	}
+	var out api.PutExtensionEnv200JSONResponse
+	err := h.editEnv(ctx, worker.EditEnvParams{AgentID: agentID(ctx), Scope: string(req.Body.Scope), Key: req.Body.Key, Value: req.Body.Value}, &out)
+	return out, err
+}
+
+func (h *handler) DeleteExtensionEnv(ctx context.Context, req api.DeleteExtensionEnvRequestObject) (api.DeleteExtensionEnvResponseObject, error) {
+	var out api.DeleteExtensionEnv200JSONResponse
+	err := h.editEnv(ctx, worker.EditEnvParams{AgentID: agentID(ctx), Scope: string(req.Params.Scope), Key: req.Params.Key}, &out)
+	return out, err
+}
+
+func (h *handler) editEnv(ctx context.Context, params worker.EditEnvParams, out any) error {
+	if params.Scope != "agent" && params.Scope != "dex" || params.Key == "" {
+		return errInvalid
+	}
+	if err := h.Worker(ctx, "editEnv", params, out); err != nil {
+		if call, ok := errors.AsType[*worker.CallError](err); ok && call.Code == "invalid_env" {
+			return errors.Join(errInvalid, err)
+		}
+		return err
+	}
+	return nil
+}
+
 func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRequestObject) (api.ReloadExtensionsResponseObject, error) {
 	// The maintenance lease refuses a reload while the agent has work, and holds new work until the
 	// new worker runs. The new worker gets the lease again before it accepts calls.

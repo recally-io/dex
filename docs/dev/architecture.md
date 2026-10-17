@@ -241,6 +241,12 @@ model request, and the MCP tools, as deferred tools named
 `mcp__<server>__<tool>`. When an agent has MCP tools, the worker also installs
 `tool_search`.
 
+`PUT` and `DELETE /api/agents/{agentId}/extensions/env` forward write-only
+agent and dex environment edits to the worker's `editEnv` RPC. The worker
+serializes edits per path and atomically replaces the file with mode `0600`.
+It preserves unrelated lines and refuses invalid files. Home is read-only.
+Saving does not reload. The file remains the only store.
+
 `GET /api/agents/{agentId}/extensions` reads the files. Before the agent opens,
 the servers are `idle`. `POST /api/agents/{agentId}/extensions/reload` takes the
 maintenance lease, which it refuses when another holder has it. It validates
