@@ -3,7 +3,9 @@ import { Link, Outlet, useRouterState, type LinkProps } from "@tanstack/react-ro
 import { useQuery } from "@tanstack/react-query";
 import type { Settings } from "../api/generated/types.gen";
 import {
+  getFeishuOptions,
   getSettingsOptions,
+  listAutomationsOptions,
   listChatsOptions,
   listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
@@ -14,6 +16,7 @@ import { useApp } from "../lib/app-state";
 import { MainTimeline } from "../routes/chat";
 import { ModelPicker } from "./model-picker";
 import { ThinkingPicker } from "./thinking-picker";
+import { StatusPill } from "./atoms/StatusPill";
 import { Failure, Loading } from "./feedback";
 import { InPaneContext, MainPane, MenuButton } from "./page";
 import { cn } from "../lib/utils";
@@ -33,6 +36,26 @@ export function isAgentPath(path: string) {
   const [segment] = path.split("/").filter(Boolean);
 
   return tabs.some((tab) => tab.segments.includes(segment));
+}
+
+/** What the agent has running now, for the tabs and the sidebar row. Queries share their cache. */
+export function useAgentActivity() {
+  const settings = useQuery({ ...getSettingsOptions(), refetchInterval: 3000 });
+  const feishu = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
+  const automations = useQuery({ ...listAutomationsOptions(), refetchInterval: 10_000 });
+  const sessions = useQuery({ ...listChatsOptions(), refetchInterval: 3000 });
+
+  const states = [
+    settings.data?.telegram.status.state,
+    settings.data?.wechat.status.state,
+    feishu.data?.status,
+  ];
+
+  return {
+    channels: states.filter((state) => state === "running").length,
+    automations: automations.data?.automations.filter((automation) => automation.enabled).length ?? 0,
+    active: activeSessionCount(sessions.data?.chats ?? []),
+  };
 }
 
 /**
@@ -72,8 +95,13 @@ function AgentPane({ settings }: { settings: Settings }) {
   const model = agentModel(settings.agent, models.data?.models);
   const { draft } = useApp();
   const dirty = instructionsDirty(draft, settings.agent.instructions);
-  const sessions = useQuery({ ...listChatsOptions(), refetchInterval: 3000 });
-  const active = activeSessionCount(sessions.data?.chats ?? []);
+  const activity = useAgentActivity();
+
+  const counts = new Map([
+    ["Channels", activity.channels],
+    ["Automations", activity.automations],
+  ]);
+
   // The other tabs have their own page title.
   const Name = onChat ? "h1" : "span";
   const nav = useRef<HTMLElement>(null);
@@ -100,6 +128,11 @@ function AgentPane({ settings }: { settings: Settings }) {
           >
             {settings.agent.name}
           </Name>
+          {dirty ? (
+            <StatusPill tone="orange" className="hidden h-5 shrink-0 px-2 text-[11px] sm:inline-flex">
+              Instructions draft
+            </StatusPill>
+          ) : null}
           <span aria-hidden className="h-4 w-px shrink-0 bg-line-strong" />
           <nav
             ref={nav}
@@ -119,16 +152,19 @@ function AgentPane({ settings }: { settings: Settings }) {
                 )}
               >
                 {tab.label}
+                {counts.get(tab.label) ? (
+                  <span className="text-[11px] text-ink-3 tabular-nums">{counts.get(tab.label)}</span>
+                ) : null}
                 {tab.to === "/instructions" && dirty ? (
                   <span role="img" aria-label="Unsaved draft" className="size-1.5 rounded-full bg-orange" />
                 ) : null}
-                {tab.to === "/sessions" && active > 0 ? (
+                {tab.to === "/sessions" && activity.active > 0 ? (
                   <span
                     role="img"
-                    aria-label={`${active} active`}
+                    aria-label={`${activity.active} active`}
                     className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-orange-tint px-1.5 text-[11px] font-medium text-orange tabular-nums"
                   >
-                    {active}
+                    {activity.active}
                   </span>
                 ) : null}
               </Link>

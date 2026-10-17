@@ -139,7 +139,7 @@ try {
     `(() => {
     const nav = document.querySelector('aside[aria-label="Navigation"]');
     const links = [...nav.querySelectorAll('a')];
-    return links.some(a => a.getAttribute('href') === '/' && a.textContent.trim().endsWith('Dex') && a.getAttribute('aria-current') === 'page') &&
+    return links.some(a => a.getAttribute('href') === '/' && a.querySelector('span span').textContent === 'Dex' && a.getAttribute('aria-current') === 'page') &&
       nav.innerText.includes('Agents') && nav.innerText.includes('Global settings') &&
       links.map(a => a.getAttribute('href')).slice(1).join(',') === '/providers,/extensions,/secrets,/about' &&
       !/New chat|Search chats|Timeline|Configure/.test(nav.innerText) &&
@@ -784,6 +784,12 @@ try {
     `[...document.querySelectorAll('header nav a')].map(a => a.dataset.tab).join(',') === '${tabs}' &&
       document.querySelector('header nav a[aria-current="page"]').dataset.tab === 'Chat'`,
   );
+  const automationsOn = (await api("/api/automations")).automations.filter((a) => a.enabled).length;
+  await ui(
+    "the Automations tab counts the automations that are on, and the agent row shows its status",
+    `document.querySelector('${tab("Automations")}').textContent === 'Automations${automationsOn || ""}' &&
+      /^(\\d+ active|\\d+ channels? on|Idle)$/.test(document.querySelector('aside[aria-label="Navigation"] a[href="/"] span span:last-child').textContent)`,
+  );
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').dataset.probe = 'kept'");
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').focus()");
   await call("Input.insertText", { text: "unsent words" });
@@ -885,8 +891,9 @@ try {
   await evaluate("document.querySelector('textarea[aria-label=\"Agent instructions\"]').focus()");
   await call("Input.insertText", { text: "Answer in the language I write in." });
   await ui(
-    "the draft marks the tab and the sidebar",
+    "the draft marks the tab, the name and the sidebar",
     `!!document.querySelector('${tab("Instructions")} [aria-label="Unsaved draft"]') &&
+      [...document.querySelector('header').querySelectorAll('span')].some(n => n.textContent === 'Instructions draft') &&
       document.querySelector('aside[aria-label="Navigation"]').innerText.includes('Draft')`,
   );
   await shot("07a-instructions");

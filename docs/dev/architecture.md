@@ -101,13 +101,17 @@ layout route holds them, so the header with the name, the tabs, the model, and
 the thinking level of a reasoning model stays in place. The main timeline stays
 mounted and `inert` under the other tabs, so its stream and the unsent message
 survive a tab change. Browser checks must skip `[inert]` subtrees. The
-instructions draft lives in app state; it marks the Instructions tab and the
-sidebar until it is saved, and a reload starts from the saved instructions. On
-a phone the tabs scroll and the current tab is centered.
+instructions draft lives in app state; it marks the name, the Instructions tab,
+and the sidebar until it is saved, and a reload starts from the saved instructions. On
+a phone the tabs scroll and the current tab is centered. Channels counts the
+running channels, Automations the enabled ones, and Sessions the active ones.
+Inside the pane a top page has no frame and no visible title, because its tab
+names it; a page opened from a tab shows its breadcrumb and title.
 
 The sidebar lists the agents at the top and the global settings at the bottom:
 Providers, Extensions, Secrets, and About. The agent row is current on every
-tab. `/settings` redirects to `/agent`.
+tab and shows a status line: the active sessions, else the running channels,
+else Idle. `/settings` redirects to `/agent`.
 Channel settings show setup and runtime status. Automation details
 keep their run history. Automation transcripts have no web composer.
 

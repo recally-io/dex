@@ -113,10 +113,7 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
 
 export function ChannelsPage() {
   return (
-    <FramedPage
-      title="Channels"
-      description="Talk to the agent from Telegram, WeChat or Feishu. Every channel shares the main timeline."
-    >
+    <FramedPage title="Channels">
       <WithSettings>{(settings) => <ChannelsSection settings={settings} />}</WithSettings>
     </FramedPage>
   );

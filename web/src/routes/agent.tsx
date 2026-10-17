@@ -4,7 +4,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Settings } from "../api/generated/types.gen";
 import { getSettingsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
-import { instructionsDirty } from "../lib/instructions";
 import { useApp } from "../lib/app-state";
 import { ModelPicker } from "../components/model-picker";
 import { ThinkingPicker } from "../components/thinking-picker";
@@ -40,24 +39,15 @@ export function AgentPage() {
 
 export function InstructionsPage() {
   const saved = useQuery(getSettingsOptions());
-  const { draft } = useApp();
-  const dirty = instructionsDirty(draft, saved.data?.agent.instructions);
 
   return (
     <FramedPage
       title="Instructions"
       description={`Added to the system prompt of every run of ${saved.data?.agent.name ?? "dex"}. A change applies from the next message.`}
-      badge={
-        saved.data ? (
-          <StatusPill tone={dirty ? "orange" : "green"} className="h-5 px-2 text-[11.5px]">
-            {dirty ? "Draft" : "Saved"}
-          </StatusPill>
-        ) : null
-      }
     >
       <WithSettings>
         {(settings) => (
-          <div className="px-5 py-8 sm:px-8">
+          <div className="px-5 py-6 sm:px-8">
             <Panel className="p-1">
               <InstructionsEditor saved={settings.agent.instructions} rows={18} />
             </Panel>

@@ -9,11 +9,12 @@ import { IconKey2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/
 import { IconPuzzle } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPuzzle";
 import { getSettingsOptions } from "../api/generated/@tanstack/react-query.gen";
 import GlideMenu from "./primitives/GlideMenu";
+import { StatusPill } from "./atoms/StatusPill";
 import { ShellContext } from "./page";
 import { ThemeToggle, useSystemTheme } from "./theme";
 import { useApp } from "../lib/app-state";
 import { instructionsDirty } from "../lib/instructions";
-import { isAgentPath } from "./agent-layout";
+import { isAgentPath, useAgentActivity } from "./agent-layout";
 import { cn } from "../lib/utils";
 
 export function Shell() {
@@ -178,16 +179,24 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
   const providerErrors = settings.data?.providers.filter((p) => p.error).length ?? 0;
   // Every tab of the agent belongs to its row; only the global settings have rows of their own.
   const agentCurrent = isAgentPath(path);
+  const activity = useAgentActivity();
+
+  const status =
+    activity.active > 0
+      ? `${activity.active} active`
+      : activity.channels > 0
+        ? `${activity.channels} ${activity.channels === 1 ? "channel" : "channels"} on`
+        : "Idle";
 
   return (
     <aside aria-label="Navigation" className={cn("flex h-full w-[232px] shrink-0 flex-col", className)}>
       <p className="mx-2 mt-1 flex h-8 items-center px-2 text-[12.5px] font-medium text-ink-3">Agents</p>
-      <div className="mx-2 mb-2.5 flex h-10 shrink-0 items-center">
+      <div className="mx-2 mb-2.5 flex shrink-0 items-center">
         <Link
           to="/"
           aria-current={agentCurrent ? "page" : undefined}
           className={cn(
-            "flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-control px-2 hover:bg-hover-2",
+            "flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-control px-2 hover:bg-hover-2",
             agentCurrent && "bg-hover-2",
           )}
         >
@@ -195,10 +204,17 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
             aria-hidden
             className="flex size-6 shrink-0 items-center justify-center rounded-[7px] bg-ink text-[12px] font-semibold text-surface"
           >
-            d
+            {name.charAt(0).toLowerCase()}
           </span>
-          <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">{name}</span>
-          {dirty ? <span className="shrink-0 text-[11px] text-ink-3">Draft</span> : null}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-[14px] leading-tight font-semibold text-ink">{name}</span>
+            <span className="truncate text-[11.5px] leading-tight text-ink-3">{status}</span>
+          </span>
+          {dirty ? (
+            <StatusPill tone="orange" className="h-5 shrink-0 px-2 text-[11px]">
+              Draft
+            </StatusPill>
+          ) : null}
         </Link>
       </div>
       <div className="flex-1" />
