@@ -2,11 +2,13 @@ import { ConversationBusy } from "@earendil-works/pi-durable";
 import { TaskRpc } from "./tasks.ts";
 import { createInterface } from "node:readline";
 import { Value } from "typebox/value";
+import { EnvEditError } from "./extensions.ts";
 import { Agents } from "./agents.ts";
 import { Catalog } from "./models.ts";
 import {
 	AbortParams,
 	AgentParams,
+	EditEnvParams,
 	ConfigureParams,
 	CreateConversationParams,
 	type Event,
@@ -77,6 +79,12 @@ async function handle(request: Request): Promise<unknown> {
 			return agents.unwatch(Value.Parse(UnwatchParams, request.params));
 		case "abort":
 			return agents.abort(Value.Parse(AbortParams, request.params));
+		case "editEnv": {
+			// TypeBox errors can include input values. Never return them for this method.
+			if (!Value.Check(EditEnvParams, request.params))
+				throw new EnvEditError("invalid environment edit request");
+			return agents.editEnv(request.params);
+		}
 		case "extensions":
 			return agents.extensions(Value.Parse(AgentParams, request.params));
 		case "configure":
@@ -108,6 +116,7 @@ lines.on("line", (line) => {
 				id: request.id,
 				error: {
 					message: String(error),
+					...(error instanceof EnvEditError ? { code: "invalid_env" } : {}),
 					...(error instanceof ConversationBusy ? { code: "conversation_busy" } : {}),
 				},
 			}),

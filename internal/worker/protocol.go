@@ -203,7 +203,8 @@ type QuiesceResult struct {
 type AgentParams struct {
 	AgentID string `json:"agentId"`
 	// Open opens the agent first, which connects its MCP servers.
-	Open bool `json:"open,omitzero"`
+	Open      bool `json:"open,omitzero"`
+	Preflight bool `json:"preflight,omitzero"`
 }
 
 // ResetParams writes one reset through the conversation's admission chain.
@@ -231,4 +232,12 @@ type InputEntriesParams struct {
 	AgentID        string   `json:"agentId"`
 	ConversationID int64    `json:"conversationId"`
 	RequestIDs     []string `json:"requestIds"`
+}
+
+// EditEnvParams changes one key. An absent Value removes it.
+type EditEnvParams struct {
+	AgentID string  `json:"agentId"`
+	Scope   string  `json:"scope"`
+	Key     string  `json:"key"`
+	Value   *string `json:"value,omitempty"`
 }

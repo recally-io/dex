@@ -7,7 +7,7 @@ import (
 )
 
 func (h *handler) ListAgents(ctx context.Context, _ api.ListAgentsRequestObject) (api.ListAgentsResponseObject, error) {
-	agents, err := h.Settings.ListAgents(ctx)
+	agents, err := h.Agents.ListAgents(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -18,7 +18,7 @@ func (h *handler) CreateAgent(ctx context.Context, req api.CreateAgentRequestObj
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	agent, err := h.Settings.CreateAgent(ctx, *req.Body)
+	agent, err := h.Agents.CreateAgent(ctx, *req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +26,7 @@ func (h *handler) CreateAgent(ctx context.Context, req api.CreateAgentRequestObj
 }
 
 func (h *handler) GetAgent(ctx context.Context, req api.GetAgentRequestObject) (api.GetAgentResponseObject, error) {
-	agent, err := h.Settings.Agent(ctx, req.AgentId)
+	agent, err := h.Agents.Agent(ctx, req.AgentId)
 	if err != nil {
 		return nil, err
 	}
@@ -37,10 +37,10 @@ func (h *handler) UpdateAgent(ctx context.Context, req api.UpdateAgentRequestObj
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if err := h.Settings.SaveAgent(ctx, req.AgentId, *req.Body); err != nil {
+	if err := h.Agents.SaveAgent(ctx, req.AgentId, *req.Body); err != nil {
 		return nil, err
 	}
-	agent, err := h.Settings.Agent(ctx, req.AgentId)
+	agent, err := h.Agents.Agent(ctx, req.AgentId)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (h *handler) UpdateAgent(ctx context.Context, req api.UpdateAgentRequestObj
 }
 
 func (h *handler) GetChannels(ctx context.Context, _ api.GetChannelsRequestObject) (api.GetChannelsResponseObject, error) {
-	channels, err := h.Settings.Channels(ctx, agentID(ctx))
+	channels, err := h.Agents.Channels(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}

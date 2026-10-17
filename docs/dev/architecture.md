@@ -50,14 +50,14 @@ decisions.
 
 ## Sources of truth
 
-| Data                                 | Owner               | Location                                                                    |
-| ------------------------------------ | ------------------- | --------------------------------------------------------------------------- |
-| Agents, chats, submissions, settings | control             | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))   |
-| Transcripts, runs, tool calls, usage | worker (pi-durable) | `<data dir>/agents/<id>/state.sqlite`                                       |
-| Agent files                          | the agent's tools   | `<data dir>/agents/<id>/workspace/`                                         |
-| Uploaded files                       | control             | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`               |
-| Memory (git repo)                    | the agent's tools   | `<data dir>/memory/`                                                        |
-| Skills and MCP servers               | the user's files    | `~/.agents/{skills/,mcp.json}`, `<data dir>/agents/<id>/{skills/,mcp.json}` |
+| Data                                 | Owner               | Location                                                                   |
+| ------------------------------------ | ------------------- | -------------------------------------------------------------------------- |
+| Agents, chats, submissions, settings | control             | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))  |
+| Transcripts, runs, tool calls, usage | worker (pi-durable) | `<data dir>/agents/<id>/state.sqlite`                                      |
+| Agent files                          | the agent's tools   | `<data dir>/agents/<id>/workspace/`                                        |
+| Uploaded files                       | control             | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`              |
+| Memory (git repo)                    | the agent's tools   | `<data dir>/memory/`                                                       |
+| Skills and MCP servers               | the user's files    | `$HOME/.agents/`, `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/` |
 
 Control also owns internal delegation records (`tasks`). Each record
 has one read-only `task:<execution ID>` session and one input. The worker
@@ -163,8 +163,14 @@ Each live stream carries its agent ID for worker watches and history. Worker
 conversation IDs can be equal in different agents.
 
 Session, health, maintenance, models, provider settings, and
-`/api/automations/preview` stay global. One settings service and lock own
-settings changes. Creating or selecting an agent does not configure providers.
+`/api/automations/preview` stay global. Separate services own global settings
+and agent state. The settings lock orders provider saves and worker
+configuration. The agent lock orders agent writes, credential ownership
+checks, channel changes, and setup sessions across all agents. Agent model
+checks also take the settings lock, so they cannot read an incomplete provider
+update. The lock order is agent, then settings. Settings never takes the agent
+lock. Each service writes separate rows. Creating or selecting an agent does
+not configure providers.
 One scheduler job checks automations across all agents and posts each prompt
 with the saved agent ID. Extension reload restarts the whole worker and affects
 every agent.
@@ -221,19 +227,34 @@ share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
 
 ## Extensions
 
-Skills and MCP servers come from files in two scopes, global (`~/.agents/`)
-and agent (`<data dir>/agents/<id>/`); see
-[ADR 0008](decisions/0008-agent-extensions.md).
+Skills, MCP servers, and `.env` come from three levels: home (`$HOME/.agents/`),
+dex (`<resolved data dir>/.agents/`), and agent (`<data dir>/agents/<id>/.agents/`).
+Narrower levels win. Paths are fixed before `.env` is read. Equal real paths
+are read once as the narrower level. See [ADR 0010](decisions/0010-extension-levels.md).
+Each agent has its own environment snapshot for tools and stdio MCP servers.
+Invalid `.env` or MCP files prevent all MCP startup for that agent. Invalid
+`.env` also removes all file environment values from that snapshot.
 [`AgentExtensions`](../../worker/src/extensions.ts) connects the servers when
 the worker opens the agent, before `resume()`. It installs one pi-durable
-extension: a `skills` prompt section, which reads the skill files before each
-model request, and the MCP tools, as deferred tools named
+extension: an always-present `extension-guide` prompt section, a `skills`
+section that reads the skill files before each model request, and the MCP
+tools, as deferred tools named
 `mcp__<server>__<tool>`. When an agent has MCP tools, the worker also installs
-`tool_search`.
+`tool_search`. The guide lists the fixed paths and explains file formats,
+environment use, secrecy, and Reload. It contains no environment key names
+or values. Environment edits do not change its text.
+
+`PUT` and `DELETE /api/agents/{agentId}/extensions/env` forward write-only
+agent and dex environment edits to the worker's `editEnv` RPC. The worker
+serializes edits per path and atomically replaces the file with mode `0600`.
+It preserves unrelated lines and refuses invalid files. Home is read-only.
+Saving does not reload. The file remains the only store.
 
 `GET /api/agents/{agentId}/extensions` reads the files. Before the agent opens,
 the servers are `idle`. `POST /api/agents/{agentId}/extensions/reload` takes the
-maintenance lease, which it refuses when another holder has it. It restarts the
+maintenance lease, which it refuses when another holder has it. It validates
+the files of every open agent and the requested agent. If any
+configuration is invalid, it refuses with each error once. It restarts the
 whole worker, opens the agent, and releases the lease. The restart affects every
 agent.
 
@@ -263,8 +284,10 @@ past now. The message uses the normal durable delivery.
 ## Settings
 
 The web UI edits all settings; see [ADR 0002](decisions/0002-settings-in-control-db.md).
-[`settings.Service`](../../internal/settings/settings.go) validates a change,
-saves it in `control.sqlite`, and then applies it:
+[`settings.Service`](../../internal/settings/settings.go) owns providers, model
+checks, and the access token. [`agent.Service`](../../internal/agent/agent.go)
+owns agent settings, activity, and channel configuration. `chat.Service` saves
+chat settings with an injected validator. Each change stays in `control.sqlite`:
 
 | Setting                                 | Table               | Applied by                                                   |
 | --------------------------------------- | ------------------- | ------------------------------------------------------------ |

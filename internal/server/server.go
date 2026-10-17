@@ -10,13 +10,13 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 	"uuid"
 
+	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/chat"
@@ -32,6 +32,7 @@ type Config struct {
 	Chats       *chat.Service
 	Automations *automation.Service
 	Settings    *settings.Service
+	Agents      *agent.Service
 	Live        *live.Hub
 	DataDir     string
 	Version     string
@@ -63,22 +64,27 @@ func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
 	h := &handler{cfg}
 	strict := api.NewStrictHandlerWithOptions(h, nil, api.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			// Decoder errors can quote a value with the wrong JSON type.
+			if strings.HasSuffix(r.URL.Path, "/extensions/env") {
+				writeError(w, http.StatusBadRequest, "the request is not valid")
+				return
+			}
 			writeError(w, http.StatusBadRequest, "the request is not valid: "+err.Error())
 		},
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			status := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, settings.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
+			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
 				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrResetID):
 				status = http.StatusBadRequest
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, errReadOnly):
 				status = http.StatusForbidden
-			case errors.Is(err, settings.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
+			case errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy):
+			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -125,9 +131,9 @@ func agentID(ctx context.Context) string {
 func (h *handler) withAgent(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if id := r.PathValue("agentId"); id != "" {
-			if _, err := h.Settings.Agent(r.Context(), id); err != nil {
+			if _, err := h.Agents.Agent(r.Context(), id); err != nil {
 				status := http.StatusInternalServerError
-				if errors.Is(err, settings.ErrNotFound) {
+				if errors.Is(err, agent.ErrNotFound) {
 					status = http.StatusNotFound
 				} else {
 					slog.Error("read request agent", "err", err)
@@ -142,7 +148,7 @@ func (h *handler) withAgent(next http.Handler) http.Handler {
 }
 
 func (h *handler) uploads(ctx context.Context) *upload.Store {
-	return upload.New(filepath.Join(h.DataDir, "agents", agentID(ctx)))
+	return upload.New(agent.Home(h.DataDir, agentID(ctx)))
 }
 
 var ok = api.Ok{Status: api.OkStatusOk}
@@ -175,15 +181,35 @@ func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestO
 	}
 	return out, nil
 }
+func (h *handler) PutExtensionEnv(ctx context.Context, req api.PutExtensionEnvRequestObject) (api.PutExtensionEnvResponseObject, error) {
+	if req.Body == nil || req.Body.Value == nil {
+		return nil, errInvalid
+	}
+	var out api.PutExtensionEnv200JSONResponse
+	err := h.editEnv(ctx, worker.EditEnvParams{AgentID: agentID(ctx), Scope: string(req.Body.Scope), Key: req.Body.Key, Value: req.Body.Value}, &out)
+	return out, err
+}
+
+func (h *handler) DeleteExtensionEnv(ctx context.Context, req api.DeleteExtensionEnvRequestObject) (api.DeleteExtensionEnvResponseObject, error) {
+	var out api.DeleteExtensionEnv200JSONResponse
+	err := h.editEnv(ctx, worker.EditEnvParams{AgentID: agentID(ctx), Scope: string(req.Params.Scope), Key: req.Params.Key}, &out)
+	return out, err
+}
+
+func (h *handler) editEnv(ctx context.Context, params worker.EditEnvParams, out any) error {
+	if params.Scope != "agent" && params.Scope != "dex" || params.Key == "" {
+		return errInvalid
+	}
+	if err := h.Worker(ctx, "editEnv", params, out); err != nil {
+		if call, ok := errors.AsType[*worker.CallError](err); ok && call.Code == "invalid_env" {
+			return errors.Join(errInvalid, err)
+		}
+		return err
+	}
+	return nil
+}
+
 func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRequestObject) (api.ReloadExtensionsResponseObject, error) {
-	// A worker that starts with an mcp.json that is not valid has no MCP servers. Keep the loaded ones.
-	var files api.Extensions
-	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx)}, &files); err != nil {
-		return nil, err
-	}
-	if len(files.Errors) > 0 {
-		return nil, fmt.Errorf("%w: %s", errInvalid, strings.Join(files.Errors, "\n"))
-	}
 	// The maintenance lease refuses a reload while the agent has work, and holds new work until the
 	// new worker runs. The new worker gets the lease again before it accepts calls.
 	if err := h.Chats.AcquireReload(ctx); err != nil {
@@ -196,6 +222,14 @@ func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRe
 			slog.Error("release maintenance after an extension reload", "err", err)
 		}
 	}()
+	// A worker that starts with an mcp.json that is not valid has no MCP servers. Keep the loaded ones.
+	var files api.Extensions
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx), Preflight: true}, &files); err != nil {
+		return nil, err
+	}
+	if len(files.Errors) > 0 {
+		return nil, fmt.Errorf("%w: %s", errInvalid, strings.Join(files.Errors, "\n"))
+	}
 	if err := h.RestartWorker(ctx); err != nil {
 		return nil, err
 	}
@@ -344,7 +378,7 @@ func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRe
 	if !strings.HasPrefix(c.ChannelKey, "automation:") {
 		return nil, errReadOnly
 	}
-	if err := h.Settings.SetChat(ctx, agentID(ctx), req.ChatId, *req.Body); err != nil {
+	if err := h.Chats.SetChat(ctx, agentID(ctx), req.ChatId, *req.Body, h.Settings.CheckChat); err != nil {
 		return nil, err
 	}
 	c, err = h.Chats.Get(ctx, agentID(ctx), req.ChatId)
@@ -525,21 +559,21 @@ func (h *handler) SetTelegram(ctx context.Context, req api.SetTelegramRequestObj
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if err := h.Settings.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers); err != nil {
+	if err := h.Agents.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers); err != nil {
 		return nil, err
 	}
 	return api.SetTelegram200JSONResponse(ok), nil
 }
 
 func (h *handler) DeleteTelegram(ctx context.Context, _ api.DeleteTelegramRequestObject) (api.DeleteTelegramResponseObject, error) {
-	if err := h.Settings.DeleteTelegram(ctx, agentID(ctx)); err != nil {
+	if err := h.Agents.DeleteTelegram(ctx, agentID(ctx)); err != nil {
 		return nil, err
 	}
 	return api.DeleteTelegram200JSONResponse(ok), nil
 }
 
 func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegramPairingRequestObject) (api.CreateTelegramPairingResponseObject, error) {
-	link, expires, err := h.Settings.CreateTelegramPairing(ctx, agentID(ctx))
+	link, expires, err := h.Agents.CreateTelegramPairing(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -547,7 +581,7 @@ func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegra
 }
 
 func (h *handler) BeginWechatLogin(ctx context.Context, _ api.BeginWechatLoginRequestObject) (api.BeginWechatLoginResponseObject, error) {
-	view, err := h.Settings.BeginWechatLogin(ctx, agentID(ctx))
+	view, err := h.Agents.BeginWechatLogin(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -559,7 +593,7 @@ func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRe
 	if req.Body != nil {
 		code = deref(req.Body.VerifyCode)
 	}
-	view, err := h.Settings.PollWechatLogin(ctx, agentID(ctx), req.LoginId, code)
+	view, err := h.Agents.PollWechatLogin(ctx, agentID(ctx), req.LoginId, code)
 	if err != nil {
 		return nil, err
 	}
@@ -567,7 +601,7 @@ func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRe
 }
 
 func (h *handler) DeleteWechat(ctx context.Context, _ api.DeleteWechatRequestObject) (api.DeleteWechatResponseObject, error) {
-	if err := h.Settings.DeleteWechat(ctx, agentID(ctx)); err != nil {
+	if err := h.Agents.DeleteWechat(ctx, agentID(ctx)); err != nil {
 		return nil, err
 	}
 	return api.DeleteWechat200JSONResponse(ok), nil

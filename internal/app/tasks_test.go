@@ -218,7 +218,7 @@ func TestUserDelegationPreservesMCPReportAndReturnsExecutionFailure(t *testing.T
 	// Given a real HTTP MCP server available to the background execution.
 	dir := t.TempDir()
 	mcpDir := t.TempDir()
-	writeMCP(t, filepath.Join(dir, "agents", "default", "mcp.json"), map[string]any{"report": httpServer(t, mcpDir)})
+	writeMCP(t, filepath.Join(dir, "agents", "default", ".agents", "mcp.json"), map[string]any{"report": httpServer(t, mcpDir)})
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
 	d.setModel(t, "spawn")

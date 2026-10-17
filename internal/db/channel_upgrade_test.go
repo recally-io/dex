@@ -13,9 +13,9 @@ import (
 	"testing/fstest"
 
 	"github.com/pressly/goose/v3"
+	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/settings"
 )
 
 func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
@@ -113,7 +113,7 @@ func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
 				_, _ = w.Write([]byte(`{"ok":true,"result":{"id":7,"is_bot":true,"username":"upgrade_bot"}}`))
 			}))
 			t.Cleanup(api.Close)
-			prefs := settings.New(sqlc.New(conn), nil, api.URL, nil)
+			prefs := agent.New(sqlc.New(conn), nil, api.URL, nil)
 			link, _, err := prefs.CreateTelegramPairing(t.Context(), "default")
 			if err != nil {
 				t.Fatal(err)

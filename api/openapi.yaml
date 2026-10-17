@@ -751,6 +751,57 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/extensions/env:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    put:
+      operationId: putExtensionEnv
+      description: Write an agent or dex .env key. Values are write-only. Reload applies changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, key, value]
+              properties:
+                scope: { type: string, enum: [agent, dex] }
+                key: { type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
+                value: { type: string, writeOnly: true }
+      responses:
+        "200":
+          description: Current extension declarations, with key names only.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Extensions" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteExtensionEnv
+      description: Remove an agent or dex .env key. Reload applies changes. Home is read-only.
+      parameters:
+        - in: query
+          name: scope
+          required: true
+          schema: { type: string, enum: [agent, dex] }
+        - in: query
+          name: key
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
+      responses:
+        "200":
+          description: Current extension declarations, with key names only.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Extensions" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/extensions/reload:
     parameters:
       - in: path
@@ -1437,9 +1488,9 @@ components:
           additionalProperties: { type: string }
 
     Channels:
-      x-go-type: settings.Channels
+      x-go-type: agent.Channels
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [telegram, wechat, feishu]
       properties:
@@ -1448,9 +1499,9 @@ components:
         feishu: { $ref: "#/components/schemas/Feishu" }
 
     AgentActivity:
-      x-go-type: settings.Activity
+      x-go-type: agent.Activity
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [activeSessions, runningChannels, enabledAutomations]
       properties:
@@ -1459,9 +1510,9 @@ components:
         enabledAutomations: { type: integer, format: int64 }
 
     Agent:
-      x-go-type: settings.Agent
+      x-go-type: agent.Agent
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [name, provider, modelId, thinkingLevel, instructions]
       properties:
@@ -1483,9 +1534,9 @@ components:
         instructions: { type: string }
 
     AgentInput:
-      x-go-type: settings.Agent
+      x-go-type: agent.Agent
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [name, provider, modelId, thinkingLevel]
       properties:
@@ -1578,34 +1629,49 @@ components:
 
     Extensions:
       type: object
-      required: [paths, skills, servers, errors]
+      required: [levels, skills, servers, env, warnings, errors]
       properties:
-        paths:
-          type: object
-          description: Where the agent reads its extensions.
-          required: [globalSkills, globalMcp, agentSkills, agentMcp]
-          properties:
-            globalSkills: { type: string }
-            globalMcp: { type: string }
-            agentSkills: { type: string }
-            agentMcp: { type: string }
+        levels:
+          type: array
+          description: >
+            The .agents directories, from wide to narrow. Each can hold skills/,
+            mcp.json and .env. Two levels can have the same directory.
+          items:
+            type: object
+            required: [scope, dir]
+            properties:
+              scope: { $ref: "#/components/schemas/ExtensionScope" }
+              dir: { type: string }
         skills:
           type: array
+          description: Current disk declarations; skills are read before each model request.
           items: { $ref: "#/components/schemas/Skill" }
         servers:
           type: array
+          description: Loaded servers, or idle declarations before the agent opens.
           items: { $ref: "#/components/schemas/McpServer" }
+        env:
+          type: array
+          description: Names only. Values never leave the loader through this API.
+          items:
+            type: object
+            required: [key, scope, shadowed]
+            properties:
+              key: { type: string }
+              scope: { $ref: "#/components/schemas/ExtensionScope" }
+              shadowed: { type: boolean }
+        warnings:
+          type: array
+          items: { type: string }
         errors:
           type: array
-          description: >
-            Files that dex cannot read. When an mcp.json file is one of them,
-            no MCP server starts.
+          description: Invalid configuration prevents MCP startup and reload.
           items: { type: string }
 
     ExtensionScope:
       type: string
-      description: global is ~/.agents/; agent is the agent directory.
-      enum: [global, agent]
+      description: Home, resolved data directory, or agent home, each under .agents/.
+      enum: [home, dex, agent]
 
     Skill:
       type: object
@@ -1617,7 +1683,7 @@ components:
         path: { type: string, description: The SKILL.md file. }
         overrides:
           type: boolean
-          description: The agent skill replaces a global skill with the same name.
+          description: The skill replaces a wider skill with the same name.
         error:
           type: string
           description: Why the skill is not valid. The prompt does not list it.
@@ -1633,7 +1699,7 @@ components:
         scope: { $ref: "#/components/schemas/ExtensionScope" }
         overrides:
           type: boolean
-          description: The agent server replaces a global server with the same name.
+          description: The server replaces a wider server with the same name.
         transport:
           type: string
           description: Absent for an agent entry that only turns off a global server.
@@ -1649,9 +1715,9 @@ components:
         error: { type: string }
 
     Wechat:
-      x-go-type: settings.Wechat
+      x-go-type: agent.Wechat
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [enabled, status]
       properties:
@@ -1717,9 +1783,9 @@ components:
           items: { type: integer, format: int64 }
 
     Feishu:
-      x-go-type: settings.Feishu
+      x-go-type: agent.Feishu
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [enabled, appId, brand, paired, status, error]
       properties:
@@ -1731,9 +1797,9 @@ components:
         error: { type: string }
 
     FeishuSetup:
-      x-go-type: settings.FeishuSetup
+      x-go-type: agent.FeishuSetup
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [session, qrUrl, interval, expiresIn, status, pairingCode]
       properties:

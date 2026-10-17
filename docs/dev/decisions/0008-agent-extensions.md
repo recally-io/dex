@@ -1,6 +1,6 @@
 # 0008: Skills and MCP servers from files
 
-Status: Accepted (2026-10-15)
+Status: Amended by [ADR 0010](0010-extension-levels.md) (2026-10-17)
 
 ## Context
 
@@ -57,3 +57,8 @@ only source of settings. Extension files are an exception to it.
 - No OAuth, no legacy HTTP+SSE transport, and no MCP prompts or resources.
   pi-mcp has OAuth; add it when a server needs it.
 - A server that drops its connection stays down until a reload.
+
+## Amendment
+
+[ADR 0010](0010-extension-levels.md) replaces the two scopes, agent paths,
+credential isolation claim, and reload preflight in this decision.

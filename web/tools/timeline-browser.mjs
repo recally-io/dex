@@ -1124,19 +1124,143 @@ try {
   await check("second agent channels fit phone", "document.documentElement.scrollWidth <= innerWidth + 1");
   await shot("13-channels-phone");
   await viewport(1440, 1000);
+
+  for (const root of [home, data, join(data, "agents", second.id)]) {
+    await mkdir(join(root, ".agents"), { recursive: true });
+    await writeFile(join(root, ".agents", ".env"), "EXTENSION_DEMO_KEY=never-show-this-value\n");
+  }
+
   await tap(agentTab("Extensions"));
   await ui(
     "second agent extensions",
-    `document.body.innerText.includes('/agents/${second.id}/skills') && !!document.querySelector('main button:not([inert] *)')`,
+    `document.body.innerText.includes('/agents/${second.id}/.agents/') && !!document.querySelector('main button:not([inert] *)')`,
   );
   await check(
     "extensions belong to the selected agent",
     `!document.querySelector('aside a[href="/extensions"]') && document.body.innerText.includes('restarts worker for all agents')`,
   );
+  await check(
+    "extension levels and secrecy",
+    `['home', 'dex', 'agent', 'The model can', 'Tool output becomes part of the transcript', 'MCP servers'].every(text => document.body.innerText.includes(text)) && !!document.querySelector('main a[href="/secrets"]') && !document.body.innerText.includes('EXTENSION_DEMO_KEY') && !document.body.innerText.includes('never-show-this-value')`,
+  );
   await shot("13a-agent-extensions-desktop");
   await viewport(390, 844);
   await check("extensions fit phone", "document.documentElement.scrollWidth <= innerWidth + 1");
   await shot("13b-agent-extensions-phone");
+  await evaluate(
+    "Array.from(document.querySelectorAll('h2')).find(node => node.textContent === 'MCP servers').scrollIntoView({block: 'center', behavior: 'instant'})",
+  );
+  await shot("13c-extension-servers-phone");
+  await viewport(1440, 1000);
+  await shot("13d-extension-servers-desktop");
+  await tap('aside a[href="/secrets"]');
+  await ui(
+    "secrets uses current agent",
+    `!!document.querySelector('main a[href="/a/${second.id}/extensions"]') && !document.body.innerText.includes('Not yet available')`,
+  );
+  await ui(
+    "secrets form ready",
+    `!!document.querySelector('input[name="key"]') && !!document.querySelector('[data-env-scope="home"]')`,
+  );
+  await check(
+    "home secrets are read-only",
+    `!document.querySelector('[data-env-scope="home"] button') && document.body.innerText.includes('Home · Read-only') && document.body.innerText.includes('All agents (dex)') && document.body.innerText.includes('Shadowed')`,
+  );
+  const secretKey = "BROWSER_WRITE_ONLY_KEY";
+  const secretValue = "browser-private-value-do-not-show";
+  const secretReplacement = "browser-private-replacement-do-not-show";
+  await tap('input[name="key"]');
+  await call("Input.insertText", { text: secretKey });
+  await tap('input[name="value"]');
+  await call("Input.insertText", { text: secretValue });
+  await check(
+    "secret input is a password",
+    `document.querySelector('input[name="value"]').type === 'password' && !document.body.innerText.includes(${JSON.stringify(secretValue)})`,
+  );
+  await click("Save key");
+  const keyRow = `[data-env-key="${secretKey}"][data-env-scope="agent"]`;
+  await ui(
+    "saved key name",
+    `!!document.querySelector('${keyRow}') && document.body.innerText.includes('The change applies after Reload.') && document.querySelector('input[name="value"]').value === ''`,
+  );
+  assert.equal(
+    await readFile(join(data, "agents", second.id, ".agents", ".env"), "utf8"),
+    `EXTENSION_DEMO_KEY=never-show-this-value\n${secretKey}=${secretValue}\n`,
+  );
+  await evaluate("document.querySelector('main h1').scrollIntoView({block: 'start', behavior: 'instant'})");
+  await evaluate(
+    "document.querySelector('button[aria-label=\"Dismiss notification\"]')?.click(); document.querySelector('main .overflow-y-auto').scrollTop = 0",
+  );
+  await shot("13e-secrets-desktop");
+  await viewport(390, 844);
+  await check("secrets form fits phone", "document.documentElement.scrollWidth <= innerWidth + 1");
+  await evaluate("document.querySelector('main .overflow-y-auto').scrollTop = 0");
+  await shot("13f-secrets-phone");
+  await evaluate(
+    "Array.from(document.querySelectorAll('h2')).find(node => node.textContent === 'Saved keys').scrollIntoView({block: 'start', behavior: 'instant'})",
+  );
+  await check("secrets list fits phone", "document.documentElement.scrollWidth <= innerWidth + 1");
+  await shot("13g-secrets-keys-phone");
+  await viewport(1440, 1000);
+  await shot("13h-secrets-keys-desktop");
+  await tap(`${keyRow} button:first-child`);
+  await ui(
+    "replace selects key",
+    `document.querySelector('input[name="key"]').value === '${secretKey}' && document.querySelector('input[name="value"]').value === ''`,
+  );
+  await tap('input[name="value"]');
+  await call("Input.insertText", { text: secretReplacement });
+  await click("Save key");
+  await ui(
+    "replacement saved",
+    "document.querySelector('input[name=\"value\"]').value === '' && !document.querySelector('form button[type=\"submit\"]').disabled",
+  );
+  assert.ok(
+    (await readFile(join(data, "agents", second.id, ".agents", ".env"), "utf8")).includes(
+      `${secretKey}=${secretReplacement}\n`,
+    ),
+  );
+  await check(
+    "secret values stay out of page text",
+    `![${JSON.stringify(secretValue)}, ${JSON.stringify(secretReplacement)}, 'never-show-this-value'].some(value => document.body.innerText.includes(value))`,
+  );
+  await tap(`${keyRow} button:last-child`);
+  await ui("key deleted", `!document.querySelector('${keyRow}')`);
+  assert.ok(
+    !(await readFile(join(data, "agents", second.id, ".agents", ".env"), "utf8")).includes(secretKey),
+  );
+  await evaluate(
+    `(() => { const select = document.querySelector('select[name="scope"]'); select.value = 'dex'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`,
+  );
+  await tap('input[name="value"]');
+  await call("Input.insertText", { text: secretValue });
+  await click("Save key");
+  const dexRow = `[data-env-key="${secretKey}"][data-env-scope="dex"]`;
+  await ui("shared key saved", `!!document.querySelector('${dexRow}')`);
+  assert.ok(
+    (await readFile(join(data, ".agents", ".env"), "utf8")).includes(`${secretKey}=${secretValue}\n`),
+  );
+  await tap(`${dexRow} button:last-child`);
+  await ui("shared key deleted", `!document.querySelector('${dexRow}')`);
+  await click("Reload");
+  await ui(
+    "secret reload completed",
+    "!document.body.innerText.includes('The change applies after Reload.')",
+  );
+  const secretLog = await readFile(join(artifacts, "browser-app.log"), "utf8");
+  assert.ok(
+    !secretLog.includes(secretValue) && !secretLog.includes(secretReplacement),
+    "secret values stay out of app and worker logs",
+  );
+  results.push(
+    "secrets: save, masked value, replace, delete, dex scope, Reload, no leaked values, desktop and 390px phone",
+  );
+  await tap(`main a[href="/a/${second.id}/extensions"]`);
+  await ui(
+    "returned to current agent extensions",
+    `location.pathname === '/a/${second.id}/extensions' && !!document.querySelector('nav a[data-tab="Extensions"][aria-current="page"]')`,
+  );
+  await viewport(390, 844);
   await tap(agentTab("Chat"));
   await ui(
     "second timeline restored on phone",
@@ -1346,6 +1470,9 @@ async function viewport(width, height) {
     deviceScaleFactor: 1,
     mobile: width < 600,
   });
+  // Resize observers, such as the one that centers the active agent tab, run in the next frames.
+  // A tap before them can scroll its target away again.
+  await evaluate("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
 }
 
 async function shot(name) {

@@ -523,27 +523,40 @@ export type Model = {
 
 export type Extensions = {
     /**
-     * Where the agent reads its extensions.
+     * The .agents directories, from wide to narrow. Each can hold skills/, mcp.json and .env. Two levels can have the same directory.
+     *
      */
-    paths: {
-        globalSkills: string;
-        globalMcp: string;
-        agentSkills: string;
-        agentMcp: string;
-    };
+    levels: Array<{
+        scope: ExtensionScope;
+        dir: string;
+    }>;
+    /**
+     * Current disk declarations; skills are read before each model request.
+     */
     skills: Array<Skill>;
+    /**
+     * Loaded servers, or idle declarations before the agent opens.
+     */
     servers: Array<McpServer>;
     /**
-     * Files that dex cannot read. When an mcp.json file is one of them, no MCP server starts.
-     *
+     * Names only. Values never leave the loader through this API.
+     */
+    env: Array<{
+        key: string;
+        scope: ExtensionScope;
+        shadowed: boolean;
+    }>;
+    warnings: Array<string>;
+    /**
+     * Invalid configuration prevents MCP startup and reload.
      */
     errors: Array<string>;
 };
 
 /**
- * global is ~/.agents/; agent is the agent directory.
+ * Home, resolved data directory, or agent home, each under .agents/.
  */
-export type ExtensionScope = 'global' | 'agent';
+export type ExtensionScope = 'home' | 'dex' | 'agent';
 
 export type Skill = {
     name: string;
@@ -554,7 +567,7 @@ export type Skill = {
      */
     path: string;
     /**
-     * The agent skill replaces a global skill with the same name.
+     * The skill replaces a wider skill with the same name.
      */
     overrides: boolean;
     /**
@@ -571,7 +584,7 @@ export type McpServer = {
     name: string;
     scope: ExtensionScope;
     /**
-     * The agent server replaces a global server with the same name.
+     * The server replaces a wider server with the same name.
      */
     overrides: boolean;
     /**
@@ -1875,6 +1888,83 @@ export type GetExtensionsResponses = {
 };
 
 export type GetExtensionsResponse = GetExtensionsResponses[keyof GetExtensionsResponses];
+
+export type DeleteExtensionEnvData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query: {
+        scope: 'agent' | 'dex';
+        key: string;
+    };
+    url: '/api/agents/{agentId}/extensions/env';
+};
+
+export type DeleteExtensionEnvErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteExtensionEnvError = DeleteExtensionEnvErrors[keyof DeleteExtensionEnvErrors];
+
+export type DeleteExtensionEnvResponses = {
+    /**
+     * Current extension declarations, with key names only.
+     */
+    200: Extensions;
+};
+
+export type DeleteExtensionEnvResponse = DeleteExtensionEnvResponses[keyof DeleteExtensionEnvResponses];
+
+export type PutExtensionEnvData = {
+    body: {
+        scope: 'agent' | 'dex';
+        key: string;
+        value: string;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/extensions/env';
+};
+
+export type PutExtensionEnvErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type PutExtensionEnvError = PutExtensionEnvErrors[keyof PutExtensionEnvErrors];
+
+export type PutExtensionEnvResponses = {
+    /**
+     * Current extension declarations, with key names only.
+     */
+    200: Extensions;
+};
+
+export type PutExtensionEnvResponse = PutExtensionEnvResponses[keyof PutExtensionEnvResponses];
 
 export type ReloadExtensionsData = {
     body?: never;

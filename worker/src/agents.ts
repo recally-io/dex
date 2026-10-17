@@ -22,6 +22,7 @@ import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { createToolSearchExtension } from "@earendil-works/pi-durable/tool-search";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
+import { agentHome } from "./agent-home.ts";
 import { AgentExtensions, type Loaded } from "./extensions.ts";
 import { CodingSkill, taskExtension } from "./tasks.ts";
 import { MemoryRepo } from "./memory.ts";
@@ -33,6 +34,7 @@ import type {
 	HistoryResult,
 	InputEntriesParams,
 	AgentParams,
+	EditEnvParams,
 	ChatStreamEvent,
 	CreateConversationParams,
 	CreateConversationResult,
@@ -75,6 +77,10 @@ export class Agents {
 	readonly #pendingWatches = new Map<string, AbortController>();
 	readonly #harnesses = new Map<string, Promise<Harness>>();
 	// The MCP servers of each open agent.
+	readonly #home = homedir();
+	readonly #baseEnv = Object.fromEntries(
+		Object.entries(process.env).filter((pair): pair is [string, string] => pair[1] !== undefined),
+	);
 	readonly #loaded = new Map<string, Loaded>();
 	// The tail of each conversation's submit and abort chain; see #serial.
 	readonly #chains = new Map<string, Promise<unknown>>();
@@ -447,13 +453,24 @@ export class Agents {
 		// Not admitted: control opens the agent this way while it holds the maintenance lease.
 		if (params.open === true) await this.#harness(params.agentId);
 		const files = this.#files(params.agentId);
-		return files.info(this.#loaded.get(params.agentId)?.servers);
+		const info = await files.info(this.#loaded.get(params.agentId)?.servers);
+		if (!params.preflight) return info;
+		// A reload restarts every agent, so check every open agent. Agents share the home and dex
+		// files, and each error names its file, so report each error once.
+		const ids = new Set([...this.#harnesses.keys(), params.agentId]);
+		const checks = await Promise.all([...ids].map((id) => this.#files(id).info()));
+		return { ...info, errors: [...new Set(checks.flatMap((check) => check.errors))] };
+	}
+
+	async editEnv(params: EditEnvParams): Promise<Extensions> {
+		await this.#files(params.agentId).editEnv(params);
+		return this.extensions({ agentId: params.agentId });
 	}
 
 	#files(agentId: string): AgentExtensions {
 		if (!AGENT_ID.test(agentId)) throw new Error(`invalid agent ID: ${agentId}`);
-		const dir = join(this.#dataDir, "agents", agentId);
-		return new AgentExtensions(homedir(), dir, join(dir, "workspace"));
+		const dir = agentHome(this.#dataDir, agentId);
+		return new AgentExtensions(this.#home, this.#dataDir, dir, join(dir, "workspace"), this.#baseEnv);
 	}
 
 	async #conversation(agentId: string, conversationId: number): Promise<Conversation> {
@@ -555,7 +572,7 @@ export class Agents {
 	}
 
 	async #open(agentId: string): Promise<Harness> {
-		const dir = join(this.#dataDir, "agents", agentId);
+		const dir = agentHome(this.#dataDir, agentId);
 		const workspace = join(dir, "workspace");
 		await mkdir(workspace, { recursive: true });
 		const registry = createRegistry();
@@ -578,7 +595,7 @@ export class Agents {
 					models: this.#models,
 					registry,
 					// No sandbox: tools run on the host, inside the agent workspace.
-					env: ({ cwd }) => new NodeExecutionEnv({ cwd: cwd ?? workspace }),
+					env: ({ cwd }) => new NodeExecutionEnv({ cwd: cwd ?? workspace, shellEnv: loaded.env }),
 					onReport: (error) => console.error(`agent ${agentId}:`, error),
 				},
 				context,

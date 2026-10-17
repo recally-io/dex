@@ -1,4 +1,4 @@
-package settings_test
+package agent_test
 
 import (
 	"context"
@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/wechat"
 )
 
@@ -43,7 +43,7 @@ func TestUserWechatCanceledActivationRetainsCandidate(t *testing.T) {
 	if err := q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "default", Name: "Dex"}); err != nil {
 		t.Fatal(err)
 	}
-	s := settings.New(q, nil, "", nil)
+	s := agent.New(q, nil, "", nil)
 	activated := false
 	s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, conn, func(_ string, cfg *wechat.Config) {
 		if cfg == nil {
@@ -103,7 +103,7 @@ func TestUserWechatNewLoginAndDeleteInvalidateWaitingStart(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = conn.Close() }()
-			s := settings.New(sqlc.New(conn), nil, "", nil)
+			s := agent.New(sqlc.New(conn), nil, "", nil)
 			s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, conn, func(string, *wechat.Config) {})
 			done := make(chan error, 1)
 			go func() { _, err := s.BeginWechatLogin(t.Context(), "default"); done <- err }()
@@ -125,7 +125,7 @@ func TestUserWechatNewLoginAndDeleteInvalidateWaitingStart(t *testing.T) {
 			unblock()
 			select {
 			case err := <-done:
-				if !errors.Is(err, settings.ErrInvalid) {
+				if !errors.Is(err, agent.ErrInvalid) {
 					t.Fatalf("superseded start: %v", err)
 				}
 			case <-time.After(10 * time.Second):

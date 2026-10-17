@@ -1,6 +1,4 @@
-// Package settings reads and changes the settings that the web UI edits: the agent's model and
-// instructions, provider credentials, and the Telegram bot. control.sqlite is their only source.
-// A change is saved first and then applied to the worker or the bot.
+// Package settings owns global provider settings, model checks, and the access token.
 package settings
 
 import (
@@ -12,27 +10,17 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
-	"uuid"
 
-	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/feishu"
-	"github.com/recally-io/dex/internal/telegram"
-	"github.com/recally-io/dex/internal/wechat"
 	"github.com/recally-io/dex/internal/worker"
 )
 
 // ErrInvalid wraps the errors of a change that the service refuses.
 var ErrInvalid = errors.New("invalid settings")
-
-// ErrNotFound means that the agent does not exist.
-var ErrNotFound = errors.New("agent not found")
 
 // APIs are the APIs a custom provider can use, with their names for the UI.
 var APIs = map[string]string{
@@ -52,24 +40,6 @@ type Settings struct {
 	Builtins []worker.ProviderInfo `json:"builtins"`
 	// APIs are the APIs of custom providers: ID → name.
 	APIs map[string]string `json:"apis"`
-}
-
-// Activity summarizes one agent for the agent list.
-type Activity struct {
-	ActiveSessions     int64 `json:"activeSessions"`
-	RunningChannels    int64 `json:"runningChannels"`
-	EnabledAutomations int64 `json:"enabledAutomations"`
-}
-
-// Agent holds the settings of one agent. An empty ModelID means no model is chosen.
-type Agent struct {
-	Activity      *Activity `json:"activity,omitzero"`
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	Provider      string    `json:"provider"`
-	ModelID       string    `json:"modelId"`
-	ThinkingLevel string    `json:"thinkingLevel"`
-	Instructions  string    `json:"instructions"`
 }
 
 // thinkingLevels are pi-ai's ModelThinkingLevel values. pi-ai sends the nearest level that the
@@ -92,41 +62,19 @@ type Provider struct {
 	Error string `json:"error,omitempty"`
 }
 
-// Telegram describes the bot without its token.
-type Telegram struct {
-	Status       channel.Status `json:"status"`
-	Enabled      bool           `json:"enabled"`
-	BotID        string         `json:"botId,omitempty"`
-	AllowedUsers []int64        `json:"allowedUsers"`
-}
-
 // Service reads and changes settings.
 type Service struct {
-	wechatOptions wechat.Options
-	onWechat      func(string, *wechat.Config)
-	wechatDB      *sql.DB
-	ChannelStatus func(string, string) channel.Status
-	q             *sqlc.Queries
-	worker        worker.CallFunc
-	apiURL        string // Telegram Bot API URL; empty for the default
-	onTelegram    func(string, *telegram.Config)
-
-	feishuAPIURL    string
-	feishuRegistrar feishu.Registrar
-	onFeishu        func(string, *feishu.Config)
-
-	// Serializes changes, so the worker and the bot always get the newest saved settings.
-	mu       sync.Mutex
-	sessions map[string]*channelSession
-
+	q      *sqlc.Queries
+	worker worker.CallFunc
+	// Serializes provider save and apply. Agent and channel changes have their own lock.
+	mu    sync.Mutex
 	errMu sync.Mutex
-	errs  map[string]string // from the last ApplyProviders: provider ID → why its model list failed
+	errs  map[string]string
 }
 
-// New returns the shared settings Service. onTelegram receives the new bot configuration after each
-// Telegram change, or nil when Telegram is off.
-func New(q *sqlc.Queries, call worker.CallFunc, telegramAPIURL string, onTelegram func(string, *telegram.Config)) *Service {
-	return &Service{q: q, worker: call, apiURL: telegramAPIURL, onTelegram: onTelegram}
+// New returns the global settings service.
+func New(q *sqlc.Queries, call worker.CallFunc) *Service {
+	return &Service{q: q, worker: call}
 }
 
 // Get returns all settings. It asks the worker which providers exist.
@@ -192,90 +140,11 @@ func (s *Service) Models(ctx context.Context) ([]worker.ModelInfo, error) {
 	return listed.Models, nil
 }
 
-// Agent reads one agent.
-func (s *Service) Agent(ctx context.Context, id string) (Agent, error) {
-	row, err := s.q.GetAgent(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Agent{}, ErrNotFound
-	}
-	return agentView(row), err
-}
-
-func agentView(row sqlc.Agent) Agent {
-	return Agent{ID: row.ID, Name: row.Name, Provider: row.ModelProvider, ModelID: row.ModelID,
-		ThinkingLevel: row.ThinkingLevel, Instructions: row.Instructions}
-}
-
-// ListAgents returns agents and their activity in creation order.
-func (s *Service) ListAgents(ctx context.Context) ([]Agent, error) {
-	rows, err := s.q.ListAgentActivity(ctx)
-	if err != nil {
-		return nil, err
-	}
-	agents := make([]Agent, len(rows))
-	for i, row := range rows {
-		agents[i] = agentView(row.Agent)
-		current := Activity{ActiveSessions: row.ActiveSessions, EnabledAutomations: row.EnabledAutomations}
-		if s.ChannelStatus != nil {
-			for _, platform := range []string{"telegram", "wechat", "feishu"} {
-				if s.ChannelStatus(row.Agent.ID, platform).State == "running" {
-					current.RunningChannels++
-				}
-			}
-		}
-		agents[i].Activity = &current
-	}
-	return agents, nil
-}
-
-// SaveAgent changes one agent. Its next message uses the settings.
-func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
+// CheckModel keeps agent validation out of an incomplete provider update.
+func (s *Service) CheckModel(ctx context.Context, provider, modelID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := s.Agent(ctx, id); err != nil {
-		return err
-	}
-	a, err := s.cleanAgent(ctx, a)
-	if err != nil {
-		return err
-	}
-	return s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
-		ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
-		ID: id, Name: a.Name,
-	})
-}
-
-// CreateAgent stores an agent without changing global provider configuration.
-func (s *Service) CreateAgent(ctx context.Context, a Agent) (Agent, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	a, err := s.cleanAgent(ctx, a)
-	if err != nil {
-		return Agent{}, err
-	}
-	row, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{
-		ID: uuid.NewV7().String(), Name: a.Name, ModelProvider: a.Provider, ModelID: a.ModelID,
-		ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions, CreatedAt: time.Now().UnixMilli(),
-	})
-	return agentView(row), err
-}
-
-func (s *Service) cleanAgent(ctx context.Context, a Agent) (Agent, error) {
-	a.Name = strings.TrimSpace(a.Name)
-	if n := utf8.RuneCountInString(a.Name); n < 1 || n > 40 {
-		return a, fmt.Errorf("%w: name must have 1 to 40 characters", ErrInvalid)
-	}
-	if !slices.Contains(thinkingLevels, a.ThinkingLevel) {
-		return a, fmt.Errorf("%w: unknown thinking level %q", ErrInvalid, a.ThinkingLevel)
-	}
-	if a.ModelID != "" {
-		if err := s.checkModel(ctx, a.Provider, a.ModelID); err != nil {
-			return a, err
-		}
-	} else {
-		a.Provider = ""
-	}
-	return a, nil
+	return s.checkModel(ctx, provider, modelID)
 }
 
 func (s *Service) checkModel(ctx context.Context, provider, modelID string) error {
@@ -289,8 +158,7 @@ func (s *Service) checkModel(ctx context.Context, provider, modelID string) erro
 	return nil
 }
 
-// CheckChat refuses chat settings that SetChat would refuse. A new chat stores its settings with
-// its first message, so the caller checks them first.
+// CheckChat checks chat overrides and task settings before the caller saves them.
 func (s *Service) CheckChat(ctx context.Context, c chat.Settings) error {
 	if c.ThinkingLevel != "" && !slices.Contains(thinkingLevels, c.ThinkingLevel) {
 		return fmt.Errorf("%w: unknown thinking level %q", ErrInvalid, c.ThinkingLevel)
@@ -302,16 +170,6 @@ func (s *Service) CheckChat(ctx context.Context, c chat.Settings) error {
 		return nil
 	}
 	return s.checkModel(ctx, c.Provider, c.ModelID)
-}
-
-// SetChat replaces the settings that chat chatID overrides. The next message of the chat uses them.
-func (s *Service) SetChat(ctx context.Context, agentID string, chatID int64, c chat.Settings) error {
-	if err := s.CheckChat(ctx, c); err != nil {
-		return err
-	}
-	return s.q.SetConversationSettings(ctx, sqlc.SetConversationSettingsParams{
-		ModelProvider: c.Provider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel, ID: chatID, AgentID: agentID,
-	})
 }
 
 // SetProvider adds provider p or changes it, gives all providers to the worker, and returns the
@@ -435,82 +293,4 @@ func splitModels(s string) []string {
 		return []string{}
 	}
 	return strings.Split(s, ",")
-}
-
-// TelegramConfig returns the saved bot configuration, or nil when Telegram is off.
-func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram.Config, error) {
-	row, err := s.q.GetTelegramSettings(ctx, agentID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	users, err := parseUsers(row.AllowedUsers)
-	if err != nil {
-		return nil, err
-	}
-	return &telegram.Config{Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(agentID, row.Token)}, nil
-}
-
-// SetTelegram saves the bot configuration and restarts the bot. An empty token keeps the saved
-// token.
-func (s *Service) SetTelegram(ctx context.Context, agentID string, token string, allowedUsers []int64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if token == "" {
-		saved, err := s.TelegramConfig(ctx, agentID)
-		if err != nil {
-			return err
-		}
-		if saved != nil {
-			token = saved.Token
-		}
-	}
-	cfg := telegram.Config{Token: strings.TrimSpace(token), AllowedUsers: allowedUsers, APIURL: s.apiURL}
-	cfg.Pair = s.pairTelegram(agentID, cfg.Token)
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalid, err)
-	}
-	if err := s.checkCredential(ctx, agentID, "telegram", cfg.Token); err != nil {
-		return err
-	}
-	users := make([]string, len(allowedUsers))
-	for i, id := range allowedUsers {
-		users[i] = strconv.FormatInt(id, 10)
-	}
-	err := s.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: agentID,
-		Token: cfg.Token, AllowedUsers: strings.Join(users, ","),
-	})
-	if err != nil {
-		return err
-	}
-	s.onTelegram(agentID, &cfg)
-	return nil
-}
-
-// DeleteTelegram turns Telegram off and forgets the token.
-func (s *Service) DeleteTelegram(ctx context.Context, agentID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.q.DeleteTelegramSettings(ctx, agentID); err != nil {
-		return err
-	}
-	s.onTelegram(agentID, nil)
-	return nil
-}
-
-func parseUsers(s string) ([]int64, error) {
-	users := []int64{}
-	if s == "" {
-		return users, nil
-	}
-	for field := range strings.SplitSeq(s, ",") {
-		id, err := strconv.ParseInt(field, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("telegram_settings.allowed_users: %w", err)
-		}
-		users = append(users, id)
-	}
-	return users, nil
 }
