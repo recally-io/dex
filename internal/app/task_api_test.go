@@ -43,14 +43,14 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 	second := waitExecution(t, conn, channel, "Check", "running")
 
 	// When the user lists this bot's work, both conversations appear, newest first.
-	status, raw := d.call(t, http.MethodGet, "/api/chats", nil)
+	status, raw := d.call(t, http.MethodGet, "/api/agents/default/chats", nil)
 	if status != http.StatusOK || strings.Contains(raw, `"report":`) {
 		t.Fatalf("task list must omit report bodies: %d %s", status, raw)
 	}
 	var list struct {
 		Chats []sessionInfo `json:"chats"`
 	}
-	d.must(t, http.MethodGet, "/api/chats", nil, &list)
+	d.must(t, http.MethodGet, "/api/agents/default/chats", nil, &list)
 	var tasks []taskInfo
 	for _, c := range list.Chats {
 		if c.Task != nil {
@@ -64,7 +64,7 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 		t.Fatalf("session list lost its Stop scope: %+v", tasks)
 	}
 	var detail taskInfo
-	d.must(t, http.MethodGet, "/api/tasks/"+first.ID, nil, &detail)
+	d.must(t, http.MethodGet, "/api/agents/default/tasks/"+first.ID, nil, &detail)
 	if detail.ParentConversationID != main {
 		t.Fatalf("task detail lost its Stop scope: %+v", detail)
 	}
@@ -72,7 +72,7 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 		t.Fatalf("saved task=%+v", detail)
 	}
 	detail = taskInfo{}
-	d.must(t, http.MethodGet, "/api/tasks/"+second.ID, nil, &detail)
+	d.must(t, http.MethodGet, "/api/agents/default/tasks/"+second.ID, nil, &detail)
 	if detail.Status != "running" || detail.Report != "" || detail.StartedAt == nil || detail.EndedAt != nil {
 		t.Fatalf("running task=%+v", detail)
 	}
@@ -80,7 +80,7 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 		ReadOnly bool   `json:"readOnly"`
 		Channel  string `json:"channel"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d", detail.ConversationID), nil, &chat)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", detail.ConversationID), nil, &chat)
 	if !chat.ReadOnly || chat.Channel != "task" {
 		t.Fatalf("task chat=%+v", chat)
 	}
@@ -92,16 +92,16 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 		if action == "settings" {
 			method = http.MethodPut
 		}
-		d.must(t, method, fmt.Sprintf("/api/chats/%d/%s", detail.ConversationID, action),
+		d.must(t, method, fmt.Sprintf("/api/agents/default/chats/%d/%s", detail.ConversationID, action),
 			map[string]string{"id": uuid.NewV7().String(), "text": "must not run"}, nil, http.StatusForbidden)
 	}
 	releaseResultGate(t, dir, "task-api")
 	work.until(t, "saved work answer", answeredWith("gate released"))
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/history?before=9007199254740991", detail.ConversationID), nil, nil)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9007199254740991", detail.ConversationID), nil, nil)
 	if len(d.chats(t)) != 2 {
 		t.Fatal("Sessions must contain both tasks, without main")
 	}
-	d.must(t, http.MethodGet, "/api/tasks/missing", nil, nil, http.StatusNotFound)
+	d.must(t, http.MethodGet, "/api/agents/default/tasks/missing", nil, nil, http.StatusNotFound)
 	t.Logf("artifact: main task=%s channel task=%s work=%d", first.ID, second.ID, detail.ConversationID)
 }
 
@@ -136,10 +136,10 @@ func TestUserTasksStayWithinBot(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the default bot's user reads tasks, the other bot's work stays outside this API.
-	status, raw := d.call(t, http.MethodGet, "/api/chats", nil)
+	status, raw := d.call(t, http.MethodGet, "/api/agents/default/chats", nil)
 	if status != http.StatusOK || strings.Contains(raw, "Other bot") || !strings.Contains(raw, `"chats":[]`) {
 		t.Fatalf("foreign task in list: %d %s", status, raw)
 	}
-	d.must(t, http.MethodGet, "/api/tasks/"+fmt.Sprint(work.ID), nil, nil, http.StatusNotFound)
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d", work.ID), nil, nil, http.StatusNotFound)
+	d.must(t, http.MethodGet, "/api/agents/default/tasks/"+fmt.Sprint(work.ID), nil, nil, http.StatusNotFound)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", work.ID), nil, nil, http.StatusNotFound)
 }

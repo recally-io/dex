@@ -9,6 +9,14 @@ UPDATE agents SET name = ?, model_provider = ?, model_id = ?, thinking_level = ?
 -- name: GetAgent :one
 SELECT * FROM agents WHERE id = ?;
 
+-- name: ListAgents :many
+SELECT * FROM agents ORDER BY created_at, id;
+
+-- name: CreateAgent :one
+INSERT INTO agents (id, name, model_provider, model_id, thinking_level, instructions, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
 -- name: EnsureConversation :one
 -- The title and the settings are set only when the conversation is created.
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
@@ -162,15 +170,15 @@ ON CONFLICT (id) DO UPDATE SET
 DELETE FROM providers WHERE id = ?;
 
 -- name: GetTelegramSettings :one
-SELECT * FROM telegram_settings WHERE id = 1;
+SELECT * FROM telegram_settings WHERE agent_id = ?;
 
 -- name: SetTelegramSettings :exec
-INSERT INTO telegram_settings (id, token, allowed_users)
-VALUES (1, ?, ?)
-ON CONFLICT (id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, pairing_code = '', pairing_expires = 0;
+INSERT INTO telegram_settings (agent_id, token, allowed_users)
+VALUES (?, ?, ?)
+ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, pairing_code = '', pairing_expires = 0;
 
 -- name: DeleteTelegramSettings :exec
-DELETE FROM telegram_settings WHERE id = 1;
+DELETE FROM telegram_settings WHERE agent_id = ?;
 
 -- name: CreateAccessTokenIfMissing :exec
 INSERT INTO access_token (id, token) VALUES (1, ?) ON CONFLICT (id) DO NOTHING;
@@ -227,6 +235,9 @@ WHERE
     AND (s.settled_at > @after_settled_at OR (s.settled_at = @after_settled_at AND s.id > @after_id))
 ORDER BY s.settled_at, s.id
 LIMIT @max_rows;
+
+-- name: ListAgentIDs :many
+SELECT id FROM agents ORDER BY id;
 
 -- name: CreateAutomation :exec
 INSERT INTO automations (
@@ -294,13 +305,13 @@ WHERE
         OR c.channel_key LIKE 'automation:' || CAST(@automation_id AS TEXT) || ':%');
 
 -- name: SetTelegramPairing :exec
-UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE id = 1;
+UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE agent_id = ?;
 
 -- name: PairTelegramOwner :one
 UPDATE telegram_settings
 SET allowed_users = CAST(sqlc.arg(user_id) AS TEXT),
     pairing_code = '', pairing_expires = 0
-WHERE id = 1 AND allowed_users = '' AND token = sqlc.arg(token) AND pairing_code = sqlc.arg(code)
+WHERE agent_id = sqlc.arg(agent_id) AND allowed_users = '' AND token = sqlc.arg(token) AND pairing_code = sqlc.arg(code)
     AND pairing_code <> '' AND pairing_expires > sqlc.arg(now)
 RETURNING allowed_users;
 

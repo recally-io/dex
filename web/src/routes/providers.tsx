@@ -1,6 +1,7 @@
+import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Provider, Settings } from "../api/generated/types.gen";
+import type { Provider } from "../api/generated/types.gen";
 import {
   deleteProviderMutation,
   listModelsOptions,
@@ -297,7 +298,11 @@ function RemoveProvider({
   const replace = useMutation({
     mutationFn: async () => {
       const model = others.find((m) => `${m.provider}/${m.id}` === next);
-      await saveAgent((agent) => ({ ...agent, provider: model?.provider ?? "", modelId: model?.id ?? "" }));
+      await saveAgent("default", (agent) => ({
+        ...agent,
+        provider: model?.provider ?? "",
+        modelId: model?.id ?? "",
+      }));
     },
   });
 

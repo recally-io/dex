@@ -248,7 +248,7 @@ func startTelegram(t *testing.T, f *fakeTelegram, dataDir string, allowed ...int
 	}
 	d := startDex(t, dataDir, f.srv.URL)
 	d.setModel(t, "echo")
-	d.must(t, http.MethodPut, "/api/settings/telegram", map[string]any{"token": fakeToken, "allowedUsers": allowed}, nil)
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": allowed}, nil)
 	return d
 }
 
@@ -274,7 +274,7 @@ func TestUserGetsAnswerInTelegram(t *testing.T) {
 		t.Fatalf("main: %+v", c)
 	}
 	// Main follows the bot's settings and has no session override.
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", main), map[string]string{"thinkingLevel": "high"}, nil, http.StatusForbidden)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", main), map[string]string{"thinkingLevel": "high"}, nil, http.StatusForbidden)
 
 }
 
@@ -353,7 +353,7 @@ func TestUserPairsTelegramOwnerOnce(t *testing.T) {
 	var pair struct {
 		URL string `json:"url"`
 	}
-	d.must(t, http.MethodPost, "/api/settings/telegram/pairing", nil, &pair)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/telegram/pairing", nil, &pair)
 	link, err := url.Parse(pair.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -564,7 +564,7 @@ func TestUserCannotPairTelegramWithExpiredCode(t *testing.T) {
 	var pair struct {
 		URL string `json:"url"`
 	}
-	d.must(t, http.MethodPost, "/api/settings/telegram/pairing", nil, &pair)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/telegram/pairing", nil, &pair)
 	link, err := url.Parse(pair.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -600,7 +600,7 @@ func TestUserPairsTelegramAfterControlRestart(t *testing.T) {
 	var pair struct {
 		URL string `json:"url"`
 	}
-	d.must(t, http.MethodPost, "/api/settings/telegram/pairing", nil, &pair)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/telegram/pairing", nil, &pair)
 	link, err := url.Parse(pair.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -677,7 +677,7 @@ func waitTelegramState(t *testing.T, d *dex, state string) {
 		var got struct {
 			Telegram settings.Telegram `json:"telegram"`
 		}
-		d.must(t, http.MethodGet, "/api/settings", nil, &got)
+		d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &got)
 		if strings.Contains(got.Telegram.Status.Reason, fakeToken) {
 			t.Fatal("status exposed the token")
 		}

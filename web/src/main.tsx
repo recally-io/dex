@@ -48,7 +48,7 @@ const root = createRootRoute({
 });
 
 // The pages of the agent share its tabs. The agent pane draws the main timeline itself.
-const agentPages = createRoute({ getParentRoute: () => root, id: "agent-pages", component: AgentLayout });
+const agentPages = createRoute({ getParentRoute: () => root, path: "/a/$agentId", component: AgentLayout });
 
 const home = createRoute({ getParentRoute: () => agentPages, path: "/", component: () => null });
 const chat = createRoute({ getParentRoute: () => agentPages, path: "/c/$chatId", component: ChatRoute });
@@ -76,7 +76,7 @@ const channels = agentPage("/channels", ChannelsPage);
 const automations = agentPage("/automations", AutomationsPage);
 const providers = page("/providers", ProvidersPage);
 
-const extensions = page("/extensions", ExtensionsPage);
+const extensions = agentPage("/extensions", ExtensionsPage);
 const secrets = page("/secrets", SecretsPage);
 const about = page("/about", AboutPage);
 
@@ -116,7 +116,10 @@ const settings = createRoute({
     const to = legacy.get(params.section);
 
     if (!to) throw notFound();
-    throw redirect({ href: to, replace: true });
+    throw redirect({
+      href: to.startsWith("/channels") || to === "/agent" ? `/a/default${to}` : to,
+      replace: true,
+    });
   },
 });
 
@@ -124,7 +127,7 @@ const defaultSettings = createRoute({
   getParentRoute: () => root,
   path: "/settings",
   beforeLoad: () => {
-    throw redirect({ to: "/agent", replace: true });
+    throw redirect({ href: "/a/default/agent", replace: true });
   },
 });
 
@@ -146,7 +149,7 @@ const tasks = createRoute({
   getParentRoute: () => root,
   path: "/tasks",
   beforeLoad: () => {
-    throw redirect({ to: "/sessions", replace: true });
+    throw redirect({ href: "/a/default/sessions", replace: true });
   },
 });
 
@@ -157,6 +160,32 @@ function TaskRoute() {
 
   return <TaskPage key={taskId} taskId={taskId} />;
 }
+
+const oldAgentPage = <P extends string>(path: P) =>
+  createRoute({
+    getParentRoute: () => root,
+    path,
+    beforeLoad: ({ location }) => {
+      throw redirect({
+        href: `/a/default${location.pathname === "/" ? "" : location.pathname}`,
+        replace: true,
+      });
+    },
+  });
+
+const oldAgentRoutes = [
+  oldAgentPage("/"),
+  oldAgentPage("/instructions"),
+  oldAgentPage("/channels"),
+  oldAgentPage("/channels/$channelId"),
+  oldAgentPage("/automations"),
+  oldAgentPage("/automations/$automationId"),
+  oldAgentPage("/sessions"),
+  oldAgentPage("/c/$chatId"),
+  oldAgentPage("/tasks/$taskId"),
+  oldAgentPage("/agent"),
+  oldAgentPage("/extensions"),
+] as const;
 
 const router = createRouter({
   routeTree: root.addChildren([
@@ -171,10 +200,11 @@ const router = createRouter({
       automations,
       automation,
       agent,
+      extensions,
     ]),
+    ...oldAgentRoutes,
     tasks,
     providers,
-    extensions,
     secrets,
     about,
     settings,

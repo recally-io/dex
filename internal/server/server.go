@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -32,8 +33,6 @@ type Config struct {
 	Automations *automation.Service
 	Settings    *settings.Service
 	Live        *live.Hub
-	Uploads     *upload.Store
-	AgentID     string
 	DataDir     string
 	Version     string
 	WorkerReady func(context.Context) bool
@@ -62,7 +61,8 @@ var errReadOnly = errors.New("this session is read-only; send messages in main o
 // cannot send messages or change settings, and cannot sign in.
 func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
-	strict := api.NewStrictHandlerWithOptions(&handler{cfg}, nil, api.StrictHTTPServerOptions{
+	h := &handler{cfg}
+	strict := api.NewStrictHandlerWithOptions(h, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			writeError(w, http.StatusBadRequest, "the request is not valid: "+err.Error())
 		},
@@ -76,9 +76,9 @@ func New(cfg Config) http.Handler {
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, errReadOnly):
 				status = http.StatusForbidden
-			case errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
+			case errors.Is(err, settings.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy):
+			case errors.Is(err, settings.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -86,7 +86,7 @@ func New(cfg Config) http.Handler {
 			writeError(w, status, err.Error())
 		},
 	})
-	api.HandlerWithOptions(strict, api.StdHTTPServerOptions{BaseRouter: mux})
+	api.HandlerWithOptions(strict, api.StdHTTPServerOptions{BaseRouter: mux, Middlewares: []api.MiddlewareFunc{h.withAgent}})
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
@@ -95,7 +95,8 @@ func New(cfg Config) http.Handler {
 	// multipart headers.
 	small, uploads := http.MaxBytesHandler(mux, 256<<10), http.MaxBytesHandler(mux, upload.MaxSize+64<<10)
 	limited := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/uploads" {
+		parts := strings.Split(r.URL.Path, "/")
+		if len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads" {
 			uploads.ServeHTTP(w, r)
 		} else {
 			small.ServeHTTP(w, r)
@@ -113,6 +114,36 @@ func writeError(w http.ResponseWriter, status int, message string) {
 }
 
 type handler struct{ Config }
+
+type agentKey struct{}
+
+func agentID(ctx context.Context) string {
+	return ctx.Value(agentKey{}).(string) //nolint:forcetypeassert // withAgent sets this value on every agent route.
+}
+
+// withAgent checks the path before the strict handler decodes the body or opens storage.
+func (h *handler) withAgent(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if id := r.PathValue("agentId"); id != "" {
+			if _, err := h.Settings.Agent(r.Context(), id); err != nil {
+				status := http.StatusInternalServerError
+				if errors.Is(err, settings.ErrNotFound) {
+					status = http.StatusNotFound
+				} else {
+					slog.Error("read request agent", "err", err)
+				}
+				writeError(w, status, err.Error())
+				return
+			}
+			r = r.WithContext(context.WithValue(r.Context(), agentKey{}, id))
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (h *handler) uploads(ctx context.Context) *upload.Store {
+	return upload.New(filepath.Join(h.DataDir, "agents", agentID(ctx)))
+}
 
 var ok = api.Ok{Status: api.OkStatusOk}
 
@@ -139,7 +170,7 @@ func (h *handler) ReleaseMaintenance(ctx context.Context, _ api.ReleaseMaintenan
 
 func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestObject) (api.GetExtensionsResponseObject, error) {
 	var out api.GetExtensions200JSONResponse
-	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID}, &out); err != nil {
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx)}, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -147,7 +178,7 @@ func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestO
 func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRequestObject) (api.ReloadExtensionsResponseObject, error) {
 	// A worker that starts with an mcp.json that is not valid has no MCP servers. Keep the loaded ones.
 	var files api.Extensions
-	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID}, &files); err != nil {
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx)}, &files); err != nil {
 		return nil, err
 	}
 	if len(files.Errors) > 0 {
@@ -170,7 +201,7 @@ func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRe
 	}
 	// The agent opens now, under the lease, so the response shows the state of each server.
 	var out api.ReloadExtensions200JSONResponse
-	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID, Open: true}, &out); err != nil {
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx), Open: true}, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -200,11 +231,11 @@ func chatView(c chat.Chat) api.Chat {
 }
 
 func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (api.ListChatsResponseObject, error) {
-	chats, err := h.Chats.List(ctx, h.AgentID)
+	chats, err := h.Chats.List(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := h.Chats.TaskRecords(ctx, h.AgentID)
+	tasks, err := h.Chats.TaskRecords(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +254,7 @@ func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (
 }
 
 func (h *handler) GetChat(ctx context.Context, req api.GetChatRequestObject) (api.GetChatResponseObject, error) {
-	c, err := h.Chats.Get(ctx, h.AgentID, req.ChatId)
+	c, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +263,7 @@ func (h *handler) GetChat(ctx context.Context, req api.GetChatRequestObject) (ap
 
 // message validates a message from the client. The text can be empty when the message has an
 // attachment.
-func (h *handler) message(in api.MessageInput) (chat.Message, error) {
+func (h *handler) message(ctx context.Context, in api.MessageInput) (chat.Message, error) {
 	id, err := uuid.Parse(in.Id)
 	if err != nil {
 		return chat.Message{}, errors.Join(errInvalid, errors.New("the message ID must be a UUID"))
@@ -252,7 +283,7 @@ func (h *handler) message(in api.MessageInput) (chat.Message, error) {
 		if slices.Contains(ids[:i], uploadID) {
 			return chat.Message{}, errors.Join(errInvalid, fmt.Errorf("the attachment %q is in the message twice", uploadID))
 		}
-		a, err := h.Uploads.Get(uploadID)
+		a, err := h.uploads(ctx).Get(uploadID)
 		if errors.Is(err, upload.ErrNotFound) {
 			return chat.Message{}, errors.Join(errInvalid, fmt.Errorf("no upload %q; upload the file again", uploadID))
 		}
@@ -265,7 +296,7 @@ func (h *handler) message(in api.MessageInput) (chat.Message, error) {
 }
 
 func (h *handler) CreateChat(ctx context.Context, _ api.CreateChatRequestObject) (api.CreateChatResponseObject, error) {
-	c, err := h.Chats.Create(ctx, h.AgentID)
+	c, err := h.Chats.Create(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +307,7 @@ func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObj
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	m, err := h.message(*req.Body)
+	m, err := h.message(ctx, *req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +315,7 @@ func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObj
 	if err != nil {
 		return nil, err
 	}
-	if _, err := h.Chats.Send(ctx, h.AgentID, c.ChannelKey, m); err != nil {
+	if _, err := h.Chats.Send(ctx, agentID(ctx), c.ChannelKey, m); err != nil {
 		return nil, err
 	}
 	return api.SendMessage202JSONResponse{SubmissionId: m.ID}, nil
@@ -292,7 +323,7 @@ func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObj
 
 // writableChat returns chat id, or errReadOnly for a chat that the web UI cannot write to.
 func (h *handler) writableChat(ctx context.Context, id int64) (chat.Chat, error) {
-	c, err := h.Chats.Get(ctx, h.AgentID, id)
+	c, err := h.Chats.Get(ctx, agentID(ctx), id)
 	if err != nil {
 		return chat.Chat{}, err
 	}
@@ -306,17 +337,17 @@ func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRe
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	c, err := h.Chats.Get(ctx, h.AgentID, req.ChatId)
+	c, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId)
 	if err != nil {
 		return nil, err
 	}
 	if !strings.HasPrefix(c.ChannelKey, "automation:") {
 		return nil, errReadOnly
 	}
-	if err := h.Settings.SetChat(ctx, req.ChatId, *req.Body); err != nil {
+	if err := h.Settings.SetChat(ctx, agentID(ctx), req.ChatId, *req.Body); err != nil {
 		return nil, err
 	}
-	c, err = h.Chats.Get(ctx, h.AgentID, req.ChatId)
+	c, err = h.Chats.Get(ctx, agentID(ctx), req.ChatId)
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +355,7 @@ func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRe
 }
 
 // CreateUpload stores the first part named file. The browser sends the file's base name.
-func (h *handler) CreateUpload(_ context.Context, req api.CreateUploadRequestObject) (api.CreateUploadResponseObject, error) {
+func (h *handler) CreateUpload(ctx context.Context, req api.CreateUploadRequestObject) (api.CreateUploadResponseObject, error) {
 	for {
 		part, err := req.Body.NextPart()
 		if errors.Is(err, io.EOF) {
@@ -342,7 +373,7 @@ func (h *handler) CreateUpload(_ context.Context, req api.CreateUploadRequestObj
 		if err != nil {
 			return nil, errors.Join(errInvalid, err)
 		}
-		a, err := h.Uploads.Save(params["filename"], part)
+		a, err := h.uploads(ctx).Save(params["filename"], part)
 		if err != nil {
 			return nil, uploadError(err)
 		}
@@ -362,8 +393,8 @@ func uploadError(err error) error {
 // only as downloads.
 var inlineTypes = []string{"image/png", "image/jpeg", "image/gif", "image/webp"}
 
-func (h *handler) GetUpload(_ context.Context, req api.GetUploadRequestObject) (api.GetUploadResponseObject, error) {
-	f, a, err := h.Uploads.Open(req.UploadId)
+func (h *handler) GetUpload(ctx context.Context, req api.GetUploadRequestObject) (api.GetUploadResponseObject, error) {
+	f, a, err := h.uploads(ctx).Open(req.UploadId)
 	if err != nil {
 		return nil, err
 	}
@@ -383,14 +414,14 @@ func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject)
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Stop(ctx, h.AgentID, req.ChatId); err != nil {
+	if err := h.Chats.Stop(ctx, agentID(ctx), req.ChatId); err != nil {
 		return nil, err
 	}
 	return api.AbortChat200JSONResponse{Status: api.OkStatusOk}, nil
 }
 
 func (h *handler) WatchChat(ctx context.Context, req api.WatchChatRequestObject) (api.WatchChatResponseObject, error) {
-	body, err := h.Live.Open(ctx, req.ChatId)
+	body, err := h.Live.Open(ctx, agentID(ctx), req.ChatId)
 	if err != nil {
 		return nil, err
 	}
@@ -403,12 +434,9 @@ func (h *handler) GetSettings(ctx context.Context, _ api.GetSettingsRequestObjec
 		return nil, err
 	}
 	out := api.GetSettings200JSONResponse{
-		Agent:     s.Agent,
-		Wechat:    s.Wechat,
 		Providers: make([]api.Provider, len(s.Providers)),
 		Builtins:  make([]api.ProviderInfo, len(s.Builtins)),
 		Apis:      s.APIs,
-		Telegram:  api.Telegram{Enabled: s.Telegram.Enabled, AllowedUsers: s.Telegram.AllowedUsers, Status: s.Telegram.Status},
 	}
 	for i, p := range s.Providers {
 		out.Providers[i] = providerView(p)
@@ -416,7 +444,6 @@ func (h *handler) GetSettings(ctx context.Context, _ api.GetSettingsRequestObjec
 	for i, b := range s.Builtins {
 		out.Builtins[i] = api.ProviderInfo{Id: b.ID, Name: b.Name, Source: optional(b.Source)}
 	}
-	out.Telegram.BotId = optional(s.Telegram.BotID)
 	return out, nil
 }
 
@@ -456,17 +483,6 @@ func (h *handler) ListModels(ctx context.Context, _ api.ListModelsRequestObject)
 		}
 	}
 	return out, nil
-}
-
-func (h *handler) SetAgent(ctx context.Context, req api.SetAgentRequestObject) (api.SetAgentResponseObject, error) {
-	if req.Body == nil {
-		return nil, errInvalid
-	}
-	err := h.Settings.SetAgent(ctx, *req.Body)
-	if err != nil {
-		return nil, err
-	}
-	return api.SetAgent200JSONResponse(ok), nil
 }
 
 func (h *handler) SetProvider(ctx context.Context, req api.SetProviderRequestObject) (api.SetProviderResponseObject, error) {
@@ -509,21 +525,21 @@ func (h *handler) SetTelegram(ctx context.Context, req api.SetTelegramRequestObj
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if err := h.Settings.SetTelegram(ctx, req.Body.Token, req.Body.AllowedUsers); err != nil {
+	if err := h.Settings.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers); err != nil {
 		return nil, err
 	}
 	return api.SetTelegram200JSONResponse(ok), nil
 }
 
 func (h *handler) DeleteTelegram(ctx context.Context, _ api.DeleteTelegramRequestObject) (api.DeleteTelegramResponseObject, error) {
-	if err := h.Settings.DeleteTelegram(ctx); err != nil {
+	if err := h.Settings.DeleteTelegram(ctx, agentID(ctx)); err != nil {
 		return nil, err
 	}
 	return api.DeleteTelegram200JSONResponse(ok), nil
 }
 
 func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegramPairingRequestObject) (api.CreateTelegramPairingResponseObject, error) {
-	link, expires, err := h.Settings.CreateTelegramPairing(ctx)
+	link, expires, err := h.Settings.CreateTelegramPairing(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -531,7 +547,7 @@ func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegra
 }
 
 func (h *handler) BeginWechatLogin(ctx context.Context, _ api.BeginWechatLoginRequestObject) (api.BeginWechatLoginResponseObject, error) {
-	view, err := h.Settings.BeginWechatLogin(ctx)
+	view, err := h.Settings.BeginWechatLogin(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -543,7 +559,7 @@ func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRe
 	if req.Body != nil {
 		code = deref(req.Body.VerifyCode)
 	}
-	view, err := h.Settings.PollWechatLogin(ctx, req.LoginId, code)
+	view, err := h.Settings.PollWechatLogin(ctx, agentID(ctx), req.LoginId, code)
 	if err != nil {
 		return nil, err
 	}
@@ -551,14 +567,14 @@ func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRe
 }
 
 func (h *handler) DeleteWechat(ctx context.Context, _ api.DeleteWechatRequestObject) (api.DeleteWechatResponseObject, error) {
-	if err := h.Settings.DeleteWechat(ctx); err != nil {
+	if err := h.Settings.DeleteWechat(ctx, agentID(ctx)); err != nil {
 		return nil, err
 	}
 	return api.DeleteWechat200JSONResponse(ok), nil
 }
 
 func (h *handler) GetMainChat(ctx context.Context, _ api.GetMainChatRequestObject) (api.GetMainChatResponseObject, error) {
-	c, err := h.Chats.Main(ctx, h.AgentID)
+	c, err := h.Chats.Main(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -576,7 +592,7 @@ func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestO
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Clear(ctx, h.AgentID, req.ChatId, id.String(), "web"); err != nil {
+	if err := h.Chats.Clear(ctx, agentID(ctx), req.ChatId, id.String(), "web"); err != nil {
 		return nil, err
 	}
 	return api.ClearContext202JSONResponse{SubmissionId: id.String()}, nil
@@ -590,7 +606,7 @@ func (h *handler) GetChatHistory(ctx context.Context, req api.GetChatHistoryRequ
 	if req.Params.Before < 1 || limit < 1 || limit > 200 {
 		return nil, errInvalid
 	}
-	page, err := h.Live.History(ctx, req.ChatId, req.Params.Before, limit)
+	page, err := h.Live.History(ctx, agentID(ctx), req.ChatId, req.Params.Before, limit)
 	if err != nil {
 		return nil, err
 	}

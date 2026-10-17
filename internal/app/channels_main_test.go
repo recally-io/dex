@@ -55,8 +55,8 @@ func newMainEntry(t *testing.T, platform string) mainEntry {
 		f := newFakeWechat(t)
 		e.d = startWechat(t, f, e.dir)
 		var login wechatLogin
-		e.d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
-		e.d.must(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
+		e.d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
+		e.d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
 		e.peer = "wechat:owner"
 		e.send = func(text string) { serial++; f.batch(fmt.Sprint(serial), wxText(uint64(serial), "owner", text)) }
 		e.sends = func() []channelSend {
@@ -116,11 +116,8 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 			if _, err := conn.ExecContext(t.Context(), "UPDATE conversations SET model_provider='faux', model_id='shout' WHERE id=?", old); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_peers (peer, channel_key) VALUES (?, ?)", e.peer, e.peer+"/old"); err != nil {
-				t.Fatal(err)
-			}
 			var chat chatInfo
-			d.must(t, http.MethodPost, "/api/chats", nil, &chat, http.StatusCreated)
+			d.must(t, http.MethodPost, "/api/agents/default/chats", nil, &chat, http.StatusCreated)
 			d.setModel(t, "context")
 			d.send(t, chat.ID, "Chat secret")
 			d.watch(t, chat.ID).until(t, "separate Chat", answered(`context: ["Chat secret"]`))
@@ -179,7 +176,7 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 			var page struct {
 				Items []item `json:"items"`
 			}
-			d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/history?before=9007199254740991", main), nil, &page)
+			d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9007199254740991", main), nil, &page)
 			if !slices.ContainsFunc(page.Items, func(it item) bool { return it.ID == id && it.Origin == e.peer }) {
 				t.Fatalf("history lost channel entry: %+v", page.Items)
 			}

@@ -107,7 +107,7 @@ export type MessageInput = {
      */
     text: string;
     /**
-     * Upload IDs from POST /api/uploads, at most 10.
+     * Upload IDs from POST /api/agents/{agentId}/uploads, at most 10.
      */
     attachments?: Array<string>;
 };
@@ -389,7 +389,6 @@ export type RunEvent = {
 };
 
 export type Settings = {
-    agent: Agent;
     /**
      * The providers that the user added, in the order of addition.
      */
@@ -404,11 +403,29 @@ export type Settings = {
     apis: {
         [key: string]: string;
     };
+};
+
+export type Channels = {
     telegram: Telegram;
     wechat: Wechat;
+    feishu: Feishu;
+};
+
+export type AgentActivity = {
+    activeSessions: number;
+    runningChannels: number;
+    enabledAutomations: number;
 };
 
 export type Agent = {
+    /**
+     * The agent ID.
+     */
+    readonly id?: string;
+    /**
+     * Activity counts returned by GET /api/agents.
+     */
+    activity?: AgentActivity;
     /**
      * The bot name. Trim spaces before validation.
      */
@@ -420,6 +437,20 @@ export type Agent = {
     modelId: string;
     thinkingLevel: ThinkingLevel;
     instructions: string;
+};
+
+export type AgentInput = {
+    /**
+     * The bot name. Trim spaces before validation.
+     */
+    name: string;
+    provider: string;
+    /**
+     * Empty when no model is chosen.
+     */
+    modelId: string;
+    thinkingLevel: ThinkingLevel;
+    instructions?: string;
 };
 
 /**
@@ -628,6 +659,22 @@ export type FeishuPoll = {
     session: string;
 };
 
+export type AgentWritable = {
+    /**
+     * The bot name. Trim spaces before validation.
+     */
+    name: string;
+    provider: string;
+    /**
+     * Empty when no model is chosen.
+     */
+    modelId: string;
+    thinkingLevel: ThinkingLevel;
+    instructions: string;
+};
+
+export type AgentId = string;
+
 export type AutomationId = string;
 
 export type ChatId = number;
@@ -735,497 +782,6 @@ export type AcquireMaintenanceResponses = {
 
 export type AcquireMaintenanceResponse = AcquireMaintenanceResponses[keyof AcquireMaintenanceResponses];
 
-export type GetTaskData = {
-    body?: never;
-    path: {
-        taskId: string;
-    };
-    query?: never;
-    url: '/api/tasks/{taskId}';
-};
-
-export type GetTaskErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetTaskError = GetTaskErrors[keyof GetTaskErrors];
-
-export type GetTaskResponses = {
-    /**
-     * The task. Done means that it returned a report.
-     */
-    200: Task;
-};
-
-export type GetTaskResponse = GetTaskResponses[keyof GetTaskResponses];
-
-export type GetMainChatData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/chats/main';
-};
-
-export type GetMainChatErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetMainChatError = GetMainChatErrors[keyof GetMainChatErrors];
-
-export type GetMainChatResponses = {
-    /**
-     * The main timeline.
-     */
-    200: Chat;
-};
-
-export type GetMainChatResponse = GetMainChatResponses[keyof GetMainChatResponses];
-
-export type ListChatsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/chats';
-};
-
-export type ListChatsErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type ListChatsError = ListChatsErrors[keyof ListChatsErrors];
-
-export type ListChatsResponses = {
-    /**
-     * The sessions.
-     */
-    200: ChatList;
-};
-
-export type ListChatsResponse = ListChatsResponses[keyof ListChatsResponses];
-
-export type CreateChatData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/chats';
-};
-
-export type CreateChatErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type CreateChatError = CreateChatErrors[keyof CreateChatErrors];
-
-export type CreateChatResponses = {
-    /**
-     * The new or reused Chat session.
-     */
-    201: Chat;
-};
-
-export type CreateChatResponse = CreateChatResponses[keyof CreateChatResponses];
-
-export type GetChatData = {
-    body?: never;
-    path: {
-        chatId: number;
-    };
-    query?: never;
-    url: '/api/chats/{chatId}';
-};
-
-export type GetChatErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetChatError = GetChatErrors[keyof GetChatErrors];
-
-export type GetChatResponses = {
-    /**
-     * The chat.
-     */
-    200: Chat;
-};
-
-export type GetChatResponse = GetChatResponses[keyof GetChatResponses];
-
-export type SetChatSettingsData = {
-    body: ChatSettings;
-    path: {
-        chatId: number;
-    };
-    query?: never;
-    url: '/api/chats/{chatId}/settings';
-};
-
-export type SetChatSettingsErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    403: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type SetChatSettingsError = SetChatSettingsErrors[keyof SetChatSettingsErrors];
-
-export type SetChatSettingsResponses = {
-    /**
-     * Saved.
-     */
-    200: Chat;
-};
-
-export type SetChatSettingsResponse = SetChatSettingsResponses[keyof SetChatSettingsResponses];
-
-export type SendMessageData = {
-    body: MessageInput;
-    path: {
-        chatId: number;
-    };
-    query?: never;
-    url: '/api/chats/{chatId}/messages';
-};
-
-export type SendMessageErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    403: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    409: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type SendMessageError = SendMessageErrors[keyof SendMessageErrors];
-
-export type SendMessageResponses = {
-    /**
-     * The message is stored.
-     */
-    202: SentMessage;
-};
-
-export type SendMessageResponse = SendMessageResponses[keyof SendMessageResponses];
-
-export type ClearContextData = {
-    body: {
-        /**
-         * A stable client UUID for this reset.
-         */
-        id: string;
-    };
-    path: {
-        chatId: number;
-    };
-    query?: never;
-    url: '/api/chats/{chatId}/clear';
-};
-
-export type ClearContextErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    403: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    409: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type ClearContextError = ClearContextErrors[keyof ClearContextErrors];
-
-export type ClearContextResponses = {
-    /**
-     * The reset is stored.
-     */
-    202: SentMessage;
-};
-
-export type ClearContextResponse = ClearContextResponses[keyof ClearContextResponses];
-
-export type GetChatHistoryData = {
-    body?: never;
-    path: {
-        chatId: number;
-    };
-    query: {
-        before: number;
-        limit?: number;
-    };
-    url: '/api/chats/{chatId}/history';
-};
-
-export type GetChatHistoryErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetChatHistoryError = GetChatHistoryErrors[keyof GetChatHistoryErrors];
-
-export type GetChatHistoryResponses = {
-    /**
-     * A history page. No nextBefore means the start was reached.
-     */
-    200: HistoryPage;
-};
-
-export type GetChatHistoryResponse = GetChatHistoryResponses[keyof GetChatHistoryResponses];
-
-export type AbortChatData = {
-    body?: never;
-    path: {
-        chatId: number;
-    };
-    query?: never;
-    url: '/api/chats/{chatId}/abort';
-};
-
-export type AbortChatErrors = {
-    /**
-     * The request failed.
-     */
-    403: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type AbortChatError = AbortChatErrors[keyof AbortChatErrors];
-
-export type AbortChatResponses = {
-    /**
-     * Pending input is withdrawn and cancellation is requested.
-     */
-    200: Ok;
-};
-
-export type AbortChatResponse = AbortChatResponses[keyof AbortChatResponses];
-
-export type WatchChatData = {
-    body?: never;
-    path: {
-        chatId: number;
-    };
-    query?: never;
-    url: '/api/chats/{chatId}/events';
-};
-
-export type WatchChatErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-};
-
-export type WatchChatError = WatchChatErrors[keyof WatchChatErrors];
-
-export type WatchChatResponses = {
-    /**
-     * The event stream.
-     */
-    200: ChatEvent;
-};
-
-export type WatchChatResponse = WatchChatResponses[keyof WatchChatResponses];
-
-export type CreateUploadData = {
-    body: {
-        file: Blob | File;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/uploads';
-};
-
-export type CreateUploadErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    413: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type CreateUploadError = CreateUploadErrors[keyof CreateUploadErrors];
-
-export type CreateUploadResponses = {
-    /**
-     * Stored.
-     */
-    201: Attachment;
-};
-
-export type CreateUploadResponse = CreateUploadResponses[keyof CreateUploadResponses];
-
-export type GetUploadData = {
-    body?: never;
-    path: {
-        uploadId: string;
-    };
-    query?: never;
-    url: '/api/uploads/{uploadId}';
-};
-
-export type GetUploadErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetUploadError = GetUploadErrors[keyof GetUploadErrors];
-
-export type GetUploadResponses = {
-    /**
-     * The file.
-     */
-    200: Blob | File;
-};
-
-export type GetUploadResponse = GetUploadResponses[keyof GetUploadResponses];
-
-export type GetExtensionsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/extensions';
-};
-
-export type GetExtensionsErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetExtensionsError = GetExtensionsErrors[keyof GetExtensionsErrors];
-
-export type GetExtensionsResponses = {
-    /**
-     * The extensions.
-     */
-    200: Extensions;
-};
-
-export type GetExtensionsResponse = GetExtensionsResponses[keyof GetExtensionsResponses];
-
-export type ReloadExtensionsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/extensions/reload';
-};
-
-export type ReloadExtensionsErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    409: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type ReloadExtensionsError = ReloadExtensionsErrors[keyof ReloadExtensionsErrors];
-
-export type ReloadExtensionsResponses = {
-    /**
-     * The loaded extensions.
-     */
-    200: Extensions;
-};
-
-export type ReloadExtensionsResponse = ReloadExtensionsResponses[keyof ReloadExtensionsResponses];
-
 export type GetSettingsData = {
     body?: never;
     path?: never;
@@ -1275,35 +831,6 @@ export type ListModelsResponses = {
 };
 
 export type ListModelsResponse = ListModelsResponses[keyof ListModelsResponses];
-
-export type SetAgentData = {
-    body: Agent;
-    path?: never;
-    query?: never;
-    url: '/api/settings/agent';
-};
-
-export type SetAgentErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type SetAgentError = SetAgentErrors[keyof SetAgentErrors];
-
-export type SetAgentResponses = {
-    /**
-     * Saved.
-     */
-    200: Ok;
-};
-
-export type SetAgentResponse = SetAgentResponses[keyof SetAgentResponses];
 
 export type DeleteProviderData = {
     body?: never;
@@ -1363,11 +890,40 @@ export type SetProviderResponses = {
 
 export type SetProviderResponse = SetProviderResponses[keyof SetProviderResponses];
 
+export type GetChannelsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/channels';
+};
+
+export type GetChannelsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetChannelsError = GetChannelsErrors[keyof GetChannelsErrors];
+
+export type GetChannelsResponses = {
+    /**
+     * Channel configuration and runtime status for this agent.
+     */
+    200: Channels;
+};
+
+export type GetChannelsResponse = GetChannelsResponses[keyof GetChannelsResponses];
+
 export type CreateTelegramPairingData = {
     body?: never;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/telegram/pairing';
+    url: '/api/agents/{agentId}/channels/telegram/pairing';
 };
 
 export type CreateTelegramPairingErrors = {
@@ -1397,9 +953,11 @@ export type CreateTelegramPairingResponse = CreateTelegramPairingResponses[keyof
 
 export type BeginWechatLoginData = {
     body?: never;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/wechat/login';
+    url: '/api/agents/{agentId}/channels/wechat/login';
 };
 
 export type BeginWechatLoginErrors = {
@@ -1425,10 +983,11 @@ export type PollWechatLoginData = {
         verifyCode?: string;
     };
     path: {
+        agentId: string;
         loginId: string;
     };
     query?: never;
-    url: '/api/settings/wechat/login/{loginId}/poll';
+    url: '/api/agents/{agentId}/channels/wechat/login/{loginId}/poll';
 };
 
 export type PollWechatLoginErrors = {
@@ -1451,9 +1010,11 @@ export type PollWechatLoginResponse = PollWechatLoginResponses[keyof PollWechatL
 
 export type DeleteWechatData = {
     body?: never;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/wechat';
+    url: '/api/agents/{agentId}/channels/wechat';
 };
 
 export type DeleteWechatErrors = {
@@ -1476,9 +1037,11 @@ export type DeleteWechatResponse = DeleteWechatResponses[keyof DeleteWechatRespo
 
 export type DeleteTelegramData = {
     body?: never;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/telegram';
+    url: '/api/agents/{agentId}/channels/telegram';
 };
 
 export type DeleteTelegramErrors = {
@@ -1501,9 +1064,11 @@ export type DeleteTelegramResponse = DeleteTelegramResponses[keyof DeleteTelegra
 
 export type SetTelegramData = {
     body: TelegramInput;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/telegram';
+    url: '/api/agents/{agentId}/channels/telegram';
 };
 
 export type SetTelegramErrors = {
@@ -1530,9 +1095,11 @@ export type SetTelegramResponse = SetTelegramResponses[keyof SetTelegramResponse
 
 export type DeleteFeishuData = {
     body?: never;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/feishu';
+    url: '/api/agents/{agentId}/channels/feishu';
 };
 
 export type DeleteFeishuErrors = {
@@ -1555,9 +1122,11 @@ export type DeleteFeishuResponse = DeleteFeishuResponses[keyof DeleteFeishuRespo
 
 export type GetFeishuData = {
     body?: never;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/feishu';
+    url: '/api/agents/{agentId}/channels/feishu';
 };
 
 export type GetFeishuErrors = {
@@ -1580,9 +1149,11 @@ export type GetFeishuResponse = GetFeishuResponses[keyof GetFeishuResponses];
 
 export type SetFeishuData = {
     body: FeishuInput;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/feishu';
+    url: '/api/agents/{agentId}/channels/feishu';
 };
 
 export type SetFeishuErrors = {
@@ -1605,9 +1176,11 @@ export type SetFeishuResponse = SetFeishuResponses[keyof SetFeishuResponses];
 
 export type BeginFeishuData = {
     body: FeishuBrand;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/feishu/registration';
+    url: '/api/agents/{agentId}/channels/feishu/registration';
 };
 
 export type BeginFeishuErrors = {
@@ -1630,9 +1203,11 @@ export type BeginFeishuResponse = BeginFeishuResponses[keyof BeginFeishuResponse
 
 export type PollFeishuData = {
     body: FeishuPoll;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/feishu/registration/poll';
+    url: '/api/agents/{agentId}/channels/feishu/registration/poll';
 };
 
 export type PollFeishuErrors = {
@@ -1652,60 +1227,6 @@ export type PollFeishuResponses = {
 };
 
 export type PollFeishuResponse = PollFeishuResponses[keyof PollFeishuResponses];
-
-export type ListAutomationsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/automations';
-};
-
-export type ListAutomationsErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type ListAutomationsError = ListAutomationsErrors[keyof ListAutomationsErrors];
-
-export type ListAutomationsResponses = {
-    /**
-     * The automations.
-     */
-    200: AutomationList;
-};
-
-export type ListAutomationsResponse = ListAutomationsResponses[keyof ListAutomationsResponses];
-
-export type CreateAutomationData = {
-    body: AutomationInput;
-    path?: never;
-    query?: never;
-    url: '/api/automations';
-};
-
-export type CreateAutomationErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type CreateAutomationError = CreateAutomationErrors[keyof CreateAutomationErrors];
-
-export type CreateAutomationResponses = {
-    /**
-     * Created.
-     */
-    201: Automation;
-};
-
-export type CreateAutomationResponse = CreateAutomationResponses[keyof CreateAutomationResponses];
 
 export type PreviewScheduleData = {
     body: ScheduleInput;
@@ -1736,16 +1257,745 @@ export type PreviewScheduleResponses = {
 
 export type PreviewScheduleResponse = PreviewScheduleResponses[keyof PreviewScheduleResponses];
 
+export type ListAgentsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/agents';
+};
+
+export type ListAgentsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListAgentsError = ListAgentsErrors[keyof ListAgentsErrors];
+
+export type ListAgentsResponses = {
+    /**
+     * The agents.
+     */
+    200: {
+        agents: Array<Agent>;
+    };
+};
+
+export type ListAgentsResponse = ListAgentsResponses[keyof ListAgentsResponses];
+
+export type CreateAgentData = {
+    body: AgentInput;
+    path?: never;
+    query?: never;
+    url: '/api/agents';
+};
+
+export type CreateAgentErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateAgentError = CreateAgentErrors[keyof CreateAgentErrors];
+
+export type CreateAgentResponses = {
+    /**
+     * The created agent with a UUID v7 ID.
+     */
+    201: Agent;
+};
+
+export type CreateAgentResponse = CreateAgentResponses[keyof CreateAgentResponses];
+
+export type GetAgentData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}';
+};
+
+export type GetAgentErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetAgentError = GetAgentErrors[keyof GetAgentErrors];
+
+export type GetAgentResponses = {
+    /**
+     * The agent's settings.
+     */
+    200: Agent;
+};
+
+export type GetAgentResponse = GetAgentResponses[keyof GetAgentResponses];
+
+export type UpdateAgentData = {
+    body: AgentInput;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}';
+};
+
+export type UpdateAgentErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type UpdateAgentError = UpdateAgentErrors[keyof UpdateAgentErrors];
+
+export type UpdateAgentResponses = {
+    /**
+     * The saved agent.
+     */
+    200: Agent;
+};
+
+export type UpdateAgentResponse = UpdateAgentResponses[keyof UpdateAgentResponses];
+
+export type GetTaskData = {
+    body?: never;
+    path: {
+        agentId: string;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/tasks/{taskId}';
+};
+
+export type GetTaskErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetTaskError = GetTaskErrors[keyof GetTaskErrors];
+
+export type GetTaskResponses = {
+    /**
+     * The task. Done means that it returned a report.
+     */
+    200: Task;
+};
+
+export type GetTaskResponse = GetTaskResponses[keyof GetTaskResponses];
+
+export type GetMainChatData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/main';
+};
+
+export type GetMainChatErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetMainChatError = GetMainChatErrors[keyof GetMainChatErrors];
+
+export type GetMainChatResponses = {
+    /**
+     * The main timeline.
+     */
+    200: Chat;
+};
+
+export type GetMainChatResponse = GetMainChatResponses[keyof GetMainChatResponses];
+
+export type ListChatsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats';
+};
+
+export type ListChatsErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListChatsError = ListChatsErrors[keyof ListChatsErrors];
+
+export type ListChatsResponses = {
+    /**
+     * The sessions.
+     */
+    200: ChatList;
+};
+
+export type ListChatsResponse = ListChatsResponses[keyof ListChatsResponses];
+
+export type CreateChatData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats';
+};
+
+export type CreateChatErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateChatError = CreateChatErrors[keyof CreateChatErrors];
+
+export type CreateChatResponses = {
+    /**
+     * The new or reused Chat session.
+     */
+    201: Chat;
+};
+
+export type CreateChatResponse = CreateChatResponses[keyof CreateChatResponses];
+
+export type GetChatData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}';
+};
+
+export type GetChatErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetChatError = GetChatErrors[keyof GetChatErrors];
+
+export type GetChatResponses = {
+    /**
+     * The chat.
+     */
+    200: Chat;
+};
+
+export type GetChatResponse = GetChatResponses[keyof GetChatResponses];
+
+export type SetChatSettingsData = {
+    body: ChatSettings;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/settings';
+};
+
+export type SetChatSettingsErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetChatSettingsError = SetChatSettingsErrors[keyof SetChatSettingsErrors];
+
+export type SetChatSettingsResponses = {
+    /**
+     * Saved.
+     */
+    200: Chat;
+};
+
+export type SetChatSettingsResponse = SetChatSettingsResponses[keyof SetChatSettingsResponses];
+
+export type SendMessageData = {
+    body: MessageInput;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/messages';
+};
+
+export type SendMessageErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SendMessageError = SendMessageErrors[keyof SendMessageErrors];
+
+export type SendMessageResponses = {
+    /**
+     * The message is stored.
+     */
+    202: SentMessage;
+};
+
+export type SendMessageResponse = SendMessageResponses[keyof SendMessageResponses];
+
+export type ClearContextData = {
+    body: {
+        /**
+         * A stable client UUID for this reset.
+         */
+        id: string;
+    };
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/clear';
+};
+
+export type ClearContextErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ClearContextError = ClearContextErrors[keyof ClearContextErrors];
+
+export type ClearContextResponses = {
+    /**
+     * The reset is stored.
+     */
+    202: SentMessage;
+};
+
+export type ClearContextResponse = ClearContextResponses[keyof ClearContextResponses];
+
+export type GetChatHistoryData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query: {
+        before: number;
+        limit?: number;
+    };
+    url: '/api/agents/{agentId}/chats/{chatId}/history';
+};
+
+export type GetChatHistoryErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetChatHistoryError = GetChatHistoryErrors[keyof GetChatHistoryErrors];
+
+export type GetChatHistoryResponses = {
+    /**
+     * A history page. No nextBefore means the start was reached.
+     */
+    200: HistoryPage;
+};
+
+export type GetChatHistoryResponse = GetChatHistoryResponses[keyof GetChatHistoryResponses];
+
+export type AbortChatData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/abort';
+};
+
+export type AbortChatErrors = {
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AbortChatError = AbortChatErrors[keyof AbortChatErrors];
+
+export type AbortChatResponses = {
+    /**
+     * Pending input is withdrawn and cancellation is requested.
+     */
+    200: Ok;
+};
+
+export type AbortChatResponse = AbortChatResponses[keyof AbortChatResponses];
+
+export type WatchChatData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/events';
+};
+
+export type WatchChatErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+};
+
+export type WatchChatError = WatchChatErrors[keyof WatchChatErrors];
+
+export type WatchChatResponses = {
+    /**
+     * The event stream.
+     */
+    200: ChatEvent;
+};
+
+export type WatchChatResponse = WatchChatResponses[keyof WatchChatResponses];
+
+export type CreateUploadData = {
+    body: {
+        file: Blob | File;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/uploads';
+};
+
+export type CreateUploadErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    413: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateUploadError = CreateUploadErrors[keyof CreateUploadErrors];
+
+export type CreateUploadResponses = {
+    /**
+     * Stored.
+     */
+    201: Attachment;
+};
+
+export type CreateUploadResponse = CreateUploadResponses[keyof CreateUploadResponses];
+
+export type GetUploadData = {
+    body?: never;
+    path: {
+        agentId: string;
+        uploadId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/uploads/{uploadId}';
+};
+
+export type GetUploadErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetUploadError = GetUploadErrors[keyof GetUploadErrors];
+
+export type GetUploadResponses = {
+    /**
+     * The file.
+     */
+    200: Blob | File;
+};
+
+export type GetUploadResponse = GetUploadResponses[keyof GetUploadResponses];
+
+export type GetExtensionsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/extensions';
+};
+
+export type GetExtensionsErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetExtensionsError = GetExtensionsErrors[keyof GetExtensionsErrors];
+
+export type GetExtensionsResponses = {
+    /**
+     * The extensions.
+     */
+    200: Extensions;
+};
+
+export type GetExtensionsResponse = GetExtensionsResponses[keyof GetExtensionsResponses];
+
+export type ReloadExtensionsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/extensions/reload';
+};
+
+export type ReloadExtensionsErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ReloadExtensionsError = ReloadExtensionsErrors[keyof ReloadExtensionsErrors];
+
+export type ReloadExtensionsResponses = {
+    /**
+     * The loaded extensions.
+     */
+    200: Extensions;
+};
+
+export type ReloadExtensionsResponse = ReloadExtensionsResponses[keyof ReloadExtensionsResponses];
+
+export type ListAutomationsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/automations';
+};
+
+export type ListAutomationsErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListAutomationsError = ListAutomationsErrors[keyof ListAutomationsErrors];
+
+export type ListAutomationsResponses = {
+    /**
+     * The automations.
+     */
+    200: AutomationList;
+};
+
+export type ListAutomationsResponse = ListAutomationsResponses[keyof ListAutomationsResponses];
+
+export type CreateAutomationData = {
+    body: AutomationInput;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/automations';
+};
+
+export type CreateAutomationErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateAutomationError = CreateAutomationErrors[keyof CreateAutomationErrors];
+
+export type CreateAutomationResponses = {
+    /**
+     * Created.
+     */
+    201: Automation;
+};
+
+export type CreateAutomationResponse = CreateAutomationResponses[keyof CreateAutomationResponses];
+
 export type DeleteAutomationData = {
     body?: never;
     path: {
+        agentId: string;
         automationId: string;
     };
     query?: never;
-    url: '/api/automations/{automationId}';
+    url: '/api/agents/{agentId}/automations/{automationId}';
 };
 
 export type DeleteAutomationErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
     /**
      * The request failed.
      */
@@ -1766,10 +2016,11 @@ export type DeleteAutomationResponse = DeleteAutomationResponses[keyof DeleteAut
 export type GetAutomationData = {
     body?: never;
     path: {
+        agentId: string;
         automationId: string;
     };
     query?: never;
-    url: '/api/automations/{automationId}';
+    url: '/api/agents/{agentId}/automations/{automationId}';
 };
 
 export type GetAutomationErrors = {
@@ -1797,10 +2048,11 @@ export type GetAutomationResponse = GetAutomationResponses[keyof GetAutomationRe
 export type UpdateAutomationData = {
     body: AutomationInput;
     path: {
+        agentId: string;
         automationId: string;
     };
     query?: never;
-    url: '/api/automations/{automationId}';
+    url: '/api/agents/{agentId}/automations/{automationId}';
 };
 
 export type UpdateAutomationErrors = {
@@ -1832,10 +2084,11 @@ export type UpdateAutomationResponse = UpdateAutomationResponses[keyof UpdateAut
 export type RunAutomationData = {
     body?: never;
     path: {
+        agentId: string;
         automationId: string;
     };
     query?: never;
-    url: '/api/automations/{automationId}/run';
+    url: '/api/agents/{agentId}/automations/{automationId}/run';
 };
 
 export type RunAutomationErrors = {
@@ -1863,10 +2116,11 @@ export type RunAutomationResponse = RunAutomationResponses[keyof RunAutomationRe
 export type ListAutomationRunsData = {
     body?: never;
     path: {
+        agentId: string;
         automationId: string;
     };
     query?: never;
-    url: '/api/automations/{automationId}/runs';
+    url: '/api/agents/{agentId}/automations/{automationId}/runs';
 };
 
 export type ListAutomationRunsErrors = {

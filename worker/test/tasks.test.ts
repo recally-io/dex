@@ -121,7 +121,7 @@ async function worker(
 			requestId: `request-${++request}`,
 			content,
 			attachments: [],
-			source: "dex:chat/test",
+			source: "dex:bot/chat/test",
 			...extra,
 		});
 	return {
@@ -366,7 +366,7 @@ test.each(["task", "dream"])("%s conversations cannot call any task management t
 			throw new Error("missing conversation");
 		await w.submit(`${name} ${JSON.stringify(args)}`, {
 			conversationId: result.conversationId,
-			...(kind === "task" ? { taskStageId: `restricted-${index}` } : { source: "dex:dream/test" }),
+			...(kind === "task" ? { taskStageId: `restricted-${index}` } : { source: "dex:bot/dream/test" }),
 			model: { provider: "faux", modelId: "tool" },
 		});
 		const settled = await w.wait(
@@ -487,7 +487,7 @@ test("shutdown suppresses settled events and waits for the real memory commit", 
 		thinkingLevel: "off",
 		instructions: "",
 		requestId: "wait-failure",
-		source: "dex:chat/test",
+		source: "dex:bot/chat/test",
 		content: JSON.stringify({ title: "Wait", goal: "Wait for control" }),
 		attachments: [],
 	});
@@ -501,7 +501,7 @@ test("shutdown suppresses settled events and waits for the real memory commit", 
 	const git = { cwd: join(dir, "memory"), env: { PATH: process.env["PATH"], HOME: dir } };
 	const commit = Bun.spawnSync(["git", "log", "-1", "--format=%s"], git);
 	expect(commit.exitCode).toBe(0);
-	expect(new TextDecoder().decode(commit.stdout).trim()).toBe("Update memory from dex:chat/test");
+	expect(new TextDecoder().decode(commit.stdout).trim()).toBe("Update memory from dex:bot/chat/test");
 	const saved = Bun.spawnSync(["git", "show", "HEAD:stop-report.md"], git);
 	expect(saved.exitCode).toBe(0);
 	expect(new TextDecoder().decode(saved.stdout)).toBe("shutdown evidence\n");
@@ -714,3 +714,65 @@ test("user reset replay stays idempotent while new input runs and busy reset cha
 			w.messages.find((m) => m.event === "settled" && m.params?.["requestId"] === id)?.params?.["status"],
 		).toBe("done");
 });
+
+// Each query waits for settlement before it changes the next input.
+/* oxlint-disable no-await-in-loop */
+test("user shares owner facts while each agent loads only its own work memory", async () => {
+	const w = await worker();
+	await mkdir(join(w.dir, "memory/agents/bot"), { recursive: true });
+	await mkdir(join(w.dir, "memory/agents/other"), { recursive: true });
+	await writeFile(join(w.dir, "memory/MEMORY.md"), "# Memory\nOwner drinks tea\n## Index\n");
+	await writeFile(join(w.dir, "memory/agents/bot/MEMORY.md"), "Bot checks migrations");
+	await writeFile(join(w.dir, "memory/agents/other/MEMORY.md"), "Other checks translations");
+	let request = 0;
+	const section = async (agentId: string, name: string, source: string) => {
+		const model = { provider: "faux", modelId: "section" };
+		const created = await w.call("createConversation", { agentId, model, thinkingLevel: "off" });
+		const result = created.result;
+		if (typeof result !== "object" || result === null || !("conversationId" in result))
+			throw new Error("missing conversation");
+		const requestId = `memory-${++request}`;
+		expect(
+			(
+				await w.call("submit", {
+					agentId,
+					conversationId: result.conversationId,
+					model,
+					thinkingLevel: "off",
+					instructions: "",
+					requestId,
+					content: name,
+					attachments: [],
+					source,
+				})
+			).error,
+		).toBeUndefined();
+		const settled = await w.wait((m) => m.event === "settled" && m.params?.["requestId"] === requestId);
+		expect(settled.params?.["status"]).toBe("done");
+		return String(settled.params?.["answer"]);
+	};
+	for (const agentId of ["bot", "other"]) {
+		const source = `dex:${agentId}/chat/12`;
+		expect(await section(agentId, "memory", source)).toContain("Owner drinks tea");
+		const personal = await section(agentId, "agent-memory", source);
+		expect(personal).toContain(agentId === "bot" ? "Bot checks migrations" : "Other checks translations");
+		expect(personal).not.toContain(agentId === "bot" ? "Other checks translations" : "Bot checks migrations");
+		const rules = await section(agentId, "memory-rules", source);
+		expect(rules).toContain(`agents/${agentId}/MEMORY.md`);
+		expect(rules).toContain("Facts about the owner");
+		expect(rules).toContain("role-specific experience");
+		expect(rules).toContain("Old `dex:chat/<id>` sources remain valid and mean the default agent");
+		expect(rules).toContain(`source: ${source}`);
+		expect(await section(agentId, "memory-rules", `dex:${agentId}/dream/12`)).not.toContain(
+			`source: dex:${agentId}/dream/12`,
+		);
+	}
+	// Missing files omit the section. The next request also reloads an edited entry point.
+	await rm(join(w.dir, "memory/agents/other/MEMORY.md"));
+	expect(await section("other", "agent-memory", "dex:other/chat/13")).not.toContain(
+		"Other checks translations",
+	);
+	await writeFile(join(w.dir, "memory/agents/bot/MEMORY.md"), "Bot checks schemas");
+	expect(await section("bot", "agent-memory", "dex:bot/chat/13")).toContain("Bot checks schemas");
+}, 30_000);
+/* oxlint-enable no-await-in-loop */

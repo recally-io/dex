@@ -1,3 +1,4 @@
+import { useAgentId } from "./agent-scope";
 import { useMutation } from "@tanstack/react-query";
 import { saveAgent } from "./agent";
 import { useApp } from "./app-state";
@@ -14,10 +15,11 @@ export function instructionsDirty(draft: string | null, saved: string | undefine
  * the page changes or the side panel closes.
  */
 export function useInstructions(saved: string) {
+  const agentId = useAgentId();
   const { draft, setDraft, settleDraft, notify } = useApp();
 
   const save = useMutation({
-    mutationFn: (instructions: string) => saveAgent((agent) => ({ ...agent, instructions })),
+    mutationFn: (instructions: string) => saveAgent(agentId, (agent) => ({ ...agent, instructions })),
     onSuccess: (_, value) => {
       // Edits typed during the save stay as a new draft, also when they were typed on a new visit
       // to this page.

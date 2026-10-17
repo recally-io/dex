@@ -30,7 +30,7 @@ func TestDigestStopsAtByteLimitAndKeepsOneRecord(t *testing.T) {
 			Answer: sql.NullString{String: long, Valid: true},
 		}
 	}
-	text, last, err := digest(rows)
+	text, last, err := digest("default", rows)
 	if err != nil {
 		t.Fatal(err)
 	}

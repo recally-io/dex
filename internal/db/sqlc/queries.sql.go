@@ -48,6 +48,45 @@ func (q *Queries) CreateAccessTokenIfMissing(ctx context.Context, token string) 
 	return err
 }
 
+const createAgent = `-- name: CreateAgent :one
+INSERT INTO agents (id, name, model_provider, model_id, thinking_level, instructions, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, name, model_provider, model_id, instructions, created_at, thinking_level
+`
+
+type CreateAgentParams struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	ModelProvider string `json:"model_provider"`
+	ModelID       string `json:"model_id"`
+	ThinkingLevel string `json:"thinking_level"`
+	Instructions  string `json:"instructions"`
+	CreatedAt     int64  `json:"created_at"`
+}
+
+func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent, error) {
+	row := q.db.QueryRowContext(ctx, createAgent,
+		arg.ID,
+		arg.Name,
+		arg.ModelProvider,
+		arg.ModelID,
+		arg.ThinkingLevel,
+		arg.Instructions,
+		arg.CreatedAt,
+	)
+	var i Agent
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ModelProvider,
+		&i.ModelID,
+		&i.Instructions,
+		&i.CreatedAt,
+		&i.ThinkingLevel,
+	)
+	return i, err
+}
+
 const createAgentIfMissing = `-- name: CreateAgentIfMissing :exec
 INSERT INTO agents (id, name, model_provider, model_id, created_at)
 VALUES (?, ?, '', '', ?)
@@ -225,11 +264,11 @@ func (q *Queries) DeleteProvider(ctx context.Context, id string) error {
 }
 
 const deleteTelegramSettings = `-- name: DeleteTelegramSettings :exec
-DELETE FROM telegram_settings WHERE id = 1
+DELETE FROM telegram_settings WHERE agent_id = ?
 `
 
-func (q *Queries) DeleteTelegramSettings(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteTelegramSettings)
+func (q *Queries) DeleteTelegramSettings(ctx context.Context, agentID string) error {
+	_, err := q.db.ExecContext(ctx, deleteTelegramSettings, agentID)
 	return err
 }
 
@@ -587,14 +626,14 @@ func (q *Queries) GetSubmissionReply(ctx context.Context, id string) (GetSubmiss
 }
 
 const getTelegramSettings = `-- name: GetTelegramSettings :one
-SELECT id, token, allowed_users, pairing_code, pairing_expires FROM telegram_settings WHERE id = 1
+SELECT agent_id, token, allowed_users, pairing_code, pairing_expires FROM telegram_settings WHERE agent_id = ?
 `
 
-func (q *Queries) GetTelegramSettings(ctx context.Context) (TelegramSetting, error) {
-	row := q.db.QueryRowContext(ctx, getTelegramSettings)
+func (q *Queries) GetTelegramSettings(ctx context.Context, agentID string) (TelegramSetting, error) {
+	row := q.db.QueryRowContext(ctx, getTelegramSettings, agentID)
 	var i TelegramSetting
 	err := row.Scan(
-		&i.ID,
+		&i.AgentID,
 		&i.Token,
 		&i.AllowedUsers,
 		&i.PairingCode,
@@ -627,6 +666,68 @@ func (q *Queries) LatestDream(ctx context.Context, agentID string) (LatestDreamR
 	var i LatestDreamRow
 	err := row.Scan(&i.ID, &i.CreatedAt, &i.Status)
 	return i, err
+}
+
+const listAgentIDs = `-- name: ListAgentIDs :many
+SELECT id FROM agents ORDER BY id
+`
+
+func (q *Queries) ListAgentIDs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listAgentIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAgents = `-- name: ListAgents :many
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level FROM agents ORDER BY created_at, id
+`
+
+func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
+	rows, err := q.db.QueryContext(ctx, listAgents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Agent{}
+	for rows.Next() {
+		var i Agent
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ModelProvider,
+			&i.ModelID,
+			&i.Instructions,
+			&i.CreatedAt,
+			&i.ThinkingLevel,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAutomationRuns = `-- name: ListAutomationRuns :many
@@ -1072,21 +1173,23 @@ const pairTelegramOwner = `-- name: PairTelegramOwner :one
 UPDATE telegram_settings
 SET allowed_users = CAST(?1 AS TEXT),
     pairing_code = '', pairing_expires = 0
-WHERE id = 1 AND allowed_users = '' AND token = ?2 AND pairing_code = ?3
-    AND pairing_code <> '' AND pairing_expires > ?4
+WHERE agent_id = ?2 AND allowed_users = '' AND token = ?3 AND pairing_code = ?4
+    AND pairing_code <> '' AND pairing_expires > ?5
 RETURNING allowed_users
 `
 
 type PairTelegramOwnerParams struct {
-	UserID string `json:"user_id"`
-	Token  string `json:"token"`
-	Code   string `json:"code"`
-	Now    int64  `json:"now"`
+	UserID  string `json:"user_id"`
+	AgentID string `json:"agent_id"`
+	Token   string `json:"token"`
+	Code    string `json:"code"`
+	Now     int64  `json:"now"`
 }
 
 func (q *Queries) PairTelegramOwner(ctx context.Context, arg PairTelegramOwnerParams) (string, error) {
 	row := q.db.QueryRowContext(ctx, pairTelegramOwner,
 		arg.UserID,
+		arg.AgentID,
 		arg.Token,
 		arg.Code,
 		arg.Now,
@@ -1149,32 +1252,34 @@ func (q *Queries) SetFirstChatTitle(ctx context.Context, arg SetFirstChatTitlePa
 }
 
 const setTelegramPairing = `-- name: SetTelegramPairing :exec
-UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE id = 1
+UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE agent_id = ?
 `
 
 type SetTelegramPairingParams struct {
 	PairingCode    string `json:"pairing_code"`
 	PairingExpires int64  `json:"pairing_expires"`
+	AgentID        string `json:"agent_id"`
 }
 
 func (q *Queries) SetTelegramPairing(ctx context.Context, arg SetTelegramPairingParams) error {
-	_, err := q.db.ExecContext(ctx, setTelegramPairing, arg.PairingCode, arg.PairingExpires)
+	_, err := q.db.ExecContext(ctx, setTelegramPairing, arg.PairingCode, arg.PairingExpires, arg.AgentID)
 	return err
 }
 
 const setTelegramSettings = `-- name: SetTelegramSettings :exec
-INSERT INTO telegram_settings (id, token, allowed_users)
-VALUES (1, ?, ?)
-ON CONFLICT (id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, pairing_code = '', pairing_expires = 0
+INSERT INTO telegram_settings (agent_id, token, allowed_users)
+VALUES (?, ?, ?)
+ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, pairing_code = '', pairing_expires = 0
 `
 
 type SetTelegramSettingsParams struct {
+	AgentID      string `json:"agent_id"`
 	Token        string `json:"token"`
 	AllowedUsers string `json:"allowed_users"`
 }
 
 func (q *Queries) SetTelegramSettings(ctx context.Context, arg SetTelegramSettingsParams) error {
-	_, err := q.db.ExecContext(ctx, setTelegramSettings, arg.Token, arg.AllowedUsers)
+	_, err := q.db.ExecContext(ctx, setTelegramSettings, arg.AgentID, arg.Token, arg.AllowedUsers)
 	return err
 }
 

@@ -20,14 +20,9 @@ func TestUserChannelMainLegacyNewReplayPreservesContext(t *testing.T) {
 	waitResultSubmission(t, conn, seed, "done")
 	sessionFixture(t, d, "telegram:7", 1)
 	d.stop()
-	// The previous version committed the receipt and peer rotation before completion.
-	for _, stmt := range []string{
-		"INSERT INTO channel_commands (source_key,peer,channel_key,command) VALUES ('telegram:123:1','telegram:7','telegram:7','/new')",
-		"INSERT INTO channel_peers (peer,channel_key) VALUES ('telegram:7','telegram:7/old-new-context')",
-	} {
-		if _, err := conn.ExecContext(t.Context(), stmt); err != nil {
-			t.Fatal(err)
-		}
+	// The previous version committed the receipt before completion.
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_commands (agent_id,source_key,peer,channel_key,command) VALUES ('default','telegram:123:1','telegram:7','telegram:7','/new')"); err != nil {
+		t.Fatal(err)
 	}
 
 	// When dex restarts and replays the old command.
@@ -60,12 +55,12 @@ func TestUserChannelMainLegacyStopReplayPreservesWork(t *testing.T) {
 	d.setModel(t, "bash")
 	input := d.send(t, main, taskGate(t, dir, "legacy-stop"))
 	waitTaskFile(t, filepath.Join(dir, "legacy-stop.pid"))
-	if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_commands (source_key,peer,channel_key,command) VALUES ('telegram:123:1','telegram:7','telegram:7','/stop')"); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_commands (agent_id,source_key,peer,channel_key,command) VALUES ('default','telegram:123:1','telegram:7','telegram:7','/stop')"); err != nil {
 		t.Fatal(err)
 	}
 
 	// When the channel replays its stored command.
-	d.must(t, http.MethodPut, "/api/settings/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
 	waitChannelCommandCompleted(t, conn)
 
 	// Then main work can still finish with its answer.
@@ -94,7 +89,7 @@ func TestUserChannelMainStopReplayPreservesLaterWebInput(t *testing.T) {
 	f.message(1, 42, 7, "/stop")
 	waitResultSubmission(t, conn, first, "unanswered")
 	waitChannelCommandFailure(t, d)
-	d.must(t, http.MethodDelete, "/api/settings/telegram", nil, nil)
+	d.must(t, http.MethodDelete, "/api/agents/default/channels/telegram", nil, nil)
 	waitTaskPIDGone(t, filepath.Join(dir, "first-stop.pid"))
 	// A maintenance lease keeps the new input queued until the control restart.
 	eventually(t, "maintenance after Stop", func() (bool, any) {
@@ -119,7 +114,7 @@ func TestUserChannelMainStopReplayPreservesLaterWebInput(t *testing.T) {
 
 	// When dex restarts and replays the incomplete Stop.
 	d = startDex(t, dir, f.srv.URL)
-	d.must(t, http.MethodPut, "/api/settings/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
 	waitTaskChannelText(t, f, "Stop requested.")
 	if got := resultSubmission(t, conn, later); got.status != "pending" {
 		t.Fatalf("replayed Stop withdrew later web input: %+v", got)
@@ -149,7 +144,7 @@ func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
 	f.message(1, 42, 7, "/stop")
 	waitResultSubmission(t, conn, first, "unanswered")
 	waitChannelCommandFailure(t, d)
-	d.must(t, http.MethodDelete, "/api/settings/telegram", nil, nil)
+	d.must(t, http.MethodDelete, "/api/agents/default/channels/telegram", nil, nil)
 	waitTaskPIDGone(t, filepath.Join(dir, "first-stop.pid"))
 	spawnExecution(t, d, main, "Later task", taskGate(t, dir, "later-task"), "bash")
 	waitTaskFile(t, filepath.Join(dir, "later-task.pid"))
@@ -161,7 +156,7 @@ func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
 	if _, err := conn.ExecContext(t.Context(), "DROP TRIGGER fail_command_completion"); err != nil {
 		t.Fatal(err)
 	}
-	d.must(t, http.MethodPut, "/api/settings/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
 	waitTaskChannelText(t, f, "Stop requested.")
 	if got := resultSubmission(t, conn, later); got.status != "pending" {
 		t.Fatalf("replayed Stop withdrew later running input: %+v", got)
@@ -202,7 +197,7 @@ func failChannelCommandCompletion(t *testing.T, conn *sql.DB) {
 func waitChannelCommandFailure(t *testing.T, d *dex) {
 	t.Helper()
 	eventually(t, "command completion failure", func() (bool, any) {
-		_, body := d.call(t, http.MethodGet, "/api/settings", nil)
+		_, body := d.call(t, http.MethodGet, "/api/agents/default/channels", nil)
 		return strings.Contains(body, "command completion failure"), "waiting for the database error"
 	})
 }

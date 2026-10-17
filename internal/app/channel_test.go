@@ -109,7 +109,7 @@ func TestUserStopsCurrentChannelAnswer(t *testing.T) {
 	}
 	// Then the runtime status is visible without credentials.
 	var settings map[string]any
-	d.must(t, http.MethodGet, "/api/settings", nil, &settings)
+	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &settings)
 	tg := settings["telegram"].(map[string]any)
 	if tg["status"].(map[string]any)["state"] != "running" {
 		t.Fatalf("status: %v", tg)
@@ -189,7 +189,7 @@ func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 			if method == http.MethodPut {
 				suffix = "settings"
 			}
-			status, raw := d.call(t, method, fmt.Sprintf("/api/chats/%d/%s", id, suffix), body)
+			status, raw := d.call(t, method, fmt.Sprintf("/api/agents/default/chats/%d/%s", id, suffix), body)
 			if status != http.StatusForbidden {
 				t.Fatalf("%s %s: %d %s", platform, method, status, raw)
 			}

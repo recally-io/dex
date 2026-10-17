@@ -1,14 +1,15 @@
+import type { Channels as Settings } from "../api/generated/types.gen";
+import { useAgentId } from "../lib/agent-scope";
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { IconChevronRightSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronRightSmall";
 import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
-import type { Settings } from "../api/generated/types.gen";
+
 import {
   createTelegramPairingMutation,
   deleteTelegramMutation,
-  getFeishuOptions,
-  getSettingsOptions,
+  getChannelsOptions,
   setTelegramMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { errorText, refreshSettings } from "../lib/queries";
@@ -16,14 +17,13 @@ import { useApp } from "../lib/app-state";
 import { WechatChannel } from "../components/wechat-channel";
 import { Confirm } from "../components/confirm";
 import { Modal } from "../components/dialog";
-import { Failure, Spinner } from "../components/feedback";
+import { Failure, Loading, Spinner } from "../components/feedback";
 import { Field, Input, SavedSecret, Textarea } from "../components/form";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import { FeishuChannel } from "./feishu";
 import { Crumb } from "../components/crumb";
-import { WithSettings } from "../components/with-settings";
 
 function ChannelRow({
   channel,
@@ -36,6 +36,8 @@ function ChannelRow({
   text: string;
   status: ReactNode;
 }) {
+  const agentId = useAgentId();
+
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
       <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-inset text-ink-2 shadow-hairline">
@@ -43,8 +45,8 @@ function ChannelRow({
       </span>
       <span className="min-w-0 flex-1">
         <Link
-          to="/channels/$channelId"
-          params={{ channelId: channel }}
+          to="/a/$agentId/channels/$channelId"
+          params={{ agentId, channelId: channel }}
           className="block w-fit text-[13.5px] font-medium text-ink hover:underline"
         >
           {name}
@@ -69,8 +71,8 @@ function Boundary() {
 }
 
 export function ChannelsSection({ settings }: { settings: Settings }) {
-  const saved = useQuery({ ...getSettingsOptions(), refetchInterval: 3000 });
-  const feishu = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
+  const agentId = useAgentId();
+  const saved = useQuery({ ...getChannelsOptions({ path: { agentId } }), refetchInterval: 3000 });
   const current = saved.data ?? settings;
 
   const status = (state: string) => (
@@ -103,7 +105,7 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
             channel="feishu"
             name="Feishu / Lark"
             text="Private messages from the paired owner."
-            status={status(feishu.isError ? "unavailable" : (feishu.data?.status ?? "Loading…"))}
+            status={status(current.feishu.status)}
           />
         </div>
       </Panel>
@@ -114,7 +116,7 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
 export function ChannelsPage() {
   return (
     <FramedPage title="Channels">
-      <WithSettings>{(settings) => <ChannelsSection settings={settings} />}</WithSettings>
+      <WithChannels>{(settings) => <ChannelsSection settings={settings} />}</WithChannels>
     </FramedPage>
   );
 }
@@ -122,11 +124,11 @@ export function ChannelsPage() {
 export function ChannelPage({ channel }: { channel: "telegram" | "wechat" | "feishu" }) {
   return channel === "wechat" ? (
     <FramedPage
-      eyebrow={<Crumb to="/channels">Channels</Crumb>}
+      eyebrow={<Crumb to="/a/$agentId/channels">Channels</Crumb>}
       title="WeChat"
       description="Scan once. dex recognizes the owner from the login."
     >
-      <WithSettings>{(settings) => <WechatChannel settings={settings} />}</WithSettings>
+      <WithChannels>{(settings) => <WechatChannel settings={settings} />}</WithChannels>
     </FramedPage>
   ) : channel === "feishu" ? (
     <FeishuChannel />
@@ -136,11 +138,12 @@ export function ChannelPage({ channel }: { channel: "telegram" | "wechat" | "fei
 }
 
 function TelegramChannel() {
-  const saved = useQuery({ ...getSettingsOptions(), refetchInterval: 2000 });
+  const agentId = useAgentId();
+  const saved = useQuery({ ...getChannelsOptions({ path: { agentId } }), refetchInterval: 2000 });
 
   return (
     <FramedPage
-      eyebrow={<Crumb to="/channels">Channels</Crumb>}
+      eyebrow={<Crumb to="/a/$agentId/channels">Channels</Crumb>}
       title="Telegram"
       badge={
         saved.data ? (
@@ -151,20 +154,21 @@ function TelegramChannel() {
       }
       description="Talk to dex from your phone. Only the users that you allow can use the bot."
     >
-      <WithSettings>{(settings) => <Telegram settings={settings} />}</WithSettings>
+      <WithChannels>{(settings) => <Telegram settings={settings} />}</WithChannels>
     </FramedPage>
   );
 }
 
 function Telegram({ settings }: { settings: Settings }) {
+  const agentId = useAgentId();
   const { notify } = useApp();
   const telegram = settings.telegram;
   const [edit, setEdit] = useState(false);
   const [off, setOff] = useState(false);
-  const pairing = useMutation(createTelegramPairingMutation());
+  const pairing = useMutation(createTelegramPairingMutation({ path: { agentId } }));
 
   const deletion = useMutation({
-    ...deleteTelegramMutation(),
+    ...deleteTelegramMutation({ path: { agentId } }),
     onSuccess: async () => {
       await refreshSettings();
       setOff(false);
@@ -234,7 +238,7 @@ function Telegram({ settings }: { settings: Settings }) {
               size="sm"
               variant="secondary"
               disabled={pairing.isPending}
-              onClick={() => pairing.mutate({})}
+              onClick={() => pairing.mutate({ path: { agentId } })}
             >
               {pairing.isPending ? "Creating link…" : "Create owner pairing link"}
             </Button>
@@ -289,7 +293,7 @@ function Telegram({ settings }: { settings: Settings }) {
         <TelegramDialog
           settings={settings}
           onClose={() => setEdit(false)}
-          onNeedsPairing={() => pairing.mutate({})}
+          onNeedsPairing={() => pairing.mutate({ path: { agentId } })}
         />
       ) : null}
       {off ? (
@@ -298,7 +302,7 @@ function Telegram({ settings }: { settings: Settings }) {
           description="dex stops reading the bot and forgets the saved token. The main timeline stays. To turn Telegram on again, enter the token again."
           confirmLabel="Turn off"
           onCancel={() => setOff(false)}
-          onConfirm={() => deletion.mutate({})}
+          onConfirm={() => deletion.mutate({ path: { agentId } })}
           pending={deletion.isPending}
           error={deletion.error}
         />
@@ -329,6 +333,7 @@ function TelegramDialog({
   onClose: () => void;
   onNeedsPairing: () => void;
 }) {
+  const agentId = useAgentId();
   const { notify } = useApp();
   const saved = settings.telegram.enabled;
   const [token, setToken] = useState("");
@@ -339,7 +344,7 @@ function TelegramDialog({
   const tokenError = !saved && !token.trim() ? "Enter the bot token from @BotFather." : "";
 
   const save = useMutation({
-    ...setTelegramMutation(),
+    ...setTelegramMutation({ path: { agentId } }),
     onSuccess: async (_, variables) => {
       await refreshSettings();
       onClose();
@@ -356,7 +361,7 @@ function TelegramDialog({
     setTried(true);
 
     if (tokenError || parsed.error || save.isPending) return;
-    save.mutate({ body: { token: token.trim(), allowedUsers: parsed.users } });
+    save.mutate({ path: { agentId }, body: { token: token.trim(), allowedUsers: parsed.users } });
   }
 
   return (
@@ -453,4 +458,18 @@ function TelegramDialog({
       ) : null}
     </Modal>
   );
+}
+
+function WithChannels({ children }: { children: (settings: Settings) => ReactNode }) {
+  const agentId = useAgentId();
+  const settings = useQuery(getChannelsOptions({ path: { agentId } }));
+
+  if (settings.isPending) return <Loading />;
+
+  if (settings.isError)
+    return (
+      <Failure title="Could not load channels" error={settings.error} retry={() => void settings.refetch()} />
+    );
+
+  return children(settings.data);
 }

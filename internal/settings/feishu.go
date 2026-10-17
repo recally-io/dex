@@ -41,15 +41,15 @@ type feishuSession struct {
 }
 
 // ConfigureFeishu connects the runtime and registration test boundary before Start.
-func (s *Service) ConfigureFeishu(apiURL, accountsURL string, onChange func(*feishu.Config)) {
+func (s *Service) ConfigureFeishu(apiURL, accountsURL string, onChange func(string, *feishu.Config)) {
 	s.feishuAPIURL = apiURL
 	s.feishuRegistrar = feishu.Registrar{AccountsURL: accountsURL}
 	s.onFeishu = onChange
 }
 
 // FeishuConfig returns the saved credentials, or nil when off.
-func (s *Service) FeishuConfig(ctx context.Context) (*feishu.Config, error) {
-	row, err := s.q.GetFeishuSettings(ctx)
+func (s *Service) FeishuConfig(ctx context.Context, agentID string) (*feishu.Config, error) {
+	row, err := s.q.GetFeishuSettings(ctx, agentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -60,22 +60,22 @@ func (s *Service) FeishuConfig(ctx context.Context) (*feishu.Config, error) {
 }
 
 // GetFeishu returns the saved public configuration.
-func (s *Service) GetFeishu(ctx context.Context) (Feishu, error) {
-	cfg, err := s.FeishuConfig(ctx)
+func (s *Service) GetFeishu(ctx context.Context, agentID string) (Feishu, error) {
+	cfg, err := s.FeishuConfig(ctx, agentID)
 	if err != nil {
 		return Feishu{}, err
 	}
 	if cfg == nil {
 		return Feishu{Brand: "feishu", Status: "off"}, nil
 	}
-	runtime := s.ChannelStatus("feishu")
+	runtime := s.ChannelStatus(agentID, "feishu")
 	return Feishu{Enabled: true, AppID: cfg.AppID, Brand: cfg.Brand, Paired: cfg.OwnerID != "", Status: runtime.State, Error: runtime.Reason}, nil
 }
 
 func validBrand(brand string) bool { return brand == "feishu" || brand == "lark" }
 
 // SetFeishu saves manual credentials and resets owner authorization on a credential change.
-func (s *Service) SetFeishu(ctx context.Context, appID, secret, brand string) (FeishuSetup, error) {
+func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, brand string) (FeishuSetup, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	appID = strings.TrimSpace(appID)
@@ -84,7 +84,7 @@ func (s *Service) SetFeishu(ctx context.Context, appID, secret, brand string) (F
 		return FeishuSetup{}, fmt.Errorf("%w: enter an App ID and choose Feishu or Lark", ErrInvalid)
 	}
 	cfg := feishu.Config{AppID: appID, AppSecret: secret, Brand: brand, APIURL: s.feishuAPIURL}
-	saved, err := s.FeishuConfig(ctx)
+	saved, err := s.FeishuConfig(ctx, agentID)
 	if err != nil {
 		return FeishuSetup{}, err
 	}
@@ -107,54 +107,57 @@ func (s *Service) SetFeishu(ctx context.Context, appID, secret, brand string) (F
 		}
 		pairing = hex.EncodeToString(b)
 	}
-	if err := s.saveFeishu(ctx, cfg, pairing); err != nil {
+	if err := s.saveFeishu(ctx, agentID, cfg, pairing); err != nil {
 		return FeishuSetup{}, err
 	}
-	s.feishuSession = nil
-	s.feishuSessionID = ""
+	s.channelSession(agentID).feishuSession = nil
+	s.channelSession(agentID).feishuSessionID = ""
 	return FeishuSetup{Status: "saved", PairingCode: pairing, ExpiresIn: 600}, nil
 }
 
-func (s *Service) saveFeishu(ctx context.Context, cfg feishu.Config, pairing string) error {
-	if err := s.q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{AppID: cfg.AppID, AppSecret: cfg.AppSecret, Brand: cfg.Brand, OwnerID: cfg.OwnerID, PairingCode: pairing, PairingExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli()}); err != nil {
+func (s *Service) saveFeishu(ctx context.Context, agentID string, cfg feishu.Config, pairing string) error {
+	if err := s.checkCredential(ctx, agentID, "feishu", cfg.AppID); err != nil {
 		return err
 	}
-	s.onFeishu(&cfg)
+	if err := s.q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{AgentID: agentID, AppID: cfg.AppID, AppSecret: cfg.AppSecret, Brand: cfg.Brand, OwnerID: cfg.OwnerID, PairingCode: pairing, PairingExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli()}); err != nil {
+		return err
+	}
+	s.onFeishu(agentID, &cfg)
 	return nil
 }
 
 // PairFeishu consumes a one-time code only from a DM. The caller checks the DM boundary.
-func (s *Service) PairFeishu(ctx context.Context, owner, code string) (bool, error) {
+func (s *Service) PairFeishu(ctx context.Context, agentID string, owner, code string) (bool, error) {
 	if owner == "" || code == "" {
 		return false, nil
 	}
-	rows, err := s.q.PairFeishuOwner(ctx, sqlc.PairFeishuOwnerParams{OwnerID: owner, PairingCode: code, PairingExpiresAt: time.Now().UnixMilli()})
+	rows, err := s.q.PairFeishuOwner(ctx, sqlc.PairFeishuOwnerParams{AgentID: agentID, OwnerID: owner, PairingCode: code, PairingExpiresAt: time.Now().UnixMilli()})
 	// The running bot adopts the saved owner without restarting itself.
 	return rows == 1, err
 }
 
 // DeleteFeishu removes credentials and cancels a pending registration.
-func (s *Service) DeleteFeishu(ctx context.Context) error {
+func (s *Service) DeleteFeishu(ctx context.Context, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.q.DeleteFeishuSettings(ctx); err != nil {
+	if err := s.q.DeleteFeishuSettings(ctx, agentID); err != nil {
 		return err
 	}
-	s.feishuSession = nil
-	s.feishuSessionID = ""
-	s.onFeishu(nil)
+	s.channelSession(agentID).feishuSession = nil
+	s.channelSession(agentID).feishuSessionID = ""
+	s.onFeishu(agentID, nil)
 	return nil
 }
 
 // BeginFeishu keeps the platform device code on the server.
-func (s *Service) BeginFeishu(ctx context.Context, brand string) (FeishuSetup, error) {
+func (s *Service) BeginFeishu(ctx context.Context, agentID string, brand string) (FeishuSetup, error) {
 	if !validBrand(brand) {
 		return FeishuSetup{}, fmt.Errorf("%w: choose Feishu or Lark", ErrInvalid)
 	}
 	id := uuid.NewV7().String()
 	s.mu.Lock()
-	s.feishuSession = nil
-	s.feishuSessionID = id
+	s.channelSession(agentID).feishuSession = nil
+	s.channelSession(agentID).feishuSessionID = id
 	s.mu.Unlock()
 	data, err := s.feishuRegistrar.Begin(ctx, brand)
 	if err != nil {
@@ -162,18 +165,18 @@ func (s *Service) BeginFeishu(ctx context.Context, brand string) (FeishuSetup, e
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.feishuSessionID != id {
+	if s.channelSession(agentID).feishuSessionID != id {
 		return FeishuSetup{}, fmt.Errorf("%w: registration was replaced or canceled", ErrInvalid)
 	}
-	s.feishuSession = &feishuSession{device: data.DeviceCode, brand: brand, expires: time.Now().Add(time.Duration(data.ExpiresIn) * time.Second), next: time.Now().Add(time.Duration(data.Interval) * time.Second)}
+	s.channelSession(agentID).feishuSession = &feishuSession{device: data.DeviceCode, brand: brand, expires: time.Now().Add(time.Duration(data.ExpiresIn) * time.Second), next: time.Now().Add(time.Duration(data.Interval) * time.Second)}
 	return FeishuSetup{Session: id, QRURL: data.QRURL, Interval: data.Interval, ExpiresIn: data.ExpiresIn, Status: "pending"}, nil
 }
 
 // PollFeishu saves credentials only from the active server-owned device session.
-func (s *Service) PollFeishu(ctx context.Context, id string) (FeishuSetup, error) {
+func (s *Service) PollFeishu(ctx context.Context, agentID string, id string) (FeishuSetup, error) {
 	s.mu.Lock()
-	session := s.feishuSession
-	if session == nil || id != s.feishuSessionID || time.Now().After(session.expires) {
+	session := s.channelSession(agentID).feishuSession
+	if session == nil || id != s.channelSession(agentID).feishuSessionID || time.Now().After(session.expires) {
 		s.mu.Unlock()
 		return FeishuSetup{}, fmt.Errorf("%w: registration expired; create a new QR code", ErrInvalid)
 	}
@@ -188,7 +191,7 @@ func (s *Service) PollFeishu(ctx context.Context, id string) (FeishuSetup, error
 	data, err := s.feishuRegistrar.Poll(ctx, session.brand, session.device)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.feishuSession != session || id != s.feishuSessionID || time.Now().After(session.expires) {
+	if s.channelSession(agentID).feishuSession != session || id != s.channelSession(agentID).feishuSessionID || time.Now().After(session.expires) {
 		return FeishuSetup{}, fmt.Errorf("%w: registration was replaced or expired", ErrInvalid)
 	}
 	if err != nil {
@@ -203,10 +206,10 @@ func (s *Service) PollFeishu(ctx context.Context, id string) (FeishuSetup, error
 		brand = "lark"
 	}
 	cfg := feishu.Config{AppID: data.AppID, AppSecret: data.AppSecret, OwnerID: data.UserInfo.OpenID, Brand: brand, APIURL: s.feishuAPIURL}
-	if err := s.saveFeishu(ctx, cfg, ""); err != nil {
+	if err := s.saveFeishu(ctx, agentID, cfg, ""); err != nil {
 		return FeishuSetup{}, err
 	}
-	s.feishuSession = nil
-	s.feishuSessionID = ""
+	s.channelSession(agentID).feishuSession = nil
+	s.channelSession(agentID).feishuSessionID = ""
 	return FeishuSetup{Status: "created"}, nil
 }

@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+	"uuid"
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
@@ -30,6 +31,9 @@ import (
 // ErrInvalid wraps the errors of a change that the service refuses.
 var ErrInvalid = errors.New("invalid settings")
 
+// ErrNotFound means that the agent does not exist.
+var ErrNotFound = errors.New("agent not found")
+
 // APIs are the APIs a custom provider can use, with their names for the UI.
 var APIs = map[string]string{
 	"openai-completions": "OpenAI Chat Completions",
@@ -42,24 +46,30 @@ var customID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 
 // Settings is the complete view for the web UI. It never holds a secret.
 type Settings struct {
-	Agent Agent `json:"agent"`
 	// Providers are the providers that the user added, in the order of addition.
 	Providers []Provider `json:"providers"`
 	// Builtins are all pi-ai built-in providers that take an API key, for the UI to add one.
 	Builtins []worker.ProviderInfo `json:"builtins"`
 	// APIs are the APIs of custom providers: ID → name.
-	APIs     map[string]string `json:"apis"`
-	Telegram Telegram          `json:"telegram"`
-	Wechat   Wechat            `json:"wechat"`
+	APIs map[string]string `json:"apis"`
 }
 
-// Agent holds the settings of the default agent. An empty ModelID means no model is chosen.
+// Activity summarizes one agent for the agent list.
+type Activity struct {
+	ActiveSessions     int64 `json:"activeSessions"`
+	RunningChannels    int64 `json:"runningChannels"`
+	EnabledAutomations int64 `json:"enabledAutomations"`
+}
+
+// Agent holds the settings of one agent. An empty ModelID means no model is chosen.
 type Agent struct {
-	Name          string `json:"name"`
-	Provider      string `json:"provider"`
-	ModelID       string `json:"modelId"`
-	ThinkingLevel string `json:"thinkingLevel"`
-	Instructions  string `json:"instructions"`
+	Activity      *Activity `json:"activity,omitzero"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Provider      string    `json:"provider"`
+	ModelID       string    `json:"modelId"`
+	ThinkingLevel string    `json:"thinkingLevel"`
+	Instructions  string    `json:"instructions"`
 }
 
 // thinkingLevels are pi-ai's ModelThinkingLevel values. pi-ai sends the nearest level that the
@@ -93,42 +103,34 @@ type Telegram struct {
 // Service reads and changes settings.
 type Service struct {
 	wechatOptions wechat.Options
-	onWechat      func(*wechat.Config)
-	login         *wechat.Login
-	loginID       string
+	onWechat      func(string, *wechat.Config)
 	wechatDB      *sql.DB
-	ChannelStatus func(string) channel.Status
+	ChannelStatus func(string, string) channel.Status
 	q             *sqlc.Queries
 	worker        worker.CallFunc
-	agentID       string
 	apiURL        string // Telegram Bot API URL; empty for the default
-	onTelegram    func(*telegram.Config)
+	onTelegram    func(string, *telegram.Config)
 
 	feishuAPIURL    string
 	feishuRegistrar feishu.Registrar
-	onFeishu        func(*feishu.Config)
-	feishuSession   *feishuSession
-	feishuSessionID string
+	onFeishu        func(string, *feishu.Config)
 
 	// Serializes changes, so the worker and the bot always get the newest saved settings.
-	mu sync.Mutex
+	mu       sync.Mutex
+	sessions map[string]*channelSession
 
 	errMu sync.Mutex
 	errs  map[string]string // from the last ApplyProviders: provider ID → why its model list failed
 }
 
-// New returns a Service for agentID. onTelegram receives the new bot configuration after each
+// New returns the shared settings Service. onTelegram receives the new bot configuration after each
 // Telegram change, or nil when Telegram is off.
-func New(q *sqlc.Queries, call worker.CallFunc, agentID, telegramAPIURL string, onTelegram func(*telegram.Config)) *Service {
-	return &Service{q: q, worker: call, agentID: agentID, apiURL: telegramAPIURL, onTelegram: onTelegram}
+func New(q *sqlc.Queries, call worker.CallFunc, telegramAPIURL string, onTelegram func(string, *telegram.Config)) *Service {
+	return &Service{q: q, worker: call, apiURL: telegramAPIURL, onTelegram: onTelegram}
 }
 
 // Get returns all settings. It asks the worker which providers exist.
 func (s *Service) Get(ctx context.Context) (Settings, error) {
-	agent, err := s.q.GetAgent(ctx, s.agentID)
-	if err != nil {
-		return Settings{}, err
-	}
 	rows, err := s.q.ListProviders(ctx)
 	if err != nil {
 		return Settings{}, err
@@ -149,32 +151,10 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 			providers[i].Name = builtins[j].Name
 		}
 	}
-	tg := Telegram{AllowedUsers: []int64{}}
-	if cfg, err := s.TelegramConfig(ctx); err != nil {
-		return Settings{}, err
-	} else if cfg != nil {
-		botID, _, _ := strings.Cut(cfg.Token, ":")
-		tg = Telegram{Enabled: true, BotID: botID, AllowedUsers: cfg.AllowedUsers}
-	}
-	if s.ChannelStatus != nil {
-		tg.Status = s.ChannelStatus("telegram")
-	} else {
-		tg.Status = channel.Status{State: "off"}
-	}
-	wx, err := s.wechatView(ctx)
-	if err != nil {
-		return Settings{}, err
-	}
 	return Settings{
-		Wechat: wx,
-		Agent: Agent{
-			Name: agent.Name, Provider: agent.ModelProvider, ModelID: agent.ModelID, ThinkingLevel: agent.ThinkingLevel,
-			Instructions: agent.Instructions,
-		},
 		Providers: providers,
 		Builtins:  builtins,
 		APIs:      APIs,
-		Telegram:  tg,
 	}, nil
 }
 
@@ -212,28 +192,90 @@ func (s *Service) Models(ctx context.Context) ([]worker.ModelInfo, error) {
 	return listed.Models, nil
 }
 
-// SetAgent changes the bot's name and settings. The next message uses the settings.
-func (s *Service) SetAgent(ctx context.Context, a Agent) error {
+// Agent reads one agent.
+func (s *Service) Agent(ctx context.Context, id string) (Agent, error) {
+	row, err := s.q.GetAgent(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Agent{}, ErrNotFound
+	}
+	return agentView(row), err
+}
+
+func agentView(row sqlc.Agent) Agent {
+	return Agent{ID: row.ID, Name: row.Name, Provider: row.ModelProvider, ModelID: row.ModelID,
+		ThinkingLevel: row.ThinkingLevel, Instructions: row.Instructions}
+}
+
+// ListAgents returns agents and their activity in creation order.
+func (s *Service) ListAgents(ctx context.Context) ([]Agent, error) {
+	rows, err := s.q.ListAgentActivity(ctx)
+	if err != nil {
+		return nil, err
+	}
+	agents := make([]Agent, len(rows))
+	for i, row := range rows {
+		agents[i] = agentView(row.Agent)
+		current := Activity{ActiveSessions: row.ActiveSessions, EnabledAutomations: row.EnabledAutomations}
+		if s.ChannelStatus != nil {
+			for _, platform := range []string{"telegram", "wechat", "feishu"} {
+				if s.ChannelStatus(row.Agent.ID, platform).State == "running" {
+					current.RunningChannels++
+				}
+			}
+		}
+		agents[i].Activity = &current
+	}
+	return agents, nil
+}
+
+// SaveAgent changes one agent. Its next message uses the settings.
+func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, err := s.Agent(ctx, id); err != nil {
+		return err
+	}
+	a, err := s.cleanAgent(ctx, a)
+	if err != nil {
+		return err
+	}
+	return s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
+		ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
+		ID: id, Name: a.Name,
+	})
+}
+
+// CreateAgent stores an agent without changing global provider configuration.
+func (s *Service) CreateAgent(ctx context.Context, a Agent) (Agent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, err := s.cleanAgent(ctx, a)
+	if err != nil {
+		return Agent{}, err
+	}
+	row, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{
+		ID: uuid.NewV7().String(), Name: a.Name, ModelProvider: a.Provider, ModelID: a.ModelID,
+		ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions, CreatedAt: time.Now().UnixMilli(),
+	})
+	return agentView(row), err
+}
+
+func (s *Service) cleanAgent(ctx context.Context, a Agent) (Agent, error) {
 	a.Name = strings.TrimSpace(a.Name)
 	if n := utf8.RuneCountInString(a.Name); n < 1 || n > 40 {
-		return fmt.Errorf("%w: name must have 1 to 40 characters", ErrInvalid)
+		return a, fmt.Errorf("%w: name must have 1 to 40 characters", ErrInvalid)
 	}
 	if !slices.Contains(thinkingLevels, a.ThinkingLevel) {
-		return fmt.Errorf("%w: unknown thinking level %q", ErrInvalid, a.ThinkingLevel)
+		return a, fmt.Errorf("%w: unknown thinking level %q", ErrInvalid, a.ThinkingLevel)
 	}
 	if a.ModelID != "" {
 		if err := s.checkModel(ctx, a.Provider, a.ModelID); err != nil {
-			return err
+			return a, err
 		}
 	} else {
 		a.Provider = ""
 	}
-	return s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
-		ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
-		ID: s.agentID, Name: a.Name,
-	})
+	return a, nil
 }
 
 func (s *Service) checkModel(ctx context.Context, provider, modelID string) error {
@@ -263,12 +305,12 @@ func (s *Service) CheckChat(ctx context.Context, c chat.Settings) error {
 }
 
 // SetChat replaces the settings that chat chatID overrides. The next message of the chat uses them.
-func (s *Service) SetChat(ctx context.Context, chatID int64, c chat.Settings) error {
+func (s *Service) SetChat(ctx context.Context, agentID string, chatID int64, c chat.Settings) error {
 	if err := s.CheckChat(ctx, c); err != nil {
 		return err
 	}
 	return s.q.SetConversationSettings(ctx, sqlc.SetConversationSettingsParams{
-		ModelProvider: c.Provider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel, ID: chatID, AgentID: s.agentID,
+		ModelProvider: c.Provider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel, ID: chatID, AgentID: agentID,
 	})
 }
 
@@ -396,8 +438,8 @@ func splitModels(s string) []string {
 }
 
 // TelegramConfig returns the saved bot configuration, or nil when Telegram is off.
-func (s *Service) TelegramConfig(ctx context.Context) (*telegram.Config, error) {
-	row, err := s.q.GetTelegramSettings(ctx)
+func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram.Config, error) {
+	row, err := s.q.GetTelegramSettings(ctx, agentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -408,16 +450,16 @@ func (s *Service) TelegramConfig(ctx context.Context) (*telegram.Config, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &telegram.Config{Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(row.Token)}, nil
+	return &telegram.Config{Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(agentID, row.Token)}, nil
 }
 
 // SetTelegram saves the bot configuration and restarts the bot. An empty token keeps the saved
 // token.
-func (s *Service) SetTelegram(ctx context.Context, token string, allowedUsers []int64) error {
+func (s *Service) SetTelegram(ctx context.Context, agentID string, token string, allowedUsers []int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if token == "" {
-		saved, err := s.TelegramConfig(ctx)
+		saved, err := s.TelegramConfig(ctx, agentID)
 		if err != nil {
 			return err
 		}
@@ -426,32 +468,35 @@ func (s *Service) SetTelegram(ctx context.Context, token string, allowedUsers []
 		}
 	}
 	cfg := telegram.Config{Token: strings.TrimSpace(token), AllowedUsers: allowedUsers, APIURL: s.apiURL}
-	cfg.Pair = s.pairTelegram(cfg.Token)
+	cfg.Pair = s.pairTelegram(agentID, cfg.Token)
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	if err := s.checkCredential(ctx, agentID, "telegram", cfg.Token); err != nil {
+		return err
 	}
 	users := make([]string, len(allowedUsers))
 	for i, id := range allowedUsers {
 		users[i] = strconv.FormatInt(id, 10)
 	}
-	err := s.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
+	err := s.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: agentID,
 		Token: cfg.Token, AllowedUsers: strings.Join(users, ","),
 	})
 	if err != nil {
 		return err
 	}
-	s.onTelegram(&cfg)
+	s.onTelegram(agentID, &cfg)
 	return nil
 }
 
 // DeleteTelegram turns Telegram off and forgets the token.
-func (s *Service) DeleteTelegram(ctx context.Context) error {
+func (s *Service) DeleteTelegram(ctx context.Context, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.q.DeleteTelegramSettings(ctx); err != nil {
+	if err := s.q.DeleteTelegramSettings(ctx, agentID); err != nil {
 		return err
 	}
-	s.onTelegram(nil)
+	s.onTelegram(agentID, nil)
 	return nil
 }
 

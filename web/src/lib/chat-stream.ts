@@ -1,3 +1,4 @@
+import { useAgentId } from "./agent-scope";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getChatOptions } from "../api/generated/@tanstack/react-query.gen";
@@ -8,7 +9,8 @@ import { checkSession } from "./session";
 
 // A reconnect replaces live items with a snapshot and keeps the loaded history prefix.
 export function useChatStream(chatId: number) {
-  const chat = useQuery(getChatOptions({ path: { chatId } }));
+  const agentId = useAgentId();
+  const chat = useQuery(getChatOptions({ path: { agentId, chatId } }));
   const [state, setState] = useState(emptyChatState);
   const [queued, setQueued] = useState<UserItem[]>([]);
   const [connection, setConnection] = useState<"connecting" | "ready" | "error">("connecting");
@@ -24,7 +26,7 @@ export function useChatStream(chatId: number) {
       source?.close();
       snapshotSeen = false;
       setConnection("connecting");
-      source = new EventSource(`/api/chats/${chatId}/events`);
+      source = new EventSource(`/api/agents/${encodeURIComponent(agentId)}/chats/${chatId}/events`);
       source.onopen = () => setConnection("connecting");
 
       const receive = (message: MessageEvent<string>) => {
@@ -50,7 +52,7 @@ export function useChatStream(chatId: number) {
           setConnection("ready");
           setStreamError("");
 
-          if (event.type === "run" && !event.running) void refreshChats();
+          if (event.type === "run" && !event.running) void refreshChats(agentId);
         } catch {
           source.close();
           setConnection("error");
@@ -72,7 +74,7 @@ export function useChatStream(chatId: number) {
       reconnect.current = null;
       source.close();
     };
-  }, [chatId, chat.isSuccess]);
+  }, [agentId, chatId, chat.isSuccess]);
 
   return { chat, state, setState, queued, setQueued, connection, streamError, reconnect };
 }

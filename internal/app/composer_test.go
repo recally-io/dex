@@ -21,7 +21,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-// upload sends one file as POST /api/uploads and returns the status and the body. A filename with
+// upload sends one file as POST /api/agents/default/uploads and returns the status and the body. A filename with
 // a path is sent as it is, as a client that is not a browser can do.
 func (d *dex) upload(t *testing.T, field, filename string, content []byte) (int, string) {
 	t.Helper()
@@ -37,7 +37,7 @@ func (d *dex) upload(t *testing.T, field, filename string, content []byte) (int,
 	if err := mw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/uploads", &body)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/agents/default/uploads", &body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ type chatSettings struct {
 
 func (d *dex) setThinking(t *testing.T, thinkingLevel string) {
 	t.Helper()
-	d.must(t, http.MethodPut, "/api/settings/agent",
+	d.must(t, http.MethodPut, "/api/agents/default",
 		map[string]string{"name": "Dex", "provider": "faux", "modelId": "think", "thinkingLevel": thinkingLevel, "instructions": ""}, nil)
 }
 
@@ -117,22 +117,20 @@ func TestUserSetsAgentThinkingLevel(t *testing.T) {
 
 	// And a new agent's thinking level is off, as pi-durable runs a conversation without one
 	var s struct {
-		Agent struct {
-			ThinkingLevel string `json:"thinkingLevel"`
-		} `json:"agent"`
+		ThinkingLevel string `json:"thinkingLevel"`
 	}
-	d.must(t, http.MethodGet, "/api/settings", nil, &s)
-	if s.Agent.ThinkingLevel != "off" {
-		t.Fatalf("default thinking level = %q", s.Agent.ThinkingLevel)
+	d.must(t, http.MethodGet, "/api/agents/default", nil, &s)
+	if s.ThinkingLevel != "off" {
+		t.Fatalf("default thinking level = %q", s.ThinkingLevel)
 	}
 
 	// When the user sets the level high
 	d.setThinking(t, "high")
 
 	// Then the settings keep it, and pi-ai sends it to the model
-	d.must(t, http.MethodGet, "/api/settings", nil, &s)
-	if s.Agent.ThinkingLevel != "high" {
-		t.Fatalf("saved thinking level = %q", s.Agent.ThinkingLevel)
+	d.must(t, http.MethodGet, "/api/agents/default", nil, &s)
+	if s.ThinkingLevel != "high" {
+		t.Fatalf("saved thinking level = %q", s.ThinkingLevel)
 	}
 	chatID := d.newChat(t, "hi")
 	w := d.watch(t, chatID)
@@ -144,7 +142,7 @@ func TestUserSetsAgentThinkingLevel(t *testing.T) {
 	w.until(t, "answer at low", answered("think low: again"))
 
 	// And an unknown level is refused
-	status, raw := d.call(t, http.MethodPut, "/api/settings/agent",
+	status, raw := d.call(t, http.MethodPut, "/api/agents/default",
 		map[string]string{"name": "Dex", "provider": "faux", "modelId": "think", "thinkingLevel": "huge", "instructions": ""})
 	if status != http.StatusBadRequest {
 		t.Fatalf("unknown level: %d %s", status, raw)
@@ -167,7 +165,7 @@ func TestUserMainUsesAgentSettings(t *testing.T) {
 
 	// Then main and Chat refuse per-session overrides.
 	for _, chatID := range []int64{id, d.newSession(t).ID} {
-		d.must(t, http.MethodPut, fmt.Sprintf("/api/chats/%d/settings", chatID), chatSettings{Provider: "faux", ModelID: "echo"}, nil, http.StatusForbidden)
+		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", chatID), chatSettings{Provider: "faux", ModelID: "echo"}, nil, http.StatusForbidden)
 	}
 }
 
@@ -197,7 +195,7 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 
 	// When the user sends a message with both
 	created := d.newSession(t)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/messages", created.ID), map[string]any{
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", created.ID), map[string]any{
 		"id": uuid.NewV7().String(), "text": "look", "attachments": []string{pic.ID, notes.ID},
 	}, nil, http.StatusAccepted)
 	w := d.watch(t, created.ID)
@@ -213,12 +211,12 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 	// When the user sends only a file in a new chat
 	only := d.mustUpload(t, "report.pdf", []byte("%PDF-1.4\n"))
 	created = d.newSession(t)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/messages", created.ID), map[string]any{
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", created.ID), map[string]any{
 		"id": uuid.NewV7().String(), "text": " ", "attachments": []string{only.ID},
 	}, nil, http.StatusAccepted)
 
 	// Then the chat is named after the file, and the model gets the path
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d", created.ID), nil, &created)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", created.ID), nil, &created)
 	if created.Title != "report.pdf" {
 		t.Fatalf("file-only title: %+v", created)
 	}
@@ -233,10 +231,10 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 	}
 }
 
-// getUpload returns the status and the headers of GET /api/uploads/<rawID>, and the body.
+// getUpload returns the status and the headers of GET /api/agents/default/uploads/<rawID>, and the body.
 func (d *dex) getUpload(t *testing.T, rawID string) (int, http.Header, []byte) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, d.srv.URL+"/api/uploads/"+rawID, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, d.srv.URL+"/api/agents/default/uploads/"+rawID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +350,7 @@ func TestInvalidUploadsAndAttachmentsAreRefused(t *testing.T) {
 
 	// Messages: too many, unknown, repeated, or no attachments
 	chatID := d.newSession(t).ID
-	messagePath := fmt.Sprintf("/api/chats/%d/messages", chatID)
+	messagePath := fmt.Sprintf("/api/agents/default/chats/%d/messages", chatID)
 	ids := make([]string, 11)
 	for i := range ids {
 		ids[i] = d.mustUpload(t, fmt.Sprintf("f%d.txt", i), []byte("x")).ID

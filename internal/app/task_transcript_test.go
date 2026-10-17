@@ -22,7 +22,7 @@ func TestUserReadsDelegationWorkWithoutForgingAResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the human opens the task's conversation, the work is readable.
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d", hidden), nil, nil)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", hidden), nil, nil)
 	d.watch(t, hidden).until(t, "live task work", func(tr *transcript) bool { return tr.running })
 	// Then ordinary user JSON still appears as user content in the main timeline.
 	d.setModel(t, "echo")

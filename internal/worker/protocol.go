@@ -40,7 +40,7 @@ type SubmitParams struct {
 	// Content is the user's text. The worker adds the paths of the attachments for the model.
 	Content     string       `json:"content"`
 	Attachments []Attachment `json:"attachments"`
-	// Source is where memory entries from this conversation come from, such as dex:chat/12.
+	// Source is where memory entries from this conversation come from, such as dex:default/chat/12.
 	Source string `json:"source"`
 }
 

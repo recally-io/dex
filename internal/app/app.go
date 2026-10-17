@@ -69,7 +69,7 @@ type Config struct {
 type App struct {
 	db      *sql.DB
 	handler http.Handler
-	bots    *channel.Manager
+	bots    *channelRegistry
 	jobs    *scheduler.Scheduler
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
@@ -107,7 +107,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		chats *chat.Service
 		prefs *settings.Service
 		hub   *live.Hub
-		bots  *channel.Manager
+		bots  *channelRegistry
 	)
 	w := worker.New(worker.Config{
 		Path:      path,
@@ -139,24 +139,24 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		OnStart: func(ctx context.Context) { chats.Replay(ctx) },
 	})
 	chats = chat.New(conn, w, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
-	hub = live.New(q, chats, w, DefaultAgentID)
-	bots = channel.New(runCtx, conn, chats, DefaultAgentID)
-	uploads := upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID))
-	setTelegram := func(cfg *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
-
-		if cfg == nil {
-			bots.Set("telegram", nil)
+	hub = live.New(q, chats, w)
+	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
+	setTelegram := func(agentID string, config *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
+		manager := bots.Agent(agentID)
+		uploads := upload.New(filepath.Join(cfg.DataDir, "agents", agentID))
+		if config == nil {
+			manager.Set("telegram", nil)
 			return
 		}
-		cfg.Uploads = uploads
-		cfg.Seen = func(ctx context.Context, source string) (bool, error) {
+		config.Uploads = uploads
+		config.Seen = func(ctx context.Context, source string) (bool, error) {
 			_, err := q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
 			if errors.Is(err, sql.ErrNoRows) {
 				return false, nil
 			}
 			return err == nil, err
 		}
-		cfg.Watch = func(ctx context.Context, source string) (string, io.ReadCloser, error) {
+		config.Watch = func(ctx context.Context, source string) (string, io.ReadCloser, error) {
 			id, err := q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
 			if err != nil {
 				return "", nil, err
@@ -168,43 +168,39 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 			if sub.Status != "pending" {
 				return "", nil, nil
 			}
-			stream, err := hub.Open(ctx, sub.ConversationID)
+			stream, err := hub.Open(ctx, agentID, sub.ConversationID)
 			return id, stream, err
 		}
-		cfg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
-		bots.Set("telegram", telegram.New(*cfg, bots))
+		config.Report = func(state, reason string) { manager.Report("telegram", channel.Status{State: state, Reason: reason}) }
+		manager.Set("telegram", telegram.New(*config, manager))
 	}
-	prefs = settings.New(q, w.Call, DefaultAgentID, cfg.TelegramAPIURL, setTelegram)
+	prefs = settings.New(q, w.Call, cfg.TelegramAPIURL, setTelegram)
 	chats.ConfigureTasks(prefs.CheckChat)
-	setFeishu := func(config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
+	setFeishu := func(agentID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
+		manager := bots.Agent(agentID)
+		uploads := upload.New(filepath.Join(cfg.DataDir, "agents", agentID))
 		if config == nil {
-			bots.Set("feishu", nil)
+			manager.Set("feishu", nil)
 			return
 		}
-		bots.Set("feishu", feishu.New(*config, bots, q, hub, uploads, prefs.PairFeishu))
+		manager.Set("feishu", feishu.New(*config, manager, q, agentStreams{hub, agentID}, uploads, func(ctx context.Context, owner, code string) (bool, error) {
+			return prefs.PairFeishu(ctx, agentID, owner, code)
+		}))
 	}
 	prefs.ConfigureFeishu(cfg.FeishuAPIURL, cfg.FeishuAccountsURL, setFeishu)
 	prefs.ChannelStatus = bots.Status
 	wxOptions := wechat.Options{APIURL: cfg.WechatAPIURL, CDNURL: cfg.WechatCDNURL, HTTPClient: cfg.WechatHTTPClient, Version: cfg.Version}
-	prefs.ConfigureWechat(wxOptions, conn, func(cfg *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
-		if cfg == nil {
-			bots.Set("wechat", nil)
+	setWechat := func(agentID string, config *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
+		manager := bots.Agent(agentID)
+		uploads := upload.New(filepath.Join(cfg.DataDir, "agents", agentID))
+		if config == nil {
+			manager.Set("wechat", nil)
 			return
 		}
-		bots.Set("wechat", wechat.New(*cfg, wxOptions, q, bots, uploads))
-	})
-	wx, err := prefs.WechatConfig(ctx)
-	if err != nil {
-		cancel()
-		return nil, errors.Join(err, conn.Close())
+		manager.Set("wechat", wechat.New(*config, wxOptions, q, manager, uploads))
 	}
-
-	tg, err := prefs.TelegramConfig(ctx)
-	if err != nil {
-		cancel()
-		return nil, errors.Join(err, conn.Close())
-	}
-	fs, err := prefs.FeishuConfig(ctx)
+	prefs.ConfigureWechat(wxOptions, conn, setWechat)
+	agents, err := q.ListAgents(ctx)
 	if err != nil {
 		cancel()
 		return nil, errors.Join(err, conn.Close())
@@ -220,19 +216,17 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		token = stored
 	}
 
-	automations := automation.New(q, chats, DefaultAgentID, time.Now)
+	automations := automation.New(q, chats, time.Now)
 	a := &App{db: conn, bots: bots, jobs: jobs, cancel: cancel, handler: server.New(server.Config{
 		WorkerReady:   func(ctx context.Context) bool { return w.Call(ctx, "ping", struct{}{}, &struct{}{}) == nil },
 		Worker:        w.Call,
 		RestartWorker: w.Restart,
-		Chats:         chats, Automations: automations, Settings: prefs, Live: hub, AgentID: DefaultAgentID, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
-		// The worker runs the agent's tools in this workspace.
-		Uploads: uploads,
+		Chats:         chats, Automations: automations, Settings: prefs, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})}
 	a.wg.Go(func() { _ = w.Run(runCtx) })
 	a.wg.Go(func() { chats.Run(runCtx) })
 	every := cmp.Or(cfg.DreamEvery, 24*time.Hour)
-	dreamer := dream.New(q, chats, DefaultAgentID, every, time.Now)
+	dreamer := dream.New(q, chats, every, time.Now)
 	err = errors.Join(
 		jobs.Every("dream", min(every, time.Hour), dreamer.Check),
 		jobs.Every("automations", cmp.Or(cfg.AutomationCheck, time.Minute), automations.Check),
@@ -243,12 +237,22 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	jobs.Start()
-	setFeishu(fs)
-	if tg != nil {
-		setTelegram(tg)
-	}
-	if wx != nil {
-		bots.Set("wechat", wechat.New(*wx, wxOptions, q, bots, uploads)) //nolint:contextcheck // bot lifetime belongs to the manager
+	for _, agent := range agents {
+		tg, err := prefs.TelegramConfig(ctx, agent.ID)
+		if err != nil {
+			return nil, errors.Join(err, a.Close()) //nolint:contextcheck // Shutdown joins the app lifetime, not the request.
+		}
+		wx, err := prefs.WechatConfig(ctx, agent.ID)
+		if err != nil {
+			return nil, errors.Join(err, a.Close()) //nolint:contextcheck // Shutdown joins the app lifetime, not the request.
+		}
+		fs, err := prefs.FeishuConfig(ctx, agent.ID)
+		if err != nil {
+			return nil, errors.Join(err, a.Close()) //nolint:contextcheck // Shutdown joins the app lifetime, not the request.
+		}
+		setTelegram(agent.ID, tg)
+		setFeishu(agent.ID, fs)
+		setWechat(agent.ID, wx)
 	}
 	return a, nil
 }
@@ -278,4 +282,14 @@ func WorkerEnv(environ []string) []string {
 		}
 	}
 	return env
+}
+
+// agentStreams binds channel previews to their agent.
+type agentStreams struct {
+	hub     *live.Hub
+	agentID string
+}
+
+func (s agentStreams) Open(ctx context.Context, chatID int64) (io.ReadCloser, error) {
+	return s.hub.Open(ctx, s.agentID, chatID)
 }

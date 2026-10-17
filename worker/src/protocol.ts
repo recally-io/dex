@@ -92,7 +92,7 @@ export const SubmitParams = Type.Object({
 	/** The user's text. The worker adds the paths of the attachments for the model. */
 	content: Type.String(),
 	attachments: Type.Array(Attachment),
-	/** Where memory entries from this conversation come from, such as `dex:chat/12`. */
+	/** Where memory entries from this conversation come from, such as `dex:default/chat/12`. */
 	source: Type.String(),
 });
 export type SubmitParams = Static<typeof SubmitParams>;

@@ -32,7 +32,7 @@ func taskSummary(t sqlc.ListAgentTasksRow) api.TaskSummary {
 }
 
 func (h *handler) GetTask(ctx context.Context, req api.GetTaskRequestObject) (api.GetTaskResponseObject, error) {
-	t, err := h.Chats.TaskRecord(ctx, h.AgentID, req.TaskId)
+	t, err := h.Chats.TaskRecord(ctx, agentID(ctx), req.TaskId)
 	if err != nil {
 		return nil, err
 	}

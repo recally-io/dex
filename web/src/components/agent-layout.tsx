@@ -1,17 +1,12 @@
+import type { AgentSettings as Settings } from "../lib/agent-scope";
+import { AgentContext, useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useEffect, useRef } from "react";
-import { Link, Outlet, useRouterState, type LinkProps } from "@tanstack/react-router";
+import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import type { Settings } from "../api/generated/types.gen";
-import {
-  getFeishuOptions,
-  getSettingsOptions,
-  listAutomationsOptions,
-  listChatsOptions,
-  listModelsOptions,
-} from "../api/generated/@tanstack/react-query.gen";
+
+import { listAgentsOptions, listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { agentModel, saveAgent, thinkingNames, type AgentModel } from "../lib/agent";
 import { instructionsDirty } from "../lib/instructions";
-import { activeSessionCount } from "../lib/tasks";
 import { useApp } from "../lib/app-state";
 import { MainTimeline } from "../routes/chat";
 import { ModelPicker } from "./model-picker";
@@ -22,39 +17,39 @@ import { InPaneContext, MainPane, MenuButton } from "./page";
 import { cn } from "../lib/utils";
 
 /** The first path segment of each agent tab, with the segments of the pages that open from it. */
-const tabs: { to: LinkProps["to"]; label: string; segments: (string | undefined)[] }[] = [
-  { to: "/", label: "Chat", segments: [undefined] },
-  { to: "/instructions", label: "Instructions", segments: ["instructions"] },
-  { to: "/channels", label: "Channels", segments: ["channels"] },
-  { to: "/automations", label: "Automations", segments: ["automations"] },
-  { to: "/sessions", label: "Sessions", segments: ["sessions", "c", "tasks"] },
-  { to: "/agent", label: "Settings", segments: ["agent"] },
+type AgentTab = {
+  to:
+    | "/a/$agentId"
+    | "/a/$agentId/instructions"
+    | "/a/$agentId/channels"
+    | "/a/$agentId/automations"
+    | "/a/$agentId/sessions"
+    | "/a/$agentId/extensions"
+    | "/a/$agentId/agent";
+  label: string;
+  segments: (string | undefined)[];
+};
+
+const tabs: AgentTab[] = [
+  { to: "/a/$agentId", label: "Chat", segments: [undefined] },
+  { to: "/a/$agentId/instructions", label: "Instructions", segments: ["instructions"] },
+  { to: "/a/$agentId/channels", label: "Channels", segments: ["channels"] },
+  { to: "/a/$agentId/automations", label: "Automations", segments: ["automations"] },
+  { to: "/a/$agentId/sessions", label: "Sessions", segments: ["sessions", "c", "tasks"] },
+  { to: "/a/$agentId/extensions", label: "Extensions", segments: ["extensions"] },
+  { to: "/a/$agentId/agent", label: "Settings", segments: ["agent"] },
 ];
 
-/** True when the path belongs to a page of the agent, and not to a global settings page. */
-export function isAgentPath(path: string) {
-  const [segment] = path.split("/").filter(Boolean);
-
-  return tabs.some((tab) => tab.segments.includes(segment));
-}
-
-/** What the agent has running now, for the tabs and the sidebar row. Queries share their cache. */
+/** Activity reads the agent list cache. Shell owns its polling interval. */
 export function useAgentActivity() {
-  const settings = useQuery({ ...getSettingsOptions(), refetchInterval: 3000 });
-  const feishu = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
-  const automations = useQuery({ ...listAutomationsOptions(), refetchInterval: 10_000 });
-  const sessions = useQuery({ ...listChatsOptions(), refetchInterval: 3000 });
-
-  const states = [
-    settings.data?.telegram.status.state,
-    settings.data?.wechat.status.state,
-    feishu.data?.status,
-  ];
+  const agentId = useAgentId();
+  const agents = useQuery(listAgentsOptions());
+  const activity = agents.data?.agents.find((agent) => agent.id === agentId)?.activity;
 
   return {
-    channels: states.filter((state) => state === "running").length,
-    automations: automations.data?.automations.filter((automation) => automation.enabled).length ?? 0,
-    active: activeSessionCount(sessions.data?.chats ?? []),
+    channels: activity?.runningChannels ?? 0,
+    automations: activity?.enabledAutomations ?? 0,
+    active: activity?.activeSessions ?? 0,
   };
 }
 
@@ -65,9 +60,34 @@ export function useAgentActivity() {
  * unsent message survive a visit to them.
  */
 export function AgentLayout() {
-  const settings = useQuery(getSettingsOptions());
+  const { agentId = "default" } = useParams({ strict: false });
 
-  return settings.isPending ? (
+  return (
+    <AgentContext.Provider key={agentId} value={agentId}>
+      <AgentView />
+    </AgentContext.Provider>
+  );
+}
+
+function AgentView() {
+  const agentId = useAgentId();
+  const agents = useQuery(listAgentsOptions());
+  const missing = agents.data && !agents.data.agents.some((agent) => agent.id === agentId);
+  const settings = useAgentSettings(agentId);
+
+  return missing ? (
+    <MainPane>
+      <div className="p-8">
+        <h1 id="page-title" className="text-xl font-semibold">
+          Agent not found
+        </h1>
+        <p className="mt-2 text-ink-2">Dex has no agent with this ID.</p>
+        <Link to="/" className="mt-4 block underline">
+          Open Dex
+        </Link>
+      </div>
+    </MainPane>
+  ) : settings.isPending ? (
     <MainPane>
       <Loading />
     </MainPane>
@@ -87,10 +107,11 @@ export function AgentLayout() {
 }
 
 function AgentPane({ settings }: { settings: Settings }) {
+  const agentId = useAgentId();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const [segment] = path.split("/").filter(Boolean);
+  const segment = path.split("/").filter(Boolean)[2];
   const current = tabs.find((tab) => tab.segments.includes(segment));
-  const onChat = current?.to === "/";
+  const onChat = current?.label === "Chat";
   const models = useQuery(listModelsOptions());
   const model = agentModel(settings.agent, models.data?.models);
   const { draft } = useApp();
@@ -108,12 +129,22 @@ function AgentPane({ settings }: { settings: Settings }) {
 
   const label = current?.label;
 
-  // On a phone the tabs scroll, and a tab opened from a link can sit outside the view. Centered,
-  // the tab stays in view when a badge loads after the scroll, and its neighbors show.
+  // Counts and viewport changes can move the active tab after the first render.
   useEffect(() => {
-    nav.current
-      ?.querySelector(`[data-tab="${label}"]`)
-      ?.scrollIntoView({ block: "nearest", inline: "center" });
+    const element = nav.current;
+
+    if (!element) return;
+
+    const center = () =>
+      element.querySelector(`[data-tab="${label}"]`)?.scrollIntoView({ block: "nearest", inline: "center" });
+
+    const observer = new ResizeObserver(center);
+    observer.observe(element);
+
+    for (const tab of element.children) observer.observe(tab);
+    center();
+
+    return () => observer.disconnect();
   }, [label]);
 
   return (
@@ -142,7 +173,9 @@ function AgentPane({ settings }: { settings: Settings }) {
             {tabs.map((tab) => (
               <Link
                 key={tab.label}
+                activeOptions={{ exact: true }}
                 to={tab.to}
+                params={{ agentId }}
                 data-tab={tab.label}
                 aria-current={tab === current ? "page" : undefined}
                 className={cn(
@@ -155,10 +188,10 @@ function AgentPane({ settings }: { settings: Settings }) {
                 {counts.get(tab.label) ? (
                   <span className="text-[11px] text-ink-3 tabular-nums">{counts.get(tab.label)}</span>
                 ) : null}
-                {tab.to === "/instructions" && dirty ? (
+                {tab.label === "Instructions" && dirty ? (
                   <span role="img" aria-label="Unsaved draft" className="size-1.5 rounded-full bg-orange" />
                 ) : null}
-                {tab.to === "/sessions" && activity.active > 0 ? (
+                {tab.label === "Sessions" && activity.active > 0 ? (
                   <span
                     role="img"
                     aria-label={`${activity.active} active`}
@@ -175,7 +208,7 @@ function AgentPane({ settings }: { settings: Settings }) {
         <div inert={!onChat} className={cn("min-h-0 flex-1 flex-col", onChat ? "flex" : "hidden")}>
           <MainTimeline settings={settings} />
         </div>
-        {onChat ? null : <Outlet />}
+        {!onChat ? <Outlet /> : null}
       </section>
     </InPaneContext.Provider>
   );
@@ -183,6 +216,7 @@ function AgentPane({ settings }: { settings: Settings }) {
 
 /** The model and the thinking level: one-step changes that fit in the header of every tab. */
 function ModelChips({ settings, model }: { settings: Settings; model: AgentModel }) {
+  const agentId = useAgentId();
   const { notify } = useApp();
 
   const caret = (
@@ -223,7 +257,7 @@ function ModelChips({ settings, model }: { settings: Settings; model: AgentModel
           levels={model.model.thinkingLevels}
           save={async (level) => {
             if (!level) return;
-            await saveAgent((agent) => ({ ...agent, thinkingLevel: level }));
+            await saveAgent(agentId, (agent) => ({ ...agent, thinkingLevel: level }));
             notify(`Thinking is now ${thinkingNames[level]}. It applies from the next message.`);
           }}
           trigger={

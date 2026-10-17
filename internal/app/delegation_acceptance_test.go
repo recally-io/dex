@@ -15,5 +15,5 @@ func TestUserDelegatesWithoutTaskManagementAPI(t *testing.T) {
 
 	// When a client requests the removed task management API.
 	// Then the API has no task management resource.
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/chats/%d/tasks", id), nil, nil, http.StatusNotFound)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/tasks", id), nil, nil, http.StatusNotFound)
 }

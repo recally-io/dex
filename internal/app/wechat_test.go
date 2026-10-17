@@ -199,13 +199,13 @@ func TestUserStartsWechatQRLogin(t *testing.T) {
 	d := startWechat(t, f, t.TempDir())
 	// When the user requests a QR code and confirms login on the phone.
 	var login wechatLogin
-	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
 	if login.Status != "wait" || !strings.Contains(login.QRContent, "qr1") {
 		t.Fatalf("QR: %+v", login)
 	}
-	d.must(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
 	// Then settings show the captured owner and no token or runtime cursor.
-	status, raw := d.call(t, http.MethodGet, "/api/settings", nil)
+	status, raw := d.call(t, http.MethodGet, "/api/agents/default/channels", nil)
 	if status != http.StatusOK || !strings.Contains(raw, `"owner":"owner"`) || strings.Contains(raw, "wechat-secret") || strings.Contains(raw, "context_token") || strings.Contains(raw, "get_updates_buf") {
 		t.Fatalf("settings: %d %s", status, raw)
 	}
@@ -243,8 +243,8 @@ func wxSentText(sent wechatSent) string {
 func connectWechat(t *testing.T, d *dex) {
 	t.Helper()
 	var login wechatLogin
-	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
-	d.must(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
 	if login.Status != "confirmed" {
 		t.Fatalf("login: %+v", login)
 	}
@@ -268,8 +268,8 @@ func TestUserWechatQRHandlesVerificationRedirectAndExpiry(t *testing.T) {
 	target.statuses = []map[string]any{{"status": "expired"}}
 	d := startWechat(t, f, t.TempDir())
 	var login wechatLogin
-	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
-	path := "/api/settings/wechat/login/" + login.ID + "/poll"
+	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
+	path := "/api/agents/default/channels/wechat/login/" + login.ID + "/poll"
 	// When the user supplies the phone digits and the server redirects and expires QR codes.
 	for _, expected := range []string{"wait", "scaned", "need_verifycode", "scaned_but_redirect", "expired", "expired", "confirmed"} {
 		body := map[string]string{}
@@ -307,10 +307,10 @@ func TestUserWechatQRStopsAfterThreeRefreshes(t *testing.T) {
 			f.statuses = []map[string]any{{"status": state}, {"status": state}, {"status": state}, {"status": state}}
 			d := startWechat(t, f, t.TempDir())
 			var login wechatLogin
-			d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
+			d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
 			// When the initial code and three replacements fail, the session stops.
 			for range 4 {
-				d.must(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
+				d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
 			}
 			f.mu.Lock()
 			count := f.qrCount
@@ -328,15 +328,15 @@ func TestUserWechatAlreadyBoundDoesNotInventAnOwner(t *testing.T) {
 	f.statuses = []map[string]any{{"status": "binded_redirect"}}
 	d := startWechat(t, f, t.TempDir())
 	var login wechatLogin
-	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
 	// When the user polls, no owner or token is fabricated.
-	d.must(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
 	var settings struct {
 		Wechat struct {
 			Enabled bool `json:"enabled"`
 		} `json:"wechat"`
 	}
-	d.must(t, http.MethodGet, "/api/settings", nil, &settings)
+	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &settings)
 	if login.Active || login.Status != "binded_redirect" || settings.Wechat.Enabled {
 		t.Fatalf("login=%+v settings=%+v", login, settings)
 	}
@@ -423,7 +423,7 @@ func TestUserWechatMediaBecomesUploadsAndVoiceBecomesText(t *testing.T) {
 		t.Fatalf("attachments: %s", raw)
 	}
 	for i, a := range attachments {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, d.srv.URL+"/api/uploads/"+a.ID, nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, d.srv.URL+"/api/agents/default/uploads/"+a.ID, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -591,7 +591,7 @@ func TestUserWechatStaleLoginNeedsNewScan(t *testing.T) {
 						} `json:"status"`
 					} `json:"wechat"`
 				}
-				d.must(t, http.MethodGet, "/api/settings", nil, &s)
+				d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &s)
 				return s.Wechat.Status.State == "needs_login", s
 			})
 			var until int64
@@ -684,9 +684,9 @@ func TestUserWechatQRTimeoutKeepsWaiting(t *testing.T) {
 	client.Timeout = 100 * time.Millisecond
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), WechatAPIURL: f.srv.URL, WechatHTTPClient: &client})
 	var login wechatLogin
-	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
 	// When the poll times out, the user can continue with the same active QR session.
-	d.must(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
 	if login.Status != "wait" || !login.Active {
 		t.Fatalf("timed out login: %+v", login)
 	}
@@ -698,13 +698,13 @@ func TestUserWechatCannotActivateWithoutOwner(t *testing.T) {
 	f.statuses = []map[string]any{{"status": "confirmed", "bot_token": "secret", "ilink_bot_id": "bot1", "baseurl": f.srv.URL}}
 	d := startWechat(t, f, t.TempDir())
 	var login wechatLogin
-	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
 	// When the owner ID is absent, no account or admission rule is activated.
-	status, body := d.call(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{})
+	status, body := d.call(t, http.MethodPost, "/api/agents/default/channels/wechat/login/"+login.ID+"/poll", map[string]string{})
 	if status == http.StatusOK {
 		t.Fatalf("accepted missing owner: %s", body)
 	}
-	status, body = d.call(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{})
+	status, body = d.call(t, http.MethodPost, "/api/agents/default/channels/wechat/login/"+login.ID+"/poll", map[string]string{})
 	if status == http.StatusOK {
 		t.Fatalf("repeated poll accepted missing owner: %s", body)
 	}
@@ -713,7 +713,7 @@ func TestUserWechatCannotActivateWithoutOwner(t *testing.T) {
 			Enabled bool `json:"enabled"`
 		} `json:"wechat"`
 	}
-	d.must(t, http.MethodGet, "/api/settings", nil, &settings)
+	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &settings)
 	if settings.Wechat.Enabled {
 		t.Fatal("account enabled without owner")
 	}
@@ -817,8 +817,8 @@ func TestUserWechatRetriesLocalActivationAfterFailedSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	var login wechatLogin
-	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
-	path := "/api/settings/wechat/login/" + login.ID + "/poll"
+	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
+	path := "/api/agents/default/channels/wechat/login/" + login.ID + "/poll"
 	status, body := d.call(t, http.MethodPost, path, map[string]string{})
 	if status == http.StatusOK {
 		t.Fatalf("failed save reported success: %s", body)
@@ -882,7 +882,7 @@ func TestUserWechatTemporaryCDNFailuresKeepBatch(t *testing.T) {
 						} `json:"status"`
 					} `json:"wechat"`
 				}
-				d.must(t, http.MethodGet, "/api/settings", nil, &s)
+				d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &s)
 				return s.Wechat.Status.State == "error", s
 			})
 			var cursor string
@@ -930,7 +930,7 @@ func TestUserWechatReplaySkipsAdmittedMediaAndCleansPartialUploads(t *testing.T)
 				} `json:"status"`
 			} `json:"wechat"`
 		}
-		d.must(t, http.MethodGet, "/api/settings", nil, &s)
+		d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &s)
 		return s.Wechat.Status.State == "error", s
 	})
 	uploads := filepath.Join(dir, "agents", app.DefaultAgentID, "workspace", "uploads", "*", "*")
@@ -979,7 +979,7 @@ func TestUserWechatRetriesRuntimeReadAfterRestart(t *testing.T) {
 				} `json:"status"`
 			} `json:"wechat"`
 		}
-		d.must(t, http.MethodGet, "/api/settings", nil, &s)
+		d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &s)
 		return s.Wechat.Status.State == "error", s
 	})
 	// When storage recovers, Run retries without another settings change.
@@ -1059,11 +1059,11 @@ func TestUserWechatRescanJoinsOldRequestBeforeClearingPause(t *testing.T) {
 		t.Fatal(err)
 	}
 	var login wechatLogin
-	d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
 	// When a replacement confirms, activation cancels and joins the old request first.
 	done := make(chan error, 1)
 	go func() {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/settings/wechat/login/"+login.ID+"/poll", strings.NewReader("{}"))
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/agents/default/channels/wechat/login/"+login.ID+"/poll", strings.NewReader("{}"))
 		if err != nil {
 			done <- err
 			return
@@ -1122,7 +1122,7 @@ func TestUserWechatInterruptedCommandSkipsMediaBeforeCompletion(t *testing.T) {
 	connectWechat(t, d)
 	_ = f.next(t)
 	conn := wxConn(t, dir)
-	if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_commands (source_key, peer, channel_key, command) VALUES ('wechat:bot1:2', 'wechat:owner', 'main', '/stop')"); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command) VALUES ('default','wechat:bot1:2', 'wechat:owner', 'main', '/stop')"); err != nil {
 		t.Fatal(err)
 	}
 	// When the source replays with unavailable media, the receipt still completes.

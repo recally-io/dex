@@ -33,10 +33,9 @@ const (
 
 // Hub routes worker chat events and chat changes to the open streams.
 type Hub struct {
-	q       *sqlc.Queries
-	chats   *chat.Service
-	worker  chat.Caller
-	agentID string
+	q      *sqlc.Queries
+	chats  *chat.Service
+	worker chat.Caller
 
 	mu      sync.Mutex
 	byWatch map[string]*stream
@@ -45,9 +44,9 @@ type Hub struct {
 
 // New returns a Hub. Connect the worker's chat events to HandleChat, its exits to WorkerExited, and
 // the chat service's changes to Changed.
-func New(q *sqlc.Queries, chats *chat.Service, w chat.Caller, agentID string) *Hub {
+func New(q *sqlc.Queries, chats *chat.Service, w chat.Caller) *Hub {
 	return &Hub{
-		q: q, chats: chats, worker: w, agentID: agentID,
+		q: q, chats: chats, worker: w,
 		byWatch: map[string]*stream{}, byChat: map[int64]map[*stream]struct{}{},
 	}
 }
@@ -59,10 +58,11 @@ type input struct {
 }
 
 type stream struct {
-	chat chat.Chat
-	in   chan input
-	kill chan struct{}
-	once sync.Once
+	agentID string
+	chat    chat.Chat
+	in      chan input
+	kill    chan struct{}
+	once    sync.Once
 
 	// Used only by the goroutine that serves the stream.
 	watchID      string
@@ -114,19 +114,19 @@ func (h *Hub) WorkerExited() {
 
 // Open checks that chat chatID exists and returns its event stream as server-sent events. The
 // stream ends when ctx is done, when the worker restarts, or when the reader is too slow.
-func (h *Hub) Open(ctx context.Context, chatID int64) (io.ReadCloser, error) {
-	c, err := h.chats.Get(ctx, h.agentID, chatID)
+func (h *Hub) Open(ctx context.Context, agentID string, chatID int64) (io.ReadCloser, error) {
+	c, err := h.chats.Get(ctx, agentID, chatID)
 	if err != nil {
 		return nil, err
 	}
-	return h.open(ctx, c), nil
+	return h.open(ctx, agentID, c), nil
 }
 
 // open accepts only a chat that an entry point has authorized.
-func (h *Hub) open(ctx context.Context, c chat.Chat) io.ReadCloser {
+func (h *Hub) open(ctx context.Context, agentID string, c chat.Chat) io.ReadCloser {
 	chatID := c.ID
 	s := &stream{
-		chat: c, in: make(chan input, queueSize), kill: make(chan struct{}),
+		agentID: agentID, chat: c, in: make(chan input, queueSize), kill: make(chan struct{}),
 		seen: map[string]bool{}, extra: map[string]string{},
 	}
 	h.mu.Lock()
@@ -213,7 +213,7 @@ func (h *Hub) attach(ctx context.Context, s *stream) error {
 	h.byWatch[s.watchID] = s
 	h.mu.Unlock()
 	return h.worker.Call(ctx, "watch", worker.WatchParams{
-		WatchID: s.watchID, AgentID: h.agentID, ConversationID: c.WorkerConversationID.Int64,
+		WatchID: s.watchID, AgentID: s.agentID, ConversationID: c.WorkerConversationID.Int64,
 	}, &struct{}{})
 }
 
@@ -335,7 +335,7 @@ func (h *Hub) writeSnapshot(ctx context.Context, s *stream, w io.Writer, items [
 		if len(ids) > 0 {
 			var placed map[string]int64
 			if err := h.worker.Call(ctx, "inputEntries", worker.InputEntriesParams{
-				AgentID: h.agentID, ConversationID: s.chat.WorkerConversationID, RequestIDs: ids,
+				AgentID: s.agentID, ConversationID: s.chat.WorkerConversationID, RequestIDs: ids,
 			}, &placed); err != nil {
 				return err
 			}
@@ -509,8 +509,8 @@ func writeEvent(w io.Writer, typ string, data []byte) error {
 }
 
 // History reads only through the worker and adds the same task names as the live stream.
-func (h *Hub) History(ctx context.Context, chatID, before int64, limit int) (worker.HistoryResult, error) {
-	c, err := h.chats.Get(ctx, h.agentID, chatID)
+func (h *Hub) History(ctx context.Context, agentID string, chatID, before int64, limit int) (worker.HistoryResult, error) {
+	c, err := h.chats.Get(ctx, agentID, chatID)
 	if err != nil {
 		return worker.HistoryResult{}, err
 	}
@@ -519,7 +519,7 @@ func (h *Hub) History(ctx context.Context, chatID, before int64, limit int) (wor
 		return page, nil
 	}
 	if err := h.worker.Call(ctx, "history", worker.HistoryParams{
-		AgentID: h.agentID, ConversationID: c.WorkerConversationID, Before: before, Limit: limit,
+		AgentID: agentID, ConversationID: c.WorkerConversationID, Before: before, Limit: limit,
 	}, &page); err != nil {
 		return page, err
 	}

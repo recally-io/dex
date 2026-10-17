@@ -1,3 +1,4 @@
+import { useAgentId } from "../lib/agent-scope";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Automation, AutomationInput, Schedule, ScheduleInput } from "../api/generated/types.gen";
@@ -28,6 +29,7 @@ function localDateTime(at: number) {
 }
 
 export function AutomationDialog({ existing, onClose }: { existing?: Automation; onClose: () => void }) {
+  const agentId = useAgentId();
   const formId = useId();
   const browserZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [name, setName] = useState(existing?.name ?? "");
@@ -82,7 +84,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   });
 
   const saved = async () => {
-    await refreshAutomations();
+    await refreshAutomations(agentId);
     onClose();
   };
 
@@ -138,8 +140,8 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
           if (!validSchedule || pending) return;
           const body = { name: name.trim(), prompt: prompt.trim(), schedule, timeZone, session, enabled };
 
-          if (existing) update.mutate({ path: { automationId: existing.id }, body });
-          else create.mutate({ body });
+          if (existing) update.mutate({ path: { agentId, automationId: existing.id }, body });
+          else create.mutate({ path: { agentId }, body });
         }}
       >
         <Field label="Name">

@@ -92,12 +92,12 @@ func TestUserClearOrdersWithConcurrentInput(t *testing.T) {
 		cleared, sent := make(chan response, 1), make(chan response, 1)
 		go func() {
 			<-start
-			status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/clear", id), map[string]string{"id": resetID})
+			status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", id), map[string]string{"id": resetID})
 			cleared <- response{status, raw}
 		}()
 		go func() {
 			<-start
-			status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/messages", id), map[string]string{"id": inputID, "text": "concurrent input"})
+			status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", id), map[string]string{"id": inputID, "text": "concurrent input"})
 			sent <- response{status, raw}
 		}()
 		close(start)
@@ -152,7 +152,7 @@ func TestUserClearsEmptyMainWithoutModel(t *testing.T) {
 	d.setModel(t, "echo")
 	inputID := d.send(t, id, "keep this input")
 	waitResultSubmission(t, conn, inputID, "done")
-	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/chats/%d/clear", id), map[string]string{"id": inputID})
+	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", id), map[string]string{"id": inputID})
 	if status != http.StatusBadRequest || !strings.Contains(raw, "another input") {
 		t.Fatalf("request ID collision: %d %s", status, raw)
 	}

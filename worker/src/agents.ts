@@ -229,7 +229,11 @@ export class Agents {
 			}
 			if (params.whenBusy === "reject" && admission.existing === undefined && admission.queued)
 				throw new ConversationBusy(conversation.id);
-			if (params.taskStageId !== undefined || params.source.startsWith("dex:dream/")) {
+			if (
+				params.taskStageId !== undefined ||
+				params.source.startsWith(`dex:${params.agentId}/dream/`) ||
+				params.source.startsWith("dex:dream/")
+			) {
 				await conversation.configure(
 					{ extensions: { remove: [taskExtension(params.agentId, this.#taskCall)] } },
 					context,
@@ -559,7 +563,7 @@ export class Agents {
 		registry.install(CodingSkill);
 		registry.install(taskExtension(agentId, this.#taskCall));
 		await this.#memory.open();
-		registry.install(this.#memory.extension((id) => this.#sources.get(`${agentId}/${id}`)));
+		registry.install(this.#memory.extension(agentId, (id) => this.#sources.get(`${agentId}/${id}`)));
 		// A run that resumes after a restart needs its MCP tools, so they load before resume().
 		const loaded = await this.#files(agentId).load();
 		let harness: Harness;

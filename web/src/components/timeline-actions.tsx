@@ -1,3 +1,4 @@
+import { useAgentId } from "../lib/agent-scope";
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { clearContext } from "../api/generated/sdk.gen";
@@ -15,6 +16,7 @@ export function hasContext(items: Item[]) {
 }
 
 export function useClearContext(chatId: number, running: boolean, onCleared: () => void) {
+  const agentId = useAgentId();
   const request = useRef(newId());
   const [refused, setRefused] = useState(false);
   const wasRunning = useRef(running);
@@ -26,7 +28,7 @@ export function useClearContext(chatId: number, running: boolean, onCleared: () 
 
   const clear = useMutation({
     mutationFn: async () => {
-      const result = await clearContext({ path: { chatId }, body: { id: request.current } });
+      const result = await clearContext({ path: { agentId, chatId }, body: { id: request.current } });
 
       if (result.response?.status === 409) return false;
 
@@ -59,9 +61,11 @@ export function LoadEarlierButton({
   before?: number;
   onPage: (page: HistoryPage) => void;
 }) {
+  const agentId = useAgentId();
+
   const history = useMutation({
     mutationFn: (cursor: number) =>
-      queryClient.fetchQuery(getChatHistoryOptions({ path: { chatId }, query: { before: cursor } })),
+      queryClient.fetchQuery(getChatHistoryOptions({ path: { agentId, chatId }, query: { before: cursor } })),
     onSuccess: onPage,
   });
 

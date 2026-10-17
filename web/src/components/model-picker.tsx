@@ -1,8 +1,10 @@
+import type { AgentSettings as Settings } from "../lib/agent-scope";
+import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useState, type ReactElement } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { getSettingsOptions, listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
-import type { Model, Settings } from "../api/generated/types.gen";
+import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
+import type { Model } from "../api/generated/types.gen";
 import { saveModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { Popover } from "@base-ui/react/popover";
@@ -56,18 +58,24 @@ function search(list: Group[], query: string): Group[] {
 export type ModelOverride = {
   value: { provider: string; modelId: string } | null;
   defaultName: string;
+  allowDefault?: boolean;
   save: (model: Model | null) => Promise<void>;
 };
 
 // An anchored, non-modal model list. A click on a model saves it at once; the list stays open
 // with the error when the save fails. Without override, the list sets the agent's model.
 export function ModelPicker({ trigger, override }: { trigger: ReactElement; override?: ModelOverride }) {
+  const agentId = useAgentId();
   const { notify } = useApp();
   const [open, setOpen] = useState(false);
 
   const save = useMutation({
     mutationFn: (model: Model | null) =>
-      override ? override.save(model) : model ? saveModel(model.provider, model.id) : Promise.resolve(),
+      override
+        ? override.save(model)
+        : model
+          ? saveModel(agentId, model.provider, model.id)
+          : Promise.resolve(),
     onSuccess: (_, model) => {
       setOpen(false);
 
@@ -89,7 +97,7 @@ export function ModelPicker({ trigger, override }: { trigger: ReactElement; over
     >
       <Popover.Trigger render={trigger} />
       <Popover.Portal>
-        <Popover.Positioner align="start" sideOffset={6} collisionPadding={8} className="z-40">
+        <Popover.Positioner align="start" sideOffset={6} collisionPadding={8} className="z-[60]">
           <Popover.Popup
             aria-label={override ? "Chat model" : "Agent model"}
             // The search takes focus when it mounts, also after the models load.
@@ -127,7 +135,8 @@ function ModelList({
   onPick: (model: Model | null, current: boolean) => void;
   onLeave: () => void;
 }) {
-  const settings = useQuery(getSettingsOptions());
+  const agentId = useAgentId();
+  const settings = useAgentSettings(agentId);
   const models = useQuery({ ...listModelsOptions(), refetchOnMount: "always" });
   const { draft } = useApp();
   const [query, setQuery] = useState("");
@@ -187,7 +196,7 @@ function ModelList({
         />
       </div>
       <Command.List className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
-        {override && !query.trim() ? (
+        {override && override.allowDefault !== false && !query.trim() ? (
           <Command.Item
             value="default"
             data-checked={!current}

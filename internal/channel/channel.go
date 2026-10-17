@@ -182,7 +182,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	if cmd != "/new" && cmd != "/stop" && cmd != "/help" {
 		return m.chats.SubmitMessage(ctx, m.agentID, peer, source, msg)
 	}
-	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd}); err != nil {
+	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd}); err != nil {
 		return err
 	}
 	command, err = m.q.GetChannelCommand(ctx, source)
@@ -193,7 +193,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 }
 
 func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
-	if c.Completed != 0 {
+	if c.AgentID != m.agentID || c.Completed != 0 {
 		return nil
 	}
 	answer := "/new clears the main timeline's context. /stop stops the main answer and its background work. /help shows these commands."
@@ -275,7 +275,7 @@ func sendPart(ctx context.Context, bot Bot, peer, id string, part int, text stri
 
 func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 	m.receiveMu.Lock()
-	commands, err := m.q.ListChannelCommands(ctx)
+	commands, err := m.q.ListChannelCommands(ctx, m.agentID)
 	if err == nil {
 		for _, c := range commands {
 			if strings.HasPrefix(c.Peer, name+":") {
@@ -307,7 +307,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 			return err
 		}
 	}
-	acks, err := m.q.ListChannelCommandReplies(ctx, sql.NullString{String: name + ":", Valid: true})
+	acks, err := m.q.ListChannelCommandReplies(ctx, sqlc.ListChannelCommandRepliesParams{AgentID: m.agentID, Prefix: sql.NullString{String: name + ":", Valid: true}})
 	if err != nil {
 		return err
 	}

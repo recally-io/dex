@@ -1,3 +1,4 @@
+import { useAgentId } from "../lib/agent-scope";
 import type { ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Extensions, McpServer, Skill } from "../api/generated/types.gen";
@@ -14,14 +15,15 @@ import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 
 export function ExtensionsPage() {
+  const agentId = useAgentId();
   const { notify } = useApp();
-  const query = useQuery(getExtensionsOptions());
+  const query = useQuery(getExtensionsOptions({ path: { agentId } }));
 
   const reload = useMutation({
     ...reloadExtensionsMutation(),
     onSuccess: (data) => {
-      queryClient.setQueryData(getExtensionsQueryKey(), data);
-      notify("MCP servers reloaded.");
+      queryClient.setQueryData(getExtensionsQueryKey({ path: { agentId } }), data);
+      notify("MCP servers reloaded. The worker restarted for every agent.");
     },
     onError: (error) => notify(errorText(error)),
   });
@@ -31,9 +33,14 @@ export function ExtensionsPage() {
       title="Extensions"
       description="Skills and MCP servers come from files in ~/.agents and in the agent directory. An agent entry replaces a global entry with the same name."
       actions={
-        <Button size="sm" variant="secondary" disabled={reload.isPending} onClick={() => reload.mutate({})}>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={reload.isPending}
+          onClick={() => reload.mutate({ path: { agentId } })}
+        >
           {reload.isPending ? <Spinner /> : null}
-          Reload MCP servers
+          Reload (restarts worker for all agents)
         </Button>
       }
     >

@@ -1,3 +1,5 @@
+import { useApp } from "./app-state";
+import { useAgentId } from "./agent-scope";
 import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "../api/generated/types.gen";
 import { createUpload } from "../api/generated/sdk.gen";
@@ -8,7 +10,7 @@ import { newId } from "./utils";
 export const maxFiles = 10;
 export const maxSize = 20 << 20;
 
-// The image types that GET /api/uploads/{id} serves inline.
+// The image types that GET /api/agents/{agentId}/uploads/{id} serves inline.
 const inline = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 export const isImage = (mimeType: string) => inline.has(mimeType);
@@ -31,10 +33,17 @@ export type DraftFile = {
   error?: string;
 };
 
-export function useAttachments() {
-  const [files, setFiles] = useState<DraftFile[]>([]);
+export type Uploads = Map<string, { abort: AbortController; preview?: string }>;
+
+export function useAttachments(persist = false) {
+  const agentId = useAgentId();
+  const app = useApp();
+  const [localFiles, setLocalFiles] = useState<DraftFile[]>([]);
+  const files = persist ? app.composer.files : localFiles;
+  const setFiles = persist ? app.setComposerFiles : setLocalFiles;
   const [notice, setNotice] = useState("");
-  const uploads = useRef(new Map<string, { abort: AbortController; preview?: string }>());
+  const localUploads = useRef<Uploads>(new Map());
+  const uploads = persist ? app.composerUploads : localUploads;
 
   const release = (key: string) => {
     const upload = uploads.current.get(key);
@@ -46,7 +55,8 @@ export function useAttachments() {
   };
 
   useEffect(() => {
-    const current = uploads.current;
+    if (persist) return;
+    const current = localUploads.current;
 
     return () => {
       for (const upload of current.values()) {
@@ -55,7 +65,7 @@ export function useAttachments() {
         if (upload.preview) URL.revokeObjectURL(upload.preview);
       }
     };
-  }, []);
+  }, [persist]);
 
   function update(key: string, change: Partial<DraftFile>) {
     setFiles((previous) => previous.map((f) => (f.key === key ? { ...f, ...change } : f)));
@@ -81,7 +91,7 @@ export function useAttachments() {
       if (file.size > maxSize)
         return { key, name: file.name, size: file.size, preview, error: "Larger than 20 MB" };
 
-      createUpload({ body: { file }, signal: abort.signal, throwOnError: true }).then(
+      createUpload({ path: { agentId }, body: { file }, signal: abort.signal, throwOnError: true }).then(
         ({ data }) => update(key, { upload: data }),
         (cause: unknown) => {
           if (!abort.signal.aborted) update(key, { error: errorText(cause) });

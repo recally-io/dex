@@ -1,13 +1,13 @@
 -- name: GetWechatSettings :one
-SELECT * FROM wechat_settings WHERE id = 1;
+SELECT * FROM wechat_settings WHERE agent_id = ?;
 
 -- name: SetWechatSettings :exec
-INSERT INTO wechat_settings (id, token, base_url, bot_id, owner) VALUES (1, ?, ?, ?, ?)
-ON CONFLICT (id) DO UPDATE SET token = excluded.token, base_url = excluded.base_url,
+INSERT INTO wechat_settings (agent_id, token, base_url, bot_id, owner) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, base_url = excluded.base_url,
 bot_id = excluded.bot_id, owner = excluded.owner;
 
 -- name: DeleteWechatSettings :exec
-DELETE FROM wechat_settings WHERE id = 1;
+DELETE FROM wechat_settings WHERE agent_id = ?;
 
 -- name: EnsureWechatRuntime :one
 INSERT INTO wechat_runtime (bot_id, owner) VALUES (?, ?)

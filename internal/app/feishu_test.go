@@ -260,7 +260,7 @@ func pairFeishu(t *testing.T, d *dex, f *fakeFeishu) {
 	var result struct {
 		PairingCode string `json:"pairingCode"`
 	}
-	d.must(t, http.MethodPut, "/api/settings/feishu", map[string]string{"appId": "app", "appSecret": "app-secret", "brand": "feishu"}, &result)
+	d.must(t, http.MethodPut, "/api/agents/default/channels/feishu", map[string]string{"appId": "app", "appSecret": "app-secret", "brand": "feishu"}, &result)
 	if result.PairingCode == "" {
 		t.Fatal("missing one-time code")
 	}
@@ -274,7 +274,7 @@ func pairFeishu(t *testing.T, d *dex, f *fakeFeishu) {
 		t.Fatalf("pair retry reached agent: %+v", chats)
 	}
 	assertNoStoredInput(t, d)
-	_, body := d.call(t, http.MethodGet, "/api/settings/feishu", nil)
+	_, body := d.call(t, http.MethodGet, "/api/agents/default/channels/feishu", nil)
 	if strings.Contains(body, "app-secret") || strings.Contains(body, result.PairingCode) || !strings.Contains(body, `"paired":true`) {
 		t.Fatalf("unsafe settings response: %s", body)
 	}
@@ -449,7 +449,7 @@ func TestUserCreatesFeishuAppAndPairsTheCreator(t *testing.T) {
 		Session string `json:"session"`
 		Status  string `json:"status"`
 	}
-	d.must(t, http.MethodPost, "/api/settings/feishu/registration", map[string]string{"brand": "feishu"}, &setup)
+	d.must(t, http.MethodPost, "/api/agents/default/channels/feishu/registration", map[string]string{"brand": "feishu"}, &setup)
 	if !strings.Contains(setup.QRURL, "addons=") || !strings.Contains(setup.QRURL, "createOnly=true") {
 		t.Fatal("missing setup parameters")
 	}
@@ -467,9 +467,9 @@ func TestUserCreatesFeishuAppAndPairsTheCreator(t *testing.T) {
 		case <-deadline.C:
 			t.Fatal("registration did not finish")
 		}
-		d.must(t, http.MethodPost, "/api/settings/feishu/registration/poll", map[string]string{"session": setup.Session}, &setup)
+		d.must(t, http.MethodPost, "/api/agents/default/channels/feishu/registration/poll", map[string]string{"session": setup.Session}, &setup)
 	}
-	_, body := d.call(t, http.MethodGet, "/api/settings/feishu", nil)
+	_, body := d.call(t, http.MethodGet, "/api/agents/default/channels/feishu", nil)
 	if !strings.Contains(body, `"appId":"qr-app"`) {
 		t.Fatalf("missing saved app ID: %s", body)
 	}
@@ -560,7 +560,7 @@ func waitFeishuStatus(t *testing.T, d *dex, want string) {
 		var result struct {
 			Status string `json:"status"`
 		}
-		d.must(t, http.MethodGet, "/api/settings/feishu", nil, &result)
+		d.must(t, http.MethodGet, "/api/agents/default/channels/feishu", nil, &result)
 		if result.Status == want {
 			return
 		}
@@ -658,7 +658,7 @@ func TestUserCancelsFeishuSetupWhileAccountsServiceWaits(t *testing.T) {
 			defer once.Do(func() { close(release) })
 			f := newFakeFeishu(t)
 			d := startDexWith(t, app.Config{DataDir: t.TempDir(), FeishuAccountsURL: accounts.URL, FeishuAPIURL: f.server.URL})
-			path := "/api/settings/feishu/registration"
+			path := "/api/agents/default/channels/feishu/registration"
 			body := map[string]string{"brand": "feishu"}
 			if action == "poll" {
 				var setup struct {
@@ -693,7 +693,7 @@ func TestUserCancelsFeishuSetupWhileAccountsServiceWaits(t *testing.T) {
 			// When the user turns the channel off, then cancellation completes before accounts respond.
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
-			req, err := http.NewRequestWithContext(ctx, http.MethodDelete, d.srv.URL+"/api/settings/feishu", nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodDelete, d.srv.URL+"/api/agents/default/channels/feishu", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -717,7 +717,7 @@ func TestUserCancelsFeishuSetupWhileAccountsServiceWaits(t *testing.T) {
 			var saved struct {
 				Enabled bool `json:"enabled"`
 			}
-			d.must(t, http.MethodGet, "/api/settings/feishu", nil, &saved)
+			d.must(t, http.MethodGet, "/api/agents/default/channels/feishu", nil, &saved)
 			if saved.Enabled {
 				t.Fatal("late credentials restored a canceled channel")
 			}

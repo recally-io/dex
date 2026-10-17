@@ -1,3 +1,4 @@
+import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -5,7 +6,6 @@ import type { Automation, AutomationRun } from "../api/generated/types.gen";
 import {
   listAutomationsOptions,
   getAutomationOptions,
-  getSettingsOptions,
   listAutomationRunsOptions,
   updateAutomationMutation,
   deleteAutomationMutation,
@@ -48,7 +48,12 @@ function RunPill({ run, className = "" }: { run: AutomationRun; className?: stri
 }
 
 function EnabledSwitch({ automation }: { automation: Automation }) {
-  const update = useMutation({ ...updateAutomationMutation(), onSuccess: refreshAutomations });
+  const agentId = useAgentId();
+
+  const update = useMutation({
+    ...updateAutomationMutation(),
+    onSuccess: () => refreshAutomations(agentId),
+  });
 
   return (
     <span className="flex flex-col items-end gap-2">
@@ -60,7 +65,7 @@ function EnabledSwitch({ automation }: { automation: Automation }) {
           label={`Enable ${automation.name}`}
           onChange={() =>
             update.mutate({
-              path: { automationId: automation.id },
+              path: { agentId, automationId: automation.id },
               body: {
                 name: automation.name,
                 prompt: automation.prompt,
@@ -90,8 +95,14 @@ export function AutomationsPage() {
 }
 
 function AutomationsSection() {
-  const automations = useQuery({ ...listAutomationsOptions(), refetchInterval: 10_000 });
-  const settings = useQuery(getSettingsOptions());
+  const agentId = useAgentId();
+
+  const automations = useQuery({
+    ...listAutomationsOptions({ path: { agentId } }),
+    refetchInterval: 10_000,
+  });
+
+  const settings = useAgentSettings(agentId);
   const [create, setCreate] = useState(false);
   const list = automations.data?.automations ?? [];
   const on = list.filter((a) => a.enabled).length;
@@ -124,8 +135,8 @@ function AutomationsSection() {
               {list.map((automation) => (
                 <li key={automation.id} className="flex items-start gap-3 px-4 py-3">
                   <Link
-                    to="/automations/$automationId"
-                    params={{ automationId: automation.id }}
+                    to="/a/$agentId/automations/$automationId"
+                    params={{ agentId, automationId: automation.id }}
                     className="group min-w-0 flex-1"
                   >
                     <span className="flex flex-wrap items-center gap-2">
@@ -166,6 +177,8 @@ function AutomationsSection() {
 }
 
 function RunRow({ run, timeZone, now }: { run: AutomationRun; timeZone: string; now: number }) {
+  const agentId = useAgentId();
+
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
       <RunPill run={run} className="w-[84px] justify-start" />
@@ -177,8 +190,8 @@ function RunRow({ run, timeZone, now }: { run: AutomationRun; timeZone: string; 
         <span className="font-mono text-[11px] text-ink-3 tabular-nums">{ago(run.createdAt, now)} ago</span>
         {run.chatId ? (
           <Link
-            to="/c/$chatId"
-            params={{ chatId: String(run.chatId) }}
+            to="/a/$agentId/c/$chatId"
+            params={{ agentId, chatId: String(run.chatId) }}
             className="text-[12px] font-medium text-accent-ink hover:underline"
           >
             Open session
@@ -197,30 +210,31 @@ function RunRow({ run, timeZone, now }: { run: AutomationRun; timeZone: string; 
 type Filter = "All" | "Problems";
 
 export function AutomationPage({ automationId }: { automationId: string }) {
+  const agentId = useAgentId();
   const navigate = useNavigate();
 
   const automation = useQuery({
-    ...getAutomationOptions({ path: { automationId } }),
+    ...getAutomationOptions({ path: { agentId, automationId } }),
     refetchInterval: 10_000,
   });
 
   const runs = useQuery({
-    ...listAutomationRunsOptions({ path: { automationId } }),
+    ...listAutomationRunsOptions({ path: { agentId, automationId } }),
     refetchInterval: 10_000,
   });
 
-  const settings = useQuery(getSettingsOptions());
+  const settings = useAgentSettings(agentId);
   const model = useAgentModel(settings.data);
   const [edit, setEdit] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [filter, setFilter] = useState<Filter>("All");
-  const run = useMutation({ ...runAutomationMutation(), onSuccess: refreshAutomations });
+  const run = useMutation({ ...runAutomationMutation(), onSuccess: () => refreshAutomations(agentId) });
 
   const remove = useMutation({
     ...deleteAutomationMutation(),
     onSuccess: async () => {
-      await refreshAutomations();
-      await navigate({ to: "/automations" });
+      await refreshAutomations(agentId);
+      await navigate({ to: "/a/$agentId/automations", params: { agentId } });
     },
   });
 
@@ -233,7 +247,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
   const busy = history.some((h) => h.status === "running");
   const blocked = model && !model.ok ? "Choose an available agent model first." : undefined;
 
-  const crumb = <Crumb to="/automations">Automations</Crumb>;
+  const crumb = <Crumb to="/a/$agentId/automations">Automations</Crumb>;
 
   if (automation.isPending || automation.isError)
     return (
@@ -274,7 +288,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
             variant="primary"
             disabled={run.isPending || remove.isPending || busy || !!blocked}
             title={blocked ?? (busy ? "A run is in progress." : undefined)}
-            onClick={() => run.mutate({ path: { automationId } })}
+            onClick={() => run.mutate({ path: { agentId, automationId } })}
           >
             {run.isPending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
             {run.isPending ? "Starting…" : "Run now"}
@@ -295,8 +309,8 @@ export function AutomationPage({ automationId }: { automationId: string }) {
               <RunPill run={latestRun} />
               {latestRun.chatId ? (
                 <Link
-                  to="/c/$chatId"
-                  params={{ chatId: String(latestRun.chatId) }}
+                  to="/a/$agentId/c/$chatId"
+                  params={{ agentId, chatId: String(latestRun.chatId) }}
                   className="font-medium text-accent-ink hover:underline"
                 >
                   Open session
@@ -405,7 +419,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
           pending={remove.isPending}
           error={remove.error}
           onCancel={() => setConfirm(false)}
-          onConfirm={() => remove.mutate({ path: { automationId } })}
+          onConfirm={() => remove.mutate({ path: { agentId, automationId } })}
         />
       ) : null}
     </FramedPage>

@@ -67,10 +67,12 @@ status records a cancellation request. It does not prove process exit. There
 is no user goal lifecycle or automatic retry chain.
 
 Each agent has one main conversation with channel key `main`. The unique
-agent/key constraint makes `GET /api/chats/main` safe to repeat. It creates
-the control record on demand. The web opens this conversation at `/` and
-sends through `POST /api/chats/{id}/messages`. It uses agent settings.
-`POST /api/chats` takes no body and returns a writable Chat session (`201`).
+agent/key constraint makes `GET /api/agents/{agentId}/chats/main` safe to repeat.
+It creates the control record on demand. Messages use
+`POST /api/agents/{agentId}/chats/{id}/messages` and the agent's settings.
+The web opens each main conversation at `/a/{agentId}`. `/` redirects to
+`/a/default`. `POST /api/agents/{agentId}/chats` takes no body and returns a writable
+Chat session (`201`).
 Its channel key starts with `chat:`. One SQLite write reuses the newest Chat
 with no ordinary message, or creates one. Concurrent opens reuse the same row.
 The first message and its title commit together. The title has at most
@@ -79,41 +81,50 @@ message uses the first file's name. Each Chat has its own worker conversation.
 It uses the bot's settings, instructions and shared memory. It does not read
 main's model context or send its answers to main.
 
-The timeline header opens `/sessions`. `GET /api/chats` lists session summaries
+The timeline header opens `/a/{agentId}/sessions`. `GET /api/agents/{agentId}/chats` lists
+session summaries
 by `updatedAt` descending, then ID descending. `updatedAt` is the latest
 conversation creation, input creation or settlement, or task start or end time.
 Task times apply only to the task's own conversation. List and detail use the
 same rule. The list excludes main, old channel conversations, dreams and
 Chat sessions with no message. Task rows add `task: TaskSummary`, without
 report bodies. The query does not read reports or transcripts. The page
-filters by Chat, Task or Automation. `/tasks` redirects to `/sessions`.
+filters by Chat, Task or Automation. `/tasks` redirects to `/a/default/sessions`.
 The active count includes tasks with status queued or running, and other
 busy sessions. Each row counts once. A kind filter counts only visible rows.
 `New session` appears only on the Sessions page. Other sessions open at
-`/c/{id}`; tasks open at `/tasks/{id}` with Report above Work. Main stays at `/`.
+`/a/{agentId}/c/{id}`; tasks open at `/a/{agentId}/tasks/{id}` with Report above
+Work. Main stays at `/a/{agentId}`.
 
-Channel input enters main. Chat and automation contexts stay separate.
+Channel input enters the bot's agent main conversation. Chat and
+automation contexts stay separate.
 
-The agent is one page with tabs: Chat (`/`), Instructions (`/instructions`),
-Channels (`/channels`), Automations (`/automations`), Sessions (`/sessions`,
-with `/c/{id}` and `/tasks/{id}`), and Settings (`/agent`, the name). A pathless
-layout route holds them, so the header with the name, the tabs, the model, and
-the thinking level of a reasoning model stays in place. The main timeline stays
-mounted and `inert` under the other tabs, so its stream and the unsent message
-survive a tab change. Browser checks must skip `[inert]` subtrees. The
-instructions draft lives in app state; it marks the name, the Instructions tab,
-and the sidebar until it is saved, and a reload starts from the saved instructions. On
-a phone the tabs scroll and the current tab is centered. Channels counts the
-running channels, Automations the enabled ones, and Sessions the active ones.
-Inside the pane a top page has no frame and no visible title, because its tab
-names it; a page opened from a tab shows its breadcrumb and title.
+Each agent has a page under `/a/{agentId}`. Its tabs are Chat (the base
+path), Instructions (`/instructions`), Channels (`/channels`), Automations
+(`/automations`), Sessions (`/sessions`), Extensions (`/extensions`), and
+Settings (`/agent`). Session and task details use `/c/{id}` and `/tasks/{id}`
+under that base path. A layout route keeps the name, tabs, model, and thinking
+level in place. The main timelines of visited agents stay mounted and `inert`
+when hidden. Their streams, composer drafts, and uploaded attachments survive
+agent and tab changes. Browser checks must skip `[inert]` subtrees.
+Instructions drafts live in a map by agent ID above the routes. Saving one
+agent cannot change another agent's draft or query data. Reload discards drafts.
+On a phone the tabs scroll and center the current tab. Channels counts running
+channels for the selected agent. Each agent has its own channel controls. Automations counts
+enabled automations. Sessions counts active sessions.
 
-The sidebar lists the agents at the top and the global settings at the bottom:
-Providers, Extensions, Secrets, and About. The agent row is current on every
-tab and shows a status line: the active sessions, else the running channels,
-else Idle. `/settings` redirects to `/agent`.
-Channel settings show setup and runtime status. Automation details
-keep their run history. Automation transcripts have no web composer.
+The sidebar lists agents in creation order, with default first. Each row shows
+an avatar letter, name, status, and an instructions draft pill. The current
+agent's row stays selected on all its pages. The status shows active sessions,
+else running channels, else Idle. The `+` button opens a create dialog with a
+name and the existing model picker. The form starts with the current agent's
+provider, model, and thinking level. A successful create opens its empty timeline.
+Providers, Secrets, and About are global pages at the bottom of the sidebar.
+Old agent page URLs redirect to the same page under `/a/default`.
+`/settings` redirects to `/a/default/agent`. An unknown agent shows a not-found
+page with a link to Dex. Channel settings show setup and runtime status.
+Automation details keep their run history. Automation transcripts have no
+web composer.
 
 Every enqueue writes `submissions.origin`. Web input in main and Chat uses `web`.
 Channel input uses the exact peer, such as `telegram:7`, and always enters main.
@@ -129,6 +140,42 @@ The worker protocol has no channel fields.
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). pi-durable allows one
 process per storage, so only the worker opens an agent directory.
 
+## Agents and HTTP API
+
+One owner can create several agents. `GET /api/agents` returns
+`{agents: [Agent]}` in creation order. Each list entry has `activity` with
+`activeSessions`, `runningChannels`, and `enabledAutomations`. One SQL query
+counts sessions and automations across all agents. A task counts when queued or
+running; other visible sessions count when they have pending input. Each session
+counts once. Channel counts come from the app registry. The sidebar polls this
+list every three seconds and shares its cache with agent tabs. `POST /api/agents` accepts a name,
+provider, model ID, thinking level, and optional instructions. It returns the
+agent with a UUID v7 ID (`201`). The ID is read-only. `GET` and `PUT` on
+`/api/agents/{agentId}` read and save one agent. Names and models use the same
+validation for creation and updates.
+
+Agent resources are under `/api/agents/{agentId}`: main, chats and their
+settings, messages, clear, history, abort and events; task details; uploads;
+extensions and reload; automations and their run and runs endpoints. An unknown
+agent or a resource owned by another agent returns `404`. Upload storage uses
+`<data dir>/agents/<agentId>/`. Control builds the path store for each request.
+Each live stream carries its agent ID for worker watches and history. Worker
+conversation IDs can be equal in different agents.
+
+Session, health, maintenance, models, provider settings, and
+`/api/automations/preview` stay global. One settings service and lock own
+settings changes. Creating or selecting an agent does not configure providers.
+One scheduler job checks automations across all agents and posts each prompt
+with the saved agent ID. Extension reload restarts the whole worker and affects
+every agent.
+
+The web UI uses the nested agent routes, including live events and upload
+links. Agent resources require an explicit ID, including the default agent.
+The old un-nested API routes return 404. `GET /api/settings` returns only global
+settings and has no agent or channel fields. Channel setup and status use
+`/api/agents/{agentId}/channels`, with `/telegram`, `/wechat`, and `/feishu`
+for changes. The old `/api/settings/{platform}` routes return 404.
+
 ## Memory
 
 The memory is a git repo in the
@@ -136,20 +183,28 @@ The memory is a git repo in the
 at `<data dir>/memory/`. It belongs to the user, so all agents and channels
 share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
 
-- **Read.** The [`memory` extension](../../worker/src/memory.ts) adds two
+- **Read.** The [`memory` extension](../../worker/src/memory.ts) adds three
   system prompt sections: the memory rules (the repo path, the entry format,
-  and the chat's `source`), and `MEMORY.md`. They render before each model
+  and the chat's `source`), shared `MEMORY.md`, and that agent's
+  `agents/<agentId>/MEMORY.md`. Other agents do not load this last section.
+  They render before each model
   request, so a change applies from the next request, also inside a run.
   pi-durable sends a section again only when its text changed. The agent
   finds the other files with grep and the `[[path]]` links.
 - **Write.** The agent changes the files with its edit and write tools,
   without approval. It does not run git. When a submission settles, the
   worker commits all changes as `Update memory from <source>`. The source is
-  `dex:chat/<chat ID>`, or `dex:dream/<dream ID>`.
+  `dex:<agentId>/chat/<chatId>`, or `dex:<agentId>/dream/<dreamId>`.
+  Old `dex:chat/<id>` sources remain valid and mean the default agent.
+  Owner facts go in shared `MEMORY.md` and its topic files. Role experience
+  and ways of working go in `agents/<agentId>/`, with its own `MEMORY.md`
+  entry point. This keeps one bot's habits out of the owner's preferences.
 - **Dream.** The [scheduler](../../internal/scheduler/scheduler.go), a
   wrapper of gocron, runs [`dream.Dreamer`](../../internal/dream/dream.go)
   at start and then every hour. The schedule only causes a check; the
-  `dreams` table decides. When the agent has a model, no message is pending,
+  `dreams` table decides. One Dreamer checks every agent. When an agent has a
+  model, none of that agent's submissions are pending, no dream is pending
+  across all agents,
   the last dream started 24 h ago or more, and the oldest settled message that
   no dream read is 24 h old or more, the check starts a dream. A dream is a
   hidden chat (channel key `dream:<id>`). Its system prompt holds the dream
@@ -157,9 +212,12 @@ share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
   Its message holds the new messages as JSON lines, in settle order, with
   local times: up to 500 messages or 100,000 bytes. A text longer than 4,000
   characters keeps its first 3,000 and last 1,000 characters and is marked as
-  cut. The agent adds what repeats across chats and cleans up the memory. The
+  cut. The agent adds what repeats across its chats. It tidies its own folder
+  and shared entries whose chat sources all belong to it. Entries with other
+  agents' sources, including mixed sources, can only gain `uncertain: yes`.
+  Shared entries with no chat source stay unchanged. The
   `dreams` table records the last message that each dream read; the next dream
-  starts after the newest done dream.
+  starts after that agent's newest done dream.
 
 ## Extensions
 
@@ -173,10 +231,11 @@ model request, and the MCP tools, as deferred tools named
 `mcp__<server>__<tool>`. When an agent has MCP tools, the worker also installs
 `tool_search`.
 
-`GET /api/extensions` reads the files; before the agent opens, the servers
-are `idle`. `POST /api/extensions/reload` takes the maintenance lease, which
-it refuses when another holder has it, restarts the worker, opens the agent,
-and releases the lease.
+`GET /api/agents/{agentId}/extensions` reads the files. Before the agent opens,
+the servers are `idle`. `POST /api/agents/{agentId}/extensions/reload` takes the
+maintenance lease, which it refuses when another holder has it. It restarts the
+whole worker, opens the agent, and releases the lease. The restart affects every
+agent.
 
 The task extension adds delegation tools and a `task-rules` section to
 foreground conversations, including main, Chat and automation sessions.
@@ -194,8 +253,9 @@ or separate worktrees for tasks that change the same repository.
 An automation runs a prompt on a schedule; see
 [ADR 0005](decisions/0005-automations.md).
 [`automation.Service`](../../internal/automation/automation.go) stores
-automations and their runs in `control.sqlite`. The scheduler calls its
-`Check` every minute. `Check` posts the prompt of each automation whose
+automations and their runs in `control.sqlite`. One scheduler job calls its
+`Check` every minute for all agents. Each row supplies its owning agent ID.
+`Check` posts the prompt of each automation whose
 `next_due_at` has come, as a message to its chat (`automation:<id>`, or
 `automation:<id>:<run id>` for a new chat each run), and moves `next_due_at`
 past now. The message uses the normal durable delivery.
@@ -206,15 +266,15 @@ The web UI edits all settings; see [ADR 0002](decisions/0002-settings-in-control
 [`settings.Service`](../../internal/settings/settings.go) validates a change,
 saves it in `control.sqlite`, and then applies it:
 
-| Setting                                 | Table               | Applied by                                                         |
-| --------------------------------------- | ------------------- | ------------------------------------------------------------------ |
-| Bot model, thinking level, instructions | `agents`            | the next `submit` of each chat; the worker calls `configure` on it |
-| Chat model, chat thinking level         | `conversations`     | the next `submit` of that chat                                     |
-| Providers                               | `providers`         | `configure` to the worker, and again after each worker start       |
-| Telegram token, allowed users           | `telegram_settings` | a restart of the bot                                               |
+| Setting                                 | Table               | Applied by                                                   |
+| --------------------------------------- | ------------------- | ------------------------------------------------------------ |
+| Bot model, thinking level, instructions | `agents`            | the next `submit` of each chat                               |
+| Chat model, chat thinking level         | `conversations`     | the next `submit` of that chat                               |
+| Providers                               | `providers`         | `configure` to the worker, and again after each worker start |
+| Telegram token, allowed users           | `telegram_settings` | a restart of the bot                                         |
 
-`PUT /api/settings/agent` saves the name with the other bot settings. It trims
-spaces, then accepts 1 to 40 Unicode characters. The web uses the saved name in
+`PUT /api/agents/{agentId}` saves the name with the other bot settings.
+The API trims spaces, then accepts 1 to 40 Unicode characters. The web uses the saved name in
 the sidebar, the timeline header, and the composer.
 
 Main and Chat sessions use the agent's model and thinking level. They have no
@@ -305,8 +365,8 @@ ID, so the user item in the transcript has the ID that the browser sent.
 
 Source: [message-flow.puml](../../assets/src/message-flow.puml)
 
-1. The browser opens `GET /api/chats/main`, then sends
-   `POST /api/chats/{id}/messages` with a UUID that it makes.
+1. The browser opens `GET /api/agents/{agentId}/chats/main`, then sends
+   `POST /api/agents/{agentId}/chats/{id}/messages` with a UUID that it makes.
    [`chat.Service.Send`](../../internal/chat/chat.go) refuses the message when
    neither the chat nor the agent has a model. Otherwise it finds or creates
    the conversation for
@@ -365,9 +425,9 @@ appear in Sessions but stay absent from dream inputs. The human can read their c
 history, and normal SSE stream. Web input, settings, clear, and abort are refused.
 Dream input selects only ordinary messages, so internal results in a source session
 cannot enter memory as user text.
-`GET /api/tasks/{id}` returns one record with its report, times, and conversation
+`GET /api/agents/{agentId}/tasks/{id}` returns one record with its report, times, and conversation
 ID. The task and session reads check the agent. Model task tools keep their
-parent conversation scope. There is no `GET /api/tasks` list, HTTP task control,
+parent conversation scope. There is no `GET /api/agents/{agentId}/tasks` list, HTTP task control,
 or separate task stream. The Sessions page and each writable session poll
 session summaries every 3 s.
 Task details poll every 3 s while queued or running. Terminal details stop polling.
@@ -404,7 +464,7 @@ has a 6 s timeout. RPC failure is logged; saved cancellation stays in effect.
 There is no cancellation retry loop. Late reports cannot change a terminal
 record or wake the model.
 
-`POST /api/chats/{chatId}/abort` returns `{status: "ok"}` after withdrawal and the
+`POST /api/agents/{agentId}/chats/{chatId}/abort` returns `{status: "ok"}` after withdrawal and the
 cancellation requests. The composer keeps Stop available for queued input,
 an active answer, and active background work started by that conversation.
 Tasks from other conversations count in the bot's badge but cannot enable
@@ -441,7 +501,7 @@ external actions occurred once.
 
 ## Attachments
 
-1. The browser sends each file as `POST /api/uploads` (multipart, one file,
+1. The browser sends each file as `POST /api/agents/{agentId}/uploads` (multipart, one file,
    at most 20 MB). [`upload.Store`](../../internal/upload/upload.go) writes
    it to `workspace/uploads/<UUIDv7>/<name>` and returns its ID, name, size,
    type (from the content) and workspace path. The directory is the only
@@ -454,13 +514,13 @@ external actions occurred once.
    also prepares images for a model with image input. The `dex.user` entry
    keeps the attachments, so the transcript shows the files and the text
    without the list.
-4. `GET /api/uploads/{id}` serves a file for the transcript.
+4. `GET /api/agents/{agentId}/uploads/{id}` serves a file for the transcript.
 
 The contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas `Item`
 and `ChatEvent`. See [ADR 0003](decisions/0003-web-ui-stack-and-live-transcript.md).
 
 ```
-browser ──EventSource──▶ control  GET /api/chats/{id}/events
+browser ──EventSource──▶ control  GET /api/agents/{agentId}/chats/{id}/events
                            │ watch / unwatch, one watch ID per stream
                            ▼
                          worker  watchEvents() and ChatView (worker/src/view.ts)
@@ -489,7 +549,7 @@ browser ──EventSource──▶ control  GET /api/chats/{id}/events
   behind is closed, and the browser reconnects.
 - A stream sends a comment line every 15 s.
 
-`POST /api/chats/{id}/clear` uses the delivery lock and a SQLite writer
+`POST /api/agents/{agentId}/chats/{id}/clear` uses the delivery lock and a SQLite writer
 transaction to check pending input and insert `context_reset` together. The
 worker also checks its active run and inbox. A refused request stores nothing.
 Delivery uses `submit({type: "write", requestId, entry: {kind: "pi.reset",
@@ -506,7 +566,7 @@ The action is hidden when the last non-compaction item is a reset or is absent.
 A snapshot contains only the active worker context. Reset entries show dividers.
 Compaction entries stay in the data but have no divider. `historyBefore` points
 to the head entry. The browser requests
-`GET /api/chats/{id}/history?before=<entry ID>&limit=100` on demand. The worker
+`GET /api/agents/{agentId}/chats/{id}/history?before=<entry ID>&limit=100` on demand. The worker
 reads `Conversation.entries` before that exclusive cursor and returns items
 in entry order with `nextBefore`. A page can extend to the previous assistant
 or input so a tool call keeps its result. Committed assistant block IDs use
@@ -562,13 +622,25 @@ so dex needs no public URL.
 
 ## Shared channels
 
+The app owns a registry with one Manager per agent. Startup restores all agents' bots.
+Creating an agent adds its Manager. Shutdown stops all Managers before the database closes.
+Uploads and live previews use the bot's agent directory and stream. Chat notifications
+wake all Managers; each Manager reads only its agent's replies and commands. This fan-out
+is a limit: route notifications by agent if wakeups become costly.
+
+Channel settings use `agent_id` as their primary key. Telegram tokens, WeChat bot IDs,
+and Feishu app IDs are unique across agents. A duplicate returns 409 and names the
+agent that owns the credential. QR login and registration sessions are also per agent.
+Migration maps old settings, peers, and commands to `default`. Rollback keeps only
+that agent's channel data. WeChat runtime remains keyed by bot ID and owner.
+
 [`channel.Manager`](../../internal/channel/channel.go) owns bot lifetime,
 commands, and reply delivery. Settings changes stop the old bot
 before they start its replacement. Settings expose runtime status: `off`,
 `running`, `error` with a reason, or `needs_login`.
 
 A peer names a remote destination, such as `telegram:7`. Owner input from all
-channels enters the agent's `main` conversation with that peer as origin.
+channels enters the bot's agent `main` conversation with that peer as origin.
 Channel input cannot select a Chat session. Old `channel_peers` records and
 per-peer conversations remain stored but receive no new channel input. The
 Sessions list excludes those conversations. Main and Chat are writable on
@@ -780,7 +852,7 @@ token.
 
 Uploads: a file name with a path, a control character, or more than 255
 bytes is refused. An upload ID must be a UUID in its normal form, so it
-cannot leave the uploads directory. `GET /api/uploads/{id}` sends PNG, JPEG,
+cannot leave the uploads directory. `GET /api/agents/{agentId}/uploads/{id}` sends PNG, JPEG,
 GIF and WebP inline with their type, and every other file as
 `application/octet-stream` with `Content-Disposition: attachment`. All
 responses have `X-Content-Type-Options: nosniff`, so an uploaded HTML or SVG

@@ -1,12 +1,7 @@
 // HTTP and transport errors enter here without a shared runtime schema.
 /* eslint-disable anti-slop/no-runtime-typeof */
 import { QueryClient } from "@tanstack/react-query";
-import {
-  getSettingsQueryKey,
-  listModelsOptions,
-  listChatsQueryKey,
-  listAutomationsQueryKey,
-} from "../api/generated/@tanstack/react-query.gen";
+import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
 
 export const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 1000 }, mutations: { retry: false } },
@@ -15,25 +10,26 @@ export const queryClient = new QueryClient({
 // Refreshes after a settings write. A failed read stays in its query for the UI to show; it does
 // not reject, so a successful write is not reported as a failed one.
 export async function refreshSettings() {
+  await queryClient.invalidateQueries({ queryKey: [{ _id: "getChannels" }] });
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: getSettingsQueryKey() }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getSettings" }] }),
     queryClient.prefetchQuery({ ...listModelsOptions(), staleTime: 0 }),
   ]);
 }
 
-export async function refreshChats() {
+export async function refreshChats(agentId: string) {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: listChatsQueryKey() }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "getChat" }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listChats", path: { agentId } }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getChat", path: { agentId } }] }),
   ]);
 }
 
-export async function refreshAutomations() {
+export async function refreshAutomations(agentId: string) {
   await Promise.all([
-    refreshChats(),
-    queryClient.invalidateQueries({ queryKey: listAutomationsQueryKey() }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "getAutomation" }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "listAutomationRuns" }] }),
+    refreshChats(agentId),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listAutomations", path: { agentId } }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getAutomation", path: { agentId } }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listAutomationRuns", path: { agentId } }] }),
   ]);
 }
 
