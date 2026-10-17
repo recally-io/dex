@@ -22,7 +22,12 @@ to read in an afternoon.
   after spaces are trimmed. Providers, Extensions, Secrets, and About are global
   pages. Named secrets are not available yet. The CLI manages the service
   address, data directory, and update policy.
-- Agents with a model, instructions, and a workspace directory.
+- Several agents for one owner, each with a name, model, thinking level,
+  instructions, conversations, automations, and workspace directory. The API
+  can create, list, read, and update agents. Each agent's API paths include its
+  ID. A resource from another agent returns 404. The web UI still uses the
+  default agent through compatible routes. Providers and channels stay global.
+  Extension reload restarts the whole worker and affects every agent.
 - Durable conversations: control stores each message before delivery. Saved
   messages, reports, and execution records survive a restart. A restart does
   not attach an old CLI process or prove that its actions occurred once.
@@ -36,7 +41,7 @@ to read in an afternoon.
   level. The sidebar lists the agents and the global settings. It has no chat
   list or New chat action.
   Channel input shares main. Automation runs have separate read-only transcripts.
-- Internal background delegation for the default agent. Each delegation has
+- Internal background delegation for each agent. Each delegation has
   one input and fixed model settings. The main agent stays available and
   receives reports to plan review, fixes, tests, and the final answer.
   Each agent admits at most 2 queued or running executions. Cancellation
@@ -50,7 +55,8 @@ to read in an afternoon.
   Earlier versions accepted group messages from allowed users. The bot now
   ignores all non-private chats, including messages from allowed users.
 - Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. All channels
-  are for the owner. All entries share main's context. Input from one entry can
+  are for the owner. The web UI and channels use the default agent. These
+  entries share its main context. Input from one entry can
   affect an answer at another entry. Channel messages show their channel name
   in the web timeline. Replies return only to the input's origin. Web input
   sends no channel reply. Each input gets its own answer, in admission order.
@@ -164,9 +170,10 @@ input.
 
 Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,
 background tasks, timers, skills, MCP servers, and the worker are available.
-The current task milestone uses one default agent. Project bindings, task
-routing between agents, group chats, and task-specific automation result
-routing are later work. Named secrets and other chat channels are not available.
+The API supports several agents. The web UI and channels still use the
+default agent. Project bindings, task routing between agents, group chats,
+and task-specific automation result routing are later work. Named secrets and
+other chat channels are not available.
 
 ## Non-goals
 

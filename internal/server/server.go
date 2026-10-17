@@ -61,7 +61,8 @@ var errReadOnly = errors.New("this session is read-only; send messages in main o
 // cannot send messages or change settings, and cannot sign in.
 func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
-	strict := api.NewStrictHandlerWithOptions(&handler{cfg}, nil, api.StrictHTTPServerOptions{
+	h := &handler{cfg}
+	strict := api.NewStrictHandlerWithOptions(h, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			writeError(w, http.StatusBadRequest, "the request is not valid: "+err.Error())
 		},
@@ -75,7 +76,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, errReadOnly):
 				status = http.StatusForbidden
-			case errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
+			case errors.Is(err, settings.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
 			case errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy):
 				status = http.StatusConflict
@@ -85,7 +86,7 @@ func New(cfg Config) http.Handler {
 			writeError(w, status, err.Error())
 		},
 	})
-	api.HandlerWithOptions(strict, api.StdHTTPServerOptions{BaseRouter: mux})
+	api.HandlerWithOptions(strict, api.StdHTTPServerOptions{BaseRouter: mux, Middlewares: []api.MiddlewareFunc{h.withAgent}})
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
@@ -94,7 +95,8 @@ func New(cfg Config) http.Handler {
 	// multipart headers.
 	small, uploads := http.MaxBytesHandler(mux, 256<<10), http.MaxBytesHandler(mux, upload.MaxSize+64<<10)
 	limited := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/uploads" {
+		parts := strings.Split(r.URL.Path, "/")
+		if r.URL.Path == "/api/uploads" || (len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads") {
 			uploads.ServeHTTP(w, r)
 		} else {
 			small.ServeHTTP(w, r)
@@ -113,7 +115,34 @@ func writeError(w http.ResponseWriter, status int, message string) {
 
 type handler struct{ Config }
 
-func agentID(context.Context) string { return "default" }
+type agentKey struct{}
+
+func agentID(ctx context.Context) string {
+	if id, ok := ctx.Value(agentKey{}).(string); ok {
+		return id
+	}
+	return "default"
+}
+
+// withAgent checks the path before the strict handler decodes the body or opens storage.
+func (h *handler) withAgent(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if id := r.PathValue("agentId"); id != "" {
+			if _, err := h.Settings.Agent(r.Context(), id); err != nil {
+				status := http.StatusInternalServerError
+				if errors.Is(err, settings.ErrNotFound) {
+					status = http.StatusNotFound
+				} else {
+					slog.Error("read request agent", "err", err)
+				}
+				writeError(w, status, err.Error())
+				return
+			}
+			r = r.WithContext(context.WithValue(r.Context(), agentKey{}, id))
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func (h *handler) uploads(ctx context.Context) *upload.Store {
 	return upload.New(filepath.Join(h.DataDir, "agents", agentID(ctx)))

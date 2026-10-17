@@ -31,6 +31,9 @@ import (
 // ErrInvalid wraps the errors of a change that the service refuses.
 var ErrInvalid = errors.New("invalid settings")
 
+// ErrNotFound means that the agent does not exist.
+var ErrNotFound = errors.New("agent not found")
+
 // APIs are the APIs a custom provider can use, with their names for the UI.
 var APIs = map[string]string{
 	"openai-completions": "OpenAI Chat Completions",
@@ -56,6 +59,7 @@ type Settings struct {
 
 // Agent holds the settings of one agent. An empty ModelID means no model is chosen.
 type Agent struct {
+	ID            string `json:"id"`
 	Name          string `json:"name"`
 	Provider      string `json:"provider"`
 	ModelID       string `json:"modelId"`
@@ -212,11 +216,14 @@ func (s *Service) Models(ctx context.Context) ([]worker.ModelInfo, error) {
 // Agent reads one agent.
 func (s *Service) Agent(ctx context.Context, id string) (Agent, error) {
 	row, err := s.q.GetAgent(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Agent{}, ErrNotFound
+	}
 	return agentView(row), err
 }
 
 func agentView(row sqlc.Agent) Agent {
-	return Agent{Name: row.Name, Provider: row.ModelProvider, ModelID: row.ModelID,
+	return Agent{ID: row.ID, Name: row.Name, Provider: row.ModelProvider, ModelID: row.ModelID,
 		ThinkingLevel: row.ThinkingLevel, Instructions: row.Instructions}
 }
 
@@ -237,7 +244,7 @@ func (s *Service) ListAgents(ctx context.Context) ([]Agent, error) {
 func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := s.q.GetAgent(ctx, id); err != nil {
+	if _, err := s.Agent(ctx, id); err != nil {
 		return err
 	}
 	a, err := s.cleanAgent(ctx, a)

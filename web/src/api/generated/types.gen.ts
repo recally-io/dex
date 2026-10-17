@@ -410,6 +410,10 @@ export type Settings = {
 
 export type Agent = {
     /**
+     * The agent ID.
+     */
+    readonly id?: string;
+    /**
      * The bot name. Trim spaces before validation.
      */
     name: string;
@@ -420,6 +424,20 @@ export type Agent = {
     modelId: string;
     thinkingLevel: ThinkingLevel;
     instructions: string;
+};
+
+export type AgentInput = {
+    /**
+     * The bot name. Trim spaces before validation.
+     */
+    name: string;
+    provider: string;
+    /**
+     * Empty when no model is chosen.
+     */
+    modelId: string;
+    thinkingLevel: ThinkingLevel;
+    instructions?: string;
 };
 
 /**
@@ -626,6 +644,40 @@ export type FeishuBrand = {
 
 export type FeishuPoll = {
     session: string;
+};
+
+export type SettingsWritable = {
+    agent: AgentWritable;
+    /**
+     * The providers that the user added, in the order of addition.
+     */
+    providers: Array<Provider>;
+    /**
+     * All pi-ai built-in providers that take an API key.
+     */
+    builtins: Array<ProviderInfo>;
+    /**
+     * The APIs of custom providers, ID → name.
+     */
+    apis: {
+        [key: string]: string;
+    };
+    telegram: Telegram;
+    wechat: Wechat;
+};
+
+export type AgentWritable = {
+    /**
+     * The bot name. Trim spaces before validation.
+     */
+    name: string;
+    provider: string;
+    /**
+     * Empty when no model is chosen.
+     */
+    modelId: string;
+    thinkingLevel: ThinkingLevel;
+    instructions: string;
 };
 
 export type AutomationId = string;
@@ -1277,7 +1329,7 @@ export type ListModelsResponses = {
 export type ListModelsResponse = ListModelsResponses[keyof ListModelsResponses];
 
 export type SetAgentData = {
-    body: Agent;
+    body: AgentWritable;
     path?: never;
     query?: never;
     url: '/api/settings/agent';
@@ -1890,3 +1942,891 @@ export type ListAutomationRunsResponses = {
 };
 
 export type ListAutomationRunsResponse = ListAutomationRunsResponses[keyof ListAutomationRunsResponses];
+
+export type ListAgentsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/agents';
+};
+
+export type ListAgentsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListAgentsError = ListAgentsErrors[keyof ListAgentsErrors];
+
+export type ListAgentsResponses = {
+    /**
+     * The agents.
+     */
+    200: {
+        agents: Array<Agent>;
+    };
+};
+
+export type ListAgentsResponse = ListAgentsResponses[keyof ListAgentsResponses];
+
+export type CreateAgentData = {
+    body: AgentInput;
+    path?: never;
+    query?: never;
+    url: '/api/agents';
+};
+
+export type CreateAgentErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateAgentError = CreateAgentErrors[keyof CreateAgentErrors];
+
+export type CreateAgentResponses = {
+    /**
+     * The created agent with a UUID v7 ID.
+     */
+    201: Agent;
+};
+
+export type CreateAgentResponse = CreateAgentResponses[keyof CreateAgentResponses];
+
+export type GetAgentData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}';
+};
+
+export type GetAgentErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetAgentError = GetAgentErrors[keyof GetAgentErrors];
+
+export type GetAgentResponses = {
+    /**
+     * The agent's settings.
+     */
+    200: Agent;
+};
+
+export type GetAgentResponse = GetAgentResponses[keyof GetAgentResponses];
+
+export type UpdateAgentData = {
+    body: AgentInput;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}';
+};
+
+export type UpdateAgentErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type UpdateAgentError = UpdateAgentErrors[keyof UpdateAgentErrors];
+
+export type UpdateAgentResponses = {
+    /**
+     * The saved agent.
+     */
+    200: Agent;
+};
+
+export type UpdateAgentResponse = UpdateAgentResponses[keyof UpdateAgentResponses];
+
+export type AgentGetTaskData = {
+    body?: never;
+    path: {
+        agentId: string;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/tasks/{taskId}';
+};
+
+export type AgentGetTaskErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentGetTaskError = AgentGetTaskErrors[keyof AgentGetTaskErrors];
+
+export type AgentGetTaskResponses = {
+    /**
+     * The task. Done means that it returned a report.
+     */
+    200: Task;
+};
+
+export type AgentGetTaskResponse = AgentGetTaskResponses[keyof AgentGetTaskResponses];
+
+export type AgentGetMainChatData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/main';
+};
+
+export type AgentGetMainChatErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentGetMainChatError = AgentGetMainChatErrors[keyof AgentGetMainChatErrors];
+
+export type AgentGetMainChatResponses = {
+    /**
+     * The main timeline.
+     */
+    200: Chat;
+};
+
+export type AgentGetMainChatResponse = AgentGetMainChatResponses[keyof AgentGetMainChatResponses];
+
+export type AgentListChatsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats';
+};
+
+export type AgentListChatsErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentListChatsError = AgentListChatsErrors[keyof AgentListChatsErrors];
+
+export type AgentListChatsResponses = {
+    /**
+     * The sessions.
+     */
+    200: ChatList;
+};
+
+export type AgentListChatsResponse = AgentListChatsResponses[keyof AgentListChatsResponses];
+
+export type AgentCreateChatData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats';
+};
+
+export type AgentCreateChatErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentCreateChatError = AgentCreateChatErrors[keyof AgentCreateChatErrors];
+
+export type AgentCreateChatResponses = {
+    /**
+     * The new or reused Chat session.
+     */
+    201: Chat;
+};
+
+export type AgentCreateChatResponse = AgentCreateChatResponses[keyof AgentCreateChatResponses];
+
+export type AgentGetChatData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}';
+};
+
+export type AgentGetChatErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentGetChatError = AgentGetChatErrors[keyof AgentGetChatErrors];
+
+export type AgentGetChatResponses = {
+    /**
+     * The chat.
+     */
+    200: Chat;
+};
+
+export type AgentGetChatResponse = AgentGetChatResponses[keyof AgentGetChatResponses];
+
+export type AgentSetChatSettingsData = {
+    body: ChatSettings;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/settings';
+};
+
+export type AgentSetChatSettingsErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentSetChatSettingsError = AgentSetChatSettingsErrors[keyof AgentSetChatSettingsErrors];
+
+export type AgentSetChatSettingsResponses = {
+    /**
+     * Saved.
+     */
+    200: Chat;
+};
+
+export type AgentSetChatSettingsResponse = AgentSetChatSettingsResponses[keyof AgentSetChatSettingsResponses];
+
+export type AgentSendMessageData = {
+    body: MessageInput;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/messages';
+};
+
+export type AgentSendMessageErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentSendMessageError = AgentSendMessageErrors[keyof AgentSendMessageErrors];
+
+export type AgentSendMessageResponses = {
+    /**
+     * The message is stored.
+     */
+    202: SentMessage;
+};
+
+export type AgentSendMessageResponse = AgentSendMessageResponses[keyof AgentSendMessageResponses];
+
+export type AgentClearContextData = {
+    body: {
+        /**
+         * A stable client UUID for this reset.
+         */
+        id: string;
+    };
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/clear';
+};
+
+export type AgentClearContextErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentClearContextError = AgentClearContextErrors[keyof AgentClearContextErrors];
+
+export type AgentClearContextResponses = {
+    /**
+     * The reset is stored.
+     */
+    202: SentMessage;
+};
+
+export type AgentClearContextResponse = AgentClearContextResponses[keyof AgentClearContextResponses];
+
+export type AgentGetChatHistoryData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query: {
+        before: number;
+        limit?: number;
+    };
+    url: '/api/agents/{agentId}/chats/{chatId}/history';
+};
+
+export type AgentGetChatHistoryErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentGetChatHistoryError = AgentGetChatHistoryErrors[keyof AgentGetChatHistoryErrors];
+
+export type AgentGetChatHistoryResponses = {
+    /**
+     * A history page. No nextBefore means the start was reached.
+     */
+    200: HistoryPage;
+};
+
+export type AgentGetChatHistoryResponse = AgentGetChatHistoryResponses[keyof AgentGetChatHistoryResponses];
+
+export type AgentAbortChatData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/abort';
+};
+
+export type AgentAbortChatErrors = {
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentAbortChatError = AgentAbortChatErrors[keyof AgentAbortChatErrors];
+
+export type AgentAbortChatResponses = {
+    /**
+     * Pending input is withdrawn and cancellation is requested.
+     */
+    200: Ok;
+};
+
+export type AgentAbortChatResponse = AgentAbortChatResponses[keyof AgentAbortChatResponses];
+
+export type AgentWatchChatData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/events';
+};
+
+export type AgentWatchChatErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+};
+
+export type AgentWatchChatError = AgentWatchChatErrors[keyof AgentWatchChatErrors];
+
+export type AgentWatchChatResponses = {
+    /**
+     * The event stream.
+     */
+    200: ChatEvent;
+};
+
+export type AgentWatchChatResponse = AgentWatchChatResponses[keyof AgentWatchChatResponses];
+
+export type AgentCreateUploadData = {
+    body: {
+        file: Blob | File;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/uploads';
+};
+
+export type AgentCreateUploadErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    413: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentCreateUploadError = AgentCreateUploadErrors[keyof AgentCreateUploadErrors];
+
+export type AgentCreateUploadResponses = {
+    /**
+     * Stored.
+     */
+    201: Attachment;
+};
+
+export type AgentCreateUploadResponse = AgentCreateUploadResponses[keyof AgentCreateUploadResponses];
+
+export type AgentGetUploadData = {
+    body?: never;
+    path: {
+        agentId: string;
+        uploadId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/uploads/{uploadId}';
+};
+
+export type AgentGetUploadErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentGetUploadError = AgentGetUploadErrors[keyof AgentGetUploadErrors];
+
+export type AgentGetUploadResponses = {
+    /**
+     * The file.
+     */
+    200: Blob | File;
+};
+
+export type AgentGetUploadResponse = AgentGetUploadResponses[keyof AgentGetUploadResponses];
+
+export type AgentGetExtensionsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/extensions';
+};
+
+export type AgentGetExtensionsErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentGetExtensionsError = AgentGetExtensionsErrors[keyof AgentGetExtensionsErrors];
+
+export type AgentGetExtensionsResponses = {
+    /**
+     * The extensions.
+     */
+    200: Extensions;
+};
+
+export type AgentGetExtensionsResponse = AgentGetExtensionsResponses[keyof AgentGetExtensionsResponses];
+
+export type AgentReloadExtensionsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/extensions/reload';
+};
+
+export type AgentReloadExtensionsErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentReloadExtensionsError = AgentReloadExtensionsErrors[keyof AgentReloadExtensionsErrors];
+
+export type AgentReloadExtensionsResponses = {
+    /**
+     * The loaded extensions.
+     */
+    200: Extensions;
+};
+
+export type AgentReloadExtensionsResponse = AgentReloadExtensionsResponses[keyof AgentReloadExtensionsResponses];
+
+export type AgentListAutomationsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/automations';
+};
+
+export type AgentListAutomationsErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentListAutomationsError = AgentListAutomationsErrors[keyof AgentListAutomationsErrors];
+
+export type AgentListAutomationsResponses = {
+    /**
+     * The automations.
+     */
+    200: AutomationList;
+};
+
+export type AgentListAutomationsResponse = AgentListAutomationsResponses[keyof AgentListAutomationsResponses];
+
+export type AgentCreateAutomationData = {
+    body: AutomationInput;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/automations';
+};
+
+export type AgentCreateAutomationErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentCreateAutomationError = AgentCreateAutomationErrors[keyof AgentCreateAutomationErrors];
+
+export type AgentCreateAutomationResponses = {
+    /**
+     * Created.
+     */
+    201: Automation;
+};
+
+export type AgentCreateAutomationResponse = AgentCreateAutomationResponses[keyof AgentCreateAutomationResponses];
+
+export type AgentDeleteAutomationData = {
+    body?: never;
+    path: {
+        agentId: string;
+        automationId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/automations/{automationId}';
+};
+
+export type AgentDeleteAutomationErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentDeleteAutomationError = AgentDeleteAutomationErrors[keyof AgentDeleteAutomationErrors];
+
+export type AgentDeleteAutomationResponses = {
+    /**
+     * Removed.
+     */
+    200: Ok;
+};
+
+export type AgentDeleteAutomationResponse = AgentDeleteAutomationResponses[keyof AgentDeleteAutomationResponses];
+
+export type AgentGetAutomationData = {
+    body?: never;
+    path: {
+        agentId: string;
+        automationId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/automations/{automationId}';
+};
+
+export type AgentGetAutomationErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentGetAutomationError = AgentGetAutomationErrors[keyof AgentGetAutomationErrors];
+
+export type AgentGetAutomationResponses = {
+    /**
+     * The automation.
+     */
+    200: Automation;
+};
+
+export type AgentGetAutomationResponse = AgentGetAutomationResponses[keyof AgentGetAutomationResponses];
+
+export type AgentUpdateAutomationData = {
+    body: AutomationInput;
+    path: {
+        agentId: string;
+        automationId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/automations/{automationId}';
+};
+
+export type AgentUpdateAutomationErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentUpdateAutomationError = AgentUpdateAutomationErrors[keyof AgentUpdateAutomationErrors];
+
+export type AgentUpdateAutomationResponses = {
+    /**
+     * Saved.
+     */
+    200: Automation;
+};
+
+export type AgentUpdateAutomationResponse = AgentUpdateAutomationResponses[keyof AgentUpdateAutomationResponses];
+
+export type AgentRunAutomationData = {
+    body?: never;
+    path: {
+        agentId: string;
+        automationId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/automations/{automationId}/run';
+};
+
+export type AgentRunAutomationErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentRunAutomationError = AgentRunAutomationErrors[keyof AgentRunAutomationErrors];
+
+export type AgentRunAutomationResponses = {
+    /**
+     * The run, started or skipped.
+     */
+    202: AutomationRun;
+};
+
+export type AgentRunAutomationResponse = AgentRunAutomationResponses[keyof AgentRunAutomationResponses];
+
+export type AgentListAutomationRunsData = {
+    body?: never;
+    path: {
+        agentId: string;
+        automationId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/automations/{automationId}/runs';
+};
+
+export type AgentListAutomationRunsErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AgentListAutomationRunsError = AgentListAutomationRunsErrors[keyof AgentListAutomationRunsErrors];
+
+export type AgentListAutomationRunsResponses = {
+    /**
+     * The runs.
+     */
+    200: AutomationRunList;
+};
+
+export type AgentListAutomationRunsResponse = AgentListAutomationRunsResponses[keyof AgentListAutomationRunsResponses];

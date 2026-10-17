@@ -8,6 +8,9 @@ info:
     operation except POST /api/session needs the access token, as a Bearer
     token or as the session cookie. The API refuses cross-site writes.
     Times are Unix milliseconds.
+    Agent resources use /api/agents/{agentId}. The un-nested agent routes and
+    PUT /api/settings/agent remain aliases for the default agent. Global settings
+    retain settings.agent for that agent until the web UI migrates.
 security:
   - bearer: []
   - session: []
@@ -358,8 +361,8 @@ paths:
     post:
       operationId: reloadExtensions
       description: >
-        Restarts the worker, which connects the MCP servers again. Skills
-        need no reload. 409 when the agent has unfinished work. 400 when a
+        Restarts the whole worker and affects every agent. It connects the MCP
+        servers again. Skills need no reload. 409 when any agent has unfinished work. 400 when a
         file is not valid; the agent then keeps its MCP servers.
       responses:
         "200":
@@ -720,6 +723,571 @@ paths:
       - $ref: "#/components/parameters/AutomationId"
     get:
       operationId: listAutomationRuns
+      description: The last 50 runs, newest first.
+      responses:
+        "200":
+          description: The runs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationRunList" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents:
+    get:
+      operationId: listAgents
+      description: List the owner's agents in creation order.
+      responses:
+        "200":
+          description: The agents.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [agents]
+                properties:
+                  agents:
+                    type: array
+                    items: { $ref: "#/components/schemas/Agent" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAgent
+      description: Create an agent without changing global providers or channels.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentInput" }
+      responses:
+        "201":
+          description: The created agent with a UUID v7 ID.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getAgent
+      responses:
+        "200":
+          description: The agent's settings.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateAgent
+      description: Save this agent's settings. Its next message uses them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentInput" }
+      responses:
+        "200":
+          description: The saved agent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/tasks/{taskId}:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    get:
+      operationId: agentGetTask
+      description: Read one task and the ID of its read-only work conversation.
+      parameters:
+        - in: path
+          name: taskId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The task. Done means that it returned a report.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/main:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    get:
+      operationId: agentGetMainChat
+      description: Find or create the requested agent's main timeline.
+      responses:
+        "200":
+          description: The main timeline.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chat" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    get:
+      operationId: agentListChats
+      description: >
+        Session summaries of the requested agent, newest activity first, then
+        highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no
+        message. Task summaries have no reports. Transcripts are not included.
+      responses:
+        "200":
+          description: The sessions.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatList" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: agentCreateChat
+      description: >
+        Opens a separate writable Chat session. Reuses the newest Chat session
+        with no message, or creates one. No request body or model is needed.
+        The first message sets its title. The session uses the bot's settings.
+      responses:
+        "201":
+          description: The new or reused Chat session.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chat" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    get:
+      operationId: agentGetChat
+      responses:
+        "200":
+          description: The chat.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chat" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/settings:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    put:
+      operationId: agentSetChatSettings
+      description: >
+        Sets the model and the thinking level of one chat. An absent field
+        follows the agent's setting. They apply from the next message. Only
+        automation chats accept overrides. Main and Chat sessions use agent settings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChatSettings" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chat" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/messages:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    post:
+      operationId: agentSendMessage
+      description: >
+        Stores a message in a web chat and returns. A message with an ID that
+        exists already is not stored again. The answer comes through the
+        event stream. 409 when the agent has no model. Main and Chat sessions
+        take web messages. Task, automation and channel sessions return 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessageInput" }
+      responses:
+        "202":
+          description: The message is stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SentMessage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/clear:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    post:
+      operationId: agentClearContext
+      description: >
+        Stores a context reset in this writable session's delivery queue.
+        A repeated UUID does not reset again. Refuses a busy session without a
+        change. Task, automation and channel sessions return 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: {
+                  type: string,
+                  description: A stable client UUID for this reset.,
+                }
+      responses:
+        "202":
+          description: The reset is stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SentMessage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/history:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    get:
+      operationId: agentGetChatHistory
+      description: >
+        Reads committed items before an entry ID, oldest first. Pages can
+        overlap the live snapshot. Merge by item ID. The entry limit extends
+        to an assistant or input boundary to keep tool results with their call.
+      parameters:
+        - in: query
+          name: before
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        "200":
+          description: A history page. No nextBefore means the start was reached.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HistoryPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/abort:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    post:
+      operationId: agentAbortChat
+      description: >
+        Withdraws queued input and results, then requests cancellation of the
+        current turn and background execution of this session. Earlier actions are
+        not undone. Processes and remote work may continue.
+        Task, automation and channel sessions return 403.
+      responses:
+        "200":
+          description: Pending input is withdrawn and cancellation is requested.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/events:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    get:
+      operationId: agentWatchChat
+      description: >
+        Server-sent events. Each event has `event: <type>` and one `data:` line
+        with a ChatEvent as JSON. The first event is a snapshot; a later
+        snapshot replaces all state. A comment line comes every 15 s. The
+        server closes the stream when the worker restarts or when the client
+        is too slow; the client reconnects and gets a new snapshot.
+      responses:
+        "200":
+          description: The event stream.
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/ChatEvent" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/uploads:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: agentCreateUpload
+      description: >
+        Stores one file for a later message, in the agent workspace at
+        `uploads/<id>/<name>`. The agent reads it with its tools. The largest
+        file is 20 MB.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201":
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Attachment" }
+        "400": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/uploads/{uploadId}:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - name: uploadId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: agentGetUpload
+      description: >
+        The file of an upload. PNG, JPEG, GIF and WebP images come inline with
+        their type; all other files come as a download of type
+        application/octet-stream.
+      responses:
+        "200":
+          description: The file.
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+            X-Content-Type-Options:
+              schema: { type: string, enum: [nosniff] }
+          content:
+            "*/*":
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/extensions:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    get:
+      operationId: agentGetExtensions
+      description: >
+        The agent's skills and MCP servers, from ~/.agents/ and the agent
+        directory. It does not start MCP servers: before the agent starts, the
+        servers are idle.
+      responses:
+        "200":
+          description: The extensions.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Extensions" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/extensions/reload:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: agentReloadExtensions
+      description: >
+        Restarts the whole worker and affects every agent. It connects the MCP
+        servers again. Skills need no reload. 409 when any agent has unfinished work. 400 when a
+        file is not valid; the agent then keeps its MCP servers.
+      responses:
+        "200":
+          description: The loaded extensions.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Extensions" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/automations:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    get:
+      operationId: agentListAutomations
+      description: All automations of the default agent, oldest first.
+      responses:
+        "200":
+          description: The automations.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationList" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: agentCreateAutomation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutomationInput" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/automations/{automationId}:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/AutomationId"
+    get:
+      operationId: agentGetAutomation
+      responses:
+        "200":
+          description: The automation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: agentUpdateAutomation
+      description: >
+        Changes the automation. The next run is computed again from now, so a
+        change never runs a past time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AutomationInput" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Automation" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: agentDeleteAutomation
+      description: Removes the automation and its run history. Its chats stay.
+      responses:
+        "200":
+          description: Removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/automations/{automationId}/run:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/AutomationId"
+    post:
+      operationId: agentRunAutomation
+      description: >
+        Runs the automation now, outside its schedule. The run is skipped when
+        the agent has no model or the previous run is still busy.
+      responses:
+        "202":
+          description: The run, started or skipped.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomationRun" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/automations/{automationId}/runs:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/AutomationId"
+    get:
+      operationId: agentListAutomationRuns
       description: The last 50 runs, newest first.
       responses:
         "200":
@@ -1274,6 +1842,25 @@ components:
         path: github.com/recally-io/dex/internal/settings
       type: object
       required: [name, provider, modelId, thinkingLevel, instructions]
+      properties:
+        id: { type: string, readOnly: true, description: The agent ID. }
+        name: {
+          type: string,
+          minLength: 1,
+          maxLength: 40,
+          description: The bot name. Trim spaces before validation.,
+        }
+        provider: { type: string }
+        modelId: { type: string, description: Empty when no model is chosen. }
+        thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
+        instructions: { type: string }
+
+    AgentInput:
+      x-go-type: settings.Agent
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/settings
+      type: object
+      required: [name, provider, modelId, thinkingLevel]
       properties:
         name: {
           type: string,

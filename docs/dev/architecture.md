@@ -67,10 +67,12 @@ status records a cancellation request. It does not prove process exit. There
 is no user goal lifecycle or automatic retry chain.
 
 Each agent has one main conversation with channel key `main`. The unique
-agent/key constraint makes `GET /api/chats/main` safe to repeat. It creates
-the control record on demand. The web opens this conversation at `/` and
-sends through `POST /api/chats/{id}/messages`. It uses agent settings.
-`POST /api/chats` takes no body and returns a writable Chat session (`201`).
+agent/key constraint makes `GET /api/agents/{agentId}/chats/main` safe to repeat.
+It creates the control record on demand. Messages use
+`POST /api/agents/{agentId}/chats/{id}/messages` and the agent's settings.
+The web opens the default main conversation at `/` through its default-agent
+aliases. `POST /api/agents/{agentId}/chats` takes no body and returns a writable
+Chat session (`201`).
 Its channel key starts with `chat:`. One SQLite write reuses the newest Chat
 with no ordinary message, or creates one. Concurrent opens reuse the same row.
 The first message and its title commit together. The title has at most
@@ -79,7 +81,8 @@ message uses the first file's name. Each Chat has its own worker conversation.
 It uses the bot's settings, instructions and shared memory. It does not read
 main's model context or send its answers to main.
 
-The timeline header opens `/sessions`. `GET /api/chats` lists session summaries
+The timeline header opens `/sessions`. `GET /api/agents/{agentId}/chats` lists
+session summaries
 by `updatedAt` descending, then ID descending. `updatedAt` is the latest
 conversation creation, input creation or settlement, or task start or end time.
 Task times apply only to the task's own conversation. List and detail use the
@@ -92,7 +95,8 @@ busy sessions. Each row counts once. A kind filter counts only visible rows.
 `New session` appears only on the Sessions page. Other sessions open at
 `/c/{id}`; tasks open at `/tasks/{id}` with Report above Work. Main stays at `/`.
 
-Channel input enters main. Chat and automation contexts stay separate.
+Channel input enters the default agent's main conversation. Chat and
+automation contexts stay separate.
 
 The agent is one page with tabs: Chat (`/`), Instructions (`/instructions`),
 Channels (`/channels`), Automations (`/automations`), Sessions (`/sessions`,
@@ -128,6 +132,35 @@ The worker protocol has no channel fields.
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). pi-durable allows one
 process per storage, so only the worker opens an agent directory.
+
+## Agents and HTTP API
+
+One owner can create several agents. `GET /api/agents` returns
+`{agents: [Agent]}` in creation order. `POST /api/agents` accepts a name,
+provider, model ID, thinking level, and optional instructions. It returns the
+agent with a UUID v7 ID (`201`). The ID is read-only. `GET` and `PUT` on
+`/api/agents/{agentId}` read and save one agent. Names and models use the same
+validation for creation and updates.
+
+Agent resources are under `/api/agents/{agentId}`: main, chats and their
+settings, messages, clear, history, abort and events; task details; uploads;
+extensions and reload; automations and their run and runs endpoints. An unknown
+agent or a resource owned by another agent returns `404`. Upload storage uses
+`<data dir>/agents/<agentId>/`. Control builds the path store for each request.
+Each live stream carries its agent ID for worker watches and history. Worker
+conversation IDs can be equal in different agents.
+
+Session, health, maintenance, models, provider and channel settings, and
+`/api/automations/preview` stay global. One settings service and lock own
+settings changes. Creating or selecting an agent does not configure providers.
+One scheduler job checks automations across all agents and posts each prompt
+with the saved agent ID. Extension reload restarts the whole worker and affects
+every agent.
+
+The web UI still uses the un-nested routes. These routes remain aliases for the
+default agent, including `PUT /api/settings/agent`. `GET /api/settings` retains
+`settings.agent` for that agent. Telegram, WeChat, and Feishu also stay on the
+default agent. The OpenAPI contract defines both route forms.
 
 ## Memory
 
@@ -184,10 +217,11 @@ model request, and the MCP tools, as deferred tools named
 `mcp__<server>__<tool>`. When an agent has MCP tools, the worker also installs
 `tool_search`.
 
-`GET /api/extensions` reads the files; before the agent opens, the servers
-are `idle`. `POST /api/extensions/reload` takes the maintenance lease, which
-it refuses when another holder has it, restarts the worker, opens the agent,
-and releases the lease.
+`GET /api/agents/{agentId}/extensions` reads the files. Before the agent opens,
+the servers are `idle`. `POST /api/agents/{agentId}/extensions/reload` takes the
+maintenance lease, which it refuses when another holder has it. It restarts the
+whole worker, opens the agent, and releases the lease. The restart affects every
+agent.
 
 The task extension adds delegation tools and a `task-rules` section to
 foreground conversations, including main, Chat and automation sessions.
@@ -205,8 +239,9 @@ or separate worktrees for tasks that change the same repository.
 An automation runs a prompt on a schedule; see
 [ADR 0005](decisions/0005-automations.md).
 [`automation.Service`](../../internal/automation/automation.go) stores
-automations and their runs in `control.sqlite`. The scheduler calls its
-`Check` every minute. `Check` posts the prompt of each automation whose
+automations and their runs in `control.sqlite`. One scheduler job calls its
+`Check` every minute for all agents. Each row supplies its owning agent ID.
+`Check` posts the prompt of each automation whose
 `next_due_at` has come, as a message to its chat (`automation:<id>`, or
 `automation:<id>:<run id>` for a new chat each run), and moves `next_due_at`
 past now. The message uses the normal durable delivery.
@@ -217,14 +252,15 @@ The web UI edits all settings; see [ADR 0002](decisions/0002-settings-in-control
 [`settings.Service`](../../internal/settings/settings.go) validates a change,
 saves it in `control.sqlite`, and then applies it:
 
-| Setting                                 | Table               | Applied by                                                         |
-| --------------------------------------- | ------------------- | ------------------------------------------------------------------ |
-| Bot model, thinking level, instructions | `agents`            | the next `submit` of each chat; the worker calls `configure` on it |
-| Chat model, chat thinking level         | `conversations`     | the next `submit` of that chat                                     |
-| Providers                               | `providers`         | `configure` to the worker, and again after each worker start       |
-| Telegram token, allowed users           | `telegram_settings` | a restart of the bot                                               |
+| Setting                                 | Table               | Applied by                                                   |
+| --------------------------------------- | ------------------- | ------------------------------------------------------------ |
+| Bot model, thinking level, instructions | `agents`            | the next `submit` of each chat                               |
+| Chat model, chat thinking level         | `conversations`     | the next `submit` of that chat                               |
+| Providers                               | `providers`         | `configure` to the worker, and again after each worker start |
+| Telegram token, allowed users           | `telegram_settings` | a restart of the bot                                         |
 
-`PUT /api/settings/agent` saves the name with the other bot settings. It trims
+`PUT /api/agents/{agentId}` saves the name with the other bot settings.
+`PUT /api/settings/agent` remains the default-agent alias. It trims
 spaces, then accepts 1 to 40 Unicode characters. The web uses the saved name in
 the sidebar, the timeline header, and the composer.
 
@@ -579,7 +615,7 @@ before they start its replacement. Settings expose runtime status: `off`,
 `running`, `error` with a reason, or `needs_login`.
 
 A peer names a remote destination, such as `telegram:7`. Owner input from all
-channels enters the agent's `main` conversation with that peer as origin.
+channels enters the default agent's `main` conversation with that peer as origin.
 Channel input cannot select a Chat session. Old `channel_peers` records and
 per-peer conversations remain stored but receive no new channel input. The
 Sessions list excludes those conversations. Main and Chat are writable on

@@ -71,9 +71,6 @@ func (h *handler) RunAutomation(ctx context.Context, req api.RunAutomationReques
 }
 
 func (h *handler) ListAutomationRuns(ctx context.Context, req api.ListAutomationRunsRequestObject) (api.ListAutomationRunsResponseObject, error) {
-	if _, err := h.Automations.Get(ctx, agentID(ctx), req.AutomationId); err != nil {
-		return nil, err
-	}
 	runs, err := h.Automations.Runs(ctx, agentID(ctx), req.AutomationId, 50)
 	if err != nil {
 		return nil, err
