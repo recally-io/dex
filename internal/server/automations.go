@@ -7,7 +7,7 @@ import (
 )
 
 func (h *handler) ListAutomations(ctx context.Context, _ api.ListAutomationsRequestObject) (api.ListAutomationsResponseObject, error) {
-	list, err := h.Automations.List(ctx)
+	list, err := h.Automations.List(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -18,7 +18,7 @@ func (h *handler) CreateAutomation(ctx context.Context, req api.CreateAutomation
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	a, err := h.Automations.Create(ctx, *req.Body)
+	a, err := h.Automations.Create(ctx, agentID(ctx), *req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,7 @@ func (h *handler) PreviewSchedule(_ context.Context, req api.PreviewScheduleRequ
 }
 
 func (h *handler) GetAutomation(ctx context.Context, req api.GetAutomationRequestObject) (api.GetAutomationResponseObject, error) {
-	a, err := h.Automations.Get(ctx, req.AutomationId)
+	a, err := h.Automations.Get(ctx, agentID(ctx), req.AutomationId)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (h *handler) UpdateAutomation(ctx context.Context, req api.UpdateAutomation
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	a, err := h.Automations.Update(ctx, req.AutomationId, *req.Body)
+	a, err := h.Automations.Update(ctx, agentID(ctx), req.AutomationId, *req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -56,14 +56,14 @@ func (h *handler) UpdateAutomation(ctx context.Context, req api.UpdateAutomation
 }
 
 func (h *handler) DeleteAutomation(ctx context.Context, req api.DeleteAutomationRequestObject) (api.DeleteAutomationResponseObject, error) {
-	if err := h.Automations.Delete(ctx, req.AutomationId); err != nil {
+	if err := h.Automations.Delete(ctx, agentID(ctx), req.AutomationId); err != nil {
 		return nil, err
 	}
 	return api.DeleteAutomation200JSONResponse(ok), nil
 }
 
 func (h *handler) RunAutomation(ctx context.Context, req api.RunAutomationRequestObject) (api.RunAutomationResponseObject, error) {
-	run, err := h.Automations.RunNow(ctx, req.AutomationId)
+	run, err := h.Automations.RunNow(ctx, agentID(ctx), req.AutomationId)
 	if err != nil {
 		return nil, err
 	}
@@ -71,10 +71,10 @@ func (h *handler) RunAutomation(ctx context.Context, req api.RunAutomationReques
 }
 
 func (h *handler) ListAutomationRuns(ctx context.Context, req api.ListAutomationRunsRequestObject) (api.ListAutomationRunsResponseObject, error) {
-	if _, err := h.Automations.Get(ctx, req.AutomationId); err != nil {
+	if _, err := h.Automations.Get(ctx, agentID(ctx), req.AutomationId); err != nil {
 		return nil, err
 	}
-	runs, err := h.Automations.Runs(ctx, req.AutomationId, 50)
+	runs, err := h.Automations.Runs(ctx, agentID(ctx), req.AutomationId, 50)
 	if err != nil {
 		return nil, err
 	}

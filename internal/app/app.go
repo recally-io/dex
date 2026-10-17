@@ -139,7 +139,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		OnStart: func(ctx context.Context) { chats.Replay(ctx) },
 	})
 	chats = chat.New(conn, w, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
-	hub = live.New(q, chats, w, DefaultAgentID)
+	hub = live.New(q, chats, w)
 	bots = channel.New(runCtx, conn, chats, DefaultAgentID)
 	uploads := upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID))
 	setTelegram := func(cfg *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
@@ -168,20 +168,20 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 			if sub.Status != "pending" {
 				return "", nil, nil
 			}
-			stream, err := hub.Open(ctx, sub.ConversationID)
+			stream, err := hub.Open(ctx, DefaultAgentID, sub.ConversationID)
 			return id, stream, err
 		}
 		cfg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
 		bots.Set("telegram", telegram.New(*cfg, bots))
 	}
-	prefs = settings.New(q, w.Call, DefaultAgentID, cfg.TelegramAPIURL, setTelegram)
+	prefs = settings.New(q, w.Call, cfg.TelegramAPIURL, setTelegram)
 	chats.ConfigureTasks(prefs.CheckChat)
 	setFeishu := func(config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
 		if config == nil {
 			bots.Set("feishu", nil)
 			return
 		}
-		bots.Set("feishu", feishu.New(*config, bots, q, hub, uploads, prefs.PairFeishu))
+		bots.Set("feishu", feishu.New(*config, bots, q, defaultStreams{hub}, uploads, prefs.PairFeishu))
 	}
 	prefs.ConfigureFeishu(cfg.FeishuAPIURL, cfg.FeishuAccountsURL, setFeishu)
 	prefs.ChannelStatus = bots.Status
@@ -220,14 +220,12 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		token = stored
 	}
 
-	automations := automation.New(q, chats, DefaultAgentID, time.Now)
+	automations := automation.New(q, chats, time.Now)
 	a := &App{db: conn, bots: bots, jobs: jobs, cancel: cancel, handler: server.New(server.Config{
 		WorkerReady:   func(ctx context.Context) bool { return w.Call(ctx, "ping", struct{}{}, &struct{}{}) == nil },
 		Worker:        w.Call,
 		RestartWorker: w.Restart,
-		Chats:         chats, Automations: automations, Settings: prefs, Live: hub, AgentID: DefaultAgentID, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
-		// The worker runs the agent's tools in this workspace.
-		Uploads: uploads,
+		Chats:         chats, Automations: automations, Settings: prefs, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})}
 	a.wg.Go(func() { _ = w.Run(runCtx) })
 	a.wg.Go(func() { chats.Run(runCtx) })
@@ -278,4 +276,11 @@ func WorkerEnv(environ []string) []string {
 		}
 	}
 	return env
+}
+
+// defaultStreams keeps channel previews on the default agent.
+type defaultStreams struct{ hub *live.Hub }
+
+func (s defaultStreams) Open(ctx context.Context, chatID int64) (io.ReadCloser, error) {
+	return s.hub.Open(ctx, DefaultAgentID, chatID)
 }

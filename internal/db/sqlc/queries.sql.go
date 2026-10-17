@@ -48,6 +48,45 @@ func (q *Queries) CreateAccessTokenIfMissing(ctx context.Context, token string) 
 	return err
 }
 
+const createAgent = `-- name: CreateAgent :one
+INSERT INTO agents (id, name, model_provider, model_id, thinking_level, instructions, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, name, model_provider, model_id, instructions, created_at, thinking_level
+`
+
+type CreateAgentParams struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	ModelProvider string `json:"model_provider"`
+	ModelID       string `json:"model_id"`
+	ThinkingLevel string `json:"thinking_level"`
+	Instructions  string `json:"instructions"`
+	CreatedAt     int64  `json:"created_at"`
+}
+
+func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent, error) {
+	row := q.db.QueryRowContext(ctx, createAgent,
+		arg.ID,
+		arg.Name,
+		arg.ModelProvider,
+		arg.ModelID,
+		arg.ThinkingLevel,
+		arg.Instructions,
+		arg.CreatedAt,
+	)
+	var i Agent
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ModelProvider,
+		&i.ModelID,
+		&i.Instructions,
+		&i.CreatedAt,
+		&i.ThinkingLevel,
+	)
+	return i, err
+}
+
 const createAgentIfMissing = `-- name: CreateAgentIfMissing :exec
 INSERT INTO agents (id, name, model_provider, model_id, created_at)
 VALUES (?, ?, '', '', ?)
@@ -646,6 +685,41 @@ func (q *Queries) ListAgentIDs(ctx context.Context) ([]string, error) {
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAgents = `-- name: ListAgents :many
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level FROM agents ORDER BY created_at, id
+`
+
+func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
+	rows, err := q.db.QueryContext(ctx, listAgents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Agent{}
+	for rows.Next() {
+		var i Agent
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ModelProvider,
+			&i.ModelID,
+			&i.Instructions,
+			&i.CreatedAt,
+			&i.ThinkingLevel,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

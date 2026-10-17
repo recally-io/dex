@@ -9,6 +9,14 @@ UPDATE agents SET name = ?, model_provider = ?, model_id = ?, thinking_level = ?
 -- name: GetAgent :one
 SELECT * FROM agents WHERE id = ?;
 
+-- name: ListAgents :many
+SELECT * FROM agents ORDER BY created_at, id;
+
+-- name: CreateAgent :one
+INSERT INTO agents (id, name, model_provider, model_id, thinking_level, instructions, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
 -- name: EnsureConversation :one
 -- The title and the settings are set only when the conversation is created.
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)

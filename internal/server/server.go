@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -32,8 +33,6 @@ type Config struct {
 	Automations *automation.Service
 	Settings    *settings.Service
 	Live        *live.Hub
-	Uploads     *upload.Store
-	AgentID     string
 	DataDir     string
 	Version     string
 	WorkerReady func(context.Context) bool
@@ -114,6 +113,12 @@ func writeError(w http.ResponseWriter, status int, message string) {
 
 type handler struct{ Config }
 
+func agentID(context.Context) string { return "default" }
+
+func (h *handler) uploads(ctx context.Context) *upload.Store {
+	return upload.New(filepath.Join(h.DataDir, "agents", agentID(ctx)))
+}
+
 var ok = api.Ok{Status: api.OkStatusOk}
 
 func (h *handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (api.GetHealthResponseObject, error) {
@@ -139,7 +144,7 @@ func (h *handler) ReleaseMaintenance(ctx context.Context, _ api.ReleaseMaintenan
 
 func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestObject) (api.GetExtensionsResponseObject, error) {
 	var out api.GetExtensions200JSONResponse
-	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID}, &out); err != nil {
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx)}, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -147,7 +152,7 @@ func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestO
 func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRequestObject) (api.ReloadExtensionsResponseObject, error) {
 	// A worker that starts with an mcp.json that is not valid has no MCP servers. Keep the loaded ones.
 	var files api.Extensions
-	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID}, &files); err != nil {
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx)}, &files); err != nil {
 		return nil, err
 	}
 	if len(files.Errors) > 0 {
@@ -170,7 +175,7 @@ func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRe
 	}
 	// The agent opens now, under the lease, so the response shows the state of each server.
 	var out api.ReloadExtensions200JSONResponse
-	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: h.AgentID, Open: true}, &out); err != nil {
+	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx), Open: true}, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -200,11 +205,11 @@ func chatView(c chat.Chat) api.Chat {
 }
 
 func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (api.ListChatsResponseObject, error) {
-	chats, err := h.Chats.List(ctx, h.AgentID)
+	chats, err := h.Chats.List(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := h.Chats.TaskRecords(ctx, h.AgentID)
+	tasks, err := h.Chats.TaskRecords(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +228,7 @@ func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (
 }
 
 func (h *handler) GetChat(ctx context.Context, req api.GetChatRequestObject) (api.GetChatResponseObject, error) {
-	c, err := h.Chats.Get(ctx, h.AgentID, req.ChatId)
+	c, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +237,7 @@ func (h *handler) GetChat(ctx context.Context, req api.GetChatRequestObject) (ap
 
 // message validates a message from the client. The text can be empty when the message has an
 // attachment.
-func (h *handler) message(in api.MessageInput) (chat.Message, error) {
+func (h *handler) message(ctx context.Context, in api.MessageInput) (chat.Message, error) {
 	id, err := uuid.Parse(in.Id)
 	if err != nil {
 		return chat.Message{}, errors.Join(errInvalid, errors.New("the message ID must be a UUID"))
@@ -252,7 +257,7 @@ func (h *handler) message(in api.MessageInput) (chat.Message, error) {
 		if slices.Contains(ids[:i], uploadID) {
 			return chat.Message{}, errors.Join(errInvalid, fmt.Errorf("the attachment %q is in the message twice", uploadID))
 		}
-		a, err := h.Uploads.Get(uploadID)
+		a, err := h.uploads(ctx).Get(uploadID)
 		if errors.Is(err, upload.ErrNotFound) {
 			return chat.Message{}, errors.Join(errInvalid, fmt.Errorf("no upload %q; upload the file again", uploadID))
 		}
@@ -265,7 +270,7 @@ func (h *handler) message(in api.MessageInput) (chat.Message, error) {
 }
 
 func (h *handler) CreateChat(ctx context.Context, _ api.CreateChatRequestObject) (api.CreateChatResponseObject, error) {
-	c, err := h.Chats.Create(ctx, h.AgentID)
+	c, err := h.Chats.Create(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +281,7 @@ func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObj
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	m, err := h.message(*req.Body)
+	m, err := h.message(ctx, *req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +289,7 @@ func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObj
 	if err != nil {
 		return nil, err
 	}
-	if _, err := h.Chats.Send(ctx, h.AgentID, c.ChannelKey, m); err != nil {
+	if _, err := h.Chats.Send(ctx, agentID(ctx), c.ChannelKey, m); err != nil {
 		return nil, err
 	}
 	return api.SendMessage202JSONResponse{SubmissionId: m.ID}, nil
@@ -292,7 +297,7 @@ func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObj
 
 // writableChat returns chat id, or errReadOnly for a chat that the web UI cannot write to.
 func (h *handler) writableChat(ctx context.Context, id int64) (chat.Chat, error) {
-	c, err := h.Chats.Get(ctx, h.AgentID, id)
+	c, err := h.Chats.Get(ctx, agentID(ctx), id)
 	if err != nil {
 		return chat.Chat{}, err
 	}
@@ -306,17 +311,17 @@ func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRe
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	c, err := h.Chats.Get(ctx, h.AgentID, req.ChatId)
+	c, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId)
 	if err != nil {
 		return nil, err
 	}
 	if !strings.HasPrefix(c.ChannelKey, "automation:") {
 		return nil, errReadOnly
 	}
-	if err := h.Settings.SetChat(ctx, req.ChatId, *req.Body); err != nil {
+	if err := h.Settings.SetChat(ctx, agentID(ctx), req.ChatId, *req.Body); err != nil {
 		return nil, err
 	}
-	c, err = h.Chats.Get(ctx, h.AgentID, req.ChatId)
+	c, err = h.Chats.Get(ctx, agentID(ctx), req.ChatId)
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +329,7 @@ func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRe
 }
 
 // CreateUpload stores the first part named file. The browser sends the file's base name.
-func (h *handler) CreateUpload(_ context.Context, req api.CreateUploadRequestObject) (api.CreateUploadResponseObject, error) {
+func (h *handler) CreateUpload(ctx context.Context, req api.CreateUploadRequestObject) (api.CreateUploadResponseObject, error) {
 	for {
 		part, err := req.Body.NextPart()
 		if errors.Is(err, io.EOF) {
@@ -342,7 +347,7 @@ func (h *handler) CreateUpload(_ context.Context, req api.CreateUploadRequestObj
 		if err != nil {
 			return nil, errors.Join(errInvalid, err)
 		}
-		a, err := h.Uploads.Save(params["filename"], part)
+		a, err := h.uploads(ctx).Save(params["filename"], part)
 		if err != nil {
 			return nil, uploadError(err)
 		}
@@ -362,8 +367,8 @@ func uploadError(err error) error {
 // only as downloads.
 var inlineTypes = []string{"image/png", "image/jpeg", "image/gif", "image/webp"}
 
-func (h *handler) GetUpload(_ context.Context, req api.GetUploadRequestObject) (api.GetUploadResponseObject, error) {
-	f, a, err := h.Uploads.Open(req.UploadId)
+func (h *handler) GetUpload(ctx context.Context, req api.GetUploadRequestObject) (api.GetUploadResponseObject, error) {
+	f, a, err := h.uploads(ctx).Open(req.UploadId)
 	if err != nil {
 		return nil, err
 	}
@@ -383,14 +388,14 @@ func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject)
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Stop(ctx, h.AgentID, req.ChatId); err != nil {
+	if err := h.Chats.Stop(ctx, agentID(ctx), req.ChatId); err != nil {
 		return nil, err
 	}
 	return api.AbortChat200JSONResponse{Status: api.OkStatusOk}, nil
 }
 
 func (h *handler) WatchChat(ctx context.Context, req api.WatchChatRequestObject) (api.WatchChatResponseObject, error) {
-	body, err := h.Live.Open(ctx, req.ChatId)
+	body, err := h.Live.Open(ctx, agentID(ctx), req.ChatId)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +467,7 @@ func (h *handler) SetAgent(ctx context.Context, req api.SetAgentRequestObject) (
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	err := h.Settings.SetAgent(ctx, *req.Body)
+	err := h.Settings.SaveAgent(ctx, agentID(ctx), *req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -558,7 +563,7 @@ func (h *handler) DeleteWechat(ctx context.Context, _ api.DeleteWechatRequestObj
 }
 
 func (h *handler) GetMainChat(ctx context.Context, _ api.GetMainChatRequestObject) (api.GetMainChatResponseObject, error) {
-	c, err := h.Chats.Main(ctx, h.AgentID)
+	c, err := h.Chats.Main(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -576,7 +581,7 @@ func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestO
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Clear(ctx, h.AgentID, req.ChatId, id.String(), "web"); err != nil {
+	if err := h.Chats.Clear(ctx, agentID(ctx), req.ChatId, id.String(), "web"); err != nil {
 		return nil, err
 	}
 	return api.ClearContext202JSONResponse{SubmissionId: id.String()}, nil
@@ -590,7 +595,7 @@ func (h *handler) GetChatHistory(ctx context.Context, req api.GetChatHistoryRequ
 	if req.Params.Before < 1 || limit < 1 || limit > 200 {
 		return nil, errInvalid
 	}
-	page, err := h.Live.History(ctx, req.ChatId, req.Params.Before, limit)
+	page, err := h.Live.History(ctx, agentID(ctx), req.ChatId, req.Params.Before, limit)
 	if err != nil {
 		return nil, err
 	}

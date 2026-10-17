@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+	"uuid"
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
@@ -53,7 +54,7 @@ type Settings struct {
 	Wechat   Wechat            `json:"wechat"`
 }
 
-// Agent holds the settings of the default agent. An empty ModelID means no model is chosen.
+// Agent holds the settings of one agent. An empty ModelID means no model is chosen.
 type Agent struct {
 	Name          string `json:"name"`
 	Provider      string `json:"provider"`
@@ -100,7 +101,6 @@ type Service struct {
 	ChannelStatus func(string) channel.Status
 	q             *sqlc.Queries
 	worker        worker.CallFunc
-	agentID       string
 	apiURL        string // Telegram Bot API URL; empty for the default
 	onTelegram    func(*telegram.Config)
 
@@ -117,15 +117,15 @@ type Service struct {
 	errs  map[string]string // from the last ApplyProviders: provider ID → why its model list failed
 }
 
-// New returns a Service for agentID. onTelegram receives the new bot configuration after each
+// New returns the shared settings Service. onTelegram receives the new bot configuration after each
 // Telegram change, or nil when Telegram is off.
-func New(q *sqlc.Queries, call worker.CallFunc, agentID, telegramAPIURL string, onTelegram func(*telegram.Config)) *Service {
-	return &Service{q: q, worker: call, agentID: agentID, apiURL: telegramAPIURL, onTelegram: onTelegram}
+func New(q *sqlc.Queries, call worker.CallFunc, telegramAPIURL string, onTelegram func(*telegram.Config)) *Service {
+	return &Service{q: q, worker: call, apiURL: telegramAPIURL, onTelegram: onTelegram}
 }
 
 // Get returns all settings. It asks the worker which providers exist.
 func (s *Service) Get(ctx context.Context) (Settings, error) {
-	agent, err := s.q.GetAgent(ctx, s.agentID)
+	agent, err := s.Agent(ctx, "default")
 	if err != nil {
 		return Settings{}, err
 	}
@@ -166,11 +166,8 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 		return Settings{}, err
 	}
 	return Settings{
-		Wechat: wx,
-		Agent: Agent{
-			Name: agent.Name, Provider: agent.ModelProvider, ModelID: agent.ModelID, ThinkingLevel: agent.ThinkingLevel,
-			Instructions: agent.Instructions,
-		},
+		Wechat:    wx,
+		Agent:     agent,
 		Providers: providers,
 		Builtins:  builtins,
 		APIs:      APIs,
@@ -212,28 +209,78 @@ func (s *Service) Models(ctx context.Context) ([]worker.ModelInfo, error) {
 	return listed.Models, nil
 }
 
-// SetAgent changes the bot's name and settings. The next message uses the settings.
-func (s *Service) SetAgent(ctx context.Context, a Agent) error {
+// Agent reads one agent.
+func (s *Service) Agent(ctx context.Context, id string) (Agent, error) {
+	row, err := s.q.GetAgent(ctx, id)
+	return agentView(row), err
+}
+
+func agentView(row sqlc.Agent) Agent {
+	return Agent{Name: row.Name, Provider: row.ModelProvider, ModelID: row.ModelID,
+		ThinkingLevel: row.ThinkingLevel, Instructions: row.Instructions}
+}
+
+// ListAgents returns agents in creation order.
+func (s *Service) ListAgents(ctx context.Context) ([]Agent, error) {
+	rows, err := s.q.ListAgents(ctx)
+	if err != nil {
+		return nil, err
+	}
+	agents := make([]Agent, len(rows))
+	for i, row := range rows {
+		agents[i] = agentView(row)
+	}
+	return agents, nil
+}
+
+// SaveAgent changes one agent. Its next message uses the settings.
+func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, err := s.q.GetAgent(ctx, id); err != nil {
+		return err
+	}
+	a, err := s.cleanAgent(ctx, a)
+	if err != nil {
+		return err
+	}
+	return s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
+		ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
+		ID: id, Name: a.Name,
+	})
+}
+
+// CreateAgent stores an agent without changing global provider configuration.
+func (s *Service) CreateAgent(ctx context.Context, a Agent) (Agent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, err := s.cleanAgent(ctx, a)
+	if err != nil {
+		return Agent{}, err
+	}
+	row, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{
+		ID: uuid.NewV7().String(), Name: a.Name, ModelProvider: a.Provider, ModelID: a.ModelID,
+		ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions, CreatedAt: time.Now().UnixMilli(),
+	})
+	return agentView(row), err
+}
+
+func (s *Service) cleanAgent(ctx context.Context, a Agent) (Agent, error) {
 	a.Name = strings.TrimSpace(a.Name)
 	if n := utf8.RuneCountInString(a.Name); n < 1 || n > 40 {
-		return fmt.Errorf("%w: name must have 1 to 40 characters", ErrInvalid)
+		return a, fmt.Errorf("%w: name must have 1 to 40 characters", ErrInvalid)
 	}
 	if !slices.Contains(thinkingLevels, a.ThinkingLevel) {
-		return fmt.Errorf("%w: unknown thinking level %q", ErrInvalid, a.ThinkingLevel)
+		return a, fmt.Errorf("%w: unknown thinking level %q", ErrInvalid, a.ThinkingLevel)
 	}
 	if a.ModelID != "" {
 		if err := s.checkModel(ctx, a.Provider, a.ModelID); err != nil {
-			return err
+			return a, err
 		}
 	} else {
 		a.Provider = ""
 	}
-	return s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
-		ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
-		ID: s.agentID, Name: a.Name,
-	})
+	return a, nil
 }
 
 func (s *Service) checkModel(ctx context.Context, provider, modelID string) error {
@@ -263,12 +310,12 @@ func (s *Service) CheckChat(ctx context.Context, c chat.Settings) error {
 }
 
 // SetChat replaces the settings that chat chatID overrides. The next message of the chat uses them.
-func (s *Service) SetChat(ctx context.Context, chatID int64, c chat.Settings) error {
+func (s *Service) SetChat(ctx context.Context, agentID string, chatID int64, c chat.Settings) error {
 	if err := s.CheckChat(ctx, c); err != nil {
 		return err
 	}
 	return s.q.SetConversationSettings(ctx, sqlc.SetConversationSettingsParams{
-		ModelProvider: c.Provider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel, ID: chatID, AgentID: s.agentID,
+		ModelProvider: c.Provider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel, ID: chatID, AgentID: agentID,
 	})
 }
 

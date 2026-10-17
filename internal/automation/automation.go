@@ -73,17 +73,16 @@ type Run struct {
 	ChatID    int64  `json:"chatId,omitzero"` // 0 when the run has no message
 }
 
-// Service manages the automations of one agent.
+// Service manages automations for all agents.
 type Service struct {
-	q       *sqlc.Queries
-	chats   Poster
-	agentID string
-	now     func() time.Time
+	q     *sqlc.Queries
+	chats Poster
+	now   func() time.Time
 }
 
 // New returns a Service. Call Check every minute.
-func New(q *sqlc.Queries, chats Poster, agentID string, now func() time.Time) *Service {
-	return &Service{q: q, chats: chats, agentID: agentID, now: now}
+func New(q *sqlc.Queries, chats Poster, now func() time.Time) *Service {
+	return &Service{q: q, chats: chats, now: now}
 }
 
 // ChatAutomation returns the ID of the automation that started the chat with channelKey.
@@ -157,14 +156,14 @@ func millis(times []time.Time) []int64 {
 }
 
 // Create stores a new automation.
-func (s *Service) Create(ctx context.Context, in Input) (Automation, error) {
+func (s *Service) Create(ctx context.Context, agentID string, in Input) (Automation, error) {
 	in, loc, err := clean(in)
 	if err != nil {
 		return Automation{}, err
 	}
 	now := s.now()
 	row := sqlc.Automation{
-		ID: uuid.NewV7().String(), AgentID: s.agentID, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli(),
+		ID: uuid.NewV7().String(), AgentID: agentID, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli(),
 	}
 	if err := fill(&row, in, loc, now); err != nil {
 		return Automation{}, err
@@ -177,12 +176,12 @@ func (s *Service) Create(ctx context.Context, in Input) (Automation, error) {
 }
 
 // Update changes an automation. Its next time counts from now, so a change never runs a past time.
-func (s *Service) Update(ctx context.Context, id string, in Input) (Automation, error) {
+func (s *Service) Update(ctx context.Context, agentID string, id string, in Input) (Automation, error) {
 	in, loc, err := clean(in)
 	if err != nil {
 		return Automation{}, err
 	}
-	row, err := s.get(ctx, id)
+	row, err := s.get(ctx, agentID, id)
 	if err != nil {
 		return Automation{}, err
 	}
@@ -194,7 +193,7 @@ func (s *Service) Update(ctx context.Context, id string, in Input) (Automation, 
 	_, err = s.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{
 		Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone,
 		Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, UpdatedAt: row.UpdatedAt,
-		ID: row.ID, AgentID: s.agentID,
+		ID: row.ID, AgentID: agentID,
 	})
 	if err != nil {
 		return Automation{}, err
@@ -223,27 +222,27 @@ func fill(row *sqlc.Automation, in Input, loc *time.Location, now time.Time) err
 }
 
 // Delete removes an automation and its runs. Its chats stay.
-func (s *Service) Delete(ctx context.Context, id string) error {
-	if _, err := s.get(ctx, id); err != nil {
+func (s *Service) Delete(ctx context.Context, agentID string, id string) error {
+	if _, err := s.get(ctx, agentID, id); err != nil {
 		return err
 	}
 	if err := s.q.DeleteAutomationRuns(ctx, id); err != nil {
 		return err
 	}
-	return s.q.DeleteAutomation(ctx, sqlc.DeleteAutomationParams{ID: id, AgentID: s.agentID})
+	return s.q.DeleteAutomation(ctx, sqlc.DeleteAutomationParams{ID: id, AgentID: agentID})
 }
 
 // Get returns an automation, or ErrNotFound.
-func (s *Service) Get(ctx context.Context, id string) (Automation, error) {
-	row, err := s.get(ctx, id)
+func (s *Service) Get(ctx context.Context, agentID string, id string) (Automation, error) {
+	row, err := s.get(ctx, agentID, id)
 	if err != nil {
 		return Automation{}, err
 	}
 	return s.view(ctx, row)
 }
 
-func (s *Service) get(ctx context.Context, id string) (sqlc.Automation, error) {
-	row, err := s.q.GetAutomation(ctx, sqlc.GetAutomationParams{ID: id, AgentID: s.agentID})
+func (s *Service) get(ctx context.Context, agentID string, id string) (sqlc.Automation, error) {
+	row, err := s.q.GetAutomation(ctx, sqlc.GetAutomationParams{ID: id, AgentID: agentID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return row, ErrNotFound
 	}
@@ -251,8 +250,8 @@ func (s *Service) get(ctx context.Context, id string) (sqlc.Automation, error) {
 }
 
 // List returns all automations, oldest first.
-func (s *Service) List(ctx context.Context) ([]Automation, error) {
-	rows, err := s.q.ListAutomations(ctx, s.agentID)
+func (s *Service) List(ctx context.Context, agentID string) ([]Automation, error) {
+	rows, err := s.q.ListAutomations(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +281,7 @@ func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, er
 		// The times after the next one; a time that passed while dex did not run shows as is.
 		a.NextRuns = append([]int64{first.UnixMilli()}, millis(a.Schedule.upcoming(first, time.UnixMilli(row.UpdatedAt), loc, 2))...)
 	}
-	runs, err := s.Runs(ctx, row.ID, 1)
+	runs, err := s.Runs(ctx, row.AgentID, row.ID, 1)
 	if err != nil {
 		return a, err
 	}
@@ -293,7 +292,10 @@ func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, er
 }
 
 // Runs returns the newest runs of an automation, at most limit.
-func (s *Service) Runs(ctx context.Context, id string, limit int64) ([]Run, error) {
+func (s *Service) Runs(ctx context.Context, agentID string, id string, limit int64) ([]Run, error) {
+	if _, err := s.get(ctx, agentID, id); err != nil {
+		return nil, err
+	}
 	rows, err := s.q.ListAutomationRuns(ctx, sqlc.ListAutomationRunsParams{AutomationID: id, Limit: limit})
 	if err != nil {
 		return nil, err
@@ -320,8 +322,8 @@ func (s *Service) Runs(ctx context.Context, id string, limit int64) ([]Run, erro
 }
 
 // RunNow runs an automation outside its schedule.
-func (s *Service) RunNow(ctx context.Context, id string) (Run, error) {
-	row, err := s.get(ctx, id)
+func (s *Service) RunNow(ctx context.Context, agentID string, id string) (Run, error) {
+	row, err := s.get(ctx, agentID, id)
 	if err != nil {
 		return Run{}, err
 	}

@@ -40,7 +40,7 @@ func TestUserWechatCanceledActivationRetainsCandidate(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 	q := sqlc.New(conn)
-	s := settings.New(q, nil, "agent", "", nil)
+	s := settings.New(q, nil, "", nil)
 	activated := false
 	s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, conn, func(cfg *wechat.Config) {
 		if cfg == nil {
@@ -100,7 +100,7 @@ func TestUserWechatNewLoginAndDeleteInvalidateWaitingStart(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = conn.Close() }()
-			s := settings.New(sqlc.New(conn), nil, "agent", "", nil)
+			s := settings.New(sqlc.New(conn), nil, "", nil)
 			s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, conn, func(*wechat.Config) {})
 			done := make(chan error, 1)
 			go func() { _, err := s.BeginWechatLogin(t.Context()); done <- err }()

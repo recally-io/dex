@@ -113,7 +113,7 @@ func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
 				_, _ = w.Write([]byte(`{"ok":true,"result":{"id":7,"is_bot":true,"username":"upgrade_bot"}}`))
 			}))
 			t.Cleanup(api.Close)
-			prefs := settings.New(sqlc.New(conn), nil, "default", api.URL, nil)
+			prefs := settings.New(sqlc.New(conn), nil, api.URL, nil)
 			link, _, err := prefs.CreateTelegramPairing(t.Context())
 			if err != nil {
 				t.Fatal(err)
