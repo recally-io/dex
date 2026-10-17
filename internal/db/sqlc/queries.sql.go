@@ -264,11 +264,11 @@ func (q *Queries) DeleteProvider(ctx context.Context, id string) error {
 }
 
 const deleteTelegramSettings = `-- name: DeleteTelegramSettings :exec
-DELETE FROM telegram_settings WHERE id = 1
+DELETE FROM telegram_settings WHERE agent_id = ?
 `
 
-func (q *Queries) DeleteTelegramSettings(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteTelegramSettings)
+func (q *Queries) DeleteTelegramSettings(ctx context.Context, agentID string) error {
+	_, err := q.db.ExecContext(ctx, deleteTelegramSettings, agentID)
 	return err
 }
 
@@ -626,14 +626,14 @@ func (q *Queries) GetSubmissionReply(ctx context.Context, id string) (GetSubmiss
 }
 
 const getTelegramSettings = `-- name: GetTelegramSettings :one
-SELECT id, token, allowed_users, pairing_code, pairing_expires FROM telegram_settings WHERE id = 1
+SELECT agent_id, token, allowed_users, pairing_code, pairing_expires FROM telegram_settings WHERE agent_id = ?
 `
 
-func (q *Queries) GetTelegramSettings(ctx context.Context) (TelegramSetting, error) {
-	row := q.db.QueryRowContext(ctx, getTelegramSettings)
+func (q *Queries) GetTelegramSettings(ctx context.Context, agentID string) (TelegramSetting, error) {
+	row := q.db.QueryRowContext(ctx, getTelegramSettings, agentID)
 	var i TelegramSetting
 	err := row.Scan(
-		&i.ID,
+		&i.AgentID,
 		&i.Token,
 		&i.AllowedUsers,
 		&i.PairingCode,
@@ -1173,21 +1173,23 @@ const pairTelegramOwner = `-- name: PairTelegramOwner :one
 UPDATE telegram_settings
 SET allowed_users = CAST(?1 AS TEXT),
     pairing_code = '', pairing_expires = 0
-WHERE id = 1 AND allowed_users = '' AND token = ?2 AND pairing_code = ?3
-    AND pairing_code <> '' AND pairing_expires > ?4
+WHERE agent_id = ?2 AND allowed_users = '' AND token = ?3 AND pairing_code = ?4
+    AND pairing_code <> '' AND pairing_expires > ?5
 RETURNING allowed_users
 `
 
 type PairTelegramOwnerParams struct {
-	UserID string `json:"user_id"`
-	Token  string `json:"token"`
-	Code   string `json:"code"`
-	Now    int64  `json:"now"`
+	UserID  string `json:"user_id"`
+	AgentID string `json:"agent_id"`
+	Token   string `json:"token"`
+	Code    string `json:"code"`
+	Now     int64  `json:"now"`
 }
 
 func (q *Queries) PairTelegramOwner(ctx context.Context, arg PairTelegramOwnerParams) (string, error) {
 	row := q.db.QueryRowContext(ctx, pairTelegramOwner,
 		arg.UserID,
+		arg.AgentID,
 		arg.Token,
 		arg.Code,
 		arg.Now,
@@ -1250,32 +1252,34 @@ func (q *Queries) SetFirstChatTitle(ctx context.Context, arg SetFirstChatTitlePa
 }
 
 const setTelegramPairing = `-- name: SetTelegramPairing :exec
-UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE id = 1
+UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE agent_id = ?
 `
 
 type SetTelegramPairingParams struct {
 	PairingCode    string `json:"pairing_code"`
 	PairingExpires int64  `json:"pairing_expires"`
+	AgentID        string `json:"agent_id"`
 }
 
 func (q *Queries) SetTelegramPairing(ctx context.Context, arg SetTelegramPairingParams) error {
-	_, err := q.db.ExecContext(ctx, setTelegramPairing, arg.PairingCode, arg.PairingExpires)
+	_, err := q.db.ExecContext(ctx, setTelegramPairing, arg.PairingCode, arg.PairingExpires, arg.AgentID)
 	return err
 }
 
 const setTelegramSettings = `-- name: SetTelegramSettings :exec
-INSERT INTO telegram_settings (id, token, allowed_users)
-VALUES (1, ?, ?)
-ON CONFLICT (id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, pairing_code = '', pairing_expires = 0
+INSERT INTO telegram_settings (agent_id, token, allowed_users)
+VALUES (?, ?, ?)
+ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, pairing_code = '', pairing_expires = 0
 `
 
 type SetTelegramSettingsParams struct {
+	AgentID      string `json:"agent_id"`
 	Token        string `json:"token"`
 	AllowedUsers string `json:"allowed_users"`
 }
 
 func (q *Queries) SetTelegramSettings(ctx context.Context, arg SetTelegramSettingsParams) error {
-	_, err := q.db.ExecContext(ctx, setTelegramSettings, arg.Token, arg.AllowedUsers)
+	_, err := q.db.ExecContext(ctx, setTelegramSettings, arg.AgentID, arg.Token, arg.AllowedUsers)
 	return err
 }
 

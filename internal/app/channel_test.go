@@ -109,7 +109,7 @@ func TestUserStopsCurrentChannelAnswer(t *testing.T) {
 	}
 	// Then the runtime status is visible without credentials.
 	var settings map[string]any
-	d.must(t, http.MethodGet, "/api/settings", nil, &settings)
+	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &settings)
 	tg := settings["telegram"].(map[string]any)
 	if tg["status"].(map[string]any)["state"] != "running" {
 		t.Fatalf("status: %v", tg)

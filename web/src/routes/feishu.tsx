@@ -1,3 +1,4 @@
+import { useAgentId } from "../lib/agent-scope";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,8 +17,9 @@ import { Confirm } from "../components/confirm";
 import type { FeishuSetup } from "../api/generated/types.gen";
 
 export function FeishuChannel() {
+  const agentId = useAgentId();
   const client = useQueryClient();
-  const saved = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
+  const saved = useQuery({ ...getFeishuOptions({ path: { agentId } }), refetchInterval: 3000 });
   const [selectedBrand, setBrand] = useState<string | null>(null);
   const brand = selectedBrand ?? saved.data?.brand ?? "feishu";
   const [appId, setAppId] = useState("");
@@ -26,10 +28,12 @@ export function FeishuChannel() {
   const [qrError, setQrError] = useState("");
   const [off, setOff] = useState(false);
   const [expires, setExpires] = useState(0);
-  const refresh = () => client.invalidateQueries({ queryKey: getFeishuOptions().queryKey });
+
+  const refresh = () =>
+    client.invalidateQueries({ queryKey: getFeishuOptions({ path: { agentId } }).queryKey });
 
   const begin = useMutation({
-    ...beginFeishuMutation(),
+    ...beginFeishuMutation({ path: { agentId } }),
     onSuccess: (data) => {
       setQrError("");
       setSetup(data);
@@ -38,7 +42,7 @@ export function FeishuChannel() {
   });
 
   const poll = useMutation({
-    ...pollFeishuMutation(),
+    ...pollFeishuMutation({ path: { agentId } }),
     onSuccess: (data) => {
       if (data.status === "created") {
         setSetup(null);
@@ -48,7 +52,7 @@ export function FeishuChannel() {
   });
 
   const save = useMutation({
-    ...setFeishuMutation(),
+    ...setFeishuMutation({ path: { agentId } }),
     onSuccess: (data) => {
       setAppSecret("");
       setSetup(data);
@@ -58,7 +62,7 @@ export function FeishuChannel() {
   });
 
   const remove = useMutation({
-    ...deleteFeishuMutation(),
+    ...deleteFeishuMutation({ path: { agentId } }),
     onSuccess: () => {
       setOff(false);
       setSetup(null);
@@ -91,13 +95,13 @@ export function FeishuChannel() {
         if (Date.now() >= expires) {
           setSetup(null);
           setQrError("The QR code expired. Create a new QR code.");
-        } else pollApp({ body: { session } });
+        } else pollApp({ path: { agentId }, body: { session } });
       },
       Math.max(1, interval) * 1000,
     );
 
     return () => window.clearTimeout(timer);
-  }, [session, interval, pending, pollFailed, pollApp, expires]);
+  }, [agentId, session, interval, pending, pollFailed, pollApp, expires]);
   const busy = begin.isPending || save.isPending || remove.isPending;
 
   return (
@@ -142,7 +146,7 @@ export function FeishuChannel() {
             disabled={busy || !!session}
             onClick={() => {
               poll.reset();
-              begin.mutate({ body: { brand } });
+              begin.mutate({ path: { agentId }, body: { brand } });
             }}
           >
             Create QR code
@@ -189,7 +193,7 @@ export function FeishuChannel() {
           onSubmit={(e) => {
             e.preventDefault();
             setSetup(null);
-            save.mutate({ body: { appId, appSecret, brand } });
+            save.mutate({ path: { agentId }, body: { appId, appSecret, brand } });
           }}
         >
           <Field label="App ID">
@@ -246,7 +250,7 @@ export function FeishuChannel() {
           description="dex stops the bot and forgets its credentials. Past chats stay."
           confirmLabel="Turn off"
           onCancel={() => setOff(false)}
-          onConfirm={() => remove.mutate({})}
+          onConfirm={() => remove.mutate({ path: { agentId } })}
           pending={remove.isPending}
           error={remove.isError ? remove.error : undefined}
         />

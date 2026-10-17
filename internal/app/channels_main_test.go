@@ -55,8 +55,8 @@ func newMainEntry(t *testing.T, platform string) mainEntry {
 		f := newFakeWechat(t)
 		e.d = startWechat(t, f, e.dir)
 		var login wechatLogin
-		e.d.must(t, http.MethodPost, "/api/settings/wechat/login", nil, &login)
-		e.d.must(t, http.MethodPost, "/api/settings/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
+		e.d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
+		e.d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
 		e.peer = "wechat:owner"
 		e.send = func(text string) { serial++; f.batch(fmt.Sprint(serial), wxText(uint64(serial), "owner", text)) }
 		e.sends = func() []channelSend {
@@ -116,7 +116,7 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 			if _, err := conn.ExecContext(t.Context(), "UPDATE conversations SET model_provider='faux', model_id='shout' WHERE id=?", old); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_peers (peer, channel_key) VALUES (?, ?)", e.peer, e.peer+"/old"); err != nil {
+			if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_peers (agent_id, peer, channel_key) VALUES ('default', ?, ?)", e.peer, e.peer+"/old"); err != nil {
 				t.Fatal(err)
 			}
 			var chat chatInfo

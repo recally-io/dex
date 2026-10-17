@@ -403,8 +403,12 @@ export type Settings = {
     apis: {
         [key: string]: string;
     };
+};
+
+export type Channels = {
     telegram: Telegram;
     wechat: Wechat;
+    feishu: Feishu;
 };
 
 export type Agent = {
@@ -659,6 +663,8 @@ export type AgentWritable = {
     instructions: string;
 };
 
+export type AgentId = string;
+
 export type AutomationId = string;
 
 export type ChatId = number;
@@ -874,11 +880,40 @@ export type SetProviderResponses = {
 
 export type SetProviderResponse = SetProviderResponses[keyof SetProviderResponses];
 
+export type GetChannelsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/channels';
+};
+
+export type GetChannelsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetChannelsError = GetChannelsErrors[keyof GetChannelsErrors];
+
+export type GetChannelsResponses = {
+    /**
+     * Channel configuration and runtime status for this agent.
+     */
+    200: Channels;
+};
+
+export type GetChannelsResponse = GetChannelsResponses[keyof GetChannelsResponses];
+
 export type CreateTelegramPairingData = {
     body?: never;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/telegram/pairing';
+    url: '/api/agents/{agentId}/channels/telegram/pairing';
 };
 
 export type CreateTelegramPairingErrors = {
@@ -908,9 +943,11 @@ export type CreateTelegramPairingResponse = CreateTelegramPairingResponses[keyof
 
 export type BeginWechatLoginData = {
     body?: never;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/wechat/login';
+    url: '/api/agents/{agentId}/channels/wechat/login';
 };
 
 export type BeginWechatLoginErrors = {
@@ -936,10 +973,11 @@ export type PollWechatLoginData = {
         verifyCode?: string;
     };
     path: {
+        agentId: string;
         loginId: string;
     };
     query?: never;
-    url: '/api/settings/wechat/login/{loginId}/poll';
+    url: '/api/agents/{agentId}/channels/wechat/login/{loginId}/poll';
 };
 
 export type PollWechatLoginErrors = {
@@ -962,9 +1000,11 @@ export type PollWechatLoginResponse = PollWechatLoginResponses[keyof PollWechatL
 
 export type DeleteWechatData = {
     body?: never;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/wechat';
+    url: '/api/agents/{agentId}/channels/wechat';
 };
 
 export type DeleteWechatErrors = {
@@ -987,9 +1027,11 @@ export type DeleteWechatResponse = DeleteWechatResponses[keyof DeleteWechatRespo
 
 export type DeleteTelegramData = {
     body?: never;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/telegram';
+    url: '/api/agents/{agentId}/channels/telegram';
 };
 
 export type DeleteTelegramErrors = {
@@ -1012,9 +1054,11 @@ export type DeleteTelegramResponse = DeleteTelegramResponses[keyof DeleteTelegra
 
 export type SetTelegramData = {
     body: TelegramInput;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/telegram';
+    url: '/api/agents/{agentId}/channels/telegram';
 };
 
 export type SetTelegramErrors = {
@@ -1041,9 +1085,11 @@ export type SetTelegramResponse = SetTelegramResponses[keyof SetTelegramResponse
 
 export type DeleteFeishuData = {
     body?: never;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/feishu';
+    url: '/api/agents/{agentId}/channels/feishu';
 };
 
 export type DeleteFeishuErrors = {
@@ -1066,9 +1112,11 @@ export type DeleteFeishuResponse = DeleteFeishuResponses[keyof DeleteFeishuRespo
 
 export type GetFeishuData = {
     body?: never;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/feishu';
+    url: '/api/agents/{agentId}/channels/feishu';
 };
 
 export type GetFeishuErrors = {
@@ -1091,9 +1139,11 @@ export type GetFeishuResponse = GetFeishuResponses[keyof GetFeishuResponses];
 
 export type SetFeishuData = {
     body: FeishuInput;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/feishu';
+    url: '/api/agents/{agentId}/channels/feishu';
 };
 
 export type SetFeishuErrors = {
@@ -1116,9 +1166,11 @@ export type SetFeishuResponse = SetFeishuResponses[keyof SetFeishuResponses];
 
 export type BeginFeishuData = {
     body: FeishuBrand;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/feishu/registration';
+    url: '/api/agents/{agentId}/channels/feishu/registration';
 };
 
 export type BeginFeishuErrors = {
@@ -1141,9 +1193,11 @@ export type BeginFeishuResponse = BeginFeishuResponses[keyof BeginFeishuResponse
 
 export type PollFeishuData = {
     body: FeishuPoll;
-    path?: never;
+    path: {
+        agentId: string;
+    };
     query?: never;
-    url: '/api/settings/feishu/registration/poll';
+    url: '/api/agents/{agentId}/channels/feishu/registration/poll';
 };
 
 export type PollFeishuErrors = {

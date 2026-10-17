@@ -34,7 +34,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
   const [login, setLogin] = useState<WechatLogin>();
   const [code, setCode] = useState("");
   const [off, setOff] = useState(false);
-  const start = useMutation({ ...beginWechatLoginMutation(), onSuccess: setLogin });
+  const start = useMutation({ ...beginWechatLoginMutation({ path: { agentId } }), onSuccess: setLogin });
 
   const poll = useMutation({
     ...pollWechatLoginMutation(),
@@ -46,7 +46,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
   });
 
   const deletion = useMutation({
-    ...deleteWechatMutation(),
+    ...deleteWechatMutation({ path: { agentId } }),
     onSuccess: async () => {
       setOff(false);
       setLogin(undefined);
@@ -61,11 +61,11 @@ export function WechatChannel({ settings }: { settings: Settings }) {
     if (!login?.active || login.status === "need_verifycode" || pending) return;
 
     const timer = window.setTimeout(() => {
-      pollLogin({ path: { loginId: login.id }, body: {} });
+      pollLogin({ path: { agentId, loginId: login.id }, body: {} });
     }, 1000);
 
     return () => window.clearTimeout(timer);
-  }, [login, pending, pollLogin]);
+  }, [agentId, login, pending, pollLogin]);
 
   return (
     <Section n={1} title="Connection" caption="Scan once. dex recognizes the owner from the login.">
@@ -103,7 +103,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
 
                   if (!/^[0-9]{1,16}$/.test(code) || pending) return;
 
-                  pollLogin({ path: { loginId: login.id }, body: { verifyCode: code } });
+                  pollLogin({ path: { agentId, loginId: login.id }, body: { verifyCode: code } });
                   setCode("");
                 }}
               >
@@ -138,7 +138,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
             disabled={start.isPending || pending}
             onClick={() => {
               poll.reset();
-              start.mutate({});
+              start.mutate({ path: { agentId } });
             }}
           >
             {start.isPending ? "Getting QR code…" : account.enabled ? "Scan again" : "Connect WeChat"}
@@ -163,7 +163,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
           description="dex stops the bot and forgets its credentials. Past chats stay read-only. Scan again to reconnect."
           confirmLabel="Turn off"
           onCancel={() => setOff(false)}
-          onConfirm={() => deletion.mutate({})}
+          onConfirm={() => deletion.mutate({ path: { agentId } })}
           pending={deletion.isPending}
           error={deletion.error}
         />

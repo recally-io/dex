@@ -51,7 +51,7 @@ const tabs: AgentTab[] = [
 export function useAgentActivity() {
   const agentId = useAgentId();
   const settings = useQuery({ ...scopedSettingsOptions(agentId), refetchInterval: 3000 });
-  const feishu = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
+  const feishu = useQuery({ ...getFeishuOptions({ path: { agentId } }), refetchInterval: 3000 });
 
   const automations = useQuery({
     ...listAutomationsOptions({ path: { agentId } }),
@@ -67,7 +67,7 @@ export function useAgentActivity() {
   ];
 
   return {
-    channels: agentId === "default" ? states.filter((state) => state === "running").length : 0,
+    channels: states.filter((state) => state === "running").length,
     automations: automations.data?.automations.filter((automation) => automation.enabled).length ?? 0,
     active: activeSessionCount(sessions.data?.chats ?? []),
   };

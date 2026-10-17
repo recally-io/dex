@@ -40,32 +40,35 @@ func TestUserWechatCanceledActivationRetainsCandidate(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 	q := sqlc.New(conn)
+	if err := q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "default", Name: "Dex"}); err != nil {
+		t.Fatal(err)
+	}
 	s := settings.New(q, nil, "", nil)
 	activated := false
-	s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, conn, func(cfg *wechat.Config) {
+	s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, conn, func(_ string, cfg *wechat.Config) {
 		if cfg == nil {
 			cancel()
 		} else {
 			activated = true
 		}
 	})
-	login, err := s.BeginWechatLogin(t.Context())
+	login, err := s.BeginWechatLogin(t.Context(), "default")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// When stopping the previous runtime cancels the request, no settings can commit.
-	view, err := s.PollWechatLogin(ctx, login.ID, "")
+	view, err := s.PollWechatLogin(ctx, "default", login.ID, "")
 	if !errors.Is(err, context.Canceled) || view.Status == "confirmed" {
 		t.Fatalf("canceled activation: %+v %v", view, err)
 	}
-	if _, err := q.GetWechatSettings(t.Context()); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := q.GetWechatSettings(t.Context(), "default"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("partial settings after cancellation: %v", err)
 	}
 	if activated {
 		t.Fatal("canceled activation started a bot")
 	}
 	// Then a new request can activate the retained candidate without polling WeChat again.
-	view, err = s.PollWechatLogin(t.Context(), login.ID, "")
+	view, err = s.PollWechatLogin(t.Context(), "default", login.ID, "")
 	if err != nil || view.Status != "confirmed" || view.Active || !activated || polls.Load() != 1 {
 		t.Fatalf("retry: %+v err=%v activated=%v remote polls=%d", view, err, activated, polls.Load())
 	}
@@ -101,9 +104,9 @@ func TestUserWechatNewLoginAndDeleteInvalidateWaitingStart(t *testing.T) {
 			}
 			defer func() { _ = conn.Close() }()
 			s := settings.New(sqlc.New(conn), nil, "", nil)
-			s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, conn, func(*wechat.Config) {})
+			s.ConfigureWechat(wechat.Options{APIURL: srv.URL}, conn, func(string, *wechat.Config) {})
 			done := make(chan error, 1)
-			go func() { _, err := s.BeginWechatLogin(t.Context()); done <- err }()
+			go func() { _, err := s.BeginWechatLogin(t.Context(), "default"); done <- err }()
 			select {
 			case <-entered:
 			case <-time.After(10 * time.Second):
@@ -112,9 +115,9 @@ func TestUserWechatNewLoginAndDeleteInvalidateWaitingStart(t *testing.T) {
 			// When a newer login or delete takes ownership, the older result cannot replace it.
 			var current wechat.LoginView
 			if replacement == "new login" {
-				current, err = s.BeginWechatLogin(t.Context())
+				current, err = s.BeginWechatLogin(t.Context(), "default")
 			} else {
-				err = s.DeleteWechat(t.Context())
+				err = s.DeleteWechat(t.Context(), "default")
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -129,7 +132,7 @@ func TestUserWechatNewLoginAndDeleteInvalidateWaitingStart(t *testing.T) {
 				t.Fatal("old start did not finish")
 			}
 			if replacement == "new login" {
-				view, err := s.PollWechatLogin(t.Context(), current.ID, "")
+				view, err := s.PollWechatLogin(t.Context(), "default", current.ID, "")
 				if err != nil || view.Status != "wait" || view.ID != current.ID {
 					t.Fatalf("current login replaced: %+v %v", view, err)
 				}

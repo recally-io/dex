@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acquireMaintenance, beginFeishu, beginWechatLogin, clearContext, createAgent, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, getAgent, getAutomation, getChat, getChatHistory, getExtensions, getFeishu, getHealth, getMainChat, getSettings, getTask, getUpload, listAgents, listAutomationRuns, listAutomations, listChats, listModels, type Options, pollFeishu, pollWechatLogin, previewSchedule, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setChatSettings, setFeishu, setProvider, setTelegram, updateAgent, updateAutomation } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTaskData, GetTaskError, GetTaskResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, beginFeishu, beginWechatLogin, clearContext, createAgent, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, getAgent, getAutomation, getChannels, getChat, getChatHistory, getExtensions, getFeishu, getHealth, getMainChat, getSettings, getTask, getUpload, listAgents, listAutomationRuns, listAutomations, listChats, listModels, type Options, pollFeishu, pollWechatLogin, previewSchedule, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setChatSettings, setFeishu, setProvider, setTelegram, updateAgent, updateAutomation } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTaskData, GetTaskError, GetTaskResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
 
 /**
  * Exchanges the access token for the session cookie.
@@ -167,6 +167,21 @@ export const setProviderMutation = (options?: Partial<Options<SetProviderData>>)
     return mutationOptions;
 };
 
+export const getChannelsQueryKey = (options: Options<GetChannelsData>) => createQueryKey('getChannels', options);
+
+export const getChannelsOptions = (options: Options<GetChannelsData>) => queryOptions<GetChannelsResponse, GetChannelsError, GetChannelsResponse, ReturnType<typeof getChannelsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getChannels({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getChannelsQueryKey(options)
+});
+
 /**
  * Creates a single-use owner pairing link. The link expires in 10 minutes.
  */
@@ -283,9 +298,9 @@ export const deleteFeishuMutation = (options?: Partial<Options<DeleteFeishuData>
     return mutationOptions;
 };
 
-export const getFeishuQueryKey = (options?: Options<GetFeishuData>) => createQueryKey('getFeishu', options);
+export const getFeishuQueryKey = (options: Options<GetFeishuData>) => createQueryKey('getFeishu', options);
 
-export const getFeishuOptions = (options?: Options<GetFeishuData>) => queryOptions<GetFeishuResponse, GetFeishuError, GetFeishuResponse, ReturnType<typeof getFeishuQueryKey>>({
+export const getFeishuOptions = (options: Options<GetFeishuData>) => queryOptions<GetFeishuResponse, GetFeishuError, GetFeishuResponse, ReturnType<typeof getFeishuQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
         const { data } = await getFeishu({
             ...options,

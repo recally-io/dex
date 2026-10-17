@@ -74,7 +74,7 @@ function Boundary() {
 export function ChannelsSection({ settings }: { settings: Settings }) {
   const agentId = useAgentId();
   const saved = useQuery({ ...scopedSettingsOptions(agentId), refetchInterval: 3000 });
-  const feishu = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
+  const feishu = useQuery({ ...getFeishuOptions({ path: { agentId } }), refetchInterval: 3000 });
   const current = saved.data ?? settings;
 
   const status = (state: string) => (
@@ -116,10 +116,6 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
 }
 
 export function ChannelsPage() {
-  const agentId = useAgentId();
-
-  if (agentId !== "default") return <ChannelsNote />;
-
   return (
     <FramedPage title="Channels">
       <WithSettings>{(settings) => <ChannelsSection settings={settings} />}</WithSettings>
@@ -128,10 +124,6 @@ export function ChannelsPage() {
 }
 
 export function ChannelPage({ channel }: { channel: "telegram" | "wechat" | "feishu" }) {
-  const agentId = useAgentId();
-
-  if (agentId !== "default") return <ChannelsNote />;
-
   return channel === "wechat" ? (
     <FramedPage
       eyebrow={<Crumb to="/a/$agentId/channels">Channels</Crumb>}
@@ -170,14 +162,15 @@ function TelegramChannel() {
 }
 
 function Telegram({ settings }: { settings: Settings }) {
+  const agentId = useAgentId();
   const { notify } = useApp();
   const telegram = settings.telegram;
   const [edit, setEdit] = useState(false);
   const [off, setOff] = useState(false);
-  const pairing = useMutation(createTelegramPairingMutation());
+  const pairing = useMutation(createTelegramPairingMutation({ path: { agentId } }));
 
   const deletion = useMutation({
-    ...deleteTelegramMutation(),
+    ...deleteTelegramMutation({ path: { agentId } }),
     onSuccess: async () => {
       await refreshSettings();
       setOff(false);
@@ -247,7 +240,7 @@ function Telegram({ settings }: { settings: Settings }) {
               size="sm"
               variant="secondary"
               disabled={pairing.isPending}
-              onClick={() => pairing.mutate({})}
+              onClick={() => pairing.mutate({ path: { agentId } })}
             >
               {pairing.isPending ? "Creating link…" : "Create owner pairing link"}
             </Button>
@@ -302,7 +295,7 @@ function Telegram({ settings }: { settings: Settings }) {
         <TelegramDialog
           settings={settings}
           onClose={() => setEdit(false)}
-          onNeedsPairing={() => pairing.mutate({})}
+          onNeedsPairing={() => pairing.mutate({ path: { agentId } })}
         />
       ) : null}
       {off ? (
@@ -311,7 +304,7 @@ function Telegram({ settings }: { settings: Settings }) {
           description="dex stops reading the bot and forgets the saved token. The main timeline stays. To turn Telegram on again, enter the token again."
           confirmLabel="Turn off"
           onCancel={() => setOff(false)}
-          onConfirm={() => deletion.mutate({})}
+          onConfirm={() => deletion.mutate({ path: { agentId } })}
           pending={deletion.isPending}
           error={deletion.error}
         />
@@ -342,6 +335,7 @@ function TelegramDialog({
   onClose: () => void;
   onNeedsPairing: () => void;
 }) {
+  const agentId = useAgentId();
   const { notify } = useApp();
   const saved = settings.telegram.enabled;
   const [token, setToken] = useState("");
@@ -352,7 +346,7 @@ function TelegramDialog({
   const tokenError = !saved && !token.trim() ? "Enter the bot token from @BotFather." : "";
 
   const save = useMutation({
-    ...setTelegramMutation(),
+    ...setTelegramMutation({ path: { agentId } }),
     onSuccess: async (_, variables) => {
       await refreshSettings();
       onClose();
@@ -369,7 +363,7 @@ function TelegramDialog({
     setTried(true);
 
     if (tokenError || parsed.error || save.isPending) return;
-    save.mutate({ body: { token: token.trim(), allowedUsers: parsed.users } });
+    save.mutate({ path: { agentId }, body: { token: token.trim(), allowedUsers: parsed.users } });
   }
 
   return (
@@ -465,20 +459,5 @@ function TelegramDialog({
         />
       ) : null}
     </Modal>
-  );
-}
-
-function ChannelsNote() {
-  return (
-    <FramedPage title="Channels">
-      <div className="p-5 sm:p-8">
-        <Note>
-          Channels connect to the default agent for now.{" "}
-          <Link to="/a/$agentId/channels" params={{ agentId: "default" }} className="font-medium underline">
-            Open default agent channels
-          </Link>
-        </Note>
-      </div>
-    </FramedPage>
   );
 }

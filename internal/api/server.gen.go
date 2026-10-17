@@ -534,6 +534,9 @@ type BoundaryItemKind string
 // ChannelStatus defines model for ChannelStatus.
 type ChannelStatus = channel.Status
 
+// Channels defines model for Channels.
+type Channels = settings.Channels
+
 // Chat defines model for Chat.
 type Chat struct {
 	// AutomationId The automation that created the chat.
@@ -837,8 +840,6 @@ type Settings struct {
 
 	// Providers The providers that the user added, in the order of addition.
 	Providers []Provider `json:"providers"`
-	Telegram  Telegram   `json:"telegram"`
-	Wechat    Wechat     `json:"wechat"`
 }
 
 // Skill defines model for Skill.
@@ -1012,11 +1013,19 @@ type Wechat = settings.Wechat
 // WechatLogin defines model for WechatLogin.
 type WechatLogin = wechat.LoginView
 
+// AgentId defines model for AgentId.
+type AgentId = string
+
 // AutomationId defines model for AutomationId.
 type AutomationId = string
 
 // ChatId defines model for ChatId.
 type ChatId = int64
+
+// PollWechatLoginJSONBody defines parameters for PollWechatLogin.
+type PollWechatLoginJSONBody struct {
+	VerifyCode *string `json:"verifyCode,omitempty"`
+}
 
 // ClearContextJSONBody defines parameters for ClearContext.
 type ClearContextJSONBody struct {
@@ -1035,11 +1044,6 @@ type CreateUploadMultipartBody struct {
 	File openapi_types.File `json:"file"`
 }
 
-// PollWechatLoginJSONBody defines parameters for PollWechatLogin.
-type PollWechatLoginJSONBody struct {
-	VerifyCode *string `json:"verifyCode,omitempty"`
-}
-
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
 type CreateAgentJSONRequestBody = AgentInput
 
@@ -1051,6 +1055,21 @@ type CreateAutomationJSONRequestBody = AutomationInput
 
 // UpdateAutomationJSONRequestBody defines body for UpdateAutomation for application/json ContentType.
 type UpdateAutomationJSONRequestBody = AutomationInput
+
+// SetFeishuJSONRequestBody defines body for SetFeishu for application/json ContentType.
+type SetFeishuJSONRequestBody = FeishuInput
+
+// BeginFeishuJSONRequestBody defines body for BeginFeishu for application/json ContentType.
+type BeginFeishuJSONRequestBody = FeishuBrand
+
+// PollFeishuJSONRequestBody defines body for PollFeishu for application/json ContentType.
+type PollFeishuJSONRequestBody = FeishuPoll
+
+// SetTelegramJSONRequestBody defines body for SetTelegram for application/json ContentType.
+type SetTelegramJSONRequestBody = TelegramInput
+
+// PollWechatLoginJSONRequestBody defines body for PollWechatLogin for application/json ContentType.
+type PollWechatLoginJSONRequestBody PollWechatLoginJSONBody
 
 // ClearContextJSONRequestBody defines body for ClearContext for application/json ContentType.
 type ClearContextJSONRequestBody ClearContextJSONBody
@@ -1070,23 +1089,8 @@ type PreviewScheduleJSONRequestBody = ScheduleInput
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = NewSession
 
-// SetFeishuJSONRequestBody defines body for SetFeishu for application/json ContentType.
-type SetFeishuJSONRequestBody = FeishuInput
-
-// BeginFeishuJSONRequestBody defines body for BeginFeishu for application/json ContentType.
-type BeginFeishuJSONRequestBody = FeishuBrand
-
-// PollFeishuJSONRequestBody defines body for PollFeishu for application/json ContentType.
-type PollFeishuJSONRequestBody = FeishuPoll
-
 // SetProviderJSONRequestBody defines body for SetProvider for application/json ContentType.
 type SetProviderJSONRequestBody = ProviderInput
-
-// SetTelegramJSONRequestBody defines body for SetTelegram for application/json ContentType.
-type SetTelegramJSONRequestBody = TelegramInput
-
-// PollWechatLoginJSONRequestBody defines body for PollWechatLogin for application/json ContentType.
-type PollWechatLoginJSONRequestBody PollWechatLoginJSONBody
 
 // AsSnapshotEvent returns the union data inside the ChatEvent as a SnapshotEvent
 func (t ChatEvent) AsSnapshotEvent() (SnapshotEvent, error) {
@@ -1578,6 +1582,42 @@ type ServerInterface interface {
 	// (GET /api/agents/{agentId}/automations/{automationId}/runs)
 	ListAutomationRuns(w http.ResponseWriter, r *http.Request, agentId string, automationId AutomationId)
 
+	// (GET /api/agents/{agentId}/channels)
+	GetChannels(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (DELETE /api/agents/{agentId}/channels/feishu)
+	DeleteFeishu(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (GET /api/agents/{agentId}/channels/feishu)
+	GetFeishu(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (PUT /api/agents/{agentId}/channels/feishu)
+	SetFeishu(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (POST /api/agents/{agentId}/channels/feishu/registration)
+	BeginFeishu(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (POST /api/agents/{agentId}/channels/feishu/registration/poll)
+	PollFeishu(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (DELETE /api/agents/{agentId}/channels/telegram)
+	DeleteTelegram(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (PUT /api/agents/{agentId}/channels/telegram)
+	SetTelegram(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (POST /api/agents/{agentId}/channels/telegram/pairing)
+	CreateTelegramPairing(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (DELETE /api/agents/{agentId}/channels/wechat)
+	DeleteWechat(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (POST /api/agents/{agentId}/channels/wechat/login)
+	BeginWechatLogin(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (POST /api/agents/{agentId}/channels/wechat/login/{loginId}/poll)
+	PollWechatLogin(w http.ResponseWriter, r *http.Request, agentId AgentId, loginId string)
+
 	// (GET /api/agents/{agentId}/chats)
 	ListChats(w http.ResponseWriter, r *http.Request, agentId string)
 
@@ -1644,44 +1684,11 @@ type ServerInterface interface {
 	// (GET /api/settings)
 	GetSettings(w http.ResponseWriter, r *http.Request)
 
-	// (DELETE /api/settings/feishu)
-	DeleteFeishu(w http.ResponseWriter, r *http.Request)
-
-	// (GET /api/settings/feishu)
-	GetFeishu(w http.ResponseWriter, r *http.Request)
-
-	// (PUT /api/settings/feishu)
-	SetFeishu(w http.ResponseWriter, r *http.Request)
-
-	// (POST /api/settings/feishu/registration)
-	BeginFeishu(w http.ResponseWriter, r *http.Request)
-
-	// (POST /api/settings/feishu/registration/poll)
-	PollFeishu(w http.ResponseWriter, r *http.Request)
-
 	// (DELETE /api/settings/providers/{providerId})
 	DeleteProvider(w http.ResponseWriter, r *http.Request, providerId string)
 
 	// (PUT /api/settings/providers/{providerId})
 	SetProvider(w http.ResponseWriter, r *http.Request, providerId string)
-
-	// (DELETE /api/settings/telegram)
-	DeleteTelegram(w http.ResponseWriter, r *http.Request)
-
-	// (PUT /api/settings/telegram)
-	SetTelegram(w http.ResponseWriter, r *http.Request)
-
-	// (POST /api/settings/telegram/pairing)
-	CreateTelegramPairing(w http.ResponseWriter, r *http.Request)
-
-	// (DELETE /api/settings/wechat)
-	DeleteWechat(w http.ResponseWriter, r *http.Request)
-
-	// (POST /api/settings/wechat/login)
-	BeginWechatLogin(w http.ResponseWriter, r *http.Request)
-
-	// (POST /api/settings/wechat/login/{loginId}/poll)
-	PollWechatLogin(w http.ResponseWriter, r *http.Request, loginId string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1991,6 +1998,327 @@ func (siw *ServerInterfaceWrapper) ListAutomationRuns(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAutomationRuns(w, r, agentId, automationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetChannels operation middleware
+func (siw *ServerInterfaceWrapper) GetChannels(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetChannels(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFeishu operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFeishu(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFeishu(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFeishu operation middleware
+func (siw *ServerInterfaceWrapper) GetFeishu(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFeishu(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetFeishu operation middleware
+func (siw *ServerInterfaceWrapper) SetFeishu(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetFeishu(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginFeishu operation middleware
+func (siw *ServerInterfaceWrapper) BeginFeishu(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginFeishu(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PollFeishu operation middleware
+func (siw *ServerInterfaceWrapper) PollFeishu(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PollFeishu(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTelegram operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTelegram(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTelegram(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetTelegram operation middleware
+func (siw *ServerInterfaceWrapper) SetTelegram(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTelegram(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTelegramPairing operation middleware
+func (siw *ServerInterfaceWrapper) CreateTelegramPairing(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTelegramPairing(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteWechat operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWechat(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWechat(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginWechatLogin operation middleware
+func (siw *ServerInterfaceWrapper) BeginWechatLogin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginWechatLogin(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PollWechatLogin operation middleware
+func (siw *ServerInterfaceWrapper) PollWechatLogin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "loginId" -------------
+	var loginId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "loginId", r.PathValue("loginId"), &loginId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "loginId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PollWechatLogin(w, r, agentId, loginId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2598,76 +2926,6 @@ func (siw *ServerInterfaceWrapper) GetSettings(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
-// DeleteFeishu operation middleware
-func (siw *ServerInterfaceWrapper) DeleteFeishu(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteFeishu(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetFeishu operation middleware
-func (siw *ServerInterfaceWrapper) GetFeishu(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetFeishu(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SetFeishu operation middleware
-func (siw *ServerInterfaceWrapper) SetFeishu(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetFeishu(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// BeginFeishu operation middleware
-func (siw *ServerInterfaceWrapper) BeginFeishu(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.BeginFeishu(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// PollFeishu operation middleware
-func (siw *ServerInterfaceWrapper) PollFeishu(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PollFeishu(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // DeleteProvider operation middleware
 func (siw *ServerInterfaceWrapper) DeleteProvider(w http.ResponseWriter, r *http.Request) {
 
@@ -2711,102 +2969,6 @@ func (siw *ServerInterfaceWrapper) SetProvider(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetProvider(w, r, providerId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DeleteTelegram operation middleware
-func (siw *ServerInterfaceWrapper) DeleteTelegram(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteTelegram(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SetTelegram operation middleware
-func (siw *ServerInterfaceWrapper) SetTelegram(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetTelegram(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateTelegramPairing operation middleware
-func (siw *ServerInterfaceWrapper) CreateTelegramPairing(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateTelegramPairing(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DeleteWechat operation middleware
-func (siw *ServerInterfaceWrapper) DeleteWechat(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteWechat(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// BeginWechatLogin operation middleware
-func (siw *ServerInterfaceWrapper) BeginWechatLogin(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.BeginWechatLogin(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// PollWechatLogin operation middleware
-func (siw *ServerInterfaceWrapper) PollWechatLogin(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "loginId" -------------
-	var loginId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "loginId", r.PathValue("loginId"), &loginId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "loginId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PollWechatLogin(w, r, loginId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2944,17 +3106,18 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/models", wrapper.ListModels)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.DeleteProvider)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.SetProvider)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/telegram/pairing", wrapper.CreateTelegramPairing)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/wechat/login", wrapper.BeginWechatLogin)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/wechat/login/{loginId}/poll", wrapper.PollWechatLogin)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/wechat", wrapper.DeleteWechat)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/telegram", wrapper.DeleteTelegram)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/telegram", wrapper.SetTelegram)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/feishu", wrapper.DeleteFeishu)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/feishu", wrapper.GetFeishu)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/feishu", wrapper.SetFeishu)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/feishu/registration", wrapper.BeginFeishu)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/feishu/registration/poll", wrapper.PollFeishu)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/channels", wrapper.GetChannels)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/telegram/pairing", wrapper.CreateTelegramPairing)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/wechat/login", wrapper.BeginWechatLogin)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/wechat/login/{loginId}/poll", wrapper.PollWechatLogin)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/channels/wechat", wrapper.DeleteWechat)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/channels/telegram", wrapper.DeleteTelegram)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/channels/telegram", wrapper.SetTelegram)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/channels/feishu", wrapper.DeleteFeishu)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/channels/feishu", wrapper.GetFeishu)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/channels/feishu", wrapper.SetFeishu)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/feishu/registration", wrapper.BeginFeishu)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/feishu/registration/poll", wrapper.PollFeishu)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/automations/preview", wrapper.PreviewSchedule)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents", wrapper.ListAgents)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents", wrapper.CreateAgent)
@@ -3597,6 +3760,508 @@ type ListAutomationRunsdefaultJSONResponse struct {
 }
 
 func (response ListAutomationRunsdefaultJSONResponse) VisitListAutomationRunsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChannelsRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+}
+
+type GetChannelsResponseObject interface {
+	VisitGetChannelsResponse(w http.ResponseWriter) error
+}
+
+type GetChannels200JSONResponse Channels
+
+func (response GetChannels200JSONResponse) VisitGetChannelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChannelsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetChannelsdefaultJSONResponse) VisitGetChannelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFeishuRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+}
+
+type DeleteFeishuResponseObject interface {
+	VisitDeleteFeishuResponse(w http.ResponseWriter) error
+}
+
+type DeleteFeishu200JSONResponse Ok
+
+func (response DeleteFeishu200JSONResponse) VisitDeleteFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFeishudefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteFeishudefaultJSONResponse) VisitDeleteFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeishuRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+}
+
+type GetFeishuResponseObject interface {
+	VisitGetFeishuResponse(w http.ResponseWriter) error
+}
+
+type GetFeishu200JSONResponse Feishu
+
+func (response GetFeishu200JSONResponse) VisitGetFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFeishudefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetFeishudefaultJSONResponse) VisitGetFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFeishuRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+	Body    *SetFeishuJSONRequestBody
+}
+
+type SetFeishuResponseObject interface {
+	VisitSetFeishuResponse(w http.ResponseWriter) error
+}
+
+type SetFeishu200JSONResponse FeishuSetup
+
+func (response SetFeishu200JSONResponse) VisitSetFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFeishudefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetFeishudefaultJSONResponse) VisitSetFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginFeishuRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+	Body    *BeginFeishuJSONRequestBody
+}
+
+type BeginFeishuResponseObject interface {
+	VisitBeginFeishuResponse(w http.ResponseWriter) error
+}
+
+type BeginFeishu200JSONResponse FeishuSetup
+
+func (response BeginFeishu200JSONResponse) VisitBeginFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginFeishudefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginFeishudefaultJSONResponse) VisitBeginFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollFeishuRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+	Body    *PollFeishuJSONRequestBody
+}
+
+type PollFeishuResponseObject interface {
+	VisitPollFeishuResponse(w http.ResponseWriter) error
+}
+
+type PollFeishu200JSONResponse FeishuSetup
+
+func (response PollFeishu200JSONResponse) VisitPollFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollFeishudefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response PollFeishudefaultJSONResponse) VisitPollFeishuResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTelegramRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+}
+
+type DeleteTelegramResponseObject interface {
+	VisitDeleteTelegramResponse(w http.ResponseWriter) error
+}
+
+type DeleteTelegram200JSONResponse Ok
+
+func (response DeleteTelegram200JSONResponse) VisitDeleteTelegramResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTelegramdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteTelegramdefaultJSONResponse) VisitDeleteTelegramResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTelegramRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+	Body    *SetTelegramJSONRequestBody
+}
+
+type SetTelegramResponseObject interface {
+	VisitSetTelegramResponse(w http.ResponseWriter) error
+}
+
+type SetTelegram200JSONResponse Ok
+
+func (response SetTelegram200JSONResponse) VisitSetTelegramResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTelegram400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SetTelegram400JSONResponse) VisitSetTelegramResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTelegramdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetTelegramdefaultJSONResponse) VisitSetTelegramResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTelegramPairingRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+}
+
+type CreateTelegramPairingResponseObject interface {
+	VisitCreateTelegramPairingResponse(w http.ResponseWriter) error
+}
+
+type CreateTelegramPairing200JSONResponse struct {
+	ExpiresAt int64  `json:"expiresAt"`
+	Url       string `json:"url"`
+}
+
+func (response CreateTelegramPairing200JSONResponse) VisitCreateTelegramPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTelegramPairing400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CreateTelegramPairing400JSONResponse) VisitCreateTelegramPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTelegramPairing500JSONResponse Error
+
+func (response CreateTelegramPairing500JSONResponse) VisitCreateTelegramPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWechatRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+}
+
+type DeleteWechatResponseObject interface {
+	VisitDeleteWechatResponse(w http.ResponseWriter) error
+}
+
+type DeleteWechat200JSONResponse Ok
+
+func (response DeleteWechat200JSONResponse) VisitDeleteWechatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWechatdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteWechatdefaultJSONResponse) VisitDeleteWechatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginWechatLoginRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+}
+
+type BeginWechatLoginResponseObject interface {
+	VisitBeginWechatLoginResponse(w http.ResponseWriter) error
+}
+
+type BeginWechatLogin200JSONResponse WechatLogin
+
+func (response BeginWechatLogin200JSONResponse) VisitBeginWechatLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginWechatLogindefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginWechatLogindefaultJSONResponse) VisitBeginWechatLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollWechatLoginRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+	LoginId string  `json:"loginId"`
+	Body    *PollWechatLoginJSONRequestBody
+}
+
+type PollWechatLoginResponseObject interface {
+	VisitPollWechatLoginResponse(w http.ResponseWriter) error
+}
+
+type PollWechatLogin200JSONResponse WechatLogin
+
+func (response PollWechatLogin200JSONResponse) VisitPollWechatLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollWechatLogindefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response PollWechatLogindefaultJSONResponse) VisitPollWechatLoginResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -4953,199 +5618,6 @@ func (response GetSettingsdefaultJSONResponse) VisitGetSettingsResponse(w http.R
 	return err
 }
 
-type DeleteFeishuRequestObject struct {
-}
-
-type DeleteFeishuResponseObject interface {
-	VisitDeleteFeishuResponse(w http.ResponseWriter) error
-}
-
-type DeleteFeishu200JSONResponse Ok
-
-func (response DeleteFeishu200JSONResponse) VisitDeleteFeishuResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteFeishudefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DeleteFeishudefaultJSONResponse) VisitDeleteFeishuResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetFeishuRequestObject struct {
-}
-
-type GetFeishuResponseObject interface {
-	VisitGetFeishuResponse(w http.ResponseWriter) error
-}
-
-type GetFeishu200JSONResponse Feishu
-
-func (response GetFeishu200JSONResponse) VisitGetFeishuResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetFeishudefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetFeishudefaultJSONResponse) VisitGetFeishuResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetFeishuRequestObject struct {
-	Body *SetFeishuJSONRequestBody
-}
-
-type SetFeishuResponseObject interface {
-	VisitSetFeishuResponse(w http.ResponseWriter) error
-}
-
-type SetFeishu200JSONResponse FeishuSetup
-
-func (response SetFeishu200JSONResponse) VisitSetFeishuResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetFeishudefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SetFeishudefaultJSONResponse) VisitSetFeishuResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type BeginFeishuRequestObject struct {
-	Body *BeginFeishuJSONRequestBody
-}
-
-type BeginFeishuResponseObject interface {
-	VisitBeginFeishuResponse(w http.ResponseWriter) error
-}
-
-type BeginFeishu200JSONResponse FeishuSetup
-
-func (response BeginFeishu200JSONResponse) VisitBeginFeishuResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type BeginFeishudefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response BeginFeishudefaultJSONResponse) VisitBeginFeishuResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PollFeishuRequestObject struct {
-	Body *PollFeishuJSONRequestBody
-}
-
-type PollFeishuResponseObject interface {
-	VisitPollFeishuResponse(w http.ResponseWriter) error
-}
-
-type PollFeishu200JSONResponse FeishuSetup
-
-func (response PollFeishu200JSONResponse) VisitPollFeishuResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PollFeishudefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response PollFeishudefaultJSONResponse) VisitPollFeishuResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type DeleteProviderRequestObject struct {
 	ProviderId string `json:"providerId"`
 }
@@ -5239,265 +5711,6 @@ func (response SetProviderdefaultJSONResponse) VisitSetProviderResponse(w http.R
 	return err
 }
 
-type DeleteTelegramRequestObject struct {
-}
-
-type DeleteTelegramResponseObject interface {
-	VisitDeleteTelegramResponse(w http.ResponseWriter) error
-}
-
-type DeleteTelegram200JSONResponse Ok
-
-func (response DeleteTelegram200JSONResponse) VisitDeleteTelegramResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteTelegramdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DeleteTelegramdefaultJSONResponse) VisitDeleteTelegramResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetTelegramRequestObject struct {
-	Body *SetTelegramJSONRequestBody
-}
-
-type SetTelegramResponseObject interface {
-	VisitSetTelegramResponse(w http.ResponseWriter) error
-}
-
-type SetTelegram200JSONResponse Ok
-
-func (response SetTelegram200JSONResponse) VisitSetTelegramResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetTelegram400JSONResponse struct{ ErrorJSONResponse }
-
-func (response SetTelegram400JSONResponse) VisitSetTelegramResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetTelegramdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SetTelegramdefaultJSONResponse) VisitSetTelegramResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateTelegramPairingRequestObject struct {
-}
-
-type CreateTelegramPairingResponseObject interface {
-	VisitCreateTelegramPairingResponse(w http.ResponseWriter) error
-}
-
-type CreateTelegramPairing200JSONResponse struct {
-	ExpiresAt int64  `json:"expiresAt"`
-	Url       string `json:"url"`
-}
-
-func (response CreateTelegramPairing200JSONResponse) VisitCreateTelegramPairingResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateTelegramPairing400JSONResponse struct{ ErrorJSONResponse }
-
-func (response CreateTelegramPairing400JSONResponse) VisitCreateTelegramPairingResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateTelegramPairing500JSONResponse Error
-
-func (response CreateTelegramPairing500JSONResponse) VisitCreateTelegramPairingResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteWechatRequestObject struct {
-}
-
-type DeleteWechatResponseObject interface {
-	VisitDeleteWechatResponse(w http.ResponseWriter) error
-}
-
-type DeleteWechat200JSONResponse Ok
-
-func (response DeleteWechat200JSONResponse) VisitDeleteWechatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteWechatdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DeleteWechatdefaultJSONResponse) VisitDeleteWechatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type BeginWechatLoginRequestObject struct {
-}
-
-type BeginWechatLoginResponseObject interface {
-	VisitBeginWechatLoginResponse(w http.ResponseWriter) error
-}
-
-type BeginWechatLogin200JSONResponse WechatLogin
-
-func (response BeginWechatLogin200JSONResponse) VisitBeginWechatLoginResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type BeginWechatLogindefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response BeginWechatLogindefaultJSONResponse) VisitBeginWechatLoginResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PollWechatLoginRequestObject struct {
-	LoginId string `json:"loginId"`
-	Body    *PollWechatLoginJSONRequestBody
-}
-
-type PollWechatLoginResponseObject interface {
-	VisitPollWechatLoginResponse(w http.ResponseWriter) error
-}
-
-type PollWechatLogin200JSONResponse WechatLogin
-
-func (response PollWechatLogin200JSONResponse) VisitPollWechatLoginResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PollWechatLogindefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response PollWechatLogindefaultJSONResponse) VisitPollWechatLoginResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
@@ -5533,6 +5746,42 @@ type StrictServerInterface interface {
 
 	// (GET /api/agents/{agentId}/automations/{automationId}/runs)
 	ListAutomationRuns(ctx context.Context, request ListAutomationRunsRequestObject) (ListAutomationRunsResponseObject, error)
+
+	// (GET /api/agents/{agentId}/channels)
+	GetChannels(ctx context.Context, request GetChannelsRequestObject) (GetChannelsResponseObject, error)
+
+	// (DELETE /api/agents/{agentId}/channels/feishu)
+	DeleteFeishu(ctx context.Context, request DeleteFeishuRequestObject) (DeleteFeishuResponseObject, error)
+
+	// (GET /api/agents/{agentId}/channels/feishu)
+	GetFeishu(ctx context.Context, request GetFeishuRequestObject) (GetFeishuResponseObject, error)
+
+	// (PUT /api/agents/{agentId}/channels/feishu)
+	SetFeishu(ctx context.Context, request SetFeishuRequestObject) (SetFeishuResponseObject, error)
+
+	// (POST /api/agents/{agentId}/channels/feishu/registration)
+	BeginFeishu(ctx context.Context, request BeginFeishuRequestObject) (BeginFeishuResponseObject, error)
+
+	// (POST /api/agents/{agentId}/channels/feishu/registration/poll)
+	PollFeishu(ctx context.Context, request PollFeishuRequestObject) (PollFeishuResponseObject, error)
+
+	// (DELETE /api/agents/{agentId}/channels/telegram)
+	DeleteTelegram(ctx context.Context, request DeleteTelegramRequestObject) (DeleteTelegramResponseObject, error)
+
+	// (PUT /api/agents/{agentId}/channels/telegram)
+	SetTelegram(ctx context.Context, request SetTelegramRequestObject) (SetTelegramResponseObject, error)
+
+	// (POST /api/agents/{agentId}/channels/telegram/pairing)
+	CreateTelegramPairing(ctx context.Context, request CreateTelegramPairingRequestObject) (CreateTelegramPairingResponseObject, error)
+
+	// (DELETE /api/agents/{agentId}/channels/wechat)
+	DeleteWechat(ctx context.Context, request DeleteWechatRequestObject) (DeleteWechatResponseObject, error)
+
+	// (POST /api/agents/{agentId}/channels/wechat/login)
+	BeginWechatLogin(ctx context.Context, request BeginWechatLoginRequestObject) (BeginWechatLoginResponseObject, error)
+
+	// (POST /api/agents/{agentId}/channels/wechat/login/{loginId}/poll)
+	PollWechatLogin(ctx context.Context, request PollWechatLoginRequestObject) (PollWechatLoginResponseObject, error)
 
 	// (GET /api/agents/{agentId}/chats)
 	ListChats(ctx context.Context, request ListChatsRequestObject) (ListChatsResponseObject, error)
@@ -5600,44 +5849,11 @@ type StrictServerInterface interface {
 	// (GET /api/settings)
 	GetSettings(ctx context.Context, request GetSettingsRequestObject) (GetSettingsResponseObject, error)
 
-	// (DELETE /api/settings/feishu)
-	DeleteFeishu(ctx context.Context, request DeleteFeishuRequestObject) (DeleteFeishuResponseObject, error)
-
-	// (GET /api/settings/feishu)
-	GetFeishu(ctx context.Context, request GetFeishuRequestObject) (GetFeishuResponseObject, error)
-
-	// (PUT /api/settings/feishu)
-	SetFeishu(ctx context.Context, request SetFeishuRequestObject) (SetFeishuResponseObject, error)
-
-	// (POST /api/settings/feishu/registration)
-	BeginFeishu(ctx context.Context, request BeginFeishuRequestObject) (BeginFeishuResponseObject, error)
-
-	// (POST /api/settings/feishu/registration/poll)
-	PollFeishu(ctx context.Context, request PollFeishuRequestObject) (PollFeishuResponseObject, error)
-
 	// (DELETE /api/settings/providers/{providerId})
 	DeleteProvider(ctx context.Context, request DeleteProviderRequestObject) (DeleteProviderResponseObject, error)
 
 	// (PUT /api/settings/providers/{providerId})
 	SetProvider(ctx context.Context, request SetProviderRequestObject) (SetProviderResponseObject, error)
-
-	// (DELETE /api/settings/telegram)
-	DeleteTelegram(ctx context.Context, request DeleteTelegramRequestObject) (DeleteTelegramResponseObject, error)
-
-	// (PUT /api/settings/telegram)
-	SetTelegram(ctx context.Context, request SetTelegramRequestObject) (SetTelegramResponseObject, error)
-
-	// (POST /api/settings/telegram/pairing)
-	CreateTelegramPairing(ctx context.Context, request CreateTelegramPairingRequestObject) (CreateTelegramPairingResponseObject, error)
-
-	// (DELETE /api/settings/wechat)
-	DeleteWechat(ctx context.Context, request DeleteWechatRequestObject) (DeleteWechatResponseObject, error)
-
-	// (POST /api/settings/wechat/login)
-	BeginWechatLogin(ctx context.Context, request BeginWechatLoginRequestObject) (BeginWechatLoginResponseObject, error)
-
-	// (POST /api/settings/wechat/login/{loginId}/poll)
-	PollWechatLogin(ctx context.Context, request PollWechatLoginRequestObject) (PollWechatLoginResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -5987,6 +6203,357 @@ func (sh *strictHandler) ListAutomationRuns(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListAutomationRunsResponseObject); ok {
 		if err := validResponse.VisitListAutomationRunsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetChannels operation middleware
+func (sh *strictHandler) GetChannels(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request GetChannelsRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetChannels(ctx, request.(GetChannelsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetChannels")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetChannelsResponseObject); ok {
+		if err := validResponse.VisitGetChannelsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteFeishu operation middleware
+func (sh *strictHandler) DeleteFeishu(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request DeleteFeishuRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteFeishu(ctx, request.(DeleteFeishuRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteFeishu")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteFeishuResponseObject); ok {
+		if err := validResponse.VisitDeleteFeishuResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFeishu operation middleware
+func (sh *strictHandler) GetFeishu(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request GetFeishuRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFeishu(ctx, request.(GetFeishuRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFeishu")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFeishuResponseObject); ok {
+		if err := validResponse.VisitGetFeishuResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetFeishu operation middleware
+func (sh *strictHandler) SetFeishu(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request SetFeishuRequestObject
+
+	request.AgentId = agentId
+
+	var body SetFeishuJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetFeishu(ctx, request.(SetFeishuRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetFeishu")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetFeishuResponseObject); ok {
+		if err := validResponse.VisitSetFeishuResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginFeishu operation middleware
+func (sh *strictHandler) BeginFeishu(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request BeginFeishuRequestObject
+
+	request.AgentId = agentId
+
+	var body BeginFeishuJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginFeishu(ctx, request.(BeginFeishuRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginFeishu")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginFeishuResponseObject); ok {
+		if err := validResponse.VisitBeginFeishuResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PollFeishu operation middleware
+func (sh *strictHandler) PollFeishu(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request PollFeishuRequestObject
+
+	request.AgentId = agentId
+
+	var body PollFeishuJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PollFeishu(ctx, request.(PollFeishuRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PollFeishu")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PollFeishuResponseObject); ok {
+		if err := validResponse.VisitPollFeishuResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteTelegram operation middleware
+func (sh *strictHandler) DeleteTelegram(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request DeleteTelegramRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteTelegram(ctx, request.(DeleteTelegramRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteTelegram")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteTelegramResponseObject); ok {
+		if err := validResponse.VisitDeleteTelegramResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetTelegram operation middleware
+func (sh *strictHandler) SetTelegram(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request SetTelegramRequestObject
+
+	request.AgentId = agentId
+
+	var body SetTelegramJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetTelegram(ctx, request.(SetTelegramRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetTelegram")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetTelegramResponseObject); ok {
+		if err := validResponse.VisitSetTelegramResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTelegramPairing operation middleware
+func (sh *strictHandler) CreateTelegramPairing(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request CreateTelegramPairingRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTelegramPairing(ctx, request.(CreateTelegramPairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTelegramPairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTelegramPairingResponseObject); ok {
+		if err := validResponse.VisitCreateTelegramPairingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteWechat operation middleware
+func (sh *strictHandler) DeleteWechat(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request DeleteWechatRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteWechat(ctx, request.(DeleteWechatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteWechat")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteWechatResponseObject); ok {
+		if err := validResponse.VisitDeleteWechatResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginWechatLogin operation middleware
+func (sh *strictHandler) BeginWechatLogin(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request BeginWechatLoginRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginWechatLogin(ctx, request.(BeginWechatLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginWechatLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginWechatLoginResponseObject); ok {
+		if err := validResponse.VisitBeginWechatLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PollWechatLogin operation middleware
+func (sh *strictHandler) PollWechatLogin(w http.ResponseWriter, r *http.Request, agentId AgentId, loginId string) {
+	var request PollWechatLoginRequestObject
+
+	request.AgentId = agentId
+	request.LoginId = loginId
+
+	var body PollWechatLoginJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PollWechatLogin(ctx, request.(PollWechatLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PollWechatLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PollWechatLoginResponseObject); ok {
+		if err := validResponse.VisitPollWechatLoginResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -6604,147 +7171,6 @@ func (sh *strictHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// DeleteFeishu operation middleware
-func (sh *strictHandler) DeleteFeishu(w http.ResponseWriter, r *http.Request) {
-	var request DeleteFeishuRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteFeishu(ctx, request.(DeleteFeishuRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteFeishu")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DeleteFeishuResponseObject); ok {
-		if err := validResponse.VisitDeleteFeishuResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetFeishu operation middleware
-func (sh *strictHandler) GetFeishu(w http.ResponseWriter, r *http.Request) {
-	var request GetFeishuRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetFeishu(ctx, request.(GetFeishuRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetFeishu")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetFeishuResponseObject); ok {
-		if err := validResponse.VisitGetFeishuResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SetFeishu operation middleware
-func (sh *strictHandler) SetFeishu(w http.ResponseWriter, r *http.Request) {
-	var request SetFeishuRequestObject
-
-	var body SetFeishuJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SetFeishu(ctx, request.(SetFeishuRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SetFeishu")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SetFeishuResponseObject); ok {
-		if err := validResponse.VisitSetFeishuResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// BeginFeishu operation middleware
-func (sh *strictHandler) BeginFeishu(w http.ResponseWriter, r *http.Request) {
-	var request BeginFeishuRequestObject
-
-	var body BeginFeishuJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.BeginFeishu(ctx, request.(BeginFeishuRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "BeginFeishu")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(BeginFeishuResponseObject); ok {
-		if err := validResponse.VisitBeginFeishuResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// PollFeishu operation middleware
-func (sh *strictHandler) PollFeishu(w http.ResponseWriter, r *http.Request) {
-	var request PollFeishuRequestObject
-
-	var body PollFeishuJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.PollFeishu(ctx, request.(PollFeishuRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "PollFeishu")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(PollFeishuResponseObject); ok {
-		if err := validResponse.VisitPollFeishuResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // DeleteProvider operation middleware
 func (sh *strictHandler) DeleteProvider(w http.ResponseWriter, r *http.Request, providerId string) {
 	var request DeleteProviderRequestObject
@@ -6797,169 +7223,6 @@ func (sh *strictHandler) SetProvider(w http.ResponseWriter, r *http.Request, pro
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetProviderResponseObject); ok {
 		if err := validResponse.VisitSetProviderResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DeleteTelegram operation middleware
-func (sh *strictHandler) DeleteTelegram(w http.ResponseWriter, r *http.Request) {
-	var request DeleteTelegramRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteTelegram(ctx, request.(DeleteTelegramRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteTelegram")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DeleteTelegramResponseObject); ok {
-		if err := validResponse.VisitDeleteTelegramResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SetTelegram operation middleware
-func (sh *strictHandler) SetTelegram(w http.ResponseWriter, r *http.Request) {
-	var request SetTelegramRequestObject
-
-	var body SetTelegramJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SetTelegram(ctx, request.(SetTelegramRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SetTelegram")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SetTelegramResponseObject); ok {
-		if err := validResponse.VisitSetTelegramResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CreateTelegramPairing operation middleware
-func (sh *strictHandler) CreateTelegramPairing(w http.ResponseWriter, r *http.Request) {
-	var request CreateTelegramPairingRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateTelegramPairing(ctx, request.(CreateTelegramPairingRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateTelegramPairing")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CreateTelegramPairingResponseObject); ok {
-		if err := validResponse.VisitCreateTelegramPairingResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DeleteWechat operation middleware
-func (sh *strictHandler) DeleteWechat(w http.ResponseWriter, r *http.Request) {
-	var request DeleteWechatRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteWechat(ctx, request.(DeleteWechatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteWechat")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DeleteWechatResponseObject); ok {
-		if err := validResponse.VisitDeleteWechatResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// BeginWechatLogin operation middleware
-func (sh *strictHandler) BeginWechatLogin(w http.ResponseWriter, r *http.Request) {
-	var request BeginWechatLoginRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.BeginWechatLogin(ctx, request.(BeginWechatLoginRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "BeginWechatLogin")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(BeginWechatLoginResponseObject); ok {
-		if err := validResponse.VisitBeginWechatLoginResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// PollWechatLogin operation middleware
-func (sh *strictHandler) PollWechatLogin(w http.ResponseWriter, r *http.Request, loginId string) {
-	var request PollWechatLoginRequestObject
-
-	request.LoginId = loginId
-
-	var body PollWechatLoginJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		if !errors.Is(err, io.EOF) {
-			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-			return
-		}
-	} else {
-		request.Body = &body
-	}
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.PollWechatLogin(ctx, request.(PollWechatLoginRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "PollWechatLogin")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(PollWechatLoginResponseObject); ok {
-		if err := validResponse.VisitPollWechatLoginResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

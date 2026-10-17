@@ -47,6 +47,7 @@ type AutomationRun struct {
 }
 
 type ChannelCommand struct {
+	AgentID     string        `json:"agent_id"`
 	SourceKey   string        `json:"source_key"`
 	Peer        string        `json:"peer"`
 	ChannelKey  string        `json:"channel_key"`
@@ -57,6 +58,7 @@ type ChannelCommand struct {
 }
 
 type ChannelPeer struct {
+	AgentID    string `json:"agent_id"`
 	Peer       string `json:"peer"`
 	ChannelKey string `json:"channel_key"`
 }
@@ -82,7 +84,7 @@ type Dream struct {
 }
 
 type FeishuSetting struct {
-	ID               int64  `json:"id"`
+	AgentID          string `json:"agent_id"`
 	AppID            string `json:"app_id"`
 	AppSecret        string `json:"app_secret"`
 	Brand            string `json:"brand"`
@@ -133,7 +135,7 @@ type Task struct {
 }
 
 type TelegramSetting struct {
-	ID             int64  `json:"id"`
+	AgentID        string `json:"agent_id"`
 	Token          string `json:"token"`
 	AllowedUsers   string `json:"allowed_users"`
 	PairingCode    string `json:"pairing_code"`
@@ -150,7 +152,7 @@ type WechatRuntime struct {
 }
 
 type WechatSetting struct {
-	ID      int64  `json:"id"`
+	AgentID string `json:"agent_id"`
 	Token   string `json:"token"`
 	BaseUrl string `json:"base_url"`
 	BotID   string `json:"bot_id"`

@@ -69,7 +69,7 @@ type Config struct {
 type App struct {
 	db      *sql.DB
 	handler http.Handler
-	bots    *channel.Manager
+	bots    *channelRegistry
 	jobs    *scheduler.Scheduler
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
@@ -107,7 +107,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		chats *chat.Service
 		prefs *settings.Service
 		hub   *live.Hub
-		bots  *channel.Manager
+		bots  *channelRegistry
 	)
 	w := worker.New(worker.Config{
 		Path:      path,
@@ -140,12 +140,13 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	})
 	chats = chat.New(conn, w, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
 	hub = live.New(q, chats, w)
-	bots = channel.New(runCtx, conn, chats, DefaultAgentID)
-	uploads := upload.New(filepath.Join(cfg.DataDir, "agents", DefaultAgentID))
-	setTelegram := func(cfg *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
-
+	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
+	cfgDataDir := cfg.DataDir
+	setTelegram := func(agentID string, cfg *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
+		manager := bots.Agent(agentID)
+		uploads := upload.New(filepath.Join(cfgDataDir, "agents", agentID))
 		if cfg == nil {
-			bots.Set("telegram", nil)
+			manager.Set("telegram", nil)
 			return
 		}
 		cfg.Uploads = uploads
@@ -168,46 +169,45 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 			if sub.Status != "pending" {
 				return "", nil, nil
 			}
-			stream, err := hub.Open(ctx, DefaultAgentID, sub.ConversationID)
+			stream, err := hub.Open(ctx, agentID, sub.ConversationID)
 			return id, stream, err
 		}
-		cfg.Report = func(state, reason string) { bots.Report("telegram", channel.Status{State: state, Reason: reason}) }
-		bots.Set("telegram", telegram.New(*cfg, bots))
+		cfg.Report = func(state, reason string) { manager.Report("telegram", channel.Status{State: state, Reason: reason}) }
+		manager.Set("telegram", telegram.New(*cfg, manager))
 	}
 	prefs = settings.New(q, w.Call, cfg.TelegramAPIURL, setTelegram)
+	prefs.AgentCreated = func(id string) { bots.Agent(id) }
 	chats.ConfigureTasks(prefs.CheckChat)
-	setFeishu := func(config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
+	setFeishu := func(agentID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
+		manager := bots.Agent(agentID)
+		uploads := upload.New(filepath.Join(cfg.DataDir, "agents", agentID))
 		if config == nil {
-			bots.Set("feishu", nil)
+			manager.Set("feishu", nil)
 			return
 		}
-		bots.Set("feishu", feishu.New(*config, bots, q, defaultStreams{hub}, uploads, prefs.PairFeishu))
+		manager.Set("feishu", feishu.New(*config, manager, q, agentStreams{hub, agentID}, uploads, func(ctx context.Context, owner, code string) (bool, error) {
+			return prefs.PairFeishu(ctx, agentID, owner, code)
+		}))
 	}
 	prefs.ConfigureFeishu(cfg.FeishuAPIURL, cfg.FeishuAccountsURL, setFeishu)
 	prefs.ChannelStatus = bots.Status
 	wxOptions := wechat.Options{APIURL: cfg.WechatAPIURL, CDNURL: cfg.WechatCDNURL, HTTPClient: cfg.WechatHTTPClient, Version: cfg.Version}
-	prefs.ConfigureWechat(wxOptions, conn, func(cfg *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
+	prefs.ConfigureWechat(wxOptions, conn, func(agentID string, cfg *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
+		manager := bots.Agent(agentID)
+		uploads := upload.New(filepath.Join(cfgDataDir, "agents", agentID))
 		if cfg == nil {
-			bots.Set("wechat", nil)
+			manager.Set("wechat", nil)
 			return
 		}
-		bots.Set("wechat", wechat.New(*cfg, wxOptions, q, bots, uploads))
+		manager.Set("wechat", wechat.New(*cfg, wxOptions, q, manager, uploads))
 	})
-	wx, err := prefs.WechatConfig(ctx)
+	agents, err := q.ListAgents(ctx)
 	if err != nil {
 		cancel()
 		return nil, errors.Join(err, conn.Close())
 	}
-
-	tg, err := prefs.TelegramConfig(ctx)
-	if err != nil {
-		cancel()
-		return nil, errors.Join(err, conn.Close())
-	}
-	fs, err := prefs.FeishuConfig(ctx)
-	if err != nil {
-		cancel()
-		return nil, errors.Join(err, conn.Close())
+	for _, agent := range agents {
+		bots.Agent(agent.ID)
 	}
 	// The stored token always exists, so `dex token` works before the host changes.
 	stored, err := prefs.AccessToken(ctx)
@@ -241,12 +241,24 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	jobs.Start()
-	setFeishu(fs)
-	if tg != nil {
-		setTelegram(tg)
-	}
-	if wx != nil {
-		bots.Set("wechat", wechat.New(*wx, wxOptions, q, bots, uploads)) //nolint:contextcheck // bot lifetime belongs to the manager
+	for _, agent := range agents {
+		tg, err := prefs.TelegramConfig(ctx, agent.ID)
+		if err != nil {
+			return nil, errors.Join(err, a.Close()) //nolint:contextcheck // Shutdown joins the app lifetime, not the request.
+		}
+		wx, err := prefs.WechatConfig(ctx, agent.ID)
+		if err != nil {
+			return nil, errors.Join(err, a.Close()) //nolint:contextcheck // Shutdown joins the app lifetime, not the request.
+		}
+		fs, err := prefs.FeishuConfig(ctx, agent.ID)
+		if err != nil {
+			return nil, errors.Join(err, a.Close()) //nolint:contextcheck // Shutdown joins the app lifetime, not the request.
+		}
+		setTelegram(agent.ID, tg)
+		setFeishu(agent.ID, fs)
+		if wx != nil {
+			bots.Agent(agent.ID).Set("wechat", wechat.New(*wx, wxOptions, q, bots.Agent(agent.ID), upload.New(filepath.Join(cfg.DataDir, "agents", agent.ID)))) //nolint:contextcheck // The registry owns bot lifetime.
+		}
 	}
 	return a, nil
 }
@@ -278,9 +290,12 @@ func WorkerEnv(environ []string) []string {
 	return env
 }
 
-// defaultStreams keeps channel previews on the default agent.
-type defaultStreams struct{ hub *live.Hub }
+// agentStreams binds channel previews to their agent.
+type agentStreams struct {
+	hub     *live.Hub
+	agentID string
+}
 
-func (s defaultStreams) Open(ctx context.Context, chatID int64) (io.ReadCloser, error) {
-	return s.hub.Open(ctx, DefaultAgentID, chatID)
+func (s agentStreams) Open(ctx context.Context, chatID int64) (io.ReadCloser, error) {
+	return s.hub.Open(ctx, s.agentID, chatID)
 }

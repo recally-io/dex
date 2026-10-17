@@ -124,7 +124,22 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/telegram/pairing:
+  /api/agents/{agentId}/channels:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
+    get:
+      operationId: getChannels
+      responses:
+        "200":
+          description: Channel configuration and runtime status for this agent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Channels" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/channels/telegram/pairing:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
     post:
       operationId: createTelegramPairing
       description: Creates a single-use owner pairing link. The link expires in 10 minutes.
@@ -142,7 +157,9 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "500": { $ref: "#/components/responses/Error" }
 
-  /api/settings/wechat/login:
+  /api/agents/{agentId}/channels/wechat/login:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
     post:
       operationId: beginWechatLogin
       description: Starts QR login. The person who confirms becomes the only allowed sender.
@@ -154,7 +171,9 @@ paths:
               schema: { $ref: "#/components/schemas/WechatLogin" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/wechat/login/{loginId}/poll:
+  /api/agents/{agentId}/channels/wechat/login/{loginId}/poll:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
     post:
       operationId: pollWechatLogin
       description: Polls for up to 35 seconds. Saves credentials only after confirmed login.
@@ -178,7 +197,9 @@ paths:
               schema: { $ref: "#/components/schemas/WechatLogin" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/wechat:
+  /api/agents/{agentId}/channels/wechat:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
     delete:
       operationId: deleteWechat
       description: Stops WeChat and forgets its credentials. Past chats stay read-only.
@@ -190,7 +211,9 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/telegram:
+  /api/agents/{agentId}/channels/telegram:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
     put:
       operationId: setTelegram
       description: Saves the bot and restarts it. An empty token keeps the saved token.
@@ -218,7 +241,9 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/feishu:
+  /api/agents/{agentId}/channels/feishu:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
     get:
       operationId: getFeishu
       responses:
@@ -252,7 +277,9 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/feishu/registration:
+  /api/agents/{agentId}/channels/feishu/registration:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
     post:
       operationId: beginFeishu
       requestBody:
@@ -268,7 +295,9 @@ paths:
               schema: { $ref: "#/components/schemas/FeishuSetup" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/feishu/registration/poll:
+  /api/agents/{agentId}/channels/feishu/registration/poll:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
     post:
       operationId: pollFeishu
       requestBody:
@@ -869,6 +898,11 @@ paths:
 
 components:
   parameters:
+    AgentId:
+      in: path
+      name: agentId
+      required: true
+      schema: { type: string }
     AutomationId:
       name: automationId
       in: path
@@ -1387,7 +1421,7 @@ components:
 
     Settings:
       type: object
-      required: [providers, builtins, apis, telegram, wechat]
+      required: [providers, builtins, apis]
       properties:
         providers:
           type: array
@@ -1401,8 +1435,17 @@ components:
           type: object
           description: The APIs of custom providers, ID → name.
           additionalProperties: { type: string }
+
+    Channels:
+      x-go-type: settings.Channels
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/settings
+      type: object
+      required: [telegram, wechat, feishu]
+      properties:
         telegram: { $ref: "#/components/schemas/Telegram" }
         wechat: { $ref: "#/components/schemas/Wechat" }
+        feishu: { $ref: "#/components/schemas/Feishu" }
 
     Agent:
       x-go-type: settings.Agent

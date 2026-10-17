@@ -28,7 +28,7 @@ to read in an afternoon.
   ID, including default. Old API aliases return 404. Global settings contain no
   implicit agent. A resource from another agent returns 404. The web sidebar lists agents
   with default first. Its `+` dialog creates an agent with a name and model,
-  then opens its empty timeline. Providers and channels stay global.
+  then opens its empty timeline. Providers stay global. Each agent has its own channels.
   Extension reload restarts the whole worker and affects every agent.
 - Durable conversations: control stores each message before delivery. Saved
   messages, reports, and execution records survive a restart. A restart does
@@ -44,7 +44,7 @@ to read in an afternoon.
   list or New chat action. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
   URLs open the default agent. An unknown agent shows a not-found page.
-  Other agents have a Channels note with a link to the default agent.
+  Every agent has channel setup controls.
   Channel input shares main. Automation runs have separate read-only transcripts.
 - Internal background delegation for each agent. Each delegation has
   one input and fixed model settings. The main agent stays available and
@@ -60,8 +60,8 @@ to read in an afternoon.
   Earlier versions accepted group messages from allowed users. The bot now
   ignores all non-private chats, including messages from allowed users.
 - Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. All channels
-  are for the owner. Channels use the default agent. The web selects an agent.
-  Web input to default and channel input share its main context. Input from one entry can
+  are for the owner. Each bot belongs to one agent. The web selects an agent.
+  Web input and channel input for that agent share its main context. Input from one entry can
   affect an answer at another entry. Channel messages show their channel name
   in the web timeline. Replies return only to the input's origin. Web input
   sends no channel reply. Each input gets its own answer, in admission order.
@@ -175,8 +175,8 @@ input.
 
 Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,
 background tasks, timers, skills, MCP servers, and the worker are available.
-The API supports several agents. The web UI and channels still use the
-default agent. Project bindings, task routing between agents, group chats,
+The API, web UI, and channels support several agents. One bot credential can
+belong to only one agent. A conflict names the agent that already uses it. Project bindings, task routing between agents, group chats,
 and task-specific automation result routing are later work. Named secrets and
 other chat channels are not available.
 

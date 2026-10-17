@@ -1074,15 +1074,16 @@ try {
     `document.querySelector('${visibleInstructions}')?.value === 'Second instructions draft' && !document.querySelector('${defaultLink}').textContent.includes('Draft') && document.querySelector('${secondLink}').textContent.includes('Draft')`,
   );
   await tap(agentTab("Channels"));
-  await ui(
-    "non-default channels note",
-    "document.body.innerText.includes('Channels connect to the default agent for now.')",
-  );
+  await ui("second agent channel controls", "document.body.innerText.includes('All channels')");
   await check(
-    "non-default channels have no controls or count",
-    `!document.body.innerText.includes('All channels') && document.querySelector('${agentTab("Channels")}').textContent.trim() === 'Channels' && !!document.querySelector('main a[href="/a/default/channels"]:not([inert] *)')`,
+    "second agent channel links",
+    `['telegram', 'wechat', 'feishu'].every(name => !!document.querySelector('main a[href="/a/${second.id}/channels/' + name + '"]:not([inert] *)'))`,
   );
   await shot("13-multi-agent-desktop");
+  await viewport(390, 844);
+  await check("second agent channels fit phone", "document.documentElement.scrollWidth <= innerWidth + 1");
+  await shot("13-channels-phone");
+  await viewport(1440, 1000);
   await tap(agentTab("Extensions"));
   await ui(
     "second agent extensions",

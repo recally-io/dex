@@ -52,9 +52,7 @@ type Settings struct {
 	// Builtins are all pi-ai built-in providers that take an API key, for the UI to add one.
 	Builtins []worker.ProviderInfo `json:"builtins"`
 	// APIs are the APIs of custom providers: ID → name.
-	APIs     map[string]string `json:"apis"`
-	Telegram Telegram          `json:"telegram"`
-	Wechat   Wechat            `json:"wechat"`
+	APIs map[string]string `json:"apis"`
 }
 
 // Agent holds the settings of one agent. An empty ModelID means no model is chosen.
@@ -97,25 +95,23 @@ type Telegram struct {
 
 // Service reads and changes settings.
 type Service struct {
+	AgentCreated  func(string)
 	wechatOptions wechat.Options
-	onWechat      func(*wechat.Config)
-	login         *wechat.Login
-	loginID       string
+	onWechat      func(string, *wechat.Config)
 	wechatDB      *sql.DB
-	ChannelStatus func(string) channel.Status
+	ChannelStatus func(string, string) channel.Status
 	q             *sqlc.Queries
 	worker        worker.CallFunc
 	apiURL        string // Telegram Bot API URL; empty for the default
-	onTelegram    func(*telegram.Config)
+	onTelegram    func(string, *telegram.Config)
 
 	feishuAPIURL    string
 	feishuRegistrar feishu.Registrar
-	onFeishu        func(*feishu.Config)
-	feishuSession   *feishuSession
-	feishuSessionID string
+	onFeishu        func(string, *feishu.Config)
 
 	// Serializes changes, so the worker and the bot always get the newest saved settings.
-	mu sync.Mutex
+	mu       sync.Mutex
+	sessions map[string]*channelSession
 
 	errMu sync.Mutex
 	errs  map[string]string // from the last ApplyProviders: provider ID → why its model list failed
@@ -123,7 +119,7 @@ type Service struct {
 
 // New returns the shared settings Service. onTelegram receives the new bot configuration after each
 // Telegram change, or nil when Telegram is off.
-func New(q *sqlc.Queries, call worker.CallFunc, telegramAPIURL string, onTelegram func(*telegram.Config)) *Service {
+func New(q *sqlc.Queries, call worker.CallFunc, telegramAPIURL string, onTelegram func(string, *telegram.Config)) *Service {
 	return &Service{q: q, worker: call, apiURL: telegramAPIURL, onTelegram: onTelegram}
 }
 
@@ -153,29 +149,11 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 			providers[i].Name = builtins[j].Name
 		}
 	}
-	tg := Telegram{AllowedUsers: []int64{}}
-	if cfg, err := s.TelegramConfig(ctx); err != nil {
-		return Settings{}, err
-	} else if cfg != nil {
-		botID, _, _ := strings.Cut(cfg.Token, ":")
-		tg = Telegram{Enabled: true, BotID: botID, AllowedUsers: cfg.AllowedUsers}
-	}
-	if s.ChannelStatus != nil {
-		tg.Status = s.ChannelStatus("telegram")
-	} else {
-		tg.Status = channel.Status{State: "off"}
-	}
-	wx, err := s.wechatView(ctx)
-	if err != nil {
-		return Settings{}, err
-	}
 	return Settings{
-		Wechat:    wx,
 		Agent:     agent,
 		Providers: providers,
 		Builtins:  builtins,
 		APIs:      APIs,
-		Telegram:  tg,
 	}, nil
 }
 
@@ -269,6 +247,9 @@ func (s *Service) CreateAgent(ctx context.Context, a Agent) (Agent, error) {
 		ID: uuid.NewV7().String(), Name: a.Name, ModelProvider: a.Provider, ModelID: a.ModelID,
 		ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions, CreatedAt: time.Now().UnixMilli(),
 	})
+	if err == nil && s.AgentCreated != nil {
+		s.AgentCreated(row.ID)
+	}
 	return agentView(row), err
 }
 
@@ -450,8 +431,8 @@ func splitModels(s string) []string {
 }
 
 // TelegramConfig returns the saved bot configuration, or nil when Telegram is off.
-func (s *Service) TelegramConfig(ctx context.Context) (*telegram.Config, error) {
-	row, err := s.q.GetTelegramSettings(ctx)
+func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram.Config, error) {
+	row, err := s.q.GetTelegramSettings(ctx, agentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -462,16 +443,16 @@ func (s *Service) TelegramConfig(ctx context.Context) (*telegram.Config, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &telegram.Config{Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(row.Token)}, nil
+	return &telegram.Config{Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(agentID, row.Token)}, nil
 }
 
 // SetTelegram saves the bot configuration and restarts the bot. An empty token keeps the saved
 // token.
-func (s *Service) SetTelegram(ctx context.Context, token string, allowedUsers []int64) error {
+func (s *Service) SetTelegram(ctx context.Context, agentID string, token string, allowedUsers []int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if token == "" {
-		saved, err := s.TelegramConfig(ctx)
+		saved, err := s.TelegramConfig(ctx, agentID)
 		if err != nil {
 			return err
 		}
@@ -480,32 +461,35 @@ func (s *Service) SetTelegram(ctx context.Context, token string, allowedUsers []
 		}
 	}
 	cfg := telegram.Config{Token: strings.TrimSpace(token), AllowedUsers: allowedUsers, APIURL: s.apiURL}
-	cfg.Pair = s.pairTelegram(cfg.Token)
+	cfg.Pair = s.pairTelegram(agentID, cfg.Token)
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	if err := s.checkCredential(ctx, agentID, "telegram", cfg.Token); err != nil {
+		return err
 	}
 	users := make([]string, len(allowedUsers))
 	for i, id := range allowedUsers {
 		users[i] = strconv.FormatInt(id, 10)
 	}
-	err := s.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
+	err := s.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: agentID,
 		Token: cfg.Token, AllowedUsers: strings.Join(users, ","),
 	})
 	if err != nil {
 		return err
 	}
-	s.onTelegram(&cfg)
+	s.onTelegram(agentID, &cfg)
 	return nil
 }
 
 // DeleteTelegram turns Telegram off and forgets the token.
-func (s *Service) DeleteTelegram(ctx context.Context) error {
+func (s *Service) DeleteTelegram(ctx context.Context, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.q.DeleteTelegramSettings(ctx); err != nil {
+	if err := s.q.DeleteTelegramSettings(ctx, agentID); err != nil {
 		return err
 	}
-	s.onTelegram(nil)
+	s.onTelegram(agentID, nil)
 	return nil
 }
 

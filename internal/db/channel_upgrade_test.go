@@ -82,10 +82,10 @@ func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
 
 			// Then settings, runtime state, chats, and delivery progress stay unchanged.
 			checks := map[string]string{
-				`SELECT token || '|' || allowed_users FROM telegram_settings`:                                                                         "7:upgrade|",
+				`SELECT agent_id || '|' || token || '|' || allowed_users FROM telegram_settings`:                                                      "default|7:upgrade|",
 				`SELECT token || '|' || base_url || '|' || bot_id || '|' || owner FROM wechat_settings`:                                               "wx-token|https://example.com|wx-bot|wx-owner",
 				`SELECT cursor || '|' || context_token || '|' || context_message_id || '|' || pause_until FROM wechat_runtime`:                        "cursor|context|18446744073709551615|123",
-				`SELECT peer || '|' || channel_key FROM channel_peers`:                                                                                "wechat:wx-owner|peer/saved",
+				`SELECT agent_id || '|' || peer || '|' || channel_key FROM channel_peers`:                                                             "default|wechat:wx-owner|peer/saved",
 				`SELECT agent_id || '|' || channel_key FROM conversations`:                                                                            "default|peer/saved",
 				`SELECT content || '|' || status || '|' || answer || '|' || delivered_parts || '|' || COALESCE(delivered_at,'null') FROM submissions`: "hi|done|answer|1|null",
 				`SELECT source_key || '|' || peer || '|' || channel_key || '|' || command || '|' || answer || '|' || completed FROM channel_commands`: "command|wechat:wx-owner|peer/saved|/help|help|1",
@@ -114,7 +114,7 @@ func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
 			}))
 			t.Cleanup(api.Close)
 			prefs := settings.New(sqlc.New(conn), nil, api.URL, nil)
-			link, _, err := prefs.CreateTelegramPairing(t.Context())
+			link, _, err := prefs.CreateTelegramPairing(t.Context(), "default")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -122,7 +122,7 @@ func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			config, err := prefs.TelegramConfig(t.Context())
+			config, err := prefs.TelegramConfig(t.Context(), "default")
 			if err != nil || config == nil {
 				t.Fatalf("Telegram config: %v, %v", config, err)
 			}
@@ -135,7 +135,7 @@ func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
 			if err != nil || len(users) != 0 {
 				t.Fatalf("reused link: %v, %v", users, err)
 			}
-			config, err = prefs.TelegramConfig(t.Context())
+			config, err = prefs.TelegramConfig(t.Context(), "default")
 			if err != nil || config == nil || !slices.Equal(config.AllowedUsers, []int64{42}) {
 				t.Fatalf("saved owner: %v, %v", config, err)
 			}

@@ -46,7 +46,7 @@ func TestUserCannotPairSecondTelegramOwner(t *testing.T) {
 	dir := t.TempDir()
 	d := startTelegram(t, f, dir, 42)
 	// When someone requests another pairing link.
-	status, raw := d.call(t, http.MethodPost, "/api/settings/telegram/pairing", nil)
+	status, raw := d.call(t, http.MethodPost, "/api/agents/default/channels/telegram/pairing", nil)
 	// Then link creation is rejected.
 	if status != http.StatusBadRequest {
 		t.Fatalf("pairing status = %d: %s", status, raw)
@@ -73,7 +73,7 @@ func assertTelegramOwner(t *testing.T, d *dex) {
 	var got struct {
 		Telegram settings.Telegram `json:"telegram"`
 	}
-	d.must(t, http.MethodGet, "/api/settings", nil, &got)
+	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &got)
 	if !slices.Equal(got.Telegram.AllowedUsers, []int64{42}) {
 		t.Fatalf("allowed users = %v", got.Telegram.AllowedUsers)
 	}
@@ -89,7 +89,7 @@ func TestUserTelegramPairingAcknowledgementSurvivesFailure(t *testing.T) {
 			var pair struct {
 				URL string `json:"url"`
 			}
-			d.must(t, http.MethodPost, "/api/settings/telegram/pairing", nil, &pair)
+			d.must(t, http.MethodPost, "/api/agents/default/channels/telegram/pairing", nil, &pair)
 			link, err := url.Parse(pair.URL)
 			if err != nil {
 				t.Fatal(err)

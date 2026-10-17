@@ -12,6 +12,7 @@ export const queryClient = new QueryClient({
 export async function refreshSettings() {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: [{ _id: "getSettings" }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getChannels" }] }),
     queryClient.prefetchQuery({ ...listModelsOptions(), staleTime: 0 }),
   ]);
 }

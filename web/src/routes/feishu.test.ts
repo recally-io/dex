@@ -13,7 +13,7 @@ import { ChannelsSection } from "./channels";
 test("user keeps the saved Lark platform when opening settings", async () => {
   // Given saved Lark settings in the real query cache.
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
-  client.setQueryData(getFeishuOptions().queryKey, {
+  client.setQueryData(getFeishuOptions({ path: { agentId: "default" } }).queryKey, {
     brand: "lark",
     appId: "lark-app",
     enabled: true,
@@ -48,10 +48,11 @@ test("user sees Feishu status and shared main context without a peer link", asyn
     providers: [],
     builtins: [],
     apis: {},
+    feishu: { enabled: false, appId: "", brand: "feishu", paired: false, status: "off", error: "" },
     telegram: { enabled: false, allowedUsers: [], status: { state: "off" } },
     wechat: { enabled: false, status: { state: "off" } },
   });
-  client.setQueryData(getFeishuOptions().queryKey, {
+  client.setQueryData(getFeishuOptions({ path: { agentId: "default" } }).queryKey, {
     brand: "feishu",
     appId: "app",
     enabled: true,

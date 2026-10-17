@@ -46,3 +46,11 @@ func (h *handler) UpdateAgent(ctx context.Context, req api.UpdateAgentRequestObj
 	}
 	return api.UpdateAgent200JSONResponse(agent), nil
 }
+
+func (h *handler) GetChannels(ctx context.Context, _ api.GetChannelsRequestObject) (api.GetChannelsResponseObject, error) {
+	channels, err := h.Settings.Channels(ctx, agentID(ctx))
+	if err != nil {
+		return nil, err
+	}
+	return api.GetChannels200JSONResponse(channels), nil
+}

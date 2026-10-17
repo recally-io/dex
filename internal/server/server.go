@@ -78,7 +78,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case errors.Is(err, settings.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy):
+			case errors.Is(err, settings.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -434,11 +434,9 @@ func (h *handler) GetSettings(ctx context.Context, _ api.GetSettingsRequestObjec
 		return nil, err
 	}
 	out := api.GetSettings200JSONResponse{
-		Wechat:    s.Wechat,
 		Providers: make([]api.Provider, len(s.Providers)),
 		Builtins:  make([]api.ProviderInfo, len(s.Builtins)),
 		Apis:      s.APIs,
-		Telegram:  api.Telegram{Enabled: s.Telegram.Enabled, AllowedUsers: s.Telegram.AllowedUsers, Status: s.Telegram.Status},
 	}
 	for i, p := range s.Providers {
 		out.Providers[i] = providerView(p)
@@ -446,7 +444,6 @@ func (h *handler) GetSettings(ctx context.Context, _ api.GetSettingsRequestObjec
 	for i, b := range s.Builtins {
 		out.Builtins[i] = api.ProviderInfo{Id: b.ID, Name: b.Name, Source: optional(b.Source)}
 	}
-	out.Telegram.BotId = optional(s.Telegram.BotID)
 	return out, nil
 }
 
@@ -528,21 +525,21 @@ func (h *handler) SetTelegram(ctx context.Context, req api.SetTelegramRequestObj
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if err := h.Settings.SetTelegram(ctx, req.Body.Token, req.Body.AllowedUsers); err != nil {
+	if err := h.Settings.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers); err != nil {
 		return nil, err
 	}
 	return api.SetTelegram200JSONResponse(ok), nil
 }
 
 func (h *handler) DeleteTelegram(ctx context.Context, _ api.DeleteTelegramRequestObject) (api.DeleteTelegramResponseObject, error) {
-	if err := h.Settings.DeleteTelegram(ctx); err != nil {
+	if err := h.Settings.DeleteTelegram(ctx, agentID(ctx)); err != nil {
 		return nil, err
 	}
 	return api.DeleteTelegram200JSONResponse(ok), nil
 }
 
 func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegramPairingRequestObject) (api.CreateTelegramPairingResponseObject, error) {
-	link, expires, err := h.Settings.CreateTelegramPairing(ctx)
+	link, expires, err := h.Settings.CreateTelegramPairing(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -550,7 +547,7 @@ func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegra
 }
 
 func (h *handler) BeginWechatLogin(ctx context.Context, _ api.BeginWechatLoginRequestObject) (api.BeginWechatLoginResponseObject, error) {
-	view, err := h.Settings.BeginWechatLogin(ctx)
+	view, err := h.Settings.BeginWechatLogin(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -562,7 +559,7 @@ func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRe
 	if req.Body != nil {
 		code = deref(req.Body.VerifyCode)
 	}
-	view, err := h.Settings.PollWechatLogin(ctx, req.LoginId, code)
+	view, err := h.Settings.PollWechatLogin(ctx, agentID(ctx), req.LoginId, code)
 	if err != nil {
 		return nil, err
 	}
@@ -570,7 +567,7 @@ func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRe
 }
 
 func (h *handler) DeleteWechat(ctx context.Context, _ api.DeleteWechatRequestObject) (api.DeleteWechatResponseObject, error) {
-	if err := h.Settings.DeleteWechat(ctx); err != nil {
+	if err := h.Settings.DeleteWechat(ctx, agentID(ctx)); err != nil {
 		return nil, err
 	}
 	return api.DeleteWechat200JSONResponse(ok), nil

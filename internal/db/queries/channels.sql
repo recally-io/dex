@@ -2,7 +2,7 @@
 SELECT id FROM submissions WHERE source_key = ?;
 
 -- name: CreateChannelCommand :exec
-INSERT INTO channel_commands (source_key, peer, channel_key, command) VALUES (?, ?, ?, ?)
+INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command) VALUES (?, ?, ?, ?, ?)
 ON CONFLICT DO NOTHING;
 
 -- name: GetChannelCommand :one
@@ -15,7 +15,7 @@ UPDATE channel_commands SET completed = 1, answer = ? WHERE source_key = ?;
 UPDATE channel_commands SET answer = ? WHERE source_key = ?;
 
 -- name: ListChannelCommands :many
-SELECT * FROM channel_commands WHERE completed = 0;
+SELECT * FROM channel_commands WHERE agent_id = ? AND completed = 0;
 
 -- name: ListChannelReplies :many
 SELECT s.id, s.origin, s.status, s.answer, s.reason, s.delivered_parts
@@ -30,7 +30,7 @@ UPDATE submissions SET delivered_at = ? WHERE id = ?;
 
 -- name: ListChannelCommandReplies :many
 SELECT * FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
-AND peer LIKE @prefix || '%' ORDER BY rowid;
+AND agent_id = @agent_id AND peer LIKE @prefix || '%' ORDER BY rowid;
 
 -- name: MarkChannelCommandDelivered :exec
 UPDATE channel_commands SET delivered_at = ? WHERE source_key = ?;
@@ -41,3 +41,12 @@ WHERE s.status = 'pending' AND c.agent_id = @agent_id AND s.origin = @peer;
 
 -- name: AdvanceChannelReply :exec
 UPDATE submissions SET delivered_parts = delivered_parts + 1 WHERE id = ?;
+
+-- name: TelegramCredentialOwner :one
+SELECT a.id, a.name FROM agents a JOIN telegram_settings s ON s.agent_id = a.id WHERE s.token = ?;
+
+-- name: WechatCredentialOwner :one
+SELECT a.id, a.name FROM agents a JOIN wechat_settings s ON s.agent_id = a.id WHERE s.bot_id = ?;
+
+-- name: FeishuCredentialOwner :one
+SELECT a.id, a.name FROM agents a JOIN feishu_settings s ON s.agent_id = a.id WHERE s.app_id = ?;

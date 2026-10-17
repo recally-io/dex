@@ -96,7 +96,7 @@ busy sessions. Each row counts once. A kind filter counts only visible rows.
 `/a/{agentId}/c/{id}`; tasks open at `/a/{agentId}/tasks/{id}` with Report above
 Work. Main stays at `/a/{agentId}`.
 
-Channel input enters the default agent's main conversation. Chat and
+Channel input enters the bot's agent main conversation. Chat and
 automation contexts stay separate.
 
 Each agent has a page under `/a/{agentId}`. Its tabs are Chat (the base
@@ -110,8 +110,7 @@ agent and tab changes. Browser checks must skip `[inert]` subtrees.
 Instructions drafts live in a map by agent ID above the routes. Saving one
 agent cannot change another agent's draft or query data. Reload discards drafts.
 On a phone the tabs scroll and center the current tab. Channels counts running
-channels only for the default agent. Other agents show a note with a link to
-the default agent's Channels tab and no channel controls. Automations counts
+channels for the selected agent. Each agent has its own channel controls. Automations counts
 enabled automations. Sessions counts active sessions.
 
 The sidebar lists agents in creation order, with default first. Each row shows
@@ -158,7 +157,7 @@ agent or a resource owned by another agent returns `404`. Upload storage uses
 Each live stream carries its agent ID for worker watches and history. Worker
 conversation IDs can be equal in different agents.
 
-Session, health, maintenance, models, provider and channel settings, and
+Session, health, maintenance, models, provider settings, and
 `/api/automations/preview` stay global. One settings service and lock own
 settings changes. Creating or selecting an agent does not configure providers.
 One scheduler job checks automations across all agents and posts each prompt
@@ -168,8 +167,9 @@ every agent.
 The web UI uses the nested agent routes, including live events and upload
 links. Agent resources require an explicit ID, including the default agent.
 The old un-nested API routes return 404. `GET /api/settings` returns only global
-settings and has no `agent` field. Telegram, WeChat, and Feishu stay on the
-default agent.
+settings and has no agent or channel fields. Channel setup and status use
+`/api/agents/{agentId}/channels`, with `/telegram`, `/wechat`, and `/feishu`
+for changes. The old `/api/settings/{platform}` routes return 404.
 
 ## Memory
 
@@ -617,13 +617,25 @@ so dex needs no public URL.
 
 ## Shared channels
 
+The app owns a registry with one Manager per agent. Startup restores all agents' bots.
+Creating an agent adds its Manager. Shutdown stops all Managers before the database closes.
+Uploads and live previews use the bot's agent directory and stream. Chat notifications
+wake all Managers; each Manager reads only its agent's replies and commands. This fan-out
+is a limit: route notifications by agent if wakeups become costly.
+
+Channel settings use `agent_id` as their primary key. Telegram tokens, WeChat bot IDs,
+and Feishu app IDs are unique across agents. A duplicate returns 409 and names the
+agent that owns the credential. QR login and registration sessions are also per agent.
+Migration maps old settings, peers, and commands to `default`. Rollback keeps only
+that agent's channel data. WeChat runtime remains keyed by bot ID and owner.
+
 [`channel.Manager`](../../internal/channel/channel.go) owns bot lifetime,
 commands, and reply delivery. Settings changes stop the old bot
 before they start its replacement. Settings expose runtime status: `off`,
 `running`, `error` with a reason, or `needs_login`.
 
 A peer names a remote destination, such as `telegram:7`. Owner input from all
-channels enters the default agent's `main` conversation with that peer as origin.
+channels enters the bot's agent `main` conversation with that peer as origin.
 Channel input cannot select a Chat session. Old `channel_peers` records and
 per-peer conversations remain stored but receive no new channel input. The
 Sessions list excludes those conversations. Main and Chat are writable on

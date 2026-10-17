@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetTaskData, GetTaskErrors, GetTaskResponses, GetUploadData, GetUploadErrors, GetUploadResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
+import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetTaskData, GetTaskErrors, GetTaskResponses, GetUploadData, GetUploadErrors, GetUploadResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -114,29 +114,39 @@ export const setProvider = <ThrowOnError extends boolean = false>(options: Optio
     }
 });
 
-/**
- * Creates a single-use owner pairing link. The link expires in 10 minutes.
- */
-export const createTelegramPairing = <ThrowOnError extends boolean = false>(options?: Options<CreateTelegramPairingData, ThrowOnError>): RequestResult<CreateTelegramPairingResponses, CreateTelegramPairingErrors, ThrowOnError> => (options?.client ?? client).post<CreateTelegramPairingResponses, CreateTelegramPairingErrors, ThrowOnError>({
+export const getChannels = <ThrowOnError extends boolean = false>(options: Options<GetChannelsData, ThrowOnError>): RequestResult<GetChannelsResponses, GetChannelsErrors, ThrowOnError> => (options.client ?? client).get<GetChannelsResponses, GetChannelsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/telegram/pairing',
+    url: '/api/agents/{agentId}/channels',
+    ...options
+});
+
+/**
+ * Creates a single-use owner pairing link. The link expires in 10 minutes.
+ */
+export const createTelegramPairing = <ThrowOnError extends boolean = false>(options: Options<CreateTelegramPairingData, ThrowOnError>): RequestResult<CreateTelegramPairingResponses, CreateTelegramPairingErrors, ThrowOnError> => (options.client ?? client).post<CreateTelegramPairingResponses, CreateTelegramPairingErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/agents/{agentId}/channels/telegram/pairing',
     ...options
 });
 
 /**
  * Starts QR login. The person who confirms becomes the only allowed sender.
  */
-export const beginWechatLogin = <ThrowOnError extends boolean = false>(options?: Options<BeginWechatLoginData, ThrowOnError>): RequestResult<BeginWechatLoginResponses, BeginWechatLoginErrors, ThrowOnError> => (options?.client ?? client).post<BeginWechatLoginResponses, BeginWechatLoginErrors, ThrowOnError>({
+export const beginWechatLogin = <ThrowOnError extends boolean = false>(options: Options<BeginWechatLoginData, ThrowOnError>): RequestResult<BeginWechatLoginResponses, BeginWechatLoginErrors, ThrowOnError> => (options.client ?? client).post<BeginWechatLoginResponses, BeginWechatLoginErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/wechat/login',
+    url: '/api/agents/{agentId}/channels/wechat/login',
     ...options
 });
 
@@ -149,7 +159,7 @@ export const pollWechatLogin = <ThrowOnError extends boolean = false>(options: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/wechat/login/{loginId}/poll',
+    url: '/api/agents/{agentId}/channels/wechat/login/{loginId}/poll',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -160,26 +170,26 @@ export const pollWechatLogin = <ThrowOnError extends boolean = false>(options: O
 /**
  * Stops WeChat and forgets its credentials. Past chats stay read-only.
  */
-export const deleteWechat = <ThrowOnError extends boolean = false>(options?: Options<DeleteWechatData, ThrowOnError>): RequestResult<DeleteWechatResponses, DeleteWechatErrors, ThrowOnError> => (options?.client ?? client).delete<DeleteWechatResponses, DeleteWechatErrors, ThrowOnError>({
+export const deleteWechat = <ThrowOnError extends boolean = false>(options: Options<DeleteWechatData, ThrowOnError>): RequestResult<DeleteWechatResponses, DeleteWechatErrors, ThrowOnError> => (options.client ?? client).delete<DeleteWechatResponses, DeleteWechatErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/wechat',
+    url: '/api/agents/{agentId}/channels/wechat',
     ...options
 });
 
 /**
  * Turns Telegram off and forgets the token.
  */
-export const deleteTelegram = <ThrowOnError extends boolean = false>(options?: Options<DeleteTelegramData, ThrowOnError>): RequestResult<DeleteTelegramResponses, DeleteTelegramErrors, ThrowOnError> => (options?.client ?? client).delete<DeleteTelegramResponses, DeleteTelegramErrors, ThrowOnError>({
+export const deleteTelegram = <ThrowOnError extends boolean = false>(options: Options<DeleteTelegramData, ThrowOnError>): RequestResult<DeleteTelegramResponses, DeleteTelegramErrors, ThrowOnError> => (options.client ?? client).delete<DeleteTelegramResponses, DeleteTelegramErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/telegram',
+    url: '/api/agents/{agentId}/channels/telegram',
     ...options
 });
 
@@ -192,7 +202,7 @@ export const setTelegram = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/telegram',
+    url: '/api/agents/{agentId}/channels/telegram',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -200,23 +210,23 @@ export const setTelegram = <ThrowOnError extends boolean = false>(options: Optio
     }
 });
 
-export const deleteFeishu = <ThrowOnError extends boolean = false>(options?: Options<DeleteFeishuData, ThrowOnError>): RequestResult<DeleteFeishuResponses, DeleteFeishuErrors, ThrowOnError> => (options?.client ?? client).delete<DeleteFeishuResponses, DeleteFeishuErrors, ThrowOnError>({
+export const deleteFeishu = <ThrowOnError extends boolean = false>(options: Options<DeleteFeishuData, ThrowOnError>): RequestResult<DeleteFeishuResponses, DeleteFeishuErrors, ThrowOnError> => (options.client ?? client).delete<DeleteFeishuResponses, DeleteFeishuErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/feishu',
+    url: '/api/agents/{agentId}/channels/feishu',
     ...options
 });
 
-export const getFeishu = <ThrowOnError extends boolean = false>(options?: Options<GetFeishuData, ThrowOnError>): RequestResult<GetFeishuResponses, GetFeishuErrors, ThrowOnError> => (options?.client ?? client).get<GetFeishuResponses, GetFeishuErrors, ThrowOnError>({
+export const getFeishu = <ThrowOnError extends boolean = false>(options: Options<GetFeishuData, ThrowOnError>): RequestResult<GetFeishuResponses, GetFeishuErrors, ThrowOnError> => (options.client ?? client).get<GetFeishuResponses, GetFeishuErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
             in: 'cookie',
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/feishu',
+    url: '/api/agents/{agentId}/channels/feishu',
     ...options
 });
 
@@ -226,7 +236,7 @@ export const setFeishu = <ThrowOnError extends boolean = false>(options: Options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/feishu',
+    url: '/api/agents/{agentId}/channels/feishu',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -240,7 +250,7 @@ export const beginFeishu = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/feishu/registration',
+    url: '/api/agents/{agentId}/channels/feishu/registration',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -254,7 +264,7 @@ export const pollFeishu = <ThrowOnError extends boolean = false>(options: Option
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/feishu/registration/poll',
+    url: '/api/agents/{agentId}/channels/feishu/registration/poll',
     ...options,
     headers: {
         'Content-Type': 'application/json',
