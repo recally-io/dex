@@ -164,7 +164,7 @@ function ModelTile({ settings, model }: Props) {
                 notify(`Thinking is now ${thinkingNames[level]}. It applies from the next message.`);
               }}
               trigger={
-                <Button size="xs" variant="quiet">
+                <Button size="xs" variant="secondary">
                   Thinking
                 </Button>
               }
@@ -198,7 +198,19 @@ function NameTile({ name }: { name: string }) {
   }
 
   return (
-    <Tile title="Name">
+    <Tile
+      title="Name"
+      actions={
+        save.isError ? (
+          <p role="alert" className="truncate text-[11.5px] text-red" title={String(save.error)}>
+            Not saved
+          </p>
+        ) : (
+          <p className={hint}>Enter saves</p>
+        )
+      }
+    >
+      {/* The field reads as the value until it is pointed at, so the row of tiles stays calm. */}
       <Input
         aria-label="Bot name"
         aria-invalid={save.isError}
@@ -210,15 +222,8 @@ function NameTile({ name }: { name: string }) {
           if (event.key === "Enter" && !event.nativeEvent.isComposing) event.currentTarget.blur();
           else if (event.key === "Escape") setDraft(null);
         }}
-        className="h-8 text-[13px]"
+        className="-mx-1.5 h-7 w-[calc(100%+0.75rem)] px-1.5 font-medium shadow-none hover:shadow-btn"
       />
-      {save.isError ? (
-        <p role="alert" className="truncate text-[11.5px] text-red" title={String(save.error)}>
-          Not saved
-        </p>
-      ) : (
-        <p className={hint}>Enter saves</p>
-      )}
     </Tile>
   );
 }
@@ -244,7 +249,14 @@ function ChannelsTile({ settings }: { settings: Settings }) {
   ] as const;
 
   return (
-    <Tile title="Channels">
+    <Tile
+      title="Channels"
+      actions={
+        <Link to="/agent" className={more}>
+          Manage
+        </Link>
+      }
+    >
       {rows.map((row) => (
         <Link
           key={row.id}

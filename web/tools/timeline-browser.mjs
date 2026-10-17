@@ -867,7 +867,7 @@ try {
   );
   await check(
     "channel tiles link to their settings instead of switching them",
-    `[...document.querySelectorAll('#agent-dashboard section[aria-label="Channels"] a')].map(a => a.getAttribute('href')).join(',') === '/channels/telegram,/channels/wechat,/channels/feishu' &&
+    `[...document.querySelectorAll('#agent-dashboard section[aria-label="Channels"] a')].map(a => a.getAttribute('href')).join(',') === '/channels/telegram,/channels/wechat,/channels/feishu,/agent' &&
       !document.querySelector('#agent-dashboard section[aria-label="Channels"] [role=switch]')`,
   );
   await shot("07b-dashboard");
