@@ -1124,19 +1124,47 @@ try {
   await check("second agent channels fit phone", "document.documentElement.scrollWidth <= innerWidth + 1");
   await shot("13-channels-phone");
   await viewport(1440, 1000);
+
+  for (const root of [home, data, join(data, "agents", second.id)]) {
+    await mkdir(join(root, ".agents"), { recursive: true });
+    await writeFile(join(root, ".agents", ".env"), "EXTENSION_DEMO_KEY=never-show-this-value\n");
+  }
+
   await tap(agentTab("Extensions"));
   await ui(
     "second agent extensions",
-    `document.body.innerText.includes('/agents/${second.id}/skills') && !!document.querySelector('main button:not([inert] *)')`,
+    `document.body.innerText.includes('/agents/${second.id}/.agents/skills') && !!document.querySelector('main button:not([inert] *)')`,
   );
   await check(
     "extensions belong to the selected agent",
     `!document.querySelector('aside a[href="/extensions"]') && document.body.innerText.includes('restarts worker for all agents')`,
   );
+  await ui("extension env levels", "document.body.innerText.includes('EXTENSION_DEMO_KEY')");
+  await check(
+    "extension levels and secrecy",
+    `['home', 'dex', 'agent', 'Shadowed', 'The model can', 'Tool output becomes part of the transcript', 'MCP servers on disk', 'MCP servers now'].every(text => document.body.innerText.includes(text)) && !document.body.innerText.includes('never-show-this-value')`,
+  );
   await shot("13a-agent-extensions-desktop");
   await viewport(390, 844);
   await check("extensions fit phone", "document.documentElement.scrollWidth <= innerWidth + 1");
   await shot("13b-agent-extensions-phone");
+  await evaluate(
+    "Array.from(document.querySelectorAll('h2')).find(node => node.textContent === 'Environment keys on disk').scrollIntoView({block: 'center', behavior: 'instant'})",
+  );
+  await shot("13c-extension-env-phone");
+  await viewport(1440, 1000);
+  await shot("13d-extension-env-desktop");
+  await tap('aside a[href="/secrets"]');
+  await ui(
+    "secrets uses current agent",
+    `!!document.querySelector('main a[href="/a/${second.id}/extensions"]') && !document.body.innerText.includes('Not yet available')`,
+  );
+  await tap(`main a[href="/a/${second.id}/extensions"]`);
+  await ui(
+    "returned to current agent extensions",
+    `location.pathname === '/a/${second.id}/extensions' && !!document.querySelector('nav a[data-tab="Extensions"][aria-current="page"]')`,
+  );
+  await viewport(390, 844);
   await tap(agentTab("Chat"));
   await ui(
     "second timeline restored on phone",

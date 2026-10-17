@@ -27,8 +27,12 @@ export function Shell() {
   const shown = useRef(path);
   // The drawer closes when the page changes.
   const [menuPath, setMenuPath] = useState(path);
+  const [lastAgent, setLastAgent] = useState("default");
+  const routeAgent = path.match(/^\/a\/([^/]+)/)?.[1];
   const shell = useMemo(() => ({ openDrawer: () => setMenu(true) }), []);
   useSystemTheme();
+
+  if (routeAgent && routeAgent !== lastAgent) setLastAgent(routeAgent);
 
   if (menuPath !== path) {
     setMenuPath(path);
@@ -64,7 +68,9 @@ export function Shell() {
         </a>
         <Sidebar path={path} className="hidden pt-0.5 lg:flex" />
         <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 outline-none lg:gap-2.5">
-          <Outlet />
+          <AgentContext.Provider value={routeAgent ?? lastAgent}>
+            <Outlet />
+          </AgentContext.Provider>
         </main>
       </div>
       <Dialog.Root open={menu} onOpenChange={setMenu}>

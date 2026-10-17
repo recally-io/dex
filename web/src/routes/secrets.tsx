@@ -1,6 +1,6 @@
 import { useAgentId } from "../lib/agent-scope";
 import { Link } from "@tanstack/react-router";
-import { Facts, FramedPage, Mono, Note, NotAvailable, Panel, Section } from "../components/page";
+import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { buttonVariants } from "../components/atoms/Button";
 import { WithSettings } from "../components/with-settings";
 
@@ -10,8 +10,7 @@ export function SecretsPage() {
   return (
     <FramedPage
       title="Secrets"
-      badge={<NotAvailable />}
-      description="A place for passwords and tokens that the agent can use in its tools. dex does not have it yet."
+      description="Tool credentials come from .env files in $HOME/.agents, $DEX_HOME/.agents, and $AGENT_HOME/.agents. Narrower values win."
     >
       <WithSettings>
         {(settings) => (
@@ -44,11 +43,20 @@ export function SecretsPage() {
           </Section>
         )}
       </WithSettings>
-      <Section n={2} title="Until then">
+      <Section n={2} title="Tool environment">
+        <div className="mb-3">
+          <Link
+            to="/a/$agentId/extensions"
+            params={{ agentId }}
+            className={buttonVariants({ size: "xs", variant: "secondary" })}
+          >
+            Current agent’s Extensions
+          </Link>
+        </div>
         <Note tone="warn">
-          dex stores these values as plain text. Anyone who can read the data directory can read them. Do not
-          put passwords in chats, instructions or memory. Memory is a git repository, so a password stays in
-          its history.
+          Use mode 0600 for .env files and keep them out of Git. The model can read the files or run env. Tool
+          output becomes part of the transcript. dex stores credentials as plain text. Do not put passwords in
+          chats, instructions or memory. Memory is a git repository, so a password stays in its history.
         </Note>
       </Section>
     </FramedPage>

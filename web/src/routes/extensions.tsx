@@ -10,7 +10,7 @@ import {
 import { errorText, queryClient } from "../lib/queries";
 import { useApp } from "../lib/app-state";
 import { Failure, Loading, Spinner } from "../components/feedback";
-import { Facts, FramedPage, Mono, Panel, Section } from "../components/page";
+import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 
@@ -31,7 +31,7 @@ export function ExtensionsPage() {
   return (
     <FramedPage
       title="Extensions"
-      description="Skills and MCP servers come from files in ~/.agents and in the agent directory. An agent entry replaces a global entry with the same name."
+      description="Read home, then dex, then agent. A narrower level replaces a skill or MCP server with the same name. Environment keys merge in this order."
       actions={
         <Button
           size="sm"
@@ -44,6 +44,13 @@ export function ExtensionsPage() {
         </Button>
       }
     >
+      <div className="px-5 pt-5 sm:px-8">
+        <Note tone="warn">
+          Environment values stay out of this page, the extensions API, and worker logs. The model can read
+          .env files or run env. Tool output becomes part of the transcript. Use mode 0600 and keep .env files
+          out of Git. Disabling a server does not remove environment keys.
+        </Note>
+      </div>
       <Section n={1} title="Built in" caption="Always on. You cannot turn them off.">
         <Panel>
           <Facts
@@ -79,52 +86,104 @@ export function ExtensionsPage() {
 }
 
 function Catalog({ extensions: e }: { extensions: Extensions }) {
+  const levels = [
+    { name: "home", skills: e.paths.homeSkills, mcp: e.paths.homeMcp, env: e.paths.homeEnv },
+    { name: "dex", skills: e.paths.dexSkills, mcp: e.paths.dexMcp, env: e.paths.dexEnv },
+    { name: "agent", skills: e.paths.agentSkills, mcp: e.paths.agentMcp, env: e.paths.agentEnv },
+  ];
+
   return (
     <>
-      <Section
-        n={2}
-        title="Skills"
-        caption="The agent reads a skill when a task needs it. An edit applies to the next message."
-      >
+      <Section n={2} title="File levels" caption="Order: home, dex, agent. Narrower wins.">
+        <Panel>
+          <ul className="divide-y divide-line">
+            {levels.map((level) => (
+              <li key={level.name} className="px-4 py-3 text-[12px] [overflow-wrap:anywhere]">
+                <p className="mb-1 font-medium text-ink">{level.name}</p>
+                <p>
+                  <Mono>{level.skills}</Mono>
+                </p>
+                <p>
+                  <Mono>{level.mcp}</Mono>
+                </p>
+                <p>
+                  <Mono>{level.env}</Mono>
+                </p>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      </Section>
+      {e.warnings.length || e.errors.length ? (
+        <Section n={3} title="Configuration">
+          {e.warnings.length ? (
+            <Note tone="warn">
+              <ul className="[overflow-wrap:anywhere]">
+                {e.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </Note>
+          ) : null}
+          {e.errors.length ? (
+            <div className="mt-3 [overflow-wrap:anywhere]">
+              <Failure title="dex cannot read some files">
+                <ul>
+                  {e.errors.map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
+                </ul>
+              </Failure>
+            </div>
+          ) : null}
+        </Section>
+      ) : null}
+      <Section n={4} title="Skills on disk" caption="Edits apply to the next model request.">
         <List
-          items={e.skills.map((s) => (
-            <SkillRow key={s.name} skill={s} />
+          items={e.skills.map((skill) => (
+            <SkillRow key={skill.name} skill={skill} />
+          ))}
+          empty={<>Add &lt;name&gt;/SKILL.md in a skills directory above.</>}
+        />
+      </Section>
+      <Section n={5} title="MCP servers on disk" caption="Reload to apply these declarations.">
+        <List
+          items={e.declaredServers.map((server) => (
+            <ServerRow key={server.name} server={server} declared />
           ))}
           empty={
             <>
-              Add <Mono>{e.paths.homeSkills}/&lt;name&gt;/SKILL.md</Mono> or{" "}
-              <Mono>{e.paths.agentSkills}/&lt;name&gt;/SKILL.md</Mono>.
+              Add mcpServers to an mcp.json file above. A narrower {'{ "disabled": true }'} entry turns off a
+              wider server.
             </>
           }
         />
       </Section>
       <Section
-        n={3}
-        title="MCP servers"
-        caption="The agent finds their tools with tool_search. After an edit, reload."
+        n={6}
+        title="MCP servers now"
+        caption="Current connections. Tools are available through tool_search."
       >
-        {e.errors.length ? (
-          <div className="mb-3">
-            <Failure title="dex cannot read some files">
-              <ul className="font-mono text-[11.5px]">
-                {e.errors.map((error) => (
-                  <li key={error}>{error}</li>
-                ))}
-              </ul>
-            </Failure>
-          </div>
-        ) : null}
         <List
-          items={e.servers.map((s) => (
-            <ServerRow key={s.name} server={s} />
+          items={e.servers.map((server) => (
+            <ServerRow key={server.name} server={server} />
           ))}
-          empty={
-            <>
-              Add servers to <Mono>{e.paths.homeMcp}</Mono> or <Mono>{e.paths.agentMcp}</Mono>, in the
-              mcpServers format of Claude Code. In the agent file, <Mono>{'{ "disabled": true }'}</Mono> turns
-              off a global server.
-            </>
-          }
+          empty="No servers are loaded."
+        />
+      </Section>
+      <Section n={7} title="Environment keys on disk" caption="Names only. Reload to apply changes.">
+        <List
+          items={e.env.map((entry) => (
+            <li
+              key={`${entry.scope}:${entry.key}`}
+              className="flex flex-wrap items-center gap-2 px-4 py-3 [overflow-wrap:anywhere]"
+            >
+              <Mono>{entry.key}</Mono>
+              <span className="text-[11.5px] text-ink-3">{entry.scope}</span>
+              {entry.shadowed ? <StatusPill className="h-5 px-2 text-[11.5px]">Shadowed</StatusPill> : null}
+            </li>
+          ))}
+          empty="Add KEY=VALUE lines to an .env file above. The narrower value wins. A server's own env wins over .env."
         />
       </Section>
     </>
@@ -148,7 +207,8 @@ function Header({ name, scope, overrides }: { name: string; scope: Skill["scope"
     <>
       <span className="font-mono text-[12.5px] font-medium text-ink">{name}</span>
       <span className="text-[11.5px] text-ink-3">
-        {scope === "home" ? "global" : overrides ? "agent, replaces global" : "agent"}
+        {scope}
+        {overrides ? ", replaces a wider entry" : ""}
       </span>
     </>
   );
@@ -156,7 +216,7 @@ function Header({ name, scope, overrides }: { name: string; scope: Skill["scope"
 
 function SkillRow({ skill: s }: { skill: Skill }) {
   return (
-    <li className="px-4 py-3">
+    <li className="px-4 py-3 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-center gap-2">
         <Header name={s.name} scope={s.scope} overrides={s.overrides} />
       </div>
@@ -174,16 +234,16 @@ const STATE: Record<McpServer["state"], { tone: "green" | "red" | "neutral"; lab
   idle: { tone: "neutral", label: "Starts with the agent" },
 };
 
-function ServerRow({ server: s }: { server: McpServer }) {
+function ServerRow({ server: s, declared = false }: { server: McpServer; declared?: boolean }) {
   const state = STATE[s.state];
 
   return (
-    <li className="px-4 py-3">
+    <li className="px-4 py-3 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-center gap-2">
         <Header name={s.name} scope={s.scope} overrides={s.overrides} />
         <span className="flex-1" />
         <StatusPill tone={state.tone} className="h-5 px-2 text-[11.5px]">
-          {state.label}
+          {declared ? (s.state === "disabled" ? "Off on disk" : "Declared") : state.label}
         </StatusPill>
       </div>
       {s.tools.length ? (
