@@ -1374,6 +1374,9 @@ async function viewport(width, height) {
     deviceScaleFactor: 1,
     mobile: width < 600,
   });
+  // Resize observers, such as the one that centers the active agent tab, run in the next frames.
+  // A tap before them can scroll its target away again.
+  await evaluate("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))");
 }
 
 async function shot(name) {
