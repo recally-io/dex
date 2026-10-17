@@ -92,9 +92,16 @@ busy sessions. Each row counts once. A kind filter counts only visible rows.
 `New session` appears only on the Sessions page. Other sessions open at
 `/c/{id}`; tasks open at `/tasks/{id}` with Report above Work. Main stays at `/`.
 
-Channel input enters main. Chat and automation contexts stay separate. The sidebar holds the
-bot identity and its settings link. `/agent` holds Profile, Instructions,
-Channels, and Automations. Providers, Extensions, Secrets, and About stay global.
+Channel input enters main. Chat and automation contexts stay separate. The header
+of the main timeline holds the model, the thinking level of a reasoning model,
+and the instructions. A draft marks the header and the sidebar. The instructions
+open in a 400px side panel while the pane holds at least 960px, so the answer
+being fixed stays readable; below that width the control opens `/agent`. The
+panel and `/agent` share one editor and one draft, and the draft lives in app
+state, so it follows a route change and a reload starts from the saved
+instructions. The sidebar holds the bot identity and a labeled Agent row.
+`/agent` holds Profile, Instructions, Channels, and Automations. Providers,
+Extensions, Secrets, and About stay global.
 Channel settings show setup and runtime status. Automation details
 keep their run history. Automation transcripts have no web composer.
 

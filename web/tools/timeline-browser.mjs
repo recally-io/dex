@@ -783,11 +783,76 @@ try {
 
   await visit("/");
   await ui("renamed composer", "!!document.querySelector('textarea[aria-label=\"Message Browser Bot\"]')");
+
+  // The channel widths above leave a phone viewport behind; the panel needs a desktop one.
+  await viewport(1280, 900);
+
+  // The header of the main timeline carries the model, the thinking level and the instructions.
+  const chosen = (await api("/api/settings")).agent.modelId;
+  await check(
+    "the timeline header shows the model and the instructions entry",
+    `document.querySelector('header button[aria-label="Change model"]').innerText.includes(${JSON.stringify(chosen)}) &&
+      !!document.querySelector('header [aria-label="Edit instructions"]')`,
+  );
+  await model("think");
+  await visit("/");
+  await check(
+    "a reasoning model adds the thinking level to the header",
+    `document.querySelector('header [aria-label="Change thinking level"]').innerText.trim().length > 0`,
+  );
+  await model(chosen);
+  await visit("/");
+  await check(
+    "a model without reasoning leaves the thinking level out",
+    `!document.querySelector('header [aria-label="Change thinking level"]')`,
+  );
+  await tap('header [aria-label="Edit instructions"]');
+  await ui(
+    "instructions panel opens beside the transcript",
+    `!!document.querySelector('aside[aria-label="Agent instructions"] textarea') &&
+      document.querySelector('header [aria-label="Edit instructions"]').getAttribute('aria-expanded') === 'true' &&
+      !!document.querySelector('textarea[aria-label="Message Browser Bot"]')`,
+  );
+  await evaluate("document.querySelector('aside[aria-label=\"Agent instructions\"] textarea').focus()");
+  await call("Input.insertText", { text: "Answer in the language I write in." });
+  await ui(
+    "the draft marks the header and the sidebar",
+    `document.querySelector('header [aria-label="Edit instructions"]').innerText.includes('Draft') &&
+      document.querySelector('nav, aside[aria-label="Navigation"]').innerText.includes('Draft')`,
+  );
+  await shot("07a-instructions-panel");
+  await tap('aside[aria-label="Agent instructions"] button[aria-label="Close instructions"]');
+  await ui(
+    "instructions panel closes",
+    "!document.querySelector('aside[aria-label=\"Agent instructions\"]')",
+  );
+  await tap('header [aria-label="Edit instructions"]');
+  await ui(
+    "closing the panel keeps the draft",
+    `document.querySelector('aside[aria-label="Agent instructions"] textarea').value === 'Answer in the language I write in.'`,
+  );
+
+  // One draft, two surfaces: the settings page shows what the panel holds. The draft lives in
+  // app state, so it follows a route change; a reload starts from the saved instructions.
+  await tap('aside[aria-label="Agent instructions"] a[href="/agent"]');
+  await ui("the panel link opens the settings page", "location.pathname === '/agent'");
+  await ui(
+    "the settings page shows the same draft",
+    `document.querySelector('textarea[aria-label="Agent instructions"]').value === 'Answer in the language I write in.' &&
+      document.body.innerText.includes('Unsaved draft')`,
+  );
+  await tap('button[aria-label="Discard draft"]');
+  await ui(
+    "discard returns the saved instructions",
+    "document.querySelector('textarea[aria-label=\"Agent instructions\"]').value === ''",
+  );
+
+  await visit("/");
   await viewport(390, 844);
   await shot("08-mobile");
   await evaluate("document.querySelector('button[aria-label=\"Open navigation\"]').click()");
   await ui(
-    "mobile bot gear",
+    "mobile bot settings row",
     "!!document.querySelector('[role=dialog] a[aria-label=\"Browser Bot settings\"]')",
   );
   await shot("09-mobile-nav");
@@ -795,6 +860,11 @@ try {
   await ui(
     "mobile settings opened",
     "location.pathname === '/agent' && !!document.querySelector('#bot-name')",
+  );
+  await visit("/");
+  await ui(
+    "the narrow header sends instructions to the settings page",
+    `document.querySelector('header [aria-label="Edit instructions"]').getAttribute('href') === '/agent'`,
   );
   await evaluate("document.querySelector('button[aria-label=\"Open navigation\"]').click()");
   await ui("mobile drawer reopened", "!!document.querySelector('[role=dialog]')");

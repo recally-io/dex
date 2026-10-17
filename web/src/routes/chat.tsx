@@ -6,6 +6,8 @@ import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2
 import { IconLock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconLock";
 import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
 import { IconBubble2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubble2";
+import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
+import { IconAlignmentLeft } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconAlignmentLeft";
 import type {
   Attachment,
   Settings,
@@ -25,7 +27,9 @@ import {
 import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
 import { refreshChats } from "../lib/queries";
-import { agentModel } from "../lib/agent";
+import { agentModel, saveAgent, thinkingNames, type AgentModel } from "../lib/agent";
+import { instructionsDirty } from "../lib/instructions";
+import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
 import { activeSessionCount } from "../lib/tasks";
 import { Composer } from "../components/composer";
@@ -33,12 +37,14 @@ import { hasContext, useClearContext, LoadEarlierButton } from "../components/ti
 import { SessionsLink } from "../components/session-link";
 import { RetryNotice, Transcript } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
+import { ThinkingPicker } from "../components/thinking-picker";
+import { InstructionsEditor } from "../components/instructions-editor";
 import { Failure, Loading } from "../components/feedback";
 import { MainPane, MenuButton, Note } from "../components/page";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import LoadingState from "../components/primitives/LoadingState";
-import { newId } from "../lib/utils";
+import { cn, newId } from "../lib/utils";
 
 export function ChatPage({ chatId }: { chatId?: number }) {
   const settings = useQuery(getSettingsOptions());
@@ -78,6 +84,32 @@ function MainTimeline({ settings }: { settings: Settings }) {
   ) : (
     <Chat key={main.data.id} chatId={main.data.id} settings={settings} />
   );
+}
+
+/**
+ * True while the pane can hold the transcript and a 400px panel side by side. Below that the
+ * panel would squeeze the transcript, so the settings page takes over. The pane arrives through
+ * state, not a ref, because it mounts after the first render.
+ */
+function useWideEnough(pane: HTMLElement | null) {
+  const [wide, setWide] = useState(false);
+
+  useEffect(() => {
+    if (!pane) return;
+
+    const measure = (width: number) => setWide(width >= 960);
+
+    // The first measure is synchronous, so the header does not render the wrong control once.
+    measure(pane.getBoundingClientRect().width);
+
+    const observer = new ResizeObserver(([entry]) => measure(entry.contentRect.width));
+
+    observer.observe(pane);
+
+    return () => observer.disconnect();
+  }, [pane]);
+
+  return wide;
 }
 
 function OriginPill({ chat }: { chat: ChatInfo }) {
@@ -139,6 +171,9 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const health = useQuery(getHealthOptions());
   const memory = health.data ? `${health.data.dataDir}/memory` : undefined;
   const [draft, setDraft] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [pane, setPane] = useState<HTMLElement | null>(null);
+  const wide = useWideEnough(pane);
   const [jump, setJump] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const clear = useClearContext(chatId, state.running, () => setAnnouncement("Context cleared."));
@@ -150,6 +185,8 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const models = useQuery(listModelsOptions());
   const files = useAttachments();
   const model = agentModel(settings.agent, models.data?.models);
+  const { draft: instructions } = useApp();
+  const dirty = instructionsDirty(instructions, settings.agent.instructions);
 
   const abort = useMutation({
     ...abortChatMutation(),
@@ -415,7 +452,10 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
 
   return (
     <>
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line">
+      <section
+        ref={setPane}
+        className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line"
+      >
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
           <MenuButton />
           {chat.data && !chat.data.main ? (
@@ -436,55 +476,201 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
             {chat.data?.main ? settings.agent.name : chat.data?.title || "New session"}
           </h1>
           {chat.data && !chat.data.main ? <OriginPill chat={chat.data} /> : null}
+          {chat.data?.main ? (
+            <AgentStrip
+              settings={settings}
+              model={model}
+              dirty={dirty}
+              editing={editing}
+              onEdit={() => setEditing(!editing)}
+              wide={wide}
+            />
+          ) : null}
           <span className="flex-1" />
           {chat.data?.main ? <SessionsLink active={active} /> : null}
         </header>
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          <div
-            ref={scroller}
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-            onScroll={() => {
-              const el = scroller.current;
+        <div className="flex min-h-0 flex-1">
+          <div className="relative flex min-w-0 flex-1 flex-col">
+            <div
+              ref={scroller}
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              onScroll={() => {
+                const el = scroller.current;
 
-              if (el) {
-                pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
-                setJump(!pinned.current);
-              }
-            }}
-          >
-            <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col gap-6 px-4 py-8 sm:px-8">
-              {transcript}
-            </div>
-          </div>
-          {readOnly ? null : (
-            <div className="shrink-0 px-3 pb-3 sm:px-8 sm:pb-5">
-              <div className="relative mx-auto max-w-[720px]">
-                {jump ? (
-                  <Button
-                    size="xs"
-                    variant="secondary"
-                    className="absolute -top-10 left-1/2 -translate-x-1/2 gap-1"
-                    onClick={() => {
-                      pinned.current = true;
-                      setJump(false);
-                      scroller.current?.scrollTo({
-                        top: scroller.current.scrollHeight,
-                        behavior: "smooth",
-                      });
-                    }}
-                  >
-                    <IconArrowDown size={14} />
-                    Jump to latest
-                  </Button>
-                ) : null}
-                {composer}
+                if (el) {
+                  pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+                  setJump(!pinned.current);
+                }
+              }}
+            >
+              <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col gap-6 px-4 py-8 sm:px-8">
+                {transcript}
               </div>
             </div>
-          )}
+            {readOnly ? null : (
+              <div className="shrink-0 px-3 pb-3 sm:px-8 sm:pb-5">
+                <div className="relative mx-auto max-w-[720px]">
+                  {jump ? (
+                    <Button
+                      size="xs"
+                      variant="secondary"
+                      className="absolute -top-10 left-1/2 -translate-x-1/2 gap-1"
+                      onClick={() => {
+                        pinned.current = true;
+                        setJump(false);
+                        scroller.current?.scrollTo({
+                          top: scroller.current.scrollHeight,
+                          behavior: "smooth",
+                        });
+                      }}
+                    >
+                      <IconArrowDown size={14} />
+                      Jump to latest
+                    </Button>
+                  ) : null}
+                  {composer}
+                </div>
+              </div>
+            )}
+          </div>
+          {/* The editor sits beside the transcript, so the answer being fixed stays readable. */}
+          {chat.data?.main && editing && wide ? (
+            <aside
+              aria-label="Agent instructions"
+              className="flex w-[400px] shrink-0 flex-col border-l border-line"
+            >
+              <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-3">
+                <h2 className="text-[13px] font-semibold text-ink">Instructions</h2>
+                {dirty ? (
+                  <StatusPill tone="orange" className="h-5 px-2 text-[11.5px]">
+                    Draft
+                  </StatusPill>
+                ) : null}
+                <span className="flex-1" />
+                <Link to="/agent" className="text-[12px] text-ink-3 hover:text-ink hover:underline">
+                  All settings
+                </Link>
+                <button
+                  type="button"
+                  aria-label="Close instructions"
+                  onClick={() => setEditing(false)}
+                  className="flex size-7 shrink-0 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink"
+                >
+                  <IconCrossSmall size={16} />
+                </button>
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col p-2">
+                <InstructionsEditor saved={settings.agent.instructions} grow />
+              </div>
+            </aside>
+          ) : null}
         </div>
         {status}
       </section>
     </>
+  );
+}
+
+/**
+ * The model, the thinking level and the instructions of the bot, in the header of its own
+ * timeline. A gear in the sidebar was the only way to these, and an icon without text is not
+ * findable.
+ */
+function AgentStrip({
+  settings,
+  model,
+  dirty,
+  editing,
+  onEdit,
+  wide,
+}: {
+  settings: Settings;
+  model: AgentModel;
+  dirty: boolean;
+  editing: boolean;
+  onEdit: () => void;
+  wide: boolean;
+}) {
+  const { notify } = useApp();
+
+  const caret = (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className="text-ink-3"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+
+  const chip =
+    "flex h-7 min-w-0 items-center gap-1 rounded-control px-2 text-[12.5px] text-ink-2 transition-colors hover:bg-hover-2 hover:text-ink aria-expanded:bg-hover-2";
+
+  return (
+    <div className="flex min-w-0 items-center gap-0.5">
+      <ModelPicker
+        trigger={
+          <button type="button" aria-label="Change model" className={chip}>
+            <span className={cn("min-w-0 truncate font-medium", model.ok ? "text-ink" : "text-orange")}>
+              {settings.agent.modelId ? model.label : "No model"}
+            </span>
+            {caret}
+          </button>
+        }
+      />
+      {model.model?.reasoning ? (
+        <ThinkingPicker
+          value={settings.agent.thinkingLevel}
+          levels={model.model.thinkingLevels}
+          save={async (level) => {
+            if (!level) return;
+            await saveAgent((agent) => ({ ...agent, thinkingLevel: level }));
+            notify(`Thinking is now ${thinkingNames[level]}. It applies from the next message.`);
+          }}
+          trigger={
+            <button type="button" aria-label="Change thinking level" className={cn(chip, "hidden sm:flex")}>
+              {thinkingNames[settings.agent.thinkingLevel]}
+              {caret}
+            </button>
+          }
+        />
+      ) : null}
+      {/* Below the width that fits the side panel, the settings page takes over. */}
+      {wide ? (
+        <button
+          type="button"
+          aria-expanded={editing}
+          aria-label="Edit instructions"
+          onClick={onEdit}
+          className={cn(chip, editing && "bg-hover-2 text-ink")}
+        >
+          <IconAlignmentLeft size={14} className="shrink-0" />
+          <span className="hidden md:inline">Instructions</span>
+          {dirty ? (
+            <StatusPill tone="orange" className="h-[18px] px-1.5 text-[11px]">
+              Draft
+            </StatusPill>
+          ) : null}
+        </button>
+      ) : (
+        <Link to="/agent" aria-label="Edit instructions" className={chip}>
+          <IconAlignmentLeft size={14} className="shrink-0" />
+          <span className="hidden md:inline">Instructions</span>
+          {dirty ? (
+            <StatusPill tone="orange" className="h-[18px] px-1.5 text-[11px]">
+              Draft
+            </StatusPill>
+          ) : null}
+        </Link>
+      )}
+    </div>
   );
 }
 

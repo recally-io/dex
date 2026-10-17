@@ -4,12 +4,14 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Settings } from "../api/generated/types.gen";
 import { getSettingsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
+import { instructionsDirty } from "../lib/instructions";
 import { useApp } from "../lib/app-state";
 import { ModelPicker } from "../components/model-picker";
 import { ThinkingPicker } from "../components/thinking-picker";
-import { Failure, Spinner } from "../components/feedback";
+import { Failure } from "../components/feedback";
 import { FramedPage, Note, Panel, Section } from "../components/page";
-import { Input, Textarea } from "../components/form";
+import { Input } from "../components/form";
+import { InstructionsEditor } from "../components/instructions-editor";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import { WithSettings } from "../components/with-settings";
@@ -39,27 +41,10 @@ export function AgentPage() {
 }
 
 function Agent({ settings }: { settings: Settings }) {
-  const { draft, setDraft, settleDraft, notify } = useApp();
+  const { draft, notify } = useApp();
   const model = useAgentModel(settings);
-  const saved = settings.agent.instructions;
-  const text = draft ?? saved;
-  const dirty = draft !== null && draft !== saved;
+  const dirty = instructionsDirty(draft, settings.agent.instructions);
   const provider = settings.providers.find((p) => p.id === settings.agent.provider);
-
-  const save = useMutation({
-    mutationFn: (instructions: string) => saveAgent((agent) => ({ ...agent, instructions })),
-    onSuccess: (_, value) => {
-      // Edits typed during the save stay as a new draft, also when they were typed on a new visit
-      // to this page.
-      const kept = settleDraft(value);
-
-      notify(
-        kept
-          ? "Instructions saved. Your later edits are still an unsaved draft."
-          : "Instructions saved. They apply from the next message.",
-      );
-    },
-  });
 
   return (
     <>
@@ -189,52 +174,7 @@ function Agent({ settings }: { settings: Settings }) {
         }
       >
         <Panel className="p-1">
-          <Textarea
-            aria-label="Agent instructions"
-            aria-describedby="instructions-status"
-            rows={7}
-            value={text}
-            maxLength={32000}
-            placeholder="For example: Reply in the language I write in."
-            onChange={(e) => setDraft(e.target.value)}
-            className="rounded-[11px] font-mono text-[12.5px] shadow-none focus:shadow-none"
-          />
-          <div className="flex flex-wrap items-center gap-2 border-t border-line px-3 py-2">
-            <span className="font-mono text-[11px] text-ink-3 tabular-nums">
-              {text.length.toLocaleString()} / 32,000
-            </span>
-            <span id="instructions-status" aria-live="polite" className="min-w-0 text-[11.5px] text-ink-3">
-              {dirty ? "Unsaved draft. Runs use the saved instructions until you save." : null}
-            </span>
-            <span className="flex-1" />
-            <Button
-              size="xs"
-              variant="quiet"
-              aria-label="Discard draft"
-              disabled={!dirty || save.isPending}
-              onClick={() => {
-                save.reset();
-                setDraft(null);
-              }}
-            >
-              Discard
-            </Button>
-            <Button
-              size="xs"
-              variant="primary"
-              aria-label="Save instructions"
-              disabled={!dirty || save.isPending}
-              onClick={() => save.mutate(text)}
-            >
-              {save.isPending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
-              {save.isPending ? "Saving" : "Save"}
-            </Button>
-          </div>
-          {save.isError ? (
-            <div className="border-t border-line p-3">
-              <Failure title="Instructions not saved. Your draft is kept." error={save.error} />
-            </div>
-          ) : null}
+          <InstructionsEditor saved={settings.agent.instructions} rows={7} />
         </Panel>
       </Section>
 

@@ -12,6 +12,8 @@ import { getSettingsOptions } from "../api/generated/@tanstack/react-query.gen";
 import GlideMenu from "./primitives/GlideMenu";
 import { ShellContext } from "./page";
 import { ThemeToggle, useSystemTheme } from "./theme";
+import { useApp } from "../lib/app-state";
+import { instructionsDirty } from "../lib/instructions";
 import { cn } from "../lib/utils";
 
 export function Shell() {
@@ -102,6 +104,7 @@ function Row({
   trailing,
   small,
   title,
+  ariaLabel,
 }: {
   to: LinkProps["to"];
   params?: LinkProps["params"];
@@ -111,12 +114,14 @@ function Row({
   trailing?: ReactNode;
   small?: boolean;
   title?: string;
+  ariaLabel?: string;
 }) {
   return (
     <Link
       to={to}
       params={params}
       title={title}
+      aria-label={ariaLabel}
       data-row
       aria-current={current ? "page" : undefined}
       className={cn(
@@ -161,6 +166,7 @@ function Dot({ tone, label }: { tone: "orange" | "red"; label: string }) {
 }
 
 const configure = [
+  { to: "/agent", label: "Agent", icon: <IconSettingsGear1 size={16} /> },
   { to: "/providers", label: "Providers", icon: <IconCloudApi size={16} /> },
   { to: "/extensions", label: "Extensions", icon: <IconPuzzle size={16} /> },
   { to: "/secrets", label: "Secrets", icon: <IconKey2 size={16} /> },
@@ -169,7 +175,9 @@ const configure = [
 
 function Sidebar({ path, className }: { path: string; className?: string }) {
   const settings = useQuery(getSettingsOptions());
+  const { draft } = useApp();
   const name = settings.data?.agent.name ?? "dex";
+  const dirty = instructionsDirty(draft, settings.data?.agent.instructions);
   const [a] = path.split("/").filter(Boolean);
   const providerErrors = settings.data?.providers.filter((p) => p.error).length ?? 0;
   const botCurrent = path === "/";
@@ -177,7 +185,7 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
 
   return (
     <aside aria-label="Navigation" className={cn("flex h-full w-[232px] shrink-0 flex-col", className)}>
-      <div className="mx-2 mb-2.5 flex h-11 shrink-0 items-center gap-1">
+      <div className="mx-2 mb-2.5 flex h-11 shrink-0 items-center">
         <Link
           to="/"
           aria-current={botCurrent ? "page" : undefined}
@@ -194,17 +202,6 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
           </span>
           <span className="truncate text-[14px] font-semibold text-ink">{name}</span>
         </Link>
-        <Link
-          to="/agent"
-          aria-label={`${name} settings`}
-          aria-current={settingsCurrent ? "page" : undefined}
-          className={cn(
-            "flex size-8 shrink-0 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink",
-            settingsCurrent && "bg-hover-2 text-ink",
-          )}
-        >
-          <IconSettingsGear1 size={16} />
-        </Link>
       </div>
       <div className="flex-1" />
 
@@ -218,9 +215,12 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
               icon={item.icon}
               label={item.label}
               to={item.to}
-              current={`/${a}` === item.to}
+              current={item.to === "/agent" ? settingsCurrent : `/${a}` === item.to}
+              ariaLabel={item.to === "/agent" ? `${name} settings` : undefined}
               trailing={
-                item.to === "/providers" && providerErrors ? (
+                item.to === "/agent" && dirty ? (
+                  <span className="text-[11px] text-ink-3">Draft</span>
+                ) : item.to === "/providers" && providerErrors ? (
                   <Dot
                     tone="red"
                     label={`${providerErrors} ${providerErrors === 1 ? "provider needs" : "providers need"} attention`}

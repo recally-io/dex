@@ -30,9 +30,10 @@ to read in an afternoon.
   model settings. Clear context starts a new model context when the timeline
   is idle. Earlier messages stay readable with Show earlier messages. A clear
   keeps long-term memory. After a summary, Show earlier messages can load
-  the earlier transcript. Only a clear shows a divider. The sidebar holds the
-  bot name, its settings, and global settings. It has no chat list or New chat
-  action.
+  the earlier transcript. Only a clear shows a divider. Its header shows the
+  model and the thinking level, and opens the instructions beside the
+  transcript. The sidebar holds the bot name, a labeled Agent row, and global
+  settings. It has no chat list or New chat action.
   Channel input shares main. Automation runs have separate read-only transcripts.
 - Internal background delegation for the default agent. Each delegation has
   one input and fixed model settings. The main agent stays available and
@@ -119,7 +120,7 @@ Chat does not read the main timeline's context. A task started in Chat returns
 its result to that Chat. Clear context, Stop and earlier messages work within
 the selected session. Other sessions cannot enable its Stop. Task and Automation
 sessions stay read-only. Main stays the default view, and the
-sidebar keeps only the bot and global settings.
+sidebar keeps only the bot and the settings pages.
 
 The main agent names the work in one brief delegation confirmation, then
 returns to the user without polling for the result. When a report returns,
