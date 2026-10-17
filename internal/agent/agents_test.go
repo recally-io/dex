@@ -1,13 +1,13 @@
-package settings_test
+package agent_test
 
 import (
 	"errors"
 	"path/filepath"
 	"testing"
 
+	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/settings"
 )
 
 func TestUserSavesSettingsForEachAgent(t *testing.T) {
@@ -18,9 +18,9 @@ func TestUserSavesSettingsForEachAgent(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	q := sqlc.New(conn)
-	s := settings.New(q, nil, "", nil)
+	s := agent.New(q, nil, "", nil)
 	for _, name := range []string{"First", "Second"} {
-		if _, err := s.CreateAgent(t.Context(), settings.Agent{Name: name, ThinkingLevel: "off"}); err != nil {
+		if _, err := s.CreateAgent(t.Context(), agent.Agent{Name: name, ThinkingLevel: "off"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -29,7 +29,7 @@ func TestUserSavesSettingsForEachAgent(t *testing.T) {
 		t.Fatalf("agents=%+v err=%v", rows, err)
 	}
 	// When the owner changes the second agent.
-	if err := s.SaveAgent(t.Context(), rows[1].ID, settings.Agent{Name: " Changed ", ThinkingLevel: "high", Instructions: "Second only"}); err != nil {
+	if err := s.SaveAgent(t.Context(), rows[1].ID, agent.Agent{Name: " Changed ", ThinkingLevel: "high", Instructions: "Second only"}); err != nil {
 		t.Fatal(err)
 	}
 	// Then the first agent keeps its settings.
@@ -41,7 +41,7 @@ func TestUserSavesSettingsForEachAgent(t *testing.T) {
 	if err != nil || second.Name != "Changed" || second.Instructions != "Second only" || second.ThinkingLevel != "high" {
 		t.Fatalf("second=%+v err=%v", second, err)
 	}
-	if _, err := s.CreateAgent(t.Context(), settings.Agent{Name: " ", ThinkingLevel: "off"}); !errors.Is(err, settings.ErrInvalid) {
+	if _, err := s.CreateAgent(t.Context(), agent.Agent{Name: " ", ThinkingLevel: "off"}); !errors.Is(err, agent.ErrInvalid) {
 		t.Fatalf("invalid name: %v", err)
 	}
 	listed, err := s.ListAgents(t.Context())

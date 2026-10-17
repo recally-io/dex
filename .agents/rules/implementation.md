@@ -19,7 +19,8 @@ data.
 | `internal/scheduler`  | Control's job schedule (gocron); jobs check durable state        |
 | `internal/automation` | Automations: prompts on a schedule, their runs and chats         |
 | `internal/telegram`   | Telegram bot: long polling, user allowlist, reply delivery       |
-| `internal/settings`   | Settings from the web UI: validate, save, apply to worker or bot |
+| `internal/settings`   | Global providers, model checks, and the access token             |
+| `internal/agent`      | Agent settings, activity, paths, and channel configuration       |
 | `web`                 | The web UI: React (Vite+), built into `web/dist`, embedded       |
 | `worker`              | The Bun worker: one pi-durable Harness per agent, its extensions |
 | `internal/workerbin`  | The compiled worker, gzipped, embedded (`mise run build:worker`) |
@@ -40,8 +41,9 @@ data.
   `worker/src/agents.ts` and `worker/src/models.ts`.
 - A new dependency needs the user's approval. Prefer the standard library,
   then a dependency the repository already has.
-- Settings live only in `control.sqlite` and change only through
-  `internal/settings`. Do not add an environment variable or a file for a
+- Settings live only in `control.sqlite`. `internal/settings` owns global
+  settings. `internal/agent` owns agent and channel settings. `internal/chat`
+  owns session overrides. Do not add an environment variable or a file for a
   setting. The exceptions are skills, MCP servers, and tool environment values
   in `.env`, which come from files
   ([ADR 0010](../../docs/dev/decisions/0010-extension-levels.md)). The worker

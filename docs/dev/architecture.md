@@ -163,8 +163,14 @@ Each live stream carries its agent ID for worker watches and history. Worker
 conversation IDs can be equal in different agents.
 
 Session, health, maintenance, models, provider settings, and
-`/api/automations/preview` stay global. One settings service and lock own
-settings changes. Creating or selecting an agent does not configure providers.
+`/api/automations/preview` stay global. Separate services own global settings
+and agent state. The settings lock orders provider saves and worker
+configuration. The agent lock orders agent writes, credential ownership
+checks, channel changes, and setup sessions across all agents. Agent model
+checks also take the settings lock, so they cannot read an incomplete provider
+update. The lock order is agent, then settings. Settings never takes the agent
+lock. Each service writes separate rows. Creating or selecting an agent does
+not configure providers.
 One scheduler job checks automations across all agents and posts each prompt
 with the saved agent ID. Extension reload restarts the whole worker and affects
 every agent.
@@ -269,8 +275,10 @@ past now. The message uses the normal durable delivery.
 ## Settings
 
 The web UI edits all settings; see [ADR 0002](decisions/0002-settings-in-control-db.md).
-[`settings.Service`](../../internal/settings/settings.go) validates a change,
-saves it in `control.sqlite`, and then applies it:
+[`settings.Service`](../../internal/settings/settings.go) owns providers, model
+checks, and the access token. [`agent.Service`](../../internal/agent/agent.go)
+owns agent settings, activity, and channel configuration. `chat.Service` saves
+chat settings with an injected validator. Each change stays in `control.sqlite`:
 
 | Setting                                 | Table               | Applied by                                                   |
 | --------------------------------------- | ------------------- | ------------------------------------------------------------ |

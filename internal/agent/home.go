@@ -1,4 +1,3 @@
-// Package agent owns agent state and paths.
 package agent
 
 import "path/filepath"

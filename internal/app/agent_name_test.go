@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/recally-io/dex/internal/settings"
+	"github.com/recally-io/dex/internal/agent"
 )
 
 func TestUserNamesBot(t *testing.T) {
@@ -13,7 +13,7 @@ func TestUserNamesBot(t *testing.T) {
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "echo")
-	var saved settings.Agent
+	var saved agent.Agent
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &saved)
 	input := saved
 	input.Name = "  Helper  "

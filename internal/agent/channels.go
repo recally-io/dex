@@ -1,4 +1,4 @@
-package settings
+package agent
 
 import (
 	"context"
@@ -26,7 +26,7 @@ type channelSession struct {
 	feishuSessionID string
 }
 
-// channelSession requires the settings lock.
+// channelSession requires the agent lock.
 func (s *Service) channelSession(agentID string) *channelSession {
 	if s.sessions == nil {
 		s.sessions = make(map[string]*channelSession)

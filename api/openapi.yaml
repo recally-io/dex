@@ -1437,9 +1437,9 @@ components:
           additionalProperties: { type: string }
 
     Channels:
-      x-go-type: settings.Channels
+      x-go-type: agent.Channels
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [telegram, wechat, feishu]
       properties:
@@ -1448,9 +1448,9 @@ components:
         feishu: { $ref: "#/components/schemas/Feishu" }
 
     AgentActivity:
-      x-go-type: settings.Activity
+      x-go-type: agent.Activity
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [activeSessions, runningChannels, enabledAutomations]
       properties:
@@ -1459,9 +1459,9 @@ components:
         enabledAutomations: { type: integer, format: int64 }
 
     Agent:
-      x-go-type: settings.Agent
+      x-go-type: agent.Agent
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [name, provider, modelId, thinkingLevel, instructions]
       properties:
@@ -1483,9 +1483,9 @@ components:
         instructions: { type: string }
 
     AgentInput:
-      x-go-type: settings.Agent
+      x-go-type: agent.Agent
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [name, provider, modelId, thinkingLevel]
       properties:
@@ -1681,9 +1681,9 @@ components:
         error: { type: string }
 
     Wechat:
-      x-go-type: settings.Wechat
+      x-go-type: agent.Wechat
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [enabled, status]
       properties:
@@ -1749,9 +1749,9 @@ components:
           items: { type: integer, format: int64 }
 
     Feishu:
-      x-go-type: settings.Feishu
+      x-go-type: agent.Feishu
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [enabled, appId, brand, paired, status, error]
       properties:
@@ -1763,9 +1763,9 @@ components:
         error: { type: string }
 
     FeishuSetup:
-      x-go-type: settings.FeishuSetup
+      x-go-type: agent.FeishuSetup
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/settings
+        path: github.com/recally-io/dex/internal/agent
       type: object
       required: [session, qrUrl, interval, expiresIn, status, pairingCode]
       properties:

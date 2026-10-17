@@ -32,6 +32,7 @@ type Config struct {
 	Chats       *chat.Service
 	Automations *automation.Service
 	Settings    *settings.Service
+	Agents      *agent.Service
 	Live        *live.Hub
 	DataDir     string
 	Version     string
@@ -69,16 +70,16 @@ func New(cfg Config) http.Handler {
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			status := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, settings.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
+			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
 				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrResetID):
 				status = http.StatusBadRequest
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, errReadOnly):
 				status = http.StatusForbidden
-			case errors.Is(err, settings.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
+			case errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy):
+			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -125,9 +126,9 @@ func agentID(ctx context.Context) string {
 func (h *handler) withAgent(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if id := r.PathValue("agentId"); id != "" {
-			if _, err := h.Settings.Agent(r.Context(), id); err != nil {
+			if _, err := h.Agents.Agent(r.Context(), id); err != nil {
 				status := http.StatusInternalServerError
-				if errors.Is(err, settings.ErrNotFound) {
+				if errors.Is(err, agent.ErrNotFound) {
 					status = http.StatusNotFound
 				} else {
 					slog.Error("read request agent", "err", err)
@@ -194,7 +195,7 @@ func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRe
 		return nil, err
 	}
 	if len(files.Errors) > 0 {
-		agents, err := h.Settings.ListAgents(ctx)
+		agents, err := h.Agents.ListAgents(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -356,7 +357,7 @@ func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRe
 	if !strings.HasPrefix(c.ChannelKey, "automation:") {
 		return nil, errReadOnly
 	}
-	if err := h.Settings.SetChat(ctx, agentID(ctx), req.ChatId, *req.Body); err != nil {
+	if err := h.Chats.SetChat(ctx, agentID(ctx), req.ChatId, *req.Body, h.Settings.CheckChat); err != nil {
 		return nil, err
 	}
 	c, err = h.Chats.Get(ctx, agentID(ctx), req.ChatId)
@@ -537,21 +538,21 @@ func (h *handler) SetTelegram(ctx context.Context, req api.SetTelegramRequestObj
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if err := h.Settings.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers); err != nil {
+	if err := h.Agents.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers); err != nil {
 		return nil, err
 	}
 	return api.SetTelegram200JSONResponse(ok), nil
 }
 
 func (h *handler) DeleteTelegram(ctx context.Context, _ api.DeleteTelegramRequestObject) (api.DeleteTelegramResponseObject, error) {
-	if err := h.Settings.DeleteTelegram(ctx, agentID(ctx)); err != nil {
+	if err := h.Agents.DeleteTelegram(ctx, agentID(ctx)); err != nil {
 		return nil, err
 	}
 	return api.DeleteTelegram200JSONResponse(ok), nil
 }
 
 func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegramPairingRequestObject) (api.CreateTelegramPairingResponseObject, error) {
-	link, expires, err := h.Settings.CreateTelegramPairing(ctx, agentID(ctx))
+	link, expires, err := h.Agents.CreateTelegramPairing(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -559,7 +560,7 @@ func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegra
 }
 
 func (h *handler) BeginWechatLogin(ctx context.Context, _ api.BeginWechatLoginRequestObject) (api.BeginWechatLoginResponseObject, error) {
-	view, err := h.Settings.BeginWechatLogin(ctx, agentID(ctx))
+	view, err := h.Agents.BeginWechatLogin(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -571,7 +572,7 @@ func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRe
 	if req.Body != nil {
 		code = deref(req.Body.VerifyCode)
 	}
-	view, err := h.Settings.PollWechatLogin(ctx, agentID(ctx), req.LoginId, code)
+	view, err := h.Agents.PollWechatLogin(ctx, agentID(ctx), req.LoginId, code)
 	if err != nil {
 		return nil, err
 	}
@@ -579,7 +580,7 @@ func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRe
 }
 
 func (h *handler) DeleteWechat(ctx context.Context, _ api.DeleteWechatRequestObject) (api.DeleteWechatResponseObject, error) {
-	if err := h.Settings.DeleteWechat(ctx, agentID(ctx)); err != nil {
+	if err := h.Agents.DeleteWechat(ctx, agentID(ctx)); err != nil {
 		return nil, err
 	}
 	return api.DeleteWechat200JSONResponse(ok), nil

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/recally-io/dex/internal/settings"
+	"github.com/recally-io/dex/internal/agent"
 )
 
 func TestUserBlockedControlReplyDoesNotBlockOwner(t *testing.T) {
@@ -71,7 +71,7 @@ func TestUserCannotPairSecondTelegramOwner(t *testing.T) {
 func assertTelegramOwner(t *testing.T, d *dex) {
 	t.Helper()
 	var got struct {
-		Telegram settings.Telegram `json:"telegram"`
+		Telegram agent.Telegram `json:"telegram"`
 	}
 	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &got)
 	if !slices.Equal(got.Telegram.AllowedUsers, []int64{42}) {

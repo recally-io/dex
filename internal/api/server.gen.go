@@ -17,10 +17,10 @@ import (
 
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
-	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/wechat"
 	"github.com/recally-io/dex/internal/worker"
 )
@@ -464,13 +464,13 @@ func (e UserItemKind) Valid() bool {
 }
 
 // Agent defines model for Agent.
-type Agent = settings.Agent
+type Agent = agent.Agent
 
 // AgentActivity defines model for AgentActivity.
-type AgentActivity = settings.Activity
+type AgentActivity = agent.Activity
 
 // AgentInput defines model for AgentInput.
-type AgentInput = settings.Agent
+type AgentInput = agent.Agent
 
 // AppendEvent Appends text to the text of the item with this ID.
 type AppendEvent struct {
@@ -541,7 +541,7 @@ type BoundaryItemKind string
 type ChannelStatus = channel.Status
 
 // Channels defines model for Channels.
-type Channels = settings.Channels
+type Channels = agent.Channels
 
 // Chat defines model for Chat.
 type Chat struct {
@@ -648,7 +648,7 @@ type Extensions struct {
 }
 
 // Feishu defines model for Feishu.
-type Feishu = settings.Feishu
+type Feishu = agent.Feishu
 
 // FeishuBrand defines model for FeishuBrand.
 type FeishuBrand struct {
@@ -670,7 +670,7 @@ type FeishuPoll struct {
 }
 
 // FeishuSetup defines model for FeishuSetup.
-type FeishuSetup = settings.FeishuSetup
+type FeishuSetup = agent.FeishuSetup
 
 // Health defines model for Health.
 type Health struct {
@@ -1036,7 +1036,7 @@ type UserItem struct {
 type UserItemKind string
 
 // Wechat defines model for Wechat.
-type Wechat = settings.Wechat
+type Wechat = agent.Wechat
 
 // WechatLogin defines model for WechatLogin.
 type WechatLogin = wechat.LoginView
