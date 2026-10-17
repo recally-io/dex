@@ -1,6 +1,6 @@
 # 0004: Memory in the Agent Memory Repo format, with dreaming
 
-Status: Accepted (2026-10-14)
+Status: Accepted (2026-10-14). Agent scope approved (2026-10-17).
 
 ## Context
 
@@ -14,7 +14,15 @@ adds what repeats across sessions, and cleans the memory up.
 
 - One memory repo per dex data directory, at `<data dir>/memory/`. dex has one
   user, and the spec keeps memory per person, so all agents and channels share
-  it.
+  it. Tell one bot a fact about the owner, and all bots can use it.
+- Owner facts (identity, preferences, decisions, projects, and people) go in
+  shared `MEMORY.md` and its topic files. An agent's role experience and ways
+  of working go in `agents/<agentId>/`, with `MEMORY.md` in that folder as
+  its entry point. One bot's habits must not become the owner's general
+  preferences. Only that agent loads its entry point in the system prompt.
+- Sources include the agent: `dex:<agentId>/chat/<chatId>` and
+  `dex:<agentId>/dream/<dreamId>`. Old `dex:chat/<id>` sources remain valid
+  and mean the default agent. Existing entries need no migration.
 - The worker owns the repo. A pi-durable extension shows the rules and
   `MEMORY.md` in the system prompt, read again before each model request. The
   agent edits files with its own tools.
@@ -24,7 +32,13 @@ adds what repeats across sessions, and cleans the memory up.
 - A dream is a hidden chat with one message, so it uses the durable delivery
   of messages: it survives a restart, and a retry finds the same submission.
   Control schedules it and records, in the `dreams` table, which messages
-  each dream read.
+  each dream read, per agent. One Dreamer checks all agents. Pending ordinary
+  submissions block only their own agent. A pending dream blocks all dreams
+  because they edit one repo. A dream tidies only shared entries whose chat
+  sources all belong to its agent, and that agent's folder. It must not
+  delete or rewrite entries with another agent's sources, including mixed
+  sources; it can only add `uncertain: yes`. It leaves shared entries with
+  no chat source unchanged.
 - `internal/scheduler` wraps gocron and owns the schedule of control's jobs.
   The dream job is in code. A job only checks the durable state, because
   gocron does not run a missed job after a sleep or a restart.
@@ -37,8 +51,9 @@ adds what repeats across sessions, and cleans the memory up.
 
 ## Consequences
 
-- A memory change applies from the next model request in every chat.
-- A dream costs model tokens at most once in 24 h, and only after new chats.
+- A shared memory change applies from the next model request in every chat.
+  An agent memory change applies only to that agent.
+- A dream costs model tokens at most once per agent in 24 h, and only after new chats.
   A failed dream reads the same messages again 24 h later.
 - Two chats that edit the same file at the same time rely on the edit tool,
   which fails on stale text. The `write` tool can still overwrite a file; the

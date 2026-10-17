@@ -372,7 +372,7 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 		Instructions: agent.Instructions,
 	}
 	if strings.HasPrefix(p.ChannelKey, dream.Channel) {
-		settings.Instructions = dream.Instructions(settings.Instructions)
+		settings.Instructions = dream.Instructions(p.AgentID, settings.Instructions)
 	}
 	isTask := strings.HasPrefix(p.ChannelKey, "task:")
 	if isTask {
@@ -448,13 +448,14 @@ func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) 
 	return call(ctx, "submit", params, &result)
 }
 
-// source names a submission's chat in the memory: dex:chat/<chat ID>, or dex:dream/<dream ID> for a
+// source names a submission's chat in memory: dex:<agent ID>/chat/<chat ID>, or
+// dex:<agent ID>/dream/<dream ID> for a
 // dream, whose entries cite the chats that it read.
 func source(p sqlc.ListPendingSubmissionsRow) string {
 	if id, ok := strings.CutPrefix(p.ChannelKey, dream.Channel); ok {
-		return "dex:dream/" + id
+		return "dex:" + p.AgentID + "/dream/" + id
 	}
-	return fmt.Sprintf("dex:chat/%d", p.ConversationID)
+	return fmt.Sprintf("dex:%s/chat/%d", p.AgentID, p.ConversationID)
 }
 
 func (s *Service) settle(ctx context.Context, event worker.Settled) {

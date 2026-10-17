@@ -629,6 +629,33 @@ func (q *Queries) LatestDream(ctx context.Context, agentID string) (LatestDreamR
 	return i, err
 }
 
+const listAgentIDs = `-- name: ListAgentIDs :many
+SELECT id FROM agents ORDER BY id
+`
+
+func (q *Queries) ListAgentIDs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listAgentIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAutomationRuns = `-- name: ListAutomationRuns :many
 SELECT
     r.id,

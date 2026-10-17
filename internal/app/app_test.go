@@ -392,7 +392,7 @@ func TestAgentRemembersAcrossChats(t *testing.T) {
 	// And the change is in the repo's history
 	eventually(t, "memory commit", func() (bool, any) {
 		log := gitLog(t, dataDir)
-		want := fmt.Sprintf("Update memory from dex:chat/%d", write)
+		want := fmt.Sprintf("Update memory from dex:default/chat/%d", write)
 		return slices.ContainsFunc(log, func(c string) bool {
 			return strings.HasPrefix(c, want+"\n") && strings.Contains(c, "+"+entry)
 		}), log
@@ -453,13 +453,13 @@ func TestDreamingReadsEachChatOnce(t *testing.T) {
 	dreams := func() []string {
 		var out []string
 		for _, c := range gitLog(t, dataDir) {
-			if strings.HasPrefix(c, "Update memory from dex:dream/") {
+			if strings.HasPrefix(c, "Update memory from dex:default/dream/") {
 				out = append(out, c)
 			}
 		}
 		return out
 	}
-	record := func(chat int64) string { return fmt.Sprintf(`+{"chat":"dex:chat/%d"`, chat) }
+	record := func(chat int64) string { return fmt.Sprintf(`+{"chat":"dex:default/chat/%d"`, chat) }
 
 	// When the user has a chat
 	first := d.newChat(t, "echo one")

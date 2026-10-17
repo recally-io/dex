@@ -232,7 +232,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	a.wg.Go(func() { _ = w.Run(runCtx) })
 	a.wg.Go(func() { chats.Run(runCtx) })
 	every := cmp.Or(cfg.DreamEvery, 24*time.Hour)
-	dreamer := dream.New(q, chats, DefaultAgentID, every, time.Now)
+	dreamer := dream.New(q, chats, every, time.Now)
 	err = errors.Join(
 		jobs.Every("dream", min(every, time.Hour), dreamer.Check),
 		jobs.Every("automations", cmp.Or(cfg.AutomationCheck, time.Minute), automations.Check),

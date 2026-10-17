@@ -228,6 +228,9 @@ WHERE
 ORDER BY s.settled_at, s.id
 LIMIT @max_rows;
 
+-- name: ListAgentIDs :many
+SELECT id FROM agents ORDER BY id;
+
 -- name: CreateAutomation :exec
 INSERT INTO automations (
     id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at
