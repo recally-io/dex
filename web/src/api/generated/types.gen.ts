@@ -411,11 +411,21 @@ export type Channels = {
     feishu: Feishu;
 };
 
+export type AgentActivity = {
+    activeSessions: number;
+    runningChannels: number;
+    enabledAutomations: number;
+};
+
 export type Agent = {
     /**
      * The agent ID.
      */
     readonly id?: string;
+    /**
+     * Activity counts returned by GET /api/agents.
+     */
+    activity?: AgentActivity;
     /**
      * The bot name. Trim spaces before validation.
      */

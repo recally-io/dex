@@ -4,16 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
-import {
-  getFeishuOptions,
-  listAgentsOptions,
-  listAutomationsOptions,
-  listChatsOptions,
-  listModelsOptions,
-} from "../api/generated/@tanstack/react-query.gen";
+import { listAgentsOptions, listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { agentModel, saveAgent, thinkingNames, type AgentModel } from "../lib/agent";
 import { instructionsDirty } from "../lib/instructions";
-import { activeSessionCount } from "../lib/tasks";
 import { useApp } from "../lib/app-state";
 import { MainTimeline } from "../routes/chat";
 import { ModelPicker } from "./model-picker";
@@ -47,29 +40,16 @@ const tabs: AgentTab[] = [
   { to: "/a/$agentId/agent", label: "Settings", segments: ["agent"] },
 ];
 
-/** What the agent has running now, for the tabs and the sidebar row. Queries share their cache. */
+/** Activity reads the agent list cache. Shell owns its polling interval. */
 export function useAgentActivity() {
   const agentId = useAgentId();
-  const settings = useQuery({ ...scopedSettingsOptions(agentId), refetchInterval: 3000 });
-  const feishu = useQuery({ ...getFeishuOptions({ path: { agentId } }), refetchInterval: 3000 });
-
-  const automations = useQuery({
-    ...listAutomationsOptions({ path: { agentId } }),
-    refetchInterval: 10_000,
-  });
-
-  const sessions = useQuery({ ...listChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
-
-  const states = [
-    settings.data?.telegram.status.state,
-    settings.data?.wechat.status.state,
-    feishu.data?.status,
-  ];
+  const agents = useQuery(listAgentsOptions());
+  const activity = agents.data?.agents.find((agent) => agent.id === agentId)?.activity;
 
   return {
-    channels: states.filter((state) => state === "running").length,
-    automations: automations.data?.automations.filter((automation) => automation.enabled).length ?? 0,
-    active: activeSessionCount(sessions.data?.chats ?? []),
+    channels: activity?.runningChannels ?? 0,
+    automations: activity?.enabledAutomations ?? 0,
+    active: activity?.activeSessions ?? 0,
   };
 }
 

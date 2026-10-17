@@ -55,14 +55,22 @@ type Settings struct {
 	APIs map[string]string `json:"apis"`
 }
 
+// Activity summarizes one agent for the agent list.
+type Activity struct {
+	ActiveSessions     int64 `json:"activeSessions"`
+	RunningChannels    int64 `json:"runningChannels"`
+	EnabledAutomations int64 `json:"enabledAutomations"`
+}
+
 // Agent holds the settings of one agent. An empty ModelID means no model is chosen.
 type Agent struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Provider      string `json:"provider"`
-	ModelID       string `json:"modelId"`
-	ThinkingLevel string `json:"thinkingLevel"`
-	Instructions  string `json:"instructions"`
+	Activity      *Activity `json:"activity,omitzero"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Provider      string    `json:"provider"`
+	ModelID       string    `json:"modelId"`
+	ThinkingLevel string    `json:"thinkingLevel"`
+	Instructions  string    `json:"instructions"`
 }
 
 // thinkingLevels are pi-ai's ModelThinkingLevel values. pi-ai sends the nearest level that the
@@ -205,15 +213,32 @@ func agentView(row sqlc.Agent) Agent {
 		ThinkingLevel: row.ThinkingLevel, Instructions: row.Instructions}
 }
 
-// ListAgents returns agents in creation order.
+// ListAgents returns agents and their activity in creation order.
 func (s *Service) ListAgents(ctx context.Context) ([]Agent, error) {
 	rows, err := s.q.ListAgents(ctx)
 	if err != nil {
 		return nil, err
 	}
+	counts, err := s.q.ListAgentActivity(ctx)
+	if err != nil {
+		return nil, err
+	}
+	activity := make(map[string]Activity, len(counts))
+	for _, count := range counts {
+		activity[count.ID] = Activity{ActiveSessions: count.ActiveSessions, EnabledAutomations: count.EnabledAutomations}
+	}
 	agents := make([]Agent, len(rows))
 	for i, row := range rows {
 		agents[i] = agentView(row)
+		current := activity[row.ID]
+		if s.ChannelStatus != nil {
+			for _, platform := range []string{"telegram", "wechat", "feishu"} {
+				if s.ChannelStatus(row.ID, platform).State == "running" {
+					current.RunningChannels++
+				}
+			}
+		}
+		agents[i].Activity = &current
 	}
 	return agents, nil
 }

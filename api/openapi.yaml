@@ -1447,6 +1447,17 @@ components:
         wechat: { $ref: "#/components/schemas/Wechat" }
         feishu: { $ref: "#/components/schemas/Feishu" }
 
+    AgentActivity:
+      x-go-type: settings.Activity
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/settings
+      type: object
+      required: [activeSessions, runningChannels, enabledAutomations]
+      properties:
+        activeSessions: { type: integer, format: int64 }
+        runningChannels: { type: integer, format: int64 }
+        enabledAutomations: { type: integer, format: int64 }
+
     Agent:
       x-go-type: settings.Agent
       x-go-type-import:
@@ -1455,6 +1466,11 @@ components:
       required: [name, provider, modelId, thinkingLevel, instructions]
       properties:
         id: { type: string, readOnly: true, description: The agent ID. }
+        activity:
+          allOf:
+            - $ref: "#/components/schemas/AgentActivity"
+          readOnly: true
+          description: Activity counts returned by GET /api/agents.
         name: {
           type: string,
           minLength: 1,

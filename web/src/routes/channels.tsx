@@ -1,5 +1,5 @@
-import type { AgentSettings as Settings } from "../lib/agent-scope";
-import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
+import type { Channels as Settings } from "../api/generated/types.gen";
+import { useAgentId } from "../lib/agent-scope";
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -9,7 +9,7 @@ import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-str
 import {
   createTelegramPairingMutation,
   deleteTelegramMutation,
-  getFeishuOptions,
+  getChannelsOptions,
   setTelegramMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { errorText, refreshSettings } from "../lib/queries";
@@ -17,14 +17,13 @@ import { useApp } from "../lib/app-state";
 import { WechatChannel } from "../components/wechat-channel";
 import { Confirm } from "../components/confirm";
 import { Modal } from "../components/dialog";
-import { Failure, Spinner } from "../components/feedback";
+import { Failure, Loading, Spinner } from "../components/feedback";
 import { Field, Input, SavedSecret, Textarea } from "../components/form";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import { FeishuChannel } from "./feishu";
 import { Crumb } from "../components/crumb";
-import { WithSettings } from "../components/with-settings";
 
 function ChannelRow({
   channel,
@@ -73,8 +72,7 @@ function Boundary() {
 
 export function ChannelsSection({ settings }: { settings: Settings }) {
   const agentId = useAgentId();
-  const saved = useQuery({ ...scopedSettingsOptions(agentId), refetchInterval: 3000 });
-  const feishu = useQuery({ ...getFeishuOptions({ path: { agentId } }), refetchInterval: 3000 });
+  const saved = useQuery({ ...getChannelsOptions({ path: { agentId } }), refetchInterval: 3000 });
   const current = saved.data ?? settings;
 
   const status = (state: string) => (
@@ -107,7 +105,7 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
             channel="feishu"
             name="Feishu / Lark"
             text="Private messages from the paired owner."
-            status={status(feishu.isError ? "unavailable" : (feishu.data?.status ?? "Loading…"))}
+            status={status(current.feishu.status)}
           />
         </div>
       </Panel>
@@ -118,7 +116,7 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
 export function ChannelsPage() {
   return (
     <FramedPage title="Channels">
-      <WithSettings>{(settings) => <ChannelsSection settings={settings} />}</WithSettings>
+      <WithChannels>{(settings) => <ChannelsSection settings={settings} />}</WithChannels>
     </FramedPage>
   );
 }
@@ -130,7 +128,7 @@ export function ChannelPage({ channel }: { channel: "telegram" | "wechat" | "fei
       title="WeChat"
       description="Scan once. dex recognizes the owner from the login."
     >
-      <WithSettings>{(settings) => <WechatChannel settings={settings} />}</WithSettings>
+      <WithChannels>{(settings) => <WechatChannel settings={settings} />}</WithChannels>
     </FramedPage>
   ) : channel === "feishu" ? (
     <FeishuChannel />
@@ -141,7 +139,7 @@ export function ChannelPage({ channel }: { channel: "telegram" | "wechat" | "fei
 
 function TelegramChannel() {
   const agentId = useAgentId();
-  const saved = useQuery({ ...scopedSettingsOptions(agentId), refetchInterval: 2000 });
+  const saved = useQuery({ ...getChannelsOptions({ path: { agentId } }), refetchInterval: 2000 });
 
   return (
     <FramedPage
@@ -156,7 +154,7 @@ function TelegramChannel() {
       }
       description="Talk to dex from your phone. Only the users that you allow can use the bot."
     >
-      <WithSettings>{(settings) => <Telegram settings={settings} />}</WithSettings>
+      <WithChannels>{(settings) => <Telegram settings={settings} />}</WithChannels>
     </FramedPage>
   );
 }
@@ -460,4 +458,18 @@ function TelegramDialog({
       ) : null}
     </Modal>
   );
+}
+
+function WithChannels({ children }: { children: (settings: Settings) => ReactNode }) {
+  const agentId = useAgentId();
+  const settings = useQuery(getChannelsOptions({ path: { agentId } }));
+
+  if (settings.isPending) return <Loading />;
+
+  if (settings.isError)
+    return (
+      <Failure title="Could not load channels" error={settings.error} retry={() => void settings.refetch()} />
+    );
+
+  return children(settings.data);
 }

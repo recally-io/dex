@@ -11,6 +11,8 @@ import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 
+const activityReads = [];
+
 const [binary, artifactArg] = process.argv.slice(2);
 
 assert.ok(binary, "Pass a dex_e2e binary");
@@ -111,6 +113,8 @@ try {
     } else if (event.method === "Runtime.exceptionThrown") exceptions.push(event.params.exceptionDetails);
     else if (event.method === "Network.requestWillBeSent") {
       const { request } = event.params;
+
+      if (request.method === "GET" && request.url.startsWith(`${base}/api/`)) activityReads.push(request.url);
 
       if (request.url.startsWith(`${base}/api/agents/default/tasks/`))
         taskReads.set(request.url, (taskReads.get(request.url) ?? 0) + 1);
@@ -1122,6 +1126,23 @@ try {
     "create second agent, echo isolation, separate composer/instructions/upload drafts, channels boundary, legacy redirect and unknown agent",
   );
 
+  await visit("/providers");
+  await ui(
+    "global provider page ready",
+    "document.querySelector('#page-title')?.textContent === 'Providers'",
+  );
+  const activityStart = activityReads.length;
+  await poll(
+    "two shared agent activity polls",
+    async () => activityReads.slice(activityStart).filter((url) => url === `${base}/api/agents`).length >= 2,
+  );
+  const activityWindow = activityReads.slice(activityStart);
+  assert.deepEqual(
+    activityWindow.filter((url) => /\/api\/agents\/[^/]+\/(channels|automations|chats)(?:[/?]|$)/.test(url)),
+    [],
+    "sidebar activity polls only the shared agent list",
+  );
+  results.push("two agents share one activity list poll with no per-agent channel, automation or chat reads");
   assert.deepEqual(exceptions, [], "no browser exceptions");
   assert.equal((await api("/api/agents/default/chats/main")).id, main.id);
   results.push(
@@ -1143,6 +1164,7 @@ try {
         exceptions,
         taskReads: Object.fromEntries(taskReads),
         noticeLayouts,
+        activityWindow,
       },
       null,
       2,

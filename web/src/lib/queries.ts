@@ -10,9 +10,9 @@ export const queryClient = new QueryClient({
 // Refreshes after a settings write. A failed read stays in its query for the UI to show; it does
 // not reject, so a successful write is not reported as a failed one.
 export async function refreshSettings() {
+  await queryClient.invalidateQueries({ queryKey: [{ _id: "getChannels" }] });
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: [{ _id: "getSettings" }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "getChannels" }] }),
     queryClient.prefetchQuery({ ...listModelsOptions(), staleTime: 0 }),
   ]);
 }

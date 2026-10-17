@@ -463,6 +463,9 @@ func (e UserItemKind) Valid() bool {
 // Agent defines model for Agent.
 type Agent = settings.Agent
 
+// AgentActivity defines model for AgentActivity.
+type AgentActivity = settings.Activity
+
 // AgentInput defines model for AgentInput.
 type AgentInput = settings.Agent
 

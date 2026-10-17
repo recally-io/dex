@@ -23,7 +23,7 @@ export function SecretsPage() {
                     `${p.name} API key`,
                     p.keySet ? "Saved" : "None",
                   ]),
-                  ["Telegram bot token", settings.telegram.enabled ? "Saved" : "None"],
+                  ["Channel credentials", "Manage in each agent’s Channels tab"],
                   ["Stored in", <Mono key="s">control.sqlite in the data directory</Mono>],
                   ["Shown in the web", "Never. You can only replace them"],
                 ]}

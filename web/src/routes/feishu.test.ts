@@ -1,12 +1,15 @@
-import { scopedSettingsOptions } from "../lib/agent-scope";
-import type { AgentSettings as Settings } from "../lib/agent-scope";
+import type { Channels as Settings } from "../api/generated/types.gen";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
 import { expect, test } from "vite-plus/test";
 
-import { getFeishuOptions, listChatsOptions } from "../api/generated/@tanstack/react-query.gen";
+import {
+  getChannelsOptions,
+  getFeishuOptions,
+  listChatsOptions,
+} from "../api/generated/@tanstack/react-query.gen";
 import { FeishuChannel } from "./feishu";
 import { ChannelsSection } from "./channels";
 
@@ -43,22 +46,10 @@ test("user keeps the saved Lark platform when opening settings", async () => {
 test("user sees Feishu status and shared main context without a peer link", async () => {
   // Given an enabled bot that still needs pairing.
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
-  client.setQueryData(scopedSettingsOptions("default").queryKey, {
-    agent: { name: "Dex", provider: "", modelId: "", thinkingLevel: "off", instructions: "" },
-    providers: [],
-    builtins: [],
-    apis: {},
-    feishu: { enabled: false, appId: "", brand: "feishu", paired: false, status: "off", error: "" },
+  client.setQueryData(getChannelsOptions({ path: { agentId: "default" } }).queryKey, {
+    feishu: { enabled: true, appId: "app", brand: "feishu", paired: false, status: "needs_login", error: "" },
     telegram: { enabled: false, allowedUsers: [], status: { state: "off" } },
     wechat: { enabled: false, status: { state: "off" } },
-  });
-  client.setQueryData(getFeishuOptions({ path: { agentId: "default" } }).queryKey, {
-    brand: "feishu",
-    appId: "app",
-    enabled: true,
-    paired: false,
-    status: "needs_login",
-    error: "",
   });
   client.setQueryData(listChatsOptions({ path: { agentId: "default" } }).queryKey, {
     chats: [
@@ -79,7 +70,9 @@ test("user sees Feishu status and shared main context without a peer link", asyn
     routeTree: createRootRoute({
       component: () =>
         createElement(ChannelsSection, {
-          settings: client.getQueryData<Settings>(scopedSettingsOptions("default").queryKey)!,
+          settings: client.getQueryData<Settings>(
+            getChannelsOptions({ path: { agentId: "default" } }).queryKey,
+          )!,
         }),
     }),
     history: createMemoryHistory({ initialEntries: ["/"] }),

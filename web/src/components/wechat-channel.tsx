@@ -1,9 +1,10 @@
-import type { AgentSettings as Settings } from "../lib/agent-scope";
-import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
+import type { Channels as Settings } from "../api/generated/types.gen";
+import { useAgentId } from "../lib/agent-scope";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { WechatLogin } from "../api/generated/types.gen";
 import {
+  getChannelsOptions,
   beginWechatLoginMutation,
   deleteWechatMutation,
   pollWechatLoginMutation,
@@ -29,7 +30,10 @@ const loginText: Record<WechatLogin["status"], string> = {
 
 export function WechatChannel({ settings }: { settings: Settings }) {
   const agentId = useAgentId();
-  const current = useQuery({ ...scopedSettingsOptions(agentId), refetchInterval: 3000 }).data ?? settings;
+
+  const current =
+    useQuery({ ...getChannelsOptions({ path: { agentId } }), refetchInterval: 3000 }).data ?? settings;
+
   const account = current.wechat;
   const [login, setLogin] = useState<WechatLogin>();
   const [code, setCode] = useState("");

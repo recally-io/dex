@@ -143,7 +143,12 @@ process per storage, so only the worker opens an agent directory.
 ## Agents and HTTP API
 
 One owner can create several agents. `GET /api/agents` returns
-`{agents: [Agent]}` in creation order. `POST /api/agents` accepts a name,
+`{agents: [Agent]}` in creation order. Each list entry has `activity` with
+`activeSessions`, `runningChannels`, and `enabledAutomations`. One SQL query
+counts sessions and automations across all agents. A task counts when queued or
+running; other visible sessions count when they have pending input. Each session
+counts once. Channel counts come from the app registry. The sidebar polls this
+list every three seconds and shares its cache with agent tabs. `POST /api/agents` accepts a name,
 provider, model ID, thinking level, and optional instructions. It returns the
 agent with a UUID v7 ID (`201`). The ID is read-only. `GET` and `PUT` on
 `/api/agents/{agentId}` read and save one agent. Names and models use the same

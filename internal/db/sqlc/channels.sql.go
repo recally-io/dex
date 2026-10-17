@@ -121,6 +121,54 @@ func (q *Queries) GetSubmissionBySource(ctx context.Context, sourceKey sql.NullS
 	return id, err
 }
 
+const listAgentActivity = `-- name: ListAgentActivity :many
+WITH active AS (
+    SELECT c.agent_id, count(*) AS sessions
+    FROM conversations c LEFT JOIN tasks t ON t.conversation_id = c.id
+    WHERE (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
+      AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
+          SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
+      ))
+      AND CASE WHEN t.id IS NOT NULL THEN t.status IN ('queued', 'running')
+          ELSE EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') END
+    GROUP BY c.agent_id
+), enabled AS (
+    SELECT agent_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY agent_id
+)
+SELECT a.id, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
+    CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations
+FROM agents a LEFT JOIN active ON active.agent_id = a.id LEFT JOIN enabled ON enabled.agent_id = a.id
+`
+
+type ListAgentActivityRow struct {
+	ID                 string `json:"id"`
+	ActiveSessions     int64  `json:"active_sessions"`
+	EnabledAutomations int64  `json:"enabled_automations"`
+}
+
+func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAgentActivity)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAgentActivityRow{}
+	for rows.Next() {
+		var i ListAgentActivityRow
+		if err := rows.Scan(&i.ID, &i.ActiveSessions, &i.EnabledAutomations); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listChannelCommandReplies = `-- name: ListChannelCommandReplies :many
 SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
 AND agent_id = ?1 AND peer LIKE ?2 || '%' ORDER BY rowid

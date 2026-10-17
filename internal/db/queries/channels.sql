@@ -50,3 +50,21 @@ SELECT a.id, a.name FROM agents a JOIN wechat_settings s ON s.agent_id = a.id WH
 
 -- name: FeishuCredentialOwner :one
 SELECT a.id, a.name FROM agents a JOIN feishu_settings s ON s.agent_id = a.id WHERE s.app_id = ?;
+
+-- name: ListAgentActivity :many
+WITH active AS (
+    SELECT c.agent_id, count(*) AS sessions
+    FROM conversations c LEFT JOIN tasks t ON t.conversation_id = c.id
+    WHERE (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
+      AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
+          SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
+      ))
+      AND CASE WHEN t.id IS NOT NULL THEN t.status IN ('queued', 'running')
+          ELSE EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') END
+    GROUP BY c.agent_id
+), enabled AS (
+    SELECT agent_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY agent_id
+)
+SELECT a.id, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
+    CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations
+FROM agents a LEFT JOIN active ON active.agent_id = a.id LEFT JOIN enabled ON enabled.agent_id = a.id;

@@ -17,10 +17,10 @@ import { ShellContext } from "./page";
 import { ThemeToggle, useSystemTheme } from "./theme";
 import { useApp } from "../lib/app-state";
 import { instructionsDirty } from "../lib/instructions";
-import { useAgentActivity } from "./agent-layout";
 import { cn } from "../lib/utils";
 
 export function Shell() {
+  useQuery({ ...listAgentsOptions(), refetchInterval: 3000 });
   const [menu, setMenu] = useState(false);
   const location = useRouterState({ select: (s) => s.location });
   const path = location.pathname;
@@ -250,13 +250,14 @@ function AgentRow({ agent, current }: { agent: Agent; current: boolean }) {
   const agentId = useAgentId();
   const { draft } = useApp();
   const dirty = instructionsDirty(draft, agent.instructions);
-  const activity = useAgentActivity();
+  const active = agent.activity?.activeSessions ?? 0;
+  const channels = agent.activity?.runningChannels ?? 0;
 
   const status =
-    activity.active > 0
-      ? `${activity.active} active`
-      : activity.channels > 0
-        ? `${activity.channels} ${activity.channels === 1 ? "channel" : "channels"} on`
+    active > 0
+      ? `${active} active`
+      : channels > 0
+        ? `${channels} ${channels === 1 ? "channel" : "channels"} on`
         : "Idle";
 
   return (
