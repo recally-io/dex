@@ -1,3 +1,4 @@
+import { useAgentId } from "../../lib/agent-scope";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -225,6 +226,7 @@ function ToolStatus({ status }: { status: ToolItem["status"] }) {
 
 /** Consecutive tool calls as one step row with a line for each call. */
 export function ToolStep({ tools, memory }: { tools: ToolItem[]; memory?: string }) {
+  const agentId = useAgentId();
   const working = tools.some((t) => t.status === "running");
   const failed = tools.some((t) => t.status === "error");
   const [open, setOpen] = useState<boolean | null>(null);
@@ -249,8 +251,8 @@ export function ToolStep({ tools, memory }: { tools: ToolItem[]; memory?: string
           )}
           {tools[0].taskId ? (
             <Link
-              to="/tasks/$taskId"
-              params={{ taskId: tools[0].taskId }}
+              to="/a/$agentId/tasks/$taskId"
+              params={{ agentId, taskId: tools[0].taskId }}
               className="ml-1.5 font-medium text-ink decoration-line-strong underline-offset-3 hover:underline"
             >
               {dispatch.target}
@@ -360,22 +362,24 @@ function CopyText({ text }: { text: string }) {
   );
 }
 
-// GET /api/uploads/{id} serves an image inline and any other file as a download.
+// GET /api/agents/{agentId}/uploads/{id} serves an image inline and any other file as a download.
 function Files({ files }: { files: Attachment[] }) {
+  const agentId = useAgentId();
+
   return (
     <ul aria-label="Attached files" className="flex max-w-full flex-wrap justify-end gap-1.5">
       {files.map((f) =>
         isImage(f.mimeType) ? (
           <li key={f.id}>
             <a
-              href={`/api/uploads/${f.id}`}
+              href={`/api/agents/${encodeURIComponent(agentId)}/uploads/${f.id}`}
               target="_blank"
               rel="noreferrer"
               title={f.name}
               className="block"
             >
               <img
-                src={`/api/uploads/${f.id}`}
+                src={`/api/agents/${encodeURIComponent(agentId)}/uploads/${f.id}`}
                 alt={f.name}
                 loading="lazy"
                 className="h-28 max-w-[min(240px,100%)] rounded-xl bg-field object-cover shadow-hairline"
@@ -385,7 +389,7 @@ function Files({ files }: { files: Attachment[] }) {
         ) : (
           <li key={f.id} className="min-w-0">
             <a
-              href={`/api/uploads/${f.id}`}
+              href={`/api/agents/${encodeURIComponent(agentId)}/uploads/${f.id}`}
               download={f.name}
               className="flex h-10 min-w-0 items-center gap-2 rounded-[10px] bg-field py-1 pr-2.5 pl-1 text-[11.5px] shadow-hairline transition-colors hover:bg-hover"
             >
@@ -417,6 +421,8 @@ export function TranscriptItem({
   retry: () => void;
   canRetry: boolean;
 }) {
+  const agentId = useAgentId();
+
   switch (item.kind) {
     case "boundary":
       if (item.boundary === "compaction") return null;
@@ -467,8 +473,8 @@ export function TranscriptItem({
           <h3 className="min-w-0 [overflow-wrap:anywhere]">
             <span className="mr-1.5 font-medium text-ink-2">Background result</span>
             <Link
-              to="/tasks/$taskId"
-              params={{ taskId: item.taskId }}
+              to="/a/$agentId/tasks/$taskId"
+              params={{ agentId, taskId: item.taskId }}
               className="font-semibold text-ink decoration-line-strong underline-offset-3 hover:underline"
             >
               {item.title}

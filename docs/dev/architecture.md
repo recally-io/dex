@@ -70,8 +70,8 @@ Each agent has one main conversation with channel key `main`. The unique
 agent/key constraint makes `GET /api/agents/{agentId}/chats/main` safe to repeat.
 It creates the control record on demand. Messages use
 `POST /api/agents/{agentId}/chats/{id}/messages` and the agent's settings.
-The web opens the default main conversation at `/` through its default-agent
-aliases. `POST /api/agents/{agentId}/chats` takes no body and returns a writable
+The web opens each main conversation at `/a/{agentId}`. `/` redirects to
+`/a/default`. `POST /api/agents/{agentId}/chats` takes no body and returns a writable
 Chat session (`201`).
 Its channel key starts with `chat:`. One SQLite write reuses the newest Chat
 with no ordinary message, or creates one. Concurrent opens reuse the same row.
@@ -81,7 +81,7 @@ message uses the first file's name. Each Chat has its own worker conversation.
 It uses the bot's settings, instructions and shared memory. It does not read
 main's model context or send its answers to main.
 
-The timeline header opens `/sessions`. `GET /api/agents/{agentId}/chats` lists
+The timeline header opens `/a/{agentId}/sessions`. `GET /api/agents/{agentId}/chats` lists
 session summaries
 by `updatedAt` descending, then ID descending. `updatedAt` is the latest
 conversation creation, input creation or settlement, or task start or end time.
@@ -89,35 +89,43 @@ Task times apply only to the task's own conversation. List and detail use the
 same rule. The list excludes main, old channel conversations, dreams and
 Chat sessions with no message. Task rows add `task: TaskSummary`, without
 report bodies. The query does not read reports or transcripts. The page
-filters by Chat, Task or Automation. `/tasks` redirects to `/sessions`.
+filters by Chat, Task or Automation. `/tasks` redirects to `/a/default/sessions`.
 The active count includes tasks with status queued or running, and other
 busy sessions. Each row counts once. A kind filter counts only visible rows.
 `New session` appears only on the Sessions page. Other sessions open at
-`/c/{id}`; tasks open at `/tasks/{id}` with Report above Work. Main stays at `/`.
+`/a/{agentId}/c/{id}`; tasks open at `/a/{agentId}/tasks/{id}` with Report above
+Work. Main stays at `/a/{agentId}`.
 
 Channel input enters the default agent's main conversation. Chat and
 automation contexts stay separate.
 
-The agent is one page with tabs: Chat (`/`), Instructions (`/instructions`),
-Channels (`/channels`), Automations (`/automations`), Sessions (`/sessions`,
-with `/c/{id}` and `/tasks/{id}`), and Settings (`/agent`, the name). A pathless
-layout route holds them, so the header with the name, the tabs, the model, and
-the thinking level of a reasoning model stays in place. The main timeline stays
-mounted and `inert` under the other tabs, so its stream and the unsent message
-survive a tab change. Browser checks must skip `[inert]` subtrees. The
-instructions draft lives in app state; it marks the name, the Instructions tab,
-and the sidebar until it is saved, and a reload starts from the saved instructions. On
-a phone the tabs scroll and the current tab is centered. Channels counts the
-running channels, Automations the enabled ones, and Sessions the active ones.
-Inside the pane a top page has no frame and no visible title, because its tab
-names it; a page opened from a tab shows its breadcrumb and title.
+Each agent has a page under `/a/{agentId}`. Its tabs are Chat (the base
+path), Instructions (`/instructions`), Channels (`/channels`), Automations
+(`/automations`), Sessions (`/sessions`), Extensions (`/extensions`), and
+Settings (`/agent`). Session and task details use `/c/{id}` and `/tasks/{id}`
+under that base path. A layout route keeps the name, tabs, model, and thinking
+level in place. The main timelines of visited agents stay mounted and `inert`
+when hidden. Their streams, composer drafts, and uploaded attachments survive
+agent and tab changes. Browser checks must skip `[inert]` subtrees.
+Instructions drafts live in a map by agent ID above the routes. Saving one
+agent cannot change another agent's draft or query data. Reload discards drafts.
+On a phone the tabs scroll and center the current tab. Channels counts running
+channels only for the default agent. Other agents show a note with a link to
+the default agent's Channels tab and no channel controls. Automations counts
+enabled automations. Sessions counts active sessions.
 
-The sidebar lists the agents at the top and the global settings at the bottom:
-Providers, Extensions, Secrets, and About. The agent row is current on every
-tab and shows a status line: the active sessions, else the running channels,
-else Idle. `/settings` redirects to `/agent`.
-Channel settings show setup and runtime status. Automation details
-keep their run history. Automation transcripts have no web composer.
+The sidebar lists agents in creation order, with default first. Each row shows
+an avatar letter, name, status, and an instructions draft pill. The current
+agent's row stays selected on all its pages. The status shows active sessions,
+else running channels, else Idle. The `+` button opens a create dialog with a
+name and the existing model picker. The form starts with the current agent's
+provider, model, and thinking level. A successful create opens its empty timeline.
+Providers, Secrets, and About are global pages at the bottom of the sidebar.
+Old agent page URLs redirect to the same page under `/a/default`.
+`/settings` redirects to `/a/default/agent`. An unknown agent shows a not-found
+page with a link to Dex. Channel settings show setup and runtime status.
+Automation details keep their run history. Automation transcripts have no
+web composer.
 
 Every enqueue writes `submissions.origin`. Web input in main and Chat uses `web`.
 Channel input uses the exact peer, such as `telegram:7`, and always enters main.
@@ -157,10 +165,9 @@ One scheduler job checks automations across all agents and posts each prompt
 with the saved agent ID. Extension reload restarts the whole worker and affects
 every agent.
 
-The web UI still uses the un-nested routes. These routes remain aliases for the
-default agent, including `PUT /api/settings/agent`. `GET /api/settings` retains
-`settings.agent` for that agent. Telegram, WeChat, and Feishu also stay on the
-default agent. The OpenAPI contract defines both route forms.
+The web UI uses the nested agent routes, including live events and upload
+links. The un-nested routes remain temporary aliases for the default agent.
+Telegram, WeChat, and Feishu stay on the default agent.
 
 ## Memory
 
@@ -488,7 +495,7 @@ external actions occurred once.
 
 ## Attachments
 
-1. The browser sends each file as `POST /api/uploads` (multipart, one file,
+1. The browser sends each file as `POST /api/agents/{agentId}/uploads` (multipart, one file,
    at most 20 MB). [`upload.Store`](../../internal/upload/upload.go) writes
    it to `workspace/uploads/<UUIDv7>/<name>` and returns its ID, name, size,
    type (from the content) and workspace path. The directory is the only
@@ -501,7 +508,7 @@ external actions occurred once.
    also prepares images for a model with image input. The `dex.user` entry
    keeps the attachments, so the transcript shows the files and the text
    without the list.
-4. `GET /api/uploads/{id}` serves a file for the transcript.
+4. `GET /api/agents/{agentId}/uploads/{id}` serves a file for the transcript.
 
 The contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas `Item`
 and `ChatEvent`. See [ADR 0003](decisions/0003-web-ui-stack-and-live-transcript.md).
@@ -827,7 +834,7 @@ token.
 
 Uploads: a file name with a path, a control character, or more than 255
 bytes is refused. An upload ID must be a UUID in its normal form, so it
-cannot leave the uploads directory. `GET /api/uploads/{id}` sends PNG, JPEG,
+cannot leave the uploads directory. `GET /api/agents/{agentId}/uploads/{id}` sends PNG, JPEG,
 GIF and WebP inline with their type, and every other file as
 `application/octet-stream` with `Content-Disposition: attachment`. All
 responses have `X-Content-Type-Options: nosniff`, so an uploaded HTML or SVG

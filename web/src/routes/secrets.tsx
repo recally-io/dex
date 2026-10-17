@@ -1,9 +1,12 @@
+import { useAgentId } from "../lib/agent-scope";
 import { Link } from "@tanstack/react-router";
 import { Facts, FramedPage, Mono, Note, NotAvailable, Panel, Section } from "../components/page";
 import { buttonVariants } from "../components/atoms/Button";
 import { WithSettings } from "../components/with-settings";
 
 export function SecretsPage() {
+  const agentId = useAgentId();
+
   return (
     <FramedPage
       title="Secrets"
@@ -31,8 +34,8 @@ export function SecretsPage() {
                 Provider keys
               </Link>
               <Link
-                to="/channels/$channelId"
-                params={{ channelId: "telegram" }}
+                to="/a/$agentId/channels/$channelId"
+                params={{ agentId, channelId: "telegram" }}
                 className={buttonVariants({ size: "xs", variant: "secondary" })}
               >
                 Telegram token

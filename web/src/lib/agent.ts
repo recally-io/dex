@@ -1,26 +1,31 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Agent, Model, Settings, ThinkingLevel } from "../api/generated/types.gen";
-import { setAgent } from "../api/generated/sdk.gen";
-import { getSettingsOptions, listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
-import { queryClient, refreshSettings } from "./queries";
+import { updateAgent } from "../api/generated/sdk.gen";
+import {
+  getAgentOptions,
+  getAgentQueryKey,
+  listAgentsQueryKey,
+  listModelsOptions,
+} from "../api/generated/@tanstack/react-query.gen";
+import { queryClient } from "./queries";
 
 let queue: Promise<void> = Promise.resolve();
 
-// PUT /api/settings/agent writes the name, model, thinking level and instructions together.
+// PUT /api/agents/{agentId} writes the name, model, thinking level and instructions together.
 // Saves run one at a time, and each reads the saved agent just before it writes, so a model change
 // keeps the saved instructions and an instructions save keeps the saved model.
-export function saveAgent(change: (saved: Agent) => Agent): Promise<void> {
+export function saveAgent(agentId: string, change: (saved: Agent) => Agent): Promise<void> {
   const run = queue.then(async () => {
-    const { agent } = await queryClient.fetchQuery({ ...getSettingsOptions(), staleTime: 0 });
+    const agent = await queryClient.fetchQuery({ ...getAgentOptions({ path: { agentId } }), staleTime: 0 });
 
     try {
-      await setAgent({ body: change(agent), throwOnError: true });
+      await updateAgent({ path: { agentId }, body: change(agent), throwOnError: true });
     } catch (cause) {
-      void refreshSettings();
+      void refreshAgent(agentId);
       throw cause;
     }
 
-    await refreshSettings();
+    await refreshAgent(agentId);
   });
 
   queue = run.catch(() => {});
@@ -28,8 +33,8 @@ export function saveAgent(change: (saved: Agent) => Agent): Promise<void> {
   return run;
 }
 
-export function saveModel(provider: string, modelId: string) {
-  return saveAgent((saved) => ({ ...saved, provider, modelId }));
+export function saveModel(agentId: string, provider: string, modelId: string) {
+  return saveAgent(agentId, (saved) => ({ ...saved, provider, modelId }));
 }
 
 export type AgentModel = { label: string; ok: boolean; model?: Model };
@@ -64,3 +69,11 @@ export const thinkingNames: Record<ThinkingLevel, string> = {
   xhigh: "Extra high",
   max: "Max",
 };
+
+async function refreshAgent(agentId: string) {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: getAgentQueryKey({ path: { agentId } }) }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getSettings", path: { agentId } }] }),
+    queryClient.invalidateQueries({ queryKey: listAgentsQueryKey() }),
+  ]);
+}

@@ -1,3 +1,6 @@
+import { AgentContext, useAgentId } from "../lib/agent-scope";
+import { AgentCreateDialog } from "./agent-create-dialog";
+import type { Agent } from "../api/generated/types.gen";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Outlet, useRouterState, type LinkProps } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -6,15 +9,15 @@ import { IconCircleInfo } from "@central-icons-react/round-outlined-radius-2-str
 import { IconCloudApi } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCloudApi";
 import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
 import { IconKey2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconKey2";
-import { IconPuzzle } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPuzzle";
-import { getSettingsOptions } from "../api/generated/@tanstack/react-query.gen";
+
+import { getSettingsOptions, listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
 import GlideMenu from "./primitives/GlideMenu";
 import { StatusPill } from "./atoms/StatusPill";
 import { ShellContext } from "./page";
 import { ThemeToggle, useSystemTheme } from "./theme";
 import { useApp } from "../lib/app-state";
 import { instructionsDirty } from "../lib/instructions";
-import { isAgentPath, useAgentActivity } from "./agent-layout";
+import { useAgentActivity } from "./agent-layout";
 import { cn } from "../lib/utils";
 
 export function Shell() {
@@ -39,7 +42,9 @@ export function Shell() {
     if (shown.current === path) return;
     shown.current = path;
 
-    const frame = requestAnimationFrame(() => document.getElementById("page-title")?.focus());
+    const frame = requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>('[id="page-title"]:not([inert] *)')?.focus(),
+    );
 
     return () => cancelAnimationFrame(frame);
   }, [path]);
@@ -165,58 +170,48 @@ function Dot({ tone, label }: { tone: "orange" | "red"; label: string }) {
 
 const configure = [
   { to: "/providers", label: "Providers", icon: <IconCloudApi size={16} /> },
-  { to: "/extensions", label: "Extensions", icon: <IconPuzzle size={16} /> },
   { to: "/secrets", label: "Secrets", icon: <IconKey2 size={16} /> },
   { to: "/about", label: "About", icon: <IconCircleInfo size={16} /> },
 ] as const;
 
 function Sidebar({ path, className }: { path: string; className?: string }) {
   const settings = useQuery(getSettingsOptions());
-  const { draft } = useApp();
-  const name = settings.data?.agent.name ?? "dex";
-  const dirty = instructionsDirty(draft, settings.data?.agent.instructions);
-  const [a] = path.split("/").filter(Boolean);
+  const agents = useQuery(listAgentsOptions());
+  const [creating, setCreating] = useState(false);
+  const [a, selected] = path.split("/").filter(Boolean);
+  const agentId = a === "a" ? selected : "default";
   const providerErrors = settings.data?.providers.filter((p) => p.error).length ?? 0;
-  // Every tab of the agent belongs to its row; only the global settings have rows of their own.
-  const agentCurrent = isAgentPath(path);
-  const activity = useAgentActivity();
-
-  const status =
-    activity.active > 0
-      ? `${activity.active} active`
-      : activity.channels > 0
-        ? `${activity.channels} ${activity.channels === 1 ? "channel" : "channels"} on`
-        : "Idle";
 
   return (
     <aside aria-label="Navigation" className={cn("flex h-full w-[232px] shrink-0 flex-col", className)}>
-      <p className="mx-2 mt-1 flex h-8 items-center px-2 text-[12.5px] font-medium text-ink-3">Agents</p>
-      <div className="mx-2 mb-2.5 flex shrink-0 items-center">
-        <Link
-          to="/"
-          aria-current={agentCurrent ? "page" : undefined}
-          className={cn(
-            "flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-control px-2 hover:bg-hover-2",
-            agentCurrent && "bg-hover-2",
-          )}
+      <div className="mx-2 mt-1 flex h-8 items-center justify-between px-2 text-[12.5px] font-medium text-ink-3">
+        <span>Agents</span>
+        <button
+          type="button"
+          aria-label="Create agent"
+          onClick={() => setCreating(true)}
+          className="flex size-7 items-center justify-center rounded-control text-lg hover:bg-hover-2 hover:text-ink"
         >
-          <span
-            aria-hidden
-            className="flex size-6 shrink-0 items-center justify-center rounded-[7px] bg-ink text-[12px] font-semibold text-surface"
-          >
-            {name.charAt(0).toLowerCase()}
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-[14px] leading-tight font-semibold text-ink">{name}</span>
-            <span className="truncate text-[11.5px] leading-tight text-ink-3">{status}</span>
-          </span>
-          {dirty ? (
-            <StatusPill tone="orange" className="h-5 shrink-0 px-2 text-[11px]">
-              Draft
-            </StatusPill>
-          ) : null}
-        </Link>
+          +
+        </button>
       </div>
+      <div className="min-h-0 overflow-y-auto">
+        {agents.data?.agents.map((agent) => (
+          <AgentContext.Provider key={agent.id} value={agent.id!}>
+            <AgentRow agent={agent} current={a === "a" && agent.id === selected} />
+          </AgentContext.Provider>
+        ))}
+        {agents.isError ? (
+          <p role="alert" className="px-4 text-xs text-red">
+            Could not load agents.
+          </p>
+        ) : null}
+      </div>
+      {creating ? (
+        <AgentContext.Provider value={agentId}>
+          <AgentCreateDialog onClose={() => setCreating(false)} />
+        </AgentContext.Provider>
+      ) : null}
       <div className="flex-1" />
 
       <div className="mt-2 shrink-0 border-t border-dashed border-line-strong pt-2">
@@ -248,5 +243,49 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
         </div>
       </div>
     </aside>
+  );
+}
+
+function AgentRow({ agent, current }: { agent: Agent; current: boolean }) {
+  const agentId = useAgentId();
+  const { draft } = useApp();
+  const dirty = instructionsDirty(draft, agent.instructions);
+  const activity = useAgentActivity();
+
+  const status =
+    activity.active > 0
+      ? `${activity.active} active`
+      : activity.channels > 0
+        ? `${activity.channels} ${activity.channels === 1 ? "channel" : "channels"} on`
+        : "Idle";
+
+  return (
+    <div className="mx-2 mb-1 flex shrink-0 items-center">
+      <Link
+        to="/a/$agentId"
+        params={{ agentId }}
+        aria-current={current ? "page" : undefined}
+        className={cn(
+          "flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-control px-2 hover:bg-hover-2",
+          current && "bg-hover-2",
+        )}
+      >
+        <span
+          aria-hidden
+          className="flex size-6 shrink-0 items-center justify-center rounded-[7px] bg-ink text-[12px] font-semibold text-surface"
+        >
+          {agent.name.charAt(0).toLowerCase()}
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-[14px] leading-tight font-semibold text-ink">{agent.name}</span>
+          <span className="truncate text-[11.5px] leading-tight text-ink-3">{status}</span>
+        </span>
+        {dirty ? (
+          <StatusPill tone="orange" className="h-5 shrink-0 px-2 text-[11px]">
+            Draft
+          </StatusPill>
+        ) : null}
+      </Link>
+    </div>
   );
 }

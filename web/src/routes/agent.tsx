@@ -1,8 +1,8 @@
+import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Settings } from "../api/generated/types.gen";
-import { getSettingsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { ModelPicker } from "../components/model-picker";
@@ -17,7 +17,8 @@ import { WithSettings } from "../components/with-settings";
 import { cn } from "../lib/utils";
 
 export function AgentPage() {
-  const saved = useQuery(getSettingsOptions());
+  const agentId = useAgentId();
+  const saved = useQuery(scopedSettingsOptions(agentId));
   const model = useAgentModel(saved.data);
 
   return (
@@ -38,7 +39,8 @@ export function AgentPage() {
 }
 
 export function InstructionsPage() {
-  const saved = useQuery(getSettingsOptions());
+  const agentId = useAgentId();
+  const saved = useQuery(scopedSettingsOptions(agentId));
 
   return (
     <FramedPage
@@ -59,6 +61,7 @@ export function InstructionsPage() {
 }
 
 function Agent({ settings }: { settings: Settings }) {
+  const agentId = useAgentId();
   const { notify } = useApp();
   const model = useAgentModel(settings);
   const provider = settings.providers.find((p) => p.id === settings.agent.provider);
@@ -122,7 +125,7 @@ function Agent({ settings }: { settings: Settings }) {
                 levels={model.model.thinkingLevels}
                 save={async (level) => {
                   if (!level) return;
-                  await saveAgent((agent) => ({ ...agent, thinkingLevel: level }));
+                  await saveAgent(agentId, (agent) => ({ ...agent, thinkingLevel: level }));
                   notify(`Thinking is now ${thinkingNames[level]}. It applies from the next message.`);
                 }}
                 trigger={
@@ -178,11 +181,12 @@ function Agent({ settings }: { settings: Settings }) {
 }
 
 function NameRow({ name }: { name: string }) {
+  const agentId = useAgentId();
   const [draft, setDraft] = useState<string | null>(null);
   const value = draft ?? name;
 
   const save = useMutation({
-    mutationFn: (nextName: string) => saveAgent((agent) => ({ ...agent, name: nextName })),
+    mutationFn: (nextName: string) => saveAgent(agentId, (agent) => ({ ...agent, name: nextName })),
     onSuccess: () => setDraft(null),
   });
 
@@ -211,7 +215,7 @@ function NameRow({ name }: { name: string }) {
           id="bot-name"
           aria-describedby="bot-name-hint"
           aria-invalid={save.isError}
-          className="w-[220px]"
+          className="w-full sm:w-[220px]"
           value={value}
           disabled={save.isPending}
           onChange={(event) => setDraft(event.target.value)}

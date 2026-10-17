@@ -1,3 +1,4 @@
+import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -8,7 +9,6 @@ import {
   createTelegramPairingMutation,
   deleteTelegramMutation,
   getFeishuOptions,
-  getSettingsOptions,
   setTelegramMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { errorText, refreshSettings } from "../lib/queries";
@@ -36,6 +36,8 @@ function ChannelRow({
   text: string;
   status: ReactNode;
 }) {
+  const agentId = useAgentId();
+
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
       <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-inset text-ink-2 shadow-hairline">
@@ -43,8 +45,8 @@ function ChannelRow({
       </span>
       <span className="min-w-0 flex-1">
         <Link
-          to="/channels/$channelId"
-          params={{ channelId: channel }}
+          to="/a/$agentId/channels/$channelId"
+          params={{ agentId, channelId: channel }}
           className="block w-fit text-[13.5px] font-medium text-ink hover:underline"
         >
           {name}
@@ -69,7 +71,8 @@ function Boundary() {
 }
 
 export function ChannelsSection({ settings }: { settings: Settings }) {
-  const saved = useQuery({ ...getSettingsOptions(), refetchInterval: 3000 });
+  const agentId = useAgentId();
+  const saved = useQuery({ ...scopedSettingsOptions(agentId), refetchInterval: 3000 });
   const feishu = useQuery({ ...getFeishuOptions(), refetchInterval: 3000 });
   const current = saved.data ?? settings;
 
@@ -112,6 +115,10 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
 }
 
 export function ChannelsPage() {
+  const agentId = useAgentId();
+
+  if (agentId !== "default") return <ChannelsNote />;
+
   return (
     <FramedPage title="Channels">
       <WithSettings>{(settings) => <ChannelsSection settings={settings} />}</WithSettings>
@@ -120,9 +127,13 @@ export function ChannelsPage() {
 }
 
 export function ChannelPage({ channel }: { channel: "telegram" | "wechat" | "feishu" }) {
+  const agentId = useAgentId();
+
+  if (agentId !== "default") return <ChannelsNote />;
+
   return channel === "wechat" ? (
     <FramedPage
-      eyebrow={<Crumb to="/channels">Channels</Crumb>}
+      eyebrow={<Crumb to="/a/$agentId/channels">Channels</Crumb>}
       title="WeChat"
       description="Scan once. dex recognizes the owner from the login."
     >
@@ -136,11 +147,12 @@ export function ChannelPage({ channel }: { channel: "telegram" | "wechat" | "fei
 }
 
 function TelegramChannel() {
-  const saved = useQuery({ ...getSettingsOptions(), refetchInterval: 2000 });
+  const agentId = useAgentId();
+  const saved = useQuery({ ...scopedSettingsOptions(agentId), refetchInterval: 2000 });
 
   return (
     <FramedPage
-      eyebrow={<Crumb to="/channels">Channels</Crumb>}
+      eyebrow={<Crumb to="/a/$agentId/channels">Channels</Crumb>}
       title="Telegram"
       badge={
         saved.data ? (
@@ -452,5 +464,20 @@ function TelegramDialog({
         />
       ) : null}
     </Modal>
+  );
+}
+
+function ChannelsNote() {
+  return (
+    <FramedPage title="Channels">
+      <div className="p-5 sm:p-8">
+        <Note>
+          Channels connect to the default agent for now.{" "}
+          <Link to="/a/$agentId/channels" params={{ agentId: "default" }} className="font-medium underline">
+            Open default agent channels
+          </Link>
+        </Note>
+      </div>
+    </FramedPage>
   );
 }

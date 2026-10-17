@@ -121,7 +121,7 @@ test("user sees a delegation by its name without internal arguments", async () =
   const html = await render(createElement(ToolStep, { tools: [dispatch] }));
   expect(html).toContain("Sent to background");
   expect(html).toContain("检查日志写入");
-  expect(html).toContain('href="/tasks/internal-id"');
+  expect(html).toContain('href="/a/default/tasks/internal-id"');
   expect(html).not.toContain("private execution instructions");
   expect(html).not.toContain("spawn_task");
 

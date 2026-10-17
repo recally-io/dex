@@ -1,6 +1,7 @@
+import { useAgentId } from "./agent-scope";
 import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "../api/generated/types.gen";
-import { createUpload } from "../api/generated/sdk.gen";
+import { agentCreateUpload } from "../api/generated/sdk.gen";
 import { errorText } from "./queries";
 import { newId } from "./utils";
 
@@ -8,7 +9,7 @@ import { newId } from "./utils";
 export const maxFiles = 10;
 export const maxSize = 20 << 20;
 
-// The image types that GET /api/uploads/{id} serves inline.
+// The image types that GET /api/agents/{agentId}/uploads/{id} serves inline.
 const inline = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 export const isImage = (mimeType: string) => inline.has(mimeType);
@@ -32,6 +33,7 @@ export type DraftFile = {
 };
 
 export function useAttachments() {
+  const agentId = useAgentId();
   const [files, setFiles] = useState<DraftFile[]>([]);
   const [notice, setNotice] = useState("");
   const uploads = useRef(new Map<string, { abort: AbortController; preview?: string }>());
@@ -81,7 +83,7 @@ export function useAttachments() {
       if (file.size > maxSize)
         return { key, name: file.name, size: file.size, preview, error: "Larger than 20 MB" };
 
-      createUpload({ body: { file }, signal: abort.signal, throwOnError: true }).then(
+      agentCreateUpload({ path: { agentId }, body: { file }, signal: abort.signal, throwOnError: true }).then(
         ({ data }) => update(key, { upload: data }),
         (cause: unknown) => {
           if (!abort.signal.aborted) update(key, { error: errorText(cause) });

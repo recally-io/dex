@@ -1,3 +1,4 @@
+import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
 import { useContext, useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -15,12 +16,11 @@ import type {
 } from "../api/generated/types.gen";
 import {
   getHealthOptions,
-  getSettingsOptions,
-  getMainChatOptions,
-  sendMessageMutation,
-  abortChatMutation,
+  agentGetMainChatOptions,
+  agentSendMessageMutation,
+  agentAbortChatMutation,
   listModelsOptions,
-  listChatsOptions,
+  agentListChatsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
@@ -40,7 +40,8 @@ import LoadingState from "../components/primitives/LoadingState";
 import { cn, newId } from "../lib/utils";
 
 export function ChatPage({ chatId }: { chatId?: number }) {
-  const settings = useQuery(getSettingsOptions());
+  const agentId = useAgentId();
+  const settings = useQuery(scopedSettingsOptions(agentId));
 
   return settings.isPending ? (
     <MainPane>
@@ -64,7 +65,8 @@ export function ChatPage({ chatId }: { chatId?: number }) {
 }
 
 export function MainTimeline({ settings }: { settings: Settings }) {
-  const main = useQuery(getMainChatOptions());
+  const agentId = useAgentId();
+  const main = useQuery(agentGetMainChatOptions({ path: { agentId } }));
 
   return main.isPending ? (
     <MainPane>
@@ -80,6 +82,8 @@ export function MainTimeline({ settings }: { settings: Settings }) {
 }
 
 function OriginPill({ chat }: { chat: ChatInfo }) {
+  const agentId = useAgentId();
+
   if (chat.channel === "web" && !chat.main)
     return (
       <StatusPill dot={false} className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
@@ -103,8 +107,8 @@ function OriginPill({ chat }: { chat: ChatInfo }) {
 
     return chat.automationId ? (
       <Link
-        to="/automations/$automationId"
-        params={{ automationId: chat.automationId }}
+        to="/a/$agentId/automations/$automationId"
+        params={{ agentId, automationId: chat.automationId }}
         className="shrink-0 rounded-full hover:opacity-80"
       >
         {pill}
@@ -118,13 +122,15 @@ function OriginPill({ chat }: { chat: ChatInfo }) {
 }
 
 function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
+  const agentId = useAgentId();
+
   const { chat, state, setState, queued, setQueued, connection, streamError, reconnect } =
     useChatStream(chatId);
 
   const readOnly = chat.data?.readOnly ?? true;
 
   const sessions = useQuery({
-    ...listChatsOptions(),
+    ...agentListChatsOptions({ path: { agentId } }),
     enabled: !readOnly,
     refetchInterval: 3000,
   });
@@ -144,16 +150,16 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const failedMessage = useRef<{ body: MessageInput; attachments: Attachment[] } | null>(null);
-  const send = useMutation(sendMessageMutation());
+  const send = useMutation(agentSendMessageMutation());
   const models = useQuery(listModelsOptions());
   const files = useAttachments();
   const model = agentModel(settings.agent, models.data?.models);
 
   const abort = useMutation({
-    ...abortChatMutation(),
+    ...agentAbortChatMutation(),
     onSuccess: async () => {
       setQueued([]);
-      await refreshChats();
+      await refreshChats(agentId);
     },
   });
 
@@ -213,11 +219,11 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
     setQueued((previous) => [...previous, local]);
 
     try {
-      await send.mutateAsync({ path: { chatId }, body });
+      await send.mutateAsync({ path: { agentId, chatId }, body });
       failedMessage.current = null;
       setDraft((current) => (current.trim() === text ? "" : current));
       files.sent(ids);
-      await refreshChats();
+      await refreshChats(agentId);
     } catch (cause) {
       setQueued((previous) => previous.filter((item) => item.id !== body.id));
       throw cause;
@@ -252,7 +258,7 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
                 void sendText(failedMessage.current.body.text, failedMessage.current.attachments).catch(
                   () => {},
                 );
-              else if (abort.isError && chatId) abort.mutate({ path: { chatId } });
+              else if (abort.isError && chatId) abort.mutate({ path: { agentId, chatId } });
             }}
           />
         </div>
@@ -313,7 +319,7 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
         autoFocus
         onSend={(text) => sendText(text, files.ready)}
         onStop={() => {
-          if (chatId) abort.mutate({ path: { chatId } });
+          if (chatId) abort.mutate({ path: { agentId, chatId } });
         }}
         text={draft}
         onTextChange={setDraft}
@@ -329,7 +335,11 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
     ) : chatId && chat.isError ? (
       <div className="flex flex-col items-start gap-4">
         <Failure title="Could not load this session" error={chat.error} retry={() => void chat.refetch()} />
-        <Link className="text-[13px] font-medium text-accent-ink underline" to="/">
+        <Link
+          className="text-[13px] font-medium text-accent-ink underline"
+          to="/a/$agentId"
+          params={{ agentId }}
+        >
           Open timeline
         </Link>
       </div>
@@ -426,7 +436,8 @@ function Chat({ chatId, settings }: { chatId: number; settings: Settings }) {
             {chat.data ? (
               <>
                 <Link
-                  to="/sessions"
+                  to="/a/$agentId/sessions"
+                  params={{ agentId }}
                   className="shrink-0 text-[13px] text-ink-3 hover:text-ink hover:underline"
                 >
                   Sessions

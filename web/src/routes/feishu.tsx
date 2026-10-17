@@ -102,7 +102,7 @@ export function FeishuChannel() {
 
   return (
     <FramedPage
-      eyebrow={<Crumb to="/channels">Channels</Crumb>}
+      eyebrow={<Crumb to="/a/$agentId/channels">Channels</Crumb>}
       title="Feishu / Lark"
       description="Talk to dex in a private chat. Only the paired owner can use the bot."
     >

@@ -19,27 +19,31 @@ to read in an afternoon.
   Listening addresses are limited to loopback.
 - Bot settings in the web UI: name, model, thinking level, instructions,
   channels, and automations with their runs. The name has 1 to 40 characters
-  after spaces are trimmed. Providers, Extensions, Secrets, and About are global
-  pages. Named secrets are not available yet. The CLI manages the service
+  after spaces are trimmed. Providers, Secrets, and About are global pages.
+  Named secrets are not available yet. The CLI manages the service
   address, data directory, and update policy.
 - Several agents for one owner, each with a name, model, thinking level,
   instructions, conversations, automations, and workspace directory. The API
   can create, list, read, and update agents. Each agent's API paths include its
-  ID. A resource from another agent returns 404. The web UI still uses the
-  default agent through compatible routes. Providers and channels stay global.
+  ID. A resource from another agent returns 404. The web sidebar lists agents
+  with default first. Its `+` dialog creates an agent with a name and model,
+  then opens its empty timeline. Providers and channels stay global.
   Extension reload restarts the whole worker and affects every agent.
 - Durable conversations: control stores each message before delivery. Saved
   messages, reports, and execution records survive a restart. A restart does
   not attach an old CLI process or prove that its actions occurred once.
-- One main timeline per agent. The web opens it at `/` and uses the agent's
+- One main timeline per agent. The web opens it at `/a/{agentId}` and uses the agent's
   model settings. Clear context starts a new model context when the timeline
   is idle. Earlier messages stay readable with Show earlier messages. A clear
   keeps long-term memory. After a summary, Show earlier messages can load
   the earlier transcript. Only a clear shows a divider. The bot is one page
-  with tabs: Chat, Instructions, Channels, Automations, Sessions, and
-  Settings. Its header shows the name, the tabs, the model, and the thinking
+  with tabs: Chat, Instructions, Channels, Automations, Sessions, Extensions,
+  and Settings. Its header shows the name, the tabs, the model, and the thinking
   level. The sidebar lists the agents and the global settings. It has no chat
-  list or New chat action.
+  list or New chat action. Each agent keeps its unsent main message, uploaded
+  attachments, and instructions draft when the user switches agents. Old page
+  URLs open the default agent. An unknown agent shows a not-found page.
+  Other agents have a Channels note with a link to the default agent.
   Channel input shares main. Automation runs have separate read-only transcripts.
 - Internal background delegation for each agent. Each delegation has
   one input and fixed model settings. The main agent stays available and
@@ -55,8 +59,8 @@ to read in an afternoon.
   Earlier versions accepted group messages from allowed users. The bot now
   ignores all non-private chats, including messages from allowed users.
 - Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. All channels
-  are for the owner. The web UI and channels use the default agent. These
-  entries share its main context. Input from one entry can
+  are for the owner. Channels use the default agent. The web selects an agent.
+  Web input to default and channel input share its main context. Input from one entry can
   affect an answer at another entry. Channel messages show their channel name
   in the web timeline. Replies return only to the input's origin. Web input
   sends no channel reply. Each input gets its own answer, in admission order.

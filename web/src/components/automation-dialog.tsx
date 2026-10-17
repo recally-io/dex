@@ -1,9 +1,10 @@
+import { useAgentId } from "../lib/agent-scope";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Automation, AutomationInput, Schedule, ScheduleInput } from "../api/generated/types.gen";
 import {
-  createAutomationMutation,
-  updateAutomationMutation,
+  agentCreateAutomationMutation,
+  agentUpdateAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { previewSchedule } from "../api/generated/sdk.gen";
 import { refreshAutomations } from "../lib/queries";
@@ -28,6 +29,7 @@ function localDateTime(at: number) {
 }
 
 export function AutomationDialog({ existing, onClose }: { existing?: Automation; onClose: () => void }) {
+  const agentId = useAgentId();
   const formId = useId();
   const browserZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [name, setName] = useState(existing?.name ?? "");
@@ -82,12 +84,12 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   });
 
   const saved = async () => {
-    await refreshAutomations();
+    await refreshAutomations(agentId);
     onClose();
   };
 
-  const create = useMutation({ ...createAutomationMutation(), onSuccess: saved });
-  const update = useMutation({ ...updateAutomationMutation(), onSuccess: saved });
+  const create = useMutation({ ...agentCreateAutomationMutation(), onSuccess: saved });
+  const update = useMutation({ ...agentUpdateAutomationMutation(), onSuccess: saved });
   const pending = create.isPending || update.isPending;
   const error = create.error ?? update.error;
 
@@ -138,8 +140,8 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
           if (!validSchedule || pending) return;
           const body = { name: name.trim(), prompt: prompt.trim(), schedule, timeZone, session, enabled };
 
-          if (existing) update.mutate({ path: { automationId: existing.id }, body });
-          else create.mutate({ body });
+          if (existing) update.mutate({ path: { agentId, automationId: existing.id }, body });
+          else create.mutate({ path: { agentId }, body });
         }}
       >
         <Field label="Name">

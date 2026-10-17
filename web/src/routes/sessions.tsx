@@ -1,3 +1,4 @@
+import { scopedSettingsOptions, useAgentId } from "../lib/agent-scope";
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -8,10 +9,9 @@ import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2
 import { IconPlusSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlusSmall";
 import type { Chat, TaskSummary } from "../api/generated/types.gen";
 import {
-  getSettingsOptions,
-  getTaskOptions,
-  listChatsOptions,
-  createChatMutation,
+  agentGetTaskOptions,
+  agentListChatsOptions,
+  agentCreateChatMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { activeSessionCount, sessionKind, taskTime, taskTimes } from "../lib/tasks";
 import { refreshChats } from "../lib/queries";
@@ -52,15 +52,16 @@ function TaskPill({ task }: { task: Pick<TaskSummary, "status"> }) {
 }
 
 export function SessionsPage() {
-  const settings = useQuery(getSettingsOptions());
-  const sessions = useQuery({ ...listChatsOptions(), refetchInterval: 3000 });
+  const agentId = useAgentId();
+  const settings = useQuery(scopedSettingsOptions(agentId));
+  const sessions = useQuery({ ...agentListChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
   const navigate = useNavigate();
 
   const create = useMutation({
-    ...createChatMutation(),
+    ...agentCreateChatMutation(),
     onSuccess: async (chat) => {
-      await refreshChats();
-      await navigate({ to: "/c/$chatId", params: { chatId: String(chat.id) } });
+      await refreshChats(agentId);
+      await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chat.id) } });
     },
   });
 
@@ -74,7 +75,12 @@ export function SessionsPage() {
       title="Sessions"
       description={`Conversations of ${name} apart from the main timeline. Each session has its own context. Chat sessions take messages. The other kinds are read-only.`}
       actions={
-        <Button size="sm" variant="secondary" disabled={create.isPending} onClick={() => create.mutate({})}>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={create.isPending}
+          onClick={() => create.mutate({ path: { agentId } })}
+        >
           <IconPlusSmall size={16} /> {create.isPending ? "Opening…" : "New session"}
         </Button>
       }
@@ -129,6 +135,7 @@ export function SessionsPage() {
 }
 
 function SessionRow({ chat }: { chat: Chat }) {
+  const agentId = useAgentId();
   const kind = sessionKind(chat);
 
   const Icon = kind === "Chat" ? IconBubble2 : kind === "Task" ? IconTasks : IconClock;
@@ -149,14 +156,18 @@ function SessionRow({ chat }: { chat: Chat }) {
       <Icon size={16} className="mt-0.5 shrink-0 self-start text-ink-3" />
       {chat.task ? (
         <Link
-          to="/tasks/$taskId"
-          params={{ taskId: chat.task.id }}
+          to="/a/$agentId/tasks/$taskId"
+          params={{ agentId, taskId: chat.task.id }}
           className="min-w-0 flex-1 hover:underline"
         >
           {content}
         </Link>
       ) : (
-        <Link to="/c/$chatId" params={{ chatId: String(chat.id) }} className="min-w-0 flex-1 hover:underline">
+        <Link
+          to="/a/$agentId/c/$chatId"
+          params={{ agentId, chatId: String(chat.id) }}
+          className="min-w-0 flex-1 hover:underline"
+        >
           {content}
         </Link>
       )}
@@ -173,8 +184,10 @@ function SessionRow({ chat }: { chat: Chat }) {
 }
 
 export function TaskPage({ taskId }: { taskId: string }) {
+  const agentId = useAgentId();
+
   const task = useQuery({
-    ...getTaskOptions({ path: { taskId } }),
+    ...agentGetTaskOptions({ path: { agentId, taskId } }),
     refetchInterval: ({ state }) =>
       state.data?.status === "queued" || state.data?.status === "running" ? 3000 : false,
   });
@@ -182,7 +195,7 @@ export function TaskPage({ taskId }: { taskId: string }) {
   return (
     <FramedPage
       eyebrow={
-        <Link to="/sessions" className="hover:text-ink hover:underline">
+        <Link to="/a/$agentId/sessions" params={{ agentId }} className="hover:text-ink hover:underline">
           Sessions
         </Link>
       }

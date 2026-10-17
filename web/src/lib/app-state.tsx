@@ -1,3 +1,4 @@
+import { useAgentId } from "./agent-scope";
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
 
@@ -5,11 +6,11 @@ type Notice = { id: number; text: string };
 
 type AppState = {
   // The unsaved instructions. It lives above the routes, so it survives navigation.
-  draft: string | null;
-  setDraft: (draft: string | null) => void;
+  drafts: Record<string, string | null>;
+  setDraft: (agentId: string, draft: string | null) => void;
   // Clears the draft after a save of `saved`, unless the draft changed since. Returns true when
   // the draft is kept. It reads the current draft, so a callback from an old page is safe.
-  settleDraft: (saved: string) => boolean;
+  settleDraft: (agentId: string, saved: string) => boolean;
   notify: (text: string) => void;
 };
 
@@ -20,25 +21,32 @@ export function useApp() {
 
   if (!state) throw new Error("useApp needs an AppProvider.");
 
-  return state;
+  const agentId = useAgentId();
+
+  return {
+    ...state,
+    draft: state.drafts[agentId] ?? null,
+    setDraft: (value: string | null) => state.setDraft(agentId, value),
+    settleDraft: (saved: string) => state.settleDraft(agentId, saved),
+  };
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [draft, setDraftState] = useState<string | null>(null);
-  const current = useRef<string | null>(null);
+  const [drafts, setDraftState] = useState<Record<string, string | null>>({});
+  const current = useRef<Record<string, string | null>>({});
   const [notices, setNotices] = useState<Notice[]>([]);
   const next = useRef(0);
 
-  const setDraft = useCallback((value: string | null) => {
-    current.current = value;
-    setDraftState(value);
+  const setDraft = useCallback((agentId: string, value: string | null) => {
+    current.current = { ...current.current, [agentId]: value };
+    setDraftState(current.current);
   }, []);
 
   const settleDraft = useCallback(
-    (saved: string) => {
-      const kept = current.current !== null && current.current !== saved;
+    (agentId: string, saved: string) => {
+      const kept = current.current[agentId] != null && current.current[agentId] !== saved;
 
-      if (!kept) setDraft(null);
+      if (!kept) setDraft(agentId, null);
 
       return kept;
     },
@@ -57,8 +65,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const state = useMemo(
-    () => ({ draft, setDraft, settleDraft, notify }),
-    [draft, setDraft, settleDraft, notify],
+    () => ({ drafts, setDraft, settleDraft, notify }),
+    [drafts, setDraft, settleDraft, notify],
   );
 
   return (
