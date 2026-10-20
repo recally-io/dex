@@ -178,19 +178,8 @@ html {
 
 body {
   background-color: var(--stripe-bg);
-  background-image: repeating-linear-gradient(
-    -45deg,
-    transparent 0,
-    transparent 7px,
-    var(--stripe) 7px,
-    var(--stripe) 8px
-  );
-  /* Pin the stripe pattern to the viewport so it stays put on scroll. */
-  background-attachment: fixed;
   color: var(--ink);
-  font-feature-settings: "cv11", "ss01";
   font-size: 14px;
-  letter-spacing: -0.01em;
   line-height: 1.5;
 }
 
@@ -387,20 +376,13 @@ select:focus-visible,
 /* Upstream sets these two with next/font. dex loads no web fonts, so it names the faces and
    falls back to the system faces when they are not installed. */
 :root {
-  --font-inter: "Inter", -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC";
-  --font-mono-face: "JetBrains Mono", "SF Mono";
+  --font-inter: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+  --font-mono-face: "JetBrains Maple Mono", "SF Mono", ui-monospace, monospace;
 }
 
-/* The hatch gutter around framed pages, the same stripe as the body. */
+/* The page gutter uses the same plain surface as the document. */
 .hatch {
   background-color: var(--stripe-bg);
-  background-image: repeating-linear-gradient(
-    -45deg,
-    transparent 0,
-    transparent 7px,
-    var(--stripe) 7px,
-    var(--stripe) 8px
-  );
 }
 
 /* The page title takes focus after navigation; it needs no ring. */

@@ -55,7 +55,7 @@ export function Shell() {
 
   return (
     <ShellContext.Provider value={shell}>
-      <div className="flex h-dvh bg-canvas text-ink lg:gap-2.5 lg:p-2.5 lg:pl-0">
+      <div className="flex h-dvh bg-canvas text-ink lg:gap-0 lg:p-0">
         <a
           href="#main"
           onClick={(e) => {

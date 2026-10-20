@@ -4,7 +4,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
 
 export const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 1000 }, mutations: { retry: false } },
+  defaultOptions: { queries: { retry: 1, staleTime: Infinity }, mutations: { retry: false } },
 });
 
 // Refreshes after a settings write. A failed read stays in its query for the UI to show; it does

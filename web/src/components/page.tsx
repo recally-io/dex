@@ -30,7 +30,7 @@ export function MainPane({ children, bar = true }: { children: ReactNode; bar?: 
     return <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>;
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line">
+    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page">
       {bar ? (
         <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 lg:hidden">
           <MenuButton />

@@ -54,7 +54,13 @@ function TaskPill({ task }: { task: Pick<TaskSummary, "status"> }) {
 export function SessionsPage() {
   const agentId = useAgentId();
   const settings = useAgentSettings(agentId);
-  const sessions = useQuery({ ...listChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
+
+  const sessions = useQuery({
+    ...listChatsOptions({ path: { agentId } }),
+    placeholderData: (previous) => previous,
+    refetchInterval: 3000,
+  });
+
   const navigate = useNavigate();
 
   const create = useMutation({

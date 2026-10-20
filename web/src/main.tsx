@@ -188,6 +188,7 @@ const oldAgentRoutes = [
 ] as const;
 
 const router = createRouter({
+  defaultPreload: "intent",
   routeTree: root.addChildren([
     agentPages.addChildren([
       home,
