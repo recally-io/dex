@@ -1,4 +1,4 @@
-// Real control, worker, HTTP, and Chrome. The provider is the app's faux boundary.
+// Real native engine, business services, HTTP, and Chrome. The provider is the app's faux boundary.
 /* eslint-disable no-await-in-loop */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -56,6 +56,7 @@ let socket;
 const results = [];
 const clears = [];
 const aborts = [];
+const messages = [];
 const exceptions = [];
 const taskReads = new Map();
 const noticeLayouts = [];
@@ -121,12 +122,19 @@ try {
       if (request.url.startsWith(`${base}/api/agents/default/tasks/`))
         taskReads.set(request.url, (taskReads.get(request.url) ?? 0) + 1);
 
+      if (request.url.endsWith("/messages"))
+        messages.push({ request: JSON.parse(request.postData), requestId: event.params.requestId });
+
       if (request.url.endsWith("/clear"))
         clears.push({ request: JSON.parse(request.postData), requestId: event.params.requestId });
 
       if (request.url.endsWith("/abort"))
         aborts.push({ url: request.url, requestId: event.params.requestId });
     } else if (event.method === "Network.responseReceived") {
+      const messageResponse = messages.find((entry) => entry.requestId === event.params.requestId);
+
+      if (messageResponse) messageResponse.status = event.params.response.status;
+
       const clear = clears.find((entry) => entry.requestId === event.params.requestId);
 
       if (clear) clear.status = event.params.response.status;
@@ -197,65 +205,79 @@ try {
   await reload();
   await ui("composer ready", "!!document.querySelector('textarea:not(:disabled):not([inert] *)')");
 
-  // Given durable input waiting for admission, a reload must keep Stop available.
+  // Maintenance refuses input before admission. Release must not create a ghost turn.
   await poll("maintenance holds admission", async () => {
     const response = await fetch(`${base}/api/maintenance`, { method: "POST" });
 
     return response.ok;
   });
-  await sendFromComposer("queued before Stop");
-  await poll("input is queued", async () => (await api(`/api/agents/default/chats/${main.id}`)).busy);
-  await reload();
-  await ui("queued input after reload", "document.body.innerText.includes('queued before Stop')");
-  await check(
-    "queued input keeps Stop after a reload",
-    "!!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
+  await sendFromComposer("refused during maintenance");
+  await poll("maintenance refuses with HTTP 409", () =>
+    messages.some((entry) => entry.request.text === "refused during maintenance" && entry.status === 409),
   );
-  await evaluate("document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)').click()");
-  await poll("queued input stopped", async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy);
   await ui(
-    "queued input withdrawn",
-    "document.body.innerText.includes('Stop requested. Earlier actions are not undone. Processes and remote work may continue.')",
+    "maintenance refusal visible",
+    "document.body.innerText.includes('Could not complete this action')",
   );
+  assert.equal((await api(`/api/agents/default/chats/${main.id}`)).busy, false);
+  await shot("01a-maintenance-refused");
   await api("/api/maintenance", undefined, "DELETE");
-
+  await reload();
+  await ui(
+    "composer ready after release",
+    "!!document.querySelector('textarea:not(:disabled):not([inert] *)')",
+  );
+  await check(
+    "maintenance refusal leaves no ghost input after release and reload",
+    "!document.body.innerText.includes('refused during maintenance') && !document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
+  );
   await sendFromComposer("first input");
   await ui("first answer", "document.body.innerText.includes('echo: first input')");
-  assert.equal(
-    await evaluate("document.body.innerText.includes('echo: queued before Stop')"),
-    false,
-    "withdrawn input must not run after release",
-  );
   await ui(
     "clear visible",
     "!![...document.querySelectorAll('button:not([inert] *)')].find(b => b.textContent.trim() === 'Clear context')",
   );
 
-  // An existing worker conversation waits at the maintenance gate when its stream reconnects.
+  // Reload during maintenance closes the stream. Release permits a fresh native subscription.
   await poll("maintenance before reconnect", async () => {
     const response = await fetch(`${base}/api/maintenance`, { method: "POST" });
 
     return response.ok;
   });
-  await sendFromComposer("queued during reconnect");
-  await poll("input awaits reconnect", async () => (await api(`/api/agents/default/chats/${main.id}`)).busy);
   await reload();
   await ui("composer awaits stream", "!!document.querySelector('textarea:disabled')");
   await check(
-    "Stop stays available while the stream awaits admission",
+    "maintenance does not invent active work while the stream reconnects",
+    "!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
+  );
+  await shot("01b-maintenance-reconnect");
+  await api("/api/maintenance", undefined, "DELETE");
+  await ui("stream restored", "!!document.querySelector('textarea:not(:disabled):not([inert] *)')");
+  await sendFromComposer("after maintenance reconnect");
+  await ui(
+    "reconnected stream answer",
+    "document.body.innerText.includes('echo: after maintenance reconnect')",
+  );
+  await check(
+    "reconnected stream keeps history without the refused input",
+    "document.body.innerText.includes('echo: first input') && !document.body.innerText.includes('refused during maintenance')",
+  );
+  await shot("01c-maintenance-restored");
+
+  // Stop a real tool run and keep its notice for the layout checks below.
+  await model("bash");
+  const maintenanceStopGate = join(isolated, "stop.gate");
+  await send(`while ! test -f '${maintenanceStopGate}'; do sleep 0.05; done; echo stopped-tool`);
+  await ui(
+    "tool can be stopped",
     "!!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
   );
   await evaluate("document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)').click()");
-  await poll(
-    "input stopped before reconnect",
-    async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy,
-  );
-  await api("/api/maintenance", undefined, "DELETE");
-  await ui("stream restored", "!!document.querySelector('textarea:not(:disabled):not([inert] *)')");
-  assert.equal(
-    await evaluate("document.body.innerText.includes('echo: queued during reconnect')"),
-    false,
-    "reconnect must not revive withdrawn input",
+  await poll("real tool stopped", async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy);
+  await writeFile(maintenanceStopGate, "release");
+  await ui(
+    "Stop notice visible",
+    "document.body.innerText.includes('Stop requested. Earlier actions are not undone. Processes and remote work may continue.')",
   );
 
   // When a real tool holds the run, only the server refuses Clear context.
@@ -327,6 +349,11 @@ try {
   await ui(
     "reply completed and note hidden",
     "document.body.innerText.includes('bash: gate-released') && !document.body.innerText.includes('Context not cleared.')",
+  );
+  // The streamed answer can arrive before the business receipt settles.
+  await poll(
+    "reply settled before Clear",
+    async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy,
   );
   await click("Clear context");
   await poll("accepted clear", () => clears.some((entry) => entry.status === 202));
@@ -444,7 +471,8 @@ try {
   );
   await shot("06-read-only");
 
-  // Given an idle main timeline, admit real channel work through control's SQLite queue.
+  // Release reconciles a saved channel input through the real native admission path.
+  await api("/api/maintenance", undefined, "POST");
   const channelGate = join(isolated, "channel.gate");
   const channelDB = new DatabaseSync(join(data, "control.sqlite"));
   channelDB.exec("PRAGMA busy_timeout = 5000");
@@ -471,6 +499,8 @@ try {
   } finally {
     channelDB.close();
   }
+
+  await api("/api/maintenance", undefined, "DELETE");
 
   const channelTask = await poll("channel task running", async () =>
     (await sessionTasks()).find((task) => task.status === "running"),
@@ -736,8 +766,9 @@ try {
     "Chat context, title, Clear, history, task return, Stop and main Stop scope use the selected session",
   );
 
-  // Channel inputs use the real main queue. The Go tests cover each platform boundary.
+  // Saved channel inputs use real reconciliation. Go tests cover each platform boundary.
   await model("echo");
+  await api("/api/maintenance", undefined, "POST");
   const entries = ["telegram:7", "wechat:owner", "feishu:owner"];
   const entryDB = new DatabaseSync(join(data, "control.sqlite"));
   entryDB.exec("PRAGMA busy_timeout = 5000");
@@ -752,6 +783,8 @@ try {
   } finally {
     entryDB.close();
   }
+
+  await api("/api/maintenance", undefined, "DELETE");
 
   for (const [label, width, height, theme] of [
     ["desktop-light", 1280, 900, "light"],
@@ -1137,7 +1170,7 @@ try {
   );
   await check(
     "extensions belong to the selected agent",
-    `!document.querySelector('aside a[href="/extensions"]') && document.body.innerText.includes('restarts worker for all agents')`,
+    `!document.querySelector('aside a[href="/extensions"]') && document.body.innerText.includes('Reload selected agent')`,
   );
   await check(
     "extension levels and secrecy",
@@ -1250,7 +1283,7 @@ try {
   const secretLog = await readFile(join(artifacts, "browser-app.log"), "utf8");
   assert.ok(
     !secretLog.includes(secretValue) && !secretLog.includes(secretReplacement),
-    "secret values stay out of app and worker logs",
+    "secret values stay out of app logs",
   );
   results.push(
     "secrets: save, masked value, replace, delete, dex scope, Reload, no leaked values, desktop and 390px phone",
@@ -1356,6 +1389,7 @@ try {
         results,
         clears,
         aborts,
+        messages,
         exceptions,
         taskReads: Object.fromEntries(taskReads),
         noticeLayouts,
@@ -1369,7 +1403,7 @@ try {
 } catch (error) {
   await writeFile(
     join(artifacts, "browser-network.json"),
-    JSON.stringify({ clears, aborts, exceptions }, null, 2),
+    JSON.stringify({ clears, aborts, messages, exceptions }, null, 2),
   );
 
   if (socket?.readyState === WebSocket.OPEN) {

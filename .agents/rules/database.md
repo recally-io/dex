@@ -3,8 +3,16 @@
 Read this before you change the schema, a migration, or a query.
 
 dex is one local binary, so control uses SQLite (`modernc.org/sqlite`, no cgo)
-instead of PostgreSQL. The agents' own data is in pi-durable storage in each
-agent directory; control does not read it.
+instead of PostgreSQL. PiG execution data stays in each agent's
+`state.sqlite`. Only `internal/engine` opens that storage. Business services
+use typed engine methods; they do not query execution tables.
+
+`control.sqlite` owns input intents, admission and outcome receipts, tasks,
+settings, and channel reply delivery facts. `conversations.execution_id`
+connects a business chat to its native execution conversation. Keep stable
+request IDs across the two stores. Their commits are separate; reconciliation
+must handle native admission before the receipt write and a receipt that
+never reached native admission.
 
 - `internal/db/migrations/` is the only schema source. Goose migrations are
   plain SQL with `-- +goose Up` and `-- +goose Down` sections. Create one with

@@ -3,7 +3,7 @@
 // memory up.
 //
 // A dream is a hidden chat with one message (channel key Channel + dream ID), so it gets the durable
-// delivery of every message: it survives a restart, and the worker commits its memory changes. The
+// delivery of every message: it survives a restart, and the engine commits its memory changes. The
 // dream chat gets Instructions as its system prompt; its message holds only the chats as data. The
 // dreams table records which settled messages each dream read; the next dream starts after the
 // newest done one.
@@ -42,7 +42,7 @@ const (
 // Header starts the message of a dream.
 const Header = "Chats since the previous dream, one JSON record per message, oldest first:\n\n"
 
-// Poster stores a message in a chat and delivers it to the worker.
+// Poster stores a message in a chat and admits it to native execution.
 type Poster interface {
 	Post(ctx context.Context, agentID, channelKey, title, id, content string) (int64, error)
 }

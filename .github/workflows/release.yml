@@ -24,7 +24,7 @@ jobs:
   goreleaser:
     name: GoReleaser
     needs: check
-    # macOS, because codesign must sign the darwin workers. Bun and Go cross-compile the rest.
+    # Go cross-compiles the native agent runtime and control.
     runs-on: macos-26
     timeout-minutes: 30
     permissions:
@@ -40,7 +40,7 @@ jobs:
           cache: true
       - run: mise run install
       # The release is a draft until the smoke tests pass.
-      - run: goreleaser release --clean --parallelism 1
+      - run: goreleaser release --clean
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
@@ -82,7 +82,7 @@ jobs:
           done
           echo "$health"
           test "$(jq -r .version <<<"$health")" = "$GITHUB_REF_NAME"
-          # The model list comes from the embedded worker, so it proves that the worker runs.
+          # The model list comes from the native agent runtime.
           curl -fsS http://127.0.0.1:18787/api/models | jq -e .models
           page="$(curl -fsS http://127.0.0.1:18787/)"
           grep -q '<div id="root">' <<<"$page"

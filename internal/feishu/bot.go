@@ -19,7 +19,7 @@ import (
 	"github.com/recally-io/dex/internal/upload"
 )
 
-// EventStreams opens the worker-backed transcript of a chat.
+// EventStreams opens the native transcript of a chat.
 type EventStreams interface {
 	Open(context.Context, int64) (io.ReadCloser, error)
 }

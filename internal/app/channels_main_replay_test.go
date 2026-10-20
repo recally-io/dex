@@ -2,10 +2,12 @@ package app_test
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
+	"uuid"
 )
 
 func TestUserChannelMainLegacyNewReplayPreservesContext(t *testing.T) {
@@ -91,16 +93,23 @@ func TestUserChannelMainStopReplayPreservesLaterWebInput(t *testing.T) {
 	waitChannelCommandFailure(t, d)
 	d.must(t, http.MethodDelete, "/api/agents/default/channels/telegram", nil, nil)
 	waitTaskPIDGone(t, filepath.Join(dir, "first-stop.pid"))
-	// A maintenance lease keeps the new input queued until the control restart.
+	// Maintenance rejects web input without saving a receipt.
 	eventually(t, "maintenance after Stop", func() (bool, any) {
 		status, body := d.call(t, http.MethodPost, "/api/maintenance", nil)
 		return status == http.StatusOK, body
 	})
-	later := d.send(t, main, taskGate(t, dir, "after-first-stop"))
-	d.stop()
-	if got := resultSubmission(t, conn, later); got.status != "pending" {
-		t.Fatalf("later web input did not stay queued before restart: %+v", got)
+	later := uuid.NewV7().String()
+	path := fmt.Sprintf("/api/agents/default/chats/%d/messages", main)
+	input := map[string]string{"id": later, "text": taskGate(t, dir, "after-first-stop")}
+	d.must(t, http.MethodPost, path, input, nil, http.StatusConflict)
+	var count int
+	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE id=?", later).Scan(&count); err != nil {
+		t.Fatal(err)
 	}
+	if count != 0 {
+		t.Fatal("maintenance rejection saved a web receipt")
+	}
+	d.stop()
 	var completed int
 	if err := conn.QueryRowContext(t.Context(), "SELECT completed FROM channel_commands WHERE source_key='telegram:123:1'").Scan(&completed); err != nil {
 		t.Fatal(err)
@@ -114,6 +123,8 @@ func TestUserChannelMainStopReplayPreservesLaterWebInput(t *testing.T) {
 
 	// When dex restarts and replays the incomplete Stop.
 	d = startDex(t, dir, f.srv.URL)
+	d.must(t, http.MethodPost, path, input, nil, http.StatusAccepted)
+	waitTaskFile(t, filepath.Join(dir, "after-first-stop.pid"))
 	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
 	waitTaskChannelText(t, f, "Stop requested.")
 	if got := resultSubmission(t, conn, later); got.status != "pending" {
@@ -169,7 +180,7 @@ func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
 		t.Fatalf("replayed Stop cancelled later task: %s", status)
 	}
 
-	// Then both new processes remain alive and finish through the real worker.
+	// Then both new processes remain alive and finish through the native engine.
 	for _, name := range []string{"later-turn", "later-task"} {
 		if taskPIDGone(t, filepath.Join(dir, name+".pid")) {
 			t.Fatalf("replayed Stop aborted %s", name)

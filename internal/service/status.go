@@ -17,12 +17,12 @@ import (
 	"github.com/recally-io/dex/internal/settings"
 )
 
-// Health identifies the running control and confirms that its worker answers ping.
+// Health identifies the running instance and reports native execution readiness.
 type Health struct {
-	Status      string `json:"status"`
-	Version     string `json:"version"`
-	DataDir     string `json:"dataDir"`
-	WorkerReady bool   `json:"workerReady"`
+	Status       string `json:"status"`
+	Version      string `json:"version"`
+	DataDir      string `json:"dataDir"`
+	RuntimeReady bool   `json:"runtimeReady"`
 }
 
 // Status has stable JSON names for scripts. Unknown PID is zero.
@@ -89,8 +89,8 @@ func Ready(ctx context.Context, c Config, version string) error {
 	defer cancel()
 	return poll(ctx, 200*time.Millisecond, func() (bool, error) {
 		h, err := Probe(ctx, c)
-		if err == nil && (h.DataDir != c.DataDir || h.Version != version || !h.WorkerReady) {
-			err = fmt.Errorf("unexpected health: version=%s dataDir=%s workerReady=%t (want %s, %s)", h.Version, h.DataDir, h.WorkerReady, version, c.DataDir)
+		if err == nil && (h.DataDir != c.DataDir || h.Version != version || !h.RuntimeReady) {
+			err = fmt.Errorf("unexpected health: version=%s dataDir=%s runtimeReady=%t (want %s, %s)", h.Version, h.DataDir, h.RuntimeReady, version, c.DataDir)
 		}
 		return err == nil, err
 	})
@@ -145,7 +145,7 @@ func (m Manager) Status(ctx context.Context) (Status, error) {
 	if probeErr == nil {
 		s.Health = &h
 	}
-	s.Healthy = probeErr == nil && h.WorkerReady && h.DataDir == c.DataDir
+	s.Healthy = probeErr == nil && h.RuntimeReady && h.DataDir == c.DataDir
 	if s.Healthy {
 		s.Version = h.Version
 	}

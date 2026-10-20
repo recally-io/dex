@@ -50,31 +50,48 @@ settings without changing your own.
 
 Run `mise tasks` for the full list. The main tasks:
 
-| Task              | What it does                                                        |
-| ----------------- | ------------------------------------------------------------------- |
-| `build`           | Builds `bin/dex` for this platform                                  |
-| `build:worker`    | Compiles the worker and writes `internal/workerbin/dex-worker.gz`   |
-| `check`           | All checks; the pre-commit hook runs it, CI runs its steps in jobs  |
-| `check:go`        | golangci-lint, `go build`, `go test -race`                          |
-| `check:worker`    | `tsc`, `vp lint`, `vp fmt --check`, `bun test`                      |
-| `generate:db`     | Regenerates `internal/db/sqlc`                                      |
-| `generate:api`    | Regenerates the Go server and the TS client from `api/openapi.yaml` |
-| `build:web`       | Builds the web UI into `web/dist`                                   |
-| `check:web`       | `tsc`, `vp lint`, `vp fmt --check`, `vp test` in `web/`             |
-| `check:api-drift` | Fails when the generated API code differs from the contract         |
+| Task                | What it does                                                                                                     |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `build`             | Builds `bin/dex` for this platform                                                                               |
+| `check`             | All checks; the pre-commit hook runs it, CI runs its steps in jobs                                               |
+| `check:go`          | golangci-lint, `go build`, `go test -race`                                                                       |
+| `check:native`      | Checks removed backend paths, rejects PiG TUI and extension-host imports, and builds four platforms with cgo off |
+| `generate:diagrams` | Renders the architecture and message-flow PNGs from PlantUML                                                     |
+| `generate:db`       | Regenerates `internal/db/sqlc`                                                                                   |
+| `generate:api`      | Regenerates the Go server and the TS client from `api/openapi.yaml`                                              |
+| `build:web`         | Builds the web UI into `web/dist`                                                                                |
+| `check:web`         | `tsc`, `vp lint`, `vp fmt --check`, `vp test` in `web/`                                                          |
+| `check:api-drift`   | Fails when the generated API code differs from the contract                                                      |
 
 ## Tests
 
-The rules are in [testing](../../.agents/rules/testing.md). The Go tests in
-`internal/app` run the real embedded worker with the faux model, and a fake
-Telegram Bot API server, so run
-`mise run build:worker` after a worker change. `check:go` does that for you.
+The rules are in [testing](../../.agents/rules/testing.md). Go tests run the
+native PiG engine with real SQLite stores. `internal/app` tests exercise HTTP,
+channels, and business receipts. `internal/engine` tests cover durable input,
+tools, extensions, transcript projection, and direct subscriptions. The faux
+provider replaces only the model boundary. Platform tests use local HTTP or
+stdio servers. They do not call production services.
+
+Run `mise run check:go` after a Go or PiG dependency change. It builds the web
+assets, runs lint, builds the packages, and runs tests with the race detector.
+`mise run check:native` also builds darwin and linux for amd64 and arm64
+with `CGO_ENABLED=0`. It checks that tracked backend-worker files and PiG TUI
+or extension-host dependencies are absent.
+
+A real-provider check is separate. Use a dedicated test data directory and
+credentials for that check.
+
+## Diagrams
+
+Edit `assets/src/architecture.puml` or `assets/src/message-flow.puml`, then run
+`mise run generate:diagrams`. Inspect both PNGs in `assets/`. Keep each source
+and its PNG in the same change.
 
 ## CI and releases
 
 [Check](../../.github/workflows/check.yml) runs on each push to `main` and
 each pull request. Its jobs run the steps of `mise run check` in parallel:
-lint and drift, worker, web, and Go lint and tests. When you add a step to
+lint and drift, web, and Go lint and tests. When you add a step to
 `check` in `mise.toml`, add it to the workflow too.
 
 To release:
@@ -87,9 +104,8 @@ To release:
 [GoReleaser](../../.goreleaser.yaml) on macOS. GoReleaser builds `dex` for
 Linux and macOS, x64 and arm64, and uploads a draft release with one
 `dex_<tag>_<os>_<arch>.tar.gz` for each platform, `checksums.txt`, and notes
-from the pull requests. GoReleaser builds the web UI once. Before each Go
-build, a hook compiles the worker for that platform. Then each binary starts
-on its own platform as a smoke test.
+from the pull requests. GoReleaser builds the web UI once and embeds it in each Go binary. Each
+binary starts on its own platform as a smoke test.
 When all smoke tests pass, the workflow publishes the draft. dex reads its
 version from the tag.
 
@@ -102,9 +118,12 @@ from a browser download; run `xattr -d com.apple.quarantine dex` first.
 
 ## Debug
 
-- The worker logs to the stderr of `dex`.
-- Run the worker without Go: `cd worker`, then
-  `DEX_DATA_DIR=$(mktemp -d) DEX_FAKE_MODEL=1 bun src/main.ts`, and type
-  protocol lines, for example
-  `{"id":1,"method":"createConversation","params":{"agentId":"a1","model":{"provider":"faux","modelId":"echo"}}}`.
-- Read `control.sqlite` with `sqlite3 ~/.dex/control.sqlite`.
+- Engine, model, and MCP errors use the dex process log. Logs must not expose
+  credentials or substituted headers.
+- Start `mise run dev:server` with a separate `DEX_DATA_DIR` and
+  `DEX_FAKE_MODEL=1` to inspect native execution without provider credentials.
+- Inspect business receipts in `control.sqlite`. Use engine history and watch
+  methods to inspect execution state. Business code must not query agent
+  execution tables.
+- Each agent uses `<data dir>/agents/<id>/state.sqlite` and its own workspace.
+  Stop dex before you copy a complete data directory for backup or inspection.

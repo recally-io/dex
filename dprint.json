@@ -6,11 +6,7 @@
   "excludes": [
     "**/node_modules",
     "**/*-lock.json",
-    "worker/bun.lock",
     "web/**",
-    "worker/**/*.ts",
-    "worker/tsconfig.json",
-    "worker/package.json",
     "internal/db/sqlc/**",
     ".agents/skills/**",
     "assets/*.png"

@@ -108,28 +108,29 @@ func (q *Queries) GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (Tas
 	return i, err
 }
 
-const getConversationByWorker = `-- name: GetConversationByWorker :one
-SELECT id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level FROM conversations WHERE agent_id = ? AND worker_conversation_id = ?
+const getConversationByExecution = `-- name: GetConversationByExecution :one
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending FROM conversations WHERE agent_id = ? AND execution_id = ?
 `
 
-type GetConversationByWorkerParams struct {
-	AgentID              string        `json:"agent_id"`
-	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
+type GetConversationByExecutionParams struct {
+	AgentID     string        `json:"agent_id"`
+	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
-func (q *Queries) GetConversationByWorker(ctx context.Context, arg GetConversationByWorkerParams) (Conversation, error) {
-	row := q.db.QueryRowContext(ctx, getConversationByWorker, arg.AgentID, arg.WorkerConversationID)
+func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConversationByExecutionParams) (Conversation, error) {
+	row := q.db.QueryRowContext(ctx, getConversationByExecution, arg.AgentID, arg.ExecutionID)
 	var i Conversation
 	err := row.Scan(
 		&i.ID,
 		&i.AgentID,
 		&i.ChannelKey,
-		&i.WorkerConversationID,
+		&i.ExecutionID,
 		&i.CreatedAt,
 		&i.Title,
 		&i.ModelProvider,
 		&i.ModelID,
 		&i.ThinkingLevel,
+		&i.AbortPending,
 	)
 	return i, err
 }
@@ -333,7 +334,7 @@ func (q *Queries) ListLiveTasks(ctx context.Context) ([]Task, error) {
 }
 
 const listStopConversations = `-- name: ListStopConversations :many
-SELECT id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level FROM conversations WHERE agent_id = ?1
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending FROM conversations WHERE agent_id = ?1
 AND id = ?2
 ORDER BY id
 `
@@ -356,48 +357,14 @@ func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConvers
 			&i.ID,
 			&i.AgentID,
 			&i.ChannelKey,
-			&i.WorkerConversationID,
+			&i.ExecutionID,
 			&i.CreatedAt,
 			&i.Title,
 			&i.ModelProvider,
 			&i.ModelID,
 			&i.ThinkingLevel,
+			&i.AbortPending,
 		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listTaskRecoveries = `-- name: ListTaskRecoveries :many
-SELECT t.id, c.agent_id, c.worker_conversation_id FROM tasks t
-JOIN conversations c ON c.id = t.conversation_id
-WHERE c.worker_conversation_id IS NOT NULL AND t.started_at IS NOT NULL
-`
-
-type ListTaskRecoveriesRow struct {
-	ID                   string        `json:"id"`
-	AgentID              string        `json:"agent_id"`
-	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
-}
-
-func (q *Queries) ListTaskRecoveries(ctx context.Context) ([]ListTaskRecoveriesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listTaskRecoveries)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListTaskRecoveriesRow{}
-	for rows.Next() {
-		var i ListTaskRecoveriesRow
-		if err := rows.Scan(&i.ID, &i.AgentID, &i.WorkerConversationID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

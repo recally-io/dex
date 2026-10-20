@@ -14,48 +14,51 @@ skinparam SequenceLifeLineBorderColor #5b6b8c
 skinparam SequenceGroupBorderColor #5b6b8c
 skinparam SequenceGroupBackgroundColor #dfe5fb
 autonumber
-title dex: one message, from the web UI to the model and back
+title dex: native admission and business receipt projection
 
 actor "Browser" as user
-participant "control (Go)\nHTTP + chat + live" as control
+participant "Business services
+HTTP + chat + live" as chat
 database "control.sqlite" as cdb
-participant "worker (Bun)\nstdio NDJSON" as worker
+participant "Native engine
+PiG Harness + projection" as engine
 database "agent state.sqlite" as adb
 participant "Model provider" as model
 
-user -> control : GET /api/chats/{id}/events (SSE)
-control -> worker : watch (watchId)
-worker --> control : event chat: snapshot
-control --> user : snapshot (+ control's queued messages)
-user -> control : POST /api/chats/{id}/messages {id: UUID, text}
-control -> cdb : insert submission (pending, ID = UUID)
-control --> user : 202
-control --> user : item: user message, queued
-opt first message of the chat
-  control -> worker : createConversation
-  worker -> adb : commit conversation
-  control -> cdb : store worker conversation ID
+user -> chat : POST message (client UUID)
+chat -> cdb : Store input intent + origin
+opt first input of the chat
+  chat -> engine : Create(agent, options)
+  engine -> adb : Commit execution conversation
+  engine --> chat : Ref{AgentID, ID}
+  chat -> cdb : Store execution_id
 end
-control -> worker : submit (requestId = UUID)
-worker -> adb : commit input as dex.user entry (durable)
-worker --> control : submissionId
-worker -> model : generate (tool calls run in agents/<id>/workspace)
-model --> worker : text deltas, tool calls
-worker --> control : event chat: item / append / run
-control --> user : the same events
-worker -> adb : commit answer
-worker --> control : event settled
-control -> cdb : submission done + answer
+chat -> engine : Submit(ref, request ID, metadata)
+engine -> adb : Commit admission + input or native Inbox
+engine --> chat : Native Submission handle
+chat -> cdb : Mark receipt admitted
+chat --> user : 202 Accepted
+user -> chat : Open SSE
+chat -> engine : Watch(ctx, ref)
+engine --> chat : Typed snapshot + independent Events channel
+chat --> user : snapshot (includes native queued input)
+engine -> model : Generate (tools use explicit agent environment)
+model --> engine : Text and tool changes
+engine --> chat : Typed item / append / run events
+chat --> user : Encode events as SSE
+engine -> adb : Commit answer + outcome
+chat -> engine : Submission.Wait(ctx)
+engine --> chat : Outcome
+chat -> cdb : Settle receipt + wake channel outbox
 
-group worker exits before it settles
-  control --> user : close the stream; the browser reconnects
-  control -> control : restart worker (backoff 1 s to 30 s)
-  control -> cdb : list pending submissions
-  control -> worker : submit again, same requestId
-  note right of worker
-    pi-durable finds the same submission
-    and resumes it from its last checkpoint
-  end note
-  worker --> control : event settled
+group admission or receipt write interrupted
+  chat -> engine : Submit same stable request ID
+  engine -> adb : Reacquire admitted input or admit missing input
+  engine --> chat : Same native submission
+  chat -> cdb : Reconcile admission and outcome receipt
 end
+note over chat,engine
+  One Go process. Separate store commits.
+  A business receipt alone does not prove native admission.
+end note
 @enduml

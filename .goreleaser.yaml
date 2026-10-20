@@ -5,8 +5,6 @@ before:
   hooks:
     - mise run build:web
 
-# Run with --parallelism 1: each target writes its own worker to the same embedded file
-# before its Go build.
 builds:
   - main: ./cmd/dex
     binary: dex
@@ -17,15 +15,6 @@ builds:
     flags: [-trimpath]
     # dex reads its version from the VCS tag, not from -X.
     ldflags: [-s, -w]
-    hooks:
-      pre:
-        # --force: the sources do not change between targets, so mise would skip the build and
-        # embed the worker of the previous target.
-        - cmd: mise run --force build:worker
-          env:
-            - GOOS={{ .Os }}
-            - GOARCH={{ .Arch }}
-          output: true
 
 archives:
   - name_template: dex_{{ .Tag }}_{{ .Os }}_{{ .Arch }}

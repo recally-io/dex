@@ -13,17 +13,12 @@ goreleaser = "2.18.3"
 
 [tasks.install]
 description = "Install project dependencies from the lockfiles"
-depends = ["install:worker", "install:web"]
+depends = ["install:web"]
 run = "go mod download"
-
-[tasks."install:worker"]
-description = "Install the worker's npm dependencies from bun.lock"
-dir = "worker"
-run = "bun install --frozen-lockfile"
 
 [tasks.format]
 description = "Format all files"
-run = ["dprint fmt", "golangci-lint fmt", "cd worker && bunx --no-install vp fmt", "cd web && bunx --no-install vp fmt"]
+run = ["dprint fmt", "golangci-lint fmt", "cd web && bunx --no-install vp fmt"]
 
 # .github/workflows/check.yml runs these steps in parallel jobs; keep both lists equal.
 [tasks.check]
@@ -34,14 +29,14 @@ run = [
   "mise run check:testpolicy",
   "mise run check:db-drift",
   "mise run check:api-drift",
-  "mise run check:worker",
   "mise run check:web",
   "mise run check:go",
+  "mise run check:native",
 ]
 
 [tasks.build]
-description = "Build bin/dex for this platform, with the worker embedded"
-depends = ["build:worker", "build:web"]
+description = "Build bin/dex with the native agent runtime and web UI"
+depends = ["build:web"]
 run = "go build -o bin/dex ./cmd/dex"
 
 [tasks."hooks:install"]

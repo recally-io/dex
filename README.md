@@ -1,9 +1,8 @@
 # dex
 
-dex is a small, self-hosted agent host. One Go binary runs a control process
-(HTTP API, web UI, and Telegram) and an embedded Bun worker that
-runs the agents on [pi-durable](https://www.npmjs.com/package/@earendil-works/pi-durable).
-The agent state stays in local directories. The host needs no Node or Bun.
+dex is a small, self-hosted agent host. One Go process runs the HTTP API,
+web UI, channels, and agents through [PiG](https://github.com/MichaelKinsy/PiG).
+Agent state stays in local directories. The installed host needs no Node or Bun.
 
 ## Quick start
 
@@ -73,7 +72,7 @@ run `dex service install` to apply new template defaults.
 
 Stop any foreground dex process on the same address before you install.
 Install and start wait up to 30 seconds for the expected version, data
-directory, and worker ping. `dex version` shows the version, commit, platform,
+directory, and engine readiness. `dex version` shows the version, commit, platform,
 and executable. Each command supports `--help`.
 
 - macOS uses `~/Library/LaunchAgents/io.recally.dex.plist`.
@@ -96,12 +95,14 @@ Other operating systems are not supported.
 
 dex reads skills and MCP servers from files, for all agents and for one agent:
 
-| Scope  | Skills                               | MCP servers                   |
-| ------ | ------------------------------------ | ----------------------------- |
-| Global | `~/.agents/skills/<name>/SKILL.md`   | `~/.agents/mcp.json`          |
-| Agent  | `~/.dex/agents/<id>/skills/<name>/…` | `~/.dex/agents/<id>/mcp.json` |
+| Scope | Skills                                              | MCP servers                           |
+| ----- | --------------------------------------------------- | ------------------------------------- |
+| Home  | `~/.agents/skills/<name>/SKILL.md`                  | `~/.agents/mcp.json`                  |
+| Dex   | `~/.dex/.agents/skills/<name>/SKILL.md`             | `~/.dex/.agents/mcp.json`             |
+| Agent | `~/.dex/agents/<id>/.agents/skills/<name>/SKILL.md` | `~/.dex/agents/<id>/.agents/mcp.json` |
 
-An agent entry replaces a global entry with the same name. A skill is a
+A narrower entry replaces the wider entry with the same name. Dex paths
+follow `DEX_DATA_DIR` when you change the data directory. A skill is a
 directory with a `SKILL.md` that starts with YAML front matter with a
 `description`. The prompt lists each skill; the agent reads the file when a
 task needs it. `mcp.json` has an `mcpServers` object, as in Claude Code and
@@ -128,7 +129,8 @@ A stdio server gets `command`, `args`, `env`, and `cwd` (relative to the agent
 workspace). An HTTP server gets `url` and `headers`. OAuth is not supported.
 
 An edit to a skill applies to the next message. After you edit mcp.json,
-select Reload MCP servers on the Extensions page. An MCP server runs as your
+select Reload MCP servers on the Extensions page. Reload replaces only that
+agent's execution resources and MCP connections. An MCP server runs as your
 user without a sandbox, and mcp.json keeps its credentials as plain text.
 
 ## Updates
@@ -158,7 +160,8 @@ package-managed paths cannot use self-update; use the build or package manager.
 Archives and extracted files have a 256 MiB size limit.
 An update verifies the archive checksum and executable version before it stops
 anything. A running service enters a two-minute maintenance lease only when
-no work is active. New work stays queued until release or restart. Manual
+no work is active. During the lease, new input returns `409` before dex stores
+a receipt. Retry after release or expiry. Manual
 updates fail when busy; daily updates log a skip. A stopped service stays
 stopped. Foreground processes need a manual restart.
 
@@ -172,7 +175,7 @@ have checked the recovered version.
 ## Backup and uninstall
 
 Run `dex service stop` before you copy the complete data directory to a backup.
-Then run `dex service start`. A stopped worker has closed its SQLite files.
+Then run `dex service start`. A stopped dex process has closed its SQLite files.
 
 Run `dex service uninstall` to stop dex and remove its service and update job.
 Uninstall keeps the data directory and logs. A second uninstall succeeds.
@@ -181,7 +184,7 @@ There is no purge command.
 ## Documents
 
 - [Product](docs/product.md): users, scope, and non-goals.
-- [Architecture](docs/dev/architecture.md): how control and the worker fit
+- [Architecture](docs/dev/architecture.md): how business services and the native engine fit
   together.
 - [Development](docs/dev/development.md): tasks, tests, and debugging.
 - [Decisions](docs/dev/decisions/): ADRs.

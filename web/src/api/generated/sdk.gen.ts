@@ -51,7 +51,7 @@ export const releaseMaintenance = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * Hold worker admission for two minutes if no work is active. POST renews it.
+ * Hold native admission for two minutes if no work is active. POST renews it.
  */
 export const acquireMaintenance = <ThrowOnError extends boolean = false>(options?: Options<AcquireMaintenanceData, ThrowOnError>): RequestResult<AcquireMaintenanceResponses, AcquireMaintenanceErrors, ThrowOnError> => (options?.client ?? client).post<AcquireMaintenanceResponses, AcquireMaintenanceErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
@@ -493,7 +493,7 @@ export const abortChat = <ThrowOnError extends boolean = false>(options: Options
 });
 
 /**
- * Server-sent events. Each event has `event: <type>` and one `data:` line with a ChatEvent as JSON. The first event is a snapshot; a later snapshot replaces all state. A comment line comes every 15 s. The server closes the stream when the worker restarts or when the client is too slow; the client reconnects and gets a new snapshot.
+ * Server-sent events. Each event has `event: <type>` and one `data:` line with a ChatEvent as JSON. The first event is a snapshot; a later snapshot replaces all state. A comment line comes every 15 s. The server closes the stream when the agent reloads, the engine closes, or the client is too slow. The client reconnects and gets a new snapshot.
  *
  */
 export const watchChat = <ThrowOnError extends boolean = false>(options: Options<WatchChatData, ThrowOnError, WatchChatResponse>): Promise<ServerSentEventsResult<WatchChatResponses>> => (options.client ?? client).sse.get<WatchChatResponses, WatchChatErrors, ThrowOnError>({
@@ -584,7 +584,7 @@ export const putExtensionEnv = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * Restarts the whole worker and affects every agent. It connects the MCP servers again. Skills need no reload. 409 when any agent has unfinished work. 400 when a file is not valid; the agent then keeps its MCP servers.
+ * Reloads only the selected agent's Harness and MCP connections. Opens that agent if needed and returns its server connection states. Skills need no reload. Requires idle execution across all agents; returns 409 when any agent has unfinished work. Returns 400 when a file is not valid and keeps the current resources. Returns 503 while model discovery is pending.
  *
  */
 export const reloadExtensions = <ThrowOnError extends boolean = false>(options: Options<ReloadExtensionsData, ThrowOnError>): RequestResult<ReloadExtensionsResponses, ReloadExtensionsErrors, ThrowOnError> => (options.client ?? client).post<ReloadExtensionsResponses, ReloadExtensionsErrors, ThrowOnError>({

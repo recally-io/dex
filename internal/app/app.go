@@ -1,5 +1,4 @@
-// Package app wires control: the database, the worker process, the chat service, the HTTP
-// handler, and channel bots.
+// Package app connects business storage, native execution, HTTP, and channels.
 package app
 
 import (
@@ -8,7 +7,6 @@ import (
 	"database/sql"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,6 +21,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
+	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/feishu"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/scheduler"
@@ -31,8 +30,6 @@ import (
 	"github.com/recally-io/dex/internal/telegram"
 	"github.com/recally-io/dex/internal/upload"
 	"github.com/recally-io/dex/internal/wechat"
-	"github.com/recally-io/dex/internal/worker"
-	"github.com/recally-io/dex/internal/workerbin"
 )
 
 // DefaultAgentID is the agent that the web UI talks to.
@@ -40,11 +37,10 @@ const DefaultAgentID = "default"
 
 // Config configures an App.
 type Config struct {
-	DataDir  string // control.sqlite and agents/<id>/
-	CacheDir string // the installed worker binary; also the worker's working directory
-	// WorkerEnv is the worker's complete environment, without DEX_DATA_DIR. Use WorkerEnv() for
-	// the default.
-	WorkerEnv []string
+	DataDir   string
+	Home      string
+	ToolEnv   map[string]string
+	FakeModel bool
 	// TelegramAPIURL replaces https://api.telegram.org, for example for a local Bot API server.
 	TelegramAPIURL string
 	// FeishuAPIURL and FeishuAccountsURL replace the platform boundaries in tests.
@@ -69,6 +65,7 @@ type Config struct {
 // App is a running control process.
 type App struct {
 	db      *sql.DB
+	engine  *engine.Agents
 	handler http.Handler
 	bots    *channelRegistry
 	jobs    *scheduler.Scheduler
@@ -76,9 +73,7 @@ type App struct {
 	wg      sync.WaitGroup
 }
 
-// Start opens the database, makes sure the default agent exists, and starts the worker and, when
-// the settings turn them on, channel bots. The agent has no model until the user chooses one in
-// the settings.
+// Start restores task cancellation, applies settings, and starts business services.
 func Start(ctx context.Context, cfg Config) (*App, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return nil, err
@@ -91,10 +86,6 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	err = q.CreateAgentIfMissing(ctx, sqlc.CreateAgentIfMissingParams{
 		ID: DefaultAgentID, Name: "Dex", CreatedAt: time.Now().UnixMilli(),
 	})
-	if err != nil {
-		return nil, errors.Join(err, conn.Close())
-	}
-	path, err := worker.Install(cfg.CacheDir, workerbin.Gzip)
 	if err != nil {
 		return nil, errors.Join(err, conn.Close())
 	}
@@ -111,37 +102,46 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		hub           *live.Hub
 		bots          *channelRegistry
 	)
-	w := worker.New(worker.Config{
-		Path:      path,
-		Dir:       cfg.CacheDir,
-		Env:       append(cfg.WorkerEnv, "DEX_DATA_DIR="+cfg.DataDir),
-		OnSettled: func(ctx context.Context, s worker.Settled) { chats.HandleSettled(ctx, s) },
-		OnTask:    func(ctx context.Context, r worker.TaskRequest) (any, error) { return chats.HandleTask(ctx, r) },
-		OnChat:    func(ev worker.ChatStream) { hub.HandleChat(ev) },
-		OnExit:    func() { hub.WorkerExited() },
-		Init: func(ctx context.Context, call worker.CallFunc) error {
-			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
-			if err := chats.RecoverTasks(ctx, call); err != nil {
-				return err
-			}
-			if err := chats.RestoreMaintenance(ctx, call); err != nil {
-				return err
-			}
-			// The worker still runs; requests to providers without credentials fail.
-			errs, err := prefs.ApplyProviders(ctx, call)
-			if err != nil {
-				slog.Error("give the providers to the worker", "err", err)
-			}
-			for id, msg := range errs {
-				slog.Error("list the models of a provider", "provider", id, "err", msg)
-			}
-			return nil
+	tools := engine.TaskTools{
+		Spawn: func(ctx context.Context, c engine.TaskContext, args engine.SpawnTaskArgs) (engine.TaskInfo, error) {
+			t, err := chats.SpawnTask(ctx, c, args)
+			return engine.TaskInfo(t), err
 		},
-		OnStart: func(ctx context.Context) { chats.Replay(ctx) },
-	})
-	chats = chat.New(conn, w, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
-	hub = live.New(q, chats, w)
+		List: func(ctx context.Context, c engine.TaskContext) ([]engine.TaskInfo, error) {
+			tasks, err := chats.ToolListTasks(ctx, c)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]engine.TaskInfo, len(tasks))
+			for i, t := range tasks {
+				out[i] = engine.TaskInfo(t)
+			}
+			return out, nil
+		},
+		Get: func(ctx context.Context, c engine.TaskContext, id string) (engine.TaskInfo, error) {
+			t, err := chats.ToolGetTask(ctx, c, id)
+			return engine.TaskInfo(t), err
+		},
+		Cancel: func(ctx context.Context, c engine.TaskContext, id string) (engine.TaskInfo, error) {
+			t, err := chats.ToolCancelTask(ctx, c, id)
+			return engine.TaskInfo(t), err
+		},
+	}
+	native, err := engine.New(engine.Config{DataDir: cfg.DataDir, Home: cfg.Home, BaseEnv: cfg.ToolEnv, FakeModel: cfg.FakeModel, Tasks: tools})
+	if err != nil {
+		cancel()
+		return nil, errors.Join(err, jobs.Close(), conn.Close())
+	}
+	started := false
+	defer func() {
+		if !started {
+			cancel()
+			_ = native.Close(context.WithoutCancel(ctx))
+			_ = jobs.Close()
+		}
+	}()
+	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
+	hub = live.New(chats, native)
 	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
 	setTelegram := func(agentID string, config *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
 		manager := bots.Agent(agentID)
@@ -152,11 +152,18 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		}
 		config.Uploads = uploads
 		config.Seen = func(ctx context.Context, source string) (bool, error) {
-			_, err := q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
+			id, err := q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
 			if errors.Is(err, sql.ErrNoRows) {
 				return false, nil
 			}
-			return err == nil, err
+			if err != nil {
+				return false, err
+			}
+			sub, err := q.GetSubmission(ctx, id)
+			if err != nil {
+				return false, err
+			}
+			return sub.AdmittedAt.Valid || sub.Status != "pending", nil
 		}
 		config.Watch = func(ctx context.Context, source string) (string, io.ReadCloser, error) {
 			id, err := q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
@@ -176,7 +183,14 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		config.Report = func(state, reason string) { manager.Report("telegram", channel.Status{State: state, Reason: reason}) }
 		manager.Set("telegram", telegram.New(*config, manager))
 	}
-	prefs = settings.New(q, w.Call)
+	prefs = settings.New(q, native.Catalog)
+	if err := chats.RecoverTasks(ctx); err != nil {
+		return nil, errors.Join(err, conn.Close())
+	}
+	discovery, err := prefs.RegisterProviders(runCtx)
+	if err != nil {
+		return nil, errors.Join(err, conn.Close())
+	}
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
 	chats.ConfigureTasks(prefs.CheckChat)
 	setFeishu := func(agentID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
@@ -220,14 +234,19 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	}
 
 	automations := automation.New(q, chats, time.Now)
-	a := &App{db: conn, bots: bots, jobs: jobs, cancel: cancel, handler: server.New(server.Config{
-		WorkerReady:   func(ctx context.Context) bool { return w.Call(ctx, "ping", struct{}{}, &struct{}{}) == nil },
-		Worker:        w.Call,
-		RestartWorker: w.Restart,
-		Chats:         chats, Automations: automations, Settings: prefs, Agents: agentsService, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
+	a := &App{db: conn, engine: native, bots: bots, jobs: jobs, cancel: cancel, handler: server.New(server.Config{
+		RuntimeReady: func(ctx context.Context) bool { return native.Health(ctx) == nil },
+		Engine:       native,
+		Chats:        chats, Automations: automations, Settings: prefs, Agents: agentsService, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})}
-	a.wg.Go(func() { _ = w.Run(runCtx) })
 	a.wg.Go(func() { chats.Run(runCtx) })
+	a.wg.Go(func() {
+		select {
+		case <-discovery.Done():
+			chats.Wake()
+		case <-runCtx.Done():
+		}
+	})
 	every := cmp.Or(cfg.DreamEvery, 24*time.Hour)
 	dreamer := dream.New(q, chats, every, time.Now)
 	err = errors.Join(
@@ -257,31 +276,31 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		setFeishu(agent.ID, fs)
 		setWechat(agent.ID, wx)
 	}
+	started = true
 	return a, nil
 }
 
 // Handler serves the API and the web UI.
 func (a *App) Handler() http.Handler { return a.handler }
 
-// Close stops the worker and the bot, waits for the worker to close its storage, and closes the
-// database.
+// Close stops business services, closes native execution, and closes business storage.
 func (a *App) Close() error {
 	a.cancel()
 	err := a.jobs.Close()
 	a.bots.Close()
 	a.wg.Wait()
-	return errors.Join(err, a.db.Close())
+	return errors.Join(err, a.engine.Close(context.Background()), a.db.Close())
 }
 
-// WorkerEnv selects the variables of environ that the worker needs: the basic process variables
-// and DEX_FAKE_MODEL. Provider credentials come from the settings, never from the environment.
-func WorkerEnv(environ []string) []string {
-	var env []string
+// ToolEnv selects the process values that tools can inherit.
+// Provider credentials enter the model catalog through Settings.
+func ToolEnv(environ []string) map[string]string {
+	env := make(map[string]string)
 	for _, kv := range environ {
-		name, _, _ := strings.Cut(kv, "=")
+		name, value, _ := strings.Cut(kv, "=")
 		switch name {
-		case "PATH", "HOME", "TMPDIR", "LANG", "USER", "SHELL", "DEX_FAKE_MODEL":
-			env = append(env, kv)
+		case "PATH", "HOME", "TMPDIR", "LANG", "USER", "SHELL":
+			env[name] = value
 		}
 	}
 	return env

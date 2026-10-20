@@ -10,6 +10,20 @@ import (
 	"database/sql"
 )
 
+const admitSubmission = `-- name: AdmitSubmission :exec
+UPDATE submissions SET admitted_at = ? WHERE id = ? AND admitted_at IS NULL
+`
+
+type AdmitSubmissionParams struct {
+	AdmittedAt sql.NullInt64 `json:"admitted_at"`
+	ID         string        `json:"id"`
+}
+
+func (q *Queries) AdmitSubmission(ctx context.Context, arg AdmitSubmissionParams) error {
+	_, err := q.db.ExecContext(ctx, admitSubmission, arg.AdmittedAt, arg.ID)
+	return err
+}
+
 const countAutomationPending = `-- name: CountAutomationPending :one
 SELECT count(*) FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
@@ -300,7 +314,7 @@ const ensureConversation = `-- name: EnsureConversation :one
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending
 `
 
 type EnsureConversationParams struct {
@@ -329,12 +343,13 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		&i.ID,
 		&i.AgentID,
 		&i.ChannelKey,
-		&i.WorkerConversationID,
+		&i.ExecutionID,
 		&i.CreatedAt,
 		&i.Title,
 		&i.ModelProvider,
 		&i.ModelID,
 		&i.ThinkingLevel,
+		&i.AbortPending,
 	)
 	return i, err
 }
@@ -352,7 +367,7 @@ VALUES (
     '', ?3
 )
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending
 `
 
 type EnsureEmptyChatParams struct {
@@ -369,12 +384,13 @@ func (q *Queries) EnsureEmptyChat(ctx context.Context, arg EnsureEmptyChatParams
 		&i.ID,
 		&i.AgentID,
 		&i.ChannelKey,
-		&i.WorkerConversationID,
+		&i.ExecutionID,
 		&i.CreatedAt,
 		&i.Title,
 		&i.ModelProvider,
 		&i.ModelID,
 		&i.ThinkingLevel,
+		&i.AbortPending,
 	)
 	return i, err
 }
@@ -390,6 +406,20 @@ type FailAutomationRunParams struct {
 
 func (q *Queries) FailAutomationRun(ctx context.Context, arg FailAutomationRunParams) error {
 	_, err := q.db.ExecContext(ctx, failAutomationRun, arg.Reason, arg.ID)
+	return err
+}
+
+const finishExecutionAbort = `-- name: FinishExecutionAbort :exec
+UPDATE conversations SET abort_pending = 0 WHERE agent_id = ? AND execution_id = ?
+`
+
+type FinishExecutionAbortParams struct {
+	AgentID     string        `json:"agent_id"`
+	ExecutionID sql.NullInt64 `json:"execution_id"`
+}
+
+func (q *Queries) FinishExecutionAbort(ctx context.Context, arg FinishExecutionAbortParams) error {
+	_, err := q.db.ExecContext(ctx, finishExecutionAbort, arg.AgentID, arg.ExecutionID)
 	return err
 }
 
@@ -460,7 +490,7 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.created_at,
-    c.worker_conversation_id,
+    c.execution_id,
     CAST(max(
         c.created_at,
         coalesce(max(s.created_at), c.created_at),
@@ -482,16 +512,16 @@ type GetChatParams struct {
 }
 
 type GetChatRow struct {
-	ID                   int64         `json:"id"`
-	ChannelKey           string        `json:"channel_key"`
-	Title                string        `json:"title"`
-	ModelProvider        string        `json:"model_provider"`
-	ModelID              string        `json:"model_id"`
-	ThinkingLevel        string        `json:"thinking_level"`
-	CreatedAt            int64         `json:"created_at"`
-	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
-	UpdatedAt            int64         `json:"updated_at"`
-	Pending              int64         `json:"pending"`
+	ID            int64         `json:"id"`
+	ChannelKey    string        `json:"channel_key"`
+	Title         string        `json:"title"`
+	ModelProvider string        `json:"model_provider"`
+	ModelID       string        `json:"model_id"`
+	ThinkingLevel string        `json:"thinking_level"`
+	CreatedAt     int64         `json:"created_at"`
+	ExecutionID   sql.NullInt64 `json:"execution_id"`
+	UpdatedAt     int64         `json:"updated_at"`
+	Pending       int64         `json:"pending"`
 }
 
 func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, error) {
@@ -505,7 +535,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 		&i.ModelID,
 		&i.ThinkingLevel,
 		&i.CreatedAt,
-		&i.WorkerConversationID,
+		&i.ExecutionID,
 		&i.UpdatedAt,
 		&i.Pending,
 	)
@@ -513,7 +543,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level FROM conversations WHERE id = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending FROM conversations WHERE id = ?
 `
 
 func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
@@ -523,18 +553,19 @@ func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, 
 		&i.ID,
 		&i.AgentID,
 		&i.ChannelKey,
-		&i.WorkerConversationID,
+		&i.ExecutionID,
 		&i.CreatedAt,
 		&i.Title,
 		&i.ModelProvider,
 		&i.ModelID,
 		&i.ThinkingLevel,
+		&i.AbortPending,
 	)
 	return i, err
 }
 
 const getConversationByKey = `-- name: GetConversationByKey :one
-SELECT id, agent_id, channel_key, worker_conversation_id, created_at, title, model_provider, model_id, thinking_level FROM conversations WHERE agent_id = ? AND channel_key = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending FROM conversations WHERE agent_id = ? AND channel_key = ?
 `
 
 type GetConversationByKeyParams struct {
@@ -549,12 +580,13 @@ func (q *Queries) GetConversationByKey(ctx context.Context, arg GetConversationB
 		&i.ID,
 		&i.AgentID,
 		&i.ChannelKey,
-		&i.WorkerConversationID,
+		&i.ExecutionID,
 		&i.CreatedAt,
 		&i.Title,
 		&i.ModelProvider,
 		&i.ModelID,
 		&i.ThinkingLevel,
+		&i.AbortPending,
 	)
 	return i, err
 }
@@ -579,7 +611,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -600,6 +632,7 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.DeliveredParts,
 		&i.Origin,
 		&i.Kind,
+		&i.AdmittedAt,
 	)
 	return i, err
 }
@@ -1077,12 +1110,47 @@ func (q *Queries) ListOpenSubmissions(ctx context.Context, conversationID int64)
 	return items, nil
 }
 
+const listPendingExecutionAborts = `-- name: ListPendingExecutionAborts :many
+SELECT id, agent_id, execution_id FROM conversations WHERE abort_pending = 1
+`
+
+type ListPendingExecutionAbortsRow struct {
+	ID          int64         `json:"id"`
+	AgentID     string        `json:"agent_id"`
+	ExecutionID sql.NullInt64 `json:"execution_id"`
+}
+
+func (q *Queries) ListPendingExecutionAborts(ctx context.Context) ([]ListPendingExecutionAbortsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingExecutionAborts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPendingExecutionAbortsRow{}
+	for rows.Next() {
+		var i ListPendingExecutionAbortsRow
+		if err := rows.Scan(&i.ID, &i.AgentID, &i.ExecutionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPendingSubmissions = `-- name: ListPendingSubmissions :many
 SELECT
     s.id,
     s.content,
     s.attachments,
     s.kind,
+    s.origin,
+    s.admitted_at,
     s.conversation_id,
     c.agent_id,
     c.channel_key
@@ -1093,13 +1161,15 @@ ORDER BY s.rowid
 `
 
 type ListPendingSubmissionsRow struct {
-	ID             string `json:"id"`
-	Content        string `json:"content"`
-	Attachments    string `json:"attachments"`
-	Kind           string `json:"kind"`
-	ConversationID int64  `json:"conversation_id"`
-	AgentID        string `json:"agent_id"`
-	ChannelKey     string `json:"channel_key"`
+	ID             string        `json:"id"`
+	Content        string        `json:"content"`
+	Attachments    string        `json:"attachments"`
+	Kind           string        `json:"kind"`
+	Origin         string        `json:"origin"`
+	AdmittedAt     sql.NullInt64 `json:"admitted_at"`
+	ConversationID int64         `json:"conversation_id"`
+	AgentID        string        `json:"agent_id"`
+	ChannelKey     string        `json:"channel_key"`
 }
 
 // SQLite assigns rowids under the writer lock. Delivery follows admission, not wall time.
@@ -1117,6 +1187,8 @@ func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubm
 			&i.Content,
 			&i.Attachments,
 			&i.Kind,
+			&i.Origin,
+			&i.AdmittedAt,
 			&i.ConversationID,
 			&i.AgentID,
 			&i.ChannelKey,
@@ -1199,6 +1271,15 @@ func (q *Queries) PairTelegramOwner(ctx context.Context, arg PairTelegramOwnerPa
 	return allowed_users, err
 }
 
+const requestExecutionAbort = `-- name: RequestExecutionAbort :exec
+UPDATE conversations SET abort_pending = 1 WHERE id = ? AND execution_id IS NOT NULL
+`
+
+func (q *Queries) RequestExecutionAbort(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, requestExecutionAbort, id)
+	return err
+}
+
 const setAutomationNextDue = `-- name: SetAutomationNextDue :exec
 UPDATE automations SET next_due_at = ? WHERE id = ?
 `
@@ -1234,6 +1315,20 @@ func (q *Queries) SetConversationSettings(ctx context.Context, arg SetConversati
 		arg.ID,
 		arg.AgentID,
 	)
+	return err
+}
+
+const setExecution = `-- name: SetExecution :exec
+UPDATE conversations SET execution_id = ? WHERE id = ?
+`
+
+type SetExecutionParams struct {
+	ExecutionID sql.NullInt64 `json:"execution_id"`
+	ID          int64         `json:"id"`
+}
+
+func (q *Queries) SetExecution(ctx context.Context, arg SetExecutionParams) error {
+	_, err := q.db.ExecContext(ctx, setExecution, arg.ExecutionID, arg.ID)
 	return err
 }
 
@@ -1280,20 +1375,6 @@ type SetTelegramSettingsParams struct {
 
 func (q *Queries) SetTelegramSettings(ctx context.Context, arg SetTelegramSettingsParams) error {
 	_, err := q.db.ExecContext(ctx, setTelegramSettings, arg.AgentID, arg.Token, arg.AllowedUsers)
-	return err
-}
-
-const setWorkerConversation = `-- name: SetWorkerConversation :exec
-UPDATE conversations SET worker_conversation_id = ? WHERE id = ?
-`
-
-type SetWorkerConversationParams struct {
-	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
-	ID                   int64         `json:"id"`
-}
-
-func (q *Queries) SetWorkerConversation(ctx context.Context, arg SetWorkerConversationParams) error {
-	_, err := q.db.ExecContext(ctx, setWorkerConversation, arg.WorkerConversationID, arg.ID)
 	return err
 }
 

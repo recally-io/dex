@@ -38,7 +38,7 @@ var ErrInvalid = errors.New("invalid automation")
 // ErrNotFound means that the automation does not exist.
 var ErrNotFound = errors.New("automation not found")
 
-// Poster stores a message in a chat and delivers it to the worker.
+// Poster stores a message in a chat and admits it to native execution.
 type Poster interface {
 	Post(ctx context.Context, agentID, channelKey, title, id, content string) (int64, error)
 }

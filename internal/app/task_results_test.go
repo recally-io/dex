@@ -37,21 +37,25 @@ func TestUserTaskResultWaitsForBusyParent(t *testing.T) {
 	w.until(t, "parent tool running", resultParentToolRunning)
 
 	// When the execution completes, its report is durable while the parent stays in its tool.
+	d.setModel(t, "spawn")
 	releaseResultGate(t, dir, "background")
 	task := waitExecution(t, conn, parent, "Busy parent", "done")
 	resultID := "task:" + task.ID + ":result"
 	result := waitResultSubmission(t, conn, resultID, "pending")
-	// The later answer proves control attempted delivery before the parent changes model.
-	barrier := d.automationBarrier(t, "busy result delivery attempted")
-	d.watch(t, barrier).until(t, "busy delivery barrier", answered("echo: busy result delivery attempted"))
+	// Native admission accepts the result while the parent stays busy.
+	eventually(t, "native result admission", func() (bool, any) {
+		var admitted sql.NullInt64
+		err := conn.QueryRowContext(t.Context(), "SELECT admitted_at FROM submissions WHERE id = ?", resultID).Scan(&admitted)
+		return err == nil && admitted.Valid, fmt.Sprintf("admitted=%v err=%v", admitted, err)
+	})
 	if !strings.Contains(task.Report, "gate released") {
 		t.Fatalf("completed report missing: %+v", task)
 	}
 	w.cancel()
 	w = d.watch(t, parent)
 	w.until(t, "result waits beside running parent", func(tr *transcript) bool {
-		return tr.snapshots > 0 && resultParentToolRunning(tr) && !slices.ContainsFunc(tr.items, func(it item) bool {
-			return it.ID == resultID && it.Kind == "user"
+		return tr.snapshots > 0 && resultParentToolRunning(tr) && slices.ContainsFunc(tr.items, func(it item) bool {
+			return it.ID == resultID && it.Kind == "task" && it.Queued
 		})
 	})
 	if taskPIDGone(t, filepath.Join(dir, "parent.pid")) {
@@ -61,9 +65,7 @@ func TestUserTaskResultWaitsForBusyParent(t *testing.T) {
 		t.Fatalf("parent ended while gated: %+v", got)
 	}
 
-	// Then releasing the parent processes the saved result without another user input.
-	// A result already in the worker inbox would keep bash and could not return this spawn answer.
-	d.setModel(t, "spawn")
+	// Then releasing the parent processes the admitted result without another user input.
 	releaseResultGate(t, dir, "parent")
 	w.until(t, "background result answer", answeredWith(`"id":"`+task.ID+`"`))
 	processed := waitResultSubmission(t, conn, resultID, "done")
@@ -102,9 +104,6 @@ func TestUserTaskResultRecoversFailedParentWithQueuedInput(t *testing.T) {
 		return resultParentToolRunning(tr) && slices.ContainsFunc(tr.items, func(it item) bool { return it.ID == invalid && it.Queued }) &&
 			slices.ContainsFunc(tr.items, func(it item) bool { return it.ID == continuation && it.Queued })
 	})
-	// A later chat answer is a delivery-loop barrier: earlier queued inputs have been submitted.
-	barrier := d.automationBarrier(t, "queued inputs admitted")
-	d.watch(t, barrier).until(t, "admission barrier", answered("echo: queued inputs admitted"))
 
 	// When the shell ends, the next model turn fails on actual invalid JSON.
 	releaseResultGate(t, dir, "parent")
@@ -226,14 +225,14 @@ func TestUserKeepsQueuedQuestionAfterBackgroundResultOnReconnect(t *testing.T) {
 	}
 	w.cancel()
 
-	// When the user reconnects, unanswered input stays before the result and queued input stays last.
+	// When the user reconnects, native input stays ordered and a control-only receipt stays hidden.
 	w = d.watch(t, parent)
 	w.until(t, "result snapshot with queued question", func(tr *transcript) bool { return tr.snapshots > 0 })
 	resultIndex := slices.IndexFunc(w.tr.items, func(it item) bool { return it.ID == resultID })
 	oldIndex := slices.IndexFunc(w.tr.items, func(it item) bool { return it.ID == "old-unanswered" })
 	questionIndex := slices.IndexFunc(w.tr.items, func(it item) bool { return it.ID == question })
-	if resultIndex < 0 || oldIndex < 0 || oldIndex >= resultIndex || questionIndex != len(w.tr.items)-1 || !w.tr.items[questionIndex].Queued {
-		t.Fatalf("reconnect must keep unanswered input before the result and queued input after all current output: %+v", w.tr.items)
+	if resultIndex < 0 || oldIndex >= 0 || questionIndex != len(w.tr.items)-1 || !w.tr.items[questionIndex].Queued {
+		t.Fatalf("reconnect must show native queued input after current output and omit control-only receipts: %+v", w.tr.items)
 	}
 	for _, it := range w.tr.items[resultIndex+1 : questionIndex] {
 		if it.Kind == "user" {
@@ -437,7 +436,7 @@ func TestUserSeesBackgroundResultTitleRealtimeAndAfterReconnect(t *testing.T) {
 		t.Fatal("ordinary envelope is not a user item")
 	}
 	earlierAt := w.tr.items[forgedIndex].At + 1
-	// A control-only unanswered message predates the result and must stay outside its group.
+	// A control-only receipt has no native input and must not appear in the transcript.
 	if _, err := conn.ExecContext(t.Context(), `INSERT INTO submissions
 		(id, conversation_id, content, attachments, kind, status, created_at)
 		VALUES ('old-unanswered', ?, 'Earlier unanswered message', 'null', 'message', 'unanswered', ?)`, parent, earlierAt); err != nil {
@@ -460,12 +459,12 @@ func TestUserSeesBackgroundResultTitleRealtimeAndAfterReconnect(t *testing.T) {
 	}
 	anchor := w.tr.items[idx]
 	w.cancel()
-	// Then a reconnect labels the historical result and merges old users before it.
+	// Then a reconnect keeps the historical label without a control transcript overlay.
 	w = d.watch(t, parent)
 	w.until(t, "historical snapshot", func(tr *transcript) bool { return tr.snapshots > 0 })
 	idx = slices.IndexFunc(w.tr.items, func(it item) bool { return it.ID == id })
 	old := slices.IndexFunc(w.tr.items, func(it item) bool { return it.ID == "old-unanswered" })
-	if idx < 0 || w.tr.items[idx].Title != anchor.Title || w.tr.items[idx].TaskID != task.ID || w.tr.items[idx].At != anchor.At || w.tr.items[idx].Kind != "task" || old < 0 || old >= idx {
+	if idx < 0 || w.tr.items[idx].Title != anchor.Title || w.tr.items[idx].TaskID != task.ID || w.tr.items[idx].At != anchor.At || w.tr.items[idx].Kind != "task" || old >= 0 {
 		t.Fatalf("snapshot lost title or time boundary: %+v", w.tr.items)
 	}
 	for _, it := range w.tr.items {

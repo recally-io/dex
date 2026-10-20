@@ -86,7 +86,7 @@ export const releaseMaintenanceMutation = (options?: Partial<Options<ReleaseMain
 };
 
 /**
- * Hold worker admission for two minutes if no work is active. POST renews it.
+ * Hold native admission for two minutes if no work is active. POST renews it.
  */
 export const acquireMaintenanceMutation = (options?: Partial<Options<AcquireMaintenanceData>>): UseMutationOptions<AcquireMaintenanceResponse, AcquireMaintenanceError, Options<AcquireMaintenanceData>> => {
     const mutationOptions: UseMutationOptions<AcquireMaintenanceResponse, AcquireMaintenanceError, Options<AcquireMaintenanceData>> = {
@@ -769,7 +769,7 @@ export const putExtensionEnvMutation = (options?: Partial<Options<PutExtensionEn
 };
 
 /**
- * Restarts the whole worker and affects every agent. It connects the MCP servers again. Skills need no reload. 409 when any agent has unfinished work. 400 when a file is not valid; the agent then keeps its MCP servers.
+ * Reloads only the selected agent's Harness and MCP connections. Opens that agent if needed and returns its server connection states. Skills need no reload. Requires idle execution across all agents; returns 409 when any agent has unfinished work. Returns 400 when a file is not valid and keeps the current resources. Returns 503 while model discovery is pending.
  *
  */
 export const reloadExtensionsMutation = (options?: Partial<Options<ReloadExtensionsData>>): UseMutationOptions<ReloadExtensionsResponse, ReloadExtensionsError, Options<ReloadExtensionsData>> => {

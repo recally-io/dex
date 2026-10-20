@@ -32,7 +32,7 @@ type streamEvent struct {
 	Items []streamItem `json:"items"`
 }
 
-// preview reads the same worker watch as the web UI. Final answers use durable delivery.
+// preview reads the same native watch as the web UI. Final answers use durable delivery.
 func (b *Bot) startPreview(ctx context.Context, key string, chatID int64) {
 	if b.cfg.Watch == nil {
 		return

@@ -74,7 +74,7 @@ func TestUserCreatesAndValidatesAgents(t *testing.T) {
 }
 
 func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
-	// Given two agents whose first worker conversations can have the same ID.
+	// Given two agents whose first execution conversations can have the same ID.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
 	var b apiAgent
@@ -94,19 +94,19 @@ func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
 	aWatch.until(t, "A answer", answered("echo: A secret"))
 	bWatch.until(t, "B answer", answered("shout: B secret"))
 	conn := taskResultDB(t, d.dataDir(t))
-	var aWorker, bWorker int64
+	var aExecution, bExecution int64
 	for _, c := range []struct {
-		id     int64
-		worker *int64
-	}{{aMain.ID, &aWorker}, {bMain.ID, &bWorker}} {
-		if err := conn.QueryRowContext(t.Context(), "SELECT worker_conversation_id FROM conversations WHERE id = ?", c.id).Scan(c.worker); err != nil {
+		id        int64
+		execution *int64
+	}{{aMain.ID, &aExecution}, {bMain.ID, &bExecution}} {
+		if err := conn.QueryRowContext(t.Context(), "SELECT execution_id FROM conversations WHERE id = ?", c.id).Scan(c.execution); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if aWorker == 0 || aWorker != bWorker {
-		t.Fatalf("expected equal worker conversation IDs: A=%d B=%d", aWorker, bWorker)
+	if aExecution == 0 || aExecution != bExecution {
+		t.Fatalf("expected equal execution conversation IDs: A=%d B=%d", aExecution, bExecution)
 	}
-	t.Logf("artifact: worker conversation ID=%d in both agents", aWorker)
+	t.Logf("artifact: execution conversation ID=%d in both agents", aExecution)
 	// Then snapshots and history use each stream's agent.
 	for _, tc := range []struct{ path, want, other string }{{aPath, "A secret", "B secret"}, {bPath, "B secret", "A secret"}} {
 		snapshot := d.watchPath(t, tc.path+"/events")
@@ -199,7 +199,7 @@ func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
 }
 
 func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
-	// Given a second agent that can spawn real worker tasks.
+	// Given a second agent that can spawn native tasks.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	var b apiAgent

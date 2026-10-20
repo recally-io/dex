@@ -21,8 +21,8 @@ import (
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/wechat"
-	"github.com/recally-io/dex/internal/worker"
 )
 
 // Defines values for AppendEventType.
@@ -536,7 +536,7 @@ type AssistantItem struct {
 type AssistantItemKind string
 
 // Attachment defines model for Attachment.
-type Attachment = worker.Attachment
+type Attachment = engine.Attachment
 
 // Automation defines model for Automation.
 type Automation = automation.Automation
@@ -702,10 +702,10 @@ type FeishuSetup = agent.FeishuSetup
 
 // Health defines model for Health.
 type Health struct {
-	DataDir     string       `json:"dataDir"`
-	Status      HealthStatus `json:"status"`
-	Version     string       `json:"version"`
-	WorkerReady bool         `json:"workerReady"`
+	DataDir      string       `json:"dataDir"`
+	RuntimeReady bool         `json:"runtimeReady"`
+	Status       HealthStatus `json:"status"`
+	Version      string       `json:"version"`
 }
 
 // HealthStatus defines model for Health.Status.
@@ -814,12 +814,12 @@ type Provider struct {
 	Api     string `json:"api"`
 	BaseUrl string `json:"baseUrl"`
 
-	// Error Why the worker could not list its models.
+	// Error Why the engine could not list this provider's models.
 	Error  *string `json:"error,omitempty"`
 	Id     string  `json:"id"`
 	KeySet bool    `json:"keySet"`
 
-	// ModelCount The number of models that the worker has for it.
+	// ModelCount The number of models in the catalog for this provider.
 	ModelCount *int `json:"modelCount,omitempty"`
 
 	// Models Fixed model IDs; empty means the endpoint lists them.

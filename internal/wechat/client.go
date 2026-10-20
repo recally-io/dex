@@ -1,6 +1,6 @@
 // Package wechat connects the owner's private WeChat messages through the iLink Bot API.
 // The channel manager owns commands and durable reply delivery. This package owns QR login,
-// protocol requests, inbound media, and typing. It never opens an agent's worker storage.
+// protocol requests, inbound media, and typing. It never opens an agent's execution storage.
 package wechat
 
 import (

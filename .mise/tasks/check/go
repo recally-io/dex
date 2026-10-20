@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Lint, build, and test the Go code (builds embedded assets first)"
-#MISE depends=["build:worker", "build:web"]
+#MISE depends=["build:web"]
 set -euo pipefail
 
 golangci-lint fmt --diff

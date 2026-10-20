@@ -9,26 +9,26 @@ their sources of truth, the message flow, and the failure behavior.
 
 Source: [architecture.puml](../../assets/src/architecture.puml).
 
-Control stores messages before delivery. The worker owns agent execution and
-storage. The browser receives a transcript through control. Both processes
-ship in one binary; they do not share database access.
+dex runs HTTP, channels, business services, and agent execution in one Go
+process. Business services call `internal/engine` directly. The engine uses
+[PiG](https://github.com/MichaelKinsy/PiG) for durable execution, model access,
+and MCP. The browser receives typed transcript events through SSE.
 
-## Processes
+## Runtime modules
 
-dex is one binary with two processes:
+The Go binary embeds the built web UI. Node and Bun are development tools
+for the web UI; the installed service needs neither runtime.
 
-| Process | Code                                              | Responsibilities                                                                 | Does not                              |
-| ------- | ------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------- |
-| control | Go: `cmd/dex`, `internal/`                        | HTTP API and web UI, chat channels, timers, `control.sqlite`, the worker process | run agents or call models             |
-| web UI  | React: `web/`, built into `web/dist` and embedded | chats, live transcript, settings pages, in the browser                           | hold state that the API does not have |
-| worker  | TypeScript on Bun: `worker/`                      | one pi-durable Harness per agent, model calls, tool calls                        | know about channels or time           |
+| Module            | Responsibility                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `internal/app`    | Connect business storage, engine, HTTP, and channels                                   |
+| `internal/chat`   | Input intents, business receipts, task records, and channel delivery                   |
+| `internal/engine` | One PiG Harness per agent, execution storage, models, tools, and transcript projection |
+| `internal/live`   | Serve engine watches and history over HTTP                                             |
 
-`mise run build:worker` compiles the worker with `bun build --compile` into one
-executable (about 60 MB, Bun runtime included) and gzips it (about 30 MB) into
-`internal/workerbin/dex-worker.gz`. The Go binary embeds that file. At start,
-[`worker.Install`](../../internal/worker/install.go) writes it to
-`<user cache dir>/dex/worker-<hash>` once, and control starts it as a child
-process. See [ADR 0001](decisions/0001-embedded-bun-worker.md).
+Tools and stdio MCP servers can start child processes. Agent execution itself
+stays in dex. There is no backend subprocess or serialized internal protocol.
+See [ADR 0011](decisions/0011-native-pig-runtime.md).
 
 ## Service and updates
 
@@ -38,30 +38,43 @@ service. A host that is not loopback makes the API require the access token
 configuration record that permits partial reinstall across template changes.
 
 `internal/update` verifies GitHub release assets, stages beside the executable,
-and retains `dex.previous`. The worker owns a two-minute maintenance gate.
-It closes admission before checking durable runs and pending memory commits.
-Control stores the expiry to restore the gate after a worker restart. New
-messages stay stored until release, expiry, or a control restart.
-Transcript reads use the gate because opening a Harness can resume stored work.
+and retains `dex.previous`. `chat.Service` owns a two-minute maintenance lease.
+The engine closes admission and checks active operations, durable work, and
+pending settlement and memory commits. A busy check releases the gate and
+refuses maintenance. While a lease is active, new input returns `409` before
+the service writes a receipt. The client can retry the same request ID after
+release or expiry.
+A process restart clears the in-memory lease.
+Transcript acquisition uses the same gate because opening an agent can resume
+stored work. Existing subscriptions remain independent of new admission.
+`GET /api/health` exposes native readiness as `runtimeReady`.
+Startup registers saved credentials and static models before it serves HTTP.
+Network model discovery runs in the background. Health and Settings remain
+available while discovery is pending. A cold agent cannot open during discovery
+because opening resumes all its stored conversations. Its input receipts stay
+pending and reconcile when discovery finishes. Direct history, reload, and
+model checks that need discovery return `503`. SSE clients reconnect.
+Shutdown cancels discovery and waits for its work to end.
 
 See [service commands and recovery](../../README.md#run-and-manage-dex) and
-[ADR 0006](decisions/0006-service-and-update.md) for lifecycle, update, and gate
-decisions.
+[ADR 0006](decisions/0006-service-and-update.md) for service and update
+decisions. [ADR 0011](decisions/0011-native-pig-runtime.md) replaces the
+backend readiness and maintenance lifecycle.
 
 ## Sources of truth
 
-| Data                                 | Owner               | Location                                                                   |
-| ------------------------------------ | ------------------- | -------------------------------------------------------------------------- |
-| Agents, chats, submissions, settings | control             | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))  |
-| Transcripts, runs, tool calls, usage | worker (pi-durable) | `<data dir>/agents/<id>/state.sqlite`                                      |
-| Agent files                          | the agent's tools   | `<data dir>/agents/<id>/workspace/`                                        |
-| Uploaded files                       | control             | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`              |
-| Memory (git repo)                    | the agent's tools   | `<data dir>/memory/`                                                       |
-| Skills and MCP servers               | the user's files    | `$HOME/.agents/`, `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/` |
+| Data                                 | Owner             | Location                                                                   |
+| ------------------------------------ | ----------------- | -------------------------------------------------------------------------- |
+| Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))  |
+| Transcripts, runs, tool calls, usage | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                      |
+| Agent files                          | the agent's tools | `<data dir>/agents/<id>/workspace/`                                        |
+| Uploaded files                       | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`              |
+| Memory (git repo)                    | the agent's tools | `<data dir>/memory/`                                                       |
+| Skills and MCP servers               | the user's files  | `$HOME/.agents/`, `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/` |
 
 Control also owns internal delegation records (`tasks`). Each record
-has one read-only `task:<execution ID>` session and one input. The worker
-owns its transcript and execution records. Control never reads worker SQLite.
+has one read-only `task:<execution ID>` session and one input. The engine
+owns its transcript and execution records. Business services do not query execution SQLite.
 The records retain the source submission, status, and report. A cancelled
 status records a cancellation request. It does not prove process exit. There
 is no user goal lifecycle or automatic retry chain.
@@ -77,7 +90,7 @@ Its channel key starts with `chat:`. One SQLite write reuses the newest Chat
 with no ordinary message, or creates one. Concurrent opens reuse the same row.
 The first message and its title commit together. The title has at most
 60 characters. Longer text uses its first 59 characters and an ellipsis. A file-only
-message uses the first file's name. Each Chat has its own worker conversation.
+message uses the first file's name. Each Chat has its own execution conversation.
 It uses the bot's settings, instructions and shared memory. It does not read
 main's model context or send its answers to main.
 
@@ -133,12 +146,12 @@ A task result copies its source submission's origin in the same transaction
 that saves the report and inserts the result. A result chain thus keeps the
 first input's origin. Existing rows use `unknown`. The durable channel sender
 routes ordinary replies and task results by origin. Web input sends no channel reply.
-The live hub adds origin to user items in queued input, snapshots, live events
-and history pages. The web shows the channel name beside each channel input.
-The worker protocol has no channel fields.
+The engine stores origin with native input metadata. One projection exposes it
+in queued input, snapshots, live events, and history pages. The web shows the
+channel name beside each channel input.
 
-The default data directory is `~/.dex` (`DEX_DATA_DIR`). pi-durable allows one
-process per storage, so only the worker opens an agent directory.
+The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
+each agent execution store. Run one dex process per data directory.
 
 ## Agents and HTTP API
 
@@ -159,21 +172,22 @@ settings, messages, clear, history, abort and events; task details; uploads;
 extensions and reload; automations and their run and runs endpoints. An unknown
 agent or a resource owned by another agent returns `404`. Upload storage uses
 `<data dir>/agents/<agentId>/`. Control builds the path store for each request.
-Each live stream carries its agent ID for worker watches and history. Worker
-conversation IDs can be equal in different agents.
+Each live stream uses `engine.Ref{AgentID, ID}` for watches and history.
+Execution IDs can be equal in different agents.
 
 Session, health, maintenance, models, provider settings, and
 `/api/automations/preview` stay global. Separate services own global settings
-and agent state. The settings lock orders provider saves and worker
-configuration. The agent lock orders agent writes, credential ownership
-checks, channel changes, and setup sessions across all agents. Agent model
-checks also take the settings lock, so they cannot read an incomplete provider
-update. The lock order is agent, then settings. Settings never takes the agent
+and agent state. The settings lock orders provider saves and local engine
+configuration. Each settings request releases that lock before it waits for
+its own discovery operation. The agent lock orders agent writes,
+credential ownership checks, channel changes, and setup sessions across all
+agents. Agent model checks distinguish pending discovery from an invalid model.
+The lock order is agent, then settings. Settings never takes the agent
 lock. Each service writes separate rows. Creating or selecting an agent does
 not configure providers.
 One scheduler job checks automations across all agents and posts each prompt
-with the saved agent ID. Extension reload restarts the whole worker and affects
-every agent.
+with the saved agent ID. Extension reload replaces only the selected agent's Harness and MCP connections.
+The maintenance check still requires idle execution before replacement.
 
 The web UI uses the nested agent routes, including live events and upload
 links. Agent resources require an explicit ID, including the default agent.
@@ -189,17 +203,17 @@ The memory is a git repo in the
 at `<data dir>/memory/`. It belongs to the user, so all agents and channels
 share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
 
-- **Read.** The [`memory` extension](../../worker/src/memory.ts) adds three
+- **Read.** The [`memory` extension](../../internal/engine/memory.go) adds three
   system prompt sections: the memory rules (the repo path, the entry format,
   and the chat's `source`), shared `MEMORY.md`, and that agent's
   `agents/<agentId>/MEMORY.md`. Other agents do not load this last section.
   They render before each model
   request, so a change applies from the next request, also inside a run.
-  pi-durable sends a section again only when its text changed. The agent
+  PiG sends a section again only when its text changed. The agent
   finds the other files with grep and the `[[path]]` links.
 - **Write.** The agent changes the files with its edit and write tools,
   without approval. It does not run git. When a submission settles, the
-  worker commits all changes as `Update memory from <source>`. The source is
+  engine commits all changes as `Update memory from <source>`. The source is
   `dex:<agentId>/chat/<chatId>`, or `dex:<agentId>/dream/<dreamId>`.
   Old `dex:chat/<id>` sources remain valid and mean the default agent.
   Owner facts go in shared `MEMORY.md` and its topic files. Role experience
@@ -234,36 +248,36 @@ are read once as the narrower level. See [ADR 0010](decisions/0010-extension-lev
 Each agent has its own environment snapshot for tools and stdio MCP servers.
 Invalid `.env` or MCP files prevent all MCP startup for that agent. Invalid
 `.env` also removes all file environment values from that snapshot.
-[`AgentExtensions`](../../worker/src/extensions.ts) connects the servers when
-the worker opens the agent, before `resume()`. It installs one pi-durable
-extension: an always-present `extension-guide` prompt section, a `skills`
-section that reads the skill files before each model request, and the MCP
-tools, as deferred tools named
-`mcp__<server>__<tool>`. When an agent has MCP tools, the worker also installs
-`tool_search`. The guide lists the fixed paths and explains file formats,
-environment use, secrecy, and Reload. It contains no environment key names
-or values. Environment edits do not change its text.
+The [engine extension loader](../../internal/engine/extensions.go) connects
+servers before it resumes the agent Harness. It installs prompt sections for
+the extension guide and current skills. MCP tools use the names
+`mcp__<server>__<tool>` and deferred tool discovery. The guide lists fixed paths,
+file formats, environment use, secrecy, and Reload. It contains no environment
+key names or values. Environment edits do not change its text.
 
-`PUT` and `DELETE /api/agents/{agentId}/extensions/env` forward write-only
-agent and dex environment edits to the worker's `editEnv` RPC. The worker
-serializes edits per path and atomically replaces the file with mode `0600`.
-It preserves unrelated lines and refuses invalid files. Home is read-only.
-Saving does not reload. The file remains the only store.
+`PUT` and `DELETE /api/agents/{agentId}/extensions/env` call the engine's
+write-only environment methods. Edits are serialized per path and replace
+the file atomically with mode `0600`. They preserve unrelated lines and refuse
+invalid files. Home is read-only. Saving does not reload. The file is the only
+store.
 
-`GET /api/agents/{agentId}/extensions` reads the files. Before the agent opens,
-the servers are `idle`. `POST /api/agents/{agentId}/extensions/reload` takes the
-maintenance lease, which it refuses when another holder has it. It validates
-the files of every open agent and the requested agent. If any
-configuration is invalid, it refuses with each error once. It restarts the
-whole worker, opens the agent, and releases the lease. The restart affects every
-agent.
+`GET /api/agents/{agentId}/extensions` reads file metadata. Before the agent
+opens, servers are `idle`. `POST /api/agents/{agentId}/extensions/reload`
+validates the selected agent, requires idle execution, closes that agent's
+Harness and MCP connections, and reopens them. If the agent has not opened,
+Reload opens it and reports the MCP connection results. Other agents keep their
+Harnesses and connections. A failed preflight leaves current resources in place.
+Reload checks the closed state under the engine lock, so shutdown cannot leave
+replacement resources open.
+See [ADR 0011](decisions/0011-native-pig-runtime.md) for the reload change to
+ADR 0010.
 
 The task extension adds delegation tools and a `task-rules` section to
 foreground conversations, including main, Chat and automation sessions.
 Background executions and dreams have no delegation tools. A separate
 extension gives foreground conversations and background executions the `coding-skill`
-section. Bun embeds the full
-[built-in coding skill](../../worker/skills/coding/SKILL.md) in the worker.
+section. Go embeds the full
+[built-in coding skill](../../internal/engine/skills/coding/SKILL.md) in the engine.
 It does not copy the skill into a user directory or add a new extension scope.
 The skill requires a repository path, project rules, independent review, tests
 of the final revision, and evidence in the report. It requires serial writes
@@ -289,12 +303,12 @@ checks, and the access token. [`agent.Service`](../../internal/agent/agent.go)
 owns agent settings, activity, and channel configuration. `chat.Service` saves
 chat settings with an injected validator. Each change stays in `control.sqlite`:
 
-| Setting                                 | Table               | Applied by                                                   |
-| --------------------------------------- | ------------------- | ------------------------------------------------------------ |
-| Bot model, thinking level, instructions | `agents`            | the next `submit` of each chat                               |
-| Chat model, chat thinking level         | `conversations`     | the next `submit` of that chat                               |
-| Providers                               | `providers`         | `configure` to the worker, and again after each worker start |
-| Telegram token, allowed users           | `telegram_settings` | a restart of the bot                                         |
+| Setting                                 | Table               | Applied by                                     |
+| --------------------------------------- | ------------------- | ---------------------------------------------- |
+| Bot model, thinking level, instructions | `agents`            | the next `submit` of each chat                 |
+| Chat model, chat thinking level         | `conversations`     | the next `submit` of that chat                 |
+| Providers                               | `providers`         | the engine catalog, and again at process start |
+| Telegram token, allowed users           | `telegram_settings` | a restart of the bot                           |
 
 `PUT /api/agents/{agentId}` saves the name with the other bot settings.
 The API trims spaces, then accepts 1 to 40 Unicode characters. The web uses the saved name in
@@ -304,14 +318,13 @@ Main and Chat sessions use the agent's model and thinking level. They have no
 session override. `chat.Service` resolves settings at each `submit`. Channel chats cannot
 change their settings (403). An automation chat can; an automation that
 reuses its chat then runs with the chat's settings. The thinking levels and
-the `reasoning` and `input` of a model come from pi-ai
-(`getSupportedThinkingLevels`); pi-ai sends the nearest level that the model
+the `reasoning` and `input` of a model come from PiG AI model definitions; the model adapter sends the nearest level that the model
 supports, and `off` to a model without reasoning.
 
 The user adds any number of providers, and then chooses one model from all of
 their models. A provider is one of:
 
-- **Built-in**: a pi-ai provider (Anthropic, OpenAI, OpenRouter, and more) with
+- **Built-in**: a PiG AI provider (Anthropic, OpenAI, OpenRouter, and more) with
   an API key.
 - **Custom**: an ID, a base URL, an optional API key, and one of the APIs
   `openai-completions`, `openai-responses`, or `anthropic-messages`. Its
@@ -322,65 +335,49 @@ their models. A provider is one of:
 For task tools, custom `openai-responses` providers send `strict:false`.
 This keeps optional parameters optional at Responses endpoints.
 
-The worker keeps the providers only in memory (built-in keys in pi-ai's
-`InMemoryCredentialStore`) and gets no provider environment variables. When a
-custom provider's model list fails, the provider stays saved and the API
-returns the reason. When a change is saved but the
-worker cannot apply it, the API returns an error; the next worker start
-applies it. The agent has no model until the user chooses one; a message
-before that is `unanswered`.
+The engine keeps provider configuration and credentials in memory through its
+model catalog. The settings service registers saved providers at process start
+and discovers dynamic models in the background. Each network request has a
+30-second deadline. A settings change keeps each unchanged provider and its
+models. Changed providers cancel their previous discovery. Only the current
+provider's discovery can supply its models and error. A cancelled HTTP request
+ends that request's wait; discovery continues until completion, replacement,
+deletion, or shutdown.
+Provider errors do not expose secrets. A custom provider whose model discovery
+fails stays saved; the API returns the failure. Saving the same settings retries
+a failed discovery. The agent has no model until the user chooses one. New message
+admission requires a selected model. Receipt
+recovery first looks up the native request ID, so clearing or changing the
+current model cannot replace an existing native answer.
 
-## Worker protocol
+## Native execution boundary
 
-Control writes one JSON request per line to the worker's stdin. The worker
-writes one JSON response or event per line to its stdout. Logs go to stderr.
-The types are in [`worker/src/protocol.ts`](../../worker/src/protocol.ts) and
-[`internal/worker/protocol.go`](../../internal/worker/protocol.go).
+`internal/engine.Agents` owns one concrete execution service. Business code
+uses typed Go calls and `Ref{AgentID, ID}`. An execution ID names a PiG
+conversation, while a chat ID names a business record in `control.sqlite`.
+`conversations.execution_id` connects the two records.
 
-| Method               | Params                                                                                                                 | Result                    |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| `ping`               | none                                                                                                                   | `{}`                      |
-| `createConversation` | `agentId`, `model`, `thinkingLevel`, `instructions`                                                                    | `conversationId`          |
-| `submit`             | `agentId`, `conversationId`, `model`, `thinkingLevel`, `instructions`, `requestId`, `content`, `attachments`, `source` | `submissionId`            |
-| `configure`          | `providers`: `id`, `name`, `api`, `baseUrl`, `apiKey`, `models`                                                        | `errors` per provider     |
-| `listProviders`      | none                                                                                                                   | built-in `providers`      |
-| `listModels`         | none                                                                                                                   | `models` with credentials |
-| `watch`              | `watchId`, `agentId`, `conversationId`                                                                                 | `{}` after the snapshot   |
-| `unwatch`            | `watchId`                                                                                                              | `{}`                      |
-| `abort`              | `agentId`, `conversationId`                                                                                            | `{}`                      |
-| `checkIdle`          | `agentId`, `conversationId`                                                                                            | `{}` or busy              |
-| `reset`              | `agentId`, `conversationId`, `requestId`                                                                               | `submissionId`            |
-| `history`            | `agentId`, `conversationId`, `before`, `limit`                                                                         | `items`, `nextBefore`     |
-| `inputEntries`       | `agentId`, `conversationId`, `requestIds`                                                                              | request ID to entry ID    |
-| `extensions`         | `agentId`                                                                                                              | the Extensions schema     |
+- `Create` creates the execution conversation. `Submit` durably admits an
+  input with a stable request ID and returns a `Submission`. `Submission.Wait`
+  waits for the outcome. Canceling that wait does not cancel the execution.
+- `Abort`, `CheckIdle`, and `Reset` operate on one execution reference. Reset
+  uses a stable request ID. `Recover` registers task conversations that must
+  be isolated before Harness scheduling resumes.
+- `History(ctx, ref, before, limit)` returns typed `History`. `Watch(ctx, ref)`
+  returns a typed initial `Snapshot` and an `Events` channel. `Watch.Close`
+  cancels only that subscription. `Quiesce`, `Resume`, and `Close` control
+  admission and resource lifetime.
 
-The worker can also send a `task` request to control. Its params contain the
-agent, worker conversation, durable tool key, source request ID, action, and
-arguments. Control returns a response with the same ID. IDs in the two pipe
-directions have separate namespaces. Control handles these requests outside
-the stdout reader because a task action can call the worker for validation.
+The engine serializes input, reset, and abort operations per execution. Native
+input metadata contains request ID, original content, origin, attachments,
+source, and optional task ID and title. `dex.user` and `dex.task_result` entries
+keep display facts with the durable input. `dex.withdrawn` entries preserve
+queued inputs that Stop removed. Withdrawn entries contribute no model text.
 
-`submit` also accepts `whenBusy`, `taskStageId`, and a trusted input kind.
-Task result delivery uses
-`whenBusy: reject`, so it remains in control while the source session has an active
-run or queued inputs. `abort` requests SDK cancellation with a 5 s wait limit.
-The SDK saves the cancellation before it waits for idle. An SDK error or timeout
-returns an RPC error. The wait limit excludes admission and conversation
-serialization. `recoverTasks` registers started task conversations before the
-worker opens any Harness.
-
-The worker runs submits and aborts for one conversation in order. When `model`,
-`thinkingLevel` or `instructions` differ from the conversation's, it changes
-the conversation first; a run in progress keeps its settings until its next
-turn.
-
-Event `settled`: `requestId`, `status` (`done` or `unanswered`), `answer` or
-`reason`. The worker sends it when a submission has its final answer.
-
-Event `chat`: `watchId` and `events`, the chat events of one commit, or `end`
-when the watch stopped. The first event of a watch is a snapshot. The worker
-places each message as an entry of kind `dex.user` with control's submission
-ID, so the user item in the transcript has the ID that the browser sent.
+Task tools call injected typed handlers in `internal/chat`. The engine does
+not import the HTTP API package. Frontend `Item`, `Event`, `Retry`, and
+`History` types live in the engine and keep the HTTP JSON field names. JSON
+encoding occurs at the HTTP boundary.
 
 ## Message flow
 
@@ -389,26 +386,28 @@ ID, so the user item in the transcript has the ID that the browser sent.
 Source: [message-flow.puml](../../assets/src/message-flow.puml)
 
 1. The browser opens `GET /api/agents/{agentId}/chats/main`, then sends
-   `POST /api/agents/{agentId}/chats/{id}/messages` with a UUID that it makes.
-   [`chat.Service.Send`](../../internal/chat/chat.go) refuses the message when
-   neither the chat nor the agent has a model. Otherwise it finds or creates
-   the conversation for
-   the channel key (`main` or `chat:<id>` for web input), stores the message as a
-   `pending` submission with that UUID as its ID, and returns `202`. A
-   retried request with the same UUID stores nothing.
-2. `chat.Service.Run` delivers stored submissions in SQLite insertion order
-   (`submissions.rowid`), including after restart and replay. Timestamps are
-   for display and do not control delivery. An input that needs another delivery
-   attempt blocks later inputs of its chat. Other chats can still receive input.
-   On the first
-   message of a chat, it calls `createConversation` and stores the worker's
-   conversation ID.
-3. Control calls `submit` with the submission ID as `requestId`. pi-durable
-   commits the input before it answers.
-4. The worker runs the model and the tools. The browser sees the run through
-   the chat's event stream (next section).
-5. The worker sends `settled`. Control marks the submission `done` or
-   `unanswered`, and the channel sender reads the answer from durable storage.
+   `POST /api/agents/{agentId}/chats/{id}/messages` with a client UUID.
+   `chat.Service.Send` rejects ordinary input when no model is selected.
+   It records the input intent and origin in `control.sqlite`.
+2. The chat service creates an execution conversation on first use and stores
+   its reference. It calls `Agents.Submit` with the UUID as the stable native
+   request ID. PiG commits admission before it returns a handle. Only then
+   does the chat service set `admitted_at` on the business receipt.
+3. If admission or the receipt write fails, reconciliation retries the same
+   request ID. A pending receipt alone does not prove native admission and
+   must not suppress that retry. Reconciliation scans receipts in insertion
+   order. It stops later input of the same chat after a retryable failure.
+4. The engine runs the model and tools. Each browser subscription receives
+   typed transcript events through `live.Hub`. Queued input comes from the
+   native Inbox, not from a second control transcript.
+5. The chat service waits on the native handle and stores the outcome in the
+   business receipt. The channel outbox reads settled receipts and records
+   confirmed reply parts. A restart reacquires native outcomes by request ID;
+   it does not restart a second execution loop in control.
+
+A client retry with the same UUID reuses the input intent and native admission.
+The two stores do not share a transaction. Stable request IDs and receipt
+reconciliation cover the gap between their commits.
 
 ## Internal delegation
 
@@ -418,11 +417,11 @@ There is no goal acceptance lifecycle. The main agent checks saved records
 before it reports progress or starts another execution. The main agent owns
 implementation, independent review, fixes, final tests, and the user report.
 Background conversations cannot call delegation management tools. Control
-checks this boundary as well as the worker's tool list.
+checks this boundary as well as the engine's tool list.
 
 Creation checks source ownership, pending input, deduplication, and capacity
 in one SQLite write transaction. The durable spawn key is the agent ID plus
-pi-durable's tool task ID. Replay returns the same execution. Each agent admits
+PiG's tool task ID. Replay returns the same execution. Each agent admits
 at most 2 queued or running executions. Cancellation releases admission, so a
 tool that ignores cancellation can continue after another execution starts.
 The main agent handles failure, retry, and continuation from saved artifacts.
@@ -430,18 +429,19 @@ The prompt requires a record check before progress reports or follow-up work.
 
 Normal completion (`done`) and execution failure (`failed`) create a durable
 `task_result` submission in the same transaction as settlement. The result
-waits in control while the source chat is busy. Stop and directed cancellation
-set active executions to `cancelled`. Worker loss sets running executions to
-`interrupted`. These states create no result turn. A terminal record and its
-saved report stay unchanged when a late worker event arrives.
+enters the native follow-up Inbox even when its source is busy. There is no
+reject-when-busy mode or business retry queue for task results. Stop and
+directed cancellation set active executions to `cancelled`. Process loss sets started
+executions to `interrupted` during startup recovery. These states create no
+result turn. A terminal record and its saved report stay unchanged when a late
+execution outcome arrives.
 
-Control passes a trusted submission kind to the worker. The worker stores
-internal results as a separate entry kind. The public transcript replaces
-that input with a `task` mark that contains no report text. `live.Hub` uses
-the mark's submission ID and chat to read the work's title from control.
+Control passes a trusted input kind, task ID, and task title to the engine.
+The engine stores internal results as `dex.task_result` entries. The public
+projection replaces each result input with a `task` mark that contains no
+report text. The mark needs no task lookup in `live.Hub`.
 The web groups output after that mark until the next user or task item.
 A failed result reply cannot retry the user message before the mark.
-Control's pending user projection selects only `kind='message'`.
 Neither layer uses message text or an ID pattern to hide results. Ordinary
 user JSON still appears and can use the normal Retry action. Task conversations
 appear in Sessions but stay absent from dream inputs. The human can read their chat,
@@ -456,7 +456,7 @@ session summaries every 3 s.
 Task details poll every 3 s while queued or running. Terminal details stop polling.
 Task details use the normal read-only chat, history, and SSE paths for Work.
 Successful `spawn_task` items carry the ID from the saved tool result. Result
-marks carry the ID and title from control's matching task record. The web links
+marks carry the ID and title saved in the native input metadata. The web links
 both labels by ID. It never matches tasks by title.
 The source session's normal SSE stream carries result marks and replies.
 A task started in Chat keeps that Chat as its parent. Its result returns to
@@ -466,7 +466,8 @@ Result delivery uses the existing submission lifecycle. A provider failure
 leaves the result unanswered. Control never changes a settled submission back
 to pending, so no retry counter or delivery recovery state is needed. The
 main agent can read the saved report and choose the next action. A user Stop
-withdraws pending results. A later greeting cannot revive those results.
+withdraws queued native results. The transcript shows their withdrawn state,
+and the saved report stays readable. A later greeting cannot revive those results.
 A new execution must check prior artifacts and side effects.
 
 Web Stop covers only the selected writable session, main or Chat. Task,
@@ -482,10 +483,14 @@ Stop and spawn acquire the SQLite writer before they read: spawn either commits
 first and is cancelled, or fails because its source is no longer pending.
 Submission and Stop share a delivery lock, so cancellation cannot pass an
 input that control still intends to submit. Stop then requests cancellation
-once for each worker conversation through the bound current process. Each RPC
-has a 6 s timeout. RPC failure is logged; saved cancellation stays in effect.
-There is no cancellation retry loop. Late reports cannot change a terminal
-record or wake the model.
+through the engine for each execution reference. Pending cancellation intent
+stays in business storage until native abort succeeds. If model discovery is
+pending, Stop returns after it saves that intent. Reconciliation completes
+cancellation before it admits later input. Both cold recovery and ordinary
+Stop atomically withdraw queued input and save passive transcript entries.
+Those entries retain origin, attachments, and task labels without adding model
+context. Reconciliation retries cancellation after an error or restart.
+Late reports cannot change a terminal record or wake the model.
 
 `POST /api/agents/{agentId}/chats/{chatId}/abort` returns `{status: "ok"}` after withdrawal and the
 cancellation requests. The composer keeps Stop available for queued input,
@@ -499,14 +504,12 @@ remote work can continue. Cancellation does not undo file writes or remote
 actions. A directed cancellation of a completed execution leaves its report
 and saved result unchanged.
 
-Control binds admission to the current worker process. It joins old worker
-callbacks before it starts the next process. After worker loss, a running
-execution becomes `interrupted`. It does not run again or create a result turn.
-Before Harness resume, the worker isolates all started task conversations,
-including cancelled executions whose cancellation request could not reach the
-old worker. Queued execution that never started can start for the first time.
-Completed results already saved for delivery retain their submission state.
-Durable spawn replay returns the original record.
+At process start, control marks started task executions `interrupted` and
+registers their execution references with `Agents.Recover` before any Harness
+can resume. Recovery isolates those conversations, including cancelled tasks
+whose abort did not complete. Queued execution that never started can start
+for the first time. Completed results already saved for delivery retain their
+receipt state. Durable spawn replay returns the original task record.
 
 The SDK owns cancellation of run invocations and tools. Control does not track
 process trees or confirm exit. A normal local or MCP tool return can settle
@@ -532,71 +535,61 @@ external actions occurred once.
 2. A message carries at most 10 upload IDs. Control checks each ID and stores
    the attachments as JSON with the submission, so a replay sends the same
    list.
-3. The worker gives the model the text and then `Attached files:` with one
+3. The engine gives the model the text and then `Attached files:` with one
    workspace path per line. The model reads a file with the read tool, which
    also prepares images for a model with image input. The `dex.user` entry
    keeps the attachments, so the transcript shows the files and the text
    without the list.
 4. `GET /api/agents/{agentId}/uploads/{id}` serves a file for the transcript.
 
-The contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas `Item`
-and `ChatEvent`. See [ADR 0003](decisions/0003-web-ui-stack-and-live-transcript.md).
+## Transcript subscriptions and history
 
-```
-browser ──EventSource──▶ control  GET /api/agents/{agentId}/chats/{id}/events
-                           │ watch / unwatch, one watch ID per stream
-                           ▼
-                         worker  watchEvents() and ChatView (worker/src/view.ts)
-                           │ event chat {watchId, events}
-                           ▼
-                         control (internal/live) adds control's messages and writes SSE
-```
+The HTTP contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas
+`Item` and `ChatEvent`. [ADR 0011](decisions/0011-native-pig-runtime.md)
+updates the backend implementation of ADR 0003.
 
-- [`ChatView`](../../worker/src/view.ts) keeps the raw pi-durable state,
-  renders all items from it, and diffs the new items against the old ones. It
-  sends `append` when only text was added, `item` for any other change, and a
-  `snapshot` when an item was removed or pi-durable sent a snapshot.
-- Each stream has its own worker watch, so each browser tab gets its own
-  snapshot. The first event of a stream is a snapshot, so a reconnect needs no
-  replay. This snapshot includes control changes made while watch waited.
-- [`live.Hub`](../../internal/live/live.go) adds the messages that only
-  `control.sqlite` has: a `pending` message that the worker has not placed yet
-  (a queued user item), and an `unanswered` message that the worker never
-  placed (a user item and an error item). It also adds the task ID and title to
-  each task mark from the matching result submission. The hub places unanswered
-  messages before the next newer user or task item. It then appends queued messages in
-  receipt order, after all current worker output. The browser inserts new output
-  before those queued messages until the worker places them. History merging keeps
-  each control-only input with its error, before the next newer input or reset.
-- The worker's reader never waits for a stream. A stream that is 256 inputs
-  behind is closed, and the browser reconnects.
-- A stream sends a comment line every 15 s.
+- The [Go projection](../../internal/engine/view.go) renders immutable native
+  conversation revisions. Each revision includes entries, the live partial,
+  tool state, retry state, and the full Inbox. The renderer also serves history.
+- A text-only increase sends `append`. Other item changes send `item`.
+  Removal, reordering, a committed partial ID change, or a new history boundary
+  sends a replacement `snapshot`. Running and retry changes send `run`.
+- Each subscriber has its own native watch. Snapshot capture and subscription
+  share one revision. A reconnect needs no replay. Closing one browser tab
+  cannot stop another tab's subscription.
+- Queued user input comes from the native Inbox. Withdrawal writes passive
+  `dex.withdrawn` entries that display the input and an aborted error. Origin,
+  attachments, and task labels come from durable metadata. The live hub has no
+  queued or failed input overlay and makes no label lookups.
+- A slow subscriber can buffer at most 256 frontend events. Overflow stops
+  the watch so the browser can reconnect. Execution never waits for that reader.
+  SSE sends a comment line every 15 s.
+- `live.Hub.Changed` only helps a stream attach when an empty business chat
+  receives its first execution reference. The hub encodes typed engine events
+  as JSON at the SSE boundary.
 
 `POST /api/agents/{agentId}/chats/{id}/clear` uses the delivery lock and a SQLite writer
 transaction to check pending input and insert `context_reset` together. The
-worker also checks its active run and inbox. A refused request stores nothing.
-Delivery uses `submit({type: "write", requestId, entry: {kind: "pi.reset",
-head: "self"}})`. pi-durable 1.2.0 deduplicates the request ID before writing.
-`Conversation.reset()` does not pass a request ID. A crash replay thus uses
-the write form and adds no second reset. Reset entries keep their time in data.
-Memory files remain available. Follow-ups keep the SDK default: one input
-per answer. Do not use `followUpMode: "all"` or steer.
+engine also checks its active run and Inbox. A refused request stores no reset.
+`Agents.Reset` submits a passive `pi.reset` entry with a stable request ID and
+`head: self`. A retry adds no second reset. Reset entries keep their time in
+data. Memory files remain available. Follow-ups keep one input per answer;
+they do not merge all queued input or steer the current turn.
 
 The Clear context action is in the composer. The server alone decides whether
 work is active. A 409 shows a warning and keeps the same request ID for a retry.
 The action is hidden when the last non-compaction item is a reset or is absent.
 
-A snapshot contains only the active worker context. Reset entries show dividers.
+A snapshot contains only the active native context. Reset entries show dividers.
 Compaction entries stay in the data but have no divider. `historyBefore` points
 to the head entry. The browser requests
-`GET /api/agents/{agentId}/chats/{id}/history?before=<entry ID>&limit=100` on demand. The worker
-reads `Conversation.entries` before that exclusive cursor and returns items
+`GET /api/agents/{agentId}/chats/{id}/history?before=<entry ID>&limit=100` on demand. The engine
+reads `Conversation.Entries` before that exclusive cursor and returns items
 in entry order with `nextBefore`. A page can extend to the previous assistant
 or input so a tool call keeps its result. Committed assistant block IDs use
 `e<entry ID>:<block index>`. User IDs remain submission IDs; tool IDs remain
 call IDs. The browser merges overlaps by ID and keeps queued input last.
-The hub checks retired failed inputs through `inputEntries`, so a snapshot
-does not restore the same failure with a second ID. History loads those entries.
+Older withdrawn input loads from the same durable entries through history.
 
 ## Telegram
 
@@ -628,7 +621,7 @@ so dex needs no public URL.
   with a delay from 5 to 60 seconds. Markup and escaped characters count
   toward the current splitter limit. This can produce more parts than
   Telegram requires. Keep these boundaries stable for stored delivery progress.
-- Each pending submission has a worker watch through `live.Hub`. The bot
+- Each pending submission has a native watch through `live.Hub`. The bot
   updates a private draft at most once per second. If drafts fail, the bot
   sends one preview and edits it. Typing refreshes every 4 seconds. Previews
   are best effort. Queued user items do not start answer segments. The final
@@ -678,7 +671,7 @@ An incomplete command with an old peer channel key gets a notice with no action.
 `/stop` records stop intent for main and
 withdraws queued input and pending results. A channel Stop saves its answer
 in the same transaction as the withdrawal. If command completion fails,
-replay uses that answer without another withdrawal or worker abort. The reply
+replay uses that answer without another withdrawal or native abort. The reply
 confirms the cancellation request and states that processes and remote
 work can continue. A stop error does not block later messages or other replies.
 
@@ -689,7 +682,7 @@ that remain undelivered, in submission admission order. It records each confirme
 delivered after its last part. A permanent rejection skips that part and does
 not block later replies. A transient error retries with a delay from 5 s to
 60 s. Each bot receives a stable delivery ID and part index through `Bot.Send`.
-Worker replay still reads only pending submissions.
+Receipt reconciliation reads pending input and incomplete native abort intent.
 Delivery is at least once: a crash between platform success and the local
 commit can duplicate one part. Migration marks old settled replies as delivered
 because earlier versions did not record delivery success.
@@ -734,7 +727,7 @@ input after durable admission succeeds. Invalid content, rejected resource acces
 and files with invalid names or excessive size are acknowledged and ignored.
 Storage and temporary platform failures get a 500 acknowledgement for retry.
 
-A preview card reads the chat's worker watch events. It merges text updates
+A preview card reads the chat's native watch events. It merges text updates
 at 250 ms intervals and omits thinking and tool data. The shared durable
 sender patches that card with the final answer, or creates a final card when
 no preview exists. It uses the submission ID and part index for stable send
@@ -759,7 +752,7 @@ Previews use the bot lifetime and continue across WebSocket reconnects.
 Previews are best effort and do not mark a reply as delivered. A restart can
 leave a preview card in the platform; the durable sender sends a final card.
 
-The standard `mise run check` task includes local platform tests and worker
+The standard `mise run check` task includes local platform tests and native HTTP
 E2E tests for Feishu. These tests make no real platform requests.
 
 ## WeChat
@@ -815,24 +808,22 @@ the saved context token before each send, including after a restart.
 
 ## Failure behavior
 
-- **Worker exits.** [`worker.Worker.Run`](../../internal/worker/worker.go)
-  restarts it with a backoff from 1 s to 30 s. Calls wait for the new process.
-  After each start, control isolates old task conversations before any Harness
-  resumes. Started execution lost with the worker becomes interrupted and does not
-  restart automatically. `chat.Service.Replay`
-  re-admits pending ordinary messages and eligible normal results with
-  their stable request IDs. pi-durable deduplicates input admission. This does not guarantee that
-  an external tool action occurs once.
-- **Control exits.** Pending submissions stay in `control.sqlite`. The next
-  start replays them.
-- **Crash between `createConversation` and storing its ID.** The worker keeps
-  an empty conversation. The next message creates a new one.
-- **Worker exits while a browser watches.** Control closes every event
-  stream. The browser reconnects and gets a new snapshot after the restart.
+- **dex exits.** Native execution and business receipts remain in their
+  separate SQLite stores. The next start registers interrupted tasks before
+  Harness resume and reconciles input admission and receipt outcomes. A stable
+  request ID reacquires admitted work instead of creating another input.
+  This does not guarantee that external tool actions occur once.
+- **Admission succeeds but the receipt write fails.** Reconciliation submits
+  the same request ID, reacquires the native handle, and writes the receipt.
+  A pending receipt that never reached PiG is retried too.
+- **Crash between execution creation and saving its reference.** An empty
+  native conversation can remain. The next attempt creates a conversation.
+- **A native watch ends or an agent reloads.** The SSE connection closes.
+  The browser reconnects and receives a new snapshot.
 - **Model or tool error.** The submission becomes `unanswered` with a reason.
   The transcript shows an error item. A tool call that ended without a result
   shows as failed.
-- **Crash between a memory edit and its commit.** The worker commits the
+- **Crash between a memory edit and its commit.** The engine commits the
   change as `Recover uncommitted memory changes` when it opens the memory
   again.
 - **Dream fails or stops.** Its message becomes `unanswered`, and the next
@@ -882,10 +873,10 @@ responses have `X-Content-Type-Options: nosniff`, so an uploaded HTML or SVG
 file does not run in the dex origin.
 
 An MCP server from an mcp.json file runs as the user, without a sandbox, and
-gets the worker environment plus its own `env`. mcp.json holds headers and
+gets the explicit agent environment plus its own `env`. mcp.json holds headers and
 environment values as plain text; the API returns no command, URL, header or
 environment value. A server that fails shows only a category of the error,
-such as an HTTP status, in the API and in the worker log. To see the full
+such as an HTTP status, in the API and in the dex log. To see the full
 error, run the server by hand.
 
 Every chat reads the memory, including Telegram chats of each allowed user.
@@ -894,13 +885,15 @@ later chats; the rules tell the agent that memory is data, not instructions,
 and git history shows each change.
 
 Control does not log the Telegram token; Bot API errors drop the request URL,
-which holds the token. The worker gets only the environment variables that
-[`app.WorkerEnv`](../../internal/app/app.go) selects. It runs with its working
-directory in the cache directory, and it does not load `.env` or `bunfig.toml`.
+which holds the token. Tool and stdio MCP processes receive an explicit base
+environment plus home, dex, and agent `.env` values. A server's own `env` wins.
+The engine does not change the dex process environment. Tool execution does not
+inherit ambient process credentials. Extension files remain outside the
+sandbox boundary; the model can read them through tools.
 
 ## Limits
 
-- Harnesses stay open until shutdown.
+- Harnesses stay open until shutdown or reload of that agent.
 - The memory repo is local; dex does not pull or push. Two chats that change
   the memory at the same time can land in one commit, under the source of
   the chat that settles first.
@@ -912,10 +905,10 @@ directory in the cache directory, and it does not load `.env` or `bunfig.toml`.
 
 ## Simplification review
 
-The control and worker boundary has two data owners. Control owns message
-admission and channels. pi-durable owns execution and transcript history.
-Combining their storage would make control depend on pi-durable internals.
-Keep this boundary.
+Keep the native execution boundary. The engine owns execution and transcript
+state. Business services own receipts, channel reply delivery, tasks, and
+settings. Business code calls typed methods and never reads execution SQLite.
+The two stores retain separate responsibilities inside one process.
 
 The API uses the automation service types and `settings.Agent` through
 OpenAPI `x-go-type` declarations. The generated API depends on those services;
@@ -927,16 +920,14 @@ Provider responses keep their own API type. The service's provider input can
 hold an API key. The response type cannot hold that key. Keep this conversion
 as the boundary that prevents secrets from reaching the browser.
 
-Keep work in SQLite and use a coalesced wake signal. The delivery loop scans
-pending submissions. An in-memory `inFlight` set prevents repeated delivery
-after the worker accepted an input. Replay clears that set after a worker
-restart; stable request IDs make input admission safe to repeat. Task results
-that receive a busy response stay pending outside the worker inbox.
+Keep input intents and channel delivery work in SQLite. A coalesced wake
+signal triggers reconciliation; it does not carry work. Native request IDs
+make repeated admission safe. The in-memory waiting set only joins outcomes;
+it is not the source of execution state.
 
-Keep the live hub's merge state. It joins the worker's transcript with queued
-or failed messages that only control has. Each browser stream has its own
-watch and snapshot. The `seen` and `extra` maps prevent duplicate items and
-unchanged updates.
+Keep one transcript projection in the engine. History, snapshots, and live
+events use durable entries and the native Inbox. The live hub owns transport
+and empty-chat attachment, with no second transcript or execution model.
 
 The tests cover separate behavior and failure cases. Keep restart, duplicate
 message, multiple browser streams, model errors, tool results, and DST cases.

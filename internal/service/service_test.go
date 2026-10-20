@@ -125,20 +125,20 @@ func TestUserEnvironmentDefaults(t *testing.T) {
 		t.Fatalf("%+v: %v", c, err)
 	}
 }
-func TestUserReadinessChecksIdentityAndWorker(t *testing.T) {
-	for _, body := range []string{`{"status":"ok","version":"v1.0.0","dataDir":"/other","workerReady":true}`, `{"status":"ok","version":"v0.9.0","dataDir":"/data","workerReady":true}`, `{"status":"ok","version":"v1.0.0","dataDir":"/data","workerReady":false}`, `{"status":"ok","version":"v1.0.0","dataDir":"/data","workerReady":true}`} {
+func TestUserReadinessChecksIdentityAndRuntime(t *testing.T) {
+	for _, body := range []string{`{"status":"ok","version":"v1.0.0","dataDir":"/other","runtimeReady":true}`, `{"status":"ok","version":"v0.9.0","dataDir":"/data","runtimeReady":true}`, `{"status":"ok","version":"v1.0.0","dataDir":"/data","runtimeReady":false}`, `{"status":"ok","version":"v1.0.0","dataDir":"/data","runtimeReady":true}`} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, body) }))
 		t.Cleanup(server.Close)
 		c := Config{Host: "127.0.0.1", Port: server.Listener.Addr().(*net.TCPAddr).Port, DataDir: "/data"}
 		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 		err := Ready(ctx, c, "v1.0.0")
 		cancel()
-		if strings.Contains(body, `"dataDir":"/data","workerReady":true`) && strings.Contains(body, `"version":"v1.0.0"`) {
+		if strings.Contains(body, `"dataDir":"/data","runtimeReady":true`) && strings.Contains(body, `"version":"v1.0.0"`) {
 			if err != nil {
 				t.Fatal(err)
 			}
 		} else if err == nil {
-			t.Fatal("readiness accepted a different instance or unavailable worker")
+			t.Fatal("readiness accepted a different instance or unavailable runtime")
 		}
 	}
 }

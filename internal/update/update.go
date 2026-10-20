@@ -251,7 +251,7 @@ func (u *Updater) Run(ctx context.Context, opt Options, m service.Manager, out i
 	}
 	if state.Running && same {
 		if !state.Healthy || state.Version != u.current {
-			return errors.New("installed instance does not match this executable or its worker is not ready")
+			return errors.New("installed instance does not match this executable or is not ready")
 		}
 		// Rename and restart finish before the two-minute server lease can expire.
 		operation, cancel := context.WithTimeout(ctx, 90*time.Second)

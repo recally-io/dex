@@ -24,7 +24,7 @@ export function ExtensionsPage() {
     ...reloadExtensionsMutation(),
     onSuccess: (data) => {
       queryClient.setQueryData(getExtensionsQueryKey({ path: { agentId } }), data);
-      notify("MCP servers reloaded. The worker restarted for every agent.");
+      notify("MCP servers reloaded for the selected agent.");
     },
     onError: (error) => notify(errorText(error)),
   });
@@ -41,15 +41,15 @@ export function ExtensionsPage() {
           onClick={() => reload.mutate({ path: { agentId } })}
         >
           {reload.isPending ? <Spinner /> : null}
-          Reload (restarts worker for all agents)
+          Reload selected agent
         </Button>
       }
     >
       <div className="px-5 pt-5 sm:px-8">
         <Note tone="warn">
-          Environment values stay out of this page, the extensions API, and worker logs. The model can read
-          .env files or run env. Tool output becomes part of the transcript. Use mode 0600 and keep .env files
-          out of Git. Disabling a server does not remove environment keys.
+          Environment values stay out of this page, the extensions API, and app logs. The model can read .env
+          files or run env. Tool output becomes part of the transcript. Use mode 0600 and keep .env files out
+          of Git. Disabling a server does not remove environment keys.
         </Note>
       </div>
       <Section n={1} title="Built in" caption="Always on. You cannot turn them off.">

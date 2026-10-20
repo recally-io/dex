@@ -116,12 +116,12 @@ func TestUserStopsCurrentChannelAnswer(t *testing.T) {
 	}
 }
 
-func TestUserStopsChannelMessageBeforeWorkerAdmission(t *testing.T) {
-	// Given an idle worker with admission closed for maintenance.
+func TestUserStopsChannelMessageBeforeNativeAdmission(t *testing.T) {
+	// Given an idle native engine with admission closed for maintenance.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
 	d.must(t, http.MethodPost, "/api/maintenance", nil, nil)
-	// When a message is queued and /stop follows before worker conversation creation.
+	// When a message is queued and /stop follows before native conversation creation.
 	f.message(1, 42, 7, "must not execute")
 	f.message(2, 42, 7, "/stop")
 	var stopped bool
@@ -216,7 +216,7 @@ func TestUserBlockedPeerDoesNotStopOtherReplies(t *testing.T) {
 }
 
 func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
-	// Given a chat whose worker conversation no longer exists.
+	// Given a chat whose execution conversation no longer exists.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
 	startTelegram(t, f, dir, 42)
@@ -229,20 +229,20 @@ func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	var workerID int64
-	if err := conn.QueryRowContext(t.Context(), "SELECT worker_conversation_id FROM conversations WHERE channel_key='main'").Scan(&workerID); err != nil {
+	var executionID int64
+	if err := conn.QueryRowContext(t.Context(), "SELECT execution_id FROM conversations WHERE channel_key='main'").Scan(&executionID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = conn.ExecContext(t.Context(), "UPDATE conversations SET worker_conversation_id = 999999 WHERE channel_key = 'main'"); err != nil {
+	if _, err = conn.ExecContext(t.Context(), "UPDATE conversations SET execution_id = 999999 WHERE channel_key = 'main'"); err != nil {
 		t.Fatal(err)
 	}
-	// When /stop gets a permanent worker error, the command still has an answer.
+	// When /stop gets a permanent execution error, the command still has an answer.
 	f.message(2, 42, 7, "/stop")
 	if got := f.next(t).Text; got != "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
 		t.Fatalf("stop reply: %q", got)
 	}
-	// Then the platform advances past /stop. Repair the test's missing worker record.
-	if _, err = conn.ExecContext(t.Context(), "UPDATE conversations SET worker_conversation_id=? WHERE channel_key='main'", workerID); err != nil {
+	// Then the platform advances past /stop. Repair the test's missing execution reference.
+	if _, err = conn.ExecContext(t.Context(), "UPDATE conversations SET execution_id=? WHERE channel_key='main'", executionID); err != nil {
 		t.Fatal(err)
 	}
 	f.message(3, 42, 8, "after failed stop")
@@ -252,7 +252,7 @@ func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 }
 
 func TestUserStopsExistingChannelChatDuringMaintenance(t *testing.T) {
-	// Given a chat whose worker conversation already exists and admission is closed.
+	// Given a chat whose execution conversation already exists and admission is closed.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
 	f.message(1, 42, 7, "initial")
@@ -282,7 +282,7 @@ func TestUserStopsExistingChannelChatDuringMaintenance(t *testing.T) {
 	if got := f.next(t).Text; got != "echo: after gate" {
 		t.Fatal(got)
 	}
-	// The reply precedes the memory commit. Wait for that commit before the worker exits,
+	// The reply precedes the memory commit. Wait for that commit before the engine closes,
 	// so its git child cannot write after TempDir removes the data directory.
 	eventually(t, "memory commit before shutdown", func() (bool, any) {
 		status, body := d.call(t, http.MethodPost, "/api/maintenance", nil)

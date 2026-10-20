@@ -1,22 +1,74 @@
 package chat
 
 import (
-	"context"
+	"database/sql"
 	"errors"
 	"testing"
-	"time"
 
-	"github.com/recally-io/dex/internal/worker"
+	"github.com/recally-io/dex/internal/engine"
 )
 
-func TestUserMaintenanceWorkerFailureIsNotBusy(t *testing.T) {
-	// Given a worker that has no running process.
-	s := New(nil, worker.New(worker.Config{}), time.Now, nil, nil)
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
-	defer cancel()
-	// When maintenance cannot reach the worker, callers must receive a failure, not busy.
-	err := s.AcquireMaintenance(ctx)
-	if err == nil || errors.Is(err, ErrMaintenanceBusy) || !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("worker failure reported as busy: %v", err)
+func TestUserMaintenanceReportsClosedEngine(t *testing.T) {
+	r := startNative(t, "echo")
+	if err := r.agents.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.service.AcquireMaintenance(t.Context()); !errors.Is(err, engine.ErrClosed) || errors.Is(err, ErrMaintenanceBusy) {
+		t.Fatalf("closed engine reported as busy: %v", err)
+	}
+}
+
+func TestUserMaintenanceCannotReleaseNativeReloadGate(t *testing.T) {
+	r := startNative(t, "echo")
+	if err := r.agents.Quiesce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.service.AcquireMaintenance(t.Context()); !errors.Is(err, engine.ErrMaintenance) {
+		t.Fatalf("native gate: %v", err)
+	}
+	if err := r.service.ReleaseMaintenance(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.agents.Create(t.Context(), "bot", engine.Options{}); !errors.Is(err, engine.ErrMaintenance) {
+		t.Fatalf("maintenance released another holder: %v", err)
+	}
+	r.agents.Resume()
+}
+
+func TestUserMaintenanceRenewalKeepsAdmissionPaused(t *testing.T) {
+	r := startNative(t, "echo")
+	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.agents.Create(t.Context(), "bot", engine.Options{}); !errors.Is(err, engine.ErrMaintenance) {
+		t.Fatalf("renewal reopened native admission: %v", err)
+	}
+	if err := r.service.ReleaseMaintenance(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUserMaintenanceRejectsWebInputWithoutSavingIt(t *testing.T) {
+	r := startNative(t, "echo")
+	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "rejected-web", "wait"); !errors.Is(err, engine.ErrMaintenance) {
+		t.Fatalf("maintenance rejection: %v", err)
+	}
+	if _, err := r.q.GetSubmission(t.Context(), "rejected-web"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("rejected input was saved: %v", err)
+	}
+	if err := r.service.ReleaseMaintenance(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "rejected-web", "retry"); err != nil {
+		t.Fatal(err)
+	}
+	if sub := awaitReceipt(t, r, "rejected-web"); sub.Answer.String != "echo: retry" {
+		t.Fatalf("retry: %+v", sub)
 	}
 }

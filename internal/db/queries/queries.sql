@@ -53,8 +53,8 @@ SELECT * FROM conversations WHERE agent_id = ? AND channel_key = ?;
 UPDATE conversations SET model_provider = ?, model_id = ?, thinking_level = ?
 WHERE id = ? AND agent_id = ?;
 
--- name: SetWorkerConversation :exec
-UPDATE conversations SET worker_conversation_id = ? WHERE id = ?;
+-- name: SetExecution :exec
+UPDATE conversations SET execution_id = ? WHERE id = ?;
 
 -- name: CreateSubmission :execrows
 -- A message whose ID or source key exists already is not stored again.
@@ -84,6 +84,8 @@ SELECT
     s.content,
     s.attachments,
     s.kind,
+    s.origin,
+    s.admitted_at,
     s.conversation_id,
     c.agent_id,
     c.channel_key
@@ -129,7 +131,7 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.created_at,
-    c.worker_conversation_id,
+    c.execution_id,
     CAST(max(
         c.created_at,
         coalesce(max(s.created_at), c.created_at),
@@ -317,3 +319,15 @@ RETURNING allowed_users;
 
 -- name: CountPendingChat :one
 SELECT count(*) FROM submissions WHERE conversation_id = ? AND status = 'pending';
+
+-- name: AdmitSubmission :exec
+UPDATE submissions SET admitted_at = ? WHERE id = ? AND admitted_at IS NULL;
+
+-- name: RequestExecutionAbort :exec
+UPDATE conversations SET abort_pending = 1 WHERE id = ? AND execution_id IS NOT NULL;
+
+-- name: FinishExecutionAbort :exec
+UPDATE conversations SET abort_pending = 0 WHERE agent_id = ? AND execution_id = ?;
+
+-- name: ListPendingExecutionAborts :many
+SELECT id, agent_id, execution_id FROM conversations WHERE abort_pending = 1;

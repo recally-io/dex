@@ -9,8 +9,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/upload"
-	"github.com/recally-io/dex/internal/worker"
 )
 
 type media struct {
@@ -21,7 +21,7 @@ type media struct {
 	Height int    `json:"height"`
 }
 
-func (b *Bot) download(ctx context.Context, m *message) ([]worker.Attachment, error) {
+func (b *Bot) download(ctx context.Context, m *message) ([]engine.Attachment, error) {
 	selected := m.Document
 	for i := range m.Photo {
 		photo := &m.Photo[i]
@@ -75,5 +75,5 @@ func (b *Bot) download(ctx context.Context, m *message) ([]worker.Attachment, er
 	if err != nil {
 		return nil, err
 	}
-	return []worker.Attachment{a}, nil
+	return []engine.Attachment{a}, nil
 }

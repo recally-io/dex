@@ -8,10 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
-	"time"
 	"uuid"
-
-	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 func (d *dex) mainChat(t *testing.T) int64 {
@@ -221,24 +218,4 @@ func TestUserReadsFailedInputAcrossClear(t *testing.T) {
 		}
 	}
 	t.Logf("artifact: failed input=%s snapshot=%+v history=%+v", input, fresh.tr.items, page.Items)
-}
-
-// An automation input is a delivery barrier without adding a second web conversation.
-func (d *dex) automationBarrier(t *testing.T, text string) int64 {
-	t.Helper()
-	conn, err := sql.Open("sqlite", "file:"+filepath.Join(d.dataDir(t), "control.sqlite")+"?_pragma=busy_timeout(5000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
-	q := sqlc.New(conn)
-	id := uuid.NewV7().String()
-	c, err := q.EnsureConversation(t.Context(), sqlc.EnsureConversationParams{AgentID: "default", ChannelKey: "automation:barrier:" + id, Title: "Barrier", ModelProvider: "faux", ModelID: "echo", CreatedAt: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: id, ConversationID: c.ID, Origin: "automation", Kind: "message", Content: text, Attachments: "null", CreatedAt: time.Now().UnixMilli()}); err != nil {
-		t.Fatal(err)
-	}
-	return c.ID
 }

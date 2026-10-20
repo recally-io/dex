@@ -2,16 +2,21 @@
 
 Read this before you report work as complete.
 
-| Changed area                      | Smallest check                           |
-| --------------------------------- | ---------------------------------------- |
-| Go code                           | `mise run check:go`                      |
-| Worker TypeScript or its packages | `mise run check:worker`, then `check:go` |
-| Worker protocol                   | `mise run check:worker` and `check:go`   |
-| Migrations or queries             | `mise run check:db-drift` and `check:go` |
-| Documents and configuration only  | `dprint check`                           |
-| Before a commit or PR             | `mise run check`                         |
+| Changed area                     | Smallest check                                                            |
+| -------------------------------- | ------------------------------------------------------------------------- |
+| Go code or the PiG dependency    | `mise run check:go`                                                       |
+| Migrations or queries            | `mise run check:db-drift` and `mise run check:go`                         |
+| HTTP contract                    | `mise run check:api-drift`, `mise run check:go`, and `mise run check:web` |
+| Web UI                           | `mise run check:web`                                                      |
+| Documents and configuration only | `dprint check`                                                            |
+| Diagram sources                  | `mise run generate:diagrams`, inspect PNGs, then `dprint check`           |
+| Before a commit or PR            | `mise run check`                                                          |
 
-`check:go` rebuilds the worker binary first, because the Go tests run it.
+`check:go` builds the embedded web assets, runs lint, builds Go packages,
+and runs Go tests with the race detector. There is no backend worker build.
+Run `mise run check:native` for runtime or dependency changes. It checks that
+removed backend paths stay absent, rejects PiG TUI and extension-host imports,
+and builds darwin/linux on amd64/arm64 with `CGO_ENABLED=0`.
 
 A change to a provider or to model handling also needs a manual run against a
 real provider (`mise run dev:server`, with a key in Settings), because the tests use the

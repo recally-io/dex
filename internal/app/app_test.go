@@ -25,7 +25,7 @@ import (
 	"github.com/recally-io/dex/internal/mcptest"
 )
 
-// These tests run the real embedded worker with pi-ai's faux provider: model faux/echo answers
+// These tests run the native runtime with pi-ai's faux provider: model faux/echo answers
 // "echo: <message>", faux/shout answers "shout: <message>", faux/bash runs the message with the
 // bash tool and answers "bash: <output>", and faux/think answers "think <thinking level>:
 // <message>". They do not prove that a real provider works.
@@ -35,10 +35,6 @@ type dex struct {
 	app      *app.App
 	srv      *httptest.Server
 }
-
-// cacheDir is shared by all tests. Install skips a worker that is already in it; unpacking the
-// worker for each start is most of the run time under -race.
-var cacheDir string
 
 func TestMain(m *testing.M) {
 	// The tests start this binary as a stdio MCP server; see mcpServer.
@@ -50,15 +46,7 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	}
-	dir, err := os.MkdirTemp("", "dex-app-test-")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	cacheDir = dir
-	code := m.Run()
-	_ = os.RemoveAll(dir)
-	os.Exit(code)
+	os.Exit(m.Run())
 }
 
 // startDex starts dex with its own data directory and serves its handler. telegramURL is the Bot
@@ -68,17 +56,18 @@ func startDex(t *testing.T, dataDir, telegramURL string) *dex {
 	return startDexWith(t, app.Config{DataDir: dataDir, TelegramAPIURL: telegramURL})
 }
 
-// startDexWith starts dex with cfg, a cache directory, and the test worker environment.
+// startDexWith starts dex with an isolated tool environment.
 func startDexWith(t *testing.T, cfg app.Config) *dex {
 	t.Helper()
 	return startDexHome(t, cfg, t.TempDir())
 }
 
-// startDexHome starts dex as startDexWith does, with home as the worker's HOME.
+// startDexHome starts dex with an explicit home directory.
 func startDexHome(t *testing.T, cfg app.Config, home string) *dex {
 	t.Helper()
-	cfg.CacheDir = cacheDir
-	cfg.WorkerEnv = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "DEX_FAKE_MODEL=1"}
+	cfg.Home = home
+	cfg.ToolEnv = map[string]string{"PATH": os.Getenv("PATH"), "HOME": home, "DEX_DATA_DIR": cfg.DataDir}
+	cfg.FakeModel = true
 	a, err := app.Start(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
