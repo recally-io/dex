@@ -166,11 +166,10 @@ func TestUserSharesDexEnvironmentBetweenAgents(t *testing.T) {
 		d.must(t, http.MethodGet, "/api/agents/"+id+"/chats/main", nil, &main)
 		d.must(t, http.MethodPost, "/api/agents/"+id+"/extensions/reload", nil, nil)
 	}
-	// When the user writes a shared key and reloads.
+	// When the user writes a shared key and reloads each agent.
 	d.must(t, http.MethodPut, "/api/agents/default/extensions/env", map[string]string{"scope": "dex", "key": "SHARED_SECRET", "value": "shared-private-value"}, nil)
-	status, _ := d.reload(t)
-	if status != http.StatusOK {
-		t.Fatalf("reload: %d", status)
+	for _, id := range []string{"default", second.ID} {
+		d.must(t, http.MethodPost, "/api/agents/"+id+"/extensions/reload", nil, nil)
 	}
 	// Then both agents can use the value without placing it in a response.
 	for _, id := range []string{"default", second.ID} {

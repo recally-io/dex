@@ -68,6 +68,9 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			return nil, err
 		}
 	} else {
+		if input.Model.ModelID == "" {
+			return nil, ErrNoModel
+		}
 		change := agentChange(input.Options)
 		if input.Background || input.Origin == "dream" || strings.Contains(input.Source, "/dream/") {
 			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{taskExtension(ref.AgentID, a.config.Tasks)}}})

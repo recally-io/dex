@@ -48,6 +48,13 @@ A process restart clears the in-memory lease.
 Transcript acquisition uses the same gate because opening an agent can resume
 stored work. Existing subscriptions remain independent of new admission.
 `GET /api/health` exposes native readiness as `runtimeReady`.
+Startup registers saved credentials and static models before it serves HTTP.
+Network model discovery runs in the background. Health and Settings remain
+available while discovery is pending. A cold agent cannot open during discovery
+because opening resumes all its stored conversations. Its input receipts stay
+pending and reconcile when discovery finishes. Direct history, reload, and
+model checks that need discovery return `503`. SSE clients reconnect.
+Shutdown cancels discovery and waits for its work to end.
 
 See [service commands and recovery](../../README.md#run-and-manage-dex) and
 [ADR 0006](decisions/0006-service-and-update.md) for service and update
@@ -170,11 +177,12 @@ Execution IDs can be equal in different agents.
 
 Session, health, maintenance, models, provider settings, and
 `/api/automations/preview` stay global. Separate services own global settings
-and agent state. The settings lock orders provider saves and engine
-configuration. The agent lock orders agent writes, credential ownership
-checks, channel changes, and setup sessions across all agents. Agent model
-checks also take the settings lock, so they cannot read an incomplete provider
-update. The lock order is agent, then settings. Settings never takes the agent
+and agent state. The settings lock orders provider saves and local engine
+configuration. Each settings request releases that lock before it waits for
+its own discovery operation. The agent lock orders agent writes,
+credential ownership checks, channel changes, and setup sessions across all
+agents. Agent model checks distinguish pending discovery from an invalid model.
+The lock order is agent, then settings. Settings never takes the agent
 lock. Each service writes separate rows. Creating or selecting an agent does
 not configure providers.
 One scheduler job checks automations across all agents and posts each prompt
@@ -256,8 +264,11 @@ store.
 `GET /api/agents/{agentId}/extensions` reads file metadata. Before the agent
 opens, servers are `idle`. `POST /api/agents/{agentId}/extensions/reload`
 validates the selected agent, requires idle execution, closes that agent's
-Harness and MCP connections, and reopens them. Other agents keep their Harnesses
-and connections. A failed preflight leaves current resources in place.
+Harness and MCP connections, and reopens them. If the agent has not opened,
+Reload opens it and reports the MCP connection results. Other agents keep their
+Harnesses and connections. A failed preflight leaves current resources in place.
+Reload checks the closed state under the engine lock, so shutdown cannot leave
+replacement resources open.
 See [ADR 0011](decisions/0011-native-pig-runtime.md) for the reload change to
 ADR 0010.
 
@@ -325,11 +336,19 @@ For task tools, custom `openai-responses` providers send `strict:false`.
 This keeps optional parameters optional at Responses endpoints.
 
 The engine keeps provider configuration and credentials in memory through its
-model catalog. The settings service loads saved providers at process start
-and applies later changes directly. Provider errors do not expose secrets.
-A custom provider whose model discovery fails stays saved; the API returns
-the failure. The agent has no model until the user chooses one. Ordinary
-message admission refuses input without a selected model.
+model catalog. The settings service registers saved providers at process start
+and discovers dynamic models in the background. Each network request has a
+30-second deadline. A settings change keeps each unchanged provider and its
+models. Changed providers cancel their previous discovery. Only the current
+provider's discovery can supply its models and error. A cancelled HTTP request
+ends that request's wait; discovery continues until completion, replacement,
+deletion, or shutdown.
+Provider errors do not expose secrets. A custom provider whose model discovery
+fails stays saved; the API returns the failure. Saving the same settings retries
+a failed discovery. The agent has no model until the user chooses one. New message
+admission requires a selected model. Receipt
+recovery first looks up the native request ID, so clearing or changing the
+current model cannot replace an existing native answer.
 
 ## Native execution boundary
 
@@ -465,9 +484,13 @@ first and is cancelled, or fails because its source is no longer pending.
 Submission and Stop share a delivery lock, so cancellation cannot pass an
 input that control still intends to submit. Stop then requests cancellation
 through the engine for each execution reference. Pending cancellation intent
-stays in business storage until native abort succeeds. Reconciliation retries
-that intent after failure or restart. Late reports cannot change a terminal
-record or wake the model.
+stays in business storage until native abort succeeds. If model discovery is
+pending, Stop returns after it saves that intent. Reconciliation completes
+cancellation before it admits later input. Both cold recovery and ordinary
+Stop atomically withdraw queued input and save passive transcript entries.
+Those entries retain origin, attachments, and task labels without adding model
+context. Reconciliation retries cancellation after an error or restart.
+Late reports cannot change a terminal record or wake the model.
 
 `POST /api/agents/{agentId}/chats/{chatId}/abort` returns `{status: "ok"}` after withdrawal and the
 cancellation requests. The composer keeps Stop available for queued input,

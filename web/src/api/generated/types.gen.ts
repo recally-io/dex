@@ -473,11 +473,11 @@ export type Provider = {
      */
     models: Array<string>;
     /**
-     * The number of models that the worker has for it.
+     * The number of models in the catalog for this provider.
      */
     modelCount?: number;
     /**
-     * Why the worker could not list its models.
+     * Why the engine could not list this provider's models.
      */
     error?: string;
 };
@@ -759,7 +759,7 @@ export type ReleaseMaintenanceError = ReleaseMaintenanceErrors[keyof ReleaseMain
 
 export type ReleaseMaintenanceResponses = {
     /**
-     * Worker admission can resume.
+     * Native admission can resume.
      */
     200: Ok;
 };
@@ -788,7 +788,7 @@ export type AcquireMaintenanceError = AcquireMaintenanceErrors[keyof AcquireMain
 
 export type AcquireMaintenanceResponses = {
     /**
-     * Worker admission is held until expiry or release.
+     * Native admission is held until expiry or release.
      */
     200: Ok;
 };

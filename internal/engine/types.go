@@ -8,6 +8,7 @@ var (
 	ErrClosed       = errors.New("engine is closed")
 	ErrInvalidInput = errors.New("invalid engine input")
 	ErrNotFound     = errors.New("conversation not found")
+	ErrNoModel      = errors.New("the agent has no model; choose one in Settings")
 )
 
 type Ref struct {

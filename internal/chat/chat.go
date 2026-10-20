@@ -60,7 +60,7 @@ type Message struct {
 }
 
 // ErrNoModel means that the agent has no model yet; the user chooses one in the settings.
-var ErrNoModel = errors.New("the agent has no model; choose one in Settings")
+var ErrNoModel = engine.ErrNoModel
 
 // ErrNotFound means that the chat does not exist.
 var ErrNotFound = errors.New("chat not found")
@@ -385,9 +385,6 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	background := strings.HasPrefix(p.ChannelKey, "task:")
 	if background {
 		options.Instructions = taskInstructions(options.Instructions)
-	}
-	if options.Model.ModelID == "" && p.Kind != "context_reset" {
-		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: ErrNoModel.Error()})
 	}
 	ref, err := s.execution(ctx, conv.ID, p.AgentID, options)
 	if err != nil {

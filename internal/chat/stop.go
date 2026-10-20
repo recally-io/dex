@@ -122,6 +122,11 @@ func (s *Service) abort(ctx context.Context, target engine.Ref) error {
 	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 6*time.Second)
 	defer cancel()
 	if err := s.engine.Abort(callCtx, target); err != nil && !errors.Is(err, engine.ErrNotFound) {
+		if errors.Is(err, engine.ErrModelsPending) {
+			// Discovery completion or retry wakes cancellation before later admission.
+			s.scheduleRetry()
+			return nil
+		}
 		if errors.Is(err, engine.ErrMaintenance) && s.leaseUntil.Load() != 0 {
 			// Release wakes reconciliation; keep the durable cancellation until then.
 			return nil

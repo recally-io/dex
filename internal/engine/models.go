@@ -3,9 +3,11 @@ package engine
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -37,73 +39,230 @@ type ModelInfo struct {
 type Catalog struct {
 	Models      *ai.Models
 	credentials *ai.InMemoryCredentialStore
-	custom      map[string]bool
+	custom      map[string]*providerRegistration
+	closed      bool
+	work        sync.WaitGroup
 	mu          sync.Mutex
 }
 
 func NewCatalog(fake bool) *Catalog {
 	credentials := ai.NewInMemoryCredentialStore()
-	c := &Catalog{credentials: credentials, custom: map[string]bool{}, Models: ai.BuiltinModels(ai.CreateModelsOptions{Credentials: credentials, AuthContext: &ai.AuthContext{Env: func(string) (string, bool) { return "", false }, FileExists: func(string) bool { return false }}})}
+	c := &Catalog{credentials: credentials, custom: map[string]*providerRegistration{}, Models: ai.BuiltinModels(ai.CreateModelsOptions{Credentials: credentials, AuthContext: &ai.AuthContext{Env: func(string) (string, bool) { return "", false }, FileExists: func(string) bool { return false }}})}
 	if fake {
 		c.Models.SetProvider(fakeProvider())
 	}
 	return c
 }
+
+// ErrModelsPending tells callers to retry after model discovery finishes.
+var ErrModelsPending = errors.New("model discovery is pending")
+
+type providerRegistration struct {
+	settings  ProviderSettings
+	discovery *Discovery
+	cancel    context.CancelFunc
+}
+
+// Discovery is the completion of one configuration operation.
+// Results belong to that operation, even if another operation replaces its providers.
+type Discovery struct {
+	done     chan struct{}
+	failures map[string]string
+	err      error
+}
+
+// Done closes when this operation's discovery has finished.
+func (d *Discovery) Done() <-chan struct{} { return d.done }
+
+// Wait waits for this operation without holding a catalog or engine lock.
+func (d *Discovery) Wait(ctx context.Context) (map[string]string, error) {
+	select {
+	case <-ctx.Done():
+		return nil, context.Cause(ctx)
+	case <-d.done:
+		return d.failures, d.err
+	}
+}
+
+// Configure registers providers and waits for discovery, for synchronous callers.
 func (c *Catalog) Configure(ctx context.Context, providers []ProviderSettings) (map[string]string, error) {
+	discovery, err := c.ConfigureAsync(ctx, providers)
+	if err != nil {
+		return nil, err
+	}
+	return discovery.Wait(ctx)
+}
+
+// ConfigureAsync registers credentials and static models before returning.
+// New, changed, and failed dynamic providers need discovery. Other providers keep their catalogs.
+func (c *Catalog) ConfigureAsync(ctx context.Context, providers []ProviderSettings) (*Discovery, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.closed {
+		return nil, ErrClosed
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	for _, p := range providers {
 		if p.API != "" && p.API != "openai-completions" && p.API != "openai-responses" && p.API != "anthropic-messages" {
 			return nil, fmt.Errorf("unsupported provider API")
 		}
 	}
+	desired := make(map[string]ProviderSettings, len(providers))
+	for _, p := range providers {
+		desired[p.ID] = p
+	}
 	stored, err := c.credentials.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for _, p := range stored {
-		if err := c.credentials.Delete(ctx, p.ProviderID); err != nil {
-			return nil, err
+	for _, credential := range stored {
+		if p, ok := desired[credential.ProviderID]; !ok || p.API != "" {
+			if err := c.credentials.Delete(ctx, credential.ProviderID); err != nil {
+				return nil, err
+			}
 		}
 	}
-	for id := range c.custom {
-		c.Models.DeleteProvider(id)
+	for id, current := range c.custom {
+		if p, ok := desired[id]; !ok || p.API == "" {
+			current.cancel()
+			<-current.discovery.done
+			c.Models.DeleteProvider(id)
+			delete(c.custom, id)
+		}
 	}
-	clear(c.custom)
-	listed := []string{}
+	changes := map[string]*Discovery{}
 	for _, p := range providers {
 		if p.API == "" {
 			if _, err := c.credentials.Modify(ctx, p.ID, func(*ai.Credential) (*ai.Credential, error) {
-				return &ai.Credential{Type: ai.CredentialType("api_key"), Key: p.APIKey}, nil
+				return &ai.Credential{Type: ai.CredentialAPIKey, Key: p.APIKey}, nil
 			}); err != nil {
 				return nil, err
 			}
 			continue
 		}
-		c.Models.SetProvider(customProvider(p)) //nolint:contextcheck // Refresh callbacks use PiG's operation context, not this Configure request.
-		c.custom[p.ID] = true
-		if len(p.Models) == 0 {
-			listed = append(listed, p.ID)
+		current := c.custom[p.ID]
+		if current != nil && sameProviderSettings(current.settings, p) {
+			select {
+			case <-current.discovery.done:
+				if current.discovery.err == nil && len(current.discovery.failures) == 0 {
+					continue
+				}
+			default:
+				continue
+			}
+		}
+		if current != nil {
+			current.cancel()
+			// Refresh returns on cancellation before network callbacks finish.
+			// Join its registration loop before a replacement can start a newer generation.
+			<-current.discovery.done
+		}
+		// Keep our own copy because callers can reuse their settings slice.
+		p.Models = slices.Clone(p.Models)
+		discovery := &Discovery{done: make(chan struct{}), failures: map[string]string{}}
+		refreshCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+		c.custom[p.ID] = &providerRegistration{settings: p, discovery: discovery, cancel: cancel}
+		c.Models.SetProvider(customProvider(p)) //nolint:contextcheck // Refresh callbacks use PiG's operation context.
+		if len(p.Models) > 0 {
+			close(discovery.done)
+			cancel()
+			continue
+		}
+		changes[p.ID] = discovery
+		c.work.Go(func() {
+			defer cancel()
+			defer close(discovery.done)
+			result := c.Models.Refresh(refreshCtx, ai.ModelsRefreshOptions{Providers: []string{p.ID}, AllowNetwork: new(true)})
+			for id, err := range result.Errors {
+				discovery.failures[id] = err.Error()
+			}
+			discovery.err = context.Cause(refreshCtx)
+		})
+	}
+	operation := &Discovery{done: make(chan struct{}), failures: map[string]string{}}
+	if len(changes) == 0 {
+		close(operation.done)
+		return operation, nil
+	}
+	c.work.Go(func() {
+		defer close(operation.done)
+		for id, discovery := range changes {
+			<-discovery.done
+			if msg := discovery.failures[id]; msg != "" {
+				operation.failures[id] = msg
+			}
+			operation.err = errors.Join(operation.err, discovery.err)
+		}
+	})
+	return operation, nil
+}
+
+func sameProviderSettings(a, b ProviderSettings) bool {
+	return a.ID == b.ID && a.Name == b.Name && a.API == b.API && a.BaseURL == b.BaseURL && a.APIKey == b.APIKey && slices.Equal(a.Models, b.Models)
+}
+
+// DiscoveryReady is a nonblocking gate for cold harness opens that can resume stored work.
+func (c *Catalog) DiscoveryReady() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, current := range c.custom {
+		select {
+		case <-current.discovery.done:
+		default:
+			return ErrModelsPending
 		}
 	}
-	failures := map[string]string{}
-	if len(listed) > 0 {
-		result := c.Models.Refresh(ctx, ai.ModelsRefreshOptions{Providers: listed, AllowNetwork: new(true)})
-		for id, err := range result.Errors {
-			failures[id] = err.Error()
+	return nil
+}
+
+// ModelReady distinguishes a pending catalog from an invalid model selection.
+func (c *Catalog) ModelReady(provider string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if current := c.custom[provider]; current != nil {
+		select {
+		case <-current.discovery.done:
+		default:
+			return ErrModelsPending
 		}
 	}
-	if ctx.Err() != nil {
-		return nil, context.Cause(ctx)
+	return nil
+}
+
+// Failure returns the current provider's sanitized discovery error.
+func (c *Catalog) Failure(provider string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if current := c.custom[provider]; current != nil {
+		select {
+		case <-current.discovery.done:
+			return current.discovery.failures[provider]
+		default:
+		}
 	}
-	return failures, nil
+	return ""
+}
+
+// Close cancels discovery and joins both catalog and SDK work.
+func (c *Catalog) Close() error {
+	c.mu.Lock()
+	c.closed = true
+	for _, current := range c.custom {
+		current.cancel()
+	}
+	c.mu.Unlock()
+	c.work.Wait()
+	c.Models.Close()
+	return nil
 }
 func (c *Catalog) Builtins(ctx context.Context) ([]ProviderInfo, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	out := []ProviderInfo{}
 	for _, p := range c.Models.GetProviders() {
-		if p.Auth.APIKey == nil || p.ID == "faux" || c.custom[p.ID] {
+		if p.Auth.APIKey == nil || p.ID == "faux" || c.custom[p.ID] != nil {
 			continue
 		}
 		info := ProviderInfo{ID: p.ID, Name: p.Name}
@@ -159,7 +318,7 @@ func customProvider(p ProviderSettings) *ai.ModelsProvider {
 	}
 	if len(p.Models) == 0 {
 		opts.FetchModels = func(refresh ai.RefreshModelsContext) ([]ai.AnyModel, error) {
-			// A stored endpoint must not block startup while the caller remains alive.
+			// Bound each network request independently of the application lifetime.
 			ctx, cancel := context.WithTimeout(refresh.Signal, 30*time.Second)
 			defer cancel()
 			suffix := "/models"
@@ -229,7 +388,15 @@ func customProvider(p ProviderSettings) *ai.ModelsProvider {
 			return out, nil
 		}
 	}
-	return ai.CreateProvider(opts)
+	provider := ai.CreateProvider(opts)
+	if refresh := provider.RefreshModels; refresh != nil {
+		provider.RefreshModels = func(ctx ai.RefreshModelsContext) error {
+			// SDK storage is keyed by ID, so a saved catalog can have a previous BaseURL.
+			ctx.Stored = nil
+			return refresh(ctx)
+		}
+	}
+	return provider
 }
 
 // Keep sensitive runtime details available to error matching, not error text.

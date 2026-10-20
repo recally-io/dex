@@ -67,9 +67,7 @@ type Service struct {
 	q       *sqlc.Queries
 	catalog *engine.Catalog
 	// Serializes provider save and apply. Agent and channel changes have their own lock.
-	mu    sync.Mutex
-	errMu sync.Mutex
-	errs  map[string]string
+	mu sync.Mutex
 }
 
 // New returns the global settings service.
@@ -108,9 +106,7 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 
 // provider returns the view of a saved provider, with its model count and its last error.
 func (s *Service) provider(r sqlc.Provider, models []engine.ModelInfo) Provider {
-	s.errMu.Lock()
-	msg := s.errs[r.ID]
-	s.errMu.Unlock()
+	msg := s.catalog.Failure(r.ID)
 	count := 0
 	for _, m := range models {
 		if m.Provider == r.ID {
@@ -132,7 +128,7 @@ func (s *Service) Models(ctx context.Context) ([]engine.ModelInfo, error) {
 	return s.catalog.Available(ctx)
 }
 
-// CheckModel keeps agent validation out of an incomplete provider update.
+// CheckModel reports pending discovery separately from an invalid selection.
 func (s *Service) CheckModel(ctx context.Context, provider, modelID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -140,6 +136,9 @@ func (s *Service) CheckModel(ctx context.Context, provider, modelID string) erro
 }
 
 func (s *Service) checkModel(ctx context.Context, provider, modelID string) error {
+	if err := s.catalog.ModelReady(provider); err != nil {
+		return err
+	}
 	models, err := s.Models(ctx)
 	if err != nil {
 		return err
@@ -161,7 +160,7 @@ func (s *Service) CheckChat(ctx context.Context, c chat.Settings) error {
 	if c.ModelID == "" {
 		return nil
 	}
-	return s.checkModel(ctx, c.Provider, c.ModelID)
+	return s.CheckModel(ctx, c.Provider, c.ModelID)
 }
 
 // SetProvider adds provider p or changes it, gives all providers to the runtime, and returns the
@@ -169,7 +168,12 @@ func (s *Service) CheckChat(ctx context.Context, c chat.Settings) error {
 // p, p stays saved and the returned provider has the reason in Error.
 func (s *Service) SetProvider(ctx context.Context, p Provider) (Provider, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	locked := true
+	defer func() {
+		if locked {
+			s.mu.Unlock()
+		}
+	}()
 	builtins, err := s.builtins(ctx)
 	if err != nil {
 		return Provider{}, err
@@ -214,50 +218,63 @@ func (s *Service) SetProvider(ctx context.Context, p Provider) (Provider, error)
 	if err := s.q.UpsertProvider(ctx, row); err != nil {
 		return Provider{}, err
 	}
-	if _, err := s.ApplyProviders(ctx); err != nil {
+	discovery, err := s.RegisterProviders(ctx)
+	if err != nil {
 		return Provider{}, fmt.Errorf("saved, but the runtime did not apply it: %w", err)
+	}
+	locked = false
+	s.mu.Unlock()
+	failures, err := discovery.Wait(ctx)
+	if err != nil {
+		return Provider{}, err
 	}
 	models, err := s.Models(ctx)
 	if err != nil {
 		return Provider{}, err
 	}
-	return s.provider(sqlc.Provider(row), models), nil
+	result := s.provider(sqlc.Provider(row), models)
+	if failure, ok := failures[p.ID]; ok {
+		result.Error = failure
+	}
+	return result, nil
 }
 
 // DeleteProvider removes provider id.
 func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if err := s.q.DeleteProvider(ctx, id); err != nil {
+		s.mu.Unlock()
 		return err
 	}
-	if _, err := s.ApplyProviders(ctx); err != nil {
+	discovery, err := s.RegisterProviders(ctx)
+	s.mu.Unlock()
+	if err != nil {
 		return fmt.Errorf("saved, but the runtime did not apply it: %w", err)
 	}
-	return nil
+	_, err = discovery.Wait(ctx)
+	return err
 }
 
-// ApplyProviders gives all saved providers to the runtime that call reaches. It returns, per
-// provider ID, why the runtime could not list its models.
+// ApplyProviders registers saved providers and waits for this operation's discovery.
 func (s *Service) ApplyProviders(ctx context.Context) (map[string]string, error) {
+	discovery, err := s.RegisterProviders(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return discovery.Wait(ctx)
+}
+
+// RegisterProviders applies saved credentials and static models without waiting for network.
+func (s *Service) RegisterProviders(ctx context.Context) (*engine.Discovery, error) {
 	rows, err := s.q.ListProviders(ctx)
 	if err != nil {
 		return nil, err
 	}
 	providers := make([]engine.ProviderSettings, len(rows))
 	for i, r := range rows {
-		providers[i] = engine.ProviderSettings{
-			ID: r.ID, Name: r.Name, API: r.Api, BaseURL: r.BaseUrl, APIKey: r.ApiKey, Models: splitModels(r.Models),
-		}
+		providers[i] = engine.ProviderSettings{ID: r.ID, Name: r.Name, API: r.Api, BaseURL: r.BaseUrl, APIKey: r.ApiKey, Models: splitModels(r.Models)}
 	}
-	errs, err := s.catalog.Configure(ctx, providers)
-	if err != nil {
-		return nil, err
-	}
-	s.errMu.Lock()
-	s.errs = errs
-	s.errMu.Unlock()
-	return errs, nil
+	return s.catalog.ConfigureAsync(ctx, providers)
 }
 
 // checkBaseURL accepts an absolute http or https URL without user info, so the API key is the

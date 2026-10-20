@@ -15,7 +15,7 @@ Read this for every task.
 ## Commits
 
 - Format the subject as `<scope>: <description>`. The scope is the area that
-  changed: `control`, `worker`, `web`, `db`, `docs`, `ci`, `treewide`. Do not
+  changed: `control`, `web`, `db`, `docs`, `ci`, `treewide`. Do not
   use Conventional Commit types such as `feat:` or `fix:`. Emoji are allowed.
 - Write the subject in the imperative, under about 72 characters. Use the body
   for the reason when the diff does not show it.

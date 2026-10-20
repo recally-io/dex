@@ -12,7 +12,8 @@ Read this before you write or change a test.
   fix starts with a test that reproduces the bug.
 - **Prove the regression test.** Remove the fix and run the test. It must fail
   with an assertion about the target behavior. Put the command and the failure
-  in the PR.
+  in the PR. Use a Go overlay or an isolated checkout for this proof. Do not
+  revert source files in a shared checkout while other agents run checks.
 - **No mocks.** Tests run the real native PiG engine, SQLite databases, and
   a real HTTP server. `mise run check:testpolicy` rejects mock libraries.
 - **MCP servers are real.** The `internal/app` tests run

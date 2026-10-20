@@ -148,7 +148,7 @@ func TestUserModelDiscoveryHasABoundedRequestAndCanBeCanceled(t *testing.T) {
 	if !ok || deadline.Before(before.Add(30*time.Second)) || deadline.After(time.Now().Add(30*time.Second)) {
 		t.Fatal("model discovery request has no 30-second deadline")
 	}
-	// When the caller cancels, both the catalog operation and real HTTP request stop.
+	// When the caller cancels, its wait stops. Catalog shutdown stops the saved discovery.
 	cancel()
 	select {
 	case err := <-finished:
@@ -160,6 +160,9 @@ func TestUserModelDiscoveryHasABoundedRequestAndCanBeCanceled(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("catalog did not stop after cancellation")
+	}
+	if err := catalog.Close(); err != nil {
+		t.Fatal(err)
 	}
 	select {
 	case <-stopped:

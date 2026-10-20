@@ -187,7 +187,8 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	if err := chats.RecoverTasks(ctx); err != nil {
 		return nil, errors.Join(err, conn.Close())
 	}
-	if _, err := prefs.ApplyProviders(ctx); err != nil {
+	discovery, err := prefs.RegisterProviders(runCtx)
+	if err != nil {
 		return nil, errors.Join(err, conn.Close())
 	}
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
@@ -239,6 +240,13 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		Chats:        chats, Automations: automations, Settings: prefs, Agents: agentsService, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})}
 	a.wg.Go(func() { chats.Run(runCtx) })
+	a.wg.Go(func() {
+		select {
+		case <-discovery.Done():
+			chats.Wake()
+		case <-runCtx.Done():
+		}
+	})
 	every := cmp.Or(cfg.DreamEvery, 24*time.Hour)
 	dreamer := dream.New(q, chats, every, time.Now)
 	err = errors.Join(

@@ -814,12 +814,12 @@ type Provider struct {
 	Api     string `json:"api"`
 	BaseUrl string `json:"baseUrl"`
 
-	// Error Why the worker could not list its models.
+	// Error Why the engine could not list this provider's models.
 	Error  *string `json:"error,omitempty"`
 	Id     string  `json:"id"`
 	KeySet bool    `json:"keySet"`
 
-	// ModelCount The number of models that the worker has for it.
+	// ModelCount The number of models in the catalog for this provider.
 	ModelCount *int `json:"modelCount,omitempty"`
 
 	// Models Fixed model IDs; empty means the endpoint lists them.

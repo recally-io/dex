@@ -10,6 +10,10 @@ info:
     Times are Unix milliseconds.
     Agent resources require /api/agents/{agentId}, including the default agent.
     Un-nested agent routes return 404. Global settings contain no agent.
+    Model discovery runs after HTTP startup. History reads and extension reload
+    return 503 if they need to open an agent while discovery is pending. Model
+    validation returns 503 if the requested model still needs discovery.
+    Stored input and Stop requests remain durable until discovery finishes.
 security:
   - bearer: []
   - session: []
@@ -46,10 +50,10 @@ paths:
   /api/maintenance:
     post:
       operationId: acquireMaintenance
-      description: Hold worker admission for two minutes if no work is active. POST renews it.
+      description: Hold native admission for two minutes if no work is active. POST renews it.
       responses:
         "200":
-          description: Worker admission is held until expiry or release.
+          description: Native admission is held until expiry or release.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Ok" }
@@ -59,7 +63,7 @@ paths:
       operationId: releaseMaintenance
       responses:
         "200":
-          description: Worker admission can resume.
+          description: Native admission can resume.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Ok" }
@@ -658,8 +662,8 @@ paths:
         Server-sent events. Each event has `event: <type>` and one `data:` line
         with a ChatEvent as JSON. The first event is a snapshot; a later
         snapshot replaces all state. A comment line comes every 15 s. The
-        server closes the stream when the worker restarts or when the client
-        is too slow; the client reconnects and gets a new snapshot.
+        server closes the stream when the agent reloads, the engine closes, or
+        the client is too slow. The client reconnects and gets a new snapshot.
       responses:
         "200":
           description: The event stream.
@@ -811,9 +815,11 @@ paths:
     post:
       operationId: reloadExtensions
       description: >
-        Restarts the whole worker and affects every agent. It connects the MCP
-        servers again. Skills need no reload. 409 when any agent has unfinished work. 400 when a
-        file is not valid; the agent then keeps its MCP servers.
+        Reloads only the selected agent's Harness and MCP connections. Opens
+        that agent if needed and returns its server connection states. Skills
+        need no reload. Requires idle execution across all agents; returns 409
+        when any agent has unfinished work. Returns 400 when a file is not valid
+        and keeps the current resources. Returns 503 while model discovery is pending.
       responses:
         "200":
           description: The loaded extensions.
@@ -1573,10 +1579,10 @@ components:
           items: { type: string }
         modelCount:
           type: integer
-          description: The number of models that the worker has for it.
+          description: The number of models in the catalog for this provider.
         error:
           type: string
-          description: Why the worker could not list its models.
+          description: Why the engine could not list this provider's models.
 
     ProviderInput:
       type: object

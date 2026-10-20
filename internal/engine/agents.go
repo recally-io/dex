@@ -147,6 +147,9 @@ func (a *Agents) harness(ctx context.Context, agentID string) (harness.Harness, 
 
 // Open holds mu across agents; use per-agent opening locks if cold starts need concurrency.
 func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, resultErr error) {
+	if err := a.Catalog.DiscoveryReady(); err != nil {
+		return nil, err
+	}
 	dir := filepath.Join(a.config.DataDir, "agents", agentID)
 	workspace := filepath.Join(dir, "workspace")
 	if err := os.MkdirAll(workspace, 0700); err != nil {
@@ -202,6 +205,16 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	// Abort marks and queue withdrawal happen before scheduling can resume old task executions.
 	isolated := a.recovering[agentID]
 	if len(isolated) > 0 {
+		for id := range isolated {
+			conversation, err := h.Conversation(ctx, id)
+			if err == nil && conversation != nil {
+				err = withdrawQueuedInputs(ctx, conversation)
+			}
+			if err != nil {
+				_ = h.Close(context.WithoutCancel(ctx))
+				return nil, err
+			}
+		}
 		state, err := h.Inspect(ctx)
 		if err != nil {
 			_ = h.Close(context.WithoutCancel(ctx))
@@ -210,14 +223,6 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		for _, task := range state.Tasks {
 			if isolated[task.Record.ConversationId] {
 				if _, err := h.AbortTask(ctx, task.Record.Id); err != nil {
-					_ = h.Close(context.WithoutCancel(ctx))
-					return nil, err
-				}
-			}
-		}
-		for _, submission := range state.Submissions {
-			if isolated[submission.ConversationId] && submission.Status == durable.SubmissionQueued {
-				if _, err := h.AbortSubmission(ctx, submission.Id, &submission.ConversationId); err != nil {
 					_ = h.Close(context.WithoutCancel(ctx))
 					return nil, err
 				}
@@ -376,7 +381,15 @@ func (a *Agents) Abort(ctx context.Context, ref Ref) error {
 	}
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_, err = conversation.Commit(bounded, func(tx durable.Tx) (any, error) {
+	if err := withdrawQueuedInputs(bounded, conversation); err != nil {
+		return err
+	}
+	return conversation.Abort(bounded, &durable.ConversationAbortOptions{Background: true})
+}
+
+// Queue settlement and passive display entries commit together before recovery resumes.
+func withdrawQueuedInputs(ctx context.Context, conversation harness.Conversation) error {
+	_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
 		inbox, err := durable.TxDoc[harness.InboxState](tx, harness.InboxDoc, conversation.Id())
 		if err != nil {
 			return nil, err
@@ -414,10 +427,7 @@ func (a *Agents) Abort(ctx context.Context, ref Ref) error {
 		}
 		return nil, nil
 	})
-	if err != nil {
-		return err
-	}
-	return conversation.Abort(bounded, &durable.ConversationAbortOptions{Background: true})
+	return err
 }
 
 func (a *Agents) Quiesce(ctx context.Context) error {
@@ -471,11 +481,12 @@ func (a *Agents) Close(ctx context.Context) error {
 	}
 }
 func (a *Agents) close(ctx context.Context) {
+	var errs []error
+	errs = append(errs, a.Catalog.Close())
 	a.operations.Wait()
 	a.mu.Lock()
 	resources := maps.Clone(a.resources)
 	a.mu.Unlock()
-	var errs []error
 	for _, resource := range resources {
 		errs = append(errs, resource.harness.Close(ctx))
 	}
@@ -522,24 +533,29 @@ func (a *Agents) Reload(ctx context.Context, agentID string) error {
 	defer a.Resume()
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.closed {
+		return ErrClosed
+	}
 	// An Abort can start after Quiesce closes admission. Do not close its Harness.
 	if a.active > 0 {
 		return ErrBusy
+	}
+	if err := a.Catalog.DiscoveryReady(); err != nil {
+		return err
 	}
 	if err := a.files(agentID).Validate(ctx); err != nil {
 		return err
 	}
 	old := a.resources[agentID]
-	if old == nil {
-		return nil
+	if old != nil {
+		if err := old.harness.Close(ctx); err != nil {
+			return err
+		}
+		if err := old.loaded.Close(ctx); err != nil {
+			return err
+		}
+		delete(a.resources, agentID)
 	}
-	if err := old.harness.Close(ctx); err != nil {
-		return err
-	}
-	if err := old.loaded.Close(ctx); err != nil {
-		return err
-	}
-	delete(a.resources, agentID)
 	resource, err := a.open(ctx, agentID)
 	if err != nil {
 		return err

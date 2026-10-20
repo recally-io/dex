@@ -350,21 +350,19 @@ func (a *agentExtensions) Validate(ctx context.Context) error {
 }
 func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 	s := a.scan()
-	loaded := &loadedExtensions{Env: s.env, Servers: []McpServerInfo{}, Extension: &durable.Extension{Name: "extensions"}}
+	// Keep the status slice stable before any connection can call OnClose.
+	loaded := &loadedExtensions{Env: s.env, Servers: s.info.Servers, Extension: &durable.Extension{Name: "extensions"}}
 	guide := extensionGuide(a.levels)
 	loaded.Extension.Sections = []*durable.PromptSection{{Key: "extension-guide", Render: func(context.Context, durable.PromptInput) (*string, error) { return new(guide), nil }}, {Key: "skills", Render: func(context.Context, durable.PromptInput) (*string, error) {
 		errs := []string{}
 		return skillsText(a.skills(&errs)), nil
 	}}}
 	names := map[string]bool{}
-	for _, entry := range s.servers {
+	for index, entry := range s.servers {
 		if ctx.Err() != nil {
 			_ = loaded.Close(ctx)
 			return nil, context.Cause(ctx)
 		}
-		info := entry.info
-		index := len(loaded.Servers)
-		loaded.Servers = append(loaded.Servers, info)
 		if entry.config.Disabled {
 			continue
 		}
