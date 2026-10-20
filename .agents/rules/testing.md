@@ -13,13 +13,13 @@ Read this before you write or change a test.
 - **Prove the regression test.** Remove the fix and run the test. It must fail
   with an assertion about the target behavior. Put the command and the failure
   in the PR.
-- **No mocks.** Tests run the real embedded worker, a real SQLite database, and
+- **No mocks.** Tests run the real native PiG engine, SQLite databases, and
   a real HTTP server. `mise run check:testpolicy` rejects mock libraries.
 - **MCP servers are real.** The `internal/app` tests run
   `internal/mcptest` as a stdio server (their own test binary) or over HTTP.
 - **Fakes only at system boundaries.** Model providers and the Telegram Bot API
   are the boundaries; `internal/app/telegram_test.go` has a fake Bot API. Tests
-  use pi-ai's faux provider (`DEX_FAKE_MODEL=1`; models `faux/echo` and
+  use PiG's faux provider (`DEX_FAKE_MODEL=1`; models `faux/echo` and
   `faux/shout` answer `echo: <message>` and `shout: <message>`, and
   `faux/bash` runs the message with the bash tool and answers
   `bash: <output>`; in a dream, `faux/bash` appends the dream's JSON
@@ -33,18 +33,24 @@ Read this before you write or change a test.
 - **Controlled time.** Do not use fixed sleeps. Poll the observable condition
   with a deadline, and fail with the last observed state.
 - **Isolation.** Each test uses its own `t.TempDir()` for the data directory
-  and passes the worker an explicit environment. The `internal/app` tests
-  share one cache directory: it holds only the installed worker binary, and
-  unpacking it for each test made the package four times slower under `-race`.
-- **Clean ends.** Close every `app.App` a test starts, so its worker exits.
+  and passes the engine an explicit tool environment. Set a separate Home
+  directory when a test reads extension files. Never open production agent data.
+- **Clean ends.** Close every `app.App`, `engine.Agents`, and native watch that a test
+  starts. Cancellation of one subscription must not stop another subscription.
 
 ## Tiers
 
-| Tier   | Scope                                                         | Task                        |
-| ------ | ------------------------------------------------------------- | --------------------------- |
-| E2E    | Control with the real worker, through HTTP                    | `check:go` (`internal/app`) |
-| Worker | pi-durable storage conformance on Bun; chat view golden cases | `check:worker` (`bun test`) |
-| Manual | A real provider through `mise run dev:server`                 | On demand, with credentials |
+| Tier   | Scope                                                                                | Task                           |
+| ------ | ------------------------------------------------------------------------------------ | ------------------------------ |
+| E2E    | HTTP and business services with the native engine and real SQLite                    | `check:go` (`internal/app`)    |
+| Engine | Native admission, recovery, tools, MCP, transcript cases, subscriptions, and history | `check:go` (`internal/engine`) |
+| Manual | A real provider through `mise run dev:server`                                        | On demand, with credentials    |
+
+Transcript regressions cover stream deltas, block replacement, tool end before
+result, reset and history boundaries, task markers, queued input, and durable
+withdrawal. Test direct subscriptions, reconnect, cancellation, and independent
+readers through real execution storage. Do not restore tests of a removed
+internal transport.
 
 Coverage: no gate exists yet. Review untested branches in the diff.
 

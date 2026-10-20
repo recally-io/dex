@@ -26,7 +26,7 @@ export type Health = {
     status: 'ok';
     version: string;
     dataDir: string;
-    workerReady: boolean;
+    runtimeReady: boolean;
 };
 
 export type TaskSummary = {

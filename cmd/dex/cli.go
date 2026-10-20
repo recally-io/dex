@@ -283,7 +283,7 @@ func updateCommand(ctx context.Context, args []string) error {
 	return u.Run(ctx, update.Options{Check: *check, Channel: *channel, Tag: *tag, Scheduled: *scheduled}, m, os.Stdout)
 }
 
-// doctor only observes the installed instance. It never opens its storage or starts a worker.
+// doctor only observes the installed instance. It never opens execution storage.
 func doctor(ctx context.Context, m service.Manager, c service.Config) error {
 	failed := false
 	report := func(level, name, detail string) {
@@ -322,10 +322,10 @@ func doctor(ctx context.Context, m service.Manager, c service.Config) error {
 		if h.DataDir != c.DataDir {
 			report("fail", "data directory", "running instance uses "+h.DataDir)
 		}
-		if h.WorkerReady {
-			report("ok", "worker", "ping answered")
+		if h.RuntimeReady {
+			report("ok", "runtime", "ready")
 		} else {
-			report("fail", "worker", "ping did not answer")
+			report("fail", "runtime", "not ready")
 		}
 	} else {
 		conn, dialErr := (&net.Dialer{Timeout: time.Second}).DialContext(ctx, "tcp", c.Addr())
@@ -334,7 +334,7 @@ func doctor(ctx context.Context, m service.Manager, c service.Config) error {
 			report("fail", "address", c.Addr()+" is occupied by a listener that does not answer as dex; inspect it with lsof or ss")
 		} else {
 			report("warn", "address", "not listening")
-			report("skipped", "worker", "no running dex instance")
+			report("skipped", "runtime", "no running dex instance")
 		}
 	}
 	info, err := os.Stat(c.DataDir)

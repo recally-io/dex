@@ -8,7 +8,7 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/worker"
+	"github.com/recally-io/dex/internal/engine"
 )
 
 const MainKey = "main"
@@ -18,7 +18,7 @@ func Writable(key string) bool {
 	return key == MainKey || strings.HasPrefix(key, ChatPrefix)
 }
 
-// Create reuses an empty Chat without opening a worker context or requiring a model.
+// Create reuses an empty Chat without opening an execution context or requiring a model.
 func (s *Service) Create(ctx context.Context, agentID string) (Chat, error) {
 	c, err := s.q.EnsureEmptyChat(ctx, sqlc.EnsureEmptyChatParams{
 		AgentID: agentID, ChannelKey: ChatPrefix + uuid.NewV7().String(), CreatedAt: s.now().UnixMilli(),
@@ -32,7 +32,7 @@ func (s *Service) Create(ctx context.Context, agentID string) (Chat, error) {
 var ErrConversationBusy = errors.New("the timeline is busy; wait for its replies before clearing context")
 var ErrResetID = errors.New("the reset ID belongs to another input")
 
-// Main creates only the control record. The worker conversation opens on first use.
+// Main creates only the control record. The execution conversation opens on first use.
 func (s *Service) Main(ctx context.Context, agentID string) (Chat, error) {
 	agent, err := s.q.GetAgent(ctx, agentID)
 	if err != nil {
@@ -66,19 +66,19 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if c.Busy || s.leaseUntil.Load() > s.now().UnixMilli() {
+	if c.Busy || s.leaseUntil.Load() != 0 {
 		return ErrConversationBusy
 	}
-	if c.WorkerConversationID != 0 {
-		if err := s.worker.Call(ctx, "checkIdle", worker.AbortParams{AgentID: agentID, ConversationID: c.WorkerConversationID}, &struct{}{}); err != nil {
-			if isBusy(err) {
+	if c.ExecutionID != 0 {
+		if err := s.engine.CheckIdle(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID}); err != nil {
+			if errors.Is(err, engine.ErrBusy) {
 				return ErrConversationBusy
 			}
 			return err
 		}
 	}
 	// Take the writer before reading. Input and task-result inserts use the same SQLite writer.
-	// Do not hold this transaction during RPC: settlement uses the worker's stdout reader.
+	// Native calls run after this transaction so settlement can acquire the writer.
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -108,7 +108,9 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 		return err
 	}
 	s.signal(chatID)
-	s.Wake()
+	if err := s.reconcile(ctx); err != nil {
+		s.scheduleRetry()
+	}
 	return nil
 }
 

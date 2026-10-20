@@ -1000,12 +1000,12 @@ components:
 
     Health:
       type: object
-      required: [status, version, dataDir, workerReady]
+      required: [status, version, dataDir, runtimeReady]
       properties:
         status: { type: string, enum: [ok] }
         version: { type: string }
         dataDir: { type: string }
-        workerReady: { type: boolean }
+        runtimeReady: { type: boolean }
 
     TaskSummary:
       type: object
@@ -1125,9 +1125,9 @@ components:
           items: { type: string }
 
     Attachment:
-      x-go-type: worker.Attachment
+      x-go-type: engine.Attachment
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/worker
+        path: github.com/recally-io/dex/internal/engine
       type: object
       required: [id, name, size, mimeType, path]
       properties:

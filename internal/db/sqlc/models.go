@@ -63,15 +63,16 @@ type ChannelPeer struct {
 }
 
 type Conversation struct {
-	ID                   int64         `json:"id"`
-	AgentID              string        `json:"agent_id"`
-	ChannelKey           string        `json:"channel_key"`
-	WorkerConversationID sql.NullInt64 `json:"worker_conversation_id"`
-	CreatedAt            int64         `json:"created_at"`
-	Title                string        `json:"title"`
-	ModelProvider        string        `json:"model_provider"`
-	ModelID              string        `json:"model_id"`
-	ThinkingLevel        string        `json:"thinking_level"`
+	ID            int64         `json:"id"`
+	AgentID       string        `json:"agent_id"`
+	ChannelKey    string        `json:"channel_key"`
+	ExecutionID   sql.NullInt64 `json:"execution_id"`
+	CreatedAt     int64         `json:"created_at"`
+	Title         string        `json:"title"`
+	ModelProvider string        `json:"model_provider"`
+	ModelID       string        `json:"model_id"`
+	ThinkingLevel string        `json:"thinking_level"`
+	AbortPending  int64         `json:"abort_pending"`
 }
 
 type Dream struct {
@@ -117,6 +118,7 @@ type Submission struct {
 	DeliveredParts int64          `json:"delivered_parts"`
 	Origin         string         `json:"origin"`
 	Kind           string         `json:"kind"`
+	AdmittedAt     sql.NullInt64  `json:"admitted_at"`
 }
 
 type Task struct {

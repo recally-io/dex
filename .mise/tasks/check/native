@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#MISE description="Verify the native runtime has no worker or terminal UI and builds without cgo"
+set -euo pipefail
+
+if git ls-files worker internal/worker internal/workerbin | rg .; then
+  echo "The native runtime must not retain worker sources or embedded worker binaries." >&2
+  exit 1
+fi
+if go list -deps ./cmd/dex | rg 'github.com/(recally-io/dex/internal/worker|MichaelKinsy/PiG/(tui|coding/extension/host))'; then
+  echo "The server must not link the worker or terminal extension host." >&2
+  exit 1
+fi
+mkdir -p .local/native-builds
+for native_target in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64; do
+  native_os="${native_target%/*}"
+  native_arch="${native_target#*/}"
+  CGO_ENABLED=0 GOOS="$native_os" GOARCH="$native_arch" go build -trimpath \
+    -ldflags='-s -w' -o ".local/native-builds/dex-$native_os-$native_arch" ./cmd/dex
+  wc -c ".local/native-builds/dex-$native_os-$native_arch"
+done

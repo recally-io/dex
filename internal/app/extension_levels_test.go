@@ -150,7 +150,7 @@ func TestUserUsesHeaderEnvironmentWithoutLeakingValues(t *testing.T) {
 	}
 }
 
-func TestUserReloadChecksOtherOpenAgentsAndKeepsEnvironmentsSeparate(t *testing.T) {
+func TestUserReloadsOneAgentWithoutChangingOtherEnvironments(t *testing.T) {
 	// Given two agents with distinct environments, both open.
 	data, home := t.TempDir(), t.TempDir()
 	d := startDexHome(t, app.Config{DataDir: data}, home)
@@ -167,7 +167,7 @@ func TestUserReloadChecksOtherOpenAgentsAndKeepsEnvironmentsSeparate(t *testing.
 		d.must(t, http.MethodPost, path+"/messages", map[string]string{"id": uuid.NewV7().String(), "text": `printf '%s' "$DEX_ISOLATED"`}, nil, http.StatusAccepted)
 		w.until(t, "agent env", answered("bash: "+id))
 	}
-	// When B has either invalid file, reloading A is refused and names the file of B.
+	// When B has an invalid file, A can reload its own resources.
 	for _, kind := range []string{"mcp.json", ".env"} {
 		path := filepath.Join(data, "agents", b.ID, ".agents", kind)
 		before, err := os.ReadFile(path)
@@ -176,8 +176,13 @@ func TestUserReloadChecksOtherOpenAgentsAndKeepsEnvironmentsSeparate(t *testing.
 		}
 		writeFile(t, path, "invalid-private-token")
 		status, body := d.reload(t)
+		if status != http.StatusOK || strings.Contains(body, "invalid-private-token") {
+			t.Fatalf("unrelated agent blocked reload: %d %s", status, body)
+		}
+		// Then B refuses its own invalid files and keeps the loaded environment.
+		status, body = d.call(t, http.MethodPost, "/api/agents/"+b.ID+"/extensions/reload", nil)
 		if status != http.StatusBadRequest || !strings.Contains(body, path) || strings.Contains(body, "invalid-private-token") {
-			t.Fatalf("reload: %d %s", status, body)
+			t.Fatalf("selected agent reload: %d %s", status, body)
 		}
 		if before == nil {
 			if err := os.Remove(path); err != nil {

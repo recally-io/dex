@@ -43,19 +43,6 @@ jobs:
       - run: mise run check:api-drift
       - run: git diff --check
 
-  worker:
-    name: Worker
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: jdx/mise-action@v5.1.2
-        with:
-          install: true
-          cache: true
-      - run: mise run install:worker
-      - run: mise run check:worker
-
   web:
     name: Web
     runs-on: ubuntu-24.04
@@ -80,6 +67,7 @@ jobs:
           install: true
           cache: true
       - run: go mod download
-      # Go builds embed both the worker and the web UI.
+      # Go builds embed the web UI.
       - run: mise run install
       - run: mise run check:go
+      - run: mise run check:native

@@ -16,7 +16,7 @@ import (
 
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/worker"
+	"github.com/recally-io/dex/internal/engine"
 )
 
 // ErrInvalid wraps the errors of a change that the service refuses.
@@ -37,7 +37,7 @@ type Settings struct {
 	// Providers are the providers that the user added, in the order of addition.
 	Providers []Provider `json:"providers"`
 	// Builtins are all pi-ai built-in providers that take an API key, for the UI to add one.
-	Builtins []worker.ProviderInfo `json:"builtins"`
+	Builtins []engine.ProviderInfo `json:"builtins"`
 	// APIs are the APIs of custom providers: ID → name.
 	APIs map[string]string `json:"apis"`
 }
@@ -56,16 +56,16 @@ type Provider struct {
 	APIKey  string   `json:"apiKey,omitempty"`
 	KeySet  bool     `json:"keySet"`
 	Models  []string `json:"models"`
-	// ModelCount is the number of models that the worker has for the provider.
+	// ModelCount is the number of models that the runtime has for the provider.
 	ModelCount int `json:"modelCount"`
-	// Error is why the worker could not list the provider's models, or empty.
+	// Error is why the runtime could not list the provider's models, or empty.
 	Error string `json:"error,omitempty"`
 }
 
 // Service reads and changes settings.
 type Service struct {
-	q      *sqlc.Queries
-	worker worker.CallFunc
+	q       *sqlc.Queries
+	catalog *engine.Catalog
 	// Serializes provider save and apply. Agent and channel changes have their own lock.
 	mu    sync.Mutex
 	errMu sync.Mutex
@@ -73,11 +73,11 @@ type Service struct {
 }
 
 // New returns the global settings service.
-func New(q *sqlc.Queries, call worker.CallFunc) *Service {
-	return &Service{q: q, worker: call}
+func New(q *sqlc.Queries, catalog *engine.Catalog) *Service {
+	return &Service{q: q, catalog: catalog}
 }
 
-// Get returns all settings. It asks the worker which providers exist.
+// Get returns all settings. It asks the runtime which providers exist.
 func (s *Service) Get(ctx context.Context) (Settings, error) {
 	rows, err := s.q.ListProviders(ctx)
 	if err != nil {
@@ -95,7 +95,7 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 	for i, r := range rows {
 		providers[i] = s.provider(r, models)
 		// pi-ai owns the names of built-in providers.
-		if j := slices.IndexFunc(builtins, func(b worker.ProviderInfo) bool { return b.ID == r.ID }); r.Api == "" && j >= 0 {
+		if j := slices.IndexFunc(builtins, func(b engine.ProviderInfo) bool { return b.ID == r.ID }); r.Api == "" && j >= 0 {
 			providers[i].Name = builtins[j].Name
 		}
 	}
@@ -107,7 +107,7 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 }
 
 // provider returns the view of a saved provider, with its model count and its last error.
-func (s *Service) provider(r sqlc.Provider, models []worker.ModelInfo) Provider {
+func (s *Service) provider(r sqlc.Provider, models []engine.ModelInfo) Provider {
 	s.errMu.Lock()
 	msg := s.errs[r.ID]
 	s.errMu.Unlock()
@@ -123,21 +123,13 @@ func (s *Service) provider(r sqlc.Provider, models []worker.ModelInfo) Provider 
 	}
 }
 
-func (s *Service) builtins(ctx context.Context) ([]worker.ProviderInfo, error) {
-	var listed worker.ListProvidersResult
-	if err := s.worker(ctx, "listProviders", struct{}{}, &listed); err != nil {
-		return nil, fmt.Errorf("list providers: %w", err)
-	}
-	return listed.Providers, nil
+func (s *Service) builtins(ctx context.Context) ([]engine.ProviderInfo, error) {
+	return s.catalog.Builtins(ctx)
 }
 
-// Models returns the models of the providers that have credentials.
-func (s *Service) Models(ctx context.Context) ([]worker.ModelInfo, error) {
-	var listed worker.ListModelsResult
-	if err := s.worker(ctx, "listModels", struct{}{}, &listed); err != nil {
-		return nil, fmt.Errorf("list models: %w", err)
-	}
-	return listed.Models, nil
+// Models returns the configured native model catalog.
+func (s *Service) Models(ctx context.Context) ([]engine.ModelInfo, error) {
+	return s.catalog.Available(ctx)
 }
 
 // CheckModel keeps agent validation out of an incomplete provider update.
@@ -152,7 +144,7 @@ func (s *Service) checkModel(ctx context.Context, provider, modelID string) erro
 	if err != nil {
 		return err
 	}
-	if !slices.ContainsFunc(models, func(m worker.ModelInfo) bool { return m.Provider == provider && m.ID == modelID }) {
+	if !slices.ContainsFunc(models, func(m engine.ModelInfo) bool { return m.Provider == provider && m.ID == modelID }) {
 		return fmt.Errorf("%w: no model %s/%s with credentials", ErrInvalid, provider, modelID)
 	}
 	return nil
@@ -172,8 +164,8 @@ func (s *Service) CheckChat(ctx context.Context, c chat.Settings) error {
 	return s.checkModel(ctx, c.Provider, c.ModelID)
 }
 
-// SetProvider adds provider p or changes it, gives all providers to the worker, and returns the
-// saved provider. An empty APIKey keeps the saved key. When the worker cannot list the models of
+// SetProvider adds provider p or changes it, gives all providers to the runtime, and returns the
+// saved provider. An empty APIKey keeps the saved key. When the runtime cannot list the models of
 // p, p stays saved and the returned provider has the reason in Error.
 func (s *Service) SetProvider(ctx context.Context, p Provider) (Provider, error) {
 	s.mu.Lock()
@@ -182,7 +174,7 @@ func (s *Service) SetProvider(ctx context.Context, p Provider) (Provider, error)
 	if err != nil {
 		return Provider{}, err
 	}
-	i := slices.IndexFunc(builtins, func(b worker.ProviderInfo) bool { return b.ID == p.ID })
+	i := slices.IndexFunc(builtins, func(b engine.ProviderInfo) bool { return b.ID == p.ID })
 	if p.API == "" {
 		if i < 0 {
 			return Provider{}, fmt.Errorf("%w: unknown built-in provider %q", ErrInvalid, p.ID)
@@ -222,8 +214,8 @@ func (s *Service) SetProvider(ctx context.Context, p Provider) (Provider, error)
 	if err := s.q.UpsertProvider(ctx, row); err != nil {
 		return Provider{}, err
 	}
-	if _, err := s.ApplyProviders(ctx, s.worker); err != nil {
-		return Provider{}, fmt.Errorf("saved, but the worker did not apply it: %w", err)
+	if _, err := s.ApplyProviders(ctx); err != nil {
+		return Provider{}, fmt.Errorf("saved, but the runtime did not apply it: %w", err)
 	}
 	models, err := s.Models(ctx)
 	if err != nil {
@@ -239,33 +231,33 @@ func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 	if err := s.q.DeleteProvider(ctx, id); err != nil {
 		return err
 	}
-	if _, err := s.ApplyProviders(ctx, s.worker); err != nil {
-		return fmt.Errorf("saved, but the worker did not apply it: %w", err)
+	if _, err := s.ApplyProviders(ctx); err != nil {
+		return fmt.Errorf("saved, but the runtime did not apply it: %w", err)
 	}
 	return nil
 }
 
-// ApplyProviders gives all saved providers to the worker that call reaches. It returns, per
-// provider ID, why the worker could not list its models.
-func (s *Service) ApplyProviders(ctx context.Context, call worker.CallFunc) (map[string]string, error) {
+// ApplyProviders gives all saved providers to the runtime that call reaches. It returns, per
+// provider ID, why the runtime could not list its models.
+func (s *Service) ApplyProviders(ctx context.Context) (map[string]string, error) {
 	rows, err := s.q.ListProviders(ctx)
 	if err != nil {
 		return nil, err
 	}
-	params := worker.ConfigureParams{Providers: make([]worker.ProviderSettings, len(rows))}
+	providers := make([]engine.ProviderSettings, len(rows))
 	for i, r := range rows {
-		params.Providers[i] = worker.ProviderSettings{
+		providers[i] = engine.ProviderSettings{
 			ID: r.ID, Name: r.Name, API: r.Api, BaseURL: r.BaseUrl, APIKey: r.ApiKey, Models: splitModels(r.Models),
 		}
 	}
-	var result worker.ConfigureResult
-	if err := call(ctx, "configure", params, &result); err != nil {
+	errs, err := s.catalog.Configure(ctx, providers)
+	if err != nil {
 		return nil, err
 	}
 	s.errMu.Lock()
-	s.errs = result.Errors
+	s.errs = errs
 	s.errMu.Unlock()
-	return result.Errors, nil
+	return errs, nil
 }
 
 // checkBaseURL accepts an absolute http or https URL without user info, so the API key is the

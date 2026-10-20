@@ -49,43 +49,44 @@ skinparam stereotypeEBorderColor #5b6b8c
 skinparam stereotypeIBackgroundColor #d9e3f4
 skinparam stereotypeIBorderColor #5b6b8c
 skinparam BackgroundColor #ffffff
-title dex: runtime boundaries and data owners
+title dex: one process, separate data owners
 top to bottom direction
 rectangle "Browser
 React UI" as browser
-rectangle "Telegram Bot API" as telegram
-rectangle "Go control
-HTTP + SSE + Telegram
-Durable submissions + settings
-Dream and automation checks
-Worker process management" as control
-rectangle "Bun worker
-One pi-durable Harness per agent
-Models + tools + ChatView
-Memory extension" as worker
+rectangle "Channels
+Telegram / Feishu / WeChat" as channels
+package "dex: one Go process" as runtime {
+  rectangle "Business services
+HTTP + chat + tasks + schedules
+Input receipts + channel outbox" as business
+  rectangle "Native engine
+One PiG Harness per agent
+Models + tools + MCP + memory" as engine
+  rectangle "Live SSE
+Typed watch events + heartbeat" as live
+}
 database "control.sqlite
-Chats, submissions, settings
-Automations and dream boundaries" as cdb
+Settings, chats, input receipts
+Tasks and confirmed reply parts" as cdb
 database "agents/<id>/state.sqlite
+Native admission + Inbox
 Runs, transcripts, tool calls" as adb
 folder "Local agent files
 agents/<id>/workspace
 memory/ (shared Git repo)" as files
 rectangle "Model providers" as models
-browser --> control : HTTP commands
-control --> browser : SSE transcript
-telegram <--> control : Long poll + replies
-control --> cdb : Control owns this data
-control <--> worker : stdin/stdout NDJSON\nRequests + settled/chat events
-worker --> adb : Worker owns this data
-worker --> files : Tools + memory commits
-worker --> models : Model requests
-note bottom of control
-  Stores a submission before delivery.
-  Replays pending submissions after a worker restart.
-end note
-note bottom of worker
-  Deduplicates submissions by request ID.
-  Only this process opens agent storage.
+browser --> business : HTTP commands
+channels <--> business : Durable input + reply delivery
+business --> cdb : Business facts
+business --> engine : Typed methods + stable request IDs
+engine --> adb : Execution authority
+engine --> files : Explicit tool environment + memory commits
+engine --> models : Model requests
+browser --> live : Subscribe
+live --> engine : Watch + History (typed)
+live --> browser : Snapshot / item / append / run
+note bottom of engine
+  Durable metadata includes origin, attachments,
+  and task labels. One transcript projection.
 end note
 @enduml

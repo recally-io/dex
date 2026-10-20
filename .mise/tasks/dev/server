@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Run dex locally; configure it in the web UI under Settings"
-#MISE depends=["build:worker"]
 set -euo pipefail
 
 go run ./cmd/dex "$@"

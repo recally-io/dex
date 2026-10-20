@@ -8,7 +8,7 @@ import (
 	"errors"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/worker"
+	"github.com/recally-io/dex/internal/engine"
 )
 
 func taskInstructions(base string) string {
@@ -16,7 +16,7 @@ func taskInstructions(base string) string {
 }
 
 // Save the report and its parent input together. Terminal records ignore late events.
-func (s *Service) settleTask(ctx context.Context, event worker.Settled) (bool, error) {
+func (s *Service) settleTask(ctx context.Context, id string, event engine.Outcome) (bool, error) {
 	s.taskMu.Lock()
 	defer s.taskMu.Unlock()
 	tx, q, err := s.taskTransaction(ctx)
@@ -24,7 +24,7 @@ func (s *Service) settleTask(ctx context.Context, event worker.Settled) (bool, e
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	t, err := q.GetTask(ctx, event.RequestID)
+	t, err := q.GetTask(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -64,6 +64,8 @@ func (s *Service) settleTask(ctx context.Context, event worker.Settled) (bool, e
 	if err = tx.Commit(); err != nil {
 		return true, err
 	}
+	s.signal(t.ConversationID)
+	s.signal(t.ParentConversationID)
 	s.Wake()
 	return true, nil
 }

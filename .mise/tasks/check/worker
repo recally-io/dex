@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Type-check, lint, format-check, and test the Bun worker"
-#MISE dir="worker"
-set -euo pipefail
-
-tsc --noEmit -p .
-bunx --no-install vp lint
-bunx --no-install vp fmt --check
-bun test

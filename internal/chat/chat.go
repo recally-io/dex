@@ -1,4 +1,4 @@
-// Package chat stores user messages as durable submissions and delivers them to the worker.
+// Package chat owns business receipts and native execution admission.
 package chat
 
 import (
@@ -18,14 +18,8 @@ import (
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
-	"github.com/recally-io/dex/internal/worker"
+	"github.com/recally-io/dex/internal/engine"
 )
-
-// Caller sends requests to the worker. *worker.Worker implements it.
-type Caller interface {
-	Call(ctx context.Context, method string, params, result any) error
-	Bind() (worker.CallFunc, error)
-}
 
 // Reply is the outcome of one message.
 type Reply struct {
@@ -43,8 +37,8 @@ type Chat struct {
 	UpdatedAt  int64 // latest conversation, input, or task activity
 	Busy       bool  // a message has no answer yet
 	Settings   Settings
-	// WorkerConversationID is 0 until the worker has the conversation.
-	WorkerConversationID int64
+	// ExecutionID is zero until native execution creates the conversation.
+	ExecutionID int64
 }
 
 // Settings are the settings that one chat overrides. An empty field follows the agent's setting.
@@ -61,7 +55,7 @@ type Message struct {
 	ID          string
 	Title       string
 	Content     string
-	Attachments []worker.Attachment
+	Attachments []engine.Attachment
 	Settings    Settings
 }
 
@@ -71,62 +65,90 @@ var ErrNoModel = errors.New("the agent has no model; choose one in Settings")
 // ErrNotFound means that the chat does not exist.
 var ErrNotFound = errors.New("chat not found")
 
+// ErrRejected identifies a saved input that native execution did not admit.
+var ErrRejected = errors.New("input was rejected")
+
 // The chat list shows titles of at most this many characters.
 const titleLength = 60
 
-// Service sends messages to agents. A message is stored as a pending submission before the worker
-// sees it, so it survives a worker crash: Replay sends it again after the restart, and pi-durable
-// deduplicates on the submission ID.
+// Service stores receipts and projects native execution outcomes.
 type Service struct {
 	q       *sqlc.Queries
-	worker  Caller
+	engine  *engine.Agents
 	now     func() time.Time
 	notify  func(origin string)
 	changed func(chatID int64)
 
 	// The database holds work. A wake can coalesce without losing a submission.
 	wake              chan struct{}
-	inFlight          sync.Map
+	waiting           sync.Map // deduplicates Wait goroutines; PiG owns execution state
+	ctx               context.Context
+	cancel            context.CancelFunc
+	wg                sync.WaitGroup
 	db                *sql.DB
 	taskMu            sync.Mutex // task creation and settlement; per agent if throughput matters
 	checkTaskSettings func(context.Context, Settings) error
 
-	// Serializes worker conversation creation, so two first messages of one chat create one worker
-	// conversation. Global lock; per conversation if throughput matters.
-	createMu   sync.Mutex
 	deliveryMu sync.Mutex // orders quiesce, confirmed leases, submit, and abort
 
-	maintenanceMu sync.Mutex
-	leaseUntil    atomic.Int64
-	reloading     bool // an extension reload holds the lease; see AcquireReload
+	retryMu    sync.Mutex
+	retryTimer *time.Timer
+	retryDelay time.Duration
 
+	maintenanceMu    sync.Mutex
+	maintenanceTimer *time.Timer
+	leaseUntil       atomic.Int64
 }
 
-// New returns a Service. Connect the worker's settled events to HandleSettled and its start to
-// Replay, and run Run. notify, if not nil, receives the origin when a submission settles.
-// changed, if not nil, learns that a chat has a new message, a settled message, or a worker
-// conversation. Both run on the goroutine that reads the worker, so they must not block.
-func New(db *sql.DB, w Caller, now func() time.Time, notify func(origin string), changed func(chatID int64)) *Service {
-	return &Service{
-		db: db, q: sqlc.New(db), worker: w, now: now, notify: notify, changed: changed,
-		wake: make(chan struct{}, 1),
-	}
+// New connects durable business receipts to native execution.
+func New(db *sql.DB, agents *engine.Agents, now func() time.Time, notify func(string), changed func(int64)) *Service {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Service{db: db, q: sqlc.New(db), engine: agents, now: now, notify: notify, changed: changed, wake: make(chan struct{}, 1), ctx: ctx, cancel: cancel}
 }
 
-// Run delivers stored submissions to the worker, one at a time and in order, until ctx is done.
-// One queue for all chats; one per chat if a slow delivery delays other chats.
+// Run reconciles receipts at startup and after a failed cross-store write.
 func (s *Service) Run(ctx context.Context) {
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
+	defer func() {
+		s.cancel()
+		s.retryMu.Lock()
+		if s.retryTimer != nil {
+			s.retryTimer.Stop()
+		}
+		s.retryMu.Unlock()
+		s.maintenanceMu.Lock()
+		if s.maintenanceTimer != nil {
+			s.maintenanceTimer.Stop()
+		}
+		s.maintenanceMu.Unlock()
+		s.wg.Wait()
+	}()
 	for {
-		s.deliverPending(ctx)
+		s.deliveryMu.Lock()
+		err := s.reconcile(ctx)
+		s.deliveryMu.Unlock()
+		if err != nil && ctx.Err() == nil {
+			slog.Warn("reconcile business receipts", "err", err)
+			s.scheduleRetry()
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-s.wake:
-		case <-tick.C:
 		}
 	}
+}
+
+func (s *Service) scheduleRetry() {
+	s.retryMu.Lock()
+	defer s.retryMu.Unlock()
+	if s.ctx.Err() != nil || s.retryTimer != nil {
+		return
+	}
+	if s.retryDelay == 0 {
+		s.retryDelay = 100 * time.Millisecond
+	}
+	s.retryTimer = time.AfterFunc(s.retryDelay, func() { s.retryMu.Lock(); s.retryTimer = nil; s.retryMu.Unlock(); s.Wake() })
+	s.retryDelay = min(s.retryDelay*2, 30*time.Second)
 }
 
 func (s *Service) Wake() {
@@ -136,37 +158,36 @@ func (s *Service) Wake() {
 	}
 }
 
-func (s *Service) deliverPending(ctx context.Context) {
-	pending, err := s.q.ListPendingSubmissions(ctx)
+func (s *Service) reconcile(ctx context.Context) error {
+	aborts, err := s.q.ListPendingExecutionAborts(ctx)
 	if err != nil {
-		slog.Error("list pending submissions", "err", err)
-		return
+		return err
 	}
 	blocked := make(map[int64]bool)
-	for _, p := range pending {
-		if ctx.Err() != nil {
-			return
+	var errs []error
+	for _, c := range aborts {
+		if err := s.abort(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}); err != nil {
+			blocked[c.ID] = true
+			errs = append(errs, err)
 		}
+	}
+	pending, err := s.q.ListPendingSubmissions(ctx)
+	if err != nil {
+		return errors.Join(append(errs, err)...)
+	}
+	for _, p := range pending {
 		if blocked[p.ConversationID] {
 			continue
 		}
-		if _, ok := s.inFlight.Load(p.ID); ok {
+		if _, ok := s.waiting.Load(p.ID); ok {
 			continue
 		}
-		if strings.HasPrefix(p.ChannelKey, "task:") {
-			task, err := s.q.GetTask(ctx, p.ID)
-			if err != nil {
-				slog.Error("read pending task", "task", p.ID, "err", err)
-				continue
-			}
-			if task.Status != "queued" {
-				continue
-			}
-		}
-		if retry := s.deliver(ctx, p); retry {
+		if err := s.admit(ctx, p); err != nil {
 			blocked[p.ConversationID] = true
+			errs = append(errs, err)
 		}
 	}
+	return errors.Join(errs...)
 }
 
 // Post stores the message id with content on channelKey and returns the chat ID. It does not wait
@@ -211,7 +232,13 @@ func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey st
 }
 
 func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, origin string, m Message) (int64, error) {
-	// Sample time before taking the writer. Delivery follows insertion order.
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	// Known maintenance rejection must not create a web receipt that executes later.
+	if origin == "web" && s.leaseUntil.Load() != 0 {
+		return 0, engine.ErrMaintenance
+	}
+	// The same lock orders receipt insertion and native admission.
 	createdAt, submittedAt := s.now().UnixMilli(), s.now().UnixMilli()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -257,11 +284,42 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		return 0, err
 	}
 	if created == 0 {
-		return conv.ID, nil // the channel delivered this message before
+		id := m.ID
+		if sourceKey != "" {
+			id, err = s.q.GetSubmissionBySource(ctx, sql.NullString{String: sourceKey, Valid: true})
+			if err != nil {
+				return 0, err
+			}
+		}
+		prior, err := s.q.GetSubmission(ctx, id)
+		if err != nil {
+			return 0, err
+		}
+		conv.ID = prior.ConversationID
+		m.ID = prior.ID
+		if prior.Status != "pending" || prior.AdmittedAt.Valid {
+			return conv.ID, receiptError(prior)
+		}
 	}
 	s.signal(conv.ID)
-	s.Wake()
-	return conv.ID, nil
+	admissionErr := s.reconcile(ctx)
+	if admissionErr != nil {
+		s.scheduleRetry()
+	}
+	sub, err := s.q.GetSubmission(ctx, m.ID)
+	if err != nil {
+		// The committed intent remains ours to reconcile if this read fails.
+		s.scheduleRetry()
+		return conv.ID, nil
+	}
+	return conv.ID, receiptError(sub)
+}
+
+func receiptError(sub sqlc.Submission) error {
+	if !sub.AdmittedAt.Valid && sub.Status == "unanswered" && sub.Reason.String != "stopped" && sub.Reason.String != "interrupted" {
+		return fmt.Errorf("%w: %s", ErrRejected, sub.Reason.String)
+	}
+	return nil
 }
 
 func title(content string) string {
@@ -300,152 +358,115 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	return Chat{
 		ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Busy: r.Pending > 0, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
-		WorkerConversationID: r.WorkerConversationID.Int64,
+		ExecutionID: r.ExecutionID.Int64,
 	}, nil
 }
 
-// deliver sends a stored submission to the worker. A worker exit or busy response keeps the
-// input pending for another attempt. Other failures settle it as unanswered.
-// A true result blocks later inputs of this chat until the pending input can be retried.
-func (s *Service) deliver(ctx context.Context, p sqlc.ListPendingSubmissionsRow) bool {
-	s.inFlight.Store(p.ID, struct{}{})
-	err := s.submit(ctx, p)
-	switch {
-	case err == nil:
-	case errors.Is(err, worker.ErrUnavailable), ctx.Err() != nil:
-		s.inFlight.Delete(p.ID)
-		slog.Warn("worker exited; the message waits for reconciliation", "submission", p.ID)
-		return true
-	case isBusy(err):
-		s.inFlight.Delete(p.ID)
-		return true
-	default:
-		s.settle(ctx, worker.Settled{RequestID: p.ID, Status: "unanswered", Reason: err.Error()})
+// admit crosses the durable admission boundary with a stable request ID.
+func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) error {
+	if s.leaseUntil.Load() != 0 {
+		return nil
 	}
-	return false
-}
-
-func isBusy(err error) bool {
-	failure, ok := errors.AsType[*worker.CallError](err)
-	return ok && failure.Code == "conversation_busy"
-}
-
-// HandleSettled records a settled event from the worker. When the record fails, the submission
-// stays pending and the next worker start replays it.
-func (s *Service) HandleSettled(ctx context.Context, event worker.Settled) {
-	s.settle(ctx, event)
-}
-
-// Replay queues every pending submission for delivery again. Run it after each worker start.
-func (s *Service) Replay(ctx context.Context) {
-	pending, err := s.q.ListPendingSubmissions(ctx)
-	if err != nil {
-		slog.Error("list pending submissions", "err", err)
-		return
-	}
-	for _, p := range pending {
-		s.inFlight.Delete(p.ID)
-	}
-	s.Wake()
-}
-
-func (s *Service) submit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) error {
 	agent, err := s.q.GetAgent(ctx, p.AgentID)
 	if err != nil {
-		return fmt.Errorf("agent %s: %w", p.AgentID, err)
+		return err
 	}
 	conv, err := s.q.GetConversation(ctx, p.ConversationID)
 	if err != nil {
 		return err
 	}
-	// The chat's settings override the agent's; read both now, so a change applies from the next
-	// message.
-	model := worker.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}
+	options := engine.Options{Model: engine.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel), Instructions: agent.Instructions}
 	if conv.ModelID != "" {
-		model = worker.ModelRef{Provider: conv.ModelProvider, ModelID: conv.ModelID}
-	}
-	if model.ModelID == "" && p.Kind != "context_reset" {
-		return ErrNoModel
-	}
-	settings := worker.CreateConversationParams{
-		AgentID: agent.ID, Model: model, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel),
-		Instructions: agent.Instructions,
+		options.Model = engine.ModelRef{Provider: conv.ModelProvider, ModelID: conv.ModelID}
 	}
 	if strings.HasPrefix(p.ChannelKey, dream.Channel) {
-		settings.Instructions = dream.Instructions(p.AgentID, settings.Instructions)
+		options.Instructions = dream.Instructions(p.AgentID, options.Instructions)
 	}
-	isTask := strings.HasPrefix(p.ChannelKey, "task:")
-	if isTask {
-		settings.Instructions = taskInstructions(settings.Instructions)
+	background := strings.HasPrefix(p.ChannelKey, "task:")
+	if background {
+		options.Instructions = taskInstructions(options.Instructions)
 	}
-	var attachments []worker.Attachment
-	if err := json.Unmarshal([]byte(p.Attachments), &attachments); err != nil {
-		return fmt.Errorf("submission %s attachments: %w", p.ID, err)
+	if options.Model.ModelID == "" && p.Kind != "context_reset" {
+		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: ErrNoModel.Error()})
 	}
-	conversation, err := s.workerConversation(ctx, p.ConversationID, settings)
+	ref, err := s.execution(ctx, conv.ID, p.AgentID, options)
 	if err != nil {
 		return err
 	}
-	for {
-		s.deliveryMu.Lock()
-		if s.leaseUntil.Load() <= s.now().UnixMilli() {
-			break
-		}
-		// Abort and lease renewal must remain available while this submission waits.
-		s.deliveryMu.Unlock()
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(50 * time.Millisecond):
-		}
-	}
-	defer s.deliveryMu.Unlock()
 	current, err := s.q.GetSubmission(ctx, p.ID)
 	if err != nil {
 		return err
 	}
 	if current.Status != "pending" {
-		s.inFlight.Delete(p.ID)
 		return nil
 	}
-	if p.Kind == "context_reset" {
-		var result worker.SubmitResult
-		return s.worker.Call(ctx, "reset", worker.ResetParams{
-			AgentID: p.AgentID, ConversationID: conversation, RequestID: p.ID,
-		}, &result)
-	}
-	params := worker.SubmitParams{
-		Kind: current.Kind, AgentID: p.AgentID, ConversationID: conversation, Model: model,
-		ThinkingLevel: settings.ThinkingLevel, Instructions: settings.Instructions,
-		RequestID: p.ID, Content: p.Content,
-		Attachments: attachments, Source: source(p),
-	}
-	if p.Kind == "task_result" {
-		params.WhenBusy = "reject"
-	}
-	call := s.worker.Call
-	if isTask {
+	if background {
 		s.taskMu.Lock()
-		task, err := s.q.GetTask(ctx, p.ID)
-		if err == nil && task.Status == "queued" {
-			// Bind before admission so this input cannot wait for a later worker.
-			call, err = s.worker.Bind()
-			if err == nil {
-				_, err = s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
-			}
-		} else if err == nil {
-			s.inFlight.Delete(p.ID)
-			s.taskMu.Unlock()
-			return nil
+		task, e := s.q.GetTask(ctx, p.ID)
+		if e == nil && task.Status == "queued" {
+			_, e = s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
 		}
 		s.taskMu.Unlock()
-		if err != nil {
+		if e != nil {
+			return e
+		}
+		if task.Status != "queued" && task.Status != "running" {
+			return nil
+		}
+	}
+	if p.Kind == "context_reset" {
+		if err = s.engine.Reset(ctx, ref, p.ID); err != nil {
+			return s.admissionError(ctx, p.ID, err)
+		}
+		if err = s.markAdmitted(ctx, p.ID); err != nil {
 			return err
 		}
-		params.TaskStageID = p.ID
+		return s.settle(ctx, p.ID, engine.Outcome{Status: "done"})
 	}
-	var result worker.SubmitResult
-	return call(ctx, "submit", params, &result)
+	var attachments []engine.Attachment
+	if err = json.Unmarshal([]byte(p.Attachments), &attachments); err != nil {
+		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: err.Error()})
+	}
+	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Background: background}
+	if p.Kind == "task_result" {
+		label, e := s.q.GetTaskResultLabel(ctx, sqlc.GetTaskResultLabelParams{ResultID: p.ID, ChatID: p.ConversationID})
+		if e != nil {
+			return e
+		}
+		input.TaskID, input.TaskTitle = label.ID, label.Title
+	}
+	sub, err := s.engine.Submit(ctx, ref, input)
+	if err != nil {
+		return s.admissionError(ctx, p.ID, err)
+	}
+	if err = s.markAdmitted(ctx, p.ID); err != nil {
+		return err
+	}
+	if _, loaded := s.waiting.LoadOrStore(p.ID, struct{}{}); loaded {
+		return nil
+	}
+	s.wg.Go(func() {
+		outcome, err := sub.Wait(s.ctx)
+		if err == nil {
+			err = s.settle(s.ctx, p.ID, outcome)
+		}
+		s.waiting.Delete(p.ID)
+		if err != nil && s.ctx.Err() == nil {
+			slog.Error("reconcile execution receipt", "submission", p.ID, "err", err)
+			s.scheduleRetry()
+		}
+	})
+	return nil
+}
+
+func (s *Service) markAdmitted(ctx context.Context, id string) error {
+	return s.q.AdmitSubmission(ctx, sqlc.AdmitSubmissionParams{ID: id, AdmittedAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+}
+func (s *Service) admissionError(ctx context.Context, id string, err error) error {
+	if errors.Is(err, engine.ErrInvalidInput) || errors.Is(err, engine.ErrNotFound) || errors.Is(err, ErrNoModel) {
+		return s.settle(ctx, id, engine.Outcome{Status: "unanswered", Reason: err.Error()})
+	}
+	return err
 }
 
 // source names a submission's chat in memory: dex:<agent ID>/chat/<chat ID>, or
@@ -458,41 +479,30 @@ func source(p sqlc.ListPendingSubmissionsRow) string {
 	return fmt.Sprintf("dex:%s/chat/%d", p.AgentID, p.ConversationID)
 }
 
-func (s *Service) settle(ctx context.Context, event worker.Settled) {
-	handled, err := s.settleTask(ctx, event)
+func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) error {
+	handled, err := s.settleTask(ctx, id, event)
 	if err != nil {
-		slog.Error("settle task", "submission", event.RequestID, "err", err)
-		return
+		return err
 	}
 	if handled {
-		s.inFlight.Delete(event.RequestID)
-		return
+		return nil
 	}
-	changed, err := s.q.SettleSubmission(ctx, sqlc.SettleSubmissionParams{
-		ID: event.RequestID, Status: event.Status,
-		Answer:    sql.NullString{String: event.Answer, Valid: event.Status == "done"},
-		Reason:    sql.NullString{String: event.Reason, Valid: event.Reason != ""},
-		SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true},
-	})
+	changed, err := s.q.SettleSubmission(ctx, sqlc.SettleSubmissionParams{ID: id, Status: event.Status, Answer: sql.NullString{String: event.Answer, Valid: event.Status == "done"}, Reason: sql.NullString{String: event.Reason, Valid: event.Reason != ""}, SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+	if err != nil || changed == 0 {
+		return err
+	}
+	reply, err := s.q.GetSubmissionReply(ctx, id)
 	if err != nil {
-		slog.Error("settle submission", "submission", event.RequestID, "err", err)
-		return
+		return err
 	}
-	// Submissions never return to pending, so late receipts cannot restore stopped work.
-	s.inFlight.Delete(event.RequestID)
-	if changed == 0 {
-		return
-	}
-	reply, err := s.q.GetSubmissionReply(ctx, event.RequestID)
-	if err != nil {
-		slog.Error("read settled submission", "submission", event.RequestID, "err", err)
-		return
-	}
+	s.retryMu.Lock()
+	s.retryDelay = 0
+	s.retryMu.Unlock()
 	s.signal(reply.ConversationID)
 	if s.notify != nil {
 		s.notify(reply.Origin)
 	}
-	s.Wake()
+	return nil
 }
 
 func (s *Service) signal(chatID int64) {
@@ -501,31 +511,22 @@ func (s *Service) signal(chatID int64) {
 	}
 }
 
-// workerConversation returns the worker's ID of the conversation, and creates the worker's
-// conversation with settings on first use.
-func (s *Service) workerConversation(ctx context.Context, id int64, settings worker.CreateConversationParams) (int64, error) {
-	s.createMu.Lock()
-	defer s.createMu.Unlock()
+// execution creates the native conversation once for the business record.
+func (s *Service) execution(ctx context.Context, id int64, agentID string, options engine.Options) (engine.Ref, error) {
 	conv, err := s.q.GetConversation(ctx, id)
 	if err != nil {
-		return 0, err
+		return engine.Ref{}, err
 	}
-	if conv.WorkerConversationID.Valid {
-		return conv.WorkerConversationID.Int64, nil
+	if conv.ExecutionID.Valid {
+		return engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, nil
 	}
-	// A crash between this call and the update below leaves an empty worker conversation. That is
-	// harmless; the next message creates another one.
-	var created worker.CreateConversationResult
-	err = s.worker.Call(ctx, "createConversation", settings, &created)
+	ref, err := s.engine.Create(ctx, agentID, options)
 	if err != nil {
-		return 0, fmt.Errorf("create worker conversation: %w", err)
+		return engine.Ref{}, err
 	}
-	err = s.q.SetWorkerConversation(ctx, sqlc.SetWorkerConversationParams{
-		WorkerConversationID: sql.NullInt64{Int64: created.ConversationID, Valid: true},
-		ID:                   id,
-	})
+	err = s.q.SetExecution(ctx, sqlc.SetExecutionParams{ID: id, ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: true}})
 	if err == nil {
 		s.signal(id)
 	}
-	return created.ConversationID, err
+	return ref, err
 }

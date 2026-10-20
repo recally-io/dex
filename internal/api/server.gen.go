@@ -21,8 +21,8 @@ import (
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/wechat"
-	"github.com/recally-io/dex/internal/worker"
 )
 
 // Defines values for AppendEventType.
@@ -536,7 +536,7 @@ type AssistantItem struct {
 type AssistantItemKind string
 
 // Attachment defines model for Attachment.
-type Attachment = worker.Attachment
+type Attachment = engine.Attachment
 
 // Automation defines model for Automation.
 type Automation = automation.Automation
@@ -702,10 +702,10 @@ type FeishuSetup = agent.FeishuSetup
 
 // Health defines model for Health.
 type Health struct {
-	DataDir     string       `json:"dataDir"`
-	Status      HealthStatus `json:"status"`
-	Version     string       `json:"version"`
-	WorkerReady bool         `json:"workerReady"`
+	DataDir      string       `json:"dataDir"`
+	RuntimeReady bool         `json:"runtimeReady"`
+	Status       HealthStatus `json:"status"`
+	Version      string       `json:"version"`
 }
 
 // HealthStatus defines model for Health.Status.

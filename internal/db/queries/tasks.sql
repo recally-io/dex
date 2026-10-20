@@ -1,5 +1,5 @@
--- name: GetConversationByWorker :one
-SELECT * FROM conversations WHERE agent_id = ? AND worker_conversation_id = ?;
+-- name: GetConversationByExecution :one
+SELECT * FROM conversations WHERE agent_id = ? AND execution_id = ?;
 
 -- name: CreateTask :exec
 INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, created_at)
@@ -52,11 +52,6 @@ ON CONFLICT DO NOTHING;
 
 -- name: ListLiveTasks :many
 SELECT * FROM tasks WHERE status = 'running';
-
--- name: ListTaskRecoveries :many
-SELECT t.id, c.agent_id, c.worker_conversation_id FROM tasks t
-JOIN conversations c ON c.id = t.conversation_id
-WHERE c.worker_conversation_id IS NOT NULL AND t.started_at IS NOT NULL;
 
 -- name: ListStopConversations :many
 SELECT * FROM conversations WHERE agent_id = @agent_id

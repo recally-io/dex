@@ -1,5 +1,5 @@
-// Command dex runs the dex control process: the HTTP API and web UI, with the embedded agent
-// worker as a child process. Agent settings are in the web UI; the optional environment variables
+// Command dex runs the HTTP API, web UI, and native agent runtime in one process.
+// Agent settings are in the web UI; the optional environment variables
 // are DEX_DATA_DIR (default ~/.dex), DEX_ADDR (default 127.0.0.1:8787), and DEX_TOKEN.
 package main
 
@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"runtime/debug"
 	"time"
 
@@ -35,10 +34,6 @@ func main() {
 }
 
 func serve(ctx context.Context, cfg service.Config, token string, requireToken bool) error {
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		return err
-	}
 	addr := cfg.Addr()
 	listener, err := new(net.ListenConfig).Listen(ctx, "tcp", addr)
 	if err != nil {
@@ -48,8 +43,8 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 
 	a, err := app.Start(ctx, app.Config{
 		DataDir:      cfg.DataDir,
-		CacheDir:     filepath.Join(cache, "dex"),
-		WorkerEnv:    append(app.WorkerEnv(os.Environ()), testWorkerEnv()...),
+		ToolEnv:      app.ToolEnv(os.Environ()),
+		FakeModel:    testFakeModel(),
 		Version:      version(),
 		Token:        token,
 		RequireToken: requireToken,

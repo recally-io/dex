@@ -1,12 +1,13 @@
 package app_test
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
+	"uuid"
 )
 
 func TestUserUpdateWaitsForActiveTool(t *testing.T) {
@@ -36,36 +37,47 @@ func TestUserUpdateWaitsForActiveTool(t *testing.T) {
 	d.must(t, http.MethodDelete, "/api/maintenance", nil, nil)
 }
 
-func TestUserMaintenanceQueuesWorkUntilReleaseOrRestart(t *testing.T) {
+func TestUserMaintenanceRejectsWorkUntilReleaseOrRestart(t *testing.T) {
 	for _, restart := range []bool{false, true} {
 		t.Run(fmt.Sprintf("restart=%t", restart), func(t *testing.T) {
-			// Given an idle real worker under a maintenance lease.
+			// Given an idle native runtime under maintenance and an empty Chat.
 			data := t.TempDir()
 			d := startDex(t, data, "")
 			d.setModel(t, "bash")
+			conversation := d.newSession(t)
 			d.must(t, http.MethodPost, "/api/maintenance", nil, nil)
-			// When the user submits tool work, it is stored but must not execute.
 			marker := filepath.Join(t.TempDir(), "executed")
-			id := d.newChat(t, fmt.Sprintf("touch '%s'; echo released", marker))
-			deadline := time.Now().Add(2 * time.Second)
-			for time.Now().Before(deadline) {
-				d.must(t, http.MethodPost, "/api/maintenance", nil, nil)
-				if _, err := os.Stat(marker); !os.IsNotExist(err) {
-					t.Fatalf("tool escaped maintenance: %v", err)
-				}
+			requestID := uuid.NewV7().String()
+			path := fmt.Sprintf("/api/agents/default/chats/%d/messages", conversation.ID)
+			body := map[string]string{"id": requestID, "text": fmt.Sprintf("touch '%s'; echo released", marker)}
+
+			// When submission is refused, it stores no intent that could execute later.
+			d.must(t, http.MethodPost, path, body, nil, http.StatusConflict)
+			conn, err := sql.Open("sqlite", "file:"+filepath.Join(data, "control.sqlite")+"?mode=ro")
+			if err != nil {
+				t.Fatal(err)
 			}
-			chats := d.chats(t)
-			if len(chats) != 1 || !chats[0].Busy {
-				t.Fatalf("message was not queued: %+v", chats)
+			defer conn.Close()
+			var count int
+			if err := conn.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM submissions WHERE id = ?", requestID).Scan(&count); err != nil {
+				t.Fatal(err)
 			}
-			// Then release, or a process restart, dispatches the stored work.
+			if count != 0 {
+				t.Fatal("maintenance rejection left an executable receipt")
+			}
+			if _, err := os.Stat(marker); !os.IsNotExist(err) {
+				t.Fatalf("tool escaped maintenance: %v", err)
+			}
+
+			// Then the same input can be accepted once maintenance ends.
 			if restart {
 				d.stop()
 				d = startDex(t, data, "")
 			} else {
 				d.must(t, http.MethodDelete, "/api/maintenance", nil, nil)
 			}
-			d.watch(t, id).until(t, "queued work after maintenance", answered("bash: released"))
+			d.must(t, http.MethodPost, path, body, nil, http.StatusAccepted)
+			d.watch(t, conversation.ID).until(t, "retried work after maintenance", answered("bash: released"))
 			if _, err := os.Stat(marker); err != nil {
 				t.Fatal(err)
 			}

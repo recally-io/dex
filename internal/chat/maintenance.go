@@ -5,44 +5,16 @@ import (
 	"errors"
 	"time"
 
-	"github.com/recally-io/dex/internal/worker"
+	"github.com/recally-io/dex/internal/engine"
 )
 
 var ErrMaintenanceBusy = errors.New("maintenance is busy")
 
-// AcquireMaintenance closes worker admission before checking unfinished work.
-// Control keeps the expiry so it can restore the gate after a worker restart.
+// AcquireMaintenance pauses native admission for at most two minutes.
 func (s *Service) AcquireMaintenance(ctx context.Context) error {
 	s.maintenanceMu.Lock()
 	defer s.maintenanceMu.Unlock()
-	if s.reloading {
-		return errors.Join(ErrMaintenanceBusy, errors.New("an extension reload is running"))
-	}
 	return s.acquire(ctx)
-}
-
-// AcquireReload takes the lease for an extension reload. Unlike AcquireMaintenance, it refuses a
-// lease that another holder has, and no other holder can renew or release the lease until
-// ReleaseReload.
-func (s *Service) AcquireReload(ctx context.Context) error {
-	s.maintenanceMu.Lock()
-	defer s.maintenanceMu.Unlock()
-	if s.reloading || s.leaseUntil.Load() > s.now().UnixMilli() {
-		return errors.Join(ErrMaintenanceBusy, errors.New("maintenance or another reload is running"))
-	}
-	if err := s.acquire(ctx); err != nil {
-		return err
-	}
-	s.reloading = true
-	return nil
-}
-
-// ReleaseReload releases the lease of AcquireReload.
-func (s *Service) ReleaseReload(ctx context.Context) error {
-	s.maintenanceMu.Lock()
-	defer s.maintenanceMu.Unlock()
-	s.reloading = false
-	return s.release(ctx)
 }
 
 func (s *Service) acquire(ctx context.Context) error {
@@ -51,54 +23,51 @@ func (s *Service) acquire(ctx context.Context) error {
 	s.deliveryMu.Lock()
 	defer s.deliveryMu.Unlock()
 	until := s.now().Add(2 * time.Minute).UnixMilli()
-	var result worker.QuiesceResult
-	err := s.worker.Call(ctx, "quiesce", worker.QuiesceParams{ExpiresAt: until}, &result)
-	if err == nil && !result.Busy {
-		s.leaseUntil.Store(until)
-		return nil
+	if s.leaseUntil.Load() == 0 {
+		if err := s.engine.Quiesce(ctx); err != nil {
+			if errors.Is(err, engine.ErrBusy) {
+				return errors.Join(ErrMaintenanceBusy, err)
+			}
+			return err
+		}
 	}
-	release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
-	defer cancel()
-	_ = s.worker.Call(release, "resume", struct{}{}, &struct{}{})
-	s.leaseUntil.Store(0)
-	if err != nil {
-		return err
+	s.leaseUntil.Store(until)
+	if s.maintenanceTimer != nil {
+		s.maintenanceTimer.Stop()
 	}
-	if result.Reason == "" {
-		return ErrMaintenanceBusy
-	}
-	return errors.Join(ErrMaintenanceBusy, errors.New(result.Reason))
+	s.maintenanceTimer = time.AfterFunc(2*time.Minute, func() {
+		s.maintenanceMu.Lock()
+		defer s.maintenanceMu.Unlock()
+		if s.leaseUntil.Load() == until {
+			_ = s.release()
+		}
+	})
+	return nil
 }
 
-func (s *Service) ReleaseMaintenance(ctx context.Context) error {
+func (s *Service) ReleaseMaintenance(_ context.Context) error {
 	s.maintenanceMu.Lock()
 	defer s.maintenanceMu.Unlock()
-	if s.reloading {
-		return errors.Join(ErrMaintenanceBusy, errors.New("an extension reload is running"))
-	}
-	return s.release(ctx)
+	return s.release()
 }
 
-func (s *Service) release(ctx context.Context) error {
-	if err := s.worker.Call(ctx, "resume", struct{}{}, &struct{}{}); err != nil {
-		return err
-	}
-	s.leaseUntil.Store(0)
-	return nil
-}
-
-// RestoreMaintenance runs before a new worker is exposed to watches or replay.
-func (s *Service) RestoreMaintenance(ctx context.Context, call worker.CallFunc) error {
-	until := s.leaseUntil.Load()
-	if until <= s.now().UnixMilli() {
+func (s *Service) release() error {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	if s.leaseUntil.Swap(0) == 0 {
 		return nil
 	}
-	var result worker.QuiesceResult
-	if err := call(ctx, "quiesce", worker.QuiesceParams{ExpiresAt: until}, &result); err != nil {
-		return err
+	if s.maintenanceTimer != nil {
+		s.maintenanceTimer.Stop()
 	}
-	if result.Busy {
-		return ErrMaintenanceBusy
-	}
+	s.engine.Resume()
+	s.Wake()
 	return nil
+}
+
+// ReloadExtensions orders file reload with business receipt admission.
+func (s *Service) ReloadExtensions(ctx context.Context, agentID string) error {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	return s.engine.Reload(ctx, agentID)
 }

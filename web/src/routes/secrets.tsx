@@ -113,7 +113,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
       queryClient.setQueryData(getExtensionsQueryKey({ path: { agentId } }), data);
       void queryClient.invalidateQueries({ queryKey: [{ _id: "getExtensions" }] });
       setChanged(false);
-      notify("Extensions reloaded. The worker restarted for all agents.");
+      notify("Extensions reloaded for the selected agent.");
     },
     onError: (error) => notify(errorText(error)),
   });
@@ -204,7 +204,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
         {changed ? (
           <div className="mt-4" role="status">
             <Note>
-              <p>The change applies after Reload. Reload restarts the worker for all agents.</p>
+              <p>The change applies after Reload. Reload applies to the selected agent.</p>
               <Button
                 className="mt-3"
                 size="sm"

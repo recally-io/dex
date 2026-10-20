@@ -20,27 +20,26 @@ import (
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/upload"
-	"github.com/recally-io/dex/internal/worker"
 	"github.com/recally-io/dex/web"
 )
 
 // Config holds what the handler serves.
 type Config struct {
-	Chats       *chat.Service
-	Automations *automation.Service
-	Settings    *settings.Service
-	Agents      *agent.Service
-	Live        *live.Hub
-	DataDir     string
-	Version     string
-	WorkerReady func(context.Context) bool
-	// Worker calls the worker for the agent's extensions.
-	Worker worker.CallFunc
-	// RestartWorker restarts the worker, which connects the MCP servers again.
-	RestartWorker func(context.Context) error
+	Chats        *chat.Service
+	Automations  *automation.Service
+	Settings     *settings.Service
+	Agents       *agent.Service
+	Live         *live.Hub
+	DataDir      string
+	Version      string
+	RuntimeReady func(context.Context) bool
+	// Engine owns native execution and extensions.
+	Engine *engine.Agents
+
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string
 }
@@ -76,7 +75,7 @@ func New(cfg Config) http.Handler {
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
-				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrResetID):
+				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrResetID), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected):
 				status = http.StatusBadRequest
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
@@ -84,7 +83,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy):
+			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -156,8 +155,8 @@ var ok = api.Ok{Status: api.OkStatusOk}
 func (h *handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (api.GetHealthResponseObject, error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	ready := h.WorkerReady != nil && h.WorkerReady(ctx)
-	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, WorkerReady: ready}, nil
+	ready := h.RuntimeReady != nil && h.RuntimeReady(ctx)
+	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, RuntimeReady: ready}, nil
 }
 func (h *handler) AcquireMaintenance(ctx context.Context, _ api.AcquireMaintenanceRequestObject) (api.AcquireMaintenanceResponseObject, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -174,71 +173,52 @@ func (h *handler) ReleaseMaintenance(ctx context.Context, _ api.ReleaseMaintenan
 	return api.ReleaseMaintenance200JSONResponse(ok), nil
 }
 
-func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestObject) (api.GetExtensionsResponseObject, error) {
-	var out api.GetExtensions200JSONResponse
-	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx)}, &out); err != nil {
-		return nil, err
+func (h *handler) extensionView(ctx context.Context) (api.Extensions, error) {
+	info, err := h.Engine.Extensions(ctx, agentID(ctx))
+	if err != nil {
+		return api.Extensions{}, err
 	}
-	return out, nil
+	var out api.Extensions
+	raw, err := json.Marshal(info)
+	if err == nil {
+		err = json.Unmarshal(raw, &out)
+	}
+	return out, err
+}
+func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestObject) (api.GetExtensionsResponseObject, error) {
+	out, err := h.extensionView(ctx)
+	return api.GetExtensions200JSONResponse(out), err
 }
 func (h *handler) PutExtensionEnv(ctx context.Context, req api.PutExtensionEnvRequestObject) (api.PutExtensionEnvResponseObject, error) {
 	if req.Body == nil || req.Body.Value == nil {
 		return nil, errInvalid
 	}
-	var out api.PutExtensionEnv200JSONResponse
-	err := h.editEnv(ctx, worker.EditEnvParams{AgentID: agentID(ctx), Scope: string(req.Body.Scope), Key: req.Body.Key, Value: req.Body.Value}, &out)
-	return out, err
+	out, err := h.editEnv(ctx, string(req.Body.Scope), req.Body.Key, req.Body.Value)
+	return api.PutExtensionEnv200JSONResponse(out), err
 }
-
 func (h *handler) DeleteExtensionEnv(ctx context.Context, req api.DeleteExtensionEnvRequestObject) (api.DeleteExtensionEnvResponseObject, error) {
-	var out api.DeleteExtensionEnv200JSONResponse
-	err := h.editEnv(ctx, worker.EditEnvParams{AgentID: agentID(ctx), Scope: string(req.Params.Scope), Key: req.Params.Key}, &out)
-	return out, err
+	out, err := h.editEnv(ctx, string(req.Params.Scope), req.Params.Key, nil)
+	return api.DeleteExtensionEnv200JSONResponse(out), err
 }
-
-func (h *handler) editEnv(ctx context.Context, params worker.EditEnvParams, out any) error {
-	if params.Scope != "agent" && params.Scope != "dex" || params.Key == "" {
-		return errInvalid
+func (h *handler) editEnv(ctx context.Context, scope, key string, value *string) (api.Extensions, error) {
+	if (scope != "agent" && scope != "dex") || key == "" {
+		return api.Extensions{}, errInvalid
 	}
-	if err := h.Worker(ctx, "editEnv", params, out); err != nil {
-		if call, ok := errors.AsType[*worker.CallError](err); ok && call.Code == "invalid_env" {
-			return errors.Join(errInvalid, err)
+	_, err := h.Engine.EditEnv(ctx, agentID(ctx), scope, key, value)
+	if err != nil {
+		if _, ok := errors.AsType[*engine.EnvEditError](err); ok {
+			return api.Extensions{}, errors.Join(errInvalid, err)
 		}
-		return err
+		return api.Extensions{}, err
 	}
-	return nil
+	return h.extensionView(ctx)
 }
-
 func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRequestObject) (api.ReloadExtensionsResponseObject, error) {
-	// The maintenance lease refuses a reload while the agent has work, and holds new work until the
-	// new worker runs. The new worker gets the lease again before it accepts calls.
-	if err := h.Chats.AcquireReload(ctx); err != nil {
+	if err := h.Chats.ReloadExtensions(ctx, agentID(ctx)); err != nil {
 		return nil, err
 	}
-	defer func() {
-		release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		if err := h.Chats.ReleaseReload(release); err != nil {
-			slog.Error("release maintenance after an extension reload", "err", err)
-		}
-	}()
-	// A worker that starts with an mcp.json that is not valid has no MCP servers. Keep the loaded ones.
-	var files api.Extensions
-	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx), Preflight: true}, &files); err != nil {
-		return nil, err
-	}
-	if len(files.Errors) > 0 {
-		return nil, fmt.Errorf("%w: %s", errInvalid, strings.Join(files.Errors, "\n"))
-	}
-	if err := h.RestartWorker(ctx); err != nil {
-		return nil, err
-	}
-	// The agent opens now, under the lease, so the response shows the state of each server.
-	var out api.ReloadExtensions200JSONResponse
-	if err := h.Worker(ctx, "extensions", worker.AgentParams{AgentID: agentID(ctx), Open: true}, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
+	out, err := h.extensionView(ctx)
+	return api.ReloadExtensions200JSONResponse(out), err
 }
 
 func chatView(c chat.Chat) api.Chat {
@@ -489,7 +469,7 @@ func providerView(p settings.Provider) api.Provider {
 }
 
 // convert converts the strings of pi-ai enums to their API types.
-func convert[T ~string](values []string) []T {
+func convert[T ~string, S ~string](values []S) []T {
 	out := make([]T, len(values))
 	for i, v := range values {
 		out[i] = T(v)
@@ -645,7 +625,7 @@ func (h *handler) GetChatHistory(ctx context.Context, req api.GetChatHistoryRequ
 		return nil, err
 	}
 	var out api.GetChatHistory200JSONResponse
-	// The worker renders the same Item contract for history and live events.
+	// Native projection provides the same items for history and live events.
 	raw, err := json.Marshal(page)
 	if err == nil {
 		err = json.Unmarshal(raw, &out)
