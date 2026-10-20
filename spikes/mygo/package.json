@@ -1,0 +1,19 @@
+{
+  "name": "dex-mygo-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "GOTOOLCHAIN=auto GOSUMDB=off GOMODCACHE=/tmp/dex-gomod GOCACHE=/tmp/dex-gocache GOPATH=/tmp/dex-gopath GOFLAGS=-mod=mod go run github.com/egoist/mygo/cmd/mygo@v0.5.5 generate",
+    "dev:web": "bun run generate && vite",
+    "build:web": "bun run generate && tsc --noEmit && vite build",
+    "dev": "GOTOOLCHAIN=local go run github.com/egoist/mygo/cmd/mygo@v0.5.5 dev",
+    "build": "GOTOOLCHAIN=local go run github.com/egoist/mygo/cmd/mygo@v0.5.5 build"
+  },
+  "dependencies": {
+    "mygo-runtime": "file:vendor/mygo-runtime"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^6.2.0"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "Dex MyGo Spike",
+  "identifier": "dev.dex.mygo-spike",
+  "version": "0.0.1",
+  "devUrl": "http://localhost:5173",
+  "devCommand": "bun run dev:web",
+  "buildCommand": "bun run build:web",
+  "frontendDist": "dist",
+  "bindings": "src/mygo.ts",
+  "out": "build"
+}

@@ -1,0 +1,10 @@
+version: "3"
+
+tasks:
+  build:
+    cmds:
+      - mkdir -p bin
+      - go build -o bin/dex-wails3-spike .
+  dev:
+    cmds:
+      - go run .
