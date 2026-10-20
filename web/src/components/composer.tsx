@@ -170,9 +170,19 @@ export function Composer({
           disabled={!!disabledReason}
           onChange={(e) => onTextChange(e.target.value)}
           onPaste={(e) => {
-            if (!canAttach || !e.clipboardData.files.length) return;
+            if (!canAttach) return;
+
+            const pasted = [...e.clipboardData.items].flatMap((item) => {
+              if (item.kind !== "file") return [];
+
+              const file = item.getAsFile();
+
+              return file ? [file] : [];
+            });
+
+            if (!pasted.length) return;
             e.preventDefault();
-            files.add([...e.clipboardData.files]);
+            files.add(pasted);
           }}
           onCompositionStart={() => {
             composing.current = true;
