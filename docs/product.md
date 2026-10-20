@@ -13,7 +13,9 @@ to read in an afternoon.
 
 ## Scope
 
-- One `dex` binary. The host needs no other runtime.
+- One `dex` binary. The host needs no other runtime. The macOS desktop preview
+  is a Wails 3 window host over the same Dex HTTP service and is documented
+  separately from the cross-platform CLI binary.
 - Runtime: foreground execution, or a per-user launchd/systemd service that
   starts at login. Optional daily updates wait until agent work is idle.
   Loopback access needs no token by default. Other listening addresses require

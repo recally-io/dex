@@ -23,6 +23,10 @@ On the Providers page, add a provider. On the Agent page, choose a model.
 To build from source, run `mise install`, `mise run install`, and
 `mise run build`. The binary is `bin/dex`. See [Development](docs/dev/development.md).
 
+For a macOS desktop preview, see [the Wails 3 build](desktop/wails3/README.md).
+The desktop window uses the same HTTP/OpenAPI/SSE contracts. It reuses an
+existing Dex service when possible and does not ask the user to enter a token.
+
 ## Run and manage dex
 
 ```sh

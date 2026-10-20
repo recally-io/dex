@@ -1,0 +1,11 @@
+version: "3"
+
+dev_mode:
+  root_path: .
+  ignore:
+    dir: [".git", "bin"]
+    file: [".DS_Store"]
+    watched_extension: ["*.go"]
+  executes:
+    - cmd: wails3 task dev
+      type: primary

@@ -14,6 +14,8 @@ process. Business services call `internal/engine` directly. The engine uses
 [PiG](https://github.com/MichaelKinsy/PiG) for durable execution, model access,
 and MCP. The browser receives typed transcript events through SSE.
 
+The macOS desktop build in [`desktop/wails3`](../../desktop/wails3/) uses Wails 3 as a window host. It reuses an existing Dex HTTP service with the same data directory or starts the same server on a loopback port. The desktop build keeps the OpenAPI and SSE contracts shared with browser clients.
+
 ## Runtime modules
 
 The Go binary embeds the built web UI. Node and Bun are development tools

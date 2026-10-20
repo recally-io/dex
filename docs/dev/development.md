@@ -39,6 +39,27 @@ The optional environment variables are `DEX_DATA_DIR` (default `~/.dex`) and
 `DEX_ADDR` (default `127.0.0.1:8787`). Use a separate `DEX_DATA_DIR` to try
 settings without changing your own.
 
+## macOS desktop preview
+
+The Wails 3 desktop preview lives in `desktop/wails3/`. It uses the existing
+React/Vite build and loads Dex through a loopback HTTP URL. The desktop window
+reuses an existing service with the same data directory or starts a local
+backend. Its loopback proxy supplies the stored service token internally, so
+the WebView does not show the token sign-in flow.
+
+Run the preview on macOS:
+
+```sh
+cd desktop/wails3
+mise exec -- env GOBIN=/tmp/dex-wails3-bin go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.33
+PATH=/tmp/dex-wails3-bin:$PATH mise exec -- go mod tidy
+PATH=/tmp/dex-wails3-bin:$PATH mise exec -- wails3 package
+open bin/Dex.app
+```
+
+The package is ad hoc signed for local testing. Production signing,
+notarization, and update distribution are separate release work.
+
 ## Legacy checkout cleanup
 
 An old checkout can retain the ignored `worker/node_modules/` directory after
