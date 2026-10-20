@@ -3,7 +3,6 @@ package feishu
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
-	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/upload"
 )
 
@@ -29,7 +27,6 @@ type Bot struct {
 	cfg      Config
 	client   *Client
 	manager  *channel.Manager
-	q        *sqlc.Queries
 	hub      EventStreams
 	uploads  *upload.Store
 	pair     func(context.Context, string, string) (bool, error)
@@ -39,8 +36,8 @@ type Bot struct {
 }
 
 // New creates a bot. pair atomically consumes a manual setup code.
-func New(cfg Config, manager *channel.Manager, q *sqlc.Queries, hub EventStreams, uploads *upload.Store, pair func(context.Context, string, string) (bool, error)) *Bot {
-	return &Bot{cfg: cfg, client: NewClient(cfg), manager: manager, q: q, hub: hub, uploads: uploads, pair: pair, previews: make(map[string]*preview)}
+func New(cfg Config, manager *channel.Manager, hub EventStreams, uploads *upload.Store, pair func(context.Context, string, string) (bool, error)) *Bot {
+	return &Bot{cfg: cfg, client: NewClient(cfg), manager: manager, hub: hub, uploads: uploads, pair: pair, previews: make(map[string]*preview)}
 }
 
 // Run receives events until the manager cancels it.
@@ -109,11 +106,11 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 		return nil
 	}
 	source := "feishu:" + b.cfg.AppID + ":" + m.ID
-	// Avoid a second download or preview when the platform repeats an admitted event.
-	if _, err := b.q.GetSubmissionBySource(sessionCtx, sql.NullString{String: source, Valid: true}); err == nil {
-		return nil
-	} else if !errors.Is(err, sql.ErrNoRows) {
+	// A stored receipt owns its attachments before native admission.
+	if received, err := b.manager.ReceivedSource(sessionCtx, source); err != nil {
 		return err
+	} else if received {
+		return nil
 	}
 	msg := chat.Message{Content: m.Text}
 	for _, resource := range m.Resources {
@@ -139,26 +136,20 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 	if err := b.manager.Receive(botCtx, peer, source, msg); err != nil {
 		return err
 	}
-	id, err := b.q.GetSubmissionBySource(sessionCtx, sql.NullString{String: source, Valid: true})
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
+	receipt, err := b.manager.Source(sessionCtx, source)
 	if err != nil {
 		return err
 	}
-	row, err := b.q.GetSubmission(sessionCtx, id)
-	if err != nil {
-		return err
-	}
-	if row.Status != "pending" {
+	if !receipt.Pending {
 		return nil
 	}
+	id := receipt.ID
 	// Final delivery takes the same lock, so a fast answer cannot pass this preview.
 	p := &preview{}
 	b.previews[id] = p
 	streamCtx, cancel := context.WithCancel(botCtx)
 	p.cancel = cancel
-	b.wg.Go(func() { b.stream(streamCtx, id, row.ConversationID, m.Sender, p) })
+	b.wg.Go(func() { b.stream(streamCtx, id, receipt.ChatID, m.Sender, p) })
 	return nil
 }
 

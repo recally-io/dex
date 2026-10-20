@@ -265,14 +265,17 @@ func (s *Service) CancelTask(ctx context.Context, agentID string, parentID int64
 }
 
 func (s *Service) cancelTask(ctx context.Context, agentID string, parentID int64, id string, caller *engine.TaskContext) (Task, error) {
-	s.deliveryMu.Lock()
-	defer s.deliveryMu.Unlock()
+	unlock, err := s.lockAgent(ctx, agentID)
+	if err != nil {
+		return Task{}, err
+	}
+	defer func() { unlock(); s.Wake() }()
 	t, target, err := s.withdrawTask(ctx, agentID, parentID, id, caller)
 	if err != nil {
 		return Task{}, err
 	}
 	if target.ID != 0 {
-		if err := s.abort(ctx, target); err != nil {
+		if _, err := s.abort(ctx, target); err != nil {
 			s.scheduleRetry()
 			return Task{}, err
 		}

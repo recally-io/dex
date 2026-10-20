@@ -160,8 +160,11 @@ package-managed paths cannot use self-update; use the build or package manager.
 Archives and extracted files have a 256 MiB size limit.
 An update verifies the archive checksum and executable version before it stops
 anything. A running service enters a two-minute maintenance lease only when
-no work is active. During the lease, new input returns `409` before dex stores
-a receipt. Retry after release or expiry. Manual
+no work is active. During the lease, web input returns `409` before dex stores
+a receipt. Retry the same request ID after release or expiry. A web request
+whose receipt committed before lease confirmation can return `202` and remain
+pending. Channel input can also keep a pending receipt. Pending input resumes
+admission after maintenance. Manual
 updates fail when busy; daily updates log a skip. A stopped service stays
 stopped. Foreground processes need a manual restart.
 

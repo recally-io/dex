@@ -153,10 +153,10 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 		}
 	}
 	source := "wechat:" + b.cfg.BotID + ":" + strconv.FormatUint(msg.ID, 10)
-	if _, err := b.q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true}); err == nil {
-		return nil
-	} else if !errors.Is(err, sql.ErrNoRows) {
+	if received, err := b.channels.ReceivedSource(ctx, source); err != nil {
 		return err
+	} else if received {
+		return nil
 	}
 	if _, err := b.q.GetChannelCommand(ctx, source); err == nil {
 		// Receive completes interrupted commands without repeating attachment side effects.
@@ -165,9 +165,9 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 		return err
 	}
 	input, err := b.convert(ctx, msg.Items)
-	admitted := false
+	stored := false
 	defer func() {
-		if !admitted {
+		if !stored {
 			for _, attachment := range input.Attachments {
 				if err := b.uploads.Remove(attachment.ID); err != nil {
 					slog.Warn("wechat: upload cleanup failed", "err", err)
@@ -186,12 +186,10 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 		return nil
 	}
 	receiveErr := b.channels.Receive(ctx, "wechat:"+b.cfg.Owner, source, input)
-	// Check ownership even after an error or cancellation: admission can already be durable.
-	_, err = b.q.GetSubmissionBySource(context.WithoutCancel(ctx), sql.NullString{String: source, Valid: true})
-	admitted = !errors.Is(err, sql.ErrNoRows)
-	if errors.Is(err, sql.ErrNoRows) {
-		return receiveErr
-	}
+	// A stored receipt owns its uploads even if native admission has not completed.
+	receipt, err := b.channels.Source(context.WithoutCancel(ctx), source)
+	// On a storage error, preserve files that a committed receipt can still own.
+	stored = err != nil || receipt.ID != ""
 	return errors.Join(receiveErr, err)
 }
 

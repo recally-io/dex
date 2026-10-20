@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -150,7 +151,7 @@ func TestUserReloadStartsOnlyOneReplacementMCP(t *testing.T) {
 	path := filepath.Join(config.DataDir, ".agents", "mcp.json")
 	extensionFile(t, path, string(raw))
 	agents := coreEngine(t, config)
-	coreCreate(t, agents, "alpha", coreOptions("echo"))
+	alpha := coreCreate(t, agents, "alpha", coreOptions("echo"))
 	coreCreate(t, agents, "beta", coreOptions("echo"))
 	// When only alpha reloads, validation must not create a disposable connection.
 	if err := agents.Reload(t.Context(), "alpha"); err != nil {
@@ -175,6 +176,9 @@ func TestUserReloadStartsOnlyOneReplacementMCP(t *testing.T) {
 	}
 	if string(after) != string(data) {
 		t.Fatalf("invalid reload started another MCP: %q", after)
+	}
+	if outcome := coreWait(t, coreSubmit(t, agents, alpha, "after-invalid", `mcp__notes__append {"text":"still connected"}`, "tool")); outcome.Status != "done" || !strings.Contains(outcome.Answer, "appended 1") {
+		t.Fatalf("invalid reload lost loaded MCP: %+v", outcome)
 	}
 	t.Logf("artifact: %s", starts)
 }

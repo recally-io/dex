@@ -156,6 +156,16 @@ func (m *Manager) Notify(key string) {
 	}
 }
 
+// ReceivedSource reports stored platform input, including input received by a previous agent.
+func (m *Manager) ReceivedSource(ctx context.Context, source string) (bool, error) {
+	return m.chats.ReceivedSource(ctx, source)
+}
+
+// Source returns the stored input and preview state for this manager's agent.
+func (m *Manager) Source(ctx context.Context, source string) (chat.SourceReceipt, error) {
+	return m.chats.LookupSource(ctx, m.agentID, source)
+}
+
 // Receive stores one update or executes a shared command. A repeated source has no effect.
 func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Message) error {
 	if !strings.Contains(peer, ":") || strings.Contains(peer, "/") || source == "" {
@@ -166,10 +176,10 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	}
 	m.receiveMu.Lock()
 	defer m.receiveMu.Unlock()
-	if _, err := m.q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true}); err == nil {
-		return nil
-	} else if !errors.Is(err, sql.ErrNoRows) {
+	if received, err := m.ReceivedSource(ctx, source); err != nil {
 		return err
+	} else if received {
+		return nil
 	}
 	command, err := m.q.GetChannelCommand(ctx, source)
 	if err == nil {

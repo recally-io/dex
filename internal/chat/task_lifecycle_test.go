@@ -201,9 +201,7 @@ func TestUserTaskResultEntersNativeInboxWhileParentIsBusy(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := "task:" + task.ID + ":result"
-	r.service.deliveryMu.Lock()
 	err = r.service.admit(t.Context(), taskInput(t, r, id))
-	r.service.deliveryMu.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,9 +279,7 @@ func TestUserTaskRestartInterruptsAdmittedWorkBeforeResume(t *testing.T) {
 		t.Fatalf("repeated restart lost isolation: %+v %v", conversation, err)
 	}
 	// Native cancellation consumes the durable fact only after an actual open.
-	restarted.deliveryMu.Lock()
-	err = restarted.reconcile(t.Context())
-	restarted.deliveryMu.Unlock()
+	err = restarted.reconcileAgent(t.Context(), "bot")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,9 +364,7 @@ func TestUserCancellingCompletedTaskLeavesItsResultAvailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Given a real completed task and its saved, undelivered parent result.
-	r.service.deliveryMu.Lock()
 	err = r.service.admit(t.Context(), taskInput(t, r, task.ID))
-	r.service.deliveryMu.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}

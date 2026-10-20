@@ -89,7 +89,9 @@ type Service struct {
 	taskMu            sync.Mutex // task creation and settlement; per agent if throughput matters
 	checkTaskSettings func(context.Context, Settings) error
 
-	deliveryMu sync.Mutex // orders quiesce, confirmed leases, submit, and abort
+	admissionMu    sync.RWMutex // receipt commits and maintenance lease confirmation only
+	delivery       map[string]deliveryGate
+	coordinationMu sync.Mutex // delivery registry, worker registration, and Run shutdown
 
 	retryMu    sync.Mutex
 	retryTimer *time.Timer
@@ -103,13 +105,15 @@ type Service struct {
 // New connects durable business receipts to native execution.
 func New(db *sql.DB, agents *engine.Agents, now func() time.Time, notify func(string), changed func(int64)) *Service {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Service{db: db, q: sqlc.New(db), engine: agents, now: now, notify: notify, changed: changed, wake: make(chan struct{}, 1), ctx: ctx, cancel: cancel}
+	return &Service{db: db, q: sqlc.New(db), engine: agents, now: now, notify: notify, changed: changed, wake: make(chan struct{}, 1), ctx: ctx, cancel: cancel, delivery: make(map[string]deliveryGate)}
 }
 
 // Run reconciles receipts at startup and after a failed cross-store write.
 func (s *Service) Run(ctx context.Context) {
 	defer func() {
+		s.coordinationMu.Lock()
 		s.cancel()
+		s.coordinationMu.Unlock()
 		s.retryMu.Lock()
 		if s.retryTimer != nil {
 			s.retryTimer.Stop()
@@ -123,9 +127,7 @@ func (s *Service) Run(ctx context.Context) {
 		s.wg.Wait()
 	}()
 	for {
-		s.deliveryMu.Lock()
-		err := s.reconcile(ctx)
-		s.deliveryMu.Unlock()
+		err := s.dispatch(ctx)
 		if err != nil && ctx.Err() == nil {
 			slog.Warn("reconcile business receipts", "err", err)
 			s.scheduleRetry()
@@ -158,7 +160,8 @@ func (s *Service) Wake() {
 	}
 }
 
-func (s *Service) reconcile(ctx context.Context) error {
+// reconcileAgent runs with the agent delivery gate held.
+func (s *Service) reconcileAgent(ctx context.Context, agentID string) error {
 	aborts, err := s.q.ListPendingExecutionAborts(ctx)
 	if err != nil {
 		return err
@@ -166,8 +169,12 @@ func (s *Service) reconcile(ctx context.Context) error {
 	blocked := make(map[int64]bool)
 	var errs []error
 	for _, c := range aborts {
-		if err := s.abort(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}); err != nil {
-			blocked[c.ID] = true
+		if c.AgentID != agentID {
+			continue
+		}
+		completed, err := s.abort(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64})
+		blocked[c.ID] = !completed
+		if err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -176,6 +183,9 @@ func (s *Service) reconcile(ctx context.Context) error {
 		return errors.Join(append(errs, err)...)
 	}
 	for _, p := range pending {
+		if p.AgentID != agentID {
+			continue
+		}
 		if blocked[p.ConversationID] {
 			continue
 		}
@@ -232,77 +242,92 @@ func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey st
 }
 
 func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, origin string, m Message) (int64, error) {
-	s.deliveryMu.Lock()
-	defer s.deliveryMu.Unlock()
-	// Known maintenance rejection must not create a web receipt that executes later.
-	if origin == "web" && s.leaseUntil.Load() != 0 {
-		return 0, engine.ErrMaintenance
-	}
-	// The same lock orders receipt insertion and native admission.
-	createdAt, submittedAt := s.now().UnixMilli(), s.now().UnixMilli()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	q := s.q.WithTx(tx)
-	chatTitle := cmp.Or(m.Title, title(m.Content))
-	if chatTitle == "" && len(m.Attachments) > 0 {
-		chatTitle = title(m.Attachments[0].Name)
-	}
-	conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{
-		AgentID: agentID, ChannelKey: channelKey, Title: chatTitle,
-		ModelProvider: m.Settings.Provider, ModelID: m.Settings.ModelID, ThinkingLevel: m.Settings.ThinkingLevel,
-		CreatedAt: createdAt,
-	})
-	if err != nil {
-		return 0, err
-	}
-	attachments, err := json.Marshal(m.Attachments)
-	if err != nil {
-		return 0, err
-	}
-	created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
-		ID:             m.ID,
-		ConversationID: conv.ID,
-		Content:        m.Content,
-		Attachments:    string(attachments),
-		SourceKey:      sql.NullString{String: sourceKey, Valid: sourceKey != ""},
-		Origin:         origin,
-		Kind:           "message",
-		CreatedAt:      submittedAt,
-	})
-	if err != nil {
-		return 0, err
-	}
-	if created > 0 && strings.HasPrefix(channelKey, ChatPrefix) {
-		if err := q.SetFirstChatTitle(ctx, sqlc.SetFirstChatTitleParams{ID: conv.ID, Title: chatTitle}); err != nil {
-			return 0, err
+	complete := false
+	chatID, err := func() (int64, error) {
+		s.admissionMu.RLock()
+		defer s.admissionMu.RUnlock()
+		// Known maintenance rejection must not create a web receipt that executes later.
+		if origin == "web" && s.leaseUntil.Load() != 0 {
+			return 0, engine.ErrMaintenance
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
-	}
-	if created == 0 {
-		id := m.ID
-		if sourceKey != "" {
-			id, err = s.q.GetSubmissionBySource(ctx, sql.NullString{String: sourceKey, Valid: true})
-			if err != nil {
-				return 0, err
-			}
-		}
-		prior, err := s.q.GetSubmission(ctx, id)
+		// SQLite row order defines input order, including callers waiting for delivery.
+		createdAt, submittedAt := s.now().UnixMilli(), s.now().UnixMilli()
+		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return 0, err
 		}
-		conv.ID = prior.ConversationID
-		m.ID = prior.ID
-		if prior.Status != "pending" || prior.AdmittedAt.Valid {
-			return conv.ID, receiptError(prior)
+		defer func() { _ = tx.Rollback() }()
+		q := s.q.WithTx(tx)
+		chatTitle := cmp.Or(m.Title, title(m.Content))
+		if chatTitle == "" && len(m.Attachments) > 0 {
+			chatTitle = title(m.Attachments[0].Name)
 		}
+		conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{
+			AgentID: agentID, ChannelKey: channelKey, Title: chatTitle,
+			ModelProvider: m.Settings.Provider, ModelID: m.Settings.ModelID, ThinkingLevel: m.Settings.ThinkingLevel,
+			CreatedAt: createdAt,
+		})
+		if err != nil {
+			return 0, err
+		}
+		attachments, err := json.Marshal(m.Attachments)
+		if err != nil {
+			return 0, err
+		}
+		created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
+			ID:             m.ID,
+			ConversationID: conv.ID,
+			Content:        m.Content,
+			Attachments:    string(attachments),
+			SourceKey:      sql.NullString{String: sourceKey, Valid: sourceKey != ""},
+			Origin:         origin,
+			Kind:           "message",
+			CreatedAt:      submittedAt,
+		})
+		if err != nil {
+			return 0, err
+		}
+		if created > 0 && strings.HasPrefix(channelKey, ChatPrefix) {
+			if err := q.SetFirstChatTitle(ctx, sqlc.SetFirstChatTitleParams{ID: conv.ID, Title: chatTitle}); err != nil {
+				return 0, err
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return 0, err
+		}
+		if created == 0 {
+			id := m.ID
+			if sourceKey != "" {
+				id, err = s.q.GetSubmissionBySource(ctx, sql.NullString{String: sourceKey, Valid: true})
+				if err != nil {
+					return 0, err
+				}
+			}
+			prior, err := s.q.GetSubmission(ctx, id)
+			if err != nil {
+				return 0, err
+			}
+			conv.ID = prior.ConversationID
+			m.ID = prior.ID
+			if prior.Status != "pending" || prior.AdmittedAt.Valid {
+				complete = true
+				return conv.ID, receiptError(prior)
+			}
+		}
+		return conv.ID, nil
+	}()
+	if err != nil || complete {
+		return chatID, err
 	}
-	s.signal(conv.ID)
-	admissionErr := s.reconcile(ctx)
+
+	s.signal(chatID)
+	unlock, err := s.lockAgent(ctx, agentID)
+	if err != nil {
+		s.scheduleRetry()
+		return chatID, nil
+	}
+	defer func() { unlock(); s.Wake() }()
+	admissionErr := s.reconcileAgent(ctx, agentID)
 	if admissionErr != nil {
 		s.scheduleRetry()
 	}
@@ -310,9 +335,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 	if err != nil {
 		// The committed intent remains ours to reconcile if this read fails.
 		s.scheduleRetry()
-		return conv.ID, nil
+		return chatID, nil
 	}
-	return conv.ID, receiptError(sub)
+	return chatID, receiptError(sub)
 }
 
 func receiptError(sub sqlc.Submission) error {
@@ -442,7 +467,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if _, loaded := s.waiting.LoadOrStore(p.ID, struct{}{}); loaded {
 		return nil
 	}
-	s.wg.Go(func() {
+	if !s.startWorker(func() {
 		outcome, err := sub.Wait(s.ctx)
 		if err == nil {
 			err = s.settle(s.ctx, p.ID, outcome)
@@ -452,7 +477,9 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 			slog.Error("reconcile execution receipt", "submission", p.ID, "err", err)
 			s.scheduleRetry()
 		}
-	})
+	}) {
+		s.waiting.Delete(p.ID)
+	}
 	return nil
 }
 

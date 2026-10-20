@@ -159,6 +159,9 @@ func TestUserStopWithdrawsQueuedInputWithoutModelContext(t *testing.T) {
 	if err := a.Quiesce(t.Context()); !errors.Is(err, ErrBusy) {
 		t.Fatalf("maintenance busy: %v", err)
 	}
+	if err := a.Reload(t.Context(), "beta"); !errors.Is(err, ErrBusy) {
+		t.Fatalf("reload accepted another agent's running and queued work: %v", err)
+	}
 	// When Stop cancels the run and withdraws the queue.
 	if err := a.Abort(t.Context(), ref); err != nil {
 		t.Fatal(err)
@@ -320,6 +323,9 @@ func TestUserShutdownWaitsForPendingMemoryCommit(t *testing.T) {
 	// When maintenance or shutdown arrives while the memory commit is pending.
 	if err := a.Quiesce(t.Context()); !errors.Is(err, ErrBusy) {
 		t.Fatalf("maintenance accepted pending memory commit: %v", err)
+	}
+	if err := a.Reload(t.Context(), "beta"); !errors.Is(err, ErrBusy) {
+		t.Fatalf("reload accepted pending memory commit: %v", err)
 	}
 	closeCtx, cancel := context.WithCancel(t.Context())
 	cancel()

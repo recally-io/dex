@@ -26,8 +26,11 @@ func (s *Service) stop(ctx context.Context, agentID string, id int64, command *s
 	if _, err := s.Get(ctx, agentID, id); err != nil {
 		return err
 	}
-	s.deliveryMu.Lock()
-	defer s.deliveryMu.Unlock()
+	unlock, err := s.lockAgent(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	defer func() { unlock(); s.Wake() }()
 	conversations, targets, err := s.withdraw(ctx, agentID, id, command)
 	if err != nil {
 		return err
@@ -39,7 +42,7 @@ func (s *Service) stop(ctx context.Context, agentID string, id int64, command *s
 		}
 	}
 	for _, target := range targets {
-		if err := s.abort(ctx, target); err != nil {
+		if _, err := s.abort(ctx, target); err != nil {
 			s.scheduleRetry()
 			return err
 		}
@@ -118,21 +121,24 @@ func cancelTaskInput(ctx context.Context, q *sqlc.Queries, task sqlc.Task, now s
 	return engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}, nil
 }
 
-func (s *Service) abort(ctx context.Context, target engine.Ref) error {
+// abort completes only after native cancellation and its durable acknowledgement.
+func (s *Service) abort(ctx context.Context, target engine.Ref) (completed bool, err error) {
 	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 6*time.Second)
 	defer cancel()
 	if err := s.engine.Abort(callCtx, target); err != nil && !errors.Is(err, engine.ErrNotFound) {
 		if errors.Is(err, engine.ErrModelsPending) {
 			// Discovery completion or retry wakes cancellation before later admission.
 			s.scheduleRetry()
-			return nil
+			return false, nil
 		}
-		if errors.Is(err, engine.ErrMaintenance) && s.leaseUntil.Load() != 0 {
-			// Release wakes reconciliation; keep the durable cancellation until then.
-			return nil
+		if errors.Is(err, engine.ErrMaintenance) {
+			// Lease publication can follow Quiesce. Keep cancellation durable in both windows.
+			s.scheduleRetry()
+			return false, nil
 		}
 		slog.Warn("cancel native execution", "execution", target.ID, "err", err)
-		return err
+		return false, err
 	}
-	return s.q.FinishExecutionAbort(callCtx, sqlc.FinishExecutionAbortParams{AgentID: target.AgentID, ExecutionID: sql.NullInt64{Int64: target.ID, Valid: true}})
+	err = s.q.FinishExecutionAbort(callCtx, sqlc.FinishExecutionAbortParams{AgentID: target.AgentID, ExecutionID: sql.NullInt64{Int64: target.ID, Valid: true}})
+	return err == nil, err
 }

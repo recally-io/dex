@@ -74,7 +74,7 @@ type App struct {
 }
 
 // Start restores task cancellation, applies settings, and starts business services.
-func Start(ctx context.Context, cfg Config) (*App, error) {
+func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return nil, err
 	}
@@ -132,17 +132,15 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		cancel()
 		return nil, errors.Join(err, jobs.Close(), conn.Close())
 	}
-	started := false
-	defer func() {
-		if !started {
-			cancel()
-			_ = native.Close(context.WithoutCancel(ctx))
-			_ = jobs.Close()
-		}
-	}()
 	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
 	hub = live.New(chats, native)
 	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
+	a := &App{db: conn, engine: native, bots: bots, jobs: jobs, cancel: cancel}
+	defer func() { //nolint:contextcheck // Shutdown joins the app lifetime.
+		if err != nil {
+			err = errors.Join(err, a.Close())
+		}
+	}()
 	setTelegram := func(agentID string, config *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
 		manager := bots.Agent(agentID)
 		uploads := upload.New(agent.Home(cfg.DataDir, agentID))
@@ -151,45 +149,17 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 			return
 		}
 		config.Uploads = uploads
-		config.Seen = func(ctx context.Context, source string) (bool, error) {
-			id, err := q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
-			if errors.Is(err, sql.ErrNoRows) {
-				return false, nil
-			}
-			if err != nil {
-				return false, err
-			}
-			sub, err := q.GetSubmission(ctx, id)
-			if err != nil {
-				return false, err
-			}
-			return sub.AdmittedAt.Valid || sub.Status != "pending", nil
-		}
-		config.Watch = func(ctx context.Context, source string) (string, io.ReadCloser, error) {
-			id, err := q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
-			if err != nil {
-				return "", nil, err
-			}
-			sub, err := q.GetSubmission(ctx, id)
-			if err != nil {
-				return "", nil, err
-			}
-			if sub.Status != "pending" {
-				return "", nil, nil
-			}
-			stream, err := hub.Open(ctx, agentID, sub.ConversationID)
-			return id, stream, err
-		}
+		config.Watch = agentStreams{hub, agentID}.Open
 		config.Report = func(state, reason string) { manager.Report("telegram", channel.Status{State: state, Reason: reason}) }
 		manager.Set("telegram", telegram.New(*config, manager))
 	}
 	prefs = settings.New(q, native.Catalog)
 	if err := chats.RecoverTasks(ctx); err != nil {
-		return nil, errors.Join(err, conn.Close())
+		return nil, err
 	}
 	discovery, err := prefs.RegisterProviders(runCtx)
 	if err != nil {
-		return nil, errors.Join(err, conn.Close())
+		return nil, err
 	}
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
 	chats.ConfigureTasks(prefs.CheckChat)
@@ -200,7 +170,7 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 			manager.Set("feishu", nil)
 			return
 		}
-		manager.Set("feishu", feishu.New(*config, manager, q, agentStreams{hub, agentID}, uploads, func(ctx context.Context, owner, code string) (bool, error) {
+		manager.Set("feishu", feishu.New(*config, manager, agentStreams{hub, agentID}, uploads, func(ctx context.Context, owner, code string) (bool, error) {
 			return agentsService.PairFeishu(ctx, agentID, owner, code)
 		}))
 	}
@@ -219,14 +189,12 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	agentsService.ConfigureWechat(wxOptions, conn, setWechat)
 	agents, err := q.ListAgents(ctx)
 	if err != nil {
-		cancel()
-		return nil, errors.Join(err, conn.Close())
+		return nil, err
 	}
 	// The stored token always exists, so `dex token` works before the host changes.
 	stored, err := prefs.AccessToken(ctx)
 	if err != nil {
-		cancel()
-		return nil, errors.Join(err, conn.Close())
+		return nil, err
 	}
 	token := cfg.Token
 	if token == "" && cfg.RequireToken {
@@ -234,11 +202,11 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 	}
 
 	automations := automation.New(q, chats, time.Now)
-	a := &App{db: conn, engine: native, bots: bots, jobs: jobs, cancel: cancel, handler: server.New(server.Config{
+	a.handler = server.New(server.Config{
 		RuntimeReady: func(ctx context.Context) bool { return native.Health(ctx) == nil },
 		Engine:       native,
 		Chats:        chats, Automations: automations, Settings: prefs, Agents: agentsService, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
-	})}
+	})
 	a.wg.Go(func() { chats.Run(runCtx) })
 	a.wg.Go(func() {
 		select {
@@ -254,29 +222,26 @@ func Start(ctx context.Context, cfg Config) (*App, error) {
 		jobs.Every("automations", cmp.Or(cfg.AutomationCheck, time.Minute), automations.Check),
 	)
 	if err != nil {
-		cancel()
-		a.wg.Wait()
-		return nil, errors.Join(err, conn.Close())
+		return nil, err
 	}
 	jobs.Start()
 	for _, agent := range agents {
 		tg, err := agentsService.TelegramConfig(ctx, agent.ID)
 		if err != nil {
-			return nil, errors.Join(err, a.Close()) //nolint:contextcheck // Shutdown joins the app lifetime, not the request.
+			return nil, err
 		}
 		wx, err := agentsService.WechatConfig(ctx, agent.ID)
 		if err != nil {
-			return nil, errors.Join(err, a.Close()) //nolint:contextcheck // Shutdown joins the app lifetime, not the request.
+			return nil, err
 		}
 		fs, err := agentsService.FeishuConfig(ctx, agent.ID)
 		if err != nil {
-			return nil, errors.Join(err, a.Close()) //nolint:contextcheck // Shutdown joins the app lifetime, not the request.
+			return nil, err
 		}
 		setTelegram(agent.ID, tg)
 		setFeishu(agent.ID, fs)
 		setWechat(agent.ID, wx)
 	}
-	started = true
 	return a, nil
 }
 
@@ -285,9 +250,9 @@ func (a *App) Handler() http.Handler { return a.handler }
 
 // Close stops business services, closes native execution, and closes business storage.
 func (a *App) Close() error {
-	a.cancel()
 	err := a.jobs.Close()
 	a.bots.Close()
+	a.cancel()
 	a.wg.Wait()
 	return errors.Join(err, a.engine.Close(context.Background()), a.db.Close())
 }

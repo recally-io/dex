@@ -69,7 +69,7 @@ func TestUserFinalPatchRetriesWithoutSecondVisibleAnswer(t *testing.T) {
 			defer server.Close()
 			ctx := t.Context()
 			manager := channel.New(ctx, nil, nil, "")
-			bot := New(Config{APIURL: server.URL, OwnerID: "owner"}, manager, nil, nil, nil, nil)
+			bot := New(Config{APIURL: server.URL, OwnerID: "owner"}, manager, nil, nil, nil)
 			previewID, err := bot.client.Send(ctx, "owner", "interactive", CardContent("Thinking", false), deliveryUUID("submission:preview", 0))
 			if err != nil {
 				t.Fatal(err)

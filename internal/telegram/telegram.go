@@ -38,12 +38,10 @@ type Config struct {
 	AllowedUsers []int64
 	APIURL       string // default https://api.telegram.org
 	// Pair consumes a code and returns the new allowlist, or nil for an invalid code.
-	Pair func(context.Context, string, int64) ([]int64, error)
-	// Seen checks durable acceptance before the bot downloads a repeated file.
-	Seen    func(context.Context, string) (bool, error)
+	Pair    func(context.Context, string, int64) ([]int64, error)
 	Uploads *upload.Store
-	// Watch returns the submission ID and its SSE reader. A settled submission has no reader.
-	Watch  func(context.Context, string) (string, io.ReadCloser, error)
+	// Watch opens a chat's native preview stream.
+	Watch  func(context.Context, int64) (io.ReadCloser, error)
 	Report func(state, reason string)
 }
 
@@ -163,12 +161,12 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		return nil
 	}
 	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
-	if (m.Document != nil || len(m.Photo) > 0) && b.cfg.Seen != nil {
-		seen, err := b.cfg.Seen(ctx, source)
+	if m.Document != nil || len(m.Photo) > 0 {
+		received, err := b.chats.ReceivedSource(ctx, source)
 		if err != nil {
 			return err
 		}
-		if seen {
+		if received {
 			return nil
 		}
 	}

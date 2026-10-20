@@ -15,11 +15,11 @@ Check: `mise run check` passes.
 ## Run
 
 1. Run `mise run dev:server`.
-2. Open <http://127.0.0.1:8787>. The setup checklist shows.
-3. Add a provider: a built-in one with its API key, or a custom one with its
+2. Open <http://127.0.0.1:8787>. The default agent timeline opens.
+3. On Providers, add a built-in provider with its API key, or a custom one with its
    API (OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages), base
    URL, and key. Add more providers if you want.
-4. Choose a model.
+4. In the agent Settings tab, choose a model.
 
 Check: a new chat answers a message, and the answer appears while the model
 writes it.
@@ -32,19 +32,24 @@ shows. It sends `/api/` to the server on port 8787. The binary embeds
 To try the UI without a provider, start the server with `DEX_FAKE_MODEL=1`
 and choose `faux/echo`, or `faux/bash` to see tool calls.
 
-To use Telegram:
-
-1. Create a bot with [@BotFather](https://t.me/BotFather).
-2. Send a message to [@userinfobot](https://t.me/userinfobot) to get your user
-   ID.
-3. On the Channels > Telegram page, enter the bot token and your user ID, and
-   save.
-
-Check: the bot answers a message from an allowed user.
+For channel setup, see the [product scope](../product.md#scope) and the
+selected agent's Channels tab.
 
 The optional environment variables are `DEX_DATA_DIR` (default `~/.dex`) and
 `DEX_ADDR` (default `127.0.0.1:8787`). Use a separate `DEX_DATA_DIR` to try
 settings without changing your own.
+
+## Legacy checkout cleanup
+
+An old checkout can retain the ignored `worker/node_modules/` directory after
+migration to the native engine. Go examples in that directory can appear in
+`go list ./...`, even though dex does not depend on them.
+
+If the removed worker directory remains, inspect it for local files first.
+Remove only the obsolete `worker/node_modules/` dependency cache. Keep agent
+data, `.env` files, credentials, and other local files. Do not use
+`git clean -fdx` for this cleanup. The web install task adds a Go module
+boundary to the current `web/node_modules/`; it does not clean old caches.
 
 ## Tasks
 
