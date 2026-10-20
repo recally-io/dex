@@ -49,8 +49,11 @@ func (s *Service) Main(ctx context.Context, agentID string) (Chat, error) {
 
 // Clear stores a reset only when both owners are idle. Delivery cannot pass this check.
 func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, requestID, origin string) error {
-	s.deliveryMu.Lock()
-	defer s.deliveryMu.Unlock()
+	unlock, err := s.lockAgent(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	defer func() { unlock(); s.Wake() }()
 	c, err := s.Get(ctx, agentID, chatID)
 	if err != nil {
 		return err
@@ -77,38 +80,50 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 			return err
 		}
 	}
-	// Take the writer before reading. Input and task-result inserts use the same SQLite writer.
-	// Native calls run after this transaction so settlement can acquire the writer.
-	tx, err := s.db.BeginTx(ctx, nil)
+	err = func() error {
+		s.admissionMu.RLock()
+		defer s.admissionMu.RUnlock()
+		if s.leaseUntil.Load() != 0 {
+			return ErrConversationBusy
+		}
+		// Take the writer before reading. Input and task-result inserts use the same SQLite writer.
+		// Native calls run after this transaction so settlement can acquire the writer.
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+		if _, err := tx.ExecContext(ctx, "UPDATE submissions SET id = id WHERE 0"); err != nil {
+			return err
+		}
+		q := s.q.WithTx(tx)
+		pending, err := q.CountPendingChat(ctx, chatID)
+		if err != nil {
+			return err
+		}
+		if pending != 0 {
+			return ErrConversationBusy
+		}
+		created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
+			ID: requestID, ConversationID: chatID, Attachments: "null", Origin: origin, Kind: "context_reset", CreatedAt: s.now().UnixMilli(),
+		})
+		if err != nil {
+			return err
+		}
+		if created == 0 {
+			return ErrResetID
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		return nil
+	}()
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, "UPDATE submissions SET id = id WHERE 0"); err != nil {
-		return err
-	}
-	q := s.q.WithTx(tx)
-	pending, err := q.CountPendingChat(ctx, chatID)
-	if err != nil {
-		return err
-	}
-	if pending != 0 {
-		return ErrConversationBusy
-	}
-	created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
-		ID: requestID, ConversationID: chatID, Attachments: "null", Origin: origin, Kind: "context_reset", CreatedAt: s.now().UnixMilli(),
-	})
-	if err != nil {
-		return err
-	}
-	if created == 0 {
-		return ErrResetID
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
+
 	s.signal(chatID)
-	if err := s.reconcile(ctx); err != nil {
+	if err := s.reconcileAgent(ctx, agentID); err != nil {
 		s.scheduleRetry()
 	}
 	return nil

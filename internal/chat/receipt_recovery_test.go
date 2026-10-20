@@ -64,9 +64,7 @@ func TestUserReceiptRecoveryKeepsNativeAnswerAfterModelChange(t *testing.T) {
 				if _, err := r.conn.ExecContext(t.Context(), "DROP TRIGGER block_receipt"); err != nil {
 					t.Fatal(err)
 				}
-				r.service.deliveryMu.Lock()
-				err = r.service.reconcile(t.Context())
-				r.service.deliveryMu.Unlock()
+				err = r.service.reconcileAgent(t.Context(), "bot")
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -41,7 +41,10 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		return nil, err
 	}
 	defer a.end()
-	unlock := a.lock(ref)
+	unlock, err := a.lock(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
 	defer unlock()
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {

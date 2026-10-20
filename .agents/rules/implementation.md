@@ -8,7 +8,7 @@ Read this before you change code, dependencies, native execution, or stored data
 | --------------------- | ---------------------------------------------------------------------------------- |
 | `cmd/dex`             | Process entry: data directory, address, HTTP server                                |
 | `internal/app`        | Wiring: business storage, engine, chat service, HTTP, channels                     |
-| `internal/chat`       | Input intents, admission receipts, task records, channel delivery                  |
+| `internal/chat`       | Input intents, business receipts, task records, source state                       |
 | `internal/engine`     | PiG Harnesses, execution storage, models, tools, extensions, transcript projection |
 | `internal/db`         | `control.sqlite`, goose migrations, sqlc queries                                   |
 | `internal/server`     | HTTP API handlers of `api/openapi.yaml`, the web UI at `/`                         |
@@ -17,7 +17,14 @@ Read this before you change code, dependencies, native execution, or stored data
 | `internal/dream`      | Hidden chats that consolidate the memory repo                                      |
 | `internal/scheduler`  | Job schedules; jobs check durable state                                            |
 | `internal/automation` | Automation prompts, schedules, runs, and chats                                     |
-| `internal/telegram`   | Telegram long polling, allowlist, reply delivery                                   |
+| `internal/channel`    | Shared channel commands, bot lifecycle, durable reply outbox                       |
+| `internal/telegram`   | Telegram polling, pairing, protocol, and media adaptation                          |
+| `internal/feishu`     | Feishu/Lark setup, events, cards, and media adaptation                             |
+| `internal/wechat`     | WeChat login, polling, protocol, and media adaptation                              |
+| `internal/upload`     | Upload validation, file storage, and agent-scoped paths                            |
+| `internal/service`    | Per-user launchd/systemd definitions, commands, and readiness checks               |
+| `internal/update`     | Release verification, maintenance coordination, and executable replacement         |
+| `internal/mcptest`    | Local MCP test servers; no production execution                                    |
 | `internal/settings`   | Global providers, model checks, access token                                       |
 | `internal/agent`      | Agent settings, activity, paths, channel configuration                             |
 | `web`                 | React UI, built into `web/dist` and embedded                                       |
@@ -38,7 +45,11 @@ Read this before you change code, dependencies, native execution, or stored data
 - Native admission is the execution authority. A business receipt alone does
   not prove that input was admitted. Reconcile both failed admission and failed
   receipt writes with the same request ID. Channel delivery facts stay in
-  business storage.
+  business storage. `internal/chat` owns global source deduplication through
+  `ReceivedSource`. It scopes preview references to each agent through
+  `LookupSource` and `SourceReceipt`. Platform adapters must not define
+  duplicate input or pending replies from `admitted_at` and submission status
+  predicates.
 - Keep one transcript projection in the engine for history, snapshots, and
   incremental events. Store origin, attachments, and task labels in native
   input metadata. Queued input comes from the native Inbox. Withdrawn input
@@ -54,6 +65,11 @@ Read this before you change code, dependencies, native execution, or stored data
   in `.env`, which come from files
   ([ADR 0010](../../docs/dev/decisions/0010-extension-levels.md)). The settings
   service passes provider credentials directly to the engine catalog.
+- Keep slow resource work outside the engine's global state lock. Track opens
+  and reloads before they start. Register recovery isolation before Harness
+  resume. Use per-agent delivery locks for input, Stop, Clear, and reconciliation.
+  The global receipt gate must order receipt commits and maintenance confirmation.
+  See [ADR 0012](../../docs/dev/decisions/0012-agent-lifecycle-isolation.md).
 - Reload replaces only the selected agent's resources. Tools and stdio MCP
   receive an explicit environment. Do not change the dex process environment.
 - Do not edit generated code: `internal/db/sqlc/` (`mise run generate:db`),

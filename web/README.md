@@ -27,9 +27,10 @@ the open or closed Context panel of a chat (`dex-context`), and the automation
 unread marker (`dex-automations-seen`). The unsaved agent instructions are in
 memory (`src/lib/app-state.tsx`), so a draft stays when the user opens another page, and a reload discards it.
 `src/lib/agent.ts` runs agent saves one at a time. Each save reads the saved
-agent first, so a model change does not overwrite the instructions. The saves
-of one chat's model and thinking level run the same way. A new chat keeps its
-picks in the page until `POST /api/chats` stores them with the chat.
+agent first, so a model change does not overwrite the instructions.
+Main and ordinary Chat sessions use the agent's model and thinking level.
+New session sends `POST /api/agents/{agentId}/chats` with no request body.
+See the [API contract](../api/openapi.yaml) for request and response schemas.
 `src/lib/attachments.ts` uploads each file of the composer when the user adds
 it; a message sends only upload IDs.
 

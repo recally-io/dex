@@ -94,9 +94,7 @@ func TestUserMaintenanceStopDefersColdCancellationUntilRelease(t *testing.T) {
 	if err = service.SubmitMessage(t.Context(), "bot", "telegram:7", "after-stop", Message{Content: "printf next"}); err != nil {
 		t.Fatal(err)
 	}
-	service.deliveryMu.Lock()
-	err = service.reconcile(t.Context())
-	service.deliveryMu.Unlock()
+	err = service.reconcileAgent(t.Context(), "bot")
 	if err != nil {
 		t.Fatalf("maintenance deferred work reported as failure: %v", err)
 	}

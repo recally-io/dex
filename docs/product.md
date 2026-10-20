@@ -16,7 +16,8 @@ to read in an afternoon.
 - One `dex` binary. The host needs no other runtime.
 - Runtime: foreground execution, or a per-user launchd/systemd service that
   starts at login. Optional daily updates wait until agent work is idle.
-  Listening addresses are limited to loopback.
+  Loopback access needs no token by default. Other listening addresses require
+  an access token. See [network access](../README.md#access-from-other-devices).
 - Bot settings in the web UI: name, model, thinking level, instructions,
   channels, and automations with their runs. The name has 1 to 40 characters
   after spaces are trimmed. Providers, Secrets, and About are global pages.
@@ -29,7 +30,6 @@ to read in an afternoon.
   implicit agent. A resource from another agent returns 404. The web sidebar lists agents
   with default first. Its `+` dialog creates an agent with a name and model,
   then opens its empty timeline. Providers stay global. Each agent has its own channels.
-  Extension reload restarts the whole worker and affects every agent.
 - Durable conversations: control stores each message before delivery. Saved
   messages, reports, and execution records survive a restart. A restart does
   not attach an old CLI process or prove that its actions occurred once.
@@ -156,17 +156,17 @@ undone.
 
 Normal completion and execution failure return a report to the main agent.
 Stop, cancellation, and interrupted execution do not start a result turn.
-A saved report stays unchanged after cancellation or a late worker event.
+A saved report stays unchanged after cancellation or a late execution event.
 The system does not retry failed execution or result delivery. The main agent
 reads saved records and artifacts, then decides whether to retry or continue
 from saved work. After a user Stop, the main agent waits for new user
 authorization. A later user message does not retry an old result. Result
 delivery keeps the source input's origin after `/new`.
 
-After worker loss, running execution becomes interrupted and does not restart
+After a dex restart, running execution becomes interrupted and does not restart
 automatically. Queued execution that never started can start for the first
-time. Cancelled execution stays cancelled. Worker loss does not prove that old
-processes ended. Before another execution, the main agent must check prior
+time. Cancelled execution stays cancelled. A dex restart does not prove that old
+tool processes ended. Before another execution, the main agent must check prior
 artifacts and side effects. Tools run on the host without a sandbox. The SDK
 requests cancellation of local commands and MCP calls. It does not guarantee
 that detached processes or remote jobs stop. A completed MCP call can return
@@ -174,14 +174,14 @@ its report. CLI tools must be logged in and run in the foreground without user
 input.
 
 Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,
-background tasks, timers, skills, MCP servers, and the worker are available.
+background tasks, timers, skills, and MCP servers are available.
 The API, web UI, and channels support several agents. One bot credential can
 belong to only one agent. A conflict names the agent that already uses it. Project bindings, task routing between agents, group chats,
 and task-specific automation result routing are later work. Other chat channels are not available.
 
 ## Non-goals
 
-- More than one host. One machine runs control and one worker.
+- More than one host. One machine runs one dex process.
 - Sandboxes. Agent tools run on the host, inside the agent workspace.
 - Shared object storage. Agent files are local directories.
 - Automatic failover or data replication.
@@ -205,8 +205,13 @@ read-only. File changes apply after Reload in the Extensions tab or Secrets
 page. The files remain the only store.
 
 The Extensions tab shows the level directories, skills, MCP servers, and
-configuration warnings. Environment key names are on the Secrets page. Reload restarts the worker
-for all agents. Invalid configuration in any open agent prevents reload.
+configuration warnings. Environment key names are on the Secrets page. Reload
+requires all agents to be idle before it replaces the selected agent's execution
+resources and MCP connections. After that idle check succeeds, other agents
+can start work while Reload continues. Invalid configuration for the selected
+agent prevents replacement and keeps its current
+resources in place.
 Keep `.env` files out of Git and set mode `0600`. The API hides values, but
 the model can read files and run `env`. Tool output becomes part of the transcript.
-See [ADR 0010](dev/decisions/0010-extension-levels.md).
+See [extension architecture](dev/architecture.md#extensions) for file loading
+and resource lifetime.

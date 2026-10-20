@@ -27,6 +27,11 @@ var configureReporter sync.Once
 
 var agentIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
+type agentOpening struct {
+	done   chan struct{}
+	cancel context.CancelFunc
+}
+
 type agentResources struct {
 	harness harness.Harness
 	loaded  *loadedExtensions
@@ -39,8 +44,9 @@ type Agents struct {
 	memory           *MemoryRepo
 	mu               sync.Mutex
 	resources        map[string]*agentResources
+	opening          map[string]*agentOpening
 	recovering       map[string]map[durable.ConversationId]bool
-	serial           map[Ref]*sync.Mutex
+	serial           map[Ref]chan struct{}
 	paused, closed   bool
 	active, settling int
 	operations       sync.WaitGroup
@@ -64,7 +70,7 @@ func New(config Config) (*Agents, error) {
 		}
 	}
 	config.BaseEnv = maps.Clone(config.BaseEnv)
-	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: NewMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), resources: map[string]*agentResources{}, recovering: map[string]map[durable.ConversationId]bool{}, serial: map[Ref]*sync.Mutex{}, closeDone: make(chan struct{})}, nil
+	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: NewMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), resources: map[string]*agentResources{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
 }
 
 func (a *Agents) begin() error {
@@ -83,16 +89,20 @@ func (a *Agents) begin() error {
 
 func (a *Agents) end() { a.mu.Lock(); a.active--; a.mu.Unlock(); a.operations.Done() }
 
-func (a *Agents) lock(ref Ref) func() {
+func (a *Agents) lock(ctx context.Context, ref Ref) (func(), error) {
 	a.mu.Lock()
-	mutex := a.serial[ref]
-	if mutex == nil {
-		mutex = &sync.Mutex{}
-		a.serial[ref] = mutex
+	gate := a.serial[ref]
+	if gate == nil {
+		gate = make(chan struct{}, 1)
+		a.serial[ref] = gate
 	}
 	a.mu.Unlock()
-	mutex.Lock()
-	return mutex.Unlock
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case gate <- struct{}{}:
+		return func() { <-gate }, nil
+	}
 }
 
 func (a *Agents) Recover(ctx context.Context, refs []Ref) error {
@@ -104,7 +114,7 @@ func (a *Agents) Recover(ctx context.Context, refs []Ref) error {
 	if a.closed {
 		return ErrClosed
 	}
-	if len(a.resources) > 0 {
+	if len(a.resources) > 0 || len(a.opening) > 0 {
 		return errors.New("recovery must precede opening agents")
 	}
 	for _, ref := range refs {
@@ -125,27 +135,85 @@ func (a *Agents) harness(ctx context.Context, agentID string) (harness.Harness, 
 	if !agentIDPattern.MatchString(agentID) {
 		return nil, fmt.Errorf("%w: agent ID", ErrInvalidInput)
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.closed {
-		return nil, ErrClosed
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		a.mu.Lock()
+		if a.closed {
+			a.mu.Unlock()
+			return nil, ErrClosed
+		}
+		if opening := a.opening[agentID]; opening != nil {
+			a.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-opening.done:
+				continue
+			}
+		}
+		if resource := a.resources[agentID]; resource != nil {
+			a.mu.Unlock()
+			return resource.harness, nil
+		}
+		if a.paused {
+			a.mu.Unlock()
+			return nil, ErrMaintenance
+		}
+		openCtx, cancel := context.WithCancel(ctx)
+		opening := &agentOpening{done: make(chan struct{}), cancel: cancel}
+		a.opening[agentID] = opening
+		a.mu.Unlock()
+		return a.openAndPublish(openCtx, agentID, opening)
 	}
-	if resource := a.resources[agentID]; resource != nil {
-		return resource.harness, nil
-	}
-	if a.paused {
-		return nil, ErrMaintenance
-	}
+}
+
+// The opening slot owns the target until recovery finishes and Resume is safe.
+func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *agentOpening) (_ harness.Harness, resultErr error) {
+	defer a.finishOpening(agentID, opening)
 	resource, err := a.open(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
-	a.resources[agentID] = resource
-	resource.harness.Resume()
-	return resource.harness, nil
+	defer func() {
+		if resultErr != nil {
+			cleanup := context.WithoutCancel(ctx)
+			resultErr = errors.Join(resultErr, resource.harness.Close(cleanup), resource.loaded.Close(cleanup))
+		}
+	}()
+	isolated := map[durable.ConversationId]bool{}
+	for {
+		a.mu.Lock()
+		if a.closed {
+			a.mu.Unlock()
+			return nil, ErrClosed
+		}
+		if err := ctx.Err(); err != nil {
+			a.mu.Unlock()
+			return nil, err
+		}
+		pending := map[durable.ConversationId]bool{}
+		for id := range a.recovering[agentID] {
+			if !isolated[id] {
+				pending[id] = true
+			}
+		}
+		if len(pending) == 0 {
+			delete(a.recovering, agentID)
+			a.resources[agentID] = resource
+			resource.harness.Resume()
+			a.mu.Unlock()
+			return resource.harness, nil
+		}
+		a.mu.Unlock()
+		if err := isolateConversations(ctx, resource.harness, pending); err != nil {
+			return nil, err
+		}
+		maps.Copy(isolated, pending)
+	}
 }
 
-// Open holds mu across agents; use per-agent opening locks if cold starts need concurrency.
 func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, resultErr error) {
 	if err := a.Catalog.DiscoveryReady(); err != nil {
 		return nil, err
@@ -167,6 +235,9 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			resultErr = errors.Join(resultErr, loaded.Close(context.WithoutCancel(ctx)))
 		}
 	}()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	registry := harness.CreateRegistry()
 	extensions := []*durable.Extension{codingTools(loaded.Env), codingSkill(), taskExtension(agentID, a.config.Tasks), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
@@ -202,35 +273,32 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err != nil {
 		return nil, err
 	}
-	// Abort marks and queue withdrawal happen before scheduling can resume old task executions.
-	isolated := a.recovering[agentID]
-	if len(isolated) > 0 {
-		for id := range isolated {
-			conversation, err := h.Conversation(ctx, id)
-			if err == nil && conversation != nil {
-				err = withdrawQueuedInputs(ctx, conversation)
-			}
-			if err != nil {
-				_ = h.Close(context.WithoutCancel(ctx))
-				return nil, err
-			}
+	return &agentResources{harness: h, loaded: loaded}, nil
+}
+
+// Withdrawal and abort marks commit before the paused Harness can run saved work.
+func isolateConversations(ctx context.Context, h harness.Harness, isolated map[durable.ConversationId]bool) error {
+	for id := range isolated {
+		conversation, err := h.Conversation(ctx, id)
+		if err == nil && conversation != nil {
+			err = withdrawQueuedInputs(ctx, conversation)
 		}
-		state, err := h.Inspect(ctx)
 		if err != nil {
-			_ = h.Close(context.WithoutCancel(ctx))
-			return nil, err
+			return err
 		}
-		for _, task := range state.Tasks {
-			if isolated[task.Record.ConversationId] {
-				if _, err := h.AbortTask(ctx, task.Record.Id); err != nil {
-					_ = h.Close(context.WithoutCancel(ctx))
-					return nil, err
-				}
+	}
+	state, err := h.Inspect(ctx)
+	if err != nil {
+		return err
+	}
+	for _, task := range state.Tasks {
+		if isolated[task.Record.ConversationId] {
+			if _, err := h.AbortTask(ctx, task.Record.Id); err != nil {
+				return err
 			}
 		}
 	}
-	delete(a.recovering, agentID)
-	return &agentResources{harness: h, loaded: loaded}, nil
+	return nil
 }
 
 func (a *Agents) conversation(ctx context.Context, ref Ref) (harness.Conversation, error) {
@@ -307,7 +375,10 @@ func (a *Agents) CheckIdle(ctx context.Context, ref Ref) error {
 		return err
 	}
 	defer a.end()
-	unlock := a.lock(ref)
+	unlock, err := a.lock(ctx, ref)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
@@ -324,7 +395,10 @@ func (a *Agents) Reset(ctx context.Context, ref Ref, requestID string) error {
 		return err
 	}
 	defer a.end()
-	unlock := a.lock(ref)
+	unlock, err := a.lock(ctx, ref)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
@@ -364,7 +438,7 @@ func (a *Agents) Abort(ctx context.Context, ref Ref) error {
 	// Stop may cancel open work while maintenance blocks new admission.
 	a.operations.Add(1)
 	a.active++
-	if a.resources[ref.AgentID] == nil {
+	if a.resources[ref.AgentID] == nil || a.opening[ref.AgentID] != nil {
 		if a.recovering[ref.AgentID] == nil {
 			a.recovering[ref.AgentID] = map[durable.ConversationId]bool{}
 		}
@@ -373,7 +447,10 @@ func (a *Agents) Abort(ctx context.Context, ref Ref) error {
 	}
 	a.mu.Unlock()
 	defer a.end()
-	unlock := a.lock(ref)
+	unlock, err := a.lock(ctx, ref)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
@@ -439,24 +516,31 @@ func (a *Agents) Quiesce(ctx context.Context) error {
 	if a.paused {
 		return ErrMaintenance
 	}
+	if err := a.idleLocked(ctx); err != nil {
+		return err
+	}
 	a.paused = true
+	return nil
+}
+
+// The caller holds mu so the idle check and resource registration stay atomic.
+// Inspect reads local storage; use a tracked preflight if those reads delay other agents.
+func (a *Agents) idleLocked(ctx context.Context) error {
 	if a.active > 0 || a.settling > 0 {
-		a.paused = false
 		return ErrBusy
 	}
 	for _, resource := range a.resources {
 		state, err := resource.harness.Inspect(ctx)
 		if err != nil {
-			a.paused = false
 			return err
 		}
 		if len(state.Tasks) > 0 || len(state.Submissions) > 0 {
-			a.paused = false
 			return ErrBusy
 		}
 	}
-	return nil
+	return ctx.Err()
 }
+
 func (a *Agents) Resume() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -469,6 +553,9 @@ func (a *Agents) Close(ctx context.Context) error {
 	a.mu.Lock()
 	if !a.closed {
 		a.closed = true
+		for _, opening := range a.opening {
+			opening.cancel()
+		}
 		go a.close(context.WithoutCancel(ctx))
 	}
 	done := a.closeDone
@@ -510,8 +597,9 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 		return info, err
 	}
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	if resource := a.resources[agentID]; resource != nil {
+	resource := a.resources[agentID]
+	a.mu.Unlock()
+	if resource != nil {
 		info.Servers = resource.loaded.ServerInfo()
 	}
 	return info, nil
@@ -527,42 +615,56 @@ func (a *Agents) Reload(ctx context.Context, agentID string) error {
 	if !agentIDPattern.MatchString(agentID) {
 		return ErrInvalidInput
 	}
-	if err := a.Quiesce(ctx); err != nil {
-		return err
-	}
-	defer a.Resume()
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if a.closed {
+		a.mu.Unlock()
 		return ErrClosed
 	}
-	// An Abort can start after Quiesce closes admission. Do not close its Harness.
-	if a.active > 0 {
-		return ErrBusy
+	if a.paused {
+		a.mu.Unlock()
+		return ErrMaintenance
 	}
+	if err := a.idleLocked(ctx); err != nil {
+		a.mu.Unlock()
+		return err
+	}
+	openCtx, cancel := context.WithCancel(ctx)
+	opening := &agentOpening{done: make(chan struct{}), cancel: cancel}
+	a.opening[agentID] = opening
+	a.operations.Add(1)
+	a.active++
+	a.mu.Unlock()
+	defer a.end()
+	// Preflight errors leave the loaded target intact.
 	if err := a.Catalog.DiscoveryReady(); err != nil {
+		a.finishOpening(agentID, opening)
 		return err
 	}
-	if err := a.files(agentID).Validate(ctx); err != nil {
+	if err := a.files(agentID).Validate(openCtx); err != nil {
+		a.finishOpening(agentID, opening)
 		return err
 	}
+	a.mu.Lock()
 	old := a.resources[agentID]
+	delete(a.resources, agentID)
+	a.mu.Unlock()
 	if old != nil {
-		if err := old.harness.Close(ctx); err != nil {
+		cleanup := context.WithoutCancel(openCtx)
+		if err := errors.Join(old.harness.Close(cleanup), old.loaded.Close(cleanup)); err != nil {
+			a.finishOpening(agentID, opening)
 			return err
 		}
-		if err := old.loaded.Close(ctx); err != nil {
-			return err
-		}
-		delete(a.resources, agentID)
 	}
-	resource, err := a.open(ctx, agentID)
-	if err != nil {
-		return err
-	}
-	a.resources[agentID] = resource
-	resource.harness.Resume()
-	return nil
+	_, err := a.openAndPublish(openCtx, agentID, opening)
+	return err
+}
+
+func (a *Agents) finishOpening(agentID string, opening *agentOpening) {
+	a.mu.Lock()
+	delete(a.opening, agentID)
+	close(opening.done)
+	a.mu.Unlock()
+	opening.cancel()
 }
 
 func (a *Agents) source(ctx context.Context, ref Ref) (string, error) {

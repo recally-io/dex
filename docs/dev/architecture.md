@@ -19,12 +19,10 @@ and MCP. The browser receives typed transcript events through SSE.
 The Go binary embeds the built web UI. Node and Bun are development tools
 for the web UI; the installed service needs neither runtime.
 
-| Module            | Responsibility                                                                         |
-| ----------------- | -------------------------------------------------------------------------------------- |
-| `internal/app`    | Connect business storage, engine, HTTP, and channels                                   |
-| `internal/chat`   | Input intents, business receipts, task records, and channel delivery                   |
-| `internal/engine` | One PiG Harness per agent, execution storage, models, tools, and transcript projection |
-| `internal/live`   | Serve engine watches and history over HTTP                                             |
+The [module index](../../.agents/rules/implementation.md#modules) defines
+package ownership. `internal/app` connects the services. Business services call
+`internal/engine`; platform adapters use `internal/channel` for commands and
+durable reply delivery. The engine does not import dex business packages.
 
 Tools and stdio MCP servers can start child processes. Agent execution itself
 stays in dex. There is no backend subprocess or serialized internal protocol.
@@ -41,12 +39,16 @@ configuration record that permits partial reinstall across template changes.
 and retains `dex.previous`. `chat.Service` owns a two-minute maintenance lease.
 The engine closes admission and checks active operations, durable work, and
 pending settlement and memory commits. A busy check releases the gate and
-refuses maintenance. While a lease is active, new input returns `409` before
-the service writes a receipt. The client can retry the same request ID after
-release or expiry.
+refuses maintenance. A short global receipt gate orders receipt commits and
+lease confirmation. After lease confirmation, web input returns `409` before
+the service writes a receipt. A web receipt committed before confirmation can
+return `202` and remain pending until release. Channel input can also retain
+a pending business receipt. Reconciliation resumes admission after maintenance.
+The client keeps the same request ID when it retries.
 A process restart clears the in-memory lease.
-Transcript acquisition uses the same gate because opening an agent can resume
-stored work. Existing subscriptions remain independent of new admission.
+New transcript acquisition uses the engine maintenance admission gate because
+opening an agent can resume stored work. Existing subscriptions remain
+independent of new admission.
 `GET /api/health` exposes native readiness as `runtimeReady`.
 Startup registers saved credentials and static models before it serves HTTP.
 Network model discovery runs in the background. Health and Settings remain
@@ -54,7 +56,9 @@ available while discovery is pending. A cold agent cannot open during discovery
 because opening resumes all its stored conversations. Its input receipts stay
 pending and reconcile when discovery finishes. Direct history, reload, and
 model checks that need discovery return `503`. SSE clients reconnect.
-Shutdown cancels discovery and waits for its work to end.
+Shutdown cancels discovery and waits for its work to end. Startup failure and
+shutdown use one cleanup path. Cleanup stops scheduler jobs and channel bots
+before the chat consumer, then closes execution resources and business storage.
 
 See [service commands and recovery](../../README.md#run-and-manage-dex) and
 [ADR 0006](decisions/0006-service-and-update.md) for service and update
@@ -83,8 +87,7 @@ Each agent has one main conversation with channel key `main`. The unique
 agent/key constraint makes `GET /api/agents/{agentId}/chats/main` safe to repeat.
 It creates the control record on demand. Messages use
 `POST /api/agents/{agentId}/chats/{id}/messages` and the agent's settings.
-The web opens each main conversation at `/a/{agentId}`. `/` redirects to
-`/a/default`. `POST /api/agents/{agentId}/chats` takes no body and returns a writable
+`POST /api/agents/{agentId}/chats` takes no body and returns a writable
 Chat session (`201`).
 Its channel key starts with `chat:`. One SQLite write reuses the newest Chat
 with no ordinary message, or creates one. Concurrent opens reuse the same row.
@@ -94,50 +97,25 @@ message uses the first file's name. Each Chat has its own execution conversation
 It uses the bot's settings, instructions and shared memory. It does not read
 main's model context or send its answers to main.
 
-The timeline header opens `/a/{agentId}/sessions`. `GET /api/agents/{agentId}/chats` lists
-session summaries
+`GET /api/agents/{agentId}/chats` lists session summaries
 by `updatedAt` descending, then ID descending. `updatedAt` is the latest
 conversation creation, input creation or settlement, or task start or end time.
 Task times apply only to the task's own conversation. List and detail use the
 same rule. The list excludes main, old channel conversations, dreams and
 Chat sessions with no message. Task rows add `task: TaskSummary`, without
-report bodies. The query does not read reports or transcripts. The page
-filters by Chat, Task or Automation. `/tasks` redirects to `/a/default/sessions`.
-The active count includes tasks with status queued or running, and other
-busy sessions. Each row counts once. A kind filter counts only visible rows.
-`New session` appears only on the Sessions page. Other sessions open at
-`/a/{agentId}/c/{id}`; tasks open at `/a/{agentId}/tasks/{id}` with Report above
-Work. Main stays at `/a/{agentId}`.
+report bodies. The query does not read reports or transcripts. The active count
+includes tasks with status queued or running, and other busy sessions. Each row
+counts once. A kind filter counts only visible rows.
 
-Channel input enters the bot's agent main conversation. Chat and
-automation contexts stay separate.
+Channel input enters the agent's main conversation. Chat and automation
+contexts stay separate. See [Product](../product.md#scope) for session behavior,
+page navigation, and channel setup.
 
-Each agent has a page under `/a/{agentId}`. Its tabs are Chat (the base
-path), Instructions (`/instructions`), Channels (`/channels`), Automations
-(`/automations`), Sessions (`/sessions`), Extensions (`/extensions`), and
-Settings (`/agent`). Session and task details use `/c/{id}` and `/tasks/{id}`
-under that base path. A layout route keeps the name, tabs, model, and thinking
-level in place. The main timelines of visited agents stay mounted and `inert`
-when hidden. Their streams, composer drafts, and uploaded attachments survive
-agent and tab changes. Browser checks must skip `[inert]` subtrees.
-Instructions drafts live in a map by agent ID above the routes. Saving one
-agent cannot change another agent's draft or query data. Reload discards drafts.
-On a phone the tabs scroll and center the current tab. Channels counts running
-channels for the selected agent. Each agent has its own channel controls. Automations counts
-enabled automations. Sessions counts active sessions.
-
-The sidebar lists agents in creation order, with default first. Each row shows
-an avatar letter, name, status, and an instructions draft pill. The current
-agent's row stays selected on all its pages. The status shows active sessions,
-else running channels, else Idle. The `+` button opens a create dialog with a
-name and the existing model picker. The form starts with the current agent's
-provider, model, and thinking level. A successful create opens its empty timeline.
-Providers, Secrets, and About are global pages at the bottom of the sidebar.
-Old agent page URLs redirect to the same page under `/a/default`.
-`/settings` redirects to `/a/default/agent`. An unknown agent shows a not-found
-page with a link to Dex. Channel settings show setup and runtime status.
-Automation details keep their run history. Automation transcripts have no
-web composer.
+The web keeps visited main timelines mounted and `inert` when hidden. Their
+streams, composer drafts, and uploads survive navigation. Browser checks must
+skip `[inert]` subtrees. Instructions drafts live above the routes in a map by
+agent ID. Saving one agent cannot change another agent's draft or query data.
+A browser reload discards these drafts.
 
 Every enqueue writes `submissions.origin`. Web input in main and Chat uses `web`.
 Channel input uses the exact peer, such as `telegram:7`, and always enters main.
@@ -160,8 +138,8 @@ One owner can create several agents. `GET /api/agents` returns
 `activeSessions`, `runningChannels`, and `enabledAutomations`. One SQL query
 counts sessions and automations across all agents. A task counts when queued or
 running; other visible sessions count when they have pending input. Each session
-counts once. Channel counts come from the app registry. The sidebar polls this
-list every three seconds and shares its cache with agent tabs. `POST /api/agents` accepts a name,
+counts once. Channel counts come from the app registry. The web polls this
+list every three seconds and shares its cache across agent pages. `POST /api/agents` accepts a name,
 provider, model ID, thinking level, and optional instructions. It returns the
 agent with a UUID v7 ID (`201`). The ID is read-only. `GET` and `PUT` on
 `/api/agents/{agentId}` read and save one agent. Names and models use the same
@@ -186,8 +164,7 @@ The lock order is agent, then settings. Settings never takes the agent
 lock. Each service writes separate rows. Creating or selecting an agent does
 not configure providers.
 One scheduler job checks automations across all agents and posts each prompt
-with the saved agent ID. Extension reload replaces only the selected agent's Harness and MCP connections.
-The maintenance check still requires idle execution before replacement.
+with the saved agent ID. See [Extensions](#extensions) for the reload lifecycle.
 
 The web UI uses the nested agent routes, including live events and upload
 links. Agent resources require an explicit ID, including the default agent.
@@ -263,14 +240,22 @@ store.
 
 `GET /api/agents/{agentId}/extensions` reads file metadata. Before the agent
 opens, servers are `idle`. `POST /api/agents/{agentId}/extensions/reload`
-validates the selected agent, requires idle execution, closes that agent's
-Harness and MCP connections, and reopens them. If the agent has not opened,
-Reload opens it and reports the MCP connection results. Other agents keep their
-Harnesses and connections. A failed preflight leaves current resources in place.
-Reload checks the closed state under the engine lock, so shutdown cannot leave
-replacement resources open.
-See [ADR 0011](decisions/0011-native-pig-runtime.md) for the reload change to
-ADR 0010.
+validates the selected agent and requires idle execution across all agents.
+The idle check and registration of the selected replacement are atomic. Reload
+does not hold the global maintenance pause. After preflight succeeds, other
+agents can start work while the selected agent closes and opens its resources.
+If the selected agent has not opened, Reload opens it and reports the MCP
+connection results. A failed preflight keeps its current resources.
+
+Each agent has its own resource lock. Concurrent calls for that agent wait with
+context cancellation. The global lock protects resource state; file access,
+MCP connection, and resource close run outside it. The engine tracks opens and
+reloads before resource work starts. Maintenance fails busy during an active
+reload, and confirmed maintenance blocks Reload. Close waits for tracked
+resource work and cannot leave replacement resources open. Recovery isolation
+must be registered before a Harness resumes.
+See [ADR 0012](decisions/0012-agent-lifecycle-isolation.md) for this lifecycle
+change and [ADR 0011](decisions/0011-native-pig-runtime.md) for native execution.
 
 The task extension adds delegation tools and a `task-rules` section to
 foreground conversations, including main, Chat and automation sessions.
@@ -365,8 +350,8 @@ conversation, while a chat ID names a business record in `control.sqlite`.
   be isolated before Harness scheduling resumes.
 - `History(ctx, ref, before, limit)` returns typed `History`. `Watch(ctx, ref)`
   returns a typed initial `Snapshot` and an `Events` channel. `Watch.Close`
-  cancels only that subscription. `Quiesce`, `Resume`, and `Close` control
-  admission and resource lifetime.
+  cancels only that subscription. `Quiesce` and `Resume` control maintenance
+  admission. Reload does not use them. `Close` ends resource lifetime.
 
 The engine serializes input, reset, and abort operations per execution. Native
 input metadata contains request ID, original content, origin, attachments,
@@ -481,8 +466,11 @@ Stop withdraws pending ordinary input and results. The same transaction sets
 active background executions to `cancelled` and withdraws their own input.
 Stop and spawn acquire the SQLite writer before they read: spawn either commits
 first and is cancelled, or fails because its source is no longer pending.
-Submission and Stop share a delivery lock, so cancellation cannot pass an
-input that control still intends to submit. Stop then requests cancellation
+Submission, Stop, Clear, and reconciliation share a delivery lock per agent.
+Cancellation cannot pass an input that control still intends to submit.
+A slow admission or reload for one agent does not hold another agent's delivery
+lock. The short global receipt gate orders maintenance confirmation, as described
+in [Service and updates](#service-and-updates). Stop then requests cancellation
 through the engine for each execution reference. Pending cancellation intent
 stays in business storage until native abort succeeds. If model discovery is
 pending, Stop returns after it saves that intent. Reconciliation completes
@@ -568,7 +556,7 @@ updates the backend implementation of ADR 0003.
   receives its first execution reference. The hub encodes typed engine events
   as JSON at the SSE boundary.
 
-`POST /api/agents/{agentId}/chats/{id}/clear` uses the delivery lock and a SQLite writer
+`POST /api/agents/{agentId}/chats/{id}/clear` uses the agent delivery lock and a SQLite writer
 transaction to check pending input and insert `context_reset` together. The
 engine also checks its active run and Inbox. A refused request stores no reset.
 `Agents.Reset` submits a passive `pi.reset` entry with a stable request ID and
@@ -654,6 +642,16 @@ that agent's channel data. WeChat runtime remains keyed by bot ID and owner.
 commands, and reply delivery. Settings changes stop the old bot
 before they start its replacement. Settings expose runtime status: `off`,
 `running`, `error` with a reason, or `needs_login`.
+
+`chat.Service.ReceivedSource` reports the global stored input fact. Channel
+and platform adapters use it for duplicate input and attachment replay, including
+when a bot credential moves between agents. `LookupSource` returns the
+business-owned `SourceReceipt` for reply previews and upload cleanup. Its
+references belong to the requested agent. A stored receipt means control
+received the input, even when native admission is pending. Adapters do not infer
+this state from `admitted_at` or terminal status. Native admission remains the
+execution authority; reconciliation still retries pending input with its
+stable request ID.
 
 A peer names a remote destination, such as `telegram:7`. Owner input from all
 channels enters the bot's agent `main` conversation with that peer as origin.

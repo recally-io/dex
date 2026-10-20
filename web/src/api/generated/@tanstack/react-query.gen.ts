@@ -86,7 +86,8 @@ export const releaseMaintenanceMutation = (options?: Partial<Options<ReleaseMain
 };
 
 /**
- * Hold native admission for two minutes if no work is active. POST renews it.
+ * Hold native admission for two minutes if no work is active. POST renews the lease. Web input after lease confirmation returns 409 before receipt storage. Input stored before confirmation can remain pending until release. Channel input can stay stored while the lease is active.
+ *
  */
 export const acquireMaintenanceMutation = (options?: Partial<Options<AcquireMaintenanceData>>): UseMutationOptions<AcquireMaintenanceResponse, AcquireMaintenanceError, Options<AcquireMaintenanceData>> => {
     const mutationOptions: UseMutationOptions<AcquireMaintenanceResponse, AcquireMaintenanceError, Options<AcquireMaintenanceData>> = {
@@ -769,7 +770,7 @@ export const putExtensionEnvMutation = (options?: Partial<Options<PutExtensionEn
 };
 
 /**
- * Reloads only the selected agent's Harness and MCP connections. Opens that agent if needed and returns its server connection states. Skills need no reload. Requires idle execution across all agents; returns 409 when any agent has unfinished work. Returns 400 when a file is not valid and keeps the current resources. Returns 503 while model discovery is pending.
+ * Reloads only the selected agent's Harness and MCP connections. Opens that agent if needed and returns its server connection states. Skills need no reload. Checks idle execution across all agents before replacement; returns 409 when any agent has unfinished work. Other agents can start work after this check while the selected agent reloads. Returns 400 when a file is not valid and keeps the current resources. Returns 503 while model discovery is pending.
  *
  */
 export const reloadExtensionsMutation = (options?: Partial<Options<ReloadExtensionsData>>): UseMutationOptions<ReloadExtensionsResponse, ReloadExtensionsError, Options<ReloadExtensionsData>> => {

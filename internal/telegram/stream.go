@@ -40,7 +40,13 @@ func (b *Bot) startPreview(ctx context.Context, key string, chatID int64) {
 	b.previewMu.Lock()
 	defer b.previewMu.Unlock()
 	ctx, cancel := context.WithCancel(ctx)
-	id, reader, err := b.cfg.Watch(ctx, key)
+	receipt, err := b.chats.Source(ctx, key)
+	if err != nil || !receipt.Pending {
+		cancel()
+		return
+	}
+	id := receipt.ID
+	reader, err := b.cfg.Watch(ctx, receipt.ChatID)
 	if err != nil || reader == nil {
 		cancel()
 		return

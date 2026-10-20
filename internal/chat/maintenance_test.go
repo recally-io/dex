@@ -18,7 +18,7 @@ func TestUserMaintenanceReportsClosedEngine(t *testing.T) {
 	}
 }
 
-func TestUserMaintenanceCannotReleaseNativeReloadGate(t *testing.T) {
+func TestUserMaintenanceDoesNotReleaseAnUnconfirmedPause(t *testing.T) {
 	r := startNative(t, "echo")
 	if err := r.agents.Quiesce(t.Context()); err != nil {
 		t.Fatal(err)

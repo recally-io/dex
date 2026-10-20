@@ -18,10 +18,10 @@ func (s *Service) AcquireMaintenance(ctx context.Context) error {
 }
 
 func (s *Service) acquire(ctx context.Context) error {
-	// Lock order: maintenanceMu, then deliveryMu. Keep gate closure and confirmed
-	// lease publication in one boundary with submit and abort dispatch.
-	s.deliveryMu.Lock()
-	defer s.deliveryMu.Unlock()
+	// Lock order: maintenanceMu, then admissionMu. Confirm the lease in the
+	// same boundary as receipt insertion; native admission owns its own gate.
+	s.admissionMu.Lock()
+	defer s.admissionMu.Unlock()
 	until := s.now().Add(2 * time.Minute).UnixMilli()
 	if s.leaseUntil.Load() == 0 {
 		if err := s.engine.Quiesce(ctx); err != nil {
@@ -52,8 +52,8 @@ func (s *Service) ReleaseMaintenance(_ context.Context) error {
 }
 
 func (s *Service) release() error {
-	s.deliveryMu.Lock()
-	defer s.deliveryMu.Unlock()
+	s.admissionMu.Lock()
+	defer s.admissionMu.Unlock()
 	if s.leaseUntil.Swap(0) == 0 {
 		return nil
 	}
@@ -67,7 +67,10 @@ func (s *Service) release() error {
 
 // ReloadExtensions orders file reload with business receipt admission.
 func (s *Service) ReloadExtensions(ctx context.Context, agentID string) error {
-	s.deliveryMu.Lock()
-	defer s.deliveryMu.Unlock()
+	unlock, err := s.lockAgent(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	defer func() { unlock(); s.Wake() }()
 	return s.engine.Reload(ctx, agentID)
 }
