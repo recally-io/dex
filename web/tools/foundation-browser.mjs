@@ -154,9 +154,17 @@ async function typeText(value) {
   }
 }
 async function composerEvidence(theme) {
+  const chatsToggle = `document.querySelector('button[aria-label="Chats"]')`;
+  await waitFor("Chats toggle", () => evaluate(`!!${chatsToggle}`));
+  await evaluate(`${chatsToggle}?.focus()`);
+  await press("Enter", "Enter", 13, "\\r");
+  if (!(await evaluate(`!!document.querySelector('aside[aria-label="Chats"]')`)))
+    await evaluate(`${chatsToggle}?.click()`);
+  await waitFor("Chats sidebar", () => evaluate(`!!document.querySelector('aside[aria-label="Chats"]')`));
   const textarea = `document.querySelector('textarea[aria-label^="Message"]')`;
   await evaluate(`${textarea}?.focus()`);
   await typeText("draft survives sidebar switch");
+  await delay(100);
   const root = (await call("DOM.getDocument")).root.nodeId;
   const input = await call("DOM.querySelector", { nodeId: root, selector: 'input[type="file"]' });
   const file = join(output, "harness-attachment.txt");
@@ -174,6 +182,7 @@ async function composerEvidence(theme) {
     code: "Enter",
     windowsVirtualKeyCode: 13,
     modifiers: 8,
+    text: "\n",
   });
   await call("Input.dispatchKeyEvent", {
     type: "keyUp",
@@ -203,20 +212,23 @@ async function composerEvidence(theme) {
   await press("Enter", "Enter", 13, "\\r");
   await waitFor(
     "reply running",
-    () => evaluate(`document.querySelector('[aria-live="polite"]')?.innerText.includes('working')`),
-    5000,
+    () =>
+      evaluate(
+        `document.querySelector('[aria-live="polite"]')?.innerText.includes('working') || !!document.querySelector('button[aria-label="Stop run"]')`,
+      ),
+    10000,
   );
   await capture(`${theme}-chat-composer-running.png`);
   const menu = `document.querySelector('button[aria-label*="more actions"]')`;
+  await waitFor("row menu button", () => evaluate(`!!${menu}`));
   await evaluate(`${menu}?.focus()`);
   await press("Enter", "Enter", 13, "\\r");
-  await waitFor("row menu open", () =>
-    evaluate(`!!document.querySelector('[data-slot="dropdown-menu-content"]')`),
-  );
+  if (!(await evaluate(`!!document.querySelector('[role="menu"]')`))) await press(" ", "Space", 32, " ");
+  await waitFor("row menu open", () => evaluate(`!!document.querySelector('[role="menu"]')`));
   await capture(`${theme}-chat-row-menu-keyboard.png`);
   await press("Escape", "Escape", 27);
   const escaped = await waitFor("row menu closes", () =>
-    evaluate(`!document.querySelector('[data-slot="dropdown-menu-content"]')`),
+    evaluate(`!document.querySelector('[role="menu"]')`),
   );
   return { shiftLine, escaped };
 }
