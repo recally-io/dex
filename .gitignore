@@ -10,3 +10,6 @@ node_modules/
 
 # Design-tool working files (screenshots, dealt direction).
 .taste-skill/
+
+# Design prototypes and tool output stay out of the repository.
+designs/
