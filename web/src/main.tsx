@@ -30,6 +30,11 @@ import { SignIn } from "./components/sign-in";
 import { useSignedOut } from "./lib/session";
 import "./styles.css";
 
+// The Wails runtime is present only in the desktop shell. This single hook keeps browser mode unchanged.
+if (typeof window !== "undefined" && "_wails" in window) {
+  document.documentElement.dataset.shell = "mac";
+}
+
 function Missing({ title, description }: { title: string; description: string }) {
   return (
     <FramedPage title={title} description={description}>

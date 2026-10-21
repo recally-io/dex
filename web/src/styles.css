@@ -111,6 +111,19 @@
   --shadow-inset-field: inset 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
+/* Native macOS material. The browser keeps the existing opaque surfaces. */
+html[data-shell="mac"] body,
+html[data-shell="mac"] #root,
+html[data-shell="mac"] .bg-page,
+html[data-shell="mac"] .bg-canvas {
+  background: transparent;
+}
+
+html[data-shell="mac"] [data-dex-sidebar] {
+  background: color-mix(in srgb, var(--canvas) 72%, transparent);
+  backdrop-filter: blur(24px);
+}
+
 @theme inline {
   /* colors */
   --color-page: var(--page);

@@ -140,6 +140,14 @@ function AgentPane({ settings }: { settings: Settings }) {
   const onChatTab = current === tabs[0];
   const [chatsOpen, toggleChats] = useChatsOpen();
   const newChat = useNewChat();
+  const createNewChat = newChat.mutate;
+
+  useEffect(() => {
+    const openNewChat = () => createNewChat({ path: { agentId } });
+    window.addEventListener("dex:new-chat", openNewChat);
+
+    return () => window.removeEventListener("dex:new-chat", openNewChat);
+  }, [agentId, createNewChat]);
   const { draft } = useApp();
   const dirty = instructionsDirty(draft, settings.agent.instructions);
   const activity = useAgentActivity();

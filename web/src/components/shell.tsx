@@ -4,7 +4,7 @@ import { DexMark } from "./dex-mark";
 import { AgentCreateDialog } from "./agent-create-dialog";
 import type { Agent } from "../api/generated/types.gen";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog } from "@base-ui/react/dialog";
 import { IconSettingsGear2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsGear2";
@@ -42,6 +42,7 @@ export function Shell() {
   const [sidebarOpen, toggleSidebar] = useSidebarOpen();
   const location = useRouterState({ select: (s) => s.location });
   const path = location.pathname;
+  const navigate = useNavigate();
   const shown = useRef(path);
   // The drawer closes when the page changes.
   const [menuPath, setMenuPath] = useState(path);
@@ -49,6 +50,13 @@ export function Shell() {
   const routeAgent = path.match(/^\/a\/([^/]+)/)?.[1];
   const shell = useMemo(() => ({ openDrawer: () => setMenu(true) }), []);
   useSystemTheme();
+
+  useEffect(() => {
+    const openSettings = () => void navigate({ to: "/settings" });
+    window.addEventListener("dex:settings", openSettings);
+
+    return () => window.removeEventListener("dex:settings", openSettings);
+  }, [navigate]);
 
   if (routeAgent && routeAgent !== lastAgent) setLastAgent(routeAgent);
 
@@ -160,6 +168,7 @@ function Sidebar({
   return (
     <aside
       aria-label="Bots"
+      data-dex-sidebar
       className={cn(
         "flex h-full shrink-0 flex-col transition-[width] duration-150 ease-out motion-reduce:transition-none",
         collapsed ? "w-14 items-center" : "w-[240px]",
