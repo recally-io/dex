@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
-import { IconFileText } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconFileText";
-import { IconPlusMedium } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlusMedium";
+import { ArrowUp, FileText, Plus, X } from "lucide-react";
 import { formatSize, type Attachments, type DraftFile } from "../lib/attachments";
 import { Spinner } from "./feedback";
+import { Button } from "./ui/button";
+import { Textarea } from "./ui/textarea";
 import { cn } from "../lib/utils";
 
 // The file chip from upstream PromptBar.tsx, with a thumbnail, the upload state and the error.
@@ -21,7 +21,7 @@ function FileChip({ file, onRemove }: { file: DraftFile; onRemove: () => void })
         <img src={file.preview} alt="" className="size-8 shrink-0 rounded-[6px] object-cover" />
       ) : (
         <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-inset text-ink-3">
-          <IconFileText size={15} />
+          <FileText className="size-[15px]" />
         </span>
       )}
       <span className="flex min-w-0 flex-col leading-tight">
@@ -37,14 +37,16 @@ function FileChip({ file, onRemove }: { file: DraftFile; onRemove: () => void })
         )}
       </span>
       {uploading ? <Spinner /> : null}
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         aria-label={`Remove ${file.name}`}
         onClick={onRemove}
-        className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-ink-3 transition-colors duration-100 hover:bg-line/70 hover:text-ink"
+        className="shrink-0 rounded-[6px] text-ink-3 hover:bg-line/70 hover:text-ink"
       >
-        <IconCrossSmall size={14} />
-      </button>
+        <X className="size-[14px]" />
+      </Button>
     </li>
   );
 }
@@ -151,7 +153,7 @@ export function Composer({
             {files.notice}
           </p>
         ) : null}
-        <textarea
+        <Textarea
           ref={(element) => {
             area.current = element;
 
@@ -161,7 +163,7 @@ export function Composer({
             }
           }}
           rows={1}
-          className="min-h-[44px] w-full min-w-0 resize-none bg-transparent px-1 py-1.5 text-[14px] leading-5 text-ink outline-none [overflow-wrap:anywhere] placeholder:text-ink-3 disabled:cursor-not-allowed"
+          className="min-h-[44px] w-full min-w-0 resize-none rounded-none border-0 bg-transparent px-1 py-1.5 text-[14px] leading-5 text-ink shadow-none outline-none [overflow-wrap:anywhere] placeholder:text-ink-3 focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed"
           maxLength={32000}
           placeholder={running ? "Queue a follow-up…" : placeholder}
           aria-label={running ? "Queue a follow-up…" : placeholder}
@@ -206,16 +208,18 @@ export function Composer({
         <div className="flex min-w-0 items-center gap-1">
           {files ? (
             <>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-sm"
                 aria-label="Attach files"
                 title="Attach files"
                 disabled={!canAttach}
                 onClick={() => picker.current?.click()}
-                className="flex size-[30px] shrink-0 items-center justify-center rounded-control text-ink-3 transition-[background-color,color,transform] duration-150 enabled:hover:bg-hover enabled:hover:text-ink enabled:active:scale-[0.94] disabled:opacity-40"
+                className="shrink-0 rounded-control text-ink-3 hover:bg-hover hover:text-ink"
               >
-                <IconPlusMedium size={16} />
-              </button>
+                <Plus className="size-4" />
+              </Button>
               <input
                 ref={picker}
                 type="file"
@@ -232,43 +236,37 @@ export function Composer({
           {controls}
           <span className="min-w-2 flex-1" />
           {stoppable ? (
-            <button
+            <Button
               type="button"
+              variant="default"
+              size="icon-sm"
               aria-label="Stop run"
               title="Stop this run and its background work"
               // A missing model blocks new messages, not stopping the current run.
               disabled={pending}
               onClick={onStop}
-              className="flex size-[30px] shrink-0 items-center justify-center rounded-control bg-ink text-surface transition-[transform,opacity] duration-150 enabled:active:scale-[0.94] disabled:opacity-40"
+              className="shrink-0 rounded-control bg-ink text-surface hover:bg-ink"
             >
               <span aria-hidden className="size-2.5 rounded-[2px] bg-current" />
-            </button>
+            </Button>
           ) : null}
           {!stoppable || text.trim() || files?.files.length ? (
-            <button
+            <Button
               type="submit"
+              variant="default"
+              size="icon-sm"
               aria-label={running ? "Queue message" : "Send message"}
               title={blocked || (running ? "Queue message" : "Send message")}
               disabled={!canSend}
               className={cn(
-                "flex size-[30px] shrink-0 items-center justify-center rounded-control transition-[background-color,color,transform] duration-200 enabled:active:scale-[0.94]",
-                canSend ? "bg-ink text-surface" : "bg-line-strong text-ink-2",
+                "shrink-0 rounded-control transition-[background-color,color,transform] duration-200",
+                canSend
+                  ? "bg-ink text-surface hover:bg-ink"
+                  : "bg-line-strong text-ink-2 hover:bg-line-strong",
               )}
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
-              >
-                <path d="M12 19V5M5 12l7-7 7 7" />
-              </svg>
-            </button>
+              <ArrowUp className="size-4" />
+            </Button>
           ) : null}
         </div>
       </form>
