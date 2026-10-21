@@ -169,6 +169,25 @@ try {
           (await call("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }))
             .result?.value ?? "";
         results.push({ theme, page: name, size, path, textLength: text.length });
+        if (name === "providers" && size === "mobile") {
+          await call("Runtime.evaluate", {
+            expression: "document.querySelector('button[aria-label=\\\"Open navigation\\\"]')?.click()",
+          });
+          await waitFor(
+            `${theme} providers mobile drawer`,
+            async () =>
+              (
+                await call("Runtime.evaluate", {
+                  expression: "!!document.querySelector('[role=dialog]')",
+                  returnByValue: true,
+                })
+              ).result?.value,
+          );
+          await call("Page.captureScreenshot", { format: "png" }).then((shot) =>
+            writeFile(join(output, `${theme}-providers-drawer-mobile.png`), Buffer.from(shot.data, "base64")),
+          );
+          results.push({ theme, page: "providers-drawer", size: "mobile", path, textLength: text.length });
+        }
         if (name === "providers" && size === "desktop") {
           await call("Runtime.evaluate", {
             expression:
