@@ -165,8 +165,24 @@ func (a *Agents) harness(ctx context.Context, agentID string) (harness.Harness, 
 		opening := &agentOpening{done: make(chan struct{}), cancel: cancel}
 		a.opening[agentID] = opening
 		a.mu.Unlock()
-		return a.openAndPublish(openCtx, agentID, opening)
+		h, err := a.openAndPublish(openCtx, agentID, opening)
+		return h, a.closedDuring(ctx, err)
 	}
+}
+
+// closedDuring reports ErrClosed when Close cancelled an open that the caller's own context still
+// allows. Close cancels every opening slot, so the open fails with a cancellation that the caller
+// did not ask for.
+func (a *Agents) closedDuring(ctx context.Context, err error) error {
+	if !errors.Is(err, context.Canceled) || ctx.Err() != nil {
+		return err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return ErrClosed
+	}
+	return err
 }
 
 // The opening slot owns the target until recovery finishes and Resume is safe.
@@ -642,7 +658,7 @@ func (a *Agents) Reload(ctx context.Context, agentID string) error {
 	}
 	if err := a.files(agentID).Validate(openCtx); err != nil {
 		a.finishOpening(agentID, opening)
-		return err
+		return a.closedDuring(ctx, err)
 	}
 	a.mu.Lock()
 	old := a.resources[agentID]
@@ -656,7 +672,7 @@ func (a *Agents) Reload(ctx context.Context, agentID string) error {
 		}
 	}
 	_, err := a.openAndPublish(openCtx, agentID, opening)
-	return err
+	return a.closedDuring(ctx, err)
 }
 
 func (a *Agents) finishOpening(agentID string, opening *agentOpening) {
