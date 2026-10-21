@@ -10,7 +10,7 @@ import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { cn } from "../lib/utils";
 
 const fieldClass =
-  "w-full rounded-md bg-card px-3 text-[13px] text-foreground shadow-sm outline-none transition-shadow placeholder:text-muted-foreground disabled:opacity-60 aria-invalid:shadow-[0_0_0_1px_var(--red)]";
+  "w-full rounded-md bg-card px-3 text-[13px] text-foreground shadow-card outline-none transition-shadow placeholder:text-muted-foreground disabled:opacity-60 aria-invalid:shadow-[0_0_0_1px_var(--red)]";
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={cn(fieldClass, "h-9", className)} />;
@@ -94,7 +94,7 @@ export function RadioSegments<T extends string>({
             value={option.value}
             aria-label={option.label}
             // The stock pressed color matches the track, so the chosen segment is raised instead.
-            className="h-7 flex-1 rounded-full px-3 text-[13px] text-muted-foreground hover:bg-transparent hover:text-muted-foreground aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:shadow-sm"
+            className="h-7 flex-1 rounded-full px-3 text-[13px] text-muted-foreground hover:bg-transparent hover:text-muted-foreground aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:shadow-card"
           >
             {option.label}
           </ToggleGroupItem>
@@ -121,7 +121,7 @@ export function SavedSecret({
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-[12.5px] font-medium text-foreground">{label}</span>
-      <div className="flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 shadow-sm">
+      <div className="flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 shadow-card">
         <span className="text-[13px] text-muted-foreground">{text}</span>
         <Button type="button" size="xs" variant="secondary" onClick={onReplace}>
           {action}

@@ -13,7 +13,7 @@ function FileChip({ file, onRemove }: { file: DraftFile; onRemove: () => void })
   return (
     <li
       className={cn(
-        "flex h-10 max-w-full min-w-0 animate-[pop-in_200ms_var(--ease-out-strong)_both] items-center gap-2 rounded-[10px] py-1 pr-1 pl-1 text-[11.5px] shadow-sm",
+        "flex h-10 max-w-full min-w-0 animate-[pop-in_200ms_var(--ease-out-strong)_both] items-center gap-2 rounded-[10px] py-1 pr-1 pl-1 text-[11.5px] shadow-card",
         file.error ? "bg-red-tint" : "bg-card",
       )}
     >

@@ -219,7 +219,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
               {weekdays.map((day, i) => (
                 <label
                   key={day}
-                  className="flex h-7 cursor-pointer items-center rounded-full bg-card px-3 text-[12.5px] font-medium text-muted-foreground shadow-sm transition-colors has-[:checked]:bg-foreground has-[:checked]:text-background has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary"
+                  className="flex h-7 cursor-pointer items-center rounded-full bg-card px-3 text-[12.5px] font-medium text-muted-foreground shadow-card transition-colors has-[:checked]:bg-foreground has-[:checked]:text-background has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary"
                 >
                   <input
                     type="checkbox"
@@ -278,7 +278,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
         </div>
         <section
           aria-live="polite"
-          className="rounded-md bg-muted px-3.5 py-3 text-[12.5px] text-muted-foreground shadow-sm"
+          className="rounded-md bg-muted px-3.5 py-3 text-[12.5px] text-muted-foreground shadow-card"
         >
           <h3 className="mb-1 font-medium text-foreground">Next runs · {timeZone}</h3>
           {!validSchedule ? (

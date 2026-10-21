@@ -1,4 +1,4 @@
-import { ArrowUpRight, Clock3, CornerDownRight, FileText } from "lucide-react";
+import { ArrowUpRight, Check, Clock3, CodeXml, Copy, CornerDownRight, FileText } from "lucide-react";
 import { useAgentId } from "../../lib/agent-scope";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
@@ -40,7 +40,7 @@ const markdown: Components = {
     <blockquote className="my-2 border-l-2 border-ring pl-3 text-muted-foreground">{children}</blockquote>
   ),
   table: ({ children }) => (
-    <div className="my-2 overflow-x-auto rounded-md shadow-sm">
+    <div className="my-2 overflow-x-auto rounded-md shadow-card">
       <table className="w-full text-left text-[12.5px]">{children}</table>
     </div>
   ),
@@ -54,14 +54,59 @@ const markdown: Components = {
     const text = String(children).replace(/\n$/, "");
 
     return className || text.includes("\n") ? (
-      <pre className="my-2 max-w-full overflow-auto rounded-md bg-muted p-3 font-mono text-[12px] leading-relaxed text-muted-foreground">
-        <code>{text}</code>
-      </pre>
+      <CodeBlock language={className?.replace("language-", "")} text={text} />
     ) : (
       <code className="inline rounded-md bg-muted px-1.5 py-0.5 font-mono text-[12px]">{children}</code>
     );
   },
 };
+
+/** A fenced code block: the language, a Copy button, and a line-numbered listing. */
+function CodeBlock({ language, text }: { language?: string; text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+
+    const timer = setTimeout(() => setCopied(false), 1500);
+
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  return (
+    <figure className="my-2 max-w-full overflow-hidden rounded-md bg-muted shadow-card">
+      <figcaption className="flex h-8 items-center justify-between border-b border-border pr-1 pl-3 text-[11.5px] text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <CodeXml className="size-3.5" />
+          {language || "Code"}
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
+        >
+          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </figcaption>
+      <pre className="overflow-auto py-2 font-mono text-[12px] leading-relaxed text-foreground">
+        <code className="grid grid-cols-[auto_1fr]">
+          {text.split("\n").map((line, index) => (
+            // Lines have no identity of their own; the listing never reorders them.
+            // oxlint-disable-next-line react/no-array-index-key
+            <span key={index} className="contents">
+              <span aria-hidden className="pr-3 pl-3 text-right text-muted-foreground select-none">
+                {index + 1}
+              </span>
+              <span className="pr-3 whitespace-pre-wrap [overflow-wrap:anywhere]">{line || " "}</span>
+            </span>
+          ))}
+        </code>
+      </pre>
+    </figure>
+  );
+}
 
 function entryName(origin?: string) {
   switch (origin?.split(":", 1)[0]) {
@@ -170,13 +215,13 @@ function Output({ tool }: { tool: ToolItem }) {
   return (
     <div className="mb-1 ml-6 flex animate-[fade-up_240ms_var(--ease-out-strong)_both] flex-col gap-2">
       {extra.length ? (
-        <pre className="max-h-48 overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-muted-foreground shadow-sm [overflow-wrap:anywhere]">
+        <pre className="max-h-48 overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-muted-foreground shadow-card [overflow-wrap:anywhere]">
           {extra.map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join("\n")}
         </pre>
       ) : null}
       <pre
         className={cn(
-          "max-h-60 overflow-auto rounded-md px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap shadow-sm [overflow-wrap:anywhere]",
+          "max-h-60 overflow-auto rounded-md px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap shadow-card [overflow-wrap:anywhere]",
           tool.status === "error" ? "bg-red-tint text-foreground" : "bg-muted text-muted-foreground",
         )}
       >
@@ -245,7 +290,7 @@ export function ToolStep({ tools, memory }: { tools: ToolItem[]; memory?: string
             <Link
               to="/a/$agentId/tasks/$taskId"
               params={{ agentId, taskId: tools[0].taskId }}
-              className="ml-1.5 font-medium text-foreground decoration-line-strong underline-offset-3 hover:underline"
+              className="ml-1.5 font-medium text-foreground decoration-ring underline-offset-3 hover:underline"
             >
               {dispatch.target}
             </Link>
@@ -374,7 +419,7 @@ function Files({ files }: { files: Attachment[] }) {
                 src={`/api/agents/${encodeURIComponent(agentId)}/uploads/${f.id}`}
                 alt={f.name}
                 loading="lazy"
-                className="h-28 max-w-[min(240px,100%)] rounded-xl bg-card object-cover shadow-sm"
+                className="h-28 max-w-[min(240px,100%)] rounded-xl bg-card object-cover shadow-card"
               />
             </a>
           </li>
@@ -383,7 +428,7 @@ function Files({ files }: { files: Attachment[] }) {
             <a
               href={`/api/agents/${encodeURIComponent(agentId)}/uploads/${f.id}`}
               download={f.name}
-              className="flex h-10 min-w-0 items-center gap-2 rounded-[10px] bg-card py-1 pr-2.5 pl-1 text-[11.5px] shadow-sm transition-colors hover:bg-accent"
+              className="flex h-10 min-w-0 items-center gap-2 rounded-[10px] bg-card py-1 pr-2.5 pl-1 text-[11.5px] shadow-card transition-colors hover:bg-accent"
             >
               <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-muted text-muted-foreground">
                 <FileText size={15} />
@@ -444,7 +489,7 @@ export function TranscriptItem({
           {item.text ? (
             <div
               className={cn(
-                "rounded-xl bg-card px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap text-foreground shadow-sm [overflow-wrap:anywhere]",
+                "rounded-xl bg-card px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap text-foreground shadow-card [overflow-wrap:anywhere]",
                 item.queued && "opacity-70",
               )}
             >
@@ -467,7 +512,7 @@ export function TranscriptItem({
             <Link
               to="/a/$agentId/tasks/$taskId"
               params={{ agentId, taskId: item.taskId }}
-              className="font-semibold text-foreground decoration-line-strong underline-offset-3 hover:underline"
+              className="font-semibold text-foreground decoration-ring underline-offset-3 hover:underline"
             >
               {item.title}
             </Link>
@@ -508,7 +553,7 @@ export function TranscriptItem({
           role={item.aborted ? "status" : "alert"}
           className={cn(
             "flex max-w-[640px] flex-col gap-2 rounded-md px-3.5 py-3 text-[13px]",
-            item.aborted ? "bg-muted shadow-sm" : "bg-red-tint",
+            item.aborted ? "bg-muted shadow-card" : "bg-red-tint",
           )}
         >
           <div className="flex items-center gap-2">
@@ -594,7 +639,7 @@ export function RetryNotice({ retry }: { retry: Retry }) {
   return (
     <div
       role="status"
-      className="flex max-w-[640px] flex-col gap-1 rounded-md bg-muted px-3.5 py-3 shadow-sm"
+      className="flex max-w-[640px] flex-col gap-1 rounded-md bg-muted px-3.5 py-3 shadow-card"
     >
       <Shimmer>
         Provider error · retry {retry.attempt} in {Math.max(0, Math.ceil((retry.at - now) / 1000))} s

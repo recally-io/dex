@@ -40,7 +40,7 @@ function ChannelRow({
 
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-muted text-muted-foreground shadow-sm">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-muted text-muted-foreground shadow-card">
         <Send size={16} />
       </span>
       <span className="min-w-0 flex-1">
@@ -87,7 +87,7 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
   return (
     <Section n={1} title="Connections" caption="Each channel talks to the same bot.">
       <Panel>
-        <div className="divide-y divide-line">
+        <div className="divide-y divide-border">
           <ChannelRow
             channel="telegram"
             name="Telegram"

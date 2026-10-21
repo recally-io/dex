@@ -139,7 +139,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         {notices.map((notice) => (
           <div
             key={notice.id}
-            className="pointer-events-auto flex max-w-[440px] animate-[fade-up_300ms_var(--ease-out-strong)_both] items-center gap-2 rounded-full bg-card py-1.5 pr-1.5 pl-4 text-[12.5px] font-medium text-foreground shadow-lg"
+            className="pointer-events-auto flex max-w-[440px] animate-[fade-up_300ms_var(--ease-out-strong)_both] items-center gap-2 rounded-full bg-card py-1.5 pr-1.5 pl-4 text-[12.5px] font-medium text-foreground shadow-raised"
           >
             <span>{notice.text}</span>
             <button

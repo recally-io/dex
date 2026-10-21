@@ -108,7 +108,6 @@
 
 @theme inline {
   /* colors */
-  --color-grid-line: var(--grid-line);
   --color-accent: var(--accent);
   --color-green: var(--green);
   --color-green-tint: var(--green-tint);
@@ -117,13 +116,10 @@
   --color-red: var(--red);
   --color-red-tint: var(--red-tint);
 
-  /* shadows */
-  --shadow-sm: var(--shadow-sm);
-  --shadow-sm: var(--shadow-sm);
-  --shadow-inner: var(--shadow-inner);
-  --shadow-card: var(--shadow-card);
-  --shadow-raised: var(--shadow-raised);
-  --shadow-lg: var(--shadow-lg);
+  /* shadows: a hairline ring at rest, a ring plus height for what floats. The other sizes are
+     Tailwind's defaults. */
+  --shadow-card: 0 0 0 1px var(--border);
+  --shadow-raised: 0 0 0 1px var(--ring), 0 12px 32px rgb(0 0 0 / 0.12);
 
   /* type — the system face is the product's face on a desktop app that must work offline */
   --font-sans: "JetBrains Mono Variable", ui-monospace, monospace;

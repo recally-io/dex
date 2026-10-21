@@ -348,7 +348,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     ) : (
       <>
         {readOnly ? (
-          <div className="flex items-start gap-2.5 rounded-md bg-muted px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground shadow-sm">
+          <div className="flex items-start gap-2.5 rounded-md bg-muted px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground shadow-card">
             <Lock className="mt-0.5 size-3.5 shrink-0" />
             <p>{readOnlyCopy(chat.data?.channel)}</p>
           </div>

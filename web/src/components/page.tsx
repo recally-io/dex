@@ -240,7 +240,7 @@ export function Panel({ className, children }: { className?: string; children: R
 /** Label-left and value-right rows, like upstream TextRow, divided by hairlines. Labels are unique. */
 export function Facts({ rows, monoLabels = false }: { rows: [string, ReactNode][]; monoLabels?: boolean }) {
   return (
-    <dl className="divide-y divide-line">
+    <dl className="divide-y divide-border">
       {rows.map(([label, value]) => (
         <div
           key={label}
@@ -277,7 +277,7 @@ export function Note({ children, tone = "neutral" }: { children: ReactNode; tone
     <div
       className={cn(
         "rounded-md px-3.5 py-2.5 text-[12.5px] leading-relaxed",
-        tone === "warn" ? "bg-orange-tint text-foreground" : "bg-muted text-muted-foreground shadow-sm",
+        tone === "warn" ? "bg-orange-tint text-foreground" : "bg-muted text-muted-foreground shadow-card",
       )}
     >
       {children}

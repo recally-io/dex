@@ -103,7 +103,7 @@ function Catalog({ extensions: e }: { extensions: Extensions }) {
         }
       >
         <Panel>
-          <ul className="divide-y divide-line">
+          <ul className="divide-y divide-border">
             {e.levels.map((level) => (
               <li key={level.scope} className="px-4 py-3 text-[12px] [overflow-wrap:anywhere]">
                 <p className="mb-1 font-medium text-foreground">{level.scope}</p>
@@ -170,7 +170,7 @@ function List({ items, empty }: { items: ReactNode[]; empty: ReactNode }) {
   return (
     <Panel>
       {items.length ? (
-        <ul className="divide-y divide-line">{items}</ul>
+        <ul className="divide-y divide-border">{items}</ul>
       ) : (
         <p className="px-4 py-3.5 text-[12.5px] leading-relaxed text-muted-foreground">{empty}</p>
       )}

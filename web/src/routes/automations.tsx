@@ -134,7 +134,7 @@ function AutomationsSection() {
           />
         ) : list.length ? (
           <Panel>
-            <ul className="divide-y divide-line">
+            <ul className="divide-y divide-border">
               {list.map((automation) => (
                 <li key={automation.id} className="flex items-start gap-3 px-4 py-3">
                   <Link
@@ -311,7 +311,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
           {latestRun ? (
             <div
               role="status"
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-muted px-3.5 py-2.5 text-[12.5px] shadow-sm"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-muted px-3.5 py-2.5 text-[12.5px] shadow-card"
             >
               <span className="text-muted-foreground">Run now</span>
               <RunPill run={latestRun} />
@@ -402,7 +402,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
         ) : (
           <Panel>
             {shown.length ? (
-              <ul className="divide-y divide-line">
+              <ul className="divide-y divide-border">
                 {shown.map((h) => (
                   <RunRow key={h.id} run={h} timeZone={data.timeZone} now={runs.dataUpdatedAt} />
                 ))}

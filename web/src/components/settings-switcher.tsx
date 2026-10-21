@@ -18,7 +18,9 @@ function Track({ label, children }: { label: string; children: ReactNode }) {
 function segment(current: boolean) {
   return cn(
     "flex h-7 shrink-0 items-center gap-1.5 rounded-[6px] px-3 text-[12.5px] whitespace-nowrap transition-colors",
-    current ? "bg-card font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+    current
+      ? "bg-card font-medium text-foreground shadow-card"
+      : "text-muted-foreground hover:text-foreground",
   );
 }
 

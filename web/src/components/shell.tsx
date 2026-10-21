@@ -121,7 +121,7 @@ export function Shell() {
         <DialogContent
           showCloseButton={false}
           aria-label="Navigation"
-          className="fixed inset-y-0 left-0 top-0 z-50 flex h-full w-[272px] max-w-[85vw] translate-x-0 translate-y-0 animate-[drawer-in_240ms_var(--ease-out-strong)_both] flex-col rounded-none bg-sidebar p-0 py-2 shadow-lg outline-none lg:hidden"
+          className="fixed inset-y-0 left-0 top-0 z-50 flex h-full w-[272px] max-w-[85vw] translate-x-0 translate-y-0 animate-[drawer-in_240ms_var(--ease-out-strong)_both] flex-col rounded-none bg-sidebar p-0 py-2 shadow-raised outline-none lg:hidden"
         >
           <DialogClose
             aria-label="Close navigation"

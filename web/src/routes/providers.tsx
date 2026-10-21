@@ -256,7 +256,7 @@ function ProviderCard({
               className={
                 inUse && settings.agent.modelId === m.id
                   ? "inline-flex h-6 max-w-full items-center rounded-full bg-primary/10 px-2.5 text-[12px] font-medium text-primary"
-                  : "inline-flex h-6 max-w-full items-center rounded-full bg-muted px-2.5 text-[12px] font-medium text-muted-foreground shadow-sm"
+                  : "inline-flex h-6 max-w-full items-center rounded-full bg-muted px-2.5 text-[12px] font-medium text-muted-foreground shadow-card"
               }
             >
               <span className="truncate">{m.name}</span>

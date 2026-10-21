@@ -229,7 +229,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
                   </p>
                 </div>
                 {catalog.env.some((entry) => entry.scope === level) ? (
-                  <ul className="divide-y divide-line">
+                  <ul className="divide-y divide-border">
                     {catalog.env
                       .filter((entry) => entry.scope === level)
                       .map((entry) => (
