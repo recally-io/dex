@@ -385,6 +385,18 @@ select:focus-visible,
   background-color: var(--stripe-bg);
 }
 
+/* An agent mark: one hue per agent, with a lightness that keeps the letter readable on either
+   theme. The hue is set by the component; only the lightness belongs here. */
+.agent-avatar {
+  background-color: oklch(0.93 0.045 var(--avatar-hue, 260));
+  color: oklch(0.45 0.13 var(--avatar-hue, 260));
+}
+
+.dark .agent-avatar {
+  background-color: oklch(0.34 0.055 var(--avatar-hue, 260));
+  color: oklch(0.82 0.1 var(--avatar-hue, 260));
+}
+
 /* The page title takes focus after navigation; it needs no ring. */
 #page-title:focus-visible {
   outline: none;

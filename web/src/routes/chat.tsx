@@ -425,7 +425,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       <section
         className={cn(
           "flex min-w-0 flex-1 flex-col overflow-hidden bg-page",
-          embedded ? "min-h-0" : "lg:rounded-window lg:border lg:border-line",
+          embedded ? "min-h-0" : "lg:border-l lg:border-line",
         )}
       >
         {/* The agent pane names the main timeline; a session names itself under the agent tabs. */}
