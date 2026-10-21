@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/web"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 const (
@@ -78,7 +80,9 @@ func run() error {
 			}
 		},
 	})
-	native.Window.NewWithOptions(application.WebviewWindowOptions{
+	statePath := desktopWindowStatePath()
+	state, restored := loadDesktopWindowState(statePath, native)
+	options := application.WebviewWindowOptions{
 		Name:       "main",
 		Title:      appName,
 		Width:      1280,
@@ -87,7 +91,27 @@ func run() error {
 		MinHeight:  600,
 		StartState: application.WindowStateNormal,
 		URL:        backendURL,
-	})
+		Mac: application.MacWindow{
+			Backdrop:                application.MacBackdropTranslucent,
+			TitleBar:                application.MacTitleBarHiddenInset,
+			InvisibleTitleBarHeight: 36,
+		},
+	}
+	if restored {
+		options.Width, options.Height = state.Width, state.Height
+		options.X, options.Y = state.X, state.Y
+		options.InitialPosition = application.WindowXY
+		if state.Maximised {
+			options.StartState = application.WindowStateMaximised
+		}
+	}
+	mainWindow := native.Window.NewWithOptions(options)
+	native.Menu.SetApplicationMenu(desktopMenu(mainWindow))
+	mainWindow.OnWindowEvent(events.Common.WindowDidMove, func(_ *application.WindowEvent) { saveDesktopWindowState(mainWindow, statePath) })
+	mainWindow.OnWindowEvent(events.Common.WindowDidResize, func(_ *application.WindowEvent) { saveDesktopWindowState(mainWindow, statePath) })
+	mainWindow.OnWindowEvent(events.Common.WindowMaximise, func(_ *application.WindowEvent) { saveDesktopWindowState(mainWindow, statePath) })
+	mainWindow.OnWindowEvent(events.Common.WindowUnMaximise, func(_ *application.WindowEvent) { saveDesktopWindowState(mainWindow, statePath) })
+	mainWindow.OnWindowEvent(events.Common.WindowClosing, func(_ *application.WindowEvent) { saveDesktopWindowState(mainWindow, statePath) })
 
 	if err := native.Run(); err != nil {
 		return err
@@ -96,6 +120,64 @@ func run() error {
 		return nil
 	}
 	return closer.Close()
+}
+
+func desktopWindowStatePath() string {
+	config, err := os.UserConfigDir()
+	if err != nil {
+		return filepath.Join(os.TempDir(), "dex", "window.json")
+	}
+	return filepath.Join(config, appName, "window.json")
+}
+
+func loadDesktopWindowState(path string, native *application.App) (windowState, bool) {
+	screens := make([]screenRect, 0, len(native.Screen.GetAll()))
+	for _, screen := range native.Screen.GetAll() {
+		screens = append(screens, screenRect{X: screen.WorkArea.X, Y: screen.WorkArea.Y, Width: screen.WorkArea.Width, Height: screen.WorkArea.Height})
+	}
+	return loadWindowState(path, screens)
+}
+
+func saveDesktopWindowState(window application.Window, path string) {
+	x, y := window.Position()
+	w, h := window.Size()
+	if err := saveWindowState(path, windowState{X: x, Y: y, Width: w, Height: h, Maximised: window.IsMaximised()}); err != nil {
+		slog.Warn("save dex window state", "err", err)
+	}
+}
+
+func desktopMenu(window application.Window) *application.Menu {
+	menu := application.NewMenu()
+	appMenu := menu.AddSubmenu(appName)
+	appMenu.AddRole(application.About)
+	appMenu.Add("Settings…").SetAccelerator("cmd+,").OnClick(func(_ *application.Context) {
+		window.ExecJS("window.dispatchEvent(new CustomEvent('dex:settings'))")
+	})
+	appMenu.AddSeparator()
+	appMenu.AddRole(application.Hide)
+	appMenu.AddRole(application.HideOthers)
+	appMenu.AddRole(application.UnHide)
+	appMenu.AddSeparator()
+	appMenu.AddRole(application.Quit)
+	file := menu.AddSubmenu("File")
+	file.Add("New Chat").SetAccelerator("cmd+n").OnClick(func(_ *application.Context) {
+		window.ExecJS("window.dispatchEvent(new CustomEvent('dex:new-chat'))")
+	})
+	file.AddRole(application.CloseWindow)
+	edit := menu.AddSubmenu("Edit")
+	edit.AddRole(application.Undo)
+	edit.AddRole(application.Redo)
+	edit.AddSeparator()
+	edit.AddRole(application.Cut)
+	edit.AddRole(application.Copy)
+	edit.AddRole(application.Paste)
+	edit.AddRole(application.SelectAll)
+	view := menu.AddSubmenu("View")
+	view.AddRole(application.Reload)
+	windowMenu := menu.AddSubmenu("Window")
+	windowMenu.AddRole(application.Minimise)
+	windowMenu.AddRole(application.Zoom)
+	return menu
 }
 
 func desktopConfig() (service.Config, error) {

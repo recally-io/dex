@@ -54,3 +54,20 @@ the token and does not show the token sign-in flow.
 The first version does not add a second API contract. The next desktop work must
 verify loopback startup, SSE reconnects, token handling, app signing, and
 notarization before release.
+
+## Native macOS shell
+
+The app installs a native macOS menu bar with Dex, File, Edit, View and Window
+menus. Settings… navigates to `/settings`; New Chat dispatches the same browser
+action used by the Chat header. Wails supplies the standard edit roles, so the
+message box keeps native copy and paste behavior.
+
+The main window frame is saved as JSON at the platform config directory
+(`~/Library/Application Support/Dex/window.json` on macOS). The file stores
+position, size and the maximized state. A frame with no intersection with any
+current screen is discarded and the default centered 1280×860 frame is used.
+
+macOS uses a transparent inset title bar, an invisible 36-point drag area and a
+translucent backdrop. The web app marks this environment with
+`document.documentElement.dataset.shell = "mac"`; the small macOS-only CSS block
+keys off that hook. Browser sessions keep their opaque surfaces.
