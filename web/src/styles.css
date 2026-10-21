@@ -119,6 +119,15 @@ html[data-shell="mac"] .bg-canvas {
   background: transparent;
 }
 
+html[data-shell="mac"] #root {
+  box-sizing: border-box;
+  padding-top: 36px;
+}
+
+html[data-shell="mac"] #root > .h-dvh {
+  height: calc(100dvh - 36px);
+}
+
 html[data-shell="mac"] [data-dex-sidebar] {
   background: color-mix(in srgb, var(--canvas) 72%, transparent);
   backdrop-filter: blur(24px);
