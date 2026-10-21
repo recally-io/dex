@@ -7,26 +7,39 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog } from "@base-ui/react/dialog";
-import { IconChevronRightSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronRightSmall";
 import { IconSettingsGear2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsGear2";
-import { IconCircleInfo } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCircleInfo";
-import { IconCloudApi } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCloudApi";
 import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
-import { IconKey2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconKey2";
 import { IconMagnifyingGlass } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconMagnifyingGlass";
+import { IconPlusSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlusSmall";
+import { IconSidebar } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconSidebar";
 
 import { getSettingsOptions, listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { StatusPill } from "./atoms/StatusPill";
-import { Modal } from "./dialog";
 import { ShellContext } from "./page";
-import { ThemeToggle, useSystemTheme } from "./theme";
+import { globalPages } from "./settings-switcher";
+import { useSystemTheme } from "./theme";
 import { useApp } from "../lib/app-state";
 import { instructionsDirty } from "../lib/instructions";
 import { cn } from "../lib/utils";
 
+const sidebarKey = "dex-sidebar";
+
+/** The sidebar starts collapsed to the bot icons. The choice stays in this browser. */
+function useSidebarOpen() {
+  const [open, setOpen] = useState(() => localStorage.getItem(sidebarKey) === "open");
+
+  function toggle() {
+    localStorage.setItem(sidebarKey, open ? "collapsed" : "open");
+    setOpen(!open);
+  }
+
+  return [open, toggle] as const;
+}
+
 export function Shell() {
   useQuery({ ...listAgentsOptions(), refetchInterval: 3000 });
   const [menu, setMenu] = useState(false);
+  const [sidebarOpen, toggleSidebar] = useSidebarOpen();
   const location = useRouterState({ select: (s) => s.location });
   const path = location.pathname;
   const shown = useRef(path);
@@ -71,7 +84,12 @@ export function Shell() {
         >
           Skip to content
         </a>
-        <Sidebar path={path} className="hidden pt-0.5 lg:flex" />
+        <Sidebar
+          path={path}
+          collapsed={!sidebarOpen}
+          onToggle={toggleSidebar}
+          className="hidden pt-0.5 lg:flex"
+        />
         <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 outline-none">
           <AgentContext.Provider value={routeAgent ?? lastAgent}>
             <Outlet />
@@ -99,60 +117,77 @@ export function Shell() {
   );
 }
 
-function Dot({ tone, label }: { tone: "orange" | "red"; label: string }) {
-  return (
-    <span
-      role="img"
-      aria-label={label}
-      className={cn("size-1.5 rounded-full", tone === "red" ? "bg-red" : "bg-orange")}
-    />
-  );
-}
-
-const globalPages = [
-  { to: "/providers", label: "Providers", icon: <IconCloudApi size={16} /> },
-  { to: "/secrets", label: "Secrets", icon: <IconKey2 size={16} /> },
-  { to: "/about", label: "About", icon: <IconCircleInfo size={16} /> },
-] as const;
-
 /**
  * The list of bots. Each one is a long-lived role the user talks to, so the list holds the
- * bots themselves, not their sessions or settings. Global pages sit behind one footer entry.
+ * bots themselves, not their sessions or settings. The global settings page sits in the footer.
+ * Collapsed, the sidebar keeps one icon per bot; the drawer below lg is always expanded.
  */
-function Sidebar({ path, className }: { path: string; className?: string }) {
+function Sidebar({
+  path,
+  className,
+  collapsed = false,
+  onToggle,
+}: {
+  path: string;
+  className?: string;
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
   const settings = useQuery(getSettingsOptions());
   const agents = useQuery(listAgentsOptions());
   const [creating, setCreating] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [a, selected] = path.split("/").filter(Boolean);
   const agentId = a === "a" ? selected : "default";
   const providerErrors = settings.data?.providers.filter((p) => p.error).length ?? 0;
+  const onSettings = globalPages.some((page) => page.to === path);
 
   const list = agents.data?.agents ?? [];
 
-  const shown = query
-    ? list.filter((agent) => agent.name.toLowerCase().includes(query.trim().toLowerCase()))
-    : list;
+  const shown =
+    query && !collapsed
+      ? list.filter((agent) => agent.name.toLowerCase().includes(query.trim().toLowerCase()))
+      : list;
+
+  const iconButton =
+    "relative flex size-9 shrink-0 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink";
+
+  const footerRow =
+    "relative flex h-8 w-full items-center gap-1.5 rounded-control px-2 text-[13px] text-ink-2 hover:bg-hover-2 hover:text-ink";
+
+  const errorLabel = `${providerErrors} ${providerErrors === 1 ? "provider needs" : "providers need"} attention`;
 
   return (
-    <aside aria-label="Bots" className={cn("flex h-full w-[240px] shrink-0 flex-col", className)}>
-      <div className="mx-2 mt-1 flex h-10 items-center gap-2 px-2">
+    <aside
+      aria-label="Bots"
+      className={cn(
+        "flex h-full shrink-0 flex-col transition-[width] duration-150 ease-out motion-reduce:transition-none",
+        collapsed ? "w-14 items-center" : "w-[240px]",
+        className,
+      )}
+    >
+      <div className={cn("mt-1 flex h-10 items-center gap-2", collapsed ? "justify-center" : "mx-2 px-2")}>
         <DexMark />
-        <span className="text-[13px] font-semibold tracking-[-0.01em] text-ink">dex</span>
+        {collapsed ? null : (
+          <span className="text-[13px] font-semibold tracking-[-0.01em] text-ink">dex</span>
+        )}
       </div>
-      <div className="mx-2 mt-2 mb-1 flex h-7 items-center justify-between px-2">
-        <span className="text-[12px] font-medium text-ink-3">Bots</span>
-        <button
-          type="button"
-          aria-label="Create bot"
-          onClick={() => setCreating(true)}
-          className="flex size-6 items-center justify-center rounded-control text-[15px] leading-none text-ink-3 hover:bg-hover-2 hover:text-ink"
-        >
-          +
-        </button>
-      </div>
-      {list.length > 4 ? (
+      {collapsed ? (
+        <span aria-hidden className="my-2 h-px w-6 shrink-0 bg-line" />
+      ) : (
+        <div className="mx-2 mt-2 mb-1 flex h-7 items-center justify-between px-2">
+          <span className="text-[12px] font-medium text-ink-3">Bots</span>
+          <button
+            type="button"
+            aria-label="Create bot"
+            onClick={() => setCreating(true)}
+            className="flex size-6 items-center justify-center rounded-control text-[15px] leading-none text-ink-3 hover:bg-hover-2 hover:text-ink"
+          >
+            +
+          </button>
+        </div>
+      )}
+      {list.length > 4 && !collapsed ? (
         <div className="mx-2 mb-1.5 flex h-8 shrink-0 items-center gap-1.5 rounded-control bg-field px-2 text-ink-3">
           <IconMagnifyingGlass size={13} />
           <input
@@ -165,18 +200,29 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
           />
         </div>
       ) : null}
-      <div className="min-h-0 overflow-y-auto">
+      <div className={cn("min-h-0 overflow-y-auto", collapsed && "flex flex-col items-center gap-1")}>
         {shown.map((agent) => (
           <AgentContext.Provider key={agent.id} value={agent.id!}>
-            <AgentRow agent={agent} current={a === "a" && agent.id === selected} />
+            <AgentRow agent={agent} current={a === "a" && agent.id === selected} collapsed={collapsed} />
           </AgentContext.Provider>
         ))}
+        {collapsed ? (
+          <button
+            type="button"
+            aria-label="Create bot"
+            title="Create bot"
+            onClick={() => setCreating(true)}
+            className={iconButton}
+          >
+            <IconPlusSmall size={16} />
+          </button>
+        ) : null}
         {list.length && !shown.length ? (
           <p className="px-4 py-2 text-[12.5px] text-ink-3">No bot matches.</p>
         ) : null}
         {agents.isError ? (
-          <p role="alert" className="px-4 text-xs text-red">
-            Could not load bots.
+          <p role="alert" className={cn("text-xs text-red", collapsed ? "px-1 text-center" : "px-4")}>
+            {collapsed ? "Error" : "Could not load bots."}
           </p>
         ) : null}
       </div>
@@ -187,70 +233,55 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
       ) : null}
       <div className="flex-1" />
 
-      <div className="mt-2 shrink-0 border-t border-line px-2 py-2">
-        <button
-          type="button"
-          aria-haspopup="dialog"
-          onClick={() => setSettingsOpen(true)}
-          className="flex h-8 w-full items-center gap-1.5 rounded-control px-2 text-[13px] text-ink-2 hover:bg-hover-2 hover:text-ink"
+      <div
+        className={cn(
+          "mt-2 flex w-full shrink-0 flex-col gap-0.5 border-t border-line py-2",
+          collapsed ? "items-center px-2" : "px-2",
+        )}
+      >
+        <Link
+          to="/providers"
+          aria-current={onSettings ? "page" : undefined}
+          aria-label={collapsed ? "Settings" : undefined}
+          title={collapsed ? (providerErrors ? `Settings · ${errorLabel}` : "Settings") : undefined}
+          className={cn(
+            collapsed ? iconButton : footerRow,
+            "aria-[current=page]:bg-hover-2 aria-[current=page]:text-ink",
+          )}
         >
-          <span className="flex size-5 shrink-0 items-center justify-center text-ink-3">
+          <span className="flex size-5 shrink-0 items-center justify-center">
             <IconSettingsGear2 size={15} />
           </span>
-          <span className="min-w-0 flex-1 truncate text-left">Global settings</span>
+          {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">Settings</span>}
           {providerErrors ? (
-            <Dot
-              tone="red"
-              label={`${providerErrors} ${providerErrors === 1 ? "provider needs" : "providers need"} attention`}
+            <span
+              role="img"
+              aria-label={errorLabel}
+              className={cn("size-1.5 rounded-full bg-red", collapsed && "absolute top-1.5 right-1.5")}
             />
           ) : null}
-          <IconChevronRightSmall size={13} className="text-ink-3" />
-        </button>
-        <div className="mt-1 flex items-center px-1 pt-1.5">
-          <ThemeToggle />
-        </div>
+        </Link>
+        {onToggle ? (
+          <button
+            type="button"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            title={collapsed ? "Expand sidebar" : undefined}
+            onClick={onToggle}
+            className={collapsed ? iconButton : footerRow}
+          >
+            <span className="flex size-5 shrink-0 items-center justify-center">
+              <IconSidebar size={15} />
+            </span>
+            {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">Collapse</span>}
+          </button>
+        ) : null}
       </div>
-      {settingsOpen ? <GlobalSettingsDialog path={path} onClose={() => setSettingsOpen(false)} /> : null}
     </aside>
   );
 }
 
-/** The pages that belong to the whole installation rather than to one agent. */
-function GlobalSettingsDialog({ path, onClose }: { path: string; onClose: () => void }) {
-  return (
-    <Modal
-      title="Global settings"
-      description="These apply to dex on this computer, not to one bot."
-      onClose={onClose}
-      footer={
-        <button
-          type="button"
-          onClick={onClose}
-          className="h-8 rounded-control bg-hover-2 px-3 text-[13px] font-medium text-ink"
-        >
-          Close
-        </button>
-      }
-    >
-      <div className="flex flex-col">
-        {globalPages.map((page) => (
-          <Link
-            key={page.to}
-            to={page.to}
-            onClick={onClose}
-            aria-current={path === page.to ? "page" : undefined}
-            className="flex h-10 items-center gap-2.5 rounded-control px-2 text-[13.5px] text-ink-2 hover:bg-hover-2 hover:text-ink aria-[current=page]:text-ink"
-          >
-            <span className="flex size-5 shrink-0 items-center justify-center text-ink-3">{page.icon}</span>
-            {page.label}
-          </Link>
-        ))}
-      </div>
-    </Modal>
-  );
-}
-
-function AgentRow({ agent, current }: { agent: Agent; current: boolean }) {
+function AgentRow({ agent, current, collapsed }: { agent: Agent; current: boolean; collapsed: boolean }) {
   const agentId = useAgentId();
   const { draft } = useApp();
   const dirty = instructionsDirty(draft, agent.instructions);
@@ -263,6 +294,29 @@ function AgentRow({ agent, current }: { agent: Agent; current: boolean }) {
       : channels > 0
         ? `${channels} ${channels === 1 ? "channel" : "channels"} on`
         : "Idle";
+
+  if (collapsed)
+    return (
+      <Link
+        to="/a/$agentId"
+        params={{ agentId }}
+        aria-current={current ? "page" : undefined}
+        aria-label={`${agent.name}, ${dirty ? "instructions draft, " : ""}${status}`}
+        title={`${agent.name} · ${status}`}
+        className="relative flex size-9 shrink-0 items-center justify-center rounded-control hover:bg-hover-2 aria-[current=page]:bg-hover-2"
+      >
+        <AgentAvatar agent={agent} />
+        {active > 0 || dirty ? (
+          <span
+            aria-hidden
+            className={cn(
+              "absolute right-1 bottom-1 size-2 rounded-full ring-2 ring-canvas",
+              active > 0 ? "bg-accent" : "bg-orange",
+            )}
+          />
+        ) : null}
+      </Link>
+    );
 
   return (
     <div className="mx-2 mb-1 flex shrink-0 items-center">

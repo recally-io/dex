@@ -18,6 +18,7 @@ import { Empty, Facts, FramedPage, Mono, Note, Panel, Section } from "../compone
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import { WithSettings } from "../components/with-settings";
+import { GlobalSettingsSwitcher } from "../components/settings-switcher";
 
 export function ProvidersPage() {
   const [dialog, setDialog] = useState<Provider | "new" | null>(null);
@@ -25,7 +26,9 @@ export function ProvidersPage() {
 
   return (
     <FramedPage
+      eyebrow="Settings for this computer"
       title="Providers"
+      toolbar={<GlobalSettingsSwitcher page="/providers" />}
       description="A provider is a saved connection to a model service. The bot model comes from one of them."
       actions={
         <Button size="sm" variant="primary" onClick={() => setDialog("new")}>

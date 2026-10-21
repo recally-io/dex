@@ -20,7 +20,7 @@ import { Modal } from "../components/dialog";
 import { Failure, Loading, Spinner } from "../components/feedback";
 import { Field, Input, SavedSecret, Textarea } from "../components/form";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
-import { BotSettingsSwitcher } from "../components/bot-settings-switcher";
+import { BotSettingsSwitcher } from "../components/settings-switcher";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import { FeishuChannel } from "./feishu";

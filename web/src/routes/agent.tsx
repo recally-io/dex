@@ -10,7 +10,7 @@ import { ModelPicker } from "../components/model-picker";
 import { ThinkingPicker } from "../components/thinking-picker";
 import { Failure } from "../components/feedback";
 import { FramedPage, Note, Panel, Section } from "../components/page";
-import { BotSettingsSwitcher } from "../components/bot-settings-switcher";
+import { BotSettingsSwitcher } from "../components/settings-switcher";
 import { Input } from "../components/form";
 import { InstructionsEditor } from "../components/instructions-editor";
 import { Button } from "../components/atoms/Button";

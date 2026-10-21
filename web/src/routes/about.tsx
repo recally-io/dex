@@ -3,12 +3,22 @@ import { getHealthOptions } from "../api/generated/@tanstack/react-query.gen";
 import { Failure, Loading } from "../components/feedback";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { StatusPill } from "../components/atoms/StatusPill";
+import { ThemeToggle } from "../components/theme";
+import { GlobalSettingsSwitcher } from "../components/settings-switcher";
 
 export function AboutPage() {
   const health = useQuery(getHealthOptions());
 
   return (
-    <FramedPage title="About dex" description="A personal bot that runs on this computer.">
+    <FramedPage
+      eyebrow="Settings for this computer"
+      title="About"
+      description="A personal bot that runs on this computer."
+      toolbar={<GlobalSettingsSwitcher page="/about" />}
+    >
+      <Section title="Appearance" caption="Applies to this browser.">
+        <ThemeToggle />
+      </Section>
       <Section n={1} title="This server">
         {health.isPending ? (
           <Loading />

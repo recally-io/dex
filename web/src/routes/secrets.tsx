@@ -20,13 +20,16 @@ import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import { buttonVariants } from "../components/atoms/Button";
 import { WithSettings } from "../components/with-settings";
+import { GlobalSettingsSwitcher } from "../components/settings-switcher";
 
 export function SecretsPage() {
   const agentId = useAgentId();
 
   return (
     <FramedPage
+      eyebrow="Settings for this computer"
       title="Secrets"
+      toolbar={<GlobalSettingsSwitcher page="/secrets" />}
       description="Set tool credentials for the current bot or all dex bots. Values stay in .env files. Narrower values win."
     >
       <ToolEnvironment key={agentId} agentId={agentId} />
