@@ -54,3 +54,30 @@ the token and does not show the token sign-in flow.
 The first version does not add a second API contract. The next desktop work must
 verify loopback startup, SSE reconnects, token handling, app signing, and
 notarization before release.
+
+## Native macOS shell
+
+The app installs a native macOS menu bar with Dex, File, Edit, View and Window
+menus. Settings… (Cmd+,) opens `/settings`. New Chat (Cmd+N) starts a chat for
+the open bot, or for the last bot, from any page. Wails supplies the standard
+edit roles, so the message box keeps native copy and paste behavior.
+
+The window uses the default macOS title bar. It owns the traffic lights, the
+title, window drags and double-click zoom, so no page has to leave room for
+them. A title bar drawn by the web UI needs one shared header for every route
+and width first; that is part of the UI work in #42.
+
+The window loads Dex from the backend URL, not from the Wails asset server, so
+Wails injects only its core script. That script never reports ready, and Wails
+queues every `ExecJS` call until the page does. The shell reports ready itself
+when a navigation finishes, so the menu reaches the web app through the
+`dex:settings` and `dex:new-chat` window events. The web app needs no other
+knowledge of the shell.
+
+The main window frame is saved as JSON in the platform config directory
+(`~/Library/Application Support/Dex/window.json` on macOS). The file stores
+position, size and the maximized state; a maximized window keeps its last
+normal frame. The window starts hidden and is placed when the application
+starts, because Wails has no screen list before then. A frame that does not
+intersect any current screen is discarded, and the default centered 1280×860
+frame is used.

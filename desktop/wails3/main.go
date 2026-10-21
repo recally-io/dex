@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/web"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 const (
@@ -78,7 +80,7 @@ func run() error {
 			}
 		},
 	})
-	native.Window.NewWithOptions(application.WebviewWindowOptions{
+	options := application.WebviewWindowOptions{
 		Name:       "main",
 		Title:      appName,
 		Width:      1280,
@@ -87,6 +89,32 @@ func run() error {
 		MinHeight:  600,
 		StartState: application.WindowStateNormal,
 		URL:        backendURL,
+		// The window shows after restoreDesktopWindow places it.
+		Hidden: true,
+		// The default macOS title bar owns the traffic lights, the title and window drags, so no page
+		// has to leave room for them. A title bar drawn by the web UI waits for one shared header.
+		Mac: application.MacWindow{TitleBar: application.MacTitleBarDefault},
+	}
+	mainWindow := native.Window.NewWithOptions(options)
+	native.Menu.SetApplicationMenu(desktopMenu(mainWindow))
+	// Wails queues ExecJS until the page reports ready, which only its full runtime does. The page
+	// comes from the Dex backend and does not load that runtime, so the shell reports ready itself.
+	mainWindow.RegisterHook(events.Mac.WebViewDidFinishNavigation, func(_ *application.WindowEvent) {
+		mainWindow.HandleMessage("wails:runtime:ready")
+	})
+	// The screen list is empty until the application starts, so the saved frame is checked then.
+	native.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
+		statePath := desktopWindowStatePath()
+		restoreDesktopWindow(mainWindow, statePath, native)
+		mainWindow.Show()
+		// Saving starts after the restore, so the default frame never replaces the saved one.
+		save := func(_ *application.WindowEvent) { saveDesktopWindowState(mainWindow, statePath) }
+		for _, event := range []events.WindowEventType{
+			events.Common.WindowDidMove, events.Common.WindowDidResize,
+			events.Common.WindowMaximise, events.Common.WindowUnMaximise, events.Common.WindowClosing,
+		} {
+			mainWindow.OnWindowEvent(event, save)
+		}
 	})
 
 	if err := native.Run(); err != nil {
@@ -96,6 +124,81 @@ func run() error {
 		return nil
 	}
 	return closer.Close()
+}
+
+func desktopWindowStatePath() string {
+	config, err := os.UserConfigDir()
+	if err != nil {
+		return filepath.Join(os.TempDir(), "dex", "window.json")
+	}
+	return filepath.Join(config, appName, "window.json")
+}
+
+func loadDesktopWindowState(path string, native *application.App) (windowState, bool) {
+	// Wails fills its screen list in another listener of the launch event, and listeners run
+	// concurrently. Wait for the list; if it takes longer, the window keeps the default frame.
+	for deadline := time.Now().Add(time.Second); len(native.Screen.GetAll()) == 0 && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	screens := make([]screenRect, 0, len(native.Screen.GetAll()))
+	for _, screen := range native.Screen.GetAll() {
+		screens = append(screens, screenRect{X: screen.WorkArea.X, Y: screen.WorkArea.Y, Width: screen.WorkArea.Width, Height: screen.WorkArea.Height})
+	}
+	return loadWindowState(path, screens)
+}
+
+func restoreDesktopWindow(window application.Window, path string, native *application.App) {
+	state, ok := loadDesktopWindowState(path, native)
+	if !ok {
+		return
+	}
+	window.SetSize(state.Width, state.Height)
+	window.SetPosition(state.X, state.Y)
+	if state.Maximised {
+		window.Maximise()
+	}
+}
+
+func saveDesktopWindowState(window application.Window, path string) {
+	x, y := window.Position()
+	w, h := window.Size()
+	if err := recordWindowState(path, windowState{X: x, Y: y, Width: w, Height: h, Maximised: window.IsMaximised()}); err != nil {
+		slog.Warn("save dex window state", "err", err)
+	}
+}
+
+func desktopMenu(window application.Window) *application.Menu {
+	menu := application.NewMenu()
+	appMenu := menu.AddSubmenu(appName)
+	appMenu.AddRole(application.About)
+	appMenu.Add("Settings…").SetAccelerator("cmd+,").OnClick(func(_ *application.Context) {
+		window.ExecJS("window.dispatchEvent(new CustomEvent('dex:settings'))")
+	})
+	appMenu.AddSeparator()
+	appMenu.AddRole(application.Hide)
+	appMenu.AddRole(application.HideOthers)
+	appMenu.AddRole(application.UnHide)
+	appMenu.AddSeparator()
+	appMenu.AddRole(application.Quit)
+	file := menu.AddSubmenu("File")
+	file.Add("New Chat").SetAccelerator("cmd+n").OnClick(func(_ *application.Context) {
+		window.ExecJS("window.dispatchEvent(new CustomEvent('dex:new-chat'))")
+	})
+	file.AddRole(application.CloseWindow)
+	edit := menu.AddSubmenu("Edit")
+	edit.AddRole(application.Undo)
+	edit.AddRole(application.Redo)
+	edit.AddSeparator()
+	edit.AddRole(application.Cut)
+	edit.AddRole(application.Copy)
+	edit.AddRole(application.Paste)
+	edit.AddRole(application.SelectAll)
+	view := menu.AddSubmenu("View")
+	view.AddRole(application.Reload)
+	windowMenu := menu.AddSubmenu("Window")
+	windowMenu.AddRole(application.Minimise)
+	windowMenu.AddRole(application.Zoom)
+	return menu
 }
 
 func desktopConfig() (service.Config, error) {
