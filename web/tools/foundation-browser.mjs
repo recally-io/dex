@@ -50,7 +50,7 @@ async function seed() {
     body: JSON.stringify({
       name: agent.name,
       provider: "faux",
-      modelId: "echo",
+      modelId: "bash",
       thinkingLevel: agent.thinkingLevel,
       instructions: agent.instructions,
     }),
@@ -60,11 +60,15 @@ async function seed() {
     method: "POST",
     body: JSON.stringify({ id: crypto.randomUUID(), text: "foundation screenshot seed" }),
   });
-  const session = await request("/api/agents/default/chats", { method: "POST" });
-  await request(`/api/agents/default/chats/${session.id}/messages`, {
-    method: "POST",
-    body: JSON.stringify({ id: crypto.randomUUID(), text: "session screenshot seed" }),
-  });
+  for (let index = 0; index < 7; index++) {
+    const session = await request("/api/agents/default/chats", { method: "POST" });
+    await request(`/api/agents/default/chats/${session.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ id: crypto.randomUUID(), text: `sidebar seed chat ${index + 1}` }),
+    });
+    if (index === 0)
+      await request(`/api/agents/default/chats/${session.id}/archive`, { method: "PUT", body: "{}" });
+  }
   await request("/api/agents/default/automations", {
     method: "POST",
     body: JSON.stringify({
@@ -137,6 +141,90 @@ async function capture(file) {
   const shot = await call("Page.captureScreenshot", { format: "png" });
   await writeFile(join(output, file), Buffer.from(shot.data, "base64"));
 }
+async function typeText(value) {
+  for (const character of value) {
+    if (character === " ") await press(" ", "Space", 32, " ");
+    else
+      await press(
+        character,
+        `Key${character.toUpperCase()}`,
+        character.toUpperCase().charCodeAt(0),
+        character,
+      );
+  }
+}
+async function composerEvidence(theme) {
+  const chatsToggle = `document.querySelector('button[aria-label="Chats"]')`;
+  await waitFor("Chats toggle", () => evaluate(`!!${chatsToggle}`));
+  await evaluate(`${chatsToggle}?.focus()`);
+  await press("Enter", "Enter", 13, "\\r");
+  if (!(await evaluate(`!!document.querySelector('aside[aria-label="Chats"]')`)))
+    await evaluate(`${chatsToggle}?.click()`);
+  await waitFor("Chats sidebar", () => evaluate(`!!document.querySelector('aside[aria-label="Chats"]')`));
+  const textarea = `document.querySelector('textarea[aria-label^="Message"]')`;
+  await evaluate(`${textarea}?.focus()`);
+  await typeText("draft survives sidebar switch");
+  await delay(100);
+  const root = (await call("DOM.getDocument")).root.nodeId;
+  const input = await call("DOM.querySelector", { nodeId: root, selector: 'input[type="file"]' });
+  const file = join(output, "harness-attachment.txt");
+  await writeFile(file, "attachment evidence");
+  await call("DOM.setFileInputFiles", { nodeId: input.nodeId, files: [file] });
+  await waitFor("attachment chip", () =>
+    evaluate(
+      `document.querySelector('[aria-label="Attached files"]')?.innerText.includes('harness-attachment.txt')`,
+    ),
+  );
+  await capture(`${theme}-chat-composer-draft-attachment.png`);
+  await evaluate(`${textarea}?.focus()`);
+  await delay(50);
+  await call("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "Enter",
+    code: "Enter",
+    windowsVirtualKeyCode: 13,
+    modifiers: 8,
+    // Chrome inserts a line break only for the carriage return text, as for a plain Enter.
+    text: "\r",
+  });
+  await call("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "Enter",
+    code: "Enter",
+    windowsVirtualKeyCode: 13,
+    modifiers: 8,
+  });
+  // Shift+Enter keeps the draft and adds a line; a sent message would empty the box.
+  const shiftLine = await evaluate(
+    `${textarea}?.value.startsWith('draft survives') && ${textarea}.value.includes('\\n')`,
+  );
+  await evaluate(
+    `(() => { const el = ${textarea}; const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(el, 'sleep 3'); el.dispatchEvent(new Event('input', { bubbles: true })); })()`,
+  );
+  await delay(100);
+  await press("Enter", "Enter", 13, "\\r");
+  await waitFor(
+    "reply running",
+    () =>
+      evaluate(
+        `document.querySelector('[aria-live="polite"]')?.innerText.includes('working') || !!document.querySelector('button[aria-label="Stop run"]')`,
+      ),
+    10000,
+  );
+  await capture(`${theme}-chat-composer-running.png`);
+  const menu = `document.querySelector('button[aria-label*="more actions"]')`;
+  await waitFor("row menu button", () => evaluate(`!!${menu}`));
+  await evaluate(`${menu}?.focus()`);
+  await press("Enter", "Enter", 13, "\\r");
+  if (!(await evaluate(`!!document.querySelector('[role="menu"]')`))) await press(" ", "Space", 32, " ");
+  await waitFor("row menu open", () => evaluate(`!!document.querySelector('[role="menu"]')`));
+  await capture(`${theme}-chat-row-menu-keyboard.png`);
+  await press("Escape", "Escape", 27);
+  const escaped = await waitFor("row menu closes", () =>
+    evaluate(`!document.querySelector('[role="menu"]')`),
+  );
+  return { shiftLine, escaped };
+}
 try {
   await waitFor("app", async () => (await fetch(`${base}/api/health`)).ok);
   const profile = join(isolated, "chrome");
@@ -178,6 +266,7 @@ try {
   });
   await call("Page.enable");
   await call("Runtime.enable");
+  await call("DOM.enable");
   await call("Emulation.setDeviceMetricsOverride", {
     width: 1280,
     height: 900,
@@ -223,6 +312,9 @@ try {
           (await call("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }))
             .result?.value ?? "";
         results.push({ theme, page: name, size, path, textLength: text.length });
+        if (name === "chat" && size === "desktop") {
+          results.push({ theme, page: "chat-interactions", size, path, ...(await composerEvidence(theme)) });
+        }
         if (name === "providers" && size === "mobile") {
           const keyboard = await overlayByKeyboard(
             `${theme} drawer`,

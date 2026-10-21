@@ -1,12 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ContextMenu } from "@base-ui/react/context-menu";
-import { Menu } from "@base-ui/react/menu";
 import { format, isToday, startOfDay, subDays } from "date-fns";
-import { IconArchive } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArchive";
-import { IconChevronRightSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronRightSmall";
-import { IconDotGrid1x3Horizontal } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconDotGrid1x3Horizontal";
+import { Archive, ChevronRight, MoreHorizontal } from "lucide-react";
 import type { Chat } from "../api/generated/types.gen";
 import {
   archiveChatMutation,
@@ -20,6 +16,9 @@ import { useApp } from "../lib/app-state";
 import { errorText, refreshChats } from "../lib/queries";
 import { sessionKind } from "../lib/tasks";
 import { cn } from "../lib/utils";
+import { Button, buttonVariants } from "./ui/button";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
 /** Opens a Chat with its own context. The server reuses the newest empty Chat. */
 export function useNewChat() {
@@ -74,10 +73,10 @@ export function dateGroup(at: number, now: number) {
 const pageSize = 5;
 
 const row =
-  "flex h-9 min-w-0 items-center gap-2 rounded-control px-2 text-[13px] text-ink-2 hover:bg-hover-2 hover:text-ink aria-[current=page]:bg-hover-2 aria-[current=page]:text-ink";
+  "h-9 min-w-0 justify-start gap-2 rounded-control px-2 text-[13px] text-ink-2 hover:bg-hover-2 hover:text-ink aria-[current=page]:bg-hover-2 aria-[current=page]:text-ink";
 
 const menuItem =
-  "flex h-8 w-full items-center gap-2 rounded-[7px] px-2 text-[12.5px] text-ink outline-none data-[highlighted]:bg-hover";
+  "h-8 w-full justify-start gap-2 rounded-[7px] px-2 text-[12.5px] text-ink data-highlighted:bg-hover";
 
 const menuPopup =
   "w-[180px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-[10px] bg-surface p-1 shadow-raised outline-none";
@@ -118,7 +117,7 @@ export function ChatList({ chatId }: { chatId: number }) {
           params={{ agentId }}
           activeOptions={{ exact: true }}
           aria-current={onMain ? "page" : undefined}
-          className={row}
+          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), row)}
         >
           <span className="min-w-0 flex-1 truncate font-medium">Main</span>
           <span className="shrink-0 text-[11.5px] text-ink-3">Every channel</span>
@@ -164,30 +163,34 @@ function Group({
 
   return (
     <section className="mt-3">
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex h-7 w-full items-center gap-1 rounded-control px-2 text-[12px] font-medium text-ink-3 hover:text-ink"
+        // The stock ghost button fills aria-expanded; a group header only rotates its chevron.
+        className="flex h-7 w-full items-center justify-start gap-1 rounded-control px-2 text-[12px] font-medium text-ink-3 hover:text-ink aria-expanded:bg-transparent aria-expanded:text-ink-3 aria-expanded:hover:text-ink"
       >
-        <IconChevronRightSmall
-          size={13}
-          className={cn("shrink-0 transition-transform duration-150", open && "rotate-90")}
+        <ChevronRight
+          className={cn("size-3.5 shrink-0 transition-transform duration-150", open && "rotate-90")}
         />
         <span className="min-w-0 flex-1 truncate text-left">{label}</span>
         <span className="shrink-0 tabular-nums">{count}</span>
-      </button>
+      </Button>
       {open ? (
         <div className="flex flex-col gap-0.5">
           {children(limit)}
           {count > limit ? (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setLimit(count)}
-              className="h-8 rounded-control px-2 text-left text-[12.5px] text-ink-3 hover:bg-hover-2 hover:text-ink"
+              className="h-8 justify-start rounded-control px-2 text-left text-[12.5px] text-ink-3 hover:bg-hover-2 hover:text-ink"
             >
               Show {count - limit} more
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -209,46 +212,46 @@ function ChatRow({
   const action = chat.archivedAt ? "Restore" : "Archive";
   const title = chat.title || "New chat";
 
-  const items = (Item: typeof Menu.Item) => (
-    <Item onClick={() => onToggleArchive(chat)} className={menuItem}>
-      <IconArchive size={15} className="shrink-0 text-ink-3" />
+  const itemContent = (
+    <>
+      <Archive className="size-[15px] shrink-0 text-ink-3" />
       {action}
-    </Item>
+    </>
   );
 
   return (
-    <ContextMenu.Root>
-      <ContextMenu.Trigger className="group relative flex min-w-0 items-center">
+    <ContextMenu>
+      <ContextMenuTrigger className="group relative flex min-w-0 items-center">
         <Link
           to="/a/$agentId/c/$chatId"
           params={{ agentId, chatId: String(chat.id) }}
           aria-current={current ? "page" : undefined}
-          className={cn(row, "flex-1 pr-9")}
+          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), row, "flex-1 pr-9")}
         >
           <span className="min-w-0 flex-1 truncate">{title}</span>
           <span className="shrink-0 text-[11.5px] text-ink-3 tabular-nums group-hover:invisible group-focus-within:invisible">
             {format(chat.updatedAt, isToday(chat.updatedAt) ? "HH:mm" : "d MMM")}
           </span>
         </Link>
-        <Menu.Root>
-          <Menu.Trigger
+        <DropdownMenu>
+          <DropdownMenuTrigger
             aria-label={`${title}: more actions`}
             className="absolute right-1 flex size-7 items-center justify-center rounded-control text-ink-3 opacity-0 group-hover:opacity-100 hover:bg-hover hover:text-ink focus-visible:opacity-100 aria-expanded:opacity-100"
           >
-            <IconDotGrid1x3Horizontal size={15} />
-          </Menu.Trigger>
-          <Menu.Portal>
-            <Menu.Positioner align="end" sideOffset={4} collisionPadding={8} className="z-40">
-              <Menu.Popup className={menuPopup}>{items(Menu.Item)}</Menu.Popup>
-            </Menu.Positioner>
-          </Menu.Portal>
-        </Menu.Root>
-      </ContextMenu.Trigger>
-      <ContextMenu.Portal>
-        <ContextMenu.Positioner collisionPadding={8} className="z-40">
-          <ContextMenu.Popup className={menuPopup}>{items(ContextMenu.Item)}</ContextMenu.Popup>
-        </ContextMenu.Positioner>
-      </ContextMenu.Portal>
-    </ContextMenu.Root>
+            <MoreHorizontal className="size-[15px]" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" sideOffset={4} className={menuPopup}>
+            <DropdownMenuItem onClick={() => onToggleArchive(chat)} className={menuItem}>
+              {itemContent}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </ContextMenuTrigger>
+      <ContextMenuContent className={menuPopup}>
+        <ContextMenuItem onClick={() => onToggleArchive(chat)} className={menuItem}>
+          {itemContent}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

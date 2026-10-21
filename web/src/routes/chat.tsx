@@ -3,10 +3,7 @@ import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useContext, useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { IconArrowDown } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowDown";
-import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
-import { IconLock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconLock";
-import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
+import { ArrowDown, Clock, Lock, Send } from "lucide-react";
 import type { Attachment, UserItem, MessageInput, Chat as ChatInfo } from "../api/generated/types.gen";
 import {
   getHealthOptions,
@@ -30,8 +27,8 @@ import { RetryNotice, Transcript } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
 import { InPaneContext, MainPane, Note, PageHeader } from "../components/page";
-import { Button } from "../components/atoms/Button";
-import { StatusPill } from "../components/atoms/StatusPill";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 import LoadingState from "../components/primitives/LoadingState";
 import { cn, newId } from "../lib/utils";
 
@@ -82,16 +79,16 @@ function OriginPill({ chat }: { chat: ChatInfo }) {
 
   if (!["web", "automation"].includes(chat.channel))
     return (
-      <StatusPill dot={false} className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
-        <IconPaperPlane size={11} /> {chat.channel} · read-only
-      </StatusPill>
+      <Badge variant="secondary" className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
+        <Send className="size-[11px]" /> {chat.channel} · read-only
+      </Badge>
     );
 
   if (chat.channel === "automation") {
     const pill = (
-      <StatusPill dot={false} className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
-        <IconClock size={11} /> Automation
-      </StatusPill>
+      <Badge variant="secondary" className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
+        <Clock className="size-[11px]" /> Automation
+      </Badge>
     );
 
     return chat.automationId ? (
@@ -353,7 +350,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       <>
         {readOnly ? (
           <div className="flex items-start gap-2.5 rounded-card bg-inset px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2 shadow-hairline">
-            <IconLock size={14} className="mt-0.5 shrink-0" />
+            <Lock className="mt-0.5 size-3.5 shrink-0" />
             <p>{readOnlyCopy(chat.data?.channel)}</p>
           </div>
         ) : null}
@@ -505,7 +502,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                         });
                       }}
                     >
-                      <IconArrowDown size={14} />
+                      <ArrowDown className="size-3.5" />
                       Jump to latest
                     </Button>
                   ) : null}
