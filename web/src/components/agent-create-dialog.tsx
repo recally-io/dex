@@ -6,7 +6,7 @@ import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { queryClient } from "../lib/queries";
 import { Modal } from "./dialog";
 import { Field, Input } from "./form";
-import { Button } from "./atoms/Button";
+import { Button } from "./ui/button";
 import { Failure, Loading } from "./feedback";
 import { ModelPicker } from "./model-picker";
 import type { Agent, Model } from "../api/generated/types.gen";

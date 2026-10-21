@@ -4,7 +4,7 @@ import type { Provider, Settings } from "../api/generated/types.gen";
 import { getSettingsQueryKey, setProviderMutation } from "../api/generated/@tanstack/react-query.gen";
 import { errorText, queryClient, refreshSettings } from "../lib/queries";
 import { useApp } from "../lib/app-state";
-import { Button } from "./atoms/Button";
+import { Button } from "./ui/button";
 import { Modal } from "./dialog";
 import { Failure, Spinner } from "./feedback";
 import { Field, Input, RadioSegments, SavedSecret, Select, Textarea } from "./form";
@@ -178,7 +178,7 @@ export function ProviderDialog({
           <Button size="sm" variant="secondary" onClick={onClose} disabled={save.isPending}>
             {listingError ? "Close" : "Cancel"}
           </Button>
-          <Button size="sm" variant="primary" onClick={submit} disabled={save.isPending}>
+          <Button size="sm" onClick={submit} disabled={save.isPending}>
             {save.isPending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
             {save.isPending ? "Saving and listing models…" : existing ? "Save changes" : "Save provider"}
           </Button>

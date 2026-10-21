@@ -19,12 +19,11 @@ import { Crumb } from "../components/crumb";
 import { Confirm } from "../components/confirm";
 import { AutomationDialog } from "../components/automation-dialog";
 import { Empty, Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
-import { Button } from "../components/atoms/Button";
-import { SegmentedControl } from "../components/atoms/SegmentedControl";
-import { StatusPill } from "../components/atoms/StatusPill";
-import { Switch } from "../components/atoms/Switch";
+import { Button } from "../components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
+import { Badge } from "../components/ui/badge";
+import { Switch } from "../components/ui/switch";
 
-const runTone = { done: "green", failed: "red", skipped: "neutral", running: "orange" } as const;
 const runLabel = { done: "Done", failed: "Failed", skipped: "Skipped", running: "Running" } as const;
 
 function sessionText(automation: Automation) {
@@ -41,9 +40,12 @@ function nextText(automation: Automation) {
 
 function RunPill({ run, className = "" }: { run: AutomationRun; className?: string }) {
   return (
-    <StatusPill tone={runTone[run.status]} className={`h-5 shrink-0 px-2 text-[11.5px] ${className}`}>
+    <Badge
+      variant={run.status === "failed" ? "destructive" : run.status === "done" ? "secondary" : "outline"}
+      className={`h-5 shrink-0 px-2 text-[11.5px] ${run.status === "done" ? "bg-green-tint text-green" : run.status === "running" ? "border-orange/30 bg-orange-tint text-orange" : ""} ${className}`}
+    >
       {runLabel[run.status]}
-    </StatusPill>
+    </Badge>
   );
 }
 
@@ -62,8 +64,8 @@ function EnabledSwitch({ automation }: { automation: Automation }) {
         <Switch
           checked={automation.enabled}
           disabled={update.isPending}
-          label={`Enable ${automation.name}`}
-          onChange={() =>
+          aria-label={`Enable ${automation.name}`}
+          onCheckedChange={() =>
             update.mutate({
               path: { agentId, automationId: automation.id },
               body: {
@@ -115,8 +117,9 @@ function AutomationsSection() {
         n={1}
         title="All automations"
         caption={`${on} of ${list.length} on. Open one to see its runs.`}
+        // SAFETY: ToggleGroup values come only from the two Filter items below.
         action={
-          <Button size="sm" variant="primary" disabled={noModel} onClick={() => setCreate(true)}>
+          <Button size="sm" disabled={noModel} onClick={() => setCreate(true)}>
             New automation
           </Button>
         }
@@ -144,12 +147,12 @@ function AutomationsSection() {
                         {automation.name}
                       </span>
                       {automation.lastRun && automation.lastRun.status !== "done" ? (
-                        <StatusPill
-                          tone={runTone[automation.lastRun.status]}
-                          className="h-5 shrink-0 px-2 text-[11px]"
+                        <Badge
+                          variant={automation.lastRun.status === "failed" ? "destructive" : "outline"}
+                          className={`h-5 shrink-0 px-2 text-[11px] ${automation.lastRun.status === "running" ? "border-orange/30 bg-orange-tint text-orange" : ""}`}
                         >
                           Last run {runLabel[automation.lastRun.status].toLowerCase()}
-                        </StatusPill>
+                        </Badge>
                       ) : null}
                     </span>
                     <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-ink-3">
@@ -273,9 +276,12 @@ export function AutomationPage({ automationId }: { automationId: string }) {
       eyebrow={crumb}
       title={data.name}
       badge={
-        <StatusPill tone={data.enabled ? "green" : "neutral"} className="h-5 px-2 text-[11.5px]">
+        <Badge
+          variant={data.enabled ? "secondary" : "outline"}
+          className={`h-5 px-2 text-[11.5px] ${data.enabled ? "bg-green-tint text-green" : ""}`}
+        >
           {data.enabled ? "On" : "Paused"}
-        </StatusPill>
+        </Badge>
       }
       description={`${scheduleText(data.schedule, data.timeZone)} · ${data.timeZone}`}
       actions={
@@ -285,7 +291,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
           </Button>
           <Button
             size="sm"
-            variant="primary"
+            variant="default"
             disabled={run.isPending || remove.isPending || busy || !!blocked}
             title={blocked ?? (busy ? "A run is in progress." : undefined)}
             onClick={() => run.mutate({ path: { agentId, automationId } })}
@@ -371,7 +377,19 @@ export function AutomationPage({ automationId }: { automationId: string }) {
         }
         action={
           history.length ? (
-            <SegmentedControl<Filter> options={["All", "Problems"]} value={filter} onChange={setFilter} />
+            <ToggleGroup
+              value={[filter]}
+              onValueChange={(value) => {
+                if (!value[0]) return;
+                // SAFETY: ToggleGroup values come only from the two Filter items below.
+                setFilter(value[0] as Filter);
+              }}
+              variant="outline"
+              size="sm"
+            >
+              <ToggleGroupItem value="All">All</ToggleGroupItem>
+              <ToggleGroupItem value="Problems">Problems</ToggleGroupItem>
+            </ToggleGroup>
           ) : null
         }
       >

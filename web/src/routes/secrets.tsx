@@ -16,9 +16,8 @@ import { useApp } from "../lib/app-state";
 import { errorText, queryClient } from "../lib/queries";
 import { Failure, Loading, Spinner } from "../components/feedback";
 import { Field, Input, Select } from "../components/form";
-import { Button } from "../components/atoms/Button";
-import { StatusPill } from "../components/atoms/StatusPill";
-import { buttonVariants } from "../components/atoms/Button";
+import { Button, buttonVariants } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 import { WithSettings } from "../components/with-settings";
 import { GlobalSettingsSwitcher } from "../components/settings-switcher";
 
@@ -194,7 +193,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
               )}
             </Field>
             <div>
-              <Button type="submit" size="sm" variant="primary" disabled={busy || !key}>
+              <Button type="submit" size="sm" disabled={busy || !key}>
                 {save.isPending ? <Spinner /> : null}Save key
               </Button>
             </div>
@@ -244,7 +243,9 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
                             <Mono>{entry.key}</Mono>
                           </span>
                           {entry.shadowed ? (
-                            <StatusPill className="h-5 px-2 text-[11.5px]">Shadowed</StatusPill>
+                            <Badge variant="outline" className="h-5 px-2 text-[11.5px]">
+                              Shadowed
+                            </Badge>
                           ) : null}
                           {level !== "home" ? (
                             <div className="flex gap-2">

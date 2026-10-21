@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { instructionsLimit, useInstructions } from "../lib/instructions";
 import { Textarea } from "./form";
-import { Button } from "./atoms/Button";
+import { Button } from "./ui/button";
 import { Failure, Spinner } from "./feedback";
 import { cn } from "../lib/utils";
 
@@ -47,7 +47,7 @@ export function InstructionsEditor({
         <span className="flex-1" />
         <Button
           size="xs"
-          variant="quiet"
+          variant="ghost"
           aria-label="Discard draft"
           disabled={!dirty || save.isPending}
           onClick={() => {
@@ -59,7 +59,7 @@ export function InstructionsEditor({
         </Button>
         <Button
           size="xs"
-          variant="primary"
+          variant="default"
           aria-label="Save instructions"
           disabled={!dirty || save.isPending}
           onClick={() => save.mutate(text)}
