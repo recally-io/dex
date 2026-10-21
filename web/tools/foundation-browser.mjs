@@ -176,6 +176,8 @@ async function composerEvidence(theme) {
     ),
   );
   await capture(`${theme}-chat-composer-draft-attachment.png`);
+  await evaluate(`${textarea}?.focus()`);
+  await delay(50);
   await call("Input.dispatchKeyEvent", {
     type: "keyDown",
     key: "Enter",
