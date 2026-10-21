@@ -1,6 +1,6 @@
 import { createContext, useContext, useId, type ReactNode } from "react";
 import { Menu } from "lucide-react";
-import { StatusPill } from "./atoms/StatusPill";
+import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
 
 export const ShellContext = createContext({ openDrawer: () => {} });
@@ -246,7 +246,7 @@ export function Note({ children, tone = "neutral" }: { children: ReactNode; tone
 
 // Marks a capability that this version of dex does not have.
 export function NotAvailable() {
-  return <StatusPill className="h-5 shrink-0 px-2 text-[11.5px]">Not yet available</StatusPill>;
+  return <Badge className="h-5 shrink-0 px-2 text-[11.5px]">Not yet available</Badge>;
 }
 
 export function Mono({ children, className }: { children: ReactNode; className?: string }) {
