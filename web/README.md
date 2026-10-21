@@ -38,24 +38,35 @@ The old `/settings/<section>` addresses redirect to the new pages.
 
 ## Components and theme
 
-The look follows Beautiful UI by
-[slev12397/beautiful-ui](https://github.com/slev12397/beautiful-ui) (MIT).
-`src/styles.css` is the only source of tokens. It has the upstream light and
-dark tokens from `app/globals.css`, the shared keyframes, and a few dex rules.
-The app uses system font stacks with Inter and JetBrains Mono as the first choices.
-It does not download fonts.
+The app uses the stock shadcn components in `src/components/ui/` and the preset
+theme in `src/styles.css`. Domain components compose those primitives. Do not
+copy a new atom or primitive. Add a component with the shadcn CLI when a stock
+primitive is missing.
+
+Every route renders one `PageHeader` from `src/components/page.tsx`. Bot pages
+put the bot identity, tabs, and chat actions in that header. Global settings
+pages use the `Settings` identity. The root has `data-page-header` so a future
+desktop host change can target all headers together.
+
+`src/components/dialog.tsx`, `confirm.tsx`, `shell.tsx`, and `icon-button.tsx`
+own the application overlays. They compose the stock Dialog, Tooltip, and
+related primitives. Keep focus management, Escape handling, and close-on-
+navigation behavior in these domain wrappers.
+
+`src/styles.css` is the only source of tokens. It contains the preset light and
+dark semantic tokens, shared keyframes, and dex rules. The app uses JetBrains
+Mono for body text and Merriweather for headings. It does not download fonts.
 
 The theme follows the system until the user picks light or dark with the
 toggle in the sidebar. `src/components/theme.tsx` applies the theme before the
 first render.
 
-`src/components/atoms/` and `src/components/primitives/` are upstream copies.
-Lint and format checks skip them. A dex change in a copy has a comment at the
-top of the file. The app parts are in `src/components/`: `page.tsx` for the
-framed page, sections and fact rows, `form.tsx` for fields, `dialog.tsx` for
-modal dialogs, and `feedback.tsx` for errors and loading states. The dialogs,
-the drawer, and the model and thinking pickers use Base UI directly. The pickers
-use cmdk for the keyboard and the model search.
+`src/components/atoms/` and `src/components/primitives/` remain for routes that
+are scheduled for later migration. Lint and format checks skip them. The app
+parts are in `src/components/`: `page.tsx` for the header and framed page,
+`form.tsx` for fields, `dialog.tsx` for modal dialogs, and `feedback.tsx` for
+errors and loading states. Model and thinking pickers still own their current
+keyboard search until their route migration.
 
 The upstream copies import `cn`. The Vite and TypeScript aliases resolve that import
 to `src/lib/utils.ts`, which uses the approved `clsx` and `tailwind-merge` packages.

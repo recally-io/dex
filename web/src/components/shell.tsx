@@ -7,15 +7,11 @@ import type { Agent } from "../api/generated/types.gen";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Dialog } from "@base-ui/react/dialog";
-import { IconSettingsGear2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconSettingsGear2";
-import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
-import { IconMagnifyingGlass } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconMagnifyingGlass";
-import { IconPlusSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlusSmall";
-import { IconSidebar } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconSidebar";
+import { Dialog, DialogClose, DialogContent } from "./ui/dialog";
+import { Settings, X, Search, Plus, PanelLeft } from "lucide-react";
 
 import { getSettingsOptions, listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
-import { StatusPill } from "./atoms/StatusPill";
+import { Badge } from "./ui/badge";
 import { ShellContext } from "./page";
 import { globalPages } from "./settings-switcher";
 import { useSystemTheme } from "./theme";
@@ -121,23 +117,21 @@ export function Shell() {
           </AgentContext.Provider>
         </main>
       </div>
-      <Dialog.Root open={menu} onOpenChange={setMenu}>
-        <Dialog.Portal>
-          <Dialog.Backdrop className="fixed inset-0 z-50 animate-[fade-in_160ms_ease-out_both] bg-[oklch(0.2_0.01_264/0.32)] lg:hidden" />
-          <Dialog.Popup
-            aria-label="Navigation"
-            className="fixed inset-y-0 left-0 z-50 flex w-[272px] max-w-[85vw] animate-[drawer-in_240ms_var(--ease-out-strong)_both] flex-col bg-canvas py-2 shadow-overlay outline-none lg:hidden"
+      <Dialog open={menu} onOpenChange={setMenu}>
+        <DialogContent
+          showCloseButton={false}
+          aria-label="Navigation"
+          className="fixed inset-y-0 left-0 top-0 z-50 flex h-full w-[272px] max-w-[85vw] translate-x-0 translate-y-0 animate-[drawer-in_240ms_var(--ease-out-strong)_both] flex-col rounded-none bg-canvas p-0 py-2 shadow-overlay outline-none lg:hidden"
+        >
+          <DialogClose
+            aria-label="Close navigation"
+            className="absolute top-3 -right-10 z-20 flex size-8 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink"
           >
-            <Dialog.Close
-              aria-label="Close navigation"
-              className="absolute top-3 -right-10 z-20 flex size-8 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink"
-            >
-              <IconCrossSmall size={18} />
-            </Dialog.Close>
-            <Sidebar path={path} className="w-full" />
-          </Dialog.Popup>
-        </Dialog.Portal>
-      </Dialog.Root>
+            <X size={18} />
+          </DialogClose>
+          <Sidebar path={path} className="w-full" />
+        </DialogContent>
+      </Dialog>
     </ShellContext.Provider>
   );
 }
@@ -214,7 +208,7 @@ function Sidebar({
       )}
       {list.length > 4 && !collapsed ? (
         <div className="mx-2 mb-1.5 flex h-8 shrink-0 items-center gap-1.5 rounded-control bg-field px-2 text-ink-3">
-          <IconMagnifyingGlass size={13} />
+          <Search size={13} />
           <input
             type="search"
             value={query}
@@ -239,7 +233,7 @@ function Sidebar({
             onClick={() => setCreating(true)}
             className={iconButton}
           >
-            <IconPlusSmall size={16} />
+            <Plus size={16} />
           </button>
         ) : null}
         {list.length && !shown.length ? (
@@ -275,7 +269,7 @@ function Sidebar({
           )}
         >
           <span className="flex size-5 shrink-0 items-center justify-center">
-            <IconSettingsGear2 size={15} />
+            <Settings size={15} />
           </span>
           {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">Settings</span>}
           {providerErrors ? (
@@ -296,7 +290,7 @@ function Sidebar({
             className={collapsed ? iconButton : footerRow}
           >
             <span className="flex size-5 shrink-0 items-center justify-center">
-              <IconSidebar size={15} />
+              <PanelLeft size={15} />
             </span>
             {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">Collapse</span>}
           </button>
@@ -360,9 +354,12 @@ function AgentRow({ agent, current, collapsed }: { agent: Agent; current: boolea
           <span className="truncate text-[11.5px] leading-tight text-ink-3">{status}</span>
         </span>
         {dirty ? (
-          <StatusPill tone="orange" className="h-5 shrink-0 px-2 text-[11px]">
+          <Badge
+            variant="outline"
+            className="h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-ink"
+          >
             Draft
-          </StatusPill>
+          </Badge>
         ) : null}
       </Link>
     </div>

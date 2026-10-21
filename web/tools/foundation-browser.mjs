@@ -86,6 +86,46 @@ async function waitFor(name, fn, timeout = 30000) {
   }
   throw new Error(`${name} timed out`);
 }
+async function evaluate(expression) {
+  return (await call("Runtime.evaluate", { expression, returnByValue: true })).result?.value;
+}
+// Chrome activates a button on Enter only when the key event carries its text.
+async function press(key, code, keyCode, text) {
+  await call("Input.dispatchKeyEvent", { type: "keyDown", key, code, windowsVirtualKeyCode: keyCode, text });
+  await call("Input.dispatchKeyEvent", { type: "keyUp", key, code, windowsVirtualKeyCode: keyCode });
+}
+// Opens an overlay from the keyboard, captures it, closes it with Escape, and checks that focus
+// returns to the button that opened it.
+async function overlayByKeyboard(name, opener, file) {
+  assert.ok(
+    await evaluate(`(${opener})?.focus() ?? true, document.activeElement === (${opener})`),
+    `${name}: focus opener`,
+  );
+  await press("Enter", "Enter", 13, "\r");
+  await waitFor(`${name} open`, () => evaluate("!!document.querySelector('[role=dialog]')"));
+  await capture(file);
+  await press("Escape", "Escape", 27);
+  await waitFor(`${name} closed`, () => evaluate("!document.querySelector('[role=dialog]')"));
+  await waitFor(`${name} focus returns`, () => evaluate(`document.activeElement === (${opener})`), 3000);
+  return true;
+}
+// Pages and overlays animate in, and a theme switch runs transitions. A screenshot taken during
+// one shows half-faded surfaces, so it waits until every finite animation has finished.
+async function capture(file) {
+  await waitFor(
+    `settled ${file}`,
+    async () =>
+      (
+        await call("Runtime.evaluate", {
+          expression:
+            "document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity)",
+          returnByValue: true,
+        })
+      ).result?.value,
+  );
+  const shot = await call("Page.captureScreenshot", { format: "png" });
+  await writeFile(join(output, file), Buffer.from(shot.data, "base64"));
+}
 try {
   await waitFor("app", async () => (await fetch(`${base}/api/health`)).ok);
   const profile = join(isolated, "chrome");
@@ -162,37 +202,34 @@ try {
           expression: `localStorage.setItem('dex-theme', '${theme}'); document.documentElement.classList.toggle('dark', '${theme}' === 'dark');`,
           returnByValue: true,
         });
-        await call("Page.captureScreenshot", { format: "png" }).then((shot) =>
-          writeFile(join(output, `${theme}-${name}-${size}.png`), Buffer.from(shot.data, "base64")),
-        );
+        await capture(`${theme}-${name}-${size}.png`);
         const text =
           (await call("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }))
             .result?.value ?? "";
         results.push({ theme, page: name, size, path, textLength: text.length });
-        if (name === "providers" && size === "desktop") {
-          await call("Runtime.evaluate", {
-            expression:
-              "[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Add provider')?.click()",
-          });
-          await waitFor(
-            `${theme} provider dialog`,
-            async () =>
-              (
-                await call("Runtime.evaluate", {
-                  // The dialog animates in; a screenshot mid-animation shows the page through it.
-                  expression:
-                    "!!document.querySelector('[role=dialog]') && document.getAnimations().every((a) => a.playState !== 'running')",
-                  returnByValue: true,
-                })
-              ).result?.value,
-          );
-          await call("Page.captureScreenshot", { format: "png" }).then((shot) =>
-            writeFile(
-              join(output, `${theme}-providers-dialog-desktop.png`),
-              Buffer.from(shot.data, "base64"),
-            ),
+        if (name === "providers" && size === "mobile") {
+          const keyboard = await overlayByKeyboard(
+            `${theme} drawer`,
+            "document.querySelector('button[aria-label=\"Open navigation\"]')",
+            `${theme}-providers-drawer-mobile.png`,
           );
           results.push({
+            theme,
+            page: "providers-drawer",
+            size: "mobile",
+            path,
+            textLength: text.length,
+            keyboard,
+          });
+        }
+        if (name === "providers" && size === "desktop") {
+          const keyboard = await overlayByKeyboard(
+            `${theme} provider dialog`,
+            "[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Add provider')",
+            `${theme}-providers-dialog-desktop.png`,
+          );
+          results.push({
+            keyboard,
             theme,
             page: "providers-dialog",
             size: "desktop",

@@ -9,14 +9,13 @@ import { instructionsDirty } from "../lib/instructions";
 import { sessionKind } from "../lib/tasks";
 import { useApp } from "../lib/app-state";
 import { MainTimeline } from "../routes/chat";
-import { IconBubblePlus } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubblePlus";
-import { IconSidebarSimpleRightWide } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconSidebarSimpleRightWide";
+import { MessageCirclePlus, PanelRight } from "lucide-react";
 import { ChatList, useNewChat } from "./chat-list";
 import { IconButton } from "./icon-button";
 import { AgentAvatar } from "./agent-avatar";
-import { StatusPill } from "./atoms/StatusPill";
 import { Failure, Loading } from "./feedback";
-import { InPaneContext, MainPane, MenuButton } from "./page";
+import { Badge } from "./ui/badge";
+import { InPaneContext, MainPane, PageHeader } from "./page";
 import { cn } from "../lib/utils";
 
 /** The first path segment of each agent tab, with the segments of the pages that open from it. */
@@ -146,8 +145,6 @@ function AgentPane({ settings }: { settings: Settings }) {
 
   const counts = new Map([["Automations", activity.automations]]);
 
-  // The other pages have their own page title.
-  const Name = onMain ? "h1" : "span";
   const nav = useRef<HTMLElement>(null);
 
   const label = current?.label;
@@ -173,84 +170,87 @@ function AgentPane({ settings }: { settings: Settings }) {
   return (
     <InPaneContext.Provider value>
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:border-l lg:border-line">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line pr-2 pl-3 sm:pl-4 lg:h-11">
-          <MenuButton />
-          <AgentAvatar agent={settings.agent} className="size-5 rounded-[6px] text-[11px]" />
-          <Name
-            id={onMain ? "page-title" : undefined}
-            tabIndex={onMain ? -1 : undefined}
-            className="max-w-[40%] shrink-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-ink outline-none sm:max-w-[200px]"
-          >
-            {settings.agent.name}
-          </Name>
-          {dirty ? (
-            <StatusPill tone="orange" className="hidden h-5 shrink-0 px-2 text-[11px] sm:inline-flex">
-              Instructions draft
-            </StatusPill>
-          ) : null}
-          <span aria-hidden className="h-4 w-px shrink-0 bg-line-strong" />
-          <nav
-            ref={nav}
-            aria-label={`${settings.agent.name} sections`}
-            className="-mb-px flex min-w-0 flex-1 gap-0.5 self-stretch overflow-x-auto [scrollbar-width:none]"
-          >
-            {tabs.map((tab) => (
-              <Link
-                key={tab.label}
-                activeOptions={{ exact: true }}
-                to={tab.to}
-                params={{ agentId }}
-                data-tab={tab.label}
-                aria-current={tab === current ? "page" : undefined}
-                className={cn(
-                  "relative flex shrink-0 items-center gap-1.5 px-2.5 text-[12.5px] whitespace-nowrap text-ink-2 transition-colors hover:text-ink",
-                  "after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full",
-                  "aria-[current=page]:font-medium aria-[current=page]:text-ink aria-[current=page]:after:bg-ink",
-                )}
+        <PageHeader
+          title={settings.agent.name}
+          // The other tabs open with their own page heading.
+          heading={onMain}
+          badge={
+            dirty ? (
+              <Badge
+                variant="outline"
+                className="hidden h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-ink sm:inline-flex"
               >
-                {tab.label}
-                {counts.get(tab.label) ? (
-                  <span className="text-[11px] text-ink-3 tabular-nums">{counts.get(tab.label)}</span>
-                ) : null}
-                {tab.label === "Settings" && dirty ? (
-                  <span
-                    role="img"
-                    aria-label="Unsaved instructions draft"
-                    className="size-1.5 rounded-full bg-orange"
-                  />
-                ) : null}
-                {tab.label === "Sessions" && activity.active > 0 ? (
-                  <span
-                    role="img"
-                    aria-label={`${activity.active} active`}
-                    className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-dex-accent-tint px-1.5 text-[11px] font-medium text-dex-accent-ink tabular-nums"
-                  >
-                    {activity.active}
-                  </span>
-                ) : null}
-              </Link>
-            ))}
-          </nav>
-          {onChatTab ? (
-            <div className="flex shrink-0 items-center gap-0.5">
-              <IconButton
-                label="New chat"
-                disabled={newChat.isPending}
-                onClick={() => newChat.mutate({ path: { agentId } })}
-              >
-                <IconBubblePlus size={17} />
-              </IconButton>
-              <IconButton
-                label="Chats"
-                aria-pressed={chatsOpen}
-                onClick={toggleChats}
-                className="hidden md:flex"
-              >
-                <IconSidebarSimpleRightWide size={17} />
-              </IconButton>
-            </div>
-          ) : null}
-        </header>
+                Instructions draft
+              </Badge>
+            ) : null
+          }
+          avatar={<AgentAvatar agent={settings.agent} className="size-5 rounded-[6px] text-[11px]" />}
+          tabs={
+            <nav
+              ref={nav}
+              aria-label={`${settings.agent.name} sections`}
+              className="-mb-px flex min-w-0 flex-1 gap-0.5 self-stretch overflow-x-auto [scrollbar-width:none]"
+            >
+              {tabs.map((tab) => (
+                <Link
+                  key={tab.label}
+                  activeOptions={{ exact: true }}
+                  to={tab.to}
+                  params={{ agentId }}
+                  data-tab={tab.label}
+                  aria-current={tab === current ? "page" : undefined}
+                  className={cn(
+                    "relative flex shrink-0 items-center gap-1.5 px-2.5 text-[12.5px] whitespace-nowrap text-ink-2 transition-colors hover:text-ink",
+                    "after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full",
+                    "aria-[current=page]:font-medium aria-[current=page]:text-ink aria-[current=page]:after:bg-ink",
+                  )}
+                >
+                  {tab.label}
+                  {counts.get(tab.label) ? (
+                    <span className="text-[11px] text-ink-3 tabular-nums">{counts.get(tab.label)}</span>
+                  ) : null}
+                  {tab.label === "Settings" && dirty ? (
+                    <span
+                      role="img"
+                      aria-label="Unsaved instructions draft"
+                      className="size-1.5 rounded-full bg-orange"
+                    />
+                  ) : null}
+                  {tab.label === "Sessions" && activity.active > 0 ? (
+                    <span
+                      role="img"
+                      aria-label={`${activity.active} active`}
+                      className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-dex-accent-tint px-1.5 text-[11px] font-medium text-dex-accent-ink tabular-nums"
+                    >
+                      {activity.active}
+                    </span>
+                  ) : null}
+                </Link>
+              ))}
+            </nav>
+          }
+          actions={
+            onChatTab ? (
+              <>
+                <IconButton
+                  label="New chat"
+                  disabled={newChat.isPending}
+                  onClick={() => newChat.mutate({ path: { agentId } })}
+                >
+                  <MessageCirclePlus size={17} />
+                </IconButton>
+                <IconButton
+                  label="Chats"
+                  aria-pressed={chatsOpen}
+                  onClick={toggleChats}
+                  className="hidden md:flex"
+                >
+                  <PanelRight size={17} />
+                </IconButton>
+              </>
+            ) : null
+          }
+        />
         <div className="flex min-h-0 flex-1">
           <div className="flex min-w-0 flex-1 flex-col">
             <div inert={!onMain} className={cn("min-h-0 flex-1 flex-col", onMain ? "flex" : "hidden")}>

@@ -5,7 +5,8 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
-import { Button } from "./atoms/Button";
+import { Button } from "./ui/button";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { cn } from "../lib/utils";
 
 const fieldClass =
@@ -78,44 +79,27 @@ export function RadioSegments<T extends string>({
   onChange: (value: T) => void;
   className?: string;
 }) {
-  const name = useId();
-  const index = options.findIndex((o) => o.value === value);
-
   return (
     <fieldset className={cn("min-w-0", className)}>
       <legend className="sr-only">{label}</legend>
-      <div
-        className="relative grid h-8 rounded-full bg-line/60 p-0.5 select-none"
-        style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}
+      <ToggleGroup
+        value={[value]}
+        // SAFETY: ToggleGroup values come from the readonly options list above.
+        onValueChange={(next) => next[0] && onChange(next[0] as T)}
+        className="h-8 w-full rounded-full bg-line/60 p-0.5"
       >
-        <span
-          aria-hidden
-          className="absolute inset-y-0.5 left-0.5 rounded-full bg-surface shadow-hairline transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
-          style={{
-            width: `calc((100% - 4px) / ${options.length})`,
-            transform: `translateX(${index * 100}%)`,
-          }}
-        />
         {options.map((option) => (
-          <label
+          <ToggleGroupItem
             key={option.value}
-            className={cn(
-              "relative z-10 flex cursor-pointer items-center justify-center rounded-full px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-dex-accent",
-              option.value === value ? "text-ink" : "text-ink-3 hover:text-ink-2",
-            )}
+            value={option.value}
+            aria-label={option.label}
+            // The stock pressed color matches the track, so the chosen segment is raised instead.
+            className="h-7 flex-1 rounded-full px-3 text-[13px] text-ink-3 hover:bg-transparent hover:text-ink-2 aria-pressed:bg-surface aria-pressed:text-ink aria-pressed:shadow-hairline"
           >
-            {/* The input covers its segment, so a click on the segment hits the input. */}
-            <input
-              type="radio"
-              name={name}
-              className="absolute inset-0 cursor-pointer appearance-none rounded-full opacity-0"
-              checked={option.value === value}
-              onChange={() => onChange(option.value)}
-            />
             {option.label}
-          </label>
+          </ToggleGroupItem>
         ))}
-      </div>
+      </ToggleGroup>
     </fieldset>
   );
 }

@@ -29,7 +29,7 @@ import { hasContext, useClearContext, LoadEarlierButton } from "../components/ti
 import { RetryNotice, Transcript } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
-import { InPaneContext, MainPane, MenuButton, Note } from "../components/page";
+import { InPaneContext, MainPane, Note, PageHeader } from "../components/page";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import LoadingState from "../components/primitives/LoadingState";
@@ -435,10 +435,12 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
             </h1>
           )
         ) : (
-          <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
-            {embedded ? null : <MenuButton />}
-            {chat.data ? (
-              <>
+          <PageHeader
+            heading
+            menu={!embedded}
+            title={chat.data?.title || "New session"}
+            crumb={
+              chat.data ? (
                 <Link
                   to="/a/$agentId/sessions"
                   params={{ agentId }}
@@ -446,20 +448,10 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                 >
                   Sessions
                 </Link>
-                <span aria-hidden className="text-line-strong">
-                  /
-                </span>
-              </>
-            ) : null}
-            <h1
-              id="page-title"
-              tabIndex={-1}
-              className="min-w-0 truncate text-[13px] font-semibold text-ink outline-none"
-            >
-              {chat.data?.title || "New session"}
-            </h1>
-            {chat.data ? <OriginPill chat={chat.data} /> : null}
-          </header>
+              ) : null
+            }
+            badge={chat.data ? <OriginPill chat={chat.data} /> : null}
+          />
         )}
         <div className="flex min-h-0 flex-1">
           <div className="relative flex min-w-0 flex-1 flex-col">

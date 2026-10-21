@@ -1,9 +1,71 @@
 import { createContext, useContext, useId, type ReactNode } from "react";
-import { IconBurger } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBurger";
-import { StatusPill } from "./atoms/StatusPill";
+import { Menu } from "lucide-react";
+import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
 
 export const ShellContext = createContext({ openDrawer: () => {} });
+
+export type PageHeaderProps = {
+  title: ReactNode;
+  /** Renders the title as the page heading, which takes focus after navigation. */
+  heading?: boolean;
+  avatar?: ReactNode;
+  /** A link back to the parent page, shown before the title. */
+  crumb?: ReactNode;
+  badge?: ReactNode;
+  tabs?: ReactNode;
+  actions?: ReactNode;
+  /** False where the page sits inside another pane that has its own drawer button. */
+  menu?: boolean;
+  className?: string;
+};
+
+/** The title bar of every page. One height at every width; `data-page-header` marks it. */
+export function PageHeader({
+  title,
+  heading = false,
+  avatar,
+  crumb,
+  badge,
+  tabs,
+  actions,
+  menu = true,
+  className,
+}: PageHeaderProps) {
+  const Title = heading ? "h1" : "span";
+
+  return (
+    <header
+      data-page-header
+      className={cn(
+        "flex h-12 shrink-0 items-center gap-2 border-b border-line pr-2 pl-3 sm:pl-4",
+        className,
+      )}
+    >
+      {menu ? <MenuButton /> : null}
+      {avatar}
+      {crumb ? (
+        <>
+          {crumb}
+          <span aria-hidden className="text-line-strong">
+            /
+          </span>
+        </>
+      ) : null}
+      <Title
+        id={heading ? "page-title" : undefined}
+        tabIndex={heading ? -1 : undefined}
+        // The global heading font is for page headings; the bar keeps the body face on every page.
+        className="max-w-[40%] min-w-0 shrink-0 truncate font-sans text-[14px] font-semibold tracking-[-0.01em] text-ink outline-none sm:max-w-[200px]"
+      >
+        {title}
+      </Title>
+      {badge}
+      {tabs ? <>{tabs}</> : <span className="min-w-0 flex-1" />}
+      {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
+    </header>
+  );
+}
 
 /** The drawer button for screens below lg. */
 export function MenuButton() {
@@ -16,7 +78,7 @@ export function MenuButton() {
       onClick={openDrawer}
       className="-ml-1 flex size-9 shrink-0 items-center justify-center rounded-control text-ink-2 transition-colors hover:bg-hover hover:text-ink lg:hidden"
     >
-      <IconBurger size={18} />
+      <Menu size={18} />
     </button>
   );
 }
@@ -25,18 +87,21 @@ export function MenuButton() {
 export const InPaneContext = createContext(false);
 
 /** The rounded main pane. Below lg it has a small bar with the drawer button. */
-export function MainPane({ children, bar = true }: { children: ReactNode; bar?: boolean }) {
+export function MainPane({
+  children,
+  bar = true,
+  headerTitle = "dex",
+}: {
+  children: ReactNode;
+  bar?: boolean;
+  headerTitle?: ReactNode;
+}) {
   if (useContext(InPaneContext))
     return <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>;
 
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page">
-      {bar ? (
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 lg:hidden">
-          <MenuButton />
-          <span className="text-[14px] font-semibold text-ink">dex</span>
-        </div>
-      ) : null}
+      {bar ? <PageHeader title={headerTitle} /> : null}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
     </section>
   );
@@ -64,7 +129,7 @@ export function FramedPage(props: PageProps) {
   const { eyebrow, title, description, badge, actions, toolbar, children } = props;
 
   return (
-    <MainPane>
+    <MainPane headerTitle="Settings">
       <div className="mx-auto w-full max-w-[1120px] px-6 py-8">
         <header className="mb-8 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
           <div className="min-w-0">
@@ -214,7 +279,11 @@ export function Note({ children, tone = "neutral" }: { children: ReactNode; tone
 
 // Marks a capability that this version of dex does not have.
 export function NotAvailable() {
-  return <StatusPill className="h-5 shrink-0 px-2 text-[11.5px]">Not yet available</StatusPill>;
+  return (
+    <Badge variant="secondary" className="h-5 shrink-0 px-2 text-[11.5px]">
+      Not yet available
+    </Badge>
+  );
 }
 
 export function Mono({ children, className }: { children: ReactNode; className?: string }) {

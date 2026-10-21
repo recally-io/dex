@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Button } from "./atoms/Button";
+import { Button } from "./ui/button";
 import { Modal } from "./dialog";
 import { Failure } from "./feedback";
 
@@ -35,7 +35,7 @@ export function Confirm({
           </Button>
           <Button
             size="sm"
-            variant="primary"
+            variant="destructive"
             className="bg-red text-white"
             onClick={onConfirm}
             disabled={pending}
