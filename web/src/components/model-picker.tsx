@@ -171,7 +171,7 @@ function ModelList({
     return (
       <p className="p-3 text-[12.5px] text-ink-2">
         No providers yet.{" "}
-        <Link className="font-medium text-accent-ink underline" to="/providers" onClick={onLeave}>
+        <Link className="font-medium text-dex-accent-ink underline" to="/providers" onClick={onLeave}>
           Add a provider
         </Link>{" "}
         to see its models.

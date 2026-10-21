@@ -11,7 +11,7 @@ export function Chip({
 }) {
   const tones = {
     neutral: "bg-inset text-ink-2",
-    accent: "bg-accent-tint text-accent-ink",
+    accent: "bg-dex-accent-tint text-dex-accent-ink",
     orange: "bg-orange-tint text-orange",
   };
   return (

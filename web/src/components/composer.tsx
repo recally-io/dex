@@ -132,7 +132,7 @@ export function Composer({
         }}
         className={cn(
           "relative isolate flex flex-col gap-2 overflow-hidden rounded-[12px] border border-line bg-surface px-3 pt-2 pb-2 transition-[border-color] duration-150 focus-within:border-line-strong",
-          dropping && "border-accent focus-within:border-accent",
+          dropping && "border-dex-accent focus-within:border-dex-accent",
         )}
       >
         {files?.files.length ? (

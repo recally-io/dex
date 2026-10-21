@@ -219,7 +219,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
               {weekdays.map((day, i) => (
                 <label
                   key={day}
-                  className="flex h-7 cursor-pointer items-center rounded-full bg-field px-3 text-[12.5px] font-medium text-ink-2 shadow-hairline transition-colors has-[:checked]:bg-ink has-[:checked]:text-canvas has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent"
+                  className="flex h-7 cursor-pointer items-center rounded-full bg-field px-3 text-[12.5px] font-medium text-ink-2 shadow-hairline transition-colors has-[:checked]:bg-ink has-[:checked]:text-canvas has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-dex-accent"
                 >
                   <input
                     type="checkbox"

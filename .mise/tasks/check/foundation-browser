@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Capture foundation UI screenshots in a real browser"
+#MISE depends=["build:web"]
+set -euo pipefail
+
+foundation_bin="$(mktemp -d)"
+trap 'rm -rf "$foundation_bin"' EXIT
+go build -tags dex_e2e -o "$foundation_bin/dex" ./cmd/dex
+node web/tools/foundation-browser.mjs "$foundation_bin/dex" "${1:?pass an output directory}"

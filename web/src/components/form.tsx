@@ -100,7 +100,7 @@ export function RadioSegments<T extends string>({
           <label
             key={option.value}
             className={cn(
-              "relative z-10 flex cursor-pointer items-center justify-center rounded-full px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent",
+              "relative z-10 flex cursor-pointer items-center justify-center rounded-full px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-dex-accent",
               option.value === value ? "text-ink" : "text-ink-3 hover:text-ink-2",
             )}
           >

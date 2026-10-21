@@ -38,7 +38,7 @@ const markdown: Components = {
   ),
   strong: ({ children }) => <strong className="font-semibold text-ink">{children}</strong>,
   a: ({ href, children }) => (
-    <a href={href} className="font-medium text-accent-ink underline">
+    <a href={href} className="font-medium text-dex-accent-ink underline">
       {children}
     </a>
   ),

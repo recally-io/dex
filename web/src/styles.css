@@ -6,6 +6,9 @@
  * entry maps them onto Tailwind's --shadow-xs…2xl scale; our semantic tokens
  * below build on those values so the whole app picks up the smooth shadows. */
 @import "shadow-plugin/unprefixed";
+@import "tw-animate-css";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/merriweather";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -18,96 +21,158 @@
  * ────────────────────────────────────────────────────────── */
 
 :root {
-  /* surfaces — cool, blue-tinted neutrals */
-  --page: #ffffff;
-  --canvas: #f4f6f8;
-  --surface: #ffffff;
-  --inset: #f6f7f9;
-  --hover: #f1f3f5;
-  --hover-2: #e9ecef;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.147 0.004 49.3);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.147 0.004 49.3);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.147 0.004 49.3);
+  --primary: oklch(0.214 0.009 43.1);
+  --primary-foreground: oklch(0.986 0.002 67.8);
+  --secondary: oklch(0.96 0.002 17.2);
+  --secondary-foreground: oklch(0.214 0.009 43.1);
+  --muted: oklch(0.96 0.002 17.2);
+  --muted-foreground: oklch(0.547 0.021 43.1);
+  --accent: oklch(0.96 0.002 17.2);
+  --accent-foreground: oklch(0.214 0.009 43.1);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0.005 34.3);
+  --input: oklch(0.922 0.005 34.3);
+  --ring: oklch(0.714 0.014 41.2);
+  --chart-1: oklch(0.809 0.105 251.813);
+  --chart-2: oklch(0.623 0.214 259.815);
+  --chart-3: oklch(0.546 0.245 262.881);
+  --chart-4: oklch(0.488 0.243 264.376);
+  --chart-5: oklch(0.424 0.199 265.638);
+  --radius: 0;
+  --sidebar: oklch(0.986 0.002 67.8);
+  --sidebar-foreground: oklch(0.147 0.004 49.3);
+  --sidebar-primary: oklch(0.214 0.009 43.1);
+  --sidebar-primary-foreground: oklch(0.986 0.002 67.8);
+  --sidebar-accent: oklch(0.96 0.002 17.2);
+  --sidebar-accent-foreground: oklch(0.214 0.009 43.1);
+  --sidebar-border: oklch(0.922 0.005 34.3);
+  --sidebar-ring: oklch(0.714 0.014 41.2);
+}
 
-  /* ink ramp — both greys carry words, so both hold 4.5:1 on white */
-  --ink: #0a0a0a;
-  --ink-2: #55565a;
-  --ink-3: #6b6b6b;
+.dark {
+  --background: oklch(0.147 0.004 49.3);
+  --foreground: oklch(0.986 0.002 67.8);
+  --card: oklch(0.214 0.009 43.1);
+  --card-foreground: oklch(0.986 0.002 67.8);
+  --popover: oklch(0.214 0.009 43.1);
+  --popover-foreground: oklch(0.986 0.002 67.8);
+  --primary: oklch(0.922 0.005 34.3);
+  --primary-foreground: oklch(0.214 0.009 43.1);
+  --secondary: oklch(0.268 0.011 36.5);
+  --secondary-foreground: oklch(0.986 0.002 67.8);
+  --muted: oklch(0.268 0.011 36.5);
+  --muted-foreground: oklch(0.714 0.014 41.2);
+  --accent: oklch(0.268 0.011 36.5);
+  --accent-foreground: oklch(0.986 0.002 67.8);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.547 0.021 43.1);
+  --chart-1: oklch(0.809 0.105 251.813);
+  --chart-2: oklch(0.623 0.214 259.815);
+  --chart-3: oklch(0.546 0.245 262.881);
+  --chart-4: oklch(0.488 0.243 264.376);
+  --chart-5: oklch(0.424 0.199 265.638);
+  --sidebar: oklch(0.214 0.009 43.1);
+  --sidebar-foreground: oklch(0.986 0.002 67.8);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.986 0.002 67.8);
+  --sidebar-accent: oklch(0.268 0.011 36.5);
+  --sidebar-accent-foreground: oklch(0.986 0.002 67.8);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.547 0.021 43.1);
+}
 
-  /* borders — solid and crisp, not alpha */
-  --line: #e6e6e6;
-  --line-strong: #d4d4d4;
-  --line-soft: #f0f0f0;
-  --grid-line: color-mix(in srgb, var(--line) 78%, transparent);
-  --field: #ffffff;
-  --stripe: #e9ecef;
-  --stripe-bg: #f4f6f8;
-
-  /* accent — the one hue on the screen, on the live state and the focus ring only */
-  --accent: #1d5fbf;
-  --accent-ink: #1a4f9e;
-  --accent-tint: #eaf0fa;
-
-  /* semantic */
+/* Compatibility aliases for the pre-shadcn UI. Keep these until later migration PRs move callers. */
+:root {
+  --page: var(--background);
+  --canvas: var(--sidebar);
+  --surface: var(--card);
+  --inset: var(--muted);
+  --hover: var(--secondary);
+  --hover-2: var(--accent);
+  --ink: var(--foreground);
+  /* ink-2 sits between the body text and ink-3; muted-foreground already holds 4.5:1. */
+  --ink-2: color-mix(in oklch, var(--muted-foreground) 60%, var(--foreground));
+  --ink-3: var(--muted-foreground);
+  --line: var(--border);
+  --line-strong: var(--ring);
+  --line-soft: var(--border);
+  --field: var(--card);
+  --stripe: var(--secondary);
+  --stripe-bg: var(--background);
+  --dex-accent: var(--primary);
+  --dex-accent-ink: var(--foreground);
+  --dex-accent-tint: color-mix(in oklch, var(--dex-accent) 12%, transparent);
+  --radius-chip: 0px;
+  --radius-control: 0px;
+  --radius-card: 0px;
+  --radius-window: 0px;
   --green: #2e7d32;
   --green-tint: #e8f3e9;
   --orange: #b45309;
   --orange-tint: #fdf3e3;
   --red: #c4242a;
   --red-tint: #ffedea;
-
-  /* chart overlays — neutral system colors with enough contrast on either theme */
-  --tooltip-bg: #1c1c1e;
-  --tooltip-fg: #f5f5f5;
-  --tooltip-muted: #a8a8ad;
-  --tooltip-border: #333336;
-
-  /* shadows — a hairline ring at rest; height only for what floats */
-  --shadow-hairline: 0 0 0 1px var(--line);
-  --shadow-btn: 0 0 0 1px var(--line-strong);
-  --shadow-card: 0 0 0 1px var(--line);
-  --shadow-raised: 0 0 0 1px var(--line-strong);
-  --shadow-overlay: 0 0 0 1px var(--line-strong), 0 12px 32px rgb(0 0 0 / 0.12);
+  --grid-line: color-mix(in srgb, var(--border) 78%, transparent);
+  --tooltip-bg: var(--popover);
+  --tooltip-fg: var(--popover-foreground);
+  --tooltip-muted: var(--muted-foreground);
+  --tooltip-border: var(--border);
+  --shadow-hairline: 0 0 0 1px var(--border);
+  --shadow-btn: 0 0 0 1px var(--border);
+  --shadow-card: 0 0 0 1px var(--border);
+  --shadow-raised: 0 0 0 1px var(--ring);
+  --shadow-overlay: 0 0 0 1px var(--ring), 0 12px 32px rgb(0 0 0 / 0.12);
   --shadow-inset-field: inset 0 1px 2px rgb(0 0 0 / 0.06);
 }
 
 .dark {
-  --page: #141414;
-  --canvas: #0f0f0f;
-  --surface: #1a1a1a;
-  --inset: #171717;
-  --hover: #202020;
-  --hover-2: #272727;
-
-  --ink: #f5f5f5;
-  --ink-2: #b4b4b4;
-  --ink-3: #949494;
-
-  --line: #262626;
-  --line-strong: #3a3a3a;
-  --line-soft: #1f1f1f;
-  --field: #1a1a1a;
-  --stripe: #262626;
-  --stripe-bg: #0f0f0f;
-
-  --accent: #5b9bf0;
-  --accent-ink: #8fbcf7;
-  --accent-tint: color-mix(in oklch, #5b9bf0 18%, transparent);
-
+  --page: var(--background);
+  --canvas: var(--sidebar);
+  --surface: var(--card);
+  --inset: var(--muted);
+  --hover: var(--secondary);
+  --hover-2: var(--accent);
+  --ink: var(--foreground);
+  /* ink-2 sits between the body text and ink-3; muted-foreground already holds 4.5:1. */
+  --ink-2: color-mix(in oklch, var(--muted-foreground) 60%, var(--foreground));
+  --ink-3: var(--muted-foreground);
+  --line: var(--border);
+  --line-strong: var(--ring);
+  --line-soft: var(--border);
+  --field: var(--card);
+  --stripe: var(--secondary);
+  --stripe-bg: var(--background);
+  --dex-accent: var(--primary);
+  --dex-accent-ink: var(--foreground);
+  --dex-accent-tint: color-mix(in oklch, var(--dex-accent) 12%, transparent);
+  --radius-chip: 0px;
+  --radius-control: 0px;
+  --radius-card: 0px;
+  --radius-window: 0px;
   --green: #3fc07a;
   --green-tint: #172a1d;
   --orange: #e0a25a;
   --orange-tint: #2b2114;
   --red: #e5566f;
   --red-tint: #2c1a20;
-
-  --tooltip-bg: #101010;
-  --tooltip-fg: #f5f5f5;
-  --tooltip-muted: #b4b4b4;
-  --tooltip-border: #262626;
-
-  --shadow-hairline: 0 0 0 1px var(--line);
-  --shadow-btn: 0 0 0 1px var(--line-strong);
-  --shadow-card: 0 0 0 1px var(--line);
-  --shadow-raised: 0 0 0 1px var(--line-strong);
-  --shadow-overlay: 0 0 0 1px var(--line-strong), 0 16px 40px rgb(0 0 0 / 0.5);
+  --grid-line: color-mix(in srgb, var(--border) 78%, transparent);
+  --tooltip-bg: var(--popover);
+  --tooltip-fg: var(--popover-foreground);
+  --tooltip-muted: var(--muted-foreground);
+  --tooltip-border: var(--border);
+  --shadow-hairline: 0 0 0 1px var(--border);
+  --shadow-btn: 0 0 0 1px var(--border);
+  --shadow-card: 0 0 0 1px var(--border);
+  --shadow-raised: 0 0 0 1px var(--ring);
+  --shadow-overlay: 0 0 0 1px var(--ring), 0 16px 40px rgb(0 0 0 / 0.5);
   --shadow-inset-field: inset 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
@@ -128,8 +193,9 @@
   --color-line-soft: var(--line-soft);
   --color-grid-line: var(--grid-line);
   --color-accent: var(--accent);
-  --color-accent-ink: var(--accent-ink);
-  --color-accent-tint: var(--accent-tint);
+  --color-dex-accent: var(--dex-accent);
+  --color-dex-accent-ink: var(--dex-accent-ink);
+  --color-dex-accent-tint: var(--dex-accent-tint);
   --color-green: var(--green);
   --color-green-tint: var(--green-tint);
   --color-orange: var(--orange);
@@ -146,19 +212,57 @@
   --shadow-overlay: var(--shadow-overlay);
 
   /* type — the system face is the product's face on a desktop app that must work offline */
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-mono-face), ui-monospace, "SF Mono", monospace;
+  --font-sans: "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
 
   /* radii — chips 4, controls 6, cards 8, windows 12 */
-  --radius-chip: 4px;
-  --radius-control: 6px;
-  --radius-card: 8px;
-  --radius-window: 12px;
+  --radius-chip: 0px;
+  --radius-control: 0px;
+  --radius-card: 0px;
+  --radius-window: 0px;
 
   /* easing — strong curves; built-ins are too weak */
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-link: cubic-bezier(0.16, 1, 0.3, 1);
+  --font-heading: "Merriweather Variable", serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 /* ── base ─────────────────────────────────────────────── */
@@ -172,12 +276,13 @@ html {
 body {
   background-color: var(--stripe-bg);
   color: var(--ink);
+  font-family: "JetBrains Mono Variable", ui-monospace, monospace;
   font-size: 14px;
   line-height: 1.5;
 }
 
 ::selection {
-  background: var(--accent-tint);
+  background: var(--dex-accent-tint);
   color: var(--ink);
 }
 
@@ -188,6 +293,7 @@ h1,
 h2,
 h3,
 h4 {
+  font-family: "Merriweather Variable", Georgia, serif;
   text-wrap: balance;
 }
 
@@ -219,7 +325,7 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--dex-accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -361,7 +467,7 @@ select:focus-visible,
    falls back to the system faces when they are not installed. */
 :root {
   --font-inter: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
-  --font-mono-face: "JetBrains Maple Mono", "SF Mono", ui-monospace, monospace;
+  --font-mono-face: "JetBrains Mono Variable", ui-monospace, monospace;
 }
 
 /* The page gutter uses the same plain surface as the document. */
@@ -389,5 +495,17 @@ select:focus-visible,
 @keyframes drawer-in {
   from {
     transform: translateX(-100%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-mono;
   }
 }

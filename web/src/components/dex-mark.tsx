@@ -14,7 +14,15 @@ export function DexMark({ size = 18 }: { size?: number }) {
       focusable="false"
       className="shrink-0"
     >
-      <rect x="4.75" y="2.75" width="10.5" height="10.5" rx="2.25" stroke="var(--accent)" strokeWidth="1.4" />
+      <rect
+        x="4.75"
+        y="2.75"
+        width="10.5"
+        height="10.5"
+        rx="2.25"
+        stroke="var(--dex-accent)"
+        strokeWidth="1.4"
+      />
       <rect
         x="2.75"
         y="4.75"

@@ -64,3 +64,28 @@ The project does not need a separate `cn` package.
 The install task puts a Go module boundary in `node_modules/`.
 Some npm tools contain Go examples. This boundary keeps those examples out of
 Go builds and lint checks.
+
+### Stock shadcn foundation
+
+`src/components/ui/` is the owned output of the stock shadcn/ui preset
+`b4XK48HRFw` (`base-lyra`). Keep these files generic and compose them in domain
+components. Do not add route behavior to this directory. The `components.json`
+file records the preset, aliases, Base UI style, and Lucide icon library.
+
+To update the foundation, review the preset first, then run the official CLI
+from `web/`:
+
+```sh
+bunx --bun shadcn@latest apply b4XK48HRFw -y
+bunx --bun shadcn@latest add button badge switch toggle-group dialog popover command tooltip skeleton separator scroll-area input textarea label -y
+```
+
+Review generated diffs before committing. Keep the compatibility aliases in
+`src/styles.css` until all existing callers move to semantic tokens. Fonts are
+bundled with `@fontsource-variable/jetbrains-mono` and
+`@fontsource-variable/merriweather`, so the desktop app does not need a CDN.
+
+Run `mise run check:foundation-browser /tmp/dex-foundation-evidence` to start a
+real isolated app and Chrome profile. The task writes screenshots and
+`result.json` to the given directory for Chat, Sessions, bot Settings, and
+Providers at desktop and mobile widths in light and dark modes.

@@ -16,7 +16,7 @@ export const buttonVariants = cva(
         primary: `bg-ink text-canvas hover:opacity-90 dark:bg-ink dark:text-canvas`,
         secondary: "bg-surface text-ink shadow-btn hover:bg-inset aria-expanded:bg-hover",
         ghost: "bg-hover-2 text-ink hover:bg-line-strong",
-        accent: `bg-accent text-white hover:bg-accent-ink`,
+        accent: `bg-dex-accent text-white hover:bg-dex-accent-ink`,
         success: `bg-green text-white hover:brightness-95`,
         /* transparent until hovered — for dense toolbars/action rows */
         quiet: "text-ink hover:bg-hover",

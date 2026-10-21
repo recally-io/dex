@@ -252,7 +252,7 @@ function ProviderCard({
               title={m.id}
               className={
                 inUse && settings.agent.modelId === m.id
-                  ? "inline-flex h-6 max-w-full items-center rounded-full bg-accent-tint px-2.5 text-[12px] font-medium text-accent-ink"
+                  ? "inline-flex h-6 max-w-full items-center rounded-full bg-dex-accent-tint px-2.5 text-[12px] font-medium text-dex-accent-ink"
                   : "inline-flex h-6 max-w-full items-center rounded-full bg-inset px-2.5 text-[12px] font-medium text-ink-2 shadow-btn"
               }
             >
