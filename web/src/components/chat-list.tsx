@@ -169,7 +169,8 @@ function Group({
         size="sm"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex h-7 w-full items-center gap-1 rounded-control px-2 text-[12px] font-medium text-ink-3 hover:text-ink"
+        // The stock ghost button fills aria-expanded; a group header only rotates its chevron.
+        className="flex h-7 w-full items-center justify-start gap-1 rounded-control px-2 text-[12px] font-medium text-ink-3 hover:text-ink aria-expanded:bg-transparent aria-expanded:text-ink-3 aria-expanded:hover:text-ink"
       >
         <ChevronRight
           className={cn("size-3.5 shrink-0 transition-transform duration-150", open && "rotate-90")}
@@ -186,7 +187,7 @@ function Group({
               variant="ghost"
               size="sm"
               onClick={() => setLimit(count)}
-              className="h-8 rounded-control px-2 text-left text-[12.5px] text-ink-3 hover:bg-hover-2 hover:text-ink"
+              className="h-8 justify-start rounded-control px-2 text-left text-[12.5px] text-ink-3 hover:bg-hover-2 hover:text-ink"
             >
               Show {count - limit} more
             </Button>

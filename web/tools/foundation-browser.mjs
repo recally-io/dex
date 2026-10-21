@@ -184,7 +184,8 @@ async function composerEvidence(theme) {
     code: "Enter",
     windowsVirtualKeyCode: 13,
     modifiers: 8,
-    text: "\n",
+    // Chrome inserts a line break only for the carriage return text, as for a plain Enter.
+    text: "\r",
   });
   await call("Input.dispatchKeyEvent", {
     type: "keyUp",
@@ -193,7 +194,10 @@ async function composerEvidence(theme) {
     windowsVirtualKeyCode: 13,
     modifiers: 8,
   });
-  const shiftLine = await evaluate(`${textarea}?.value.includes('\\n')`);
+  // Shift+Enter keeps the draft and adds a line; a sent message would empty the box.
+  const shiftLine = await evaluate(
+    `${textarea}?.value.startsWith('draft survives') && ${textarea}.value.includes('\\n')`,
+  );
   await evaluate(
     `(() => { const el = ${textarea}; const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(el, 'sleep 3'); el.dispatchEvent(new Event('input', { bubbles: true })); })()`,
   );
