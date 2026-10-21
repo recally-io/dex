@@ -522,7 +522,7 @@ export function TranscriptItem({
               className={cn("size-1.5 shrink-0 rounded-full", item.aborted ? "bg-ink-3" : "bg-red")}
             />
             <span className={cn("font-medium", item.aborted ? "text-ink" : "text-red")}>
-              {item.aborted ? "Run stopped" : "The agent could not finish"}
+              {item.aborted ? "Run stopped" : "The bot could not finish"}
             </span>
           </div>
           <p className="pl-3.5 text-[12.5px] text-ink-2 [overflow-wrap:anywhere]">{item.reason}</p>

@@ -18,7 +18,7 @@ export function AgentCreateDialog({ onClose }: { onClose: () => void }) {
   return settings.data ? (
     <CreateForm initial={settings.data.agent} onClose={onClose} />
   ) : (
-    <Modal title="Create agent" onClose={onClose} footer={<Button onClick={onClose}>Cancel</Button>}>
+    <Modal title="Create bot" onClose={onClose} footer={<Button onClick={onClose}>Cancel</Button>}>
       {settings.isError ? <Failure error={settings.error} /> : <Loading />}
     </Modal>
   );
@@ -43,8 +43,8 @@ function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void 
 
   return (
     <Modal
-      title="Create agent"
-      description="Each agent has its own timeline, instructions and model."
+      title="Create bot"
+      description="Each bot has its own timeline, instructions and model."
       pending={create.isPending}
       onClose={onClose}
       footer={
@@ -54,16 +54,16 @@ function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void 
           </Button>
           <Button
             type="submit"
-            form="create-agent"
+            form="create-bot"
             disabled={!trimmed || Array.from(trimmed).length > 40 || create.isPending}
           >
-            {create.isPending ? "Creating…" : "Create agent"}
+            {create.isPending ? "Creating…" : "Create bot"}
           </Button>
         </>
       }
     >
       <form
-        id="create-agent"
+        id="create-bot"
         className="flex flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
@@ -105,7 +105,7 @@ function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void 
             />
           )}
         </Field>
-        {create.isError ? <Failure title="Could not create agent" error={create.error} /> : null}
+        {create.isError ? <Failure title="Could not create bot" error={create.error} /> : null}
       </form>
     </Modal>
   );

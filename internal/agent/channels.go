@@ -80,7 +80,7 @@ func (s *Service) checkCredential(ctx context.Context, agentID, platform, creden
 		return err
 	}
 	if id != agentID {
-		return fmt.Errorf("%w: %s is used by agent %q (%s)", ErrCredentialInUse, platform, name, id)
+		return fmt.Errorf("%w: %s is used by bot %q (%s)", ErrCredentialInUse, platform, name, id)
 	}
 	return nil
 }

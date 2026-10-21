@@ -241,7 +241,7 @@ function TaskWork({ chatId }: { chatId: number }) {
       {connection !== "ready" ? (
         <div role="status" className="text-[12px] text-ink-3">
           {streamError ||
-            (connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the agent…")}
+            (connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the bot…")}
           <Button size="xs" variant="secondary" onClick={() => reconnect.current?.()}>
             Reconnect
           </Button>

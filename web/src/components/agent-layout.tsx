@@ -41,7 +41,7 @@ const tabs: AgentTab[] = [
   { to: "/a/$agentId/agent", label: "Settings", segments: ["agent"] },
 ];
 
-/** Activity reads the agent list cache. Shell owns its polling interval. */
+/** Activity reads the bot list cache. Shell owns its polling interval. */
 export function useAgentActivity() {
   const agentId = useAgentId();
   const agents = useQuery(listAgentsOptions());
@@ -55,9 +55,9 @@ export function useAgentActivity() {
 }
 
 /**
- * The page of one agent: its name, a tab for each part of it, and its model. Everything that
- * belongs to the agent is a tab here, so the sidebar only holds the list of agents and the
- * global settings. The main timeline stays mounted under the other tabs, so its stream and the
+ * The page of one bot: its name, a tab for each part of it, and its model. Everything that
+ * belongs to the bot is a tab here, so the sidebar only holds the list of bots and the global
+ * settings. The main timeline stays mounted under the other tabs, so its stream and the
  * unsent message survive a visit to them.
  */
 export function AgentLayout() {
@@ -80,9 +80,9 @@ function AgentView() {
     <MainPane>
       <div className="p-8">
         <h1 id="page-title" className="text-xl font-semibold">
-          Agent not found
+          Bot not found
         </h1>
-        <p className="mt-2 text-ink-2">Dex has no agent with this ID.</p>
+        <p className="mt-2 text-ink-2">Dex has no bot with this ID.</p>
         <Link to="/" className="mt-4 block underline">
           Open Dex
         </Link>

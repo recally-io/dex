@@ -8,7 +8,7 @@ export function AboutPage() {
   const health = useQuery(getHealthOptions());
 
   return (
-    <FramedPage title="About dex" description="A personal agent that runs on this computer.">
+    <FramedPage title="About dex" description="A personal bot that runs on this computer.">
       <Section n={1} title="This server">
         {health.isPending ? (
           <Loading />
@@ -58,8 +58,8 @@ export function AboutPage() {
         <Panel className="px-4 py-3.5">
           <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] leading-6 text-ink-2 marker:text-ink-3">
             <li>The control process serves this page and the API, and keeps chats in control.sqlite.</li>
-            <li>The worker process runs the agent and its tools. Control restarts it when it stops.</li>
-            <li>The data directory holds the database, the agent memory and the workspace.</li>
+            <li>The worker process runs the bot and its tools. Control restarts it when it stops.</li>
+            <li>The data directory holds the database, the bot memory and the workspace.</li>
           </ul>
         </Panel>
       </Section>
@@ -71,8 +71,8 @@ export function AboutPage() {
           <Panel className="px-4 py-3.5">
             <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] leading-6 text-ink-2 marker:text-ink-3">
               <li>The web page has no sign-in. Any program that can reach the port can use dex.</li>
-              <li>The agent runs read, write, edit and bash on this computer without a sandbox.</li>
-              <li>Allowed Telegram users reach the same agent, tools and memory.</li>
+              <li>The bot runs read, write, edit and bash on this computer without a sandbox.</li>
+              <li>Allowed Telegram users reach the same bot, tools and memory.</li>
               <li>Keys and tokens are write-only in the API and plain text in the data directory.</li>
             </ul>
           </Panel>

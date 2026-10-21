@@ -164,9 +164,9 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
 
   // Announce the start and the end of a run once each, not each streamed token.
   useEffect(() => {
-    if (state.running && !wasRunning.current) setAnnouncement("The agent is working.");
+    if (state.running && !wasRunning.current) setAnnouncement("The bot is working.");
 
-    if (!state.running && wasRunning.current) setAnnouncement("The agent finished.");
+    if (!state.running && wasRunning.current) setAnnouncement("The bot finished.");
 
     wasRunning.current = state.running;
   }, [state.running]);
@@ -195,7 +195,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const reason = !model.ok
     ? "Choose an available model before you send."
     : connection !== "ready"
-      ? "dex is reconnecting to the agent…"
+      ? "dex is reconnecting to the bot…"
       : undefined;
 
   const pending = send.isPending || abort.isPending;
@@ -206,7 +206,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     const ids = attachments.map((a) => a.id);
     const failed = failedMessage.current?.body;
 
-    // A transport retry keeps its ID. A retry of a failed agent turn gets a new ID.
+    // A transport retry keeps its ID. A retry of a failed bot turn gets a new ID.
     const body: MessageInput =
       failed?.text === text && failed.attachments?.join() === ids.join()
         ? failed
@@ -357,7 +357,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           >
             <div className="flex items-center gap-2 font-medium text-ink">
               <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-orange" />
-              {connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the agent…"}
+              {connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the bot…"}
             </div>
             <p className="pl-3.5 text-ink-2 [overflow-wrap:anywhere]">
               {streamError || "Messages are paused until the stream returns. Your transcript stays here."}
@@ -428,7 +428,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           embedded ? "min-h-0" : "lg:border-l lg:border-line",
         )}
       >
-        {/* The agent pane names the main timeline; a session names itself under the agent tabs. */}
+        {/* The bot pane names the main timeline; a session names itself under the bot tabs. */}
         {chat.data?.main ? null : (
           <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
             {embedded ? null : <MenuButton />}

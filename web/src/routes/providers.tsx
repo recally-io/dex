@@ -26,7 +26,7 @@ export function ProvidersPage() {
   return (
     <FramedPage
       title="Providers"
-      description="A provider is a saved connection to a model service. The agent model comes from one of them."
+      description="A provider is a saved connection to a model service. The bot model comes from one of them."
       actions={
         <Button size="sm" variant="primary" onClick={() => setDialog("new")}>
           Add provider
@@ -116,7 +116,7 @@ function Connections({
           <Note>
             <strong className="font-medium text-ink">Saved is not the same as working.</strong> dex saves a
             provider first, then lists its models. A failed listing keeps the provider saved and shows the
-            error on its card. A listed model can still fail when the agent calls it.
+            error on its card. A listed model can still fail when the bot calls it.
           </Note>
         </div>
       ) : (
@@ -202,7 +202,7 @@ function ProviderCard({
           <Mono className="text-[11.5px] text-ink-3">{p.id}</Mono>
           {inUse ? (
             <StatusPill tone="accent" className="h-5 px-2 text-[11px]">
-              Agent model
+              Bot model
             </StatusPill>
           ) : null}
         </div>
@@ -294,7 +294,7 @@ function RemoveProvider({
     onSettled: () => refreshSettings(),
   });
 
-  // The agent model is a separate save. It runs only after the provider is gone.
+  // The bot model is a separate save. It runs only after the provider is gone.
   const replace = useMutation({
     mutationFn: async () => {
       const model = others.find((m) => `${m.provider}/${m.id}` === next);
@@ -312,9 +312,7 @@ function RemoveProvider({
     if (current) await replace.mutateAsync();
     onClose();
     notify(
-      current && !next
-        ? `Removed ${provider.name}. The agent has no model now.`
-        : `Removed ${provider.name}.`,
+      current && !next ? `Removed ${provider.name}. The bot has no model now.` : `Removed ${provider.name}.`,
     );
   }
 
@@ -322,19 +320,19 @@ function RemoveProvider({
     <Confirm
       title={`Remove ${provider.name}?`}
       description="dex forgets the provider and its saved key. Past answers keep their model label."
-      confirmLabel={remove.isSuccess ? "Save agent model" : "Remove provider"}
+      confirmLabel={remove.isSuccess ? "Save bot model" : "Remove provider"}
       onCancel={onClose}
       onConfirm={() => void confirm().catch(() => {})}
       pending={remove.isPending || replace.isPending}
       error={remove.error ?? replace.error}
     >
       {remove.isSuccess && replace.isError ? (
-        <Note tone="warn">The provider is removed. The agent model did not change; try again.</Note>
+        <Note tone="warn">The provider is removed. The bot model did not change; try again.</Note>
       ) : null}
       {current ? (
         <div className="flex flex-col gap-3 rounded-card bg-orange-tint p-3">
-          <p className="text-[13px] font-medium text-ink">The agent uses this provider now.</p>
-          <Field label="After removal, the agent uses">
+          <p className="text-[13px] font-medium text-ink">The bot uses this provider now.</p>
+          <Field label="After removal, the bot uses">
             {({ id }) => (
               <Select
                 id={id}

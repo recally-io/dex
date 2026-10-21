@@ -386,7 +386,7 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 	return nil
 }
 
-// admit stores a run for due, skipped with the reason skip, or when the agent has no model or a
+// admit stores a run for due, skipped with the reason skip, or when the bot has no model or a
 // run of the automation is busy. It returns false when a run for due exists already.
 func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullInt64, skip string) (Run, bool, error) {
 	if skip == "" {
@@ -400,7 +400,7 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 		}
 		switch {
 		case agent.ModelID == "":
-			skip = "the agent has no model"
+			skip = "the bot has no model"
 		case busy > 0:
 			skip = "the chat of the automation is busy"
 		}

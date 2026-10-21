@@ -27,7 +27,7 @@ export function SecretsPage() {
   return (
     <FramedPage
       title="Secrets"
-      description="Set tool credentials for the current agent or all dex agents. Values stay in .env files. Narrower values win."
+      description="Set tool credentials for the current bot or all dex bots. Values stay in .env files. Narrower values win."
     >
       <ToolEnvironment key={agentId} agentId={agentId} />
       <WithSettings>
@@ -44,7 +44,7 @@ export function SecretsPage() {
                     `${p.name} API key`,
                     p.keySet ? "Saved" : "None",
                   ]),
-                  ["Channel credentials", "Manage in each agent’s Channels tab"],
+                  ["Channel credentials", "Manage in each bot’s Channels tab"],
                   ["Stored in", <Mono key="s">control.sqlite in the data directory</Mono>],
                   ["Shown in the web", "Never. You can only replace them"],
                 ]}
@@ -81,7 +81,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
   const query = useQuery(getExtensionsOptions({ path: { agentId } }));
   // Secrets is a global page, so name the agent that "agent" scope writes to.
   const agentName = useQuery(listAgentsOptions()).data?.agents.find((agent) => agent.id === agentId)?.name;
-  const agentLabel = agentName ? `Agent: ${agentName}` : "This agent";
+  const agentLabel = agentName ? `Bot: ${agentName}` : "This bot";
   const [scope, setScope] = useState<"agent" | "dex">("agent");
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
@@ -113,7 +113,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
       queryClient.setQueryData(getExtensionsQueryKey({ path: { agentId } }), data);
       void queryClient.invalidateQueries({ queryKey: [{ _id: "getExtensions" }] });
       setChanged(false);
-      notify("Extensions reloaded for the selected agent.");
+      notify("Extensions reloaded for the selected bot.");
     },
     onError: (error) => notify(errorText(error)),
   });
@@ -123,18 +123,14 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
 
   return (
     <>
-      <Section
-        n={1}
-        title="Tool environment"
-        caption="Values are write-only. Dex scope applies to all agents."
-      >
+      <Section n={1} title="Tool environment" caption="Values are write-only. Dex scope applies to all bots.">
         <div className="mb-4 flex flex-wrap gap-2">
           <Link
             to="/a/$agentId/extensions"
             params={{ agentId }}
             className={buttonVariants({ size: "xs", variant: "secondary" })}
           >
-            Current agent’s Extensions
+            Current bot’s Extensions
           </Link>
         </div>
         <Panel>
@@ -157,7 +153,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
                   onChange={(event) => setScope(event.target.value === "dex" ? "dex" : "agent")}
                 >
                   <option value="agent">{agentLabel}</option>
-                  <option value="dex">All agents (dex)</option>
+                  <option value="dex">All bots (dex)</option>
                 </Select>
               )}
             </Field>
@@ -224,11 +220,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
               <Panel key={level}>
                 <div className="border-b border-line px-4 py-3">
                   <p className="text-[13px] font-medium text-ink">
-                    {level === "agent"
-                      ? agentLabel
-                      : level === "dex"
-                        ? "All agents (dex)"
-                        : "Home · Read-only"}
+                    {level === "agent" ? agentLabel : level === "dex" ? "All bots (dex)" : "Home · Read-only"}
                   </p>
                   <p className="mt-1 text-[11.5px] text-ink-3 [overflow-wrap:anywhere]">
                     <Mono>{catalog.levels.find((l) => l.scope === level)?.dir}/.env</Mono>

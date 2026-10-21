@@ -25,7 +25,7 @@ export function InstructionsEditor({
   return (
     <>
       <Textarea
-        aria-label="Agent instructions"
+        aria-label="Bot instructions"
         aria-describedby={status}
         rows={rows}
         value={text}

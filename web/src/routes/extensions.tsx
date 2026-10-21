@@ -24,7 +24,7 @@ export function ExtensionsPage() {
     ...reloadExtensionsMutation(),
     onSuccess: (data) => {
       queryClient.setQueryData(getExtensionsQueryKey({ path: { agentId } }), data);
-      notify("MCP servers reloaded for the selected agent.");
+      notify("MCP servers reloaded for the selected bot.");
     },
     onError: (error) => notify(errorText(error)),
   });
@@ -32,7 +32,7 @@ export function ExtensionsPage() {
   return (
     <FramedPage
       title="Extensions"
-      description="Read home, then dex, then agent. A narrower level replaces a skill or MCP server with the same name. Environment keys merge in this order."
+      description="Read home, then dex, then bot. A narrower level replaces a skill or MCP server with the same name. Environment keys merge in this order."
       actions={
         <Button
           size="sm"
@@ -41,7 +41,7 @@ export function ExtensionsPage() {
           onClick={() => reload.mutate({ path: { agentId } })}
         >
           {reload.isPending ? <Spinner /> : null}
-          Reload selected agent
+          Reload selected bot
         </Button>
       }
     >
@@ -66,7 +66,7 @@ export function ExtensionsPage() {
               [
                 "read, write, edit, bash",
                 <span key="tools" className="font-normal text-ink-2">
-                  The four agent tools. They run on this computer without a sandbox
+                  The four bot tools. They run on this computer without a sandbox
                 </span>,
               ],
             ]}
@@ -207,7 +207,7 @@ const STATE: Record<McpServer["state"], { tone: "green" | "red" | "neutral"; lab
   connected: { tone: "green", label: "Connected" },
   failed: { tone: "red", label: "Failed" },
   disabled: { tone: "neutral", label: "Off" },
-  idle: { tone: "neutral", label: "Starts with the agent" },
+  idle: { tone: "neutral", label: "Starts with the bot" },
 };
 
 function ServerRow({ server: s }: { server: McpServer }) {

@@ -47,7 +47,7 @@ const root = createRootRoute({
   notFoundComponent: () => <Missing title="Page not found" description="dex has no page at this address." />,
 });
 
-// The pages of the agent share its tabs. The agent pane draws the main timeline itself.
+// The pages of a bot share its tabs. The bot pane draws the main timeline itself.
 const agentPages = createRoute({ getParentRoute: () => root, path: "/a/$agentId", component: AgentLayout });
 
 const home = createRoute({ getParentRoute: () => agentPages, path: "/", component: () => null });

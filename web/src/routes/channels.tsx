@@ -64,7 +64,7 @@ function Boundary() {
   return (
     <Note tone="warn">
       <strong className="font-medium">Channels are for the owner.</strong> Use only your own accounts. Channel
-      input shares the main timeline's context. The agent can read and change files and run commands on this
+      input shares the main timeline's context. The bot can read and change files and run commands on this
       computer.
     </Note>
   );
@@ -267,7 +267,7 @@ function Telegram({ settings }: { settings: Settings }) {
             </li>
             <li>/stop stops the main answer and its background work.</li>
             <li>dex ignores messages from user IDs that are not allowed.</li>
-            <li>The agent, its tools and its memory are the same as on the web.</li>
+            <li>The bot, its tools and its memory are the same as on the web.</li>
           </ul>
         </Panel>
         <div className="mt-3">

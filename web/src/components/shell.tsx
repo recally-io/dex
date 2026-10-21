@@ -115,8 +115,8 @@ const globalPages = [
 ] as const;
 
 /**
- * The list of agents. Each agent is a bot the user talks to, so the list holds the bots
- * themselves, not their sessions or settings. Everything global sits behind one footer entry.
+ * The list of bots. Each one is a long-lived role the user talks to, so the list holds the
+ * bots themselves, not their sessions or settings. Global pages sit behind one footer entry.
  */
 function Sidebar({ path, className }: { path: string; className?: string }) {
   const settings = useQuery(getSettingsOptions());
@@ -135,12 +135,12 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
     : list;
 
   return (
-    <aside aria-label="Agents" className={cn("flex h-full w-[240px] shrink-0 flex-col", className)}>
+    <aside aria-label="Bots" className={cn("flex h-full w-[240px] shrink-0 flex-col", className)}>
       <div className="mx-2 mt-1 flex h-8 items-center justify-between px-2 text-[12.5px] font-medium text-ink-3">
-        <span>Agents</span>
+        <span>Bots</span>
         <button
           type="button"
-          aria-label="Create agent"
+          aria-label="Create bot"
           onClick={() => setCreating(true)}
           className="flex size-7 items-center justify-center rounded-control text-lg hover:bg-hover-2 hover:text-ink"
         >
@@ -153,8 +153,8 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
           <input
             type="search"
             value={query}
-            aria-label="Search agents"
-            placeholder="Search agents"
+            aria-label="Search bots"
+            placeholder="Search bots"
             onChange={(event) => setQuery(event.target.value)}
             className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink placeholder:text-ink-3"
           />
@@ -167,11 +167,11 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
           </AgentContext.Provider>
         ))}
         {list.length && !shown.length ? (
-          <p className="px-4 py-2 text-[12.5px] text-ink-3">No agent matches.</p>
+          <p className="px-4 py-2 text-[12.5px] text-ink-3">No bot matches.</p>
         ) : null}
         {agents.isError ? (
           <p role="alert" className="px-4 text-xs text-red">
-            Could not load agents.
+            Could not load bots.
           </p>
         ) : null}
       </div>
@@ -215,7 +215,7 @@ function GlobalSettingsDialog({ path, onClose }: { path: string; onClose: () => 
   return (
     <Modal
       title="Global settings"
-      description="These apply to dex on this computer, not to one agent."
+      description="These apply to dex on this computer, not to one bot."
       onClose={onClose}
       footer={
         <button

@@ -198,7 +198,7 @@ func TestUserAutomationResponsesKeepTheirFields(t *testing.T) {
 			// And a manual run skipped without a model omits absent IDs and times
 			var run map[string]any
 			d.must(t, http.MethodPost, "/api/agents/default/automations/"+a["id"].(string)+"/run", nil, &run, http.StatusAccepted)
-			if run["status"] != "skipped" || run["reason"] != "the agent has no model" {
+			if run["status"] != "skipped" || run["reason"] != "the bot has no model" {
 				t.Fatalf("run = %v", run)
 			}
 			for _, field := range []string{"dueAt", "chatId"} {

@@ -21,7 +21,7 @@ export function MenuButton() {
   );
 }
 
-/** True inside the agent pane, which already draws the frame and the drawer button. */
+/** True inside the bot pane, which already draws the frame and the drawer button. */
 export const InPaneContext = createContext(false);
 
 /** The rounded main pane. Below lg it has a small bar with the drawer button. */
@@ -90,7 +90,7 @@ export function FramedPage(props: PageProps) {
 }
 
 /**
- * A page inside the agent pane: no frame, and a compact header. The tab already names a top page,
+ * A page inside the bot pane: no frame, and a compact header. The tab already names a top page,
  * so only a page opened from a tab, which has an eyebrow, shows its title.
  */
 function PanePage({ eyebrow, title, description, badge, actions, children }: PageProps) {
