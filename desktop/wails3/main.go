@@ -91,13 +91,9 @@ func run() error {
 		URL:        backendURL,
 		// The window shows after restoreDesktopWindow places it.
 		Hidden: true,
-		// The web UI draws the title bar. It reads DexDesktop from the user agent before its first
-		// render, because Wails injects window._wails only after the page finishes loading.
-		Mac: application.MacWindow{
-			Backdrop:           application.MacBackdropTranslucent,
-			TitleBar:           application.MacTitleBarHiddenInset,
-			WebviewPreferences: application.MacWebviewPreferences{ApplicationNameForUserAgent: "DexDesktop"},
-		},
+		// The default macOS title bar owns the traffic lights, the title and window drags, so no page
+		// has to leave room for them. A title bar drawn by the web UI waits for one shared header.
+		Mac: application.MacWindow{TitleBar: application.MacTitleBarDefault},
 	}
 	mainWindow := native.Window.NewWithOptions(options)
 	native.Menu.SetApplicationMenu(desktopMenu(mainWindow))

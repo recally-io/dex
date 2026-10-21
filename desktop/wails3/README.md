@@ -62,23 +62,17 @@ menus. Settings… (Cmd+,) opens `/settings`. New Chat (Cmd+N) starts a chat for
 the open bot, or for the last bot, from any page. Wails supplies the standard
 edit roles, so the message box keeps native copy and paste behavior.
 
-The window loads Dex from the backend URL, not from the Wails asset server. Wails
-then injects only its core script. That script can post messages to Go, but it
-does not report ready and has no drag handling. Two consequences:
+The window uses the default macOS title bar. It owns the traffic lights, the
+title, window drags and double-click zoom, so no page has to leave room for
+them. A title bar drawn by the web UI needs one shared header for every route
+and width first; that is part of the UI work in #42.
 
-- Wails queues every `ExecJS` call until the page reports ready. The shell
-  reports ready itself when a navigation finishes, so the menu can reach the
-  web app through `dex:settings` and `dex:new-chat` window events.
-- The web app starts window drags itself (`web/src/lib/mac-shell.ts`). Elements
-  with `--dex-drag: drag` move the window; controls inside them opt out.
-
-The web app detects the shell from `DexDesktop` in the user agent, before its
-first render, and sets `document.documentElement.dataset.shell = "mac"`. One
-CSS block in `web/src/styles.css` keys off that hook. The window has a
-translucent backdrop and a hidden inset title bar. The sidebar's first row and
-the pane header form one 52px bar, in which macOS centers the traffic lights.
-The collapsed sidebar is 80px wide on macOS so that the lights fit inside it.
-Browser sessions keep the existing look.
+The window loads Dex from the backend URL, not from the Wails asset server, so
+Wails injects only its core script. That script never reports ready, and Wails
+queues every `ExecJS` call until the page does. The shell reports ready itself
+when a navigation finishes, so the menu reaches the web app through the
+`dex:settings` and `dex:new-chat` window events. The web app needs no other
+knowledge of the shell.
 
 The main window frame is saved as JSON in the platform config directory
 (`~/Library/Application Support/Dex/window.json` on macOS). The file stores

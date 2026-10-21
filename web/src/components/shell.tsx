@@ -185,18 +185,13 @@ function Sidebar({
   return (
     <aside
       aria-label="Bots"
-      data-dex-sidebar
-      data-collapsed={collapsed || undefined}
       className={cn(
         "flex h-full shrink-0 flex-col transition-[width] duration-150 ease-out motion-reduce:transition-none",
         collapsed ? "w-14 items-center" : "w-[240px]",
         className,
       )}
     >
-      <div
-        data-dex-brand
-        className={cn("mt-1 flex h-10 items-center gap-2", collapsed ? "justify-center" : "mx-2 px-2")}
-      >
+      <div className={cn("mt-1 flex h-10 items-center gap-2", collapsed ? "justify-center" : "mx-2 px-2")}>
         <DexMark />
         {collapsed ? null : (
           <span className="text-[13px] font-semibold tracking-[-0.01em] text-ink">dex</span>

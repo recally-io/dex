@@ -435,10 +435,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
             </h1>
           )
         ) : (
-          <header
-            data-dex-titlebar
-            className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11"
-          >
+          <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
             {embedded ? null : <MenuButton />}
             {chat.data ? (
               <>

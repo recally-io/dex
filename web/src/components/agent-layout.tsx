@@ -173,10 +173,7 @@ function AgentPane({ settings }: { settings: Settings }) {
   return (
     <InPaneContext.Provider value>
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:border-l lg:border-line">
-        <header
-          data-dex-titlebar
-          className="flex h-12 shrink-0 items-center gap-2 border-b border-line pr-2 pl-3 sm:pl-4 lg:h-11"
-        >
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line pr-2 pl-3 sm:pl-4 lg:h-11">
           <MenuButton />
           <AgentAvatar agent={settings.agent} className="size-5 rounded-[6px] text-[11px]" />
           <Name
