@@ -73,7 +73,8 @@ export function SessionsPage() {
 
   const [kind, setKind] = useState("All kinds");
   const name = settings.data?.agent.name ?? "dex";
-  const all = sessions.data?.chats ?? [];
+  // Archived Chats live in the Chats sidebar of the Chat tab, not here.
+  const all = (sessions.data?.chats ?? []).filter((chat) => !chat.archivedAt);
   const list = all.filter((chat) => kind === "All kinds" || sessionKind(chat) === kind);
 
   return (

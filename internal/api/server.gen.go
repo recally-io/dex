@@ -581,6 +581,9 @@ type Channels = agent.Channels
 
 // Chat defines model for Chat.
 type Chat struct {
+	// ArchivedAt When the user archived this Chat session, in Unix milliseconds. Absent when the session is not archived.
+	ArchivedAt *int64 `json:"archivedAt,omitempty"`
+
 	// AutomationId The automation that created the chat.
 	AutomationId *string `json:"automationId,omitempty"`
 
@@ -1711,6 +1714,12 @@ type ServerInterface interface {
 	// (POST /api/agents/{agentId}/chats/{chatId}/abort)
 	AbortChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
+	// (DELETE /api/agents/{agentId}/chats/{chatId}/archive)
+	UnarchiveChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
+	// (PUT /api/agents/{agentId}/chats/{chatId}/archive)
+	ArchiveChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
 	// (POST /api/agents/{agentId}/chats/{chatId}/clear)
 	ClearContext(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
@@ -2560,6 +2569,76 @@ func (siw *ServerInterfaceWrapper) AbortChat(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// UnarchiveChat operation middleware
+func (siw *ServerInterfaceWrapper) UnarchiveChat(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnarchiveChat(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ArchiveChat operation middleware
+func (siw *ServerInterfaceWrapper) ArchiveChat(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ArchiveChat(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClearContext operation middleware
 func (siw *ServerInterfaceWrapper) ClearContext(w http.ResponseWriter, r *http.Request) {
 
@@ -3293,6 +3372,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.ListChats)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.CreateChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}", wrapper.GetChat)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/archive", wrapper.UnarchiveChat)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/archive", wrapper.ArchiveChat)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/settings", wrapper.SetChatSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/messages", wrapper.SendMessage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/clear", wrapper.ClearContext)
@@ -4721,6 +4802,142 @@ func (response AbortChatdefaultJSONResponse) VisitAbortChatResponse(w http.Respo
 	return err
 }
 
+type UnarchiveChatRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  ChatId `json:"chatId"`
+}
+
+type UnarchiveChatResponseObject interface {
+	VisitUnarchiveChatResponse(w http.ResponseWriter) error
+}
+
+type UnarchiveChat200JSONResponse Chat
+
+func (response UnarchiveChat200JSONResponse) VisitUnarchiveChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveChat403JSONResponse struct{ ErrorJSONResponse }
+
+func (response UnarchiveChat403JSONResponse) VisitUnarchiveChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveChat404JSONResponse Error
+
+func (response UnarchiveChat404JSONResponse) VisitUnarchiveChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveChatdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UnarchiveChatdefaultJSONResponse) VisitUnarchiveChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveChatRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  ChatId `json:"chatId"`
+}
+
+type ArchiveChatResponseObject interface {
+	VisitArchiveChatResponse(w http.ResponseWriter) error
+}
+
+type ArchiveChat200JSONResponse Chat
+
+func (response ArchiveChat200JSONResponse) VisitArchiveChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveChat403JSONResponse struct{ ErrorJSONResponse }
+
+func (response ArchiveChat403JSONResponse) VisitArchiveChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveChat404JSONResponse Error
+
+func (response ArchiveChat404JSONResponse) VisitArchiveChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveChatdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ArchiveChatdefaultJSONResponse) VisitArchiveChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ClearContextRequestObject struct {
 	AgentId string `json:"agentId"`
 	ChatId  ChatId `json:"chatId"`
@@ -6101,6 +6318,12 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/chats/{chatId}/abort)
 	AbortChat(ctx context.Context, request AbortChatRequestObject) (AbortChatResponseObject, error)
 
+	// (DELETE /api/agents/{agentId}/chats/{chatId}/archive)
+	UnarchiveChat(ctx context.Context, request UnarchiveChatRequestObject) (UnarchiveChatResponseObject, error)
+
+	// (PUT /api/agents/{agentId}/chats/{chatId}/archive)
+	ArchiveChat(ctx context.Context, request ArchiveChatRequestObject) (ArchiveChatResponseObject, error)
+
 	// (POST /api/agents/{agentId}/chats/{chatId}/clear)
 	ClearContext(ctx context.Context, request ClearContextRequestObject) (ClearContextResponseObject, error)
 
@@ -6995,6 +7218,60 @@ func (sh *strictHandler) AbortChat(w http.ResponseWriter, r *http.Request, agent
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AbortChatResponseObject); ok {
 		if err := validResponse.VisitAbortChatResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnarchiveChat operation middleware
+func (sh *strictHandler) UnarchiveChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
+	var request UnarchiveChatRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnarchiveChat(ctx, request.(UnarchiveChatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnarchiveChat")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnarchiveChatResponseObject); ok {
+		if err := validResponse.VisitUnarchiveChatResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ArchiveChat operation middleware
+func (sh *strictHandler) ArchiveChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
+	var request ArchiveChatRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ArchiveChat(ctx, request.(ArchiveChatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ArchiveChat")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ArchiveChatResponseObject); ok {
+		if err := validResponse.VisitArchiveChatResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

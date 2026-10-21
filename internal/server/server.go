@@ -81,7 +81,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, engine.ErrModelsPending):
 				status = http.StatusServiceUnavailable
-			case errors.Is(err, errReadOnly):
+			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable):
 				status = http.StatusForbidden
 			case errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
@@ -243,7 +243,26 @@ func chatView(c chat.Chat) api.Chat {
 	if id, ok := automation.ChatAutomation(c.ChannelKey); ok {
 		out.Channel, out.AutomationId = api.ChatChannelAutomation, &id
 	}
+	if c.ArchivedAt != 0 {
+		out.ArchivedAt = &c.ArchivedAt
+	}
 	return out
+}
+
+func (h *handler) ArchiveChat(ctx context.Context, req api.ArchiveChatRequestObject) (api.ArchiveChatResponseObject, error) {
+	c, err := h.Chats.SetArchived(ctx, agentID(ctx), req.ChatId, true)
+	if err != nil {
+		return nil, err
+	}
+	return api.ArchiveChat200JSONResponse(chatView(c)), nil
+}
+
+func (h *handler) UnarchiveChat(ctx context.Context, req api.UnarchiveChatRequestObject) (api.UnarchiveChatResponseObject, error) {
+	c, err := h.Chats.SetArchived(ctx, agentID(ctx), req.ChatId, false)
+	if err != nil {
+		return nil, err
+	}
+	return api.UnarchiveChat200JSONResponse(chatView(c)), nil
 }
 
 func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (api.ListChatsResponseObject, error) {

@@ -78,6 +78,10 @@ export type Chat = {
      * True while a message of the chat has no answer yet.
      */
     busy: boolean;
+    /**
+     * When the user archived this Chat session, in Unix milliseconds. Absent when the session is not archived.
+     */
+    archivedAt?: number;
     settings: ChatSettings;
     task?: TaskSummary;
 };
@@ -1548,6 +1552,78 @@ export type GetChatResponses = {
 };
 
 export type GetChatResponse = GetChatResponses[keyof GetChatResponses];
+
+export type UnarchiveChatData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/archive';
+};
+
+export type UnarchiveChatErrors = {
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type UnarchiveChatError = UnarchiveChatErrors[keyof UnarchiveChatErrors];
+
+export type UnarchiveChatResponses = {
+    /**
+     * The restored chat.
+     */
+    200: Chat;
+};
+
+export type UnarchiveChatResponse = UnarchiveChatResponses[keyof UnarchiveChatResponses];
+
+export type ArchiveChatData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/archive';
+};
+
+export type ArchiveChatErrors = {
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ArchiveChatError = ArchiveChatErrors[keyof ArchiveChatErrors];
+
+export type ArchiveChatResponses = {
+    /**
+     * The archived chat.
+     */
+    200: Chat;
+};
+
+export type ArchiveChatResponse = ArchiveChatResponses[keyof ArchiveChatResponses];
 
 export type SetChatSettingsData = {
     body: ChatSettings;

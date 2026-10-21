@@ -24,6 +24,23 @@ func (q *Queries) AdmitSubmission(ctx context.Context, arg AdmitSubmissionParams
 	return err
 }
 
+const archiveChat = `-- name: ArchiveChat :exec
+UPDATE conversations SET archived_at = coalesce(archived_at, ?1)
+WHERE id = ?2 AND agent_id = ?3 AND channel_key LIKE 'chat:%'
+`
+
+type ArchiveChatParams struct {
+	ArchivedAt sql.NullInt64 `json:"archived_at"`
+	ID         int64         `json:"id"`
+	AgentID    string        `json:"agent_id"`
+}
+
+// Keeps the first archive time when the chat is archived already.
+func (q *Queries) ArchiveChat(ctx context.Context, arg ArchiveChatParams) error {
+	_, err := q.db.ExecContext(ctx, archiveChat, arg.ArchivedAt, arg.ID, arg.AgentID)
+	return err
+}
+
 const countAutomationPending = `-- name: CountAutomationPending :one
 SELECT count(*) FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
@@ -314,7 +331,7 @@ const ensureConversation = `-- name: EnsureConversation :one
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at
 `
 
 type EnsureConversationParams struct {
@@ -350,6 +367,7 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		&i.ModelID,
 		&i.ThinkingLevel,
 		&i.AbortPending,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -360,14 +378,14 @@ VALUES (
     ?1,
     coalesce((
         SELECT c.channel_key FROM conversations c
-        WHERE c.agent_id = ?1 AND c.channel_key LIKE 'chat:%'
+        WHERE c.agent_id = ?1 AND c.channel_key LIKE 'chat:%' AND c.archived_at IS NULL
             AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message')
         ORDER BY c.created_at DESC, c.id DESC LIMIT 1
     ), ?2),
     '', ?3
 )
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at
 `
 
 type EnsureEmptyChatParams struct {
@@ -391,6 +409,7 @@ func (q *Queries) EnsureEmptyChat(ctx context.Context, arg EnsureEmptyChatParams
 		&i.ModelID,
 		&i.ThinkingLevel,
 		&i.AbortPending,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -490,6 +509,7 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.created_at,
+    c.archived_at,
     c.execution_id,
     CAST(max(
         c.created_at,
@@ -519,6 +539,7 @@ type GetChatRow struct {
 	ModelID       string        `json:"model_id"`
 	ThinkingLevel string        `json:"thinking_level"`
 	CreatedAt     int64         `json:"created_at"`
+	ArchivedAt    sql.NullInt64 `json:"archived_at"`
 	ExecutionID   sql.NullInt64 `json:"execution_id"`
 	UpdatedAt     int64         `json:"updated_at"`
 	Pending       int64         `json:"pending"`
@@ -535,6 +556,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 		&i.ModelID,
 		&i.ThinkingLevel,
 		&i.CreatedAt,
+		&i.ArchivedAt,
 		&i.ExecutionID,
 		&i.UpdatedAt,
 		&i.Pending,
@@ -543,7 +565,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending FROM conversations WHERE id = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at FROM conversations WHERE id = ?
 `
 
 func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
@@ -560,12 +582,13 @@ func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, 
 		&i.ModelID,
 		&i.ThinkingLevel,
 		&i.AbortPending,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
 
 const getConversationByKey = `-- name: GetConversationByKey :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending FROM conversations WHERE agent_id = ? AND channel_key = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at FROM conversations WHERE agent_id = ? AND channel_key = ?
 `
 
 type GetConversationByKeyParams struct {
@@ -587,6 +610,7 @@ func (q *Queries) GetConversationByKey(ctx context.Context, arg GetConversationB
 		&i.ModelID,
 		&i.ThinkingLevel,
 		&i.AbortPending,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -877,6 +901,7 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.created_at,
+    c.archived_at,
     CAST(max(
         c.created_at,
         coalesce(max(s.created_at), c.created_at),
@@ -898,15 +923,16 @@ ORDER BY updated_at DESC, c.id DESC
 `
 
 type ListChatsRow struct {
-	ID            int64  `json:"id"`
-	ChannelKey    string `json:"channel_key"`
-	Title         string `json:"title"`
-	ModelProvider string `json:"model_provider"`
-	ModelID       string `json:"model_id"`
-	ThinkingLevel string `json:"thinking_level"`
-	CreatedAt     int64  `json:"created_at"`
-	UpdatedAt     int64  `json:"updated_at"`
-	Pending       int64  `json:"pending"`
+	ID            int64         `json:"id"`
+	ChannelKey    string        `json:"channel_key"`
+	Title         string        `json:"title"`
+	ModelProvider string        `json:"model_provider"`
+	ModelID       string        `json:"model_id"`
+	ThinkingLevel string        `json:"thinking_level"`
+	CreatedAt     int64         `json:"created_at"`
+	ArchivedAt    sql.NullInt64 `json:"archived_at"`
+	UpdatedAt     int64         `json:"updated_at"`
+	Pending       int64         `json:"pending"`
 }
 
 func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow, error) {
@@ -926,6 +952,7 @@ func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow
 			&i.ModelID,
 			&i.ThinkingLevel,
 			&i.CreatedAt,
+			&i.ArchivedAt,
 			&i.UpdatedAt,
 			&i.Pending,
 		); err != nil {
@@ -1403,6 +1430,21 @@ func (q *Queries) SettleSubmission(ctx context.Context, arg SettleSubmissionPara
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const unarchiveChat = `-- name: UnarchiveChat :exec
+UPDATE conversations SET archived_at = NULL
+WHERE id = ?1 AND agent_id = ?2 AND channel_key LIKE 'chat:%'
+`
+
+type UnarchiveChatParams struct {
+	ID      int64  `json:"id"`
+	AgentID string `json:"agent_id"`
+}
+
+func (q *Queries) UnarchiveChat(ctx context.Context, arg UnarchiveChatParams) error {
+	_, err := q.db.ExecContext(ctx, unarchiveChat, arg.ID, arg.AgentID)
+	return err
 }
 
 const updateAgentSettings = `-- name: UpdateAgentSettings :exec

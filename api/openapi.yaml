@@ -472,7 +472,7 @@ paths:
       operationId: createChat
       description: >
         Opens a separate writable Chat session. Reuses the newest Chat session
-        with no message, or creates one. No request body or model is needed.
+        with no message that is not archived, or creates one. No request body or model is needed.
         The first message sets its title. The session uses the bot's settings.
       responses:
         "201":
@@ -498,6 +498,42 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Chat" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/archive:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    put:
+      operationId: archiveChat
+      description: >
+        Archives a Chat session. The session keeps its messages, records and
+        files, and stays in the session list with archivedAt. Archiving an
+        archived session keeps the first time. Main and the read-only kinds
+        cannot be archived.
+      responses:
+        "200":
+          description: The archived chat.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chat" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: unarchiveChat
+      description: Restores an archived Chat session. A session that is not archived stays as it is.
+      responses:
+        "200":
+          description: The restored chat.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chat" }
+        "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
@@ -1090,6 +1126,12 @@ components:
         busy:
           type: boolean
           description: True while a message of the chat has no answer yet.
+        archivedAt:
+          type: integer
+          format: int64
+          description: >-
+            When the user archived this Chat session, in Unix milliseconds.
+            Absent when the session is not archived.
         settings: { $ref: "#/components/schemas/ChatSettings" }
         task:
           $ref: "#/components/schemas/TaskSummary"

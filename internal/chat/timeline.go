@@ -29,6 +29,30 @@ func (s *Service) Create(ctx context.Context, agentID string) (Chat, error) {
 	return s.Get(ctx, agentID, c.ID)
 }
 
+// ErrNotArchivable is an archive request for Main or a read-only kind.
+var ErrNotArchivable = errors.New("only a Chat session can be archived; Main always stays")
+
+// SetArchived archives or restores a Chat session. It changes only the list state: messages,
+// records, files and running work stay, and a task result still returns to the chat.
+func (s *Service) SetArchived(ctx context.Context, agentID string, id int64, archived bool) (Chat, error) {
+	c, err := s.Get(ctx, agentID, id)
+	if err != nil {
+		return Chat{}, err
+	}
+	if !strings.HasPrefix(c.ChannelKey, ChatPrefix) {
+		return Chat{}, ErrNotArchivable
+	}
+	if archived {
+		err = s.q.ArchiveChat(ctx, sqlc.ArchiveChatParams{ArchivedAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}, ID: id, AgentID: agentID})
+	} else {
+		err = s.q.UnarchiveChat(ctx, sqlc.UnarchiveChatParams{ID: id, AgentID: agentID})
+	}
+	if err != nil {
+		return Chat{}, err
+	}
+	return s.Get(ctx, agentID, id)
+}
+
 var ErrConversationBusy = errors.New("the timeline is busy; wait for its replies before clearing context")
 var ErrResetID = errors.New("the reset ID belongs to another input")
 
