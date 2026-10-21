@@ -67,7 +67,7 @@ function highlight(text: string): ReactNode[] {
     let color: string;
     let weight: number | undefined;
     if (/^["'`]/.test(t) || /^\d/.test(t)) color = "var(--orange)"; // string / number
-    else if (KEYWORDS.has(t)) color = "var(--accent-ink)"; // keyword / import / conditional
+    else if (KEYWORDS.has(t)) color = "var(--dex-dex-accent-ink)"; // keyword / import / conditional
     else { color = "var(--ink)"; weight = 500; } // function call
     nodes.push(<span key={k++} style={{ color, fontWeight: weight }}>{t}</span>);
     last = idx + t.length;

@@ -300,13 +300,13 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           model.ok ? null : settings.providers.length ? (
             <ModelPicker
               trigger={
-                <button type="button" className="font-medium text-accent-ink underline">
+                <button type="button" className="font-medium text-dex-accent-ink underline">
                   Choose a model
                 </button>
               }
             />
           ) : (
-            <Link className="font-medium text-accent-ink underline" to="/providers">
+            <Link className="font-medium text-dex-accent-ink underline" to="/providers">
               Add a provider
             </Link>
           )
@@ -342,7 +342,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       <div className="flex flex-col items-start gap-4">
         <Failure title="Could not load this session" error={chat.error} retry={() => void chat.refetch()} />
         <Link
-          className="text-[13px] font-medium text-accent-ink underline"
+          className="text-[13px] font-medium text-dex-accent-ink underline"
           to="/a/$agentId"
           params={{ agentId }}
         >

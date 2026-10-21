@@ -22,53 +22,18 @@
 
 :root {
   /* surfaces — cool, blue-tinted neutrals */
-  --page: #ffffff;
-  --canvas: #f4f6f8;
-  --surface: #ffffff;
-  --inset: #f6f7f9;
-  --hover: #f1f3f5;
-  --hover-2: #e9ecef;
 
   /* ink ramp — both greys carry words, so both hold 4.5:1 on white */
-  --ink: #0a0a0a;
-  --ink-2: #55565a;
-  --ink-3: #6b6b6b;
 
   /* borders — solid and crisp, not alpha */
-  --line: #e6e6e6;
-  --line-strong: #d4d4d4;
-  --line-soft: #f0f0f0;
-  --grid-line: color-mix(in srgb, var(--line) 78%, transparent);
-  --field: #ffffff;
-  --stripe: #e9ecef;
-  --stripe-bg: #f4f6f8;
 
   /* accent — the one hue on the screen, on the live state and the focus ring only */
-  --accent: oklch(0.96 0.002 17.2);
-  --accent-ink: #1a4f9e;
-  --accent-tint: #eaf0fa;
 
   /* semantic */
-  --green: #2e7d32;
-  --green-tint: #e8f3e9;
-  --orange: #b45309;
-  --orange-tint: #fdf3e3;
-  --red: #c4242a;
-  --red-tint: #ffedea;
 
   /* chart overlays — neutral system colors with enough contrast on either theme */
-  --tooltip-bg: #1c1c1e;
-  --tooltip-fg: #f5f5f5;
-  --tooltip-muted: #a8a8ad;
-  --tooltip-border: #333336;
 
   /* shadows — a hairline ring at rest; height only for what floats */
-  --shadow-hairline: 0 0 0 1px var(--line);
-  --shadow-btn: 0 0 0 1px var(--line-strong);
-  --shadow-card: 0 0 0 1px var(--line);
-  --shadow-raised: 0 0 0 1px var(--line-strong);
-  --shadow-overlay: 0 0 0 1px var(--line-strong), 0 12px 32px rgb(0 0 0 / 0.12);
-  --shadow-inset-field: inset 0 1px 2px rgb(0 0 0 / 0.06);
   --background: oklch(1 0 0);
   --foreground: oklch(0.147 0.004 49.3);
   --card: oklch(1 0 0);
@@ -81,6 +46,7 @@
   --secondary-foreground: oklch(0.214 0.009 43.1);
   --muted: oklch(0.96 0.002 17.2);
   --muted-foreground: oklch(0.547 0.021 43.1);
+  --accent: oklch(0.96 0.002 17.2);
   --accent-foreground: oklch(0.214 0.009 43.1);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0.005 34.3);
@@ -103,46 +69,6 @@
 }
 
 .dark {
-  --page: #141414;
-  --canvas: #0f0f0f;
-  --surface: #1a1a1a;
-  --inset: #171717;
-  --hover: #202020;
-  --hover-2: #272727;
-
-  --ink: #f5f5f5;
-  --ink-2: #b4b4b4;
-  --ink-3: #949494;
-
-  --line: #262626;
-  --line-strong: #3a3a3a;
-  --line-soft: #1f1f1f;
-  --field: #1a1a1a;
-  --stripe: #262626;
-  --stripe-bg: #0f0f0f;
-
-  --accent: oklch(0.268 0.011 36.5);
-  --accent-ink: #8fbcf7;
-  --accent-tint: color-mix(in oklch, #5b9bf0 18%, transparent);
-
-  --green: #3fc07a;
-  --green-tint: #172a1d;
-  --orange: #e0a25a;
-  --orange-tint: #2b2114;
-  --red: #e5566f;
-  --red-tint: #2c1a20;
-
-  --tooltip-bg: #101010;
-  --tooltip-fg: #f5f5f5;
-  --tooltip-muted: #b4b4b4;
-  --tooltip-border: #262626;
-
-  --shadow-hairline: 0 0 0 1px var(--line);
-  --shadow-btn: 0 0 0 1px var(--line-strong);
-  --shadow-card: 0 0 0 1px var(--line);
-  --shadow-raised: 0 0 0 1px var(--line-strong);
-  --shadow-overlay: 0 0 0 1px var(--line-strong), 0 16px 40px rgb(0 0 0 / 0.5);
-  --shadow-inset-field: inset 0 1px 2px rgb(0 0 0 / 0.4);
   --background: oklch(0.147 0.004 49.3);
   --foreground: oklch(0.986 0.002 67.8);
   --card: oklch(0.214 0.009 43.1);
@@ -155,6 +81,7 @@
   --secondary-foreground: oklch(0.986 0.002 67.8);
   --muted: oklch(0.268 0.011 36.5);
   --muted-foreground: oklch(0.714 0.014 41.2);
+  --accent: oklch(0.268 0.011 36.5);
   --accent-foreground: oklch(0.986 0.002 67.8);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
@@ -185,25 +112,26 @@
   --hover-2: var(--accent);
   --ink: var(--foreground);
   --ink-2: var(--muted-foreground);
-  --ink-3: var(--muted-foreground);
+  --ink-3: color-mix(in oklch, var(--muted-foreground) 70%, var(--foreground));
   --line: var(--border);
   --line-strong: var(--ring);
   --line-soft: var(--border);
   --field: var(--input);
   --stripe: var(--secondary);
   --stripe-bg: var(--background);
-  --accent: var(--primary);
-  --accent-ink: var(--primary-foreground);
-  --accent-tint: color-mix(in oklch, var(--accent) 12%, transparent);
+  --dex-accent: var(--primary);
+  --dex-accent-ink: var(--foreground);
+  --dex-accent-tint: color-mix(in oklch, var(--dex-accent) 12%, transparent);
   --radius-chip: 0px;
   --radius-control: 0px;
   --radius-card: 0px;
-  --green: var(--chart-2);
-  --green-tint: color-mix(in oklch, var(--chart-2) 12%, transparent);
-  --orange: var(--chart-4);
-  --orange-tint: color-mix(in oklch, var(--chart-4) 12%, transparent);
-  --red: var(--destructive);
-  --red-tint: color-mix(in oklch, var(--destructive) 12%, transparent);
+  --radius-window: 0px;
+  --green: #2e7d32;
+  --green-tint: #e8f3e9;
+  --orange: #b45309;
+  --orange-tint: #fdf3e3;
+  --red: #c4242a;
+  --red-tint: #ffedea;
   --grid-line: color-mix(in srgb, var(--border) 78%, transparent);
   --tooltip-bg: var(--popover);
   --tooltip-fg: var(--popover-foreground);
@@ -226,25 +154,26 @@
   --hover-2: var(--accent);
   --ink: var(--foreground);
   --ink-2: var(--muted-foreground);
-  --ink-3: var(--muted-foreground);
+  --ink-3: color-mix(in oklch, var(--muted-foreground) 70%, var(--foreground));
   --line: var(--border);
   --line-strong: var(--ring);
   --line-soft: var(--border);
   --field: var(--input);
   --stripe: var(--secondary);
   --stripe-bg: var(--background);
-  --accent: var(--primary);
-  --accent-ink: var(--primary-foreground);
-  --accent-tint: color-mix(in oklch, var(--accent) 12%, transparent);
+  --dex-accent: var(--primary);
+  --dex-accent-ink: var(--foreground);
+  --dex-accent-tint: color-mix(in oklch, var(--dex-accent) 12%, transparent);
   --radius-chip: 0px;
   --radius-control: 0px;
   --radius-card: 0px;
-  --green: var(--chart-2);
-  --green-tint: color-mix(in oklch, var(--chart-2) 12%, transparent);
-  --orange: var(--chart-4);
-  --orange-tint: color-mix(in oklch, var(--chart-4) 12%, transparent);
-  --red: var(--destructive);
-  --red-tint: color-mix(in oklch, var(--destructive) 12%, transparent);
+  --radius-window: 0px;
+  --green: #3fc07a;
+  --green-tint: #172a1d;
+  --orange: #e0a25a;
+  --orange-tint: #2b2114;
+  --red: #e5566f;
+  --red-tint: #2c1a20;
   --grid-line: color-mix(in srgb, var(--border) 78%, transparent);
   --tooltip-bg: var(--popover);
   --tooltip-fg: var(--popover-foreground);
@@ -254,8 +183,8 @@
   --shadow-btn: 0 0 0 1px var(--border);
   --shadow-card: 0 0 0 1px var(--border);
   --shadow-raised: 0 0 0 1px var(--ring);
-  --shadow-overlay: 0 0 0 1px var(--ring), 0 12px 32px rgb(0 0 0 / 0.12);
-  --shadow-inset-field: inset 0 1px 2px rgb(0 0 0 / 0.06);
+  --shadow-overlay: 0 0 0 1px var(--ring), 0 16px 40px rgb(0 0 0 / 0.5);
+  --shadow-inset-field: inset 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 @theme inline {
@@ -275,8 +204,9 @@
   --color-line-soft: var(--line-soft);
   --color-grid-line: var(--grid-line);
   --color-accent: var(--accent);
-  --color-accent-ink: var(--accent-ink);
-  --color-accent-tint: var(--accent-tint);
+  --color-dex-accent: var(--dex-accent);
+  --color-dex-accent-ink: var(--dex-accent-ink);
+  --color-dex-accent-tint: var(--dex-accent-tint);
   --color-green: var(--green);
   --color-green-tint: var(--green-tint);
   --color-orange: var(--orange);
@@ -363,7 +293,7 @@ body {
 }
 
 ::selection {
-  background: var(--accent-tint);
+  background: var(--dex-accent-tint);
   color: var(--ink);
 }
 
@@ -406,7 +336,7 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--dex-accent);
   outline-offset: 2px;
   border-radius: 4px;
 }

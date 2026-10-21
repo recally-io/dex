@@ -10,7 +10,7 @@ const statusPillVariants = cva(
         green: "bg-green-tint text-green",
         orange: "bg-orange-tint text-orange",
         red: "bg-red-tint text-red",
-        accent: "bg-accent-tint text-accent-ink",
+        accent: "bg-dex-accent-tint text-dex-accent-ink",
         neutral: "bg-inset text-ink-2",
       },
     },
@@ -25,7 +25,7 @@ const dotColor: Record<Tone, string> = {
   green: "bg-green",
   orange: "bg-orange",
   red: "bg-red",
-  accent: "bg-accent",
+  accent: "bg-dex-accent",
   neutral: "bg-ink-3",
 };
 

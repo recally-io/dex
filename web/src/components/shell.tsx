@@ -336,7 +336,7 @@ function AgentRow({ agent, current, collapsed }: { agent: Agent; current: boolea
             aria-hidden
             className={cn(
               "absolute right-1 bottom-1 size-2 rounded-full ring-2 ring-canvas",
-              active > 0 ? "bg-accent" : "bg-orange",
+              active > 0 ? "bg-dex-accent" : "bg-orange",
             )}
           />
         ) : null}

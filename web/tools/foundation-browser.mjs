@@ -18,12 +18,54 @@ const app = spawn(
   resolve(binary),
   ["serve", "--host", "127.0.0.1", "--port", String(port), "--data-dir", join(isolated, "data")],
   {
-    env: { PATH: process.env.PATH, HOME: join(isolated, "home"), LANG: "en_US.UTF-8" },
+    env: { PATH: process.env.PATH, HOME: join(isolated, "home"), LANG: "en_US.UTF-8", DEX_FAKE_MODEL: "1" },
     stdio: "ignore",
   },
 );
 const base = `http://127.0.0.1:${port}`;
 const results = [];
+async function request(path, options) {
+  const response = await fetch(`${base}${path}`, {
+    headers: { "content-type": "application/json" },
+    ...options,
+  });
+  const body = await response.text();
+  assert.ok(response.ok, `${options?.method ?? "GET"} ${path}: ${response.status} ${body}`);
+  return body ? JSON.parse(body) : null;
+}
+async function seed() {
+  await request("/api/settings/providers/foundation", {
+    method: "PUT",
+    body: JSON.stringify({
+      api: "openai-completions",
+      name: "Foundation Demo",
+      baseUrl: "http://127.0.0.1:9",
+      apiKey: "demo",
+      models: ["demo/model"],
+    }),
+  });
+  const agent = await request("/api/agents/default");
+  await request("/api/agents/default", {
+    method: "PUT",
+    body: JSON.stringify({
+      name: agent.name,
+      provider: "faux",
+      modelId: "echo",
+      thinkingLevel: agent.thinkingLevel,
+      instructions: agent.instructions,
+    }),
+  });
+  const main = await request("/api/agents/default/chats/main");
+  await request(`/api/agents/default/chats/${main.id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ id: crypto.randomUUID(), text: "foundation screenshot seed" }),
+  });
+  const session = await request("/api/agents/default/chats", { method: "POST" });
+  await request(`/api/agents/default/chats/${session.id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ id: crypto.randomUUID(), text: "session screenshot seed" }),
+  });
+}
 let chrome;
 let socket;
 let nextId = 1;
@@ -91,6 +133,7 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
+  await seed();
   const pages = [
     ["chat", "/a/default"],
     ["sessions", "/a/default/sessions"],
@@ -126,6 +169,37 @@ try {
           (await call("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }))
             .result?.value ?? "";
         results.push({ theme, page: name, size, path, textLength: text.length });
+        if (name === "providers" && size === "desktop") {
+          await call("Runtime.evaluate", {
+            expression:
+              "[...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Add provider')?.click()",
+          });
+          await waitFor(
+            `${theme} provider dialog`,
+            async () =>
+              (
+                await call("Runtime.evaluate", {
+                  expression: "!!document.querySelector('[role=dialog]')",
+                  returnByValue: true,
+                })
+              ).result?.value,
+          );
+          await call("Page.captureScreenshot", { format: "png" }).then((shot) =>
+            writeFile(
+              join(output, `${theme}-providers-dialog-desktop.png`),
+              Buffer.from(shot.data, "base64"),
+            ),
+          );
+          results.push({
+            theme,
+            page: "providers-dialog",
+            size: "desktop",
+            path,
+            textLength:
+              (await call("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }))
+                .result?.value?.length ?? 0,
+          });
+        }
       }
   await writeFile(join(output, "result.json"), JSON.stringify({ base, results }, null, 2));
 } catch (error) {

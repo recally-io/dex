@@ -192,7 +192,7 @@ function RunRow({ run, timeZone, now }: { run: AutomationRun; timeZone: string; 
           <Link
             to="/a/$agentId/c/$chatId"
             params={{ agentId, chatId: String(run.chatId) }}
-            className="text-[12px] font-medium text-accent-ink hover:underline"
+            className="text-[12px] font-medium text-dex-accent-ink hover:underline"
           >
             Open session
           </Link>
@@ -311,7 +311,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
                 <Link
                   to="/a/$agentId/c/$chatId"
                   params={{ agentId, chatId: String(latestRun.chatId) }}
-                  className="font-medium text-accent-ink hover:underline"
+                  className="font-medium text-dex-accent-ink hover:underline"
                 >
                   Open session
                 </Link>

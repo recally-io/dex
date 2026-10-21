@@ -5,7 +5,7 @@ const TONES: Record<Tone, { cls: string; ring: string }> = {
   green: { cls: "bg-green-tint text-green", ring: "0 0 0 1px color-mix(in oklch, var(--green) 28%, transparent)" },
   orange: { cls: "bg-orange-tint text-orange", ring: "0 0 0 1px color-mix(in oklch, var(--orange) 28%, transparent)" },
   red: { cls: "bg-red-tint text-red", ring: "0 0 0 1px color-mix(in oklch, var(--red) 28%, transparent)" },
-  accent: { cls: "bg-accent-tint text-accent-ink", ring: "0 0 0 1px color-mix(in oklch, var(--accent) 28%, transparent)" },
+  accent: { cls: "bg-dex-accent-tint text-dex-accent-ink", ring: "0 0 0 1px color-mix(in oklch, var(--dex-accent) 28%, transparent)" },
 };
 
 /** Inline value badge — a plain value (a date, a name, a count) set off in

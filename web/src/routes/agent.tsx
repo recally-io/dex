@@ -170,7 +170,7 @@ function Agent({ settings }: { settings: Settings }) {
             <div className="border-t border-line px-4 py-3">
               <Note>
                 Add a provider first.{" "}
-                <Link className="font-medium text-accent-ink underline" to="/providers">
+                <Link className="font-medium text-dex-accent-ink underline" to="/providers">
                   Go to Providers
                 </Link>
               </Note>

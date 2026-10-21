@@ -223,7 +223,7 @@ function AgentPane({ settings }: { settings: Settings }) {
                   <span
                     role="img"
                     aria-label={`${activity.active} active`}
-                    className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent-tint px-1.5 text-[11px] font-medium text-accent-ink tabular-nums"
+                    className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-dex-accent-tint px-1.5 text-[11px] font-medium text-dex-accent-ink tabular-nums"
                   >
                     {activity.active}
                   </span>
