@@ -139,18 +139,18 @@ function SessionRow({ chat }: { chat: Chat }) {
 
   const content = (
     <>
-      <span className="block text-[13.5px] font-medium text-ink [overflow-wrap:anywhere]">
+      <span className="block text-[13.5px] font-medium text-foreground [overflow-wrap:anywhere]">
         {chat.title || "New session"}
       </span>
-      <span className="mt-0.5 block text-[12px] text-ink-3">
+      <span className="mt-0.5 block text-[12px] text-muted-foreground">
         {kind} · {chat.task ? taskTimes(chat.task) : taskTime(chat.updatedAt)}
       </span>
     </>
   );
 
   return (
-    <li className="flex items-center gap-3 border-t border-line px-4 py-3.5 first:border-t-0">
-      <Icon size={16} className="mt-0.5 shrink-0 self-start text-ink-3" />
+    <li className="flex items-center gap-3 border-t border-border px-4 py-3.5 first:border-t-0">
+      <Icon size={16} className="mt-0.5 shrink-0 self-start text-muted-foreground" />
       {chat.task ? (
         <Link
           to="/a/$agentId/tasks/$taskId"
@@ -171,14 +171,11 @@ function SessionRow({ chat }: { chat: Chat }) {
       {chat.task ? (
         <TaskPill task={chat.task} />
       ) : chat.busy ? (
-        <Badge
-          variant="secondary"
-          className="h-5 shrink-0 bg-dex-accent-tint px-2 text-[11.5px] text-dex-accent-ink"
-        >
+        <Badge variant="secondary" className="h-5 shrink-0 bg-primary/10 px-2 text-[11.5px] text-primary">
           Running
         </Badge>
       ) : null}
-      <ChevronRight size={16} className="shrink-0 text-ink-3" />
+      <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
     </li>
   );
 }
@@ -195,7 +192,11 @@ export function TaskPage({ taskId }: { taskId: string }) {
   return (
     <FramedPage
       eyebrow={
-        <Link to="/a/$agentId/sessions" params={{ agentId }} className="hover:text-ink hover:underline">
+        <Link
+          to="/a/$agentId/sessions"
+          params={{ agentId }}
+          className="hover:text-foreground hover:underline"
+        >
           Sessions
         </Link>
       }
@@ -233,7 +234,7 @@ function TaskWork({ chatId }: { chatId: number }) {
   ) : (
     <div className="flex min-w-0 flex-col gap-5">
       {connection !== "ready" ? (
-        <div role="status" className="text-[12px] text-ink-3">
+        <div role="status" className="text-[12px] text-muted-foreground">
           {streamError ||
             (connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the bot…")}
           <Button size="xs" variant="secondary" onClick={() => reconnect.current?.()}>
@@ -249,7 +250,7 @@ function TaskWork({ chatId }: { chatId: number }) {
       <Transcript items={state.items} running={state.running} retry={() => {}} canRetry={false} />
       {state.retry ? <RetryNotice retry={state.retry} /> : null}
       {!state.items.length && connection === "ready" ? (
-        <p className="text-[13px] text-ink-3">No messages yet.</p>
+        <p className="text-[13px] text-muted-foreground">No messages yet.</p>
       ) : null}
     </div>
   );

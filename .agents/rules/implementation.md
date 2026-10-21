@@ -80,3 +80,7 @@ Read this before you change code, dependencies, native execution, or stored data
 - A fix covers every entry point with the same failure mechanism. Search for
   the pattern, and re-check the callers, the stored data, and the tests that
   depend on the old meaning.
+
+## Web foundation
+
+The web UI owns one stock shadcn foundation in `web/src/components/ui/` and one semantic token source in `web/src/styles.css`. Domain components compose the foundation. Do not add atoms, primitives, direct icon packages, or legacy token aliases. Review the preset `b4XK48HRFw` before updates, then run the official shadcn CLI from `web/` and review every generated diff. Run `mise run check:web` after the update; its guard rejects retired imports and token names.

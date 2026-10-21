@@ -20,7 +20,7 @@ export function DexMark({ size = 18 }: { size?: number }) {
         width="10.5"
         height="10.5"
         rx="2.25"
-        stroke="var(--dex-accent)"
+        stroke="var(--primary)"
         strokeWidth="1.4"
       />
       <rect
@@ -29,11 +29,11 @@ export function DexMark({ size = 18 }: { size?: number }) {
         width="10.5"
         height="10.5"
         rx="2.25"
-        fill="var(--surface)"
-        stroke="var(--ink)"
+        fill="var(--card)"
+        stroke="var(--foreground)"
         strokeWidth="1.4"
       />
-      <path d="M6.1 10h3.8" stroke="var(--ink)" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M6.1 10h3.8" stroke="var(--foreground)" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
 }

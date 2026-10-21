@@ -179,7 +179,7 @@ export function ProviderDialog({
             {listingError ? "Close" : "Cancel"}
           </Button>
           <Button size="sm" onClick={submit} disabled={save.isPending}>
-            {save.isPending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
+            {save.isPending ? <Spinner className="border-background/40 border-t-canvas" /> : null}
             {save.isPending ? "Saving and listing models…" : existing ? "Save changes" : "Save provider"}
           </Button>
         </>
@@ -205,7 +205,7 @@ export function ProviderDialog({
                 setTried(false);
               }}
             />
-            <p className="text-[12px] text-ink-3">
+            <p className="text-[12px] text-muted-foreground">
               {kind === "builtin"
                 ? "Anthropic, OpenAI, OpenRouter and others. Needs a key."
                 : "Any OpenAI- or Anthropic-compatible URL, such as LM Studio on this computer."}
@@ -215,8 +215,8 @@ export function ProviderDialog({
 
         {kind === "builtin" ? (
           existing ? (
-            <p className="text-[12.5px] text-ink-2">
-              <span className="font-medium text-ink">{builtinName}</span> is built in. Only the key can
+            <p className="text-[12.5px] text-muted-foreground">
+              <span className="font-medium text-foreground">{builtinName}</span> is built in. Only the key can
               change.
             </p>
           ) : (

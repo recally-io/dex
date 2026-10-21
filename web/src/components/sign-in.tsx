@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { createSessionMutation } from "../api/generated/@tanstack/react-query.gen";
-import { Button } from "./atoms/Button";
+import { Button } from "./ui/button";
 import { Field, Input } from "./form";
 import { FramedPage, Section } from "./page";
 import { errorText } from "../lib/queries";

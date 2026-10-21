@@ -69,7 +69,7 @@ export function ThemeToggle() {
     <div
       role="group"
       aria-label="Theme"
-      className="relative inline-grid h-9 shrink-0 grid-cols-3 items-center rounded-none bg-field p-0.5"
+      className="relative inline-grid h-9 shrink-0 grid-cols-3 items-center rounded-none bg-card p-0.5"
     >
       {options.map(({ value, label, icon: Icon }) => (
         <button
@@ -78,7 +78,7 @@ export function ThemeToggle() {
           aria-label={label}
           aria-pressed={selected === value || (value === "system" && selected === "system" && !dark)}
           onClick={() => pick(value)}
-          className={`relative z-10 flex size-8 items-center justify-center rounded-none transition-colors duration-150 ${selected === value ? "text-ink" : "text-ink-3 hover:text-ink-2"}`}
+          className={`relative z-10 flex size-8 items-center justify-center rounded-none transition-colors duration-150 ${selected === value ? "text-foreground" : "text-muted-foreground hover:text-muted-foreground"}`}
         >
           <Icon size={13} aria-hidden />
         </button>

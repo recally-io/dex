@@ -17,13 +17,17 @@ export function Failure({
   children?: ReactNode;
 }) {
   return (
-    <div role="alert" className="rounded-card bg-red-tint px-3.5 py-3 text-[12.5px]">
+    <div role="alert" className="rounded-md bg-red-tint px-3.5 py-3 text-[12.5px]">
       <div className="flex items-center gap-2 font-medium text-red">
         <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-red" />
         {title}
       </div>
-      {error ? <p className="mt-1.5 pl-3.5 text-ink-2 [overflow-wrap:anywhere]">{errorText(error)}</p> : null}
-      {children ? <div className="mt-1.5 pl-3.5 text-ink-2 [overflow-wrap:anywhere]">{children}</div> : null}
+      {error ? (
+        <p className="mt-1.5 pl-3.5 text-muted-foreground [overflow-wrap:anywhere]">{errorText(error)}</p>
+      ) : null}
+      {children ? (
+        <div className="mt-1.5 pl-3.5 text-muted-foreground [overflow-wrap:anywhere]">{children}</div>
+      ) : null}
       {retry ? (
         <div className="mt-2.5 pl-3.5">
           <Button size="xs" variant="secondary" onClick={retry}>
@@ -51,7 +55,7 @@ export function Spinner({ className }: { className?: string }) {
     <span
       aria-hidden
       className={cn(
-        "inline-block size-3 shrink-0 animate-[spin_700ms_linear_infinite] rounded-full border-[1.5px] border-line-strong border-t-ink-2",
+        "inline-block size-3 shrink-0 animate-[spin_700ms_linear_infinite] rounded-full border-[1.5px] border-ring border-t-ink-2",
         className,
       )}
     />

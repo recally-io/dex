@@ -13,19 +13,19 @@ function FileChip({ file, onRemove }: { file: DraftFile; onRemove: () => void })
   return (
     <li
       className={cn(
-        "flex h-10 max-w-full min-w-0 animate-[pop-in_200ms_var(--ease-out-strong)_both] items-center gap-2 rounded-[10px] py-1 pr-1 pl-1 text-[11.5px] shadow-hairline",
-        file.error ? "bg-red-tint" : "bg-field",
+        "flex h-10 max-w-full min-w-0 animate-[pop-in_200ms_var(--ease-out-strong)_both] items-center gap-2 rounded-[10px] py-1 pr-1 pl-1 text-[11.5px] shadow-card",
+        file.error ? "bg-red-tint" : "bg-card",
       )}
     >
       {file.preview ? (
         <img src={file.preview} alt="" className="size-8 shrink-0 rounded-[6px] object-cover" />
       ) : (
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-inset text-ink-3">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-muted text-muted-foreground">
           <FileText className="size-[15px]" />
         </span>
       )}
       <span className="flex min-w-0 flex-col leading-tight">
-        <span className="max-w-40 truncate font-medium text-ink" title={file.name}>
+        <span className="max-w-40 truncate font-medium text-foreground" title={file.name}>
           {file.name}
         </span>
         {file.error ? (
@@ -33,7 +33,9 @@ function FileChip({ file, onRemove }: { file: DraftFile; onRemove: () => void })
             {file.error}
           </span>
         ) : (
-          <span className="text-ink-3 tabular-nums">{uploading ? "Uploading…" : formatSize(file.size)}</span>
+          <span className="text-muted-foreground tabular-nums">
+            {uploading ? "Uploading…" : formatSize(file.size)}
+          </span>
         )}
       </span>
       {uploading ? <Spinner /> : null}
@@ -43,7 +45,7 @@ function FileChip({ file, onRemove }: { file: DraftFile; onRemove: () => void })
         size="icon-xs"
         aria-label={`Remove ${file.name}`}
         onClick={onRemove}
-        className="shrink-0 rounded-[6px] text-ink-3 hover:bg-line/70 hover:text-ink"
+        className="shrink-0 rounded-[6px] text-muted-foreground hover:bg-border/70 hover:text-foreground"
       >
         <X className="size-[14px]" />
       </Button>
@@ -133,8 +135,8 @@ export function Composer({
           files.add([...e.dataTransfer.files]);
         }}
         className={cn(
-          "relative isolate flex flex-col gap-2 overflow-hidden rounded-[12px] border border-line bg-surface px-3 pt-2 pb-2 transition-[border-color] duration-150 focus-within:border-line-strong",
-          dropping && "border-dex-accent focus-within:border-dex-accent",
+          "relative isolate flex flex-col gap-2 overflow-hidden rounded-[12px] border border-border bg-card px-3 pt-2 pb-2 transition-[border-color] duration-150 focus-within:border-ring",
+          dropping && "border-primary focus-within:border-primary",
         )}
       >
         {files?.files.length ? (
@@ -163,7 +165,7 @@ export function Composer({
             }
           }}
           rows={1}
-          className="min-h-[44px] w-full min-w-0 resize-none rounded-none border-0 bg-transparent px-1 py-1.5 text-[14px] leading-5 text-ink shadow-none outline-none [overflow-wrap:anywhere] dark:bg-transparent placeholder:text-ink-3 focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed"
+          className="min-h-[44px] w-full min-w-0 resize-none rounded-none border-0 bg-transparent px-1 py-1.5 text-[14px] leading-5 text-foreground shadow-none outline-none [overflow-wrap:anywhere] dark:bg-transparent placeholder:text-muted-foreground focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed"
           maxLength={32000}
           placeholder={running ? "Queue a follow-up…" : placeholder}
           aria-label={running ? "Queue a follow-up…" : placeholder}
@@ -216,7 +218,7 @@ export function Composer({
                 title="Attach files"
                 disabled={!canAttach}
                 onClick={() => picker.current?.click()}
-                className="shrink-0 rounded-control text-ink-3 hover:bg-hover hover:text-ink"
+                className="shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 <Plus className="size-4" />
               </Button>
@@ -245,7 +247,7 @@ export function Composer({
               // A missing model blocks new messages, not stopping the current run.
               disabled={pending}
               onClick={onStop}
-              className="shrink-0 rounded-control bg-ink text-surface hover:bg-ink"
+              className="shrink-0 rounded-md bg-foreground text-card hover:bg-foreground"
             >
               <span aria-hidden className="size-2.5 rounded-[2px] bg-current" />
             </Button>
@@ -259,10 +261,10 @@ export function Composer({
               title={blocked || (running ? "Queue message" : "Send message")}
               disabled={!canSend}
               className={cn(
-                "shrink-0 rounded-control transition-[background-color,color,transform] duration-200",
+                "shrink-0 rounded-md transition-[background-color,color,transform] duration-200",
                 canSend
-                  ? "bg-ink text-surface hover:bg-ink"
-                  : "bg-line-strong text-ink-2 hover:bg-line-strong",
+                  ? "bg-foreground text-card hover:bg-foreground"
+                  : "bg-ring text-muted-foreground hover:bg-ring",
               )}
             >
               <ArrowUp className="size-4" />
@@ -270,7 +272,7 @@ export function Composer({
           ) : null}
         </div>
       </form>
-      <p id={descriptionId} className="mt-2 px-2 text-center text-[11.5px] text-ink-3">
+      <p id={descriptionId} className="mt-2 px-2 text-center text-[11.5px] text-muted-foreground">
         {disabledReason || "Tools run on this computer without a sandbox. Review commands and results."}
         {fix ? <> {fix}</> : null}
       </p>

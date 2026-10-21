@@ -24,7 +24,7 @@ import { SecretsPage } from "./routes/secrets";
 import { AboutPage } from "./routes/about";
 import { AppProvider } from "./lib/app-state";
 import { FramedPage, Section } from "./components/page";
-import { Button, buttonVariants } from "./components/atoms/Button";
+import { Button, buttonVariants } from "./components/ui/button";
 import { applySavedTheme } from "./components/theme";
 import { SignIn } from "./components/sign-in";
 import { useSignedOut } from "./lib/session";

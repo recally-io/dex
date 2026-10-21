@@ -38,7 +38,7 @@ export function PageHeader({
     <header
       data-page-header
       className={cn(
-        "flex h-12 shrink-0 items-center gap-2 border-b border-line pr-2 pl-3 sm:pl-4",
+        "flex h-12 shrink-0 items-center gap-2 border-b border-border pr-2 pl-3 sm:pl-4",
         className,
       )}
     >
@@ -47,7 +47,7 @@ export function PageHeader({
       {crumb ? (
         <>
           {crumb}
-          <span aria-hidden className="text-line-strong">
+          <span aria-hidden className="text-ring">
             /
           </span>
         </>
@@ -56,7 +56,7 @@ export function PageHeader({
         id={heading ? "page-title" : undefined}
         tabIndex={heading ? -1 : undefined}
         // The global heading font is for page headings; the bar keeps the body face on every page.
-        className="max-w-[40%] min-w-0 shrink-0 truncate font-sans text-[14px] font-semibold tracking-[-0.01em] text-ink outline-none sm:max-w-[200px]"
+        className="max-w-[40%] min-w-0 shrink-0 truncate font-sans text-[14px] font-semibold tracking-[-0.01em] text-foreground outline-none sm:max-w-[200px]"
       >
         {title}
       </Title>
@@ -76,7 +76,7 @@ export function MenuButton() {
       type="button"
       aria-label="Open navigation"
       onClick={openDrawer}
-      className="-ml-1 flex size-9 shrink-0 items-center justify-center rounded-control text-ink-2 transition-colors hover:bg-hover hover:text-ink lg:hidden"
+      className="-ml-1 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
     >
       <Menu size={18} />
     </button>
@@ -100,7 +100,7 @@ export function MainPane({
     return <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>;
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page">
+    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
       {bar ? <PageHeader title={headerTitle} /> : null}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
     </section>
@@ -133,19 +133,21 @@ export function FramedPage(props: PageProps) {
       <div className="mx-auto w-full max-w-[1120px] px-6 py-8">
         <header className="mb-8 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
           <div className="min-w-0">
-            {eyebrow ? <div className="mb-2 text-[12px] text-ink-3">{eyebrow}</div> : null}
+            {eyebrow ? <div className="mb-2 text-[12px] text-muted-foreground">{eyebrow}</div> : null}
             <div className="flex flex-wrap items-center gap-2">
               <h1
                 id="page-title"
                 tabIndex={-1}
-                className="text-[24px] leading-tight font-semibold tracking-[-0.015em] text-ink outline-none [overflow-wrap:anywhere]"
+                className="text-[24px] leading-tight font-semibold tracking-[-0.015em] text-foreground outline-none [overflow-wrap:anywhere]"
               >
                 {title}
               </h1>
               {badge}
             </div>
             {description ? (
-              <p className="mt-2 max-w-[640px] text-[14px] leading-relaxed text-ink-2">{description}</p>
+              <p className="mt-2 max-w-[640px] text-[14px] leading-relaxed text-muted-foreground">
+                {description}
+              </p>
             ) : null}
           </div>
           {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
@@ -167,19 +169,21 @@ function PanePage({ eyebrow, title, description, badge, actions, toolbar, childr
       <div className="mx-auto w-full max-w-[1120px] px-6 pt-6 pb-10">
         <header className="mb-6 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
           <div className="min-w-0">
-            {eyebrow ? <div className="mb-2 text-[12px] text-ink-3">{eyebrow}</div> : null}
+            {eyebrow ? <div className="mb-2 text-[12px] text-muted-foreground">{eyebrow}</div> : null}
             <div className="flex flex-wrap items-center gap-2">
               <h1
                 id="page-title"
                 tabIndex={-1}
-                className="text-[18px] leading-tight font-semibold tracking-[-0.01em] text-ink outline-none [overflow-wrap:anywhere]"
+                className="text-[18px] leading-tight font-semibold tracking-[-0.01em] text-foreground outline-none [overflow-wrap:anywhere]"
               >
                 {title}
               </h1>
               {badge}
             </div>
             {description ? (
-              <p className="mt-1.5 max-w-[640px] text-[13.5px] leading-relaxed text-ink-2">{description}</p>
+              <p className="mt-1.5 max-w-[640px] text-[13.5px] leading-relaxed text-muted-foreground">
+                {description}
+              </p>
             ) : null}
           </div>
           {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
@@ -210,14 +214,14 @@ export function Section({
   return (
     <section
       aria-labelledby={id}
-      className="border-t border-line-soft py-7 first-of-type:border-t-0 first-of-type:pt-0 last:border-t-0"
+      className="border-t border-border py-7 first-of-type:border-t-0 first-of-type:pt-0 last:border-t-0"
     >
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-          <h2 id={id} className="text-[14px] font-semibold text-ink">
+          <h2 id={id} className="text-[14px] font-semibold text-foreground">
             {title}
           </h2>
-          {caption ? <p className="text-[13px] text-ink-3">{caption}</p> : null}
+          {caption ? <p className="text-[13px] text-muted-foreground">{caption}</p> : null}
         </div>
         {action ? <div className="-my-1 shrink-0">{action}</div> : null}
       </div>
@@ -229,23 +233,27 @@ export function Section({
 /** The white hairline card that holds the content of a section. */
 export function Panel({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn("overflow-hidden rounded-window bg-surface shadow-card", className)}>{children}</div>
+    <div className={cn("overflow-hidden rounded-window bg-card shadow-card", className)}>{children}</div>
   );
 }
 
 /** Label-left and value-right rows, like upstream TextRow, divided by hairlines. Labels are unique. */
 export function Facts({ rows, monoLabels = false }: { rows: [string, ReactNode][]; monoLabels?: boolean }) {
   return (
-    <dl className="divide-y divide-line">
+    <dl className="divide-y divide-border">
       {rows.map(([label, value]) => (
         <div
           key={label}
           className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2.5"
         >
-          <dt className={monoLabels ? "font-mono text-[12px] text-ink" : "text-[13px] text-ink-2"}>
+          <dt
+            className={
+              monoLabels ? "font-mono text-[12px] text-foreground" : "text-[13px] text-muted-foreground"
+            }
+          >
             {label}
           </dt>
-          <dd className="min-w-0 text-right text-[13px] font-medium text-ink [overflow-wrap:anywhere]">
+          <dd className="min-w-0 text-right text-[13px] font-medium text-foreground [overflow-wrap:anywhere]">
             {value}
           </dd>
         </div>
@@ -258,8 +266,8 @@ export function Facts({ rows, monoLabels = false }: { rows: [string, ReactNode][
 export function Empty({ title, children }: { title: string; children: ReactNode }) {
   return (
     <Panel className="px-5 py-8 text-center">
-      <p className="text-[13px] font-medium text-ink">{title}</p>
-      <div className="mx-auto mt-1 max-w-[380px] text-[12.5px] text-ink-3">{children}</div>
+      <p className="text-[13px] font-medium text-foreground">{title}</p>
+      <div className="mx-auto mt-1 max-w-[380px] text-[12.5px] text-muted-foreground">{children}</div>
     </Panel>
   );
 }
@@ -268,8 +276,8 @@ export function Note({ children, tone = "neutral" }: { children: ReactNode; tone
   return (
     <div
       className={cn(
-        "rounded-card px-3.5 py-2.5 text-[12.5px] leading-relaxed",
-        tone === "warn" ? "bg-orange-tint text-ink" : "bg-inset text-ink-2 shadow-hairline",
+        "rounded-md px-3.5 py-2.5 text-[12.5px] leading-relaxed",
+        tone === "warn" ? "bg-orange-tint text-foreground" : "bg-muted text-muted-foreground shadow-card",
       )}
     >
       {children}
@@ -287,5 +295,5 @@ export function NotAvailable() {
 }
 
 export function Mono({ children, className }: { children: ReactNode; className?: string }) {
-  return <span className={cn("font-mono text-[12px] text-ink-2", className)}>{children}</span>;
+  return <span className={cn("font-mono text-[12px] text-muted-foreground", className)}>{children}</span>;
 }

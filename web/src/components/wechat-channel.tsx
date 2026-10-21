@@ -75,7 +75,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
     <Section n={1} title="Connection" caption="Scan once. dex recognizes the owner from the login.">
       <Panel className="space-y-4 px-4 py-3.5">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-[13px] text-ink-2">Private messages from the owner only.</p>
+          <p className="text-[13px] text-muted-foreground">Private messages from the owner only.</p>
           <Badge
             variant={account.status.state === "running" ? "secondary" : "outline"}
             className={account.status.state === "running" ? "bg-green-tint text-green" : ""}
@@ -97,7 +97,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
         ) : null}
         {login ? (
           <div className="space-y-3">
-            <p role="status" className="text-[13px] text-ink-2">
+            <p role="status" className="text-[13px] text-muted-foreground">
               {loginText[login.status]}
             </p>
             {login.active ? <WechatQR content={login.qrContent} /> : null}
@@ -159,7 +159,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
         {start.error || poll.error ? (
           <Failure title="WeChat login did not finish" error={start.error ?? poll.error} />
         ) : null}
-        <p className="text-[12px] text-ink-3">
+        <p className="text-[12px] text-muted-foreground">
           WeChat shares the main timeline. Use /new to clear main's context when it is idle. Use /stop to stop
           the main answer and its background work. Use /help for commands.
         </p>

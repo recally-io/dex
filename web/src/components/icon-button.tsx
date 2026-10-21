@@ -19,7 +19,7 @@ export function IconButton({
             aria-label={label}
             {...props}
             className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-control text-ink-2 transition-colors hover:bg-hover-2 hover:text-ink disabled:opacity-40 aria-pressed:bg-hover-2 aria-pressed:text-ink",
+              "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40 aria-pressed:bg-accent aria-pressed:text-foreground",
               className,
             )}
           />
@@ -30,7 +30,7 @@ export function IconButton({
       <TooltipContent
         side="bottom"
         sideOffset={6}
-        className="rounded-full bg-ink px-2.5 py-1 text-[12px] font-medium text-canvas"
+        className="rounded-full bg-foreground px-2.5 py-1 text-[12px] font-medium text-background"
       >
         {label}
       </TooltipContent>

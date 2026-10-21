@@ -62,15 +62,17 @@ export function AboutPage() {
             />
           </Panel>
         ) : (
-          <p className="px-0.5 text-[12.5px] text-ink-3">The paths show when the server answers.</p>
+          <p className="px-0.5 text-[12.5px] text-muted-foreground">
+            The paths show when the server answers.
+          </p>
         )}
-        <p className="mt-3 px-0.5 text-[12px] text-ink-3">
+        <p className="mt-3 px-0.5 text-[12px] text-muted-foreground">
           Set <Mono>DEX_DATA_DIR</Mono> to use a different directory.
         </p>
       </Section>
       <Section n={3} title="How it runs">
         <Panel className="px-4 py-3.5">
-          <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] leading-6 text-ink-2 marker:text-ink-3">
+          <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] leading-6 text-muted-foreground marker:text-muted-foreground">
             <li>The control process serves this page and the API, and keeps chats in control.sqlite.</li>
             <li>The worker process runs the bot and its tools. Control restarts it when it stops.</li>
             <li>The data directory holds the database, the bot memory and the workspace.</li>
@@ -83,7 +85,7 @@ export function AboutPage() {
             Tools run without a sandbox, and the server has no sign-in. Keep dex on 127.0.0.1.
           </Note>
           <Panel className="px-4 py-3.5">
-            <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] leading-6 text-ink-2 marker:text-ink-3">
+            <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] leading-6 text-muted-foreground marker:text-muted-foreground">
               <li>The web page has no sign-in. Any program that can reach the port can use dex.</li>
               <li>The bot runs read, write, edit and bash on this computer without a sandbox.</li>
               <li>Allowed Telegram users reach the same bot, tools and memory.</li>
@@ -93,7 +95,7 @@ export function AboutPage() {
         </div>
       </Section>
       <Section n={5} title="This design">
-        <p className="px-0.5 text-[12.5px] leading-relaxed text-ink-2">
+        <p className="px-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
           The look comes from Beautiful UI by slev12397 (MIT): its tokens, atoms and the layout of
           beautifului.dev.
         </p>

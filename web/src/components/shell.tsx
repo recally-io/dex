@@ -93,14 +93,14 @@ export function Shell() {
 
   return (
     <ShellContext.Provider value={shell}>
-      <div className="flex h-dvh bg-canvas text-ink lg:gap-0 lg:p-0">
+      <div className="flex h-dvh bg-sidebar text-foreground lg:gap-0 lg:p-0">
         <a
           href="#main"
           onClick={(e) => {
             e.preventDefault();
             document.getElementById("main")?.focus();
           }}
-          className="sr-only z-50 rounded-control bg-ink px-3 py-2 text-canvas focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+          className="sr-only z-50 rounded-md bg-foreground px-3 py-2 text-background focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
         >
           Skip to content
         </a>
@@ -121,11 +121,11 @@ export function Shell() {
         <DialogContent
           showCloseButton={false}
           aria-label="Navigation"
-          className="fixed inset-y-0 left-0 top-0 z-50 flex h-full w-[272px] max-w-[85vw] translate-x-0 translate-y-0 animate-[drawer-in_240ms_var(--ease-out-strong)_both] flex-col rounded-none bg-canvas p-0 py-2 shadow-overlay outline-none lg:hidden"
+          className="fixed inset-y-0 left-0 top-0 z-50 flex h-full w-[272px] max-w-[85vw] translate-x-0 translate-y-0 animate-[drawer-in_240ms_var(--ease-out-strong)_both] flex-col rounded-none bg-sidebar p-0 py-2 shadow-raised outline-none lg:hidden"
         >
           <DialogClose
             aria-label="Close navigation"
-            className="absolute top-3 -right-10 z-20 flex size-8 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink"
+            className="absolute top-3 -right-10 z-20 flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <X size={18} />
           </DialogClose>
@@ -169,10 +169,10 @@ function Sidebar({
       : list;
 
   const iconButton =
-    "relative flex size-9 shrink-0 items-center justify-center rounded-control text-ink-3 hover:bg-hover-2 hover:text-ink";
+    "relative flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground";
 
   const footerRow =
-    "relative flex h-8 w-full items-center gap-1.5 rounded-control px-2 text-[13px] text-ink-2 hover:bg-hover-2 hover:text-ink";
+    "relative flex h-8 w-full items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground";
 
   const errorLabel = `${providerErrors} ${providerErrors === 1 ? "provider needs" : "providers need"} attention`;
 
@@ -188,26 +188,26 @@ function Sidebar({
       <div className={cn("mt-1 flex h-10 items-center gap-2", collapsed ? "justify-center" : "mx-2 px-2")}>
         <DexMark />
         {collapsed ? null : (
-          <span className="text-[13px] font-semibold tracking-[-0.01em] text-ink">dex</span>
+          <span className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">dex</span>
         )}
       </div>
       {collapsed ? (
-        <span aria-hidden className="my-2 h-px w-6 shrink-0 bg-line" />
+        <span aria-hidden className="my-2 h-px w-6 shrink-0 bg-border" />
       ) : (
         <div className="mx-2 mt-2 mb-1 flex h-7 items-center justify-between px-2">
-          <span className="text-[12px] font-medium text-ink-3">Bots</span>
+          <span className="text-[12px] font-medium text-muted-foreground">Bots</span>
           <button
             type="button"
             aria-label="Create bot"
             onClick={() => setCreating(true)}
-            className="flex size-6 items-center justify-center rounded-control text-[15px] leading-none text-ink-3 hover:bg-hover-2 hover:text-ink"
+            className="flex size-6 items-center justify-center rounded-md text-[15px] leading-none text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             +
           </button>
         </div>
       )}
       {list.length > 4 && !collapsed ? (
-        <div className="mx-2 mb-1.5 flex h-8 shrink-0 items-center gap-1.5 rounded-control bg-field px-2 text-ink-3">
+        <div className="mx-2 mb-1.5 flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-card px-2 text-muted-foreground">
           <Search size={13} />
           <input
             type="search"
@@ -215,7 +215,7 @@ function Sidebar({
             aria-label="Search bots"
             placeholder="Search bots"
             onChange={(event) => setQuery(event.target.value)}
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink placeholder:text-ink-3"
+            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground"
           />
         </div>
       ) : null}
@@ -237,7 +237,7 @@ function Sidebar({
           </button>
         ) : null}
         {list.length && !shown.length ? (
-          <p className="px-4 py-2 text-[12.5px] text-ink-3">No bot matches.</p>
+          <p className="px-4 py-2 text-[12.5px] text-muted-foreground">No bot matches.</p>
         ) : null}
         {agents.isError ? (
           <p role="alert" className={cn("text-xs text-red", collapsed ? "px-1 text-center" : "px-4")}>
@@ -254,7 +254,7 @@ function Sidebar({
 
       <div
         className={cn(
-          "mt-2 flex w-full shrink-0 flex-col gap-0.5 border-t border-line py-2",
+          "mt-2 flex w-full shrink-0 flex-col gap-0.5 border-t border-border py-2",
           collapsed ? "items-center px-2" : "px-2",
         )}
       >
@@ -265,7 +265,7 @@ function Sidebar({
           title={collapsed ? (providerErrors ? `Settings · ${errorLabel}` : "Settings") : undefined}
           className={cn(
             collapsed ? iconButton : footerRow,
-            "aria-[current=page]:bg-hover-2 aria-[current=page]:text-ink",
+            "aria-[current=page]:bg-accent aria-[current=page]:text-foreground",
           )}
         >
           <span className="flex size-5 shrink-0 items-center justify-center">
@@ -322,15 +322,15 @@ function AgentRow({ agent, current, collapsed }: { agent: Agent; current: boolea
         aria-current={current ? "page" : undefined}
         aria-label={`${agent.name}, ${dirty ? "instructions draft, " : ""}${status}`}
         title={`${agent.name} · ${status}`}
-        className="relative flex size-9 shrink-0 items-center justify-center rounded-control hover:bg-hover-2 aria-[current=page]:bg-hover-2"
+        className="relative flex size-9 shrink-0 items-center justify-center rounded-md hover:bg-accent aria-[current=page]:bg-accent"
       >
         <AgentAvatar agent={agent} />
         {active > 0 || dirty ? (
           <span
             aria-hidden
             className={cn(
-              "absolute right-1 bottom-1 size-2 rounded-full ring-2 ring-canvas",
-              active > 0 ? "bg-dex-accent" : "bg-orange",
+              "absolute right-1 bottom-1 size-2 rounded-full ring-2 ring-background",
+              active > 0 ? "bg-primary" : "bg-orange",
             )}
           />
         ) : null}
@@ -344,19 +344,21 @@ function AgentRow({ agent, current, collapsed }: { agent: Agent; current: boolea
         params={{ agentId }}
         aria-current={current ? "page" : undefined}
         className={cn(
-          "flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-control px-2 hover:bg-hover-2",
-          current && "bg-hover-2",
+          "flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 hover:bg-accent",
+          current && "bg-accent",
         )}
       >
         <AgentAvatar agent={agent} />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-[14px] leading-tight font-semibold text-ink">{agent.name}</span>
-          <span className="truncate text-[11.5px] leading-tight text-ink-3">{status}</span>
+          <span className="truncate text-[14px] leading-tight font-semibold text-foreground">
+            {agent.name}
+          </span>
+          <span className="truncate text-[11.5px] leading-tight text-muted-foreground">{status}</span>
         </span>
         {dirty ? (
           <Badge
             variant="outline"
-            className="h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-ink"
+            className="h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-foreground"
           >
             Draft
           </Badge>

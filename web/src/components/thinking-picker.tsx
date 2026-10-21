@@ -8,7 +8,7 @@ import { Failure } from "./feedback";
 import { Mark } from "./model-picker";
 
 const itemClass =
-  "flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-hover";
+  "flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent";
 
 // An anchored, non-modal list of the levels that pi-ai supports for the model. It saves like
 // ModelPicker. With clearable, the first item "Default" clears the chat's level (save(null)).
@@ -52,7 +52,7 @@ export function ThinkingPicker({
         sideOffset={6}
         aria-label="Thinking level"
         initialFocus={root}
-        className="flex w-[240px] max-w-[calc(100vw-1rem)] origin-(--transform-origin) animate-[pop-in_180ms_var(--ease-out-strong)_both] flex-col overflow-hidden rounded-[12px] bg-surface shadow-raised outline-none"
+        className="flex w-[240px] max-w-[calc(100vw-1rem)] origin-(--transform-origin) animate-[pop-in_180ms_var(--ease-out-strong)_both] flex-col overflow-hidden rounded-[12px] bg-card shadow-raised outline-none"
       >
         <Command ref={root} defaultValue={current} label="Thinking level" className="outline-none">
           <CommandList className="p-1">
@@ -64,7 +64,9 @@ export function ThinkingPicker({
                 onSelect={() => pick(null)}
                 className={itemClass}
               >
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink">Default</span>
+                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
+                  Default
+                </span>
                 <Mark checked={current === "default"} saving={pending === null} />
               </CommandItem>
             ) : null}
@@ -77,7 +79,7 @@ export function ThinkingPicker({
                 onSelect={() => pick(level)}
                 className={itemClass}
               >
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink">
+                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
                   {thinkingNames[level]}
                 </span>
                 <Mark checked={current === level} saving={pending === level} />
@@ -85,7 +87,7 @@ export function ThinkingPicker({
             ))}
           </CommandList>
           {mutation.isError ? (
-            <div className="border-t border-line p-2">
+            <div className="border-t border-border p-2">
               <Failure title="The thinking level did not change" error={mutation.error} />
             </div>
           ) : null}

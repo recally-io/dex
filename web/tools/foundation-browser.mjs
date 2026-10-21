@@ -60,6 +60,14 @@ async function seed() {
     method: "POST",
     body: JSON.stringify({ id: crypto.randomUUID(), text: "foundation screenshot seed" }),
   });
+  // The fake model echoes the text, so the reply renders Markdown: a list, inline code and a code block.
+  await request(`/api/agents/default/chats/${main.id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({
+      id: crypto.randomUUID(),
+      text: 'Markdown seed\n\n- first item\n- second `inline` item\n\n```go\nfmt.Println("hello")\n```',
+    }),
+  });
   for (let index = 0; index < 7; index++) {
     const session = await request("/api/agents/default/chats", { method: "POST" });
     await request(`/api/agents/default/chats/${session.id}/messages`, {

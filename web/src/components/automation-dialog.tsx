@@ -125,7 +125,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             form={formId}
             disabled={pending || !validSchedule || !name.trim() || !prompt.trim()}
           >
-            {pending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
+            {pending ? <Spinner className="border-background/40 border-t-canvas" /> : null}
             {pending ? "Saving…" : "Save automation"}
           </Button>
         </>
@@ -163,7 +163,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
           )}
         </Field>
         <div className="flex flex-col gap-1.5">
-          <span aria-hidden className="text-[12.5px] font-medium text-ink">
+          <span aria-hidden className="text-[12.5px] font-medium text-foreground">
             Repeat
           </span>
           <RadioSegments label="Repeat" options={kinds} value={kind} onChange={setKind} />
@@ -214,12 +214,12 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
         )}
         {kind === "weekly" ? (
           <fieldset>
-            <legend className="mb-1.5 text-[12.5px] font-medium text-ink">Days of the week</legend>
+            <legend className="mb-1.5 text-[12.5px] font-medium text-foreground">Days of the week</legend>
             <div className="flex flex-wrap gap-1.5">
               {weekdays.map((day, i) => (
                 <label
                   key={day}
-                  className="flex h-7 cursor-pointer items-center rounded-full bg-field px-3 text-[12.5px] font-medium text-ink-2 shadow-hairline transition-colors has-[:checked]:bg-ink has-[:checked]:text-canvas has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-dex-accent"
+                  className="flex h-7 cursor-pointer items-center rounded-full bg-card px-3 text-[12.5px] font-medium text-muted-foreground shadow-card transition-colors has-[:checked]:bg-foreground has-[:checked]:text-background has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary"
                 >
                   <input
                     type="checkbox"
@@ -273,14 +273,14 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
           </Field>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[12.5px] font-medium text-ink">Enabled</span>
+          <span className="text-[12.5px] font-medium text-foreground">Enabled</span>
           <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Enabled" />
         </div>
         <section
           aria-live="polite"
-          className="rounded-card bg-inset px-3.5 py-3 text-[12.5px] text-ink-2 shadow-hairline"
+          className="rounded-md bg-muted px-3.5 py-3 text-[12.5px] text-muted-foreground shadow-card"
         >
-          <h3 className="mb-1 font-medium text-ink">Next runs · {timeZone}</h3>
+          <h3 className="mb-1 font-medium text-foreground">Next runs · {timeZone}</h3>
           {!validSchedule ? (
             <p>Complete the schedule to see the next runs.</p>
           ) : previewInput !== input || preview.isPending ? (

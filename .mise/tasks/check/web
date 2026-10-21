@@ -2,6 +2,7 @@
 #MISE description="Check web types, lint, format, and reducer tests"
 #MISE dir="web"
 set -euo pipefail
+mise run check:web-legacy
 bunx --no-install tsc --noEmit
 bunx --no-install vp lint
 bunx --no-install vp fmt --check

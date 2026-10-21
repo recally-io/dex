@@ -73,17 +73,24 @@ function Agent({ settings }: { settings: Settings }) {
       <Section n={1} title="Profile" caption="A change applies from the next message.">
         <Panel>
           <NameRow name={settings.agent.name} />
-          <div className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-3.5">
+          <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3.5">
             <div className="min-w-0 flex-1">
-              <p className={cn("truncate text-[14px] font-medium", model?.ok ? "text-ink" : "text-orange")}>
+              <p
+                className={cn(
+                  "truncate text-[14px] font-medium",
+                  model?.ok ? "text-foreground" : "text-orange",
+                )}
+              >
                 {settings.agent.modelId ? model?.label : "No model chosen"}
               </p>
               {settings.agent.modelId ? (
-                <p className="mt-0.5 truncate font-mono text-[11.5px] text-ink-3">
+                <p className="mt-0.5 truncate font-mono text-[11.5px] text-muted-foreground">
                   {settings.agent.provider}/{settings.agent.modelId}
                 </p>
               ) : (
-                <p className="mt-0.5 text-[12.5px] text-ink-3">dex cannot answer until you choose one.</p>
+                <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+                  dex cannot answer until you choose one.
+                </p>
               )}
             </div>
             <ModelPicker
@@ -100,7 +107,7 @@ function Agent({ settings }: { settings: Settings }) {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     aria-hidden
-                    className="text-ink-3"
+                    className="text-muted-foreground"
                   >
                     <path d="M6 9l6 6 6-6" />
                   </svg>
@@ -108,12 +115,12 @@ function Agent({ settings }: { settings: Settings }) {
               }
             />
           </div>
-          <div className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-3.5">
+          <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3.5">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[14px] font-medium text-ink">
+              <p className="truncate text-[14px] font-medium text-foreground">
                 Thinking: {thinkingNames[settings.agent.thinkingLevel]}
               </p>
-              <p className="mt-0.5 text-[12.5px] text-ink-3">
+              <p className="mt-0.5 text-[12.5px] text-muted-foreground">
                 {!model?.model
                   ? "Choose an available model to set the thinking level."
                   : model.model.reasoning
@@ -143,7 +150,7 @@ function Agent({ settings }: { settings: Settings }) {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       aria-hidden
-                      className="text-ink-3"
+                      className="text-muted-foreground"
                     >
                       <path d="M6 9l6 6 6-6" />
                     </svg>
@@ -157,7 +164,7 @@ function Agent({ settings }: { settings: Settings }) {
             )}
           </div>
           {!model?.ok && settings.agent.modelId ? (
-            <div className="border-t border-line px-4 py-3">
+            <div className="border-t border-border px-4 py-3">
               <Note tone="warn">
                 {provider
                   ? `${provider.name} does not list this model now.`
@@ -167,10 +174,10 @@ function Agent({ settings }: { settings: Settings }) {
             </div>
           ) : null}
           {!settings.providers.length ? (
-            <div className="border-t border-line px-4 py-3">
+            <div className="border-t border-border px-4 py-3">
               <Note>
                 Add a provider first.{" "}
-                <Link className="font-medium text-dex-accent-ink underline" to="/providers">
+                <Link className="font-medium text-primary underline" to="/providers">
                   Go to Providers
                 </Link>
               </Note>
@@ -206,10 +213,10 @@ function NameRow({ name }: { name: string }) {
     <div className="px-4 py-3.5">
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
-          <label htmlFor="bot-name" className="text-[14px] font-medium text-ink">
+          <label htmlFor="bot-name" className="text-[14px] font-medium text-foreground">
             Name
           </label>
-          <p id="bot-name-hint" className="mt-0.5 text-[12.5px] text-ink-3">
+          <p id="bot-name-hint" className="mt-0.5 text-[12.5px] text-muted-foreground">
             Shown in the sidebar and the composer.
           </p>
         </div>

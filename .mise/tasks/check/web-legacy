@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Reject retired web UI imports and tokens"
+set -euo pipefail
+if rg -n '(^|/)atoms/|(^|/)primitives/|@central-icons-react|@base-ui/react' web/src --glob '*.ts' --glob '*.tsx' --glob '*.css' | rg -v 'web/src/components/ui/'; then
+  echo 'retired web UI import found' >&2
+  exit 1
+fi
+if rg -n -- '--(ink|line|surface|canvas|page|inset|hover|field|stripe|dex-accent)(-|:|\b)|\b(text|bg|border|ring|outline|divide|decoration|fill|stroke|from|to|via|placeholder|caret|accent|shadow)-((ink|line|surface|canvas|page|inset|hover|field|stripe|dex-accent)(-|\b))|shadow-(hairline|btn|overlay|inset-field)|rounded-(control|card)' web/src; then
+  echo 'legacy web token found' >&2
+  exit 1
+fi

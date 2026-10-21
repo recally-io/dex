@@ -34,14 +34,14 @@ export function Modal({
       <DialogContent
         // Cancel closes the dialog, so it needs no corner button.
         showCloseButton={false}
-        className="flex max-h-[92dvh] w-full max-w-[520px] sm:max-w-[520px] flex-col overflow-hidden rounded-t-[18px] bg-surface p-0 shadow-overlay sm:rounded-window"
+        className="flex max-h-[92dvh] w-full max-w-[520px] sm:max-w-[520px] flex-col overflow-hidden rounded-t-[18px] bg-card p-0 shadow-raised sm:rounded-window"
       >
-        <DialogHeader className="border-b border-line px-5 pt-5 pb-4">
-          <DialogTitle className="text-[15px] font-semibold text-ink [overflow-wrap:anywhere]">
+        <DialogHeader className="border-b border-border px-5 pt-5 pb-4">
+          <DialogTitle className="text-[15px] font-semibold text-foreground [overflow-wrap:anywhere]">
             {title}
           </DialogTitle>
           {description ? (
-            <DialogDescription className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
+            <DialogDescription className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
               {description}
             </DialogDescription>
           ) : null}
@@ -49,7 +49,7 @@ export function Modal({
         {children ? (
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">{children}</div>
         ) : null}
-        <DialogFooter className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-inset px-5 py-3">
+        <DialogFooter className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-muted px-5 py-3">
           {footer}
         </DialogFooter>
       </DialogContent>

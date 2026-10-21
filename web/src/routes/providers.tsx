@@ -110,9 +110,9 @@ function Connections({
             />
           ))}
           <Note>
-            <strong className="font-medium text-ink">Saved is not the same as working.</strong> dex saves a
-            provider first, then lists its models. A failed listing keeps the provider saved and shows the
-            error on its card. A listed model can still fail when the bot calls it.
+            <strong className="font-medium text-foreground">Saved is not the same as working.</strong> dex
+            saves a provider first, then lists its models. A failed listing keeps the provider saved and shows
+            the error on its card. A listed model can still fail when the bot calls it.
           </Note>
         </div>
       ) : (
@@ -162,11 +162,11 @@ function ProviderCard({
     [
       "API key",
       p.keySet ? (
-        <span key="k" className="text-ink-2">
+        <span key="k" className="text-muted-foreground">
           Saved · write-only
         </span>
       ) : (
-        <span key="k" className={p.api ? "text-ink-3" : "text-orange"}>
+        <span key="k" className={p.api ? "text-muted-foreground" : "text-orange"}>
           {p.api ? "None · dex sends “none”" : "Missing"}
         </span>
       ),
@@ -187,15 +187,12 @@ function ProviderCard({
 
   return (
     <Panel>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <h3 className="text-[14px] font-medium text-ink">{p.name}</h3>
-          <Mono className="text-[11.5px] text-ink-3">{p.id}</Mono>
+          <h3 className="text-[14px] font-medium text-foreground">{p.name}</h3>
+          <Mono className="text-[11.5px] text-muted-foreground">{p.id}</Mono>
           {inUse ? (
-            <Badge
-              variant="secondary"
-              className="h-5 bg-dex-accent-tint px-2 text-[11px] text-dex-accent-ink"
-            >
+            <Badge variant="secondary" className="h-5 bg-primary/10 px-2 text-[11px] text-primary">
               Bot model
             </Badge>
           ) : null}
@@ -215,7 +212,7 @@ function ProviderCard({
       </div>
       <Facts rows={rows} />
       {p.error ? (
-        <div className="border-t border-line p-3">
+        <div className="border-t border-border p-3">
           <Failure title="Model listing failed. The provider is still saved.">
             <p className="font-mono text-[11.5px]">{p.error}</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -233,7 +230,7 @@ function ProviderCard({
                 {retry.isPending ? <Spinner /> : null}
                 {retry.isPending ? "Listing…" : "Retry listing"}
               </Button>
-              <span className="text-[12px] text-ink-3">
+              <span className="text-[12px] text-muted-foreground">
                 Or check the base URL and the key, or enter model IDs in Edit.
               </span>
             </div>
@@ -241,22 +238,25 @@ function ProviderCard({
         </div>
       ) : null}
       {retry.isError ? (
-        <div className="border-t border-line p-3">
+        <div className="border-t border-border p-3">
           <Failure title="Could not retry the listing" error={retry.error} />
         </div>
       ) : null}
       {models.isError ? (
-        <p className="border-t border-line px-4 py-3 text-[12.5px] text-red">Could not load the models.</p>
+        <p className="border-t border-border px-4 py-3 text-[12.5px] text-red">Could not load the models.</p>
       ) : !p.error && own?.length ? (
-        <ul aria-label={`${p.name} models`} className="flex flex-wrap gap-1.5 border-t border-line px-4 py-3">
+        <ul
+          aria-label={`${p.name} models`}
+          className="flex flex-wrap gap-1.5 border-t border-border px-4 py-3"
+        >
           {own.map((m) => (
             <li
               key={m.id}
               title={m.id}
               className={
                 inUse && settings.agent.modelId === m.id
-                  ? "inline-flex h-6 max-w-full items-center rounded-full bg-dex-accent-tint px-2.5 text-[12px] font-medium text-dex-accent-ink"
-                  : "inline-flex h-6 max-w-full items-center rounded-full bg-inset px-2.5 text-[12px] font-medium text-ink-2 shadow-btn"
+                  ? "inline-flex h-6 max-w-full items-center rounded-full bg-primary/10 px-2.5 text-[12px] font-medium text-primary"
+                  : "inline-flex h-6 max-w-full items-center rounded-full bg-muted px-2.5 text-[12px] font-medium text-muted-foreground shadow-card"
               }
             >
               <span className="truncate">{m.name}</span>
@@ -324,8 +324,8 @@ function RemoveProvider({
         <Note tone="warn">The provider is removed. The bot model did not change; try again.</Note>
       ) : null}
       {current ? (
-        <div className="flex flex-col gap-3 rounded-card bg-orange-tint p-3">
-          <p className="text-[13px] font-medium text-ink">The bot uses this provider now.</p>
+        <div className="flex flex-col gap-3 rounded-md bg-orange-tint p-3">
+          <p className="text-[13px] font-medium text-foreground">The bot uses this provider now.</p>
           <Field label="After removal, the bot uses">
             {({ id }) => (
               <Select

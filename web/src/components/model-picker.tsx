@@ -98,7 +98,7 @@ export function ModelPicker({ trigger, override }: { trigger: ReactElement; over
         align="start"
         sideOffset={6}
         aria-label={override ? "Chat model" : "Bot model"}
-        className="z-[60] flex max-h-[min(420px,var(--available-height))] w-[352px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-[12px] bg-surface p-0 shadow-raised outline-none"
+        className="z-[60] flex max-h-[min(420px,var(--available-height))] w-[352px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-[12px] bg-card p-0 shadow-raised outline-none"
       >
         <ModelList
           override={override}
@@ -143,7 +143,7 @@ function ModelList({
 
   if (settings.isPending || models.isPending)
     return (
-      <div role="status" className="flex items-center gap-2 p-3 text-[12.5px] text-ink-2">
+      <div role="status" className="flex items-center gap-2 p-3 text-[12.5px] text-muted-foreground">
         <Spinner /> Loading models…
       </div>
     );
@@ -164,9 +164,9 @@ function ModelList({
 
   if (!settings.data.providers.length && !all.length)
     return (
-      <p className="p-3 text-[12.5px] text-ink-2">
+      <p className="p-3 text-[12.5px] text-muted-foreground">
         No providers yet.{" "}
-        <Link className="font-medium text-dex-accent-ink underline" to="/providers" onClick={onLeave}>
+        <Link className="font-medium text-primary underline" to="/providers" onClick={onLeave}>
           Add a provider
         </Link>{" "}
         to see its models.
@@ -184,7 +184,7 @@ function ModelList({
         placeholder="Search providers and models"
         value={query}
         onValueChange={setQuery}
-        className="text-[13px] text-ink placeholder:text-ink-3"
+        className="text-[13px] text-foreground placeholder:text-muted-foreground"
       />
       {/* The popover limits the height; the stock max-h-72 would cut the list shorter. */}
       <CommandList className="max-h-none min-h-0 flex-1 overscroll-contain p-1">
@@ -194,16 +194,16 @@ function ModelList({
             data-checked={!current}
             disabled={busy}
             onSelect={() => onPick(null, !current)}
-            className="mb-1 flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-hover"
+            className="mb-1 flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent"
           >
-            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink">
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
               Use default ({override.defaultName})
             </span>
             <Mark checked={!current} saving={pending === null} />
           </CommandItem>
         ) : null}
         {!shown.length ? (
-          <p role="status" className="px-3 py-6 text-center text-[12.5px] text-ink-3">
+          <p role="status" className="px-3 py-6 text-center text-[12.5px] text-muted-foreground">
             No models match “{query.trim()}”.
           </p>
         ) : (
@@ -212,15 +212,15 @@ function ModelList({
               key={group.id}
               className="pb-1"
               heading={
-                <span className="flex flex-wrap items-center gap-1.5 px-2 pt-2 pb-1 text-[11.5px] font-medium text-ink-3">
-                  <span className="text-ink-2">{group.name}</span>
+                <span className="flex flex-wrap items-center gap-1.5 px-2 pt-2 pb-1 text-[11.5px] font-medium text-muted-foreground">
+                  <span className="text-muted-foreground">{group.name}</span>
                   <span className="font-mono font-normal">{group.id}</span>
                   {group.error ? <Badge variant="destructive">Model listing failed</Badge> : null}
                 </span>
               }
             >
               {!group.models.length ? (
-                <p className="px-2 pb-1 text-[12px] text-ink-3">
+                <p className="px-2 pb-1 text-[12px] text-muted-foreground">
                   No models.{" "}
                   {group.error
                     ? "Fix the listing error on Providers, or enter model IDs there."
@@ -239,12 +239,18 @@ function ModelList({
                       data-checked={checked}
                       disabled={busy}
                       onSelect={() => onPick(m, checked)}
-                      className="flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-hover"
+                      className="flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent"
                     >
-                      <span className="min-w-0 truncate text-[12.5px] font-medium text-ink" title={m.name}>
+                      <span
+                        className="min-w-0 truncate text-[12.5px] font-medium text-foreground"
+                        title={m.name}
+                      >
                         {m.name}
                       </span>
-                      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink-3" title={m.id}>
+                      <span
+                        className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground"
+                        title={m.id}
+                      >
                         {m.id}
                       </span>
                       <Mark checked={checked} saving={saving} />
@@ -257,12 +263,12 @@ function ModelList({
         )}
       </CommandList>
       {dirty ? (
-        <p className="shrink-0 border-t border-line px-3 py-2 text-[11.5px] text-ink-2">
+        <p className="shrink-0 border-t border-border px-3 py-2 text-[11.5px] text-muted-foreground">
           Your unsaved instructions stay as a draft. A model change does not save or discard them.
         </p>
       ) : null}
       {error ? (
-        <div className="shrink-0 border-t border-line p-2">
+        <div className="shrink-0 border-t border-border p-2">
           <Failure title="The model did not change" error={error} />
         </div>
       ) : null}

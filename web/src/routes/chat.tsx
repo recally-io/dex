@@ -29,7 +29,6 @@ import { Failure, Loading } from "../components/feedback";
 import { InPaneContext, MainPane, Note, PageHeader } from "../components/page";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import LoadingState from "../components/primitives/LoadingState";
 import { cn, newId } from "../lib/utils";
 
 export function ChatPage({ chatId }: { chatId?: number }) {
@@ -287,7 +286,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
               title="Start a new context. Earlier messages stay."
               disabled={clear.pending}
               onClick={clear.submit}
-              className="flex h-7 items-center rounded-control px-1.5 text-[12px] font-medium text-ink-2 hover:bg-hover hover:text-ink disabled:opacity-40"
+              className="flex h-7 items-center rounded-md px-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
             >
               Clear context
             </button>
@@ -297,13 +296,13 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           model.ok ? null : settings.providers.length ? (
             <ModelPicker
               trigger={
-                <button type="button" className="font-medium text-dex-accent-ink underline">
+                <button type="button" className="font-medium text-primary underline">
                   Choose a model
                 </button>
               }
             />
           ) : (
-            <Link className="font-medium text-dex-accent-ink underline" to="/providers">
+            <Link className="font-medium text-primary underline" to="/providers">
               Add a provider
             </Link>
           )
@@ -333,13 +332,13 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const transcript =
     chatId && chat.isPending ? (
       <div className="flex h-60 items-center justify-center">
-        <LoadingState label="Loading chat" />
+        <Loading />
       </div>
     ) : chatId && chat.isError ? (
       <div className="flex flex-col items-start gap-4">
         <Failure title="Could not load this session" error={chat.error} retry={() => void chat.refetch()} />
         <Link
-          className="text-[13px] font-medium text-dex-accent-ink underline"
+          className="text-[13px] font-medium text-primary underline"
           to="/a/$agentId"
           params={{ agentId }}
         >
@@ -349,7 +348,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     ) : (
       <>
         {readOnly ? (
-          <div className="flex items-start gap-2.5 rounded-card bg-inset px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2 shadow-hairline">
+          <div className="flex items-start gap-2.5 rounded-md bg-muted px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground shadow-card">
             <Lock className="mt-0.5 size-3.5 shrink-0" />
             <p>{readOnlyCopy(chat.data?.channel)}</p>
           </div>
@@ -357,13 +356,13 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         {connection !== "ready" ? (
           <div
             role="alert"
-            className="flex flex-col gap-2 rounded-card bg-orange-tint px-3.5 py-3 text-[12.5px]"
+            className="flex flex-col gap-2 rounded-md bg-orange-tint px-3.5 py-3 text-[12.5px]"
           >
-            <div className="flex items-center gap-2 font-medium text-ink">
+            <div className="flex items-center gap-2 font-medium text-foreground">
               <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-orange" />
               {connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the bot…"}
             </div>
-            <p className="pl-3.5 text-ink-2 [overflow-wrap:anywhere]">
+            <p className="pl-3.5 text-muted-foreground [overflow-wrap:anywhere]">
               {streamError || "Messages are paused until the stream returns. Your transcript stays here."}
             </p>
             <div className="pl-3.5">
@@ -400,11 +399,11 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         items.at(-1)?.kind !== "assistant" &&
         items.at(-1)?.kind !== "thinking" ? (
           <div className="flex min-h-6 items-center">
-            <LoadingState label="dex is working" variant="Dots" />
+            <Loading />
           </div>
         ) : null}
         {blank && readOnly ? (
-          <p className="my-auto py-12 text-center text-[14px] text-ink-2">{`No messages yet.`}</p>
+          <p className="my-auto py-12 text-center text-[14px] text-muted-foreground">{`No messages yet.`}</p>
         ) : null}
       </>
     );
@@ -419,8 +418,8 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     <>
       <section
         className={cn(
-          "flex min-w-0 flex-1 flex-col overflow-hidden bg-page",
-          embedded ? "min-h-0" : "lg:border-l lg:border-line",
+          "flex min-w-0 flex-1 flex-col overflow-hidden bg-background",
+          embedded ? "min-h-0" : "lg:border-l lg:border-border",
         )}
       >
         {/* Writable chats switch in the Chats sidebar. The bot pane names Main; a Chat keeps a
@@ -441,7 +440,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                 <Link
                   to="/a/$agentId/sessions"
                   params={{ agentId }}
-                  className="shrink-0 text-[13px] text-ink-3 hover:text-ink hover:underline"
+                  className="shrink-0 text-[13px] text-muted-foreground hover:text-foreground hover:underline"
                 >
                   Sessions
                 </Link>
@@ -478,11 +477,11 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                 <div className="relative mx-auto w-full max-w-[720px]">
                   {blank ? (
                     <div className="mb-4 px-2">
-                      <p className="text-[20px] leading-tight font-semibold tracking-[-0.01em] text-ink">
+                      <p className="text-[20px] leading-tight font-semibold tracking-[-0.01em] text-foreground">
                         {`What should ${settings.agent.name} do?`}
                       </p>
                       {!chat.data?.main ? (
-                        <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
+                        <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
                           This session has its own context. It does not see the main timeline.
                         </p>
                       ) : null}
@@ -509,42 +508,48 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                   {composer}
                   {blank ? (
                     <div className="mt-6">
-                      <p className="mb-1 px-2 text-[12px] font-medium text-ink-3">This bot so far</p>
+                      <p className="mb-1 px-2 text-[12px] font-medium text-muted-foreground">
+                        This bot so far
+                      </p>
                       <ul className="text-[13px]">
-                        <li className="flex items-baseline gap-3 border-t border-line-soft px-2 py-2 first:border-t-0">
-                          <span className="min-w-0 flex-1 text-ink-2">Model</span>
-                          <span className={model.ok ? "text-ink" : "text-ink-2"}>
+                        <li className="flex items-baseline gap-3 border-t border-border px-2 py-2 first:border-t-0">
+                          <span className="min-w-0 flex-1 text-muted-foreground">Model</span>
+                          <span className={model.ok ? "text-foreground" : "text-muted-foreground"}>
                             {model.ok ? model.label : "None chosen"}
                           </span>
                         </li>
-                        <li className="flex items-baseline gap-3 border-t border-line-soft px-2 py-2">
-                          <span className="min-w-0 flex-1 text-ink-2">Channels</span>
-                          <span className="text-ink">
+                        <li className="flex items-baseline gap-3 border-t border-border px-2 py-2">
+                          <span className="min-w-0 flex-1 text-muted-foreground">Channels</span>
+                          <span className="text-foreground">
                             {channelsRunning ? `${channelsRunning} connected` : "None connected"}
                           </span>
                         </li>
-                        <li className="flex items-baseline gap-3 border-t border-line-soft px-2 py-2">
-                          <span className="min-w-0 flex-1 text-ink-2">Sessions</span>
-                          <span className="text-ink tabular-nums">{sessions.data?.chats.length ?? 0}</span>
+                        <li className="flex items-baseline gap-3 border-t border-border px-2 py-2">
+                          <span className="min-w-0 flex-1 text-muted-foreground">Sessions</span>
+                          <span className="text-foreground tabular-nums">
+                            {sessions.data?.chats.length ?? 0}
+                          </span>
                         </li>
                       </ul>
                     </div>
                   ) : null}
                   {blank && recent.length ? (
                     <div className="mt-6">
-                      <p className="mb-1 px-2 text-[12px] font-medium text-ink-3">Recent in this bot</p>
+                      <p className="mb-1 px-2 text-[12px] font-medium text-muted-foreground">
+                        Recent in this bot
+                      </p>
                       <ul>
                         {recent.map((item) => (
                           <li key={item.id}>
                             <Link
                               to="/a/$agentId/c/$chatId"
                               params={{ agentId, chatId: String(item.id) }}
-                              className="flex items-baseline gap-3 rounded-control px-2 py-2 hover:bg-hover"
+                              className="flex items-baseline gap-3 rounded-md px-2 py-2 hover:bg-accent"
                             >
-                              <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
+                              <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">
                                 {item.title || "New session"}
                               </span>
-                              <span className="shrink-0 text-[12px] text-ink-3 tabular-nums">
+                              <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
                                 {taskTime(item.updatedAt)}
                               </span>
                             </Link>
