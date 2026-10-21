@@ -96,6 +96,8 @@ Review generated diffs before committing. Keep the compatibility aliases in
 bundled with `@fontsource-variable/jetbrains-mono` and
 `@fontsource-variable/merriweather`, so the desktop app does not need a CDN.
 
+Run `mise run check:web` after every foundation update. The check includes a guard for retired imports and token aliases.
+
 Run `mise run check:foundation-browser /tmp/dex-foundation-evidence` to start a
 real isolated app and Chrome profile. The task writes screenshots and
 `result.json` to the given directory for Chat, Sessions, bot Settings, and

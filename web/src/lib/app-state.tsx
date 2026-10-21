@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import type { DraftFile, Uploads } from "./attachments";
 import { useAgentId } from "./agent-scope";
 import {
@@ -12,7 +13,6 @@ import {
   type SetStateAction,
   type ReactNode,
 } from "react";
-import { IconCrossSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconCrossSmall";
 
 type Notice = { id: number; text: string };
 
@@ -139,16 +139,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         {notices.map((notice) => (
           <div
             key={notice.id}
-            className="pointer-events-auto flex max-w-[440px] animate-[fade-up_300ms_var(--ease-out-strong)_both] items-center gap-2 rounded-full bg-surface py-1.5 pr-1.5 pl-4 text-[12.5px] font-medium text-ink shadow-overlay"
+            className="pointer-events-auto flex max-w-[440px] animate-[fade-up_300ms_var(--ease-out-strong)_both] items-center gap-2 rounded-full bg-card py-1.5 pr-1.5 pl-4 text-[12.5px] font-medium text-foreground shadow-lg"
           >
             <span>{notice.text}</span>
             <button
               type="button"
               aria-label="Dismiss notification"
               onClick={() => dismiss(notice.id)}
-              className="flex size-6 shrink-0 items-center justify-center rounded-full text-ink-3 transition-colors hover:bg-hover hover:text-ink"
+              className="flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
-              <IconCrossSmall size={14} />
+              <X size={14} />
             </button>
           </div>
         ))}

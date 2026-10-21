@@ -220,11 +220,11 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
           <div className="space-y-4">
             {(["agent", "dex", "home"] as const).map((level) => (
               <Panel key={level}>
-                <div className="border-b border-line px-4 py-3">
-                  <p className="text-[13px] font-medium text-ink">
+                <div className="border-b border-border px-4 py-3">
+                  <p className="text-[13px] font-medium text-foreground">
                     {level === "agent" ? agentLabel : level === "dex" ? "All bots (dex)" : "Home · Read-only"}
                   </p>
-                  <p className="mt-1 text-[11.5px] text-ink-3 [overflow-wrap:anywhere]">
+                  <p className="mt-1 text-[11.5px] text-muted-foreground [overflow-wrap:anywhere]">
                     <Mono>{catalog.levels.find((l) => l.scope === level)?.dir}/.env</Mono>
                   </p>
                 </div>
@@ -286,7 +286,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
                       ))}
                   </ul>
                 ) : (
-                  <p className="px-4 py-3 text-[12.5px] text-ink-3">No keys in this file.</p>
+                  <p className="px-4 py-3 text-[12.5px] text-muted-foreground">No keys in this file.</p>
                 )}
               </Panel>
             ))}

@@ -1,70 +1,64 @@
+import { ArrowUpRight, Clock3, CornerDownRight, FileText } from "lucide-react";
 import { useAgentId } from "../../lib/agent-scope";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { IconArrowCornerDownRight } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowCornerDownRight";
-import { IconArrowUpRight } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArrowUpRight";
-import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
-import { IconFileText } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconFileText";
 import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
 import { formatSize, isImage } from "../../lib/attachments";
 import { blocks, describeTool, seconds, stepTitle, type ContentBlock } from "../../lib/tools";
 import { retryMessage } from "../../lib/chat-state";
-import { Chip } from "../atoms/Chip";
-import { StreamText } from "../atoms/StreamText";
-import { Button } from "../atoms/Button";
-import { StatusPill } from "../atoms/StatusPill";
-import CodeBlock from "../atoms/CodeBlock";
+import { Button } from "../ui/button";
 import { Spinner } from "../feedback";
 import { cn } from "../../lib/utils";
+import { Badge } from "../ui/badge";
 
 const markdown: Components = {
   p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
   h1: ({ children }) => (
-    <h3 className="mt-4 mb-2 text-[15px] font-semibold text-ink first:mt-0">{children}</h3>
+    <h3 className="mt-4 mb-2 text-[15px] font-semibold text-foreground first:mt-0">{children}</h3>
   ),
   h2: ({ children }) => (
-    <h3 className="mt-4 mb-2 text-[14px] font-semibold text-ink first:mt-0">{children}</h3>
+    <h3 className="mt-4 mb-2 text-[14px] font-semibold text-foreground first:mt-0">{children}</h3>
   ),
   h3: ({ children }) => (
-    <h4 className="mt-3 mb-1.5 text-[13.5px] font-semibold text-ink first:mt-0">{children}</h4>
+    <h4 className="mt-3 mb-1.5 text-[13.5px] font-semibold text-foreground first:mt-0">{children}</h4>
   ),
   ul: ({ children }) => (
-    <ul className="my-2 flex list-disc flex-col gap-1 pl-5 marker:text-ink-3">{children}</ul>
+    <ul className="my-2 flex list-disc flex-col gap-1 pl-5 marker:text-muted-foreground">{children}</ul>
   ),
   ol: ({ children }) => (
-    <ol className="my-2 flex list-decimal flex-col gap-1 pl-5 marker:text-ink-3">{children}</ol>
+    <ol className="my-2 flex list-decimal flex-col gap-1 pl-5 marker:text-muted-foreground">{children}</ol>
   ),
-  strong: ({ children }) => <strong className="font-semibold text-ink">{children}</strong>,
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   a: ({ href, children }) => (
-    <a href={href} className="font-medium text-dex-accent-ink underline">
+    <a href={href} className="font-medium text-primary underline">
       {children}
     </a>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="my-2 border-l-2 border-line-strong pl-3 text-ink-2">{children}</blockquote>
+    <blockquote className="my-2 border-l-2 border-ring pl-3 text-muted-foreground">{children}</blockquote>
   ),
   table: ({ children }) => (
-    <div className="my-2 overflow-x-auto rounded-card shadow-hairline">
+    <div className="my-2 overflow-x-auto rounded-md shadow-sm">
       <table className="w-full text-left text-[12.5px]">{children}</table>
     </div>
   ),
-  th: ({ children }) => <th className="border-b border-line bg-inset px-3 py-1.5 font-medium">{children}</th>,
-  td: ({ children }) => <td className="border-b border-line px-3 py-1.5 align-top">{children}</td>,
+  th: ({ children }) => (
+    <th className="border-b border-border bg-muted px-3 py-1.5 font-medium">{children}</th>
+  ),
+  td: ({ children }) => <td className="border-b border-border px-3 py-1.5 align-top">{children}</td>,
   pre: ({ children }) => <div className="my-2">{children}</div>,
   // Fenced code gets a code block. Inline code is a chip.
   code: ({ className, children }) => {
     const text = String(children).replace(/\n$/, "");
 
     return className || text.includes("\n") ? (
-      <CodeBlock
-        filename={className?.replace("language-", "") || "Code"}
-        lines={text.split("\n")}
-        code={text}
-      />
+      <pre className="my-2 max-w-full overflow-auto rounded-md bg-muted p-3 font-mono text-[12px] leading-relaxed text-muted-foreground">
+        <code>{text}</code>
+      </pre>
     ) : (
-      <Chip>{children}</Chip>
+      <code className="inline rounded-md bg-muted px-1.5 py-0.5 font-mono text-[12px]">{children}</code>
     );
   },
 };
@@ -107,7 +101,7 @@ function Sparkle({ working }: { working: boolean }) {
       width="16"
       height="16"
       viewBox="0 0 24 24"
-      fill={working ? "var(--ink-2)" : "var(--ink-3)"}
+      fill={working ? "var(--muted-foreground)" : "var(--muted-foreground)"}
       aria-hidden
       className="shrink-0"
     >
@@ -117,7 +111,7 @@ function Sparkle({ working }: { working: boolean }) {
 }
 
 function Shimmer({ children }: { children: ReactNode }) {
-  return <span className="truncate text-[13px] font-medium text-ink-3">{children}</span>;
+  return <span className="truncate text-[13px] font-medium text-muted-foreground">{children}</span>;
 }
 
 /** The header of a step row. Look from upstream primitives/ThinkingState.tsx. */
@@ -141,17 +135,19 @@ function StepHeader({
       type="button"
       aria-expanded={open}
       onClick={onToggle}
-      className="-mx-1.5 flex w-fit max-w-full items-center gap-2 rounded-control px-1.5 py-1 transition-colors duration-100 hover:bg-hover-2"
+      className="-mx-1.5 flex w-fit max-w-full items-center gap-2 rounded-md px-1.5 py-1 transition-colors duration-100 hover:bg-accent"
     >
       <Sparkle working={working} />
       {working ? (
         <Shimmer>{active}</Shimmer>
       ) : (
-        <span className={cn("truncate text-[13px] font-medium", failed ? "text-red" : "text-ink-2")}>
+        <span
+          className={cn("truncate text-[13px] font-medium", failed ? "text-red" : "text-muted-foreground")}
+        >
           {done}
         </span>
       )}
-      <span className="text-ink-3">
+      <span className="text-muted-foreground">
         <Chevron open={open} />
       </span>
     </button>
@@ -161,7 +157,7 @@ function StepHeader({
 function Trace({ children }: { children: ReactNode }) {
   return (
     <div className="relative mt-1 ml-[5px] animate-[fade-in_200ms_ease-out_both] pl-4">
-      <span aria-hidden className="absolute top-0 bottom-1 left-[3px] w-px bg-line" />
+      <span aria-hidden className="absolute top-0 bottom-1 left-[3px] w-px bg-border" />
       <div className="flex flex-col gap-1 py-1">{children}</div>
     </div>
   );
@@ -174,14 +170,14 @@ function Output({ tool }: { tool: ToolItem }) {
   return (
     <div className="mb-1 ml-6 flex animate-[fade-up_240ms_var(--ease-out-strong)_both] flex-col gap-2">
       {extra.length ? (
-        <pre className="max-h-48 overflow-auto rounded-card bg-inset px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-ink-2 shadow-hairline [overflow-wrap:anywhere]">
+        <pre className="max-h-48 overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-muted-foreground shadow-sm [overflow-wrap:anywhere]">
           {extra.map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join("\n")}
         </pre>
       ) : null}
       <pre
         className={cn(
-          "max-h-60 overflow-auto rounded-card px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap shadow-hairline [overflow-wrap:anywhere]",
-          tool.status === "error" ? "bg-red-tint text-ink" : "bg-inset text-ink-2",
+          "max-h-60 overflow-auto rounded-md px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap shadow-sm [overflow-wrap:anywhere]",
+          tool.status === "error" ? "bg-red-tint text-foreground" : "bg-muted text-muted-foreground",
         )}
       >
         {tool.output || (tool.status === "running" ? "Waiting for tool output…" : "No output.")}
@@ -207,7 +203,7 @@ function ToolStatus({ status }: { status: ToolItem["status"] }) {
       height="14"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="var(--ink-3)"
+      stroke="var(--muted-foreground)"
       strokeWidth="2.5"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -238,23 +234,23 @@ export function ToolStep({ tools, memory }: { tools: ToolItem[]; memory?: string
 
     return (
       <div className="flex min-w-0 items-start gap-2 py-1 text-[13px] leading-5">
-        <IconArrowUpRight size={16} aria-hidden className="mt-0.5 shrink-0 text-ink-3" />
+        <ArrowUpRight size={16} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
         <p className="min-w-0 [overflow-wrap:anywhere]">
           {working ? (
             <Shimmer>{dispatch.verb}</Shimmer>
           ) : (
-            <span className="font-medium text-ink-2">{dispatch.verb}</span>
+            <span className="font-medium text-muted-foreground">{dispatch.verb}</span>
           )}
           {tools[0].taskId ? (
             <Link
               to="/a/$agentId/tasks/$taskId"
               params={{ agentId, taskId: tools[0].taskId }}
-              className="ml-1.5 font-medium text-ink decoration-line-strong underline-offset-3 hover:underline"
+              className="ml-1.5 font-medium text-foreground decoration-line-strong underline-offset-3 hover:underline"
             >
               {dispatch.target}
             </Link>
           ) : (
-            <span className="ml-1.5 font-medium text-ink">{dispatch.target}</span>
+            <span className="ml-1.5 font-medium text-foreground">{dispatch.target}</span>
           )}
         </p>
       </div>
@@ -285,14 +281,14 @@ export function ToolStep({ tools, memory }: { tools: ToolItem[]; memory?: string
                   onClick={() => setSelected(shown ? null : tool.id)}
                   className={cn(
                     "flex min-h-7 w-full min-w-0 items-center gap-2 rounded-[6px] px-1.5 py-0.5 text-left transition-colors duration-150",
-                    shown ? "bg-inset" : "hover:bg-hover",
+                    shown ? "bg-muted" : "hover:bg-accent",
                   )}
                 >
                   <ToolStatus status={tool.status} />
-                  <span className="shrink-0 text-[12.5px] font-medium text-ink">{verb}</span>
+                  <span className="shrink-0 text-[12.5px] font-medium text-foreground">{verb}</span>
                   <span
                     className={cn(
-                      "min-w-0 flex-1 font-mono text-[11.5px] text-ink-3",
+                      "min-w-0 flex-1 font-mono text-[11.5px] text-muted-foreground",
                       shown ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate",
                     )}
                     title={target}
@@ -300,7 +296,7 @@ export function ToolStep({ tools, memory }: { tools: ToolItem[]; memory?: string
                     {target}
                   </span>
                   {tool.durationMs !== undefined ? (
-                    <span className="shrink-0 font-mono text-[11px] text-ink-3 tabular-nums">
+                    <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
                       {seconds(tool.durationMs)}
                     </span>
                   ) : null}
@@ -329,7 +325,7 @@ function ThinkingStep({ text, live }: { text: string; live: boolean }) {
       />
       {open ? (
         <Trace>
-          <p className="px-1.5 text-[12.5px] leading-relaxed whitespace-pre-wrap text-ink-2">
+          <p className="px-1.5 text-[12.5px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
             {text || "The provider did not share its thought process."}
           </p>
         </Trace>
@@ -351,7 +347,7 @@ function CopyText({ text }: { text: string }) {
           () => setState("failed"),
         );
       }}
-      className="rounded-[6px] px-1.5 py-0.5 font-medium text-ink-3 transition-colors hover:bg-hover hover:text-ink"
+      className="rounded-[6px] px-1.5 py-0.5 font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
       {state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : "Copy"}
     </button>
@@ -378,7 +374,7 @@ function Files({ files }: { files: Attachment[] }) {
                 src={`/api/agents/${encodeURIComponent(agentId)}/uploads/${f.id}`}
                 alt={f.name}
                 loading="lazy"
-                className="h-28 max-w-[min(240px,100%)] rounded-xl bg-field object-cover shadow-hairline"
+                className="h-28 max-w-[min(240px,100%)] rounded-xl bg-card object-cover shadow-sm"
               />
             </a>
           </li>
@@ -387,16 +383,16 @@ function Files({ files }: { files: Attachment[] }) {
             <a
               href={`/api/agents/${encodeURIComponent(agentId)}/uploads/${f.id}`}
               download={f.name}
-              className="flex h-10 min-w-0 items-center gap-2 rounded-[10px] bg-field py-1 pr-2.5 pl-1 text-[11.5px] shadow-hairline transition-colors hover:bg-hover"
+              className="flex h-10 min-w-0 items-center gap-2 rounded-[10px] bg-card py-1 pr-2.5 pl-1 text-[11.5px] shadow-sm transition-colors hover:bg-accent"
             >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-inset text-ink-3">
-                <IconFileText size={15} />
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-muted text-muted-foreground">
+                <FileText size={15} />
               </span>
               <span className="flex min-w-0 flex-col leading-tight">
-                <span className="max-w-48 truncate font-medium text-ink" title={f.name}>
+                <span className="max-w-48 truncate font-medium text-foreground" title={f.name}>
                   {f.name}
                 </span>
-                <span className="text-ink-3 tabular-nums">{formatSize(f.size)}</span>
+                <span className="text-muted-foreground tabular-nums">{formatSize(f.size)}</span>
               </span>
             </a>
           </li>
@@ -424,10 +420,10 @@ export function TranscriptItem({
       if (item.boundary === "compaction") return null;
 
       return (
-        <div role="separator" className="flex items-center gap-3 py-3 text-[12px] text-ink-3">
-          <span className="h-px flex-1 bg-line" />
+        <div role="separator" className="flex items-center gap-3 py-3 text-[12px] text-muted-foreground">
+          <span className="h-px flex-1 bg-border" />
           <span>Context cleared</span>
-          <span className="h-px flex-1 bg-line" />
+          <span className="h-px flex-1 bg-border" />
         </div>
       );
     case "user":
@@ -435,9 +431,9 @@ export function TranscriptItem({
         <div className="flex animate-[fade-up_300ms_var(--ease-out-strong)_both] flex-col items-end gap-1 pl-10 sm:pl-24">
           {entryName(item.origin) ? (
             <span data-origin={item.origin}>
-              <StatusPill tone="neutral" className="h-5 px-2 text-[11.5px]">
+              <Badge variant="secondary" className="h-5 px-2 text-[11.5px]">
                 {entryName(item.origin)}
-              </StatusPill>
+              </Badge>
             </span>
           ) : null}
           {item.attachments?.length ? (
@@ -448,7 +444,7 @@ export function TranscriptItem({
           {item.text ? (
             <div
               className={cn(
-                "rounded-xl bg-field px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap text-ink shadow-hairline [overflow-wrap:anywhere]",
+                "rounded-xl bg-card px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap text-foreground shadow-sm [overflow-wrap:anywhere]",
                 item.queued && "opacity-70",
               )}
             >
@@ -456,8 +452,8 @@ export function TranscriptItem({
             </div>
           ) : null}
           {item.queued ? (
-            <span className="flex items-center gap-1 text-[11.5px] text-ink-3">
-              <IconClock size={12} /> Queued · runs after the current reply
+            <span className="flex items-center gap-1 text-[11.5px] text-muted-foreground">
+              <Clock3 size={12} /> Queued · runs after the current reply
             </span>
           ) : null}
         </div>
@@ -465,13 +461,13 @@ export function TranscriptItem({
     case "task":
       return (
         <header className="flex min-w-0 items-start gap-2 text-[13px] leading-5">
-          <IconArrowCornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0 text-ink-3" />
+          <CornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
           <h3 className="min-w-0 [overflow-wrap:anywhere]">
-            <span className="mr-1.5 font-medium text-ink-2">Background result</span>
+            <span className="mr-1.5 font-medium text-muted-foreground">Background result</span>
             <Link
               to="/a/$agentId/tasks/$taskId"
               params={{ agentId, taskId: item.taskId }}
-              className="font-semibold text-ink decoration-line-strong underline-offset-3 hover:underline"
+              className="font-semibold text-foreground decoration-line-strong underline-offset-3 hover:underline"
             >
               {item.title}
             </Link>
@@ -486,13 +482,16 @@ export function TranscriptItem({
       return (
         <article className="group min-w-0">
           {live ? (
-            <div className="max-w-[640px] text-[13.5px] leading-[1.65] whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">
-              <StreamText text={item.text} charsPerTick={Math.max(2, item.text.length)} tickMs={10} />
+            <div className="max-w-[640px] text-[13.5px] leading-[1.65] whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]">
+              <span>
+                {item.text}
+                <span aria-hidden className="stream-caret is-streaming" />
+              </span>
             </div>
           ) : (
             <Markdown text={item.text} />
           )}
-          <footer className="mt-1.5 flex h-7 items-center gap-3 text-[11.5px] text-ink-3 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+          <footer className="mt-1.5 flex h-7 items-center gap-3 text-[11.5px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
             {item.model ? <span className="min-w-0 truncate font-mono">{item.model}</span> : null}
             {item.usage ? (
               <span className="shrink-0 tabular-nums">
@@ -508,20 +507,23 @@ export function TranscriptItem({
         <div
           role={item.aborted ? "status" : "alert"}
           className={cn(
-            "flex max-w-[640px] flex-col gap-2 rounded-card px-3.5 py-3 text-[13px]",
-            item.aborted ? "bg-inset shadow-hairline" : "bg-red-tint",
+            "flex max-w-[640px] flex-col gap-2 rounded-md px-3.5 py-3 text-[13px]",
+            item.aborted ? "bg-muted shadow-sm" : "bg-red-tint",
           )}
         >
           <div className="flex items-center gap-2">
             <span
               aria-hidden
-              className={cn("size-1.5 shrink-0 rounded-full", item.aborted ? "bg-ink-3" : "bg-red")}
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                item.aborted ? "bg-muted-foreground" : "bg-red",
+              )}
             />
-            <span className={cn("font-medium", item.aborted ? "text-ink" : "text-red")}>
+            <span className={cn("font-medium", item.aborted ? "text-foreground" : "text-red")}>
               {item.aborted ? "Run stopped" : "The bot could not finish"}
             </span>
           </div>
-          <p className="pl-3.5 text-[12.5px] text-ink-2 [overflow-wrap:anywhere]">{item.reason}</p>
+          <p className="pl-3.5 text-[12.5px] text-muted-foreground [overflow-wrap:anywhere]">{item.reason}</p>
           {canRetry ? (
             <div className="pl-3.5">
               <Button size="xs" variant="secondary" onClick={retry}>
@@ -570,7 +572,7 @@ export function Transcript({
       >
         <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />
         {block.blocks.length ? (
-          <div className="ml-2 flex min-w-0 flex-col gap-4 border-l border-line-strong pl-[15px]">
+          <div className="ml-2 flex min-w-0 flex-col gap-4 border-l border-ring pl-[15px]">
             {block.blocks.map(content)}
           </div>
         ) : null}
@@ -592,19 +594,19 @@ export function RetryNotice({ retry }: { retry: Retry }) {
   return (
     <div
       role="status"
-      className="flex max-w-[640px] flex-col gap-1 rounded-card bg-inset px-3.5 py-3 shadow-hairline"
+      className="flex max-w-[640px] flex-col gap-1 rounded-md bg-muted px-3.5 py-3 shadow-sm"
     >
       <Shimmer>
         Provider error · retry {retry.attempt} in {Math.max(0, Math.ceil((retry.at - now) / 1000))} s
       </Shimmer>
-      <p className="text-[12.5px] text-ink-2 [overflow-wrap:anywhere]">{retry.reason}</p>
+      <p className="text-[12.5px] text-muted-foreground [overflow-wrap:anywhere]">{retry.reason}</p>
     </div>
   );
 }
 
 export function Markdown({ text }: { text: string }) {
   return (
-    <div className="max-w-[640px] text-[13.5px] leading-[1.65] text-ink [overflow-wrap:anywhere]">
+    <div className="max-w-[640px] text-[13.5px] leading-[1.65] text-foreground [overflow-wrap:anywhere]">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdown}>
         {text}
       </ReactMarkdown>

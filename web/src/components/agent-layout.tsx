@@ -95,7 +95,7 @@ function AgentView() {
         <h1 id="page-title" className="text-xl font-semibold">
           Bot not found
         </h1>
-        <p className="mt-2 text-ink-2">Dex has no bot with this ID.</p>
+        <p className="mt-2 text-muted-foreground">Dex has no bot with this ID.</p>
         <Link to="/" className="mt-4 block underline">
           Open Dex
         </Link>
@@ -169,7 +169,7 @@ function AgentPane({ settings }: { settings: Settings }) {
 
   return (
     <InPaneContext.Provider value>
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:border-l lg:border-line">
+      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background lg:border-l lg:border-border">
         <PageHeader
           title={settings.agent.name}
           // The other tabs open with their own page heading.
@@ -178,7 +178,7 @@ function AgentPane({ settings }: { settings: Settings }) {
             dirty ? (
               <Badge
                 variant="outline"
-                className="hidden h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-ink sm:inline-flex"
+                className="hidden h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-foreground sm:inline-flex"
               >
                 Instructions draft
               </Badge>
@@ -200,14 +200,16 @@ function AgentPane({ settings }: { settings: Settings }) {
                   data-tab={tab.label}
                   aria-current={tab === current ? "page" : undefined}
                   className={cn(
-                    "relative flex shrink-0 items-center gap-1.5 px-2.5 text-[12.5px] whitespace-nowrap text-ink-2 transition-colors hover:text-ink",
+                    "relative flex shrink-0 items-center gap-1.5 px-2.5 text-[12.5px] whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground",
                     "after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full",
-                    "aria-[current=page]:font-medium aria-[current=page]:text-ink aria-[current=page]:after:bg-ink",
+                    "aria-[current=page]:font-medium aria-[current=page]:text-foreground aria-[current=page]:after:bg-foreground",
                   )}
                 >
                   {tab.label}
                   {counts.get(tab.label) ? (
-                    <span className="text-[11px] text-ink-3 tabular-nums">{counts.get(tab.label)}</span>
+                    <span className="text-[11px] text-muted-foreground tabular-nums">
+                      {counts.get(tab.label)}
+                    </span>
                   ) : null}
                   {tab.label === "Settings" && dirty ? (
                     <span
@@ -220,7 +222,7 @@ function AgentPane({ settings }: { settings: Settings }) {
                     <span
                       role="img"
                       aria-label={`${activity.active} active`}
-                      className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-dex-accent-tint px-1.5 text-[11px] font-medium text-dex-accent-ink tabular-nums"
+                      className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary/10 px-1.5 text-[11px] font-medium text-primary tabular-nums"
                     >
                       {activity.active}
                     </span>

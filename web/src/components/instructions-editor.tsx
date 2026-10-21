@@ -37,11 +37,11 @@ export function InstructionsEditor({
           grow && "h-full min-h-0 resize-none",
         )}
       />
-      <div className="flex flex-wrap items-center gap-2 border-t border-line px-3 py-2">
-        <span className="font-mono text-[11px] text-ink-3 tabular-nums">
+      <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
           {text.length.toLocaleString()} / {instructionsLimit.toLocaleString()}
         </span>
-        <span id={status} aria-live="polite" className="min-w-0 text-[11.5px] text-ink-3">
+        <span id={status} aria-live="polite" className="min-w-0 text-[11.5px] text-muted-foreground">
           {dirty ? "Unsaved draft. Runs use the saved instructions until you save." : null}
         </span>
         <span className="flex-1" />
@@ -64,12 +64,12 @@ export function InstructionsEditor({
           disabled={!dirty || save.isPending}
           onClick={() => save.mutate(text)}
         >
-          {save.isPending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
+          {save.isPending ? <Spinner className="border-background/40 border-t-canvas" /> : null}
           {save.isPending ? "Saving" : "Save"}
         </Button>
       </div>
       {save.isError ? (
-        <div className="border-t border-line p-3">
+        <div className="border-t border-border p-3">
           <Failure title="Instructions not saved. Your draft is kept." error={save.error} />
         </div>
       ) : null}

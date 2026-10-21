@@ -73,13 +73,13 @@ export function dateGroup(at: number, now: number) {
 const pageSize = 5;
 
 const row =
-  "h-9 min-w-0 justify-start gap-2 rounded-control px-2 text-[13px] text-ink-2 hover:bg-hover-2 hover:text-ink aria-[current=page]:bg-hover-2 aria-[current=page]:text-ink";
+  "h-9 min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground aria-[current=page]:bg-accent aria-[current=page]:text-foreground";
 
 const menuItem =
-  "h-8 w-full justify-start gap-2 rounded-[7px] px-2 text-[12.5px] text-ink data-highlighted:bg-hover";
+  "h-8 w-full justify-start gap-2 rounded-[7px] px-2 text-[12.5px] text-foreground data-highlighted:bg-accent";
 
 const menuPopup =
-  "w-[180px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-[10px] bg-surface p-1 shadow-raised outline-none";
+  "w-[180px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-[10px] bg-card p-1 shadow-raised outline-none";
 
 /**
  * The right sidebar of the Chat tab. Main is the bot's one timeline: it comes first and has no
@@ -110,7 +110,7 @@ export function ChatList({ chatId }: { chatId: number }) {
   );
 
   return (
-    <aside aria-label="Chats" className="hidden w-[256px] shrink-0 flex-col border-l border-line md:flex">
+    <aside aria-label="Chats" className="hidden w-[256px] shrink-0 flex-col border-l border-border md:flex">
       <nav aria-label="Chats" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 py-2">
         <Link
           to="/a/$agentId"
@@ -120,7 +120,7 @@ export function ChatList({ chatId }: { chatId: number }) {
           className={cn(buttonVariants({ variant: "ghost", size: "sm" }), row)}
         >
           <span className="min-w-0 flex-1 truncate font-medium">Main</span>
-          <span className="shrink-0 text-[11.5px] text-ink-3">Every channel</span>
+          <span className="shrink-0 text-[11.5px] text-muted-foreground">Every channel</span>
         </Link>
         {pending ? (
           <span aria-current="page" className={cn(row, "mt-0.5")}>
@@ -138,7 +138,7 @@ export function ChatList({ chatId }: { chatId: number }) {
           </Group>
         ) : null}
         {sessions.isSuccess && onMain && !chats.length ? (
-          <p className="px-2 py-2 text-[12px] leading-relaxed text-ink-3">
+          <p className="px-2 py-2 text-[12px] leading-relaxed text-muted-foreground">
             New chat starts a conversation with its own context.
           </p>
         ) : null}
@@ -170,7 +170,7 @@ function Group({
         aria-expanded={open}
         onClick={() => setOpen(!open)}
         // The stock ghost button fills aria-expanded; a group header only rotates its chevron.
-        className="flex h-7 w-full items-center justify-start gap-1 rounded-control px-2 text-[12px] font-medium text-ink-3 hover:text-ink aria-expanded:bg-transparent aria-expanded:text-ink-3 aria-expanded:hover:text-ink"
+        className="flex h-7 w-full items-center justify-start gap-1 rounded-md px-2 text-[12px] font-medium text-muted-foreground hover:text-foreground aria-expanded:bg-transparent aria-expanded:text-muted-foreground aria-expanded:hover:text-foreground"
       >
         <ChevronRight
           className={cn("size-3.5 shrink-0 transition-transform duration-150", open && "rotate-90")}
@@ -187,7 +187,7 @@ function Group({
               variant="ghost"
               size="sm"
               onClick={() => setLimit(count)}
-              className="h-8 justify-start rounded-control px-2 text-left text-[12.5px] text-ink-3 hover:bg-hover-2 hover:text-ink"
+              className="h-8 justify-start rounded-md px-2 text-left text-[12.5px] text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               Show {count - limit} more
             </Button>
@@ -214,7 +214,7 @@ function ChatRow({
 
   const itemContent = (
     <>
-      <Archive className="size-[15px] shrink-0 text-ink-3" />
+      <Archive className="size-[15px] shrink-0 text-muted-foreground" />
       {action}
     </>
   );
@@ -229,14 +229,14 @@ function ChatRow({
           className={cn(buttonVariants({ variant: "ghost", size: "sm" }), row, "flex-1 pr-9")}
         >
           <span className="min-w-0 flex-1 truncate">{title}</span>
-          <span className="shrink-0 text-[11.5px] text-ink-3 tabular-nums group-hover:invisible group-focus-within:invisible">
+          <span className="shrink-0 text-[11.5px] text-muted-foreground tabular-nums group-hover:invisible group-focus-within:invisible">
             {format(chat.updatedAt, isToday(chat.updatedAt) ? "HH:mm" : "d MMM")}
           </span>
         </Link>
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label={`${title}: more actions`}
-            className="absolute right-1 flex size-7 items-center justify-center rounded-control text-ink-3 opacity-0 group-hover:opacity-100 hover:bg-hover hover:text-ink focus-visible:opacity-100 aria-expanded:opacity-100"
+            className="absolute right-1 flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 aria-expanded:opacity-100"
           >
             <MoreHorizontal className="size-[15px]" />
           </DropdownMenuTrigger>

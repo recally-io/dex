@@ -5,7 +5,6 @@
 /* shadow-plugin (flornkm) — smooth, layered shadow stacks. The unprefixed
  * entry maps them onto Tailwind's --shadow-xs…2xl scale; our semantic tokens
  * below build on those values so the whole app picks up the smooth shadows. */
-@import "shadow-plugin/unprefixed";
 @import "tw-animate-css";
 @import "@fontsource-variable/jetbrains-mono";
 @import "@fontsource-variable/merriweather";
@@ -89,113 +88,28 @@
   --sidebar-ring: oklch(0.547 0.021 43.1);
 }
 
-/* Compatibility aliases for the pre-shadcn UI. Keep these until later migration PRs move callers. */
+/* Named status tokens keep clear success, warning and error meaning. */
 :root {
-  --page: var(--background);
-  --canvas: var(--sidebar);
-  --surface: var(--card);
-  --inset: var(--muted);
-  --hover: var(--secondary);
-  --hover-2: var(--accent);
-  --ink: var(--foreground);
-  /* ink-2 sits between the body text and ink-3; muted-foreground already holds 4.5:1. */
-  --ink-2: color-mix(in oklch, var(--muted-foreground) 60%, var(--foreground));
-  --ink-3: var(--muted-foreground);
-  --line: var(--border);
-  --line-strong: var(--ring);
-  --line-soft: var(--border);
-  --field: var(--card);
-  --stripe: var(--secondary);
-  --stripe-bg: var(--background);
-  --dex-accent: var(--primary);
-  --dex-accent-ink: var(--foreground);
-  --dex-accent-tint: color-mix(in oklch, var(--dex-accent) 12%, transparent);
-  --radius-chip: 0px;
-  --radius-control: 0px;
-  --radius-card: 0px;
-  --radius-window: 0px;
   --green: #2e7d32;
   --green-tint: #e8f3e9;
   --orange: #b45309;
   --orange-tint: #fdf3e3;
   --red: #c4242a;
   --red-tint: #ffedea;
-  --grid-line: color-mix(in srgb, var(--border) 78%, transparent);
-  --tooltip-bg: var(--popover);
-  --tooltip-fg: var(--popover-foreground);
-  --tooltip-muted: var(--muted-foreground);
-  --tooltip-border: var(--border);
-  --shadow-hairline: 0 0 0 1px var(--border);
-  --shadow-btn: 0 0 0 1px var(--border);
-  --shadow-card: 0 0 0 1px var(--border);
-  --shadow-raised: 0 0 0 1px var(--ring);
-  --shadow-overlay: 0 0 0 1px var(--ring), 0 12px 32px rgb(0 0 0 / 0.12);
-  --shadow-inset-field: inset 0 1px 2px rgb(0 0 0 / 0.06);
 }
-
 .dark {
-  --page: var(--background);
-  --canvas: var(--sidebar);
-  --surface: var(--card);
-  --inset: var(--muted);
-  --hover: var(--secondary);
-  --hover-2: var(--accent);
-  --ink: var(--foreground);
-  /* ink-2 sits between the body text and ink-3; muted-foreground already holds 4.5:1. */
-  --ink-2: color-mix(in oklch, var(--muted-foreground) 60%, var(--foreground));
-  --ink-3: var(--muted-foreground);
-  --line: var(--border);
-  --line-strong: var(--ring);
-  --line-soft: var(--border);
-  --field: var(--card);
-  --stripe: var(--secondary);
-  --stripe-bg: var(--background);
-  --dex-accent: var(--primary);
-  --dex-accent-ink: var(--foreground);
-  --dex-accent-tint: color-mix(in oklch, var(--dex-accent) 12%, transparent);
-  --radius-chip: 0px;
-  --radius-control: 0px;
-  --radius-card: 0px;
-  --radius-window: 0px;
   --green: #3fc07a;
   --green-tint: #172a1d;
   --orange: #e0a25a;
   --orange-tint: #2b2114;
   --red: #e5566f;
   --red-tint: #2c1a20;
-  --grid-line: color-mix(in srgb, var(--border) 78%, transparent);
-  --tooltip-bg: var(--popover);
-  --tooltip-fg: var(--popover-foreground);
-  --tooltip-muted: var(--muted-foreground);
-  --tooltip-border: var(--border);
-  --shadow-hairline: 0 0 0 1px var(--border);
-  --shadow-btn: 0 0 0 1px var(--border);
-  --shadow-card: 0 0 0 1px var(--border);
-  --shadow-raised: 0 0 0 1px var(--ring);
-  --shadow-overlay: 0 0 0 1px var(--ring), 0 16px 40px rgb(0 0 0 / 0.5);
-  --shadow-inset-field: inset 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 @theme inline {
   /* colors */
-  --color-page: var(--page);
-  --color-canvas: var(--canvas);
-  --color-surface: var(--surface);
-  --color-inset: var(--inset);
-  --color-ink: var(--ink);
-  --color-ink-2: var(--ink-2);
-  --color-ink-3: var(--ink-3);
-  --color-hover: var(--hover);
-  --color-hover-2: var(--hover-2);
-  --color-field: var(--field);
-  --color-line: var(--line);
-  --color-line-strong: var(--line-strong);
-  --color-line-soft: var(--line-soft);
   --color-grid-line: var(--grid-line);
   --color-accent: var(--accent);
-  --color-dex-accent: var(--dex-accent);
-  --color-dex-accent-ink: var(--dex-accent-ink);
-  --color-dex-accent-tint: var(--dex-accent-tint);
   --color-green: var(--green);
   --color-green-tint: var(--green-tint);
   --color-orange: var(--orange);
@@ -204,12 +118,12 @@
   --color-red-tint: var(--red-tint);
 
   /* shadows */
-  --shadow-hairline: var(--shadow-hairline);
-  --shadow-btn: var(--shadow-btn);
-  --shadow-inset-field: var(--shadow-inset-field);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-inner: var(--shadow-inner);
   --shadow-card: var(--shadow-card);
   --shadow-raised: var(--shadow-raised);
-  --shadow-overlay: var(--shadow-overlay);
+  --shadow-lg: var(--shadow-lg);
 
   /* type — the system face is the product's face on a desktop app that must work offline */
   --font-sans: "JetBrains Mono Variable", ui-monospace, monospace;
@@ -274,16 +188,16 @@ html {
 }
 
 body {
-  background-color: var(--stripe-bg);
-  color: var(--ink);
+  background-color: var(--background);
+  color: var(--foreground);
   font-family: "JetBrains Mono Variable", ui-monospace, monospace;
   font-size: 14px;
   line-height: 1.5;
 }
 
 ::selection {
-  background: var(--dex-accent-tint);
-  color: var(--ink);
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  color: var(--foreground);
 }
 
 /* ── interface hygiene (interfaces.dev cheat sheet) ────── */
@@ -328,7 +242,7 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--dex-accent);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -382,7 +296,7 @@ select:focus-visible,
 /* The newest characters stream in one tone lighter until the string settles. A tone step keeps
    the tail readable and needs no mask. */
 .stream-tail {
-  color: var(--ink-2);
+  color: var(--muted-foreground);
 }
 
 .stream-caret {
@@ -392,7 +306,7 @@ select:focus-visible,
   margin-left: 1.5px;
   translate: 0 -0.5px;
   border-radius: 1px;
-  background: var(--ink);
+  background: var(--foreground);
   vertical-align: text-bottom;
   animation: caret-blink 1s step-end infinite;
 }
@@ -475,7 +389,7 @@ select:focus-visible,
 
 /* The page gutter uses the same plain surface as the document. */
 .hatch {
-  background-color: var(--stripe-bg);
+  background-color: var(--background);
 }
 
 /* An agent mark: one hue per agent, with a lightness that keeps the letter readable on either

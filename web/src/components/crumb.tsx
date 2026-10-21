@@ -13,7 +13,7 @@ export function Crumb({
   const agentId = useAgentId();
 
   return (
-    <Link to={to} params={{ agentId }} className="hover:text-ink hover:underline">
+    <Link to={to} params={{ agentId }} className="hover:text-foreground hover:underline">
       {children}
     </Link>
   );

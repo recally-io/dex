@@ -59,13 +59,13 @@ export function ExtensionsPage() {
             rows={[
               [
                 "memory",
-                <span key="memory" className="font-normal text-ink-2">
+                <span key="memory" className="font-normal text-muted-foreground">
                   Puts the memory rules and MEMORY.md in the prompt
                 </span>,
               ],
               [
                 "read, write, edit, bash",
-                <span key="tools" className="font-normal text-ink-2">
+                <span key="tools" className="font-normal text-muted-foreground">
                   The four bot tools. They run on this computer without a sandbox
                 </span>,
               ],
@@ -106,7 +106,7 @@ function Catalog({ extensions: e }: { extensions: Extensions }) {
           <ul className="divide-y divide-line">
             {e.levels.map((level) => (
               <li key={level.scope} className="px-4 py-3 text-[12px] [overflow-wrap:anywhere]">
-                <p className="mb-1 font-medium text-ink">{level.scope}</p>
+                <p className="mb-1 font-medium text-foreground">{level.scope}</p>
                 <Mono>{level.dir}/</Mono>
               </li>
             ))}
@@ -172,7 +172,7 @@ function List({ items, empty }: { items: ReactNode[]; empty: ReactNode }) {
       {items.length ? (
         <ul className="divide-y divide-line">{items}</ul>
       ) : (
-        <p className="px-4 py-3.5 text-[12.5px] leading-relaxed text-ink-2">{empty}</p>
+        <p className="px-4 py-3.5 text-[12.5px] leading-relaxed text-muted-foreground">{empty}</p>
       )}
     </Panel>
   );
@@ -181,8 +181,8 @@ function List({ items, empty }: { items: ReactNode[]; empty: ReactNode }) {
 function Header({ name, scope, overrides }: { name: string; scope: Skill["scope"]; overrides: boolean }) {
   return (
     <>
-      <span className="font-mono text-[12.5px] font-medium text-ink">{name}</span>
-      <span className="text-[11.5px] text-ink-3">
+      <span className="font-mono text-[12.5px] font-medium text-foreground">{name}</span>
+      <span className="text-[11.5px] text-muted-foreground">
         {scope}
         {overrides ? ", replaces a wider entry" : ""}
       </span>
@@ -196,7 +196,7 @@ function SkillRow({ skill: s }: { skill: Skill }) {
       <div className="flex flex-wrap items-center gap-2">
         <Header name={s.name} scope={s.scope} overrides={s.overrides} />
       </div>
-      <p className={`mt-1 text-[12.5px] ${s.error ? "text-red" : "text-ink-2"}`}>
+      <p className={`mt-1 text-[12.5px] ${s.error ? "text-red" : "text-muted-foreground"}`}>
         {s.error ?? s.description}
       </p>
     </li>
@@ -226,7 +226,7 @@ function ServerRow({ server: s }: { server: McpServer }) {
         </Badge>
       </div>
       {s.tools.length ? (
-        <p className="mt-1 font-mono text-[11.5px] text-ink-2">{s.tools.join(", ")}</p>
+        <p className="mt-1 font-mono text-[11.5px] text-muted-foreground">{s.tools.join(", ")}</p>
       ) : null}
       {s.error ? <p className="mt-1 text-[12.5px] text-red">{s.error}</p> : null}
     </li>

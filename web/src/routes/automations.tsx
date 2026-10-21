@@ -143,7 +143,7 @@ function AutomationsSection() {
                     className="group min-w-0 flex-1"
                   >
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className="text-[13.5px] font-medium text-ink [overflow-wrap:anywhere] group-hover:underline">
+                      <span className="text-[13.5px] font-medium text-foreground [overflow-wrap:anywhere] group-hover:underline">
                         {automation.name}
                       </span>
                       {automation.lastRun && automation.lastRun.status !== "done" ? (
@@ -155,7 +155,7 @@ function AutomationsSection() {
                         </Badge>
                       ) : null}
                     </span>
-                    <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-ink-3">
+                    <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-muted-foreground">
                       <span>{scheduleText(automation.schedule, automation.timeZone)}</span>
                       <span>{sessionText(automation)}</span>
                       <span className="font-mono text-[11.5px] tabular-nums">{nextText(automation)}</span>
@@ -185,24 +185,26 @@ function RunRow({ run, timeZone, now }: { run: AutomationRun; timeZone: string; 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
       <RunPill run={run} className="w-[84px] justify-start" />
-      <span className="font-mono text-[11.5px] text-ink-2 tabular-nums">
+      <span className="font-mono text-[11.5px] text-muted-foreground tabular-nums">
         {runTime(run.dueAt ?? run.createdAt, timeZone)}
       </span>
-      <span className="text-[12px] text-ink-3">{run.dueAt ? "Scheduled" : "Started by you"}</span>
+      <span className="text-[12px] text-muted-foreground">{run.dueAt ? "Scheduled" : "Started by you"}</span>
       <span className="ml-auto flex items-center gap-2">
-        <span className="font-mono text-[11px] text-ink-3 tabular-nums">{ago(run.createdAt, now)} ago</span>
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+          {ago(run.createdAt, now)} ago
+        </span>
         {run.chatId ? (
           <Link
             to="/a/$agentId/c/$chatId"
             params={{ agentId, chatId: String(run.chatId) }}
-            className="text-[12px] font-medium text-dex-accent-ink hover:underline"
+            className="text-[12px] font-medium text-primary hover:underline"
           >
             Open session
           </Link>
         ) : null}
       </span>
       {run.reason ? (
-        <p className="w-full pl-[96px] text-[12px] text-ink-2 [overflow-wrap:anywhere] max-sm:pl-0">
+        <p className="w-full pl-[96px] text-[12px] text-muted-foreground [overflow-wrap:anywhere] max-sm:pl-0">
           {run.reason}
         </p>
       ) : null}
@@ -296,34 +298,34 @@ export function AutomationPage({ automationId }: { automationId: string }) {
             title={blocked ?? (busy ? "A run is in progress." : undefined)}
             onClick={() => run.mutate({ path: { agentId, automationId } })}
           >
-            {run.isPending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
+            {run.isPending ? <Spinner className="border-background/40 border-t-canvas" /> : null}
             {run.isPending ? "Starting…" : "Run now"}
           </Button>
         </>
       }
     >
       {blocked || run.isError || latestRun ? (
-        <div className="flex flex-col gap-3 border-b border-dashed border-line-strong px-5 py-4 sm:px-8">
+        <div className="flex flex-col gap-3 border-b border-dashed border-ring px-5 py-4 sm:px-8">
           {blocked ? <Note tone="warn">Run now is off. {blocked}</Note> : null}
           {run.isError ? <Failure title="Could not run automation" error={run.error} /> : null}
           {latestRun ? (
             <div
               role="status"
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-card bg-inset px-3.5 py-2.5 text-[12.5px] shadow-hairline"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-muted px-3.5 py-2.5 text-[12.5px] shadow-sm"
             >
-              <span className="text-ink-2">Run now</span>
+              <span className="text-muted-foreground">Run now</span>
               <RunPill run={latestRun} />
               {latestRun.chatId ? (
                 <Link
                   to="/a/$agentId/c/$chatId"
                   params={{ agentId, chatId: String(latestRun.chatId) }}
-                  className="font-medium text-dex-accent-ink hover:underline"
+                  className="font-medium text-primary hover:underline"
                 >
                   Open session
                 </Link>
               ) : null}
               {latestRun.reason ? (
-                <p className="w-full text-ink-2 [overflow-wrap:anywhere]">{latestRun.reason}</p>
+                <p className="w-full text-muted-foreground [overflow-wrap:anywhere]">{latestRun.reason}</p>
               ) : null}
             </div>
           ) : null}
@@ -331,7 +333,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
       ) : null}
       <Section n={1} title="Prompt" caption="Sent to the bot as a user message on each run.">
         <Panel className="px-4 py-3.5">
-          <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">
+          <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]">
             {data.prompt}
           </p>
         </Panel>
@@ -351,14 +353,14 @@ export function AutomationPage({ automationId }: { automationId: string }) {
                 data.nextRuns.length ? (
                   <span
                     key="next"
-                    className="flex flex-col items-end gap-0.5 font-mono text-[12px] text-ink-2 tabular-nums"
+                    className="flex flex-col items-end gap-0.5 font-mono text-[12px] text-muted-foreground tabular-nums"
                   >
                     {data.nextRuns.map((t) => (
                       <span key={t}>{runTime(t, data.timeZone)}</span>
                     ))}
                   </span>
                 ) : (
-                  <span key="none" className="text-ink-3">
+                  <span key="none" className="text-muted-foreground">
                     {data.enabled ? "No future run" : "Paused"}
                   </span>
                 ),
@@ -406,7 +408,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
                 ))}
               </ul>
             ) : (
-              <p className="px-4 py-6 text-center text-[12.5px] text-ink-3">
+              <p className="px-4 py-6 text-center text-[12.5px] text-muted-foreground">
                 {history.length
                   ? "No failed or skipped runs."
                   : "No runs yet. Use Run now to try the prompt."}

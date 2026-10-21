@@ -40,21 +40,21 @@ function ChannelRow({
 
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-inset text-ink-2 shadow-hairline">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-muted text-muted-foreground shadow-sm">
         <Send size={16} />
       </span>
       <span className="min-w-0 flex-1">
         <Link
           to="/a/$agentId/channels/$channelId"
           params={{ agentId, channelId: channel }}
-          className="block w-fit text-[13.5px] font-medium text-ink hover:underline"
+          className="block w-fit text-[13.5px] font-medium text-foreground hover:underline"
         >
           {name}
         </Link>
-        <span className="block text-[12px] text-ink-3">{text}</span>
+        <span className="block text-[12px] text-muted-foreground">{text}</span>
       </span>
       {status}
-      <ChevronRight size={16} className="shrink-0 text-ink-3" />
+      <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
     </div>
   );
 }
@@ -205,13 +205,13 @@ function Telegram({ settings }: { settings: Settings }) {
                 ["Bot ID", <Mono key="bot">{telegram.botId ?? "Unknown"}</Mono>],
                 [
                   "Bot token",
-                  <span key="token" className="text-ink-2">
+                  <span key="token" className="text-muted-foreground">
                     Saved · write-only
                   </span>,
                 ],
                 [
                   "Allowed user IDs",
-                  <span key="users" className="font-mono text-[12px] text-ink-2 tabular-nums">
+                  <span key="users" className="font-mono text-[12px] text-muted-foreground tabular-nums">
                     {telegram.allowedUsers.join(", ") || "None. Pair your account below."}
                   </span>,
                 ],
@@ -220,8 +220,10 @@ function Telegram({ settings }: { settings: Settings }) {
           </Panel>
         ) : (
           <Panel className="px-4 py-3.5">
-            <p className="mb-2 text-[13px] text-ink-2">Telegram is off. dex does not read any bot.</p>
-            <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-[13px] text-ink-2 marker:font-mono marker:text-[11px] marker:text-ink-3">
+            <p className="mb-2 text-[13px] text-muted-foreground">
+              Telegram is off. dex does not read any bot.
+            </p>
+            <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-[13px] text-muted-foreground marker:font-mono marker:text-[11px] marker:text-muted-foreground">
               <li>
                 In Telegram, open <Mono>@BotFather</Mono> and send <Mono>/newbot</Mono>.
               </li>
@@ -264,7 +266,7 @@ function Telegram({ settings }: { settings: Settings }) {
       </Section>
       <Section n={2} title="How messages work" caption="Telegram shares the main timeline.">
         <Panel className="px-4 py-3.5">
-          <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] text-ink-2 marker:text-ink-3">
+          <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] text-muted-foreground marker:text-muted-foreground">
             <li>
               Telegram and web input share the main context. /new clears that context when main is idle.
             </li>
@@ -382,7 +384,7 @@ function TelegramDialog({
             Cancel
           </Button>
           <Button size="sm" onClick={submit} disabled={save.isPending}>
-            {save.isPending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
+            {save.isPending ? <Spinner className="border-background/40 border-t-canvas" /> : null}
             {save.isPending ? "Saving…" : "Save Telegram"}
           </Button>
         </>
@@ -430,7 +432,9 @@ function TelegramDialog({
           </Field>
         )}
         <details>
-          <summary className="cursor-pointer text-[13px] text-ink-2">Advanced: enter user IDs</summary>
+          <summary className="cursor-pointer text-[13px] text-muted-foreground">
+            Advanced: enter user IDs
+          </summary>
           <Field
             label="Allowed user IDs"
             hint="Optional. Use a pairing link if you do not know your ID. One ID per line, or separated with commas."

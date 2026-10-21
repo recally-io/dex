@@ -129,10 +129,10 @@ export function FeishuChannel() {
         caption="Scan with Feishu or Lark. dex saves the app and pairs the account that creates it."
       >
         <div className="flex flex-wrap items-center gap-3">
-          <label className="text-[13px] text-ink-2">
+          <label className="text-[13px] text-muted-foreground">
             Platform
             <select
-              className="ml-2 rounded border border-line bg-canvas px-3 py-2"
+              className="ml-2 rounded border border-border bg-sidebar px-3 py-2"
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
               disabled={busy || !!session}
@@ -167,7 +167,7 @@ export function FeishuChannel() {
           />
         ) : null}
         {session ? (
-          <p className="mt-2 text-[13px] text-ink-2">
+          <p className="mt-2 text-[13px] text-muted-foreground">
             Scan the QR code and approve the app. Keep this page open.
           </p>
         ) : null}
