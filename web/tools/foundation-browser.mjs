@@ -179,7 +179,9 @@ try {
             async () =>
               (
                 await call("Runtime.evaluate", {
-                  expression: "!!document.querySelector('[role=dialog]')",
+                  // The dialog animates in; a screenshot mid-animation shows the page through it.
+                  expression:
+                    "!!document.querySelector('[role=dialog]') && document.getAnimations().every((a) => a.playState !== 'running')",
                   returnByValue: true,
                 })
               ).result?.value,

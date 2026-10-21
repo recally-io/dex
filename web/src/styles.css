@@ -21,19 +21,6 @@
  * ────────────────────────────────────────────────────────── */
 
 :root {
-  /* surfaces — cool, blue-tinted neutrals */
-
-  /* ink ramp — both greys carry words, so both hold 4.5:1 on white */
-
-  /* borders — solid and crisp, not alpha */
-
-  /* accent — the one hue on the screen, on the live state and the focus ring only */
-
-  /* semantic */
-
-  /* chart overlays — neutral system colors with enough contrast on either theme */
-
-  /* shadows — a hairline ring at rest; height only for what floats */
   --background: oklch(1 0 0);
   --foreground: oklch(0.147 0.004 49.3);
   --card: oklch(1 0 0);
@@ -105,18 +92,19 @@
 /* Compatibility aliases for the pre-shadcn UI. Keep these until later migration PRs move callers. */
 :root {
   --page: var(--background);
-  --canvas: var(--muted);
+  --canvas: var(--sidebar);
   --surface: var(--card);
   --inset: var(--muted);
   --hover: var(--secondary);
   --hover-2: var(--accent);
   --ink: var(--foreground);
-  --ink-2: var(--muted-foreground);
-  --ink-3: color-mix(in oklch, var(--muted-foreground) 70%, var(--foreground));
+  /* ink-2 sits between the body text and ink-3; muted-foreground already holds 4.5:1. */
+  --ink-2: color-mix(in oklch, var(--muted-foreground) 60%, var(--foreground));
+  --ink-3: var(--muted-foreground);
   --line: var(--border);
   --line-strong: var(--ring);
   --line-soft: var(--border);
-  --field: var(--input);
+  --field: var(--card);
   --stripe: var(--secondary);
   --stripe-bg: var(--background);
   --dex-accent: var(--primary);
@@ -147,18 +135,19 @@
 
 .dark {
   --page: var(--background);
-  --canvas: var(--muted);
+  --canvas: var(--sidebar);
   --surface: var(--card);
   --inset: var(--muted);
   --hover: var(--secondary);
   --hover-2: var(--accent);
   --ink: var(--foreground);
-  --ink-2: var(--muted-foreground);
-  --ink-3: color-mix(in oklch, var(--muted-foreground) 70%, var(--foreground));
+  /* ink-2 sits between the body text and ink-3; muted-foreground already holds 4.5:1. */
+  --ink-2: color-mix(in oklch, var(--muted-foreground) 60%, var(--foreground));
+  --ink-3: var(--muted-foreground);
   --line: var(--border);
   --line-strong: var(--ring);
   --line-soft: var(--border);
-  --field: var(--input);
+  --field: var(--card);
   --stripe: var(--secondary);
   --stripe-bg: var(--background);
   --dex-accent: var(--primary);
