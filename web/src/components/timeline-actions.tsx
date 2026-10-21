@@ -6,7 +6,7 @@ import { getChatHistoryOptions } from "../api/generated/@tanstack/react-query.ge
 import type { HistoryPage, Item } from "../api/generated/types.gen";
 import { queryClient } from "../lib/queries";
 import { newId } from "../lib/utils";
-import { Button } from "./atoms/Button";
+import { Button } from "./ui/button";
 import { Failure } from "./feedback";
 
 export function hasContext(items: Item[]) {
