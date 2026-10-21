@@ -1,6 +1,7 @@
 import { AgentContext, useAgentId } from "../lib/agent-scope";
 import { AgentAvatar } from "./agent-avatar";
 import { DexMark } from "./dex-mark";
+import { useNewChat } from "./chat-list";
 import { AgentCreateDialog } from "./agent-create-dialog";
 import type { Agent } from "../api/generated/types.gen";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -34,6 +35,21 @@ function useSidebarOpen() {
   }
 
   return [open, toggle] as const;
+}
+
+/** The desktop New Chat menu item starts a chat for the open bot, or the last one, from any page. */
+function NewChatShortcut() {
+  const agentId = useAgentId();
+  const { mutate } = useNewChat();
+
+  useEffect(() => {
+    const openNewChat = () => mutate({ path: { agentId } });
+    window.addEventListener("dex:new-chat", openNewChat);
+
+    return () => window.removeEventListener("dex:new-chat", openNewChat);
+  }, [agentId, mutate]);
+
+  return null;
 }
 
 export function Shell() {
@@ -100,6 +116,7 @@ export function Shell() {
         />
         <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 outline-none">
           <AgentContext.Provider value={routeAgent ?? lastAgent}>
+            <NewChatShortcut />
             <Outlet />
           </AgentContext.Provider>
         </main>
@@ -169,13 +186,17 @@ function Sidebar({
     <aside
       aria-label="Bots"
       data-dex-sidebar
+      data-collapsed={collapsed || undefined}
       className={cn(
         "flex h-full shrink-0 flex-col transition-[width] duration-150 ease-out motion-reduce:transition-none",
         collapsed ? "w-14 items-center" : "w-[240px]",
         className,
       )}
     >
-      <div className={cn("mt-1 flex h-10 items-center gap-2", collapsed ? "justify-center" : "mx-2 px-2")}>
+      <div
+        data-dex-brand
+        className={cn("mt-1 flex h-10 items-center gap-2", collapsed ? "justify-center" : "mx-2 px-2")}
+      >
         <DexMark />
         {collapsed ? null : (
           <span className="text-[13px] font-semibold tracking-[-0.01em] text-ink">dex</span>

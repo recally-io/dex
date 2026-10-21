@@ -28,12 +28,12 @@ import { Button, buttonVariants } from "./components/atoms/Button";
 import { applySavedTheme } from "./components/theme";
 import { SignIn } from "./components/sign-in";
 import { useSignedOut } from "./lib/session";
+import { installMacShell } from "./lib/mac-shell";
 import "./styles.css";
 
-// The Wails runtime is present only in the desktop shell. This single hook keeps browser mode unchanged.
-if (typeof window !== "undefined" && "_wails" in window) {
-  document.documentElement.dataset.shell = "mac";
-}
+// The macOS shell names itself in the user agent. Wails injects its runtime only after the page
+// loads, which is too late for the first render. Browser mode stays unchanged.
+if (navigator.userAgent.includes("DexDesktop")) installMacShell();
 
 function Missing({ title, description }: { title: string; description: string }) {
   return (
