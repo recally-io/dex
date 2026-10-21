@@ -1,10 +1,12 @@
-import { defineConfig } from "vite-plus";
+import { defineConfig, type PluginOption } from "vite-plus";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  // SAFETY: react and tailwindcss each return a plugin array, which the config flattens.
+  // vite-plus 1.3.0 types the nested array too deeply for TypeScript 6 to compare.
+  plugins: [react(), tailwindcss()] as PluginOption[],
   // The registry uses cn; the project supplies it with clsx and tailwind-merge.
   resolve: {
     alias: {
