@@ -91,16 +91,7 @@ export default function LoadingState({
   const { delays, dur, round } = PATTERNS[variant] ?? PATTERNS.Drive;
 
   const labelEl = (
-    <span
-      role="status"
-      className="bg-clip-text text-[13px] font-medium text-transparent"
-      style={{
-        backgroundImage:
-          "linear-gradient(90deg, var(--ink-3) 35%, var(--ink) 50%, var(--ink-3) 65%)",
-        backgroundSize: "200% 100%",
-        animation: "shimmer-text 1.4s linear infinite",
-      }}
-    >
+    <span role="status" className="text-[13px] font-medium text-ink-3">
       {resolvedLabel}
     </span>
   );

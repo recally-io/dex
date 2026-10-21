@@ -1,5 +1,6 @@
 import { AgentContext, useAgentId } from "../lib/agent-scope";
 import { AgentAvatar } from "./agent-avatar";
+import { DexMark } from "./dex-mark";
 import { AgentCreateDialog } from "./agent-create-dialog";
 import type { Agent } from "../api/generated/types.gen";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -136,13 +137,17 @@ function Sidebar({ path, className }: { path: string; className?: string }) {
 
   return (
     <aside aria-label="Bots" className={cn("flex h-full w-[240px] shrink-0 flex-col", className)}>
-      <div className="mx-2 mt-1 flex h-8 items-center justify-between px-2 text-[12.5px] font-medium text-ink-3">
-        <span>Bots</span>
+      <div className="mx-2 mt-1 flex h-10 items-center gap-2 px-2">
+        <DexMark />
+        <span className="text-[13px] font-semibold tracking-[-0.01em] text-ink">dex</span>
+      </div>
+      <div className="mx-2 mt-2 mb-1 flex h-7 items-center justify-between px-2">
+        <span className="text-[12px] font-medium text-ink-3">Bots</span>
         <button
           type="button"
           aria-label="Create bot"
           onClick={() => setCreating(true)}
-          className="flex size-7 items-center justify-center rounded-control text-lg hover:bg-hover-2 hover:text-ink"
+          className="flex size-6 items-center justify-center rounded-control text-[15px] leading-none text-ink-3 hover:bg-hover-2 hover:text-ink"
         >
           +
         </button>

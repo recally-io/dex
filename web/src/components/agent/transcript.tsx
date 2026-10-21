@@ -117,11 +117,7 @@ function Sparkle({ working }: { working: boolean }) {
 }
 
 function Shimmer({ children }: { children: ReactNode }) {
-  return (
-    <span className="animate-[shimmer-text_1.4s_linear_infinite] truncate bg-[linear-gradient(90deg,var(--ink-3)_35%,var(--ink)_50%,var(--ink-3)_65%)] bg-size-[200%_100%] bg-clip-text text-[13px] font-medium text-transparent">
-      {children}
-    </span>
-  );
+  return <span className="truncate text-[13px] font-medium text-ink-3">{children}</span>;
 }
 
 /** The header of a step row. Look from upstream primitives/ThinkingState.tsx. */

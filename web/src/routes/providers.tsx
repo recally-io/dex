@@ -36,12 +36,7 @@ export function ProvidersPage() {
       <WithSettings>
         {(settings) => (
           <>
-            <Connections
-              settings={settings}
-              onAdd={() => setDialog("new")}
-              onEdit={setDialog}
-              onRemove={setRemove}
-            />
+            <Connections settings={settings} onEdit={setDialog} onRemove={setRemove} />
             <Section n={2} title="Keys" caption="Write-only.">
               <Panel>
                 <Facts
@@ -72,12 +67,10 @@ export function ProvidersPage() {
 
 function Connections({
   settings,
-  onAdd,
   onEdit,
   onRemove,
 }: {
   settings: Settings;
-  onAdd: () => void;
   onEdit: (provider: Provider) => void;
   onRemove: (provider: Provider) => void;
 }) {
@@ -121,12 +114,7 @@ function Connections({
         </div>
       ) : (
         <Empty title="No providers yet">
-          <p>
-            Add a built-in service such as Anthropic, or a custom endpoint such as LM Studio on this computer.
-          </p>
-          <Button size="sm" variant="primary" className="mt-3" onClick={onAdd}>
-            Add provider
-          </Button>
+          Add a built-in service such as Anthropic, or a custom endpoint such as LM Studio on this computer.
         </Empty>
       )}
     </Section>

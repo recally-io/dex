@@ -157,7 +157,7 @@ function AgentPane({ settings }: { settings: Settings }) {
           <Name
             id={onChat ? "page-title" : undefined}
             tabIndex={onChat ? -1 : undefined}
-            className="max-w-[40%] shrink-0 truncate text-[13px] font-semibold text-ink outline-none sm:max-w-[200px]"
+            className="max-w-[40%] shrink-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-ink outline-none sm:max-w-[200px]"
           >
             {settings.agent.name}
           </Name>
@@ -197,7 +197,7 @@ function AgentPane({ settings }: { settings: Settings }) {
                   <span
                     role="img"
                     aria-label={`${activity.active} active`}
-                    className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-orange-tint px-1.5 text-[11px] font-medium text-orange tabular-nums"
+                    className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent-tint px-1.5 text-[11px] font-medium text-accent-ink tabular-nums"
                   >
                     {activity.active}
                   </span>

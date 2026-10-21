@@ -7,3 +7,6 @@ node_modules/
 .env
 .local/
 .DS_Store
+
+# Design-tool working files (screenshots, dealt direction).
+.taste-skill/

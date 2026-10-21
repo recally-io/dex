@@ -36,7 +36,7 @@ const labels = {
 
 const tones = {
   queued: "neutral",
-  running: "orange",
+  running: "accent",
   done: "green",
   failed: "red",
   cancelled: "neutral",
@@ -180,7 +180,7 @@ function SessionRow({ chat }: { chat: Chat }) {
       {chat.task ? (
         <TaskPill task={chat.task} />
       ) : chat.busy ? (
-        <StatusPill tone="orange" className="h-5 shrink-0 px-2 text-[11.5px]">
+        <StatusPill tone="accent" className="h-5 shrink-0 px-2 text-[11.5px]">
           Running
         </StatusPill>
       ) : null}
