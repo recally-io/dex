@@ -65,6 +65,17 @@ async function seed() {
     method: "POST",
     body: JSON.stringify({ id: crypto.randomUUID(), text: "session screenshot seed" }),
   });
+  await request("/api/agents/default/automations", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Foundation automation",
+      prompt: "Report the current time.",
+      schedule: { kind: "daily", time: "09:00" },
+      timeZone: "UTC",
+      session: "new",
+      enabled: true,
+    }),
+  });
 }
 let chrome;
 let socket;
@@ -179,6 +190,11 @@ try {
     ["sessions", "/a/default/sessions"],
     ["bot-settings", "/a/default/agent"],
     ["providers", "/providers"],
+    ["automations", "/a/default/automations"],
+    ["extensions", "/a/default/extensions"],
+    ["channels", "/a/default/channels"],
+    ["secrets", "/secrets"],
+    ["about", "/about"],
   ];
   for (const theme of ["light", "dark"])
     for (const [name, path] of pages)
@@ -238,6 +254,30 @@ try {
               (await call("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }))
                 .result?.value?.length ?? 0,
           });
+        }
+        if (name === "bot-settings" && size === "desktop") {
+          await overlayByKeyboard(
+            `${theme} bot create dialog`,
+            "document.querySelector('button[aria-label=\"Create bot\"]')",
+            `${theme}-bot-create-dialog-desktop.png`,
+          );
+          const modelTrigger = await evaluate(
+            "[...document.querySelectorAll('button')].find((button) => button.textContent.includes('Change model')) !== undefined",
+          );
+          if (modelTrigger) {
+            await evaluate(
+              "[...document.querySelectorAll('button')].find((button) => button.textContent.includes('Change model')).focus()",
+            );
+            await press("Enter", "Enter", 13, "\r");
+            await waitFor("model picker open", () =>
+              evaluate("!!document.querySelector('[aria-label=\"Search models\"]')"),
+            );
+            await capture(`${theme}-model-picker-open-desktop.png`);
+            await press("Escape", "Escape", 27);
+            await waitFor("model picker closed", () =>
+              evaluate("!document.querySelector('[aria-label=\"Search models\"]')"),
+            );
+          }
         }
       }
   await writeFile(join(output, "result.json"), JSON.stringify({ base, results }, null, 2));
