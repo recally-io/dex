@@ -277,11 +277,41 @@ try {
             await waitFor("model picker open", () =>
               evaluate("!!document.querySelector('[aria-label=\"Search models\"]')"),
             );
-            await capture(`${theme}-model-picker-open-desktop.png`);
-            await press("Escape", "Escape", 27);
-            await waitFor("model picker closed", () =>
+            for (const [key, code] of [
+              ["e", "KeyE"],
+              ["c", "KeyC"],
+              ["h", "KeyH"],
+              ["o", "KeyO"],
+            ])
+              await press(key, code, key.toUpperCase().charCodeAt(0), key);
+            const filtered = await evaluate(
+              "document.querySelector('[aria-label=\"Search models\"]')?.value === 'echo'",
+            );
+            await press("Enter", "Enter", 13, "\r");
+            const selected = await waitFor("model picker selection", () =>
               evaluate("!document.querySelector('[aria-label=\"Search models\"]')"),
             );
+            await evaluate(
+              "[...document.querySelectorAll('button')].find((button) => button.textContent.includes('Change model')).focus()",
+            );
+            await press("Enter", "Enter", 13, "\r");
+            await waitFor("model picker reopen", () =>
+              evaluate("!!document.querySelector('[aria-label=\"Search models\"]')"),
+            );
+            await capture(`${theme}-model-picker-open-desktop.png`);
+            await press("Escape", "Escape", 27);
+            const escaped = await waitFor("model picker closed", () =>
+              evaluate("!document.querySelector('[aria-label=\"Search models\"]')"),
+            );
+            results.push({
+              theme,
+              page: "model-picker-keyboard",
+              size: "desktop",
+              path,
+              filtered,
+              selected,
+              escaped,
+            });
           }
         }
       }
