@@ -80,8 +80,6 @@ func run() error {
 			}
 		},
 	})
-	statePath := desktopWindowStatePath()
-	state, restored := loadDesktopWindowState(statePath, native)
 	options := application.WebviewWindowOptions{
 		Name:       "main",
 		Title:      appName,
@@ -91,27 +89,37 @@ func run() error {
 		MinHeight:  600,
 		StartState: application.WindowStateNormal,
 		URL:        backendURL,
+		// The window shows after restoreDesktopWindow places it.
+		Hidden: true,
+		// The web UI draws the title bar. It reads DexDesktop from the user agent before its first
+		// render, because Wails injects window._wails only after the page finishes loading.
 		Mac: application.MacWindow{
-			Backdrop:                application.MacBackdropTranslucent,
-			TitleBar:                application.MacTitleBarHiddenInset,
-			InvisibleTitleBarHeight: 36,
+			Backdrop:           application.MacBackdropTranslucent,
+			TitleBar:           application.MacTitleBarHiddenInset,
+			WebviewPreferences: application.MacWebviewPreferences{ApplicationNameForUserAgent: "DexDesktop"},
 		},
-	}
-	if restored {
-		options.Width, options.Height = state.Width, state.Height
-		options.X, options.Y = state.X, state.Y
-		options.InitialPosition = application.WindowXY
-		if state.Maximised {
-			options.StartState = application.WindowStateMaximised
-		}
 	}
 	mainWindow := native.Window.NewWithOptions(options)
 	native.Menu.SetApplicationMenu(desktopMenu(mainWindow))
-	mainWindow.OnWindowEvent(events.Common.WindowDidMove, func(_ *application.WindowEvent) { saveDesktopWindowState(mainWindow, statePath) })
-	mainWindow.OnWindowEvent(events.Common.WindowDidResize, func(_ *application.WindowEvent) { saveDesktopWindowState(mainWindow, statePath) })
-	mainWindow.OnWindowEvent(events.Common.WindowMaximise, func(_ *application.WindowEvent) { saveDesktopWindowState(mainWindow, statePath) })
-	mainWindow.OnWindowEvent(events.Common.WindowUnMaximise, func(_ *application.WindowEvent) { saveDesktopWindowState(mainWindow, statePath) })
-	mainWindow.OnWindowEvent(events.Common.WindowClosing, func(_ *application.WindowEvent) { saveDesktopWindowState(mainWindow, statePath) })
+	// Wails queues ExecJS until the page reports ready, which only its full runtime does. The page
+	// comes from the Dex backend and does not load that runtime, so the shell reports ready itself.
+	mainWindow.RegisterHook(events.Mac.WebViewDidFinishNavigation, func(_ *application.WindowEvent) {
+		mainWindow.HandleMessage("wails:runtime:ready")
+	})
+	// The screen list is empty until the application starts, so the saved frame is checked then.
+	native.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
+		statePath := desktopWindowStatePath()
+		restoreDesktopWindow(mainWindow, statePath, native)
+		mainWindow.Show()
+		// Saving starts after the restore, so the default frame never replaces the saved one.
+		save := func(_ *application.WindowEvent) { saveDesktopWindowState(mainWindow, statePath) }
+		for _, event := range []events.WindowEventType{
+			events.Common.WindowDidMove, events.Common.WindowDidResize,
+			events.Common.WindowMaximise, events.Common.WindowUnMaximise, events.Common.WindowClosing,
+		} {
+			mainWindow.OnWindowEvent(event, save)
+		}
+	})
 
 	if err := native.Run(); err != nil {
 		return err
@@ -131,6 +139,11 @@ func desktopWindowStatePath() string {
 }
 
 func loadDesktopWindowState(path string, native *application.App) (windowState, bool) {
+	// Wails fills its screen list in another listener of the launch event, and listeners run
+	// concurrently. Wait for the list; if it takes longer, the window keeps the default frame.
+	for deadline := time.Now().Add(time.Second); len(native.Screen.GetAll()) == 0 && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
 	screens := make([]screenRect, 0, len(native.Screen.GetAll()))
 	for _, screen := range native.Screen.GetAll() {
 		screens = append(screens, screenRect{X: screen.WorkArea.X, Y: screen.WorkArea.Y, Width: screen.WorkArea.Width, Height: screen.WorkArea.Height})
@@ -138,10 +151,22 @@ func loadDesktopWindowState(path string, native *application.App) (windowState, 
 	return loadWindowState(path, screens)
 }
 
+func restoreDesktopWindow(window application.Window, path string, native *application.App) {
+	state, ok := loadDesktopWindowState(path, native)
+	if !ok {
+		return
+	}
+	window.SetSize(state.Width, state.Height)
+	window.SetPosition(state.X, state.Y)
+	if state.Maximised {
+		window.Maximise()
+	}
+}
+
 func saveDesktopWindowState(window application.Window, path string) {
 	x, y := window.Position()
 	w, h := window.Size()
-	if err := saveWindowState(path, windowState{X: x, Y: y, Width: w, Height: h, Maximised: window.IsMaximised()}); err != nil {
+	if err := recordWindowState(path, windowState{X: x, Y: y, Width: w, Height: h, Maximised: window.IsMaximised()}); err != nil {
 		slog.Warn("save dex window state", "err", err)
 	}
 }

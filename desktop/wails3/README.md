@@ -58,16 +58,32 @@ notarization before release.
 ## Native macOS shell
 
 The app installs a native macOS menu bar with Dex, File, Edit, View and Window
-menus. Settings… navigates to `/settings`; New Chat dispatches the same browser
-action used by the Chat header. Wails supplies the standard edit roles, so the
-message box keeps native copy and paste behavior.
+menus. Settings… (Cmd+,) opens `/settings`. New Chat (Cmd+N) starts a chat for
+the open bot, or for the last bot, from any page. Wails supplies the standard
+edit roles, so the message box keeps native copy and paste behavior.
 
-The main window frame is saved as JSON at the platform config directory
+The window loads Dex from the backend URL, not from the Wails asset server. Wails
+then injects only its core script. That script can post messages to Go, but it
+does not report ready and has no drag handling. Two consequences:
+
+- Wails queues every `ExecJS` call until the page reports ready. The shell
+  reports ready itself when a navigation finishes, so the menu can reach the
+  web app through `dex:settings` and `dex:new-chat` window events.
+- The web app starts window drags itself (`web/src/lib/mac-shell.ts`). Elements
+  with `--dex-drag: drag` move the window; controls inside them opt out.
+
+The web app detects the shell from `DexDesktop` in the user agent, before its
+first render, and sets `document.documentElement.dataset.shell = "mac"`. One
+CSS block in `web/src/styles.css` keys off that hook. The window has a
+translucent backdrop and a hidden inset title bar. The sidebar's first row and
+the pane header form one 52px bar, in which macOS centers the traffic lights.
+The collapsed sidebar is 80px wide on macOS so that the lights fit inside it.
+Browser sessions keep the existing look.
+
+The main window frame is saved as JSON in the platform config directory
 (`~/Library/Application Support/Dex/window.json` on macOS). The file stores
-position, size and the maximized state. A frame with no intersection with any
-current screen is discarded and the default centered 1280×860 frame is used.
-
-macOS uses a transparent inset title bar, an invisible 36-point drag area and a
-translucent backdrop. The web app marks this environment with
-`document.documentElement.dataset.shell = "mac"`; the small macOS-only CSS block
-keys off that hook. Browser sessions keep their opaque surfaces.
+position, size and the maximized state; a maximized window keeps its last
+normal frame. The window starts hidden and is placed when the application
+starts, because Wails has no screen list before then. A frame that does not
+intersect any current screen is discarded, and the default centered 1280×860
+frame is used.
