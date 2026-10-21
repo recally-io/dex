@@ -194,23 +194,10 @@ async function composerEvidence(theme) {
     modifiers: 8,
   });
   const shiftLine = await evaluate(`${textarea}?.value.includes('\\n')`);
-  await call("Input.dispatchKeyEvent", {
-    type: "keyDown",
-    key: "a",
-    code: "KeyA",
-    windowsVirtualKeyCode: 65,
-    modifiers: 2,
-    text: "a",
-  });
-  await call("Input.dispatchKeyEvent", {
-    type: "keyUp",
-    key: "a",
-    code: "KeyA",
-    windowsVirtualKeyCode: 65,
-    modifiers: 2,
-  });
-  await press("Backspace", "Backspace", 8);
-  await typeText("sleep 3");
+  await evaluate(
+    `(() => { const el = ${textarea}; const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(el, 'sleep 3'); el.dispatchEvent(new Event('input', { bubbles: true })); })()`,
+  );
+  await delay(100);
   await press("Enter", "Enter", 13, "\\r");
   await waitFor(
     "reply running",
