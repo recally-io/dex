@@ -59,6 +59,7 @@ export function ThinkingPicker({
             {clearable ? (
               <CommandItem
                 value="default"
+                data-checked={current === "default"}
                 disabled={pending !== undefined}
                 onSelect={() => pick(null)}
                 className={itemClass}
@@ -71,6 +72,7 @@ export function ThinkingPicker({
               <CommandItem
                 key={level}
                 value={level}
+                data-checked={current === level}
                 disabled={pending !== undefined}
                 onSelect={() => pick(level)}
                 className={itemClass}

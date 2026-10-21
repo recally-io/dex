@@ -192,7 +192,10 @@ function ProviderCard({
           <h3 className="text-[14px] font-medium text-ink">{p.name}</h3>
           <Mono className="text-[11.5px] text-ink-3">{p.id}</Mono>
           {inUse ? (
-            <Badge variant="secondary" className="h-5 bg-accent-tint px-2 text-[11px] text-accent-ink">
+            <Badge
+              variant="secondary"
+              className="h-5 bg-dex-accent-tint px-2 text-[11px] text-dex-accent-ink"
+            >
               Bot model
             </Badge>
           ) : null}

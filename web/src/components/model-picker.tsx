@@ -9,7 +9,6 @@ import { saveModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Command, CommandInput, CommandList, CommandGroup, CommandItem } from "./ui/command";
-import { Search } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Failure, Spinner } from "./feedback";
 
@@ -179,18 +178,16 @@ function ModelList({
   return (
     // The list is already filtered and sorted; cmdk only handles the keyboard.
     <Command shouldFilter={false} className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3 text-ink-3">
-        <Search size={14} className="shrink-0" />
-        <CommandInput
-          autoFocus
-          aria-label="Search models"
-          placeholder="Search providers and models"
-          value={query}
-          onValueChange={setQuery}
-          className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-3"
-        />
-      </div>
-      <CommandList className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
+      <CommandInput
+        autoFocus
+        aria-label="Search models"
+        placeholder="Search providers and models"
+        value={query}
+        onValueChange={setQuery}
+        className="text-[13px] text-ink placeholder:text-ink-3"
+      />
+      {/* The popover limits the height; the stock max-h-72 would cut the list shorter. */}
+      <CommandList className="max-h-none min-h-0 flex-1 overscroll-contain p-1">
         {override && override.allowDefault !== false && !query.trim() ? (
           <CommandItem
             value="default"
@@ -273,6 +270,7 @@ function ModelList({
   );
 }
 
+/** The stock item draws the check from data-checked; this adds the saving state and screen reader text. */
 export function Mark({ checked, saving }: { checked: boolean; saving: boolean }) {
   return (
     <>
@@ -282,22 +280,7 @@ export function Mark({ checked, saving }: { checked: boolean; saving: boolean })
           <Spinner />
           <span className="sr-only">Saving</span>
         </>
-      ) : (
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-          className={`shrink-0 text-ink ${checked ? "" : "invisible"}`}
-        >
-          <path d="M20 6L9 17l-5-5" />
-        </svg>
-      )}
+      ) : null}
     </>
   );
 }

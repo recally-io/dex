@@ -171,7 +171,10 @@ function SessionRow({ chat }: { chat: Chat }) {
       {chat.task ? (
         <TaskPill task={chat.task} />
       ) : chat.busy ? (
-        <Badge variant="secondary" className="h-5 shrink-0 bg-accent-tint px-2 text-[11.5px] text-accent-ink">
+        <Badge
+          variant="secondary"
+          className="h-5 shrink-0 bg-dex-accent-tint px-2 text-[11.5px] text-dex-accent-ink"
+        >
           Running
         </Badge>
       ) : null}
