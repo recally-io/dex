@@ -195,7 +195,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     agents.data?.agents.find((item) => item.id === agentId)?.activity?.runningChannels ?? 0;
 
   const recent = (sessions.data?.chats ?? [])
-    .filter((item) => !item.main && item.id !== chatId)
+    .filter((item) => !item.main && !item.archivedAt && item.id !== chatId)
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 3);
 

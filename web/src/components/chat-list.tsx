@@ -1,14 +1,25 @@
+import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { ContextMenu } from "@base-ui/react/context-menu";
+import { Menu } from "@base-ui/react/menu";
+import { format, isToday, startOfDay, subDays } from "date-fns";
+import { IconArchive } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconArchive";
+import { IconChevronRightSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronRightSmall";
+import { IconDotGrid1x3Horizontal } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconDotGrid1x3Horizontal";
+import type { Chat } from "../api/generated/types.gen";
 import {
+  archiveChatMutation,
   createChatMutation,
   getMainChatOptions,
   listChatsOptions,
+  unarchiveChatMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { useAgentId } from "../lib/agent-scope";
 import { useApp } from "../lib/app-state";
 import { errorText, refreshChats } from "../lib/queries";
-import { sessionKind, taskTime } from "../lib/tasks";
+import { sessionKind } from "../lib/tasks";
+import { cn } from "../lib/utils";
 
 /** Opens a Chat with its own context. The server reuses the newest empty Chat. */
 export function useNewChat() {
@@ -26,27 +37,82 @@ export function useNewChat() {
   });
 }
 
+/** Archives or restores a Chat. Archiving the open Chat returns to Main. */
+function useArchive(openChat: number) {
+  const agentId = useAgentId();
+  const navigate = useNavigate();
+  const { notify } = useApp();
+
+  const done = async (chat: Chat) => {
+    await refreshChats(agentId);
+
+    if (chat.archivedAt && chat.id === openChat) await navigate({ to: "/a/$agentId", params: { agentId } });
+  };
+
+  const fail = (cause: unknown) => notify(`Could not change the chat. ${errorText(cause)}`);
+  const archive = useMutation({ ...archiveChatMutation(), onSuccess: done, onError: fail });
+  const restore = useMutation({ ...unarchiveChatMutation(), onSuccess: done, onError: fail });
+
+  return (chat: Chat) => (chat.archivedAt ? restore : archive).mutate({ path: { agentId, chatId: chat.id } });
+}
+
+/** ChatGPT-style buckets by latest activity: recent days first, then one per month. */
+export function dateGroup(at: number, now: number) {
+  const today = startOfDay(now).getTime();
+
+  if (at >= today) return "Today";
+
+  if (at >= subDays(today, 1).getTime()) return "Yesterday";
+
+  if (at >= subDays(today, 7).getTime()) return "Previous 7 days";
+
+  if (at >= subDays(today, 30).getTime()) return "Previous 30 days";
+
+  return format(at, "MMMM yyyy");
+}
+
+const pageSize = 5;
+
 const row =
   "flex h-9 min-w-0 items-center gap-2 rounded-control px-2 text-[13px] text-ink-2 hover:bg-hover-2 hover:text-ink aria-[current=page]:bg-hover-2 aria-[current=page]:text-ink";
 
+const menuItem =
+  "flex h-8 w-full items-center gap-2 rounded-[7px] px-2 text-[12.5px] text-ink outline-none data-[highlighted]:bg-hover";
+
+const menuPopup =
+  "w-[180px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-[10px] bg-surface p-1 shadow-raised outline-none";
+
 /**
- * The right sidebar of the Chat tab: Main, the bot's one timeline, then its Chat sessions,
- * newest first. Each Chat has its own context.
+ * The right sidebar of the Chat tab. Main is the bot's one timeline: it comes first and has no
+ * menu. Chat sessions follow in date groups, newest first, and archived ones go last. Today
+ * starts open; each group shows five chats until the user asks for more.
  */
 export function ChatList({ chatId }: { chatId: number }) {
   const agentId = useAgentId();
   const main = useQuery(getMainChatOptions({ path: { agentId } }));
   const sessions = useQuery({ ...listChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
+  const toggleArchive = useArchive(chatId);
   const onMain = !chatId || chatId === main.data?.id;
+  const [now] = useState(() => Date.now());
 
   const chats = (sessions.data?.chats ?? [])
     .filter((chat) => sessionKind(chat) === "Chat")
     .toSorted((a, b) => b.updatedAt - a.updatedAt);
 
+  const active = chats.filter((chat) => !chat.archivedAt);
+  const archived = chats.filter((chat) => chat.archivedAt);
+  const groups = Map.groupBy(active, (chat) => dateGroup(chat.updatedAt, now));
+
+  // The list skips empty chats, so a Chat opened just now shows on its own until its first message.
+  const pending = !onMain && sessions.isSuccess && !chats.some((chat) => chat.id === chatId);
+
+  const item = (chat: Chat) => (
+    <ChatRow key={chat.id} chat={chat} current={chat.id === chatId} onToggleArchive={toggleArchive} />
+  );
+
   return (
-    <aside aria-label="Chats" className="hidden w-[248px] shrink-0 flex-col border-l border-line md:flex">
-      <h2 className="px-4 pt-3 pb-1.5 text-[12px] font-medium text-ink-3">Chats</h2>
-      <nav aria-label="Chats" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-3">
+    <aside aria-label="Chats" className="hidden w-[256px] shrink-0 flex-col border-l border-line md:flex">
+      <nav aria-label="Chats" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 py-2">
         <Link
           to="/a/$agentId"
           params={{ agentId }}
@@ -57,24 +123,21 @@ export function ChatList({ chatId }: { chatId: number }) {
           <span className="min-w-0 flex-1 truncate font-medium">Main</span>
           <span className="shrink-0 text-[11.5px] text-ink-3">Every channel</span>
         </Link>
-        {/* The list skips empty chats, so a Chat opened just now shows here until its first message. */}
-        {!onMain && !chats.some((chat) => chat.id === chatId) ? (
-          <span aria-current="page" className={row}>
+        {pending ? (
+          <span aria-current="page" className={cn(row, "mt-0.5")}>
             <span className="min-w-0 flex-1 truncate">New chat</span>
           </span>
         ) : null}
-        {chats.map((chat) => (
-          <Link
-            key={chat.id}
-            to="/a/$agentId/c/$chatId"
-            params={{ agentId, chatId: String(chat.id) }}
-            aria-current={chat.id === chatId ? "page" : undefined}
-            className={row}
-          >
-            <span className="min-w-0 flex-1 truncate">{chat.title || "New chat"}</span>
-            <span className="shrink-0 text-[11.5px] text-ink-3 tabular-nums">{taskTime(chat.updatedAt)}</span>
-          </Link>
+        {[...groups].map(([label, list]) => (
+          <Group key={label} label={label} count={list.length} defaultOpen={label === "Today"}>
+            {(limit) => list.slice(0, limit).map(item)}
+          </Group>
         ))}
+        {archived.length ? (
+          <Group label="Archived" count={archived.length} defaultOpen={false}>
+            {(limit) => archived.slice(0, limit).map(item)}
+          </Group>
+        ) : null}
         {sessions.isSuccess && onMain && !chats.length ? (
           <p className="px-2 py-2 text-[12px] leading-relaxed text-ink-3">
             New chat starts a conversation with its own context.
@@ -82,5 +145,110 @@ export function ChatList({ chatId }: { chatId: number }) {
         ) : null}
       </nav>
     </aside>
+  );
+}
+
+function Group({
+  label,
+  count,
+  defaultOpen,
+  children,
+}: {
+  label: string;
+  count: number;
+  defaultOpen: boolean;
+  children: (limit: number) => ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [limit, setLimit] = useState(pageSize);
+
+  return (
+    <section className="mt-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex h-7 w-full items-center gap-1 rounded-control px-2 text-[12px] font-medium text-ink-3 hover:text-ink"
+      >
+        <IconChevronRightSmall
+          size={13}
+          className={cn("shrink-0 transition-transform duration-150", open && "rotate-90")}
+        />
+        <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+        <span className="shrink-0 tabular-nums">{count}</span>
+      </button>
+      {open ? (
+        <div className="flex flex-col gap-0.5">
+          {children(limit)}
+          {count > limit ? (
+            <button
+              type="button"
+              onClick={() => setLimit(count)}
+              className="h-8 rounded-control px-2 text-left text-[12.5px] text-ink-3 hover:bg-hover-2 hover:text-ink"
+            >
+              Show {count - limit} more
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/** One Chat. The ⋯ button and a right-click open the same menu. */
+function ChatRow({
+  chat,
+  current,
+  onToggleArchive,
+}: {
+  chat: Chat;
+  current: boolean;
+  onToggleArchive: (chat: Chat) => void;
+}) {
+  const agentId = useAgentId();
+  const action = chat.archivedAt ? "Restore" : "Archive";
+  const title = chat.title || "New chat";
+
+  const items = (Item: typeof Menu.Item) => (
+    <Item onClick={() => onToggleArchive(chat)} className={menuItem}>
+      <IconArchive size={15} className="shrink-0 text-ink-3" />
+      {action}
+    </Item>
+  );
+
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger className="group relative flex min-w-0 items-center">
+        <Link
+          to="/a/$agentId/c/$chatId"
+          params={{ agentId, chatId: String(chat.id) }}
+          aria-current={current ? "page" : undefined}
+          className={cn(row, "flex-1 pr-9")}
+        >
+          <span className="min-w-0 flex-1 truncate">{title}</span>
+          <span className="shrink-0 text-[11.5px] text-ink-3 tabular-nums group-hover:invisible group-focus-within:invisible">
+            {format(chat.updatedAt, isToday(chat.updatedAt) ? "HH:mm" : "d MMM")}
+          </span>
+        </Link>
+        <Menu.Root>
+          <Menu.Trigger
+            aria-label={`${title}: more actions`}
+            className="absolute right-1 flex size-7 items-center justify-center rounded-control text-ink-3 opacity-0 group-hover:opacity-100 hover:bg-hover hover:text-ink focus-visible:opacity-100 aria-expanded:opacity-100"
+          >
+            <IconDotGrid1x3Horizontal size={15} />
+          </Menu.Trigger>
+          <Menu.Portal>
+            <Menu.Positioner align="end" sideOffset={4} collisionPadding={8} className="z-40">
+              <Menu.Popup className={menuPopup}>{items(Menu.Item)}</Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Positioner collisionPadding={8} className="z-40">
+          <ContextMenu.Popup className={menuPopup}>{items(ContextMenu.Item)}</ContextMenu.Popup>
+        </ContextMenu.Positioner>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }
