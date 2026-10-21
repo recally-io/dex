@@ -13,8 +13,8 @@ import { FramedPage, Note, Panel, Section } from "../components/page";
 import { BotSettingsSwitcher } from "../components/settings-switcher";
 import { Input } from "../components/form";
 import { InstructionsEditor } from "../components/instructions-editor";
-import { Button } from "../components/atoms/Button";
-import { StatusPill } from "../components/atoms/StatusPill";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 import { WithSettings } from "../components/with-settings";
 import { cn } from "../lib/utils";
 
@@ -30,9 +30,9 @@ export function AgentPage() {
       toolbar={<BotSettingsSwitcher segment="agent" />}
       badge={
         model && !model.ok ? (
-          <StatusPill tone="orange" className="h-5 px-2 text-[11.5px]">
+          <Badge variant="secondary" className="h-5 bg-orange-tint px-2 text-[11.5px] text-orange">
             No available model
-          </StatusPill>
+          </Badge>
         ) : null
       }
     >

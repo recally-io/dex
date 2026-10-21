@@ -3,8 +3,7 @@ import { useAgentId } from "../lib/agent-scope";
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { IconChevronRightSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronRightSmall";
-import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
+import { ChevronRight, Send } from "lucide-react";
 
 import {
   createTelegramPairingMutation,
@@ -21,8 +20,8 @@ import { Failure, Loading, Spinner } from "../components/feedback";
 import { Field, Input, SavedSecret, Textarea } from "../components/form";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { BotSettingsSwitcher } from "../components/settings-switcher";
-import { Button } from "../components/atoms/Button";
-import { StatusPill } from "../components/atoms/StatusPill";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 import { FeishuChannel } from "./feishu";
 import { Crumb } from "../components/crumb";
 
@@ -42,7 +41,7 @@ function ChannelRow({
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
       <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-inset text-ink-2 shadow-hairline">
-        <IconPaperPlane size={16} />
+        <Send size={16} />
       </span>
       <span className="min-w-0 flex-1">
         <Link
@@ -55,7 +54,7 @@ function ChannelRow({
         <span className="block text-[12px] text-ink-3">{text}</span>
       </span>
       {status}
-      <IconChevronRightSmall size={16} className="shrink-0 text-ink-3" />
+      <ChevronRight size={16} className="shrink-0 text-ink-3" />
     </div>
   );
 }
@@ -77,9 +76,12 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
   const current = saved.data ?? settings;
 
   const status = (state: string) => (
-    <StatusPill tone={state === "running" ? "green" : "neutral"} className="h-5 shrink-0 px-2 text-[11.5px]">
+    <Badge
+      variant={state === "running" ? "secondary" : "outline"}
+      className={`h-5 shrink-0 px-2 text-[11.5px] ${state === "running" ? "bg-green-tint text-green" : ""}`}
+    >
       {state}
-    </StatusPill>
+    </Badge>
   );
 
   return (
@@ -148,9 +150,12 @@ function TelegramChannel() {
       title="Telegram"
       badge={
         saved.data ? (
-          <StatusPill tone={saved.data.telegram.status.state === "running" ? "green" : "neutral"}>
+          <Badge
+            variant={saved.data.telegram.status.state === "running" ? "secondary" : "outline"}
+            className={saved.data.telegram.status.state === "running" ? "bg-green-tint text-green" : ""}
+          >
             {saved.data.telegram.status.state}
-          </StatusPill>
+          </Badge>
         ) : null
       }
       description="Talk to dex from your phone. Only the users that you allow can use the bot."
@@ -186,7 +191,7 @@ function Telegram({ settings }: { settings: Settings }) {
         action={
           <Button
             size="sm"
-            variant={telegram.enabled ? "secondary" : "primary"}
+            variant={telegram.enabled ? "secondary" : "default"}
             onClick={() => setEdit(true)}
           >
             {telegram.enabled ? "Edit" : "Connect bot"}
@@ -376,7 +381,7 @@ function TelegramDialog({
           <Button size="sm" variant="secondary" onClick={onClose} disabled={save.isPending}>
             Cancel
           </Button>
-          <Button size="sm" variant="primary" onClick={submit} disabled={save.isPending}>
+          <Button size="sm" onClick={submit} disabled={save.isPending}>
             {save.isPending ? <Spinner className="border-canvas/40 border-t-canvas" /> : null}
             {save.isPending ? "Saving…" : "Save Telegram"}
           </Button>

@@ -7,10 +7,10 @@ import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
 import type { Model } from "../api/generated/types.gen";
 import { saveModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
-import { Popover } from "@base-ui/react/popover";
-import { Command } from "cmdk";
-import { IconMagnifyingGlass } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconMagnifyingGlass";
-import { ValuePill } from "./atoms/ValuePill";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Command, CommandInput, CommandList, CommandGroup, CommandItem } from "./ui/command";
+import { Search } from "lucide-react";
+import { Badge } from "./ui/badge";
 import { Failure, Spinner } from "./feedback";
 
 type Group = { id: string; name: string; error?: string; models: Model[] };
@@ -84,7 +84,7 @@ export function ModelPicker({ trigger, override }: { trigger: ReactElement; over
   });
 
   return (
-    <Popover.Root
+    <Popover
       open={open}
       onOpenChange={(next) => {
         // The save result shows in the list, so it stays open until the save ends.
@@ -94,29 +94,25 @@ export function ModelPicker({ trigger, override }: { trigger: ReactElement; over
         setOpen(next);
       }}
     >
-      <Popover.Trigger render={trigger} />
-      <Popover.Portal>
-        <Popover.Positioner align="start" sideOffset={6} collisionPadding={8} className="z-[60]">
-          <Popover.Popup
-            aria-label={override ? "Chat model" : "Bot model"}
-            // The search takes focus when it mounts, also after the models load.
-            initialFocus={false}
-            className="flex max-h-[min(420px,var(--available-height))] w-[352px] max-w-[calc(100vw-1rem)] origin-(--transform-origin) animate-[pop-in_180ms_var(--ease-out-strong)_both] flex-col overflow-hidden rounded-[12px] bg-surface shadow-raised outline-none"
-          >
-            <ModelList
-              override={override}
-              pending={save.isPending ? save.variables : undefined}
-              error={save.isError ? save.error : undefined}
-              onPick={(model, current) => {
-                if (current) setOpen(false);
-                else save.mutate(model);
-              }}
-              onLeave={() => setOpen(false)}
-            />
-          </Popover.Popup>
-        </Popover.Positioner>
-      </Popover.Portal>
-    </Popover.Root>
+      <PopoverTrigger render={trigger} />
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        aria-label={override ? "Chat model" : "Bot model"}
+        className="z-[60] flex max-h-[min(420px,var(--available-height))] w-[352px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-[12px] bg-surface p-0 shadow-raised outline-none"
+      >
+        <ModelList
+          override={override}
+          pending={save.isPending ? save.variables : undefined}
+          error={save.isError ? save.error : undefined}
+          onPick={(model, current) => {
+            if (current) setOpen(false);
+            else save.mutate(model);
+          }}
+          onLeave={() => setOpen(false)}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -184,8 +180,8 @@ function ModelList({
     // The list is already filtered and sorted; cmdk only handles the keyboard.
     <Command shouldFilter={false} className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3 text-ink-3">
-        <IconMagnifyingGlass size={14} className="shrink-0" />
-        <Command.Input
+        <Search size={14} className="shrink-0" />
+        <CommandInput
           autoFocus
           aria-label="Search models"
           placeholder="Search providers and models"
@@ -194,9 +190,9 @@ function ModelList({
           className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-3"
         />
       </div>
-      <Command.List className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
+      <CommandList className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
         {override && override.allowDefault !== false && !query.trim() ? (
-          <Command.Item
+          <CommandItem
             value="default"
             data-checked={!current}
             disabled={busy}
@@ -207,7 +203,7 @@ function ModelList({
               Use default ({override.defaultName})
             </span>
             <Mark checked={!current} saving={pending === null} />
-          </Command.Item>
+          </CommandItem>
         ) : null}
         {!shown.length ? (
           <p role="status" className="px-3 py-6 text-center text-[12.5px] text-ink-3">
@@ -215,14 +211,14 @@ function ModelList({
           </p>
         ) : (
           shown.map((group) => (
-            <Command.Group
+            <CommandGroup
               key={group.id}
               className="pb-1"
               heading={
                 <span className="flex flex-wrap items-center gap-1.5 px-2 pt-2 pb-1 text-[11.5px] font-medium text-ink-3">
                   <span className="text-ink-2">{group.name}</span>
                   <span className="font-mono font-normal">{group.id}</span>
-                  {group.error ? <ValuePill tone="red">Model listing failed</ValuePill> : null}
+                  {group.error ? <Badge variant="destructive">Model listing failed</Badge> : null}
                 </span>
               }
             >
@@ -240,7 +236,7 @@ function ModelList({
                   const saving = !!pending && `${pending.provider}/${pending.id}` === value;
 
                   return (
-                    <Command.Item
+                    <CommandItem
                       key={value}
                       value={value}
                       data-checked={checked}
@@ -255,14 +251,14 @@ function ModelList({
                         {m.id}
                       </span>
                       <Mark checked={checked} saving={saving} />
-                    </Command.Item>
+                    </CommandItem>
                   );
                 })
               )}
-            </Command.Group>
+            </CommandGroup>
           ))
         )}
-      </Command.List>
+      </CommandList>
       {dirty ? (
         <p className="shrink-0 border-t border-line px-3 py-2 text-[11.5px] text-ink-2">
           Your unsaved instructions stay as a draft. A model change does not save or discard them.

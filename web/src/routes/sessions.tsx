@@ -2,11 +2,7 @@ import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { IconChevronRightSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconChevronRightSmall";
-import { IconBubble2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubble2";
-import { IconTasks } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconTasks";
-import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
-import { IconPlusSmall } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPlusSmall";
+import { ChevronRight, MessageCircle, ListTodo, Clock3, Plus } from "lucide-react";
 import type { Chat, TaskSummary } from "../api/generated/types.gen";
 import {
   getTaskOptions,
@@ -21,8 +17,8 @@ import { Markdown, Transcript, RetryNotice } from "../components/agent/transcrip
 import { Empty, FramedPage, Panel, Section } from "../components/page";
 import { Failure, Loading } from "../components/feedback";
 import { LoadEarlierButton } from "../components/timeline-actions";
-import { Button } from "../components/atoms/Button";
-import { StatusPill } from "../components/atoms/StatusPill";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 import { Select } from "../components/form";
 
 const labels = {
@@ -34,20 +30,14 @@ const labels = {
   interrupted: "Interrupted",
 } as const;
 
-const tones = {
-  queued: "neutral",
-  running: "accent",
-  done: "green",
-  failed: "red",
-  cancelled: "neutral",
-  interrupted: "red",
-} as const;
-
 function TaskPill({ task }: { task: Pick<TaskSummary, "status"> }) {
   return (
-    <StatusPill tone={tones[task.status]} className="h-5 shrink-0 px-2 text-[11.5px]">
+    <Badge
+      variant={task.status === "failed" ? "destructive" : task.status === "running" ? "secondary" : "outline"}
+      className={`h-5 shrink-0 px-2 text-[11.5px] ${task.status === "running" ? "bg-orange-tint text-orange" : ""}`}
+    >
       {labels[task.status]}
-    </StatusPill>
+    </Badge>
   );
 }
 
@@ -88,7 +78,7 @@ export function SessionsPage() {
           disabled={create.isPending}
           onClick={() => create.mutate({ path: { agentId } })}
         >
-          <IconPlusSmall size={16} /> {create.isPending ? "Opening…" : "New session"}
+          <Plus size={16} /> {create.isPending ? "Opening…" : "New session"}
         </Button>
       }
     >
@@ -145,7 +135,7 @@ function SessionRow({ chat }: { chat: Chat }) {
   const agentId = useAgentId();
   const kind = sessionKind(chat);
 
-  const Icon = kind === "Chat" ? IconBubble2 : kind === "Task" ? IconTasks : IconClock;
+  const Icon = kind === "Chat" ? MessageCircle : kind === "Task" ? ListTodo : Clock3;
 
   const content = (
     <>
@@ -181,11 +171,11 @@ function SessionRow({ chat }: { chat: Chat }) {
       {chat.task ? (
         <TaskPill task={chat.task} />
       ) : chat.busy ? (
-        <StatusPill tone="accent" className="h-5 shrink-0 px-2 text-[11.5px]">
+        <Badge variant="secondary" className="h-5 shrink-0 bg-accent-tint px-2 text-[11.5px] text-accent-ink">
           Running
-        </StatusPill>
+        </Badge>
       ) : null}
-      <IconChevronRightSmall size={16} className="shrink-0 text-ink-3" />
+      <ChevronRight size={16} className="shrink-0 text-ink-3" />
     </li>
   );
 }

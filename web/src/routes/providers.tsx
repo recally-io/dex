@@ -15,8 +15,8 @@ import { Confirm } from "../components/confirm";
 import { Failure, Spinner } from "../components/feedback";
 import { Field, Select } from "../components/form";
 import { Empty, Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
-import { Button } from "../components/atoms/Button";
-import { StatusPill } from "../components/atoms/StatusPill";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 import { WithSettings } from "../components/with-settings";
 import { GlobalSettingsSwitcher } from "../components/settings-switcher";
 
@@ -31,7 +31,7 @@ export function ProvidersPage() {
       toolbar={<GlobalSettingsSwitcher page="/providers" />}
       description="A provider is a saved connection to a model service. The bot model comes from one of them."
       actions={
-        <Button size="sm" variant="primary" onClick={() => setDialog("new")}>
+        <Button size="sm" onClick={() => setDialog("new")}>
           Add provider
         </Button>
       }
@@ -92,9 +92,9 @@ function Connections({
       }
       action={
         failed ? (
-          <StatusPill tone="red" className="h-5 px-2 text-[11.5px]">
+          <Badge variant="destructive" className="h-5 px-2 text-[11.5px]">
             {failed} {failed === 1 ? "needs" : "need"} attention
-          </StatusPill>
+          </Badge>
         ) : null
       }
     >
@@ -192,17 +192,17 @@ function ProviderCard({
           <h3 className="text-[14px] font-medium text-ink">{p.name}</h3>
           <Mono className="text-[11.5px] text-ink-3">{p.id}</Mono>
           {inUse ? (
-            <StatusPill tone="accent" className="h-5 px-2 text-[11px]">
+            <Badge variant="secondary" className="h-5 bg-accent-tint px-2 text-[11px] text-accent-ink">
               Bot model
-            </StatusPill>
+            </Badge>
           ) : null}
         </div>
-        <Button size="xs" variant="quiet" onClick={onEdit} aria-label={`Edit ${p.name}`}>
+        <Button size="xs" variant="ghost" onClick={onEdit} aria-label={`Edit ${p.name}`}>
           Edit
         </Button>
         <Button
           size="xs"
-          variant="quiet"
+          variant="ghost"
           className="text-red"
           onClick={onRemove}
           aria-label={`Remove ${p.name}`}

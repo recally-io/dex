@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactElement } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Popover } from "@base-ui/react/popover";
-import { Command } from "cmdk";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Command, CommandList, CommandItem } from "./ui/command";
 import type { ThinkingLevel } from "../api/generated/types.gen";
 import { thinkingNames } from "../lib/agent";
 import { Failure } from "./feedback";
@@ -37,7 +37,7 @@ export function ThinkingPicker({
   };
 
   return (
-    <Popover.Root
+    <Popover
       open={open}
       onOpenChange={(next) => {
         if (mutation.isPending) return;
@@ -46,53 +46,49 @@ export function ThinkingPicker({
         setOpen(next);
       }}
     >
-      <Popover.Trigger render={trigger} />
-      <Popover.Portal>
-        <Popover.Positioner align="start" sideOffset={6} collisionPadding={8} className="z-40">
-          <Popover.Popup
-            aria-label="Thinking level"
-            initialFocus={root}
-            className="flex w-[240px] max-w-[calc(100vw-1rem)] origin-(--transform-origin) animate-[pop-in_180ms_var(--ease-out-strong)_both] flex-col overflow-hidden rounded-[12px] bg-surface shadow-raised outline-none"
-          >
-            <Command ref={root} defaultValue={current} label="Thinking level" className="outline-none">
-              <Command.List className="p-1">
-                {clearable ? (
-                  <Command.Item
-                    value="default"
-                    disabled={pending !== undefined}
-                    onSelect={() => pick(null)}
-                    className={itemClass}
-                  >
-                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink">
-                      Default
-                    </span>
-                    <Mark checked={current === "default"} saving={pending === null} />
-                  </Command.Item>
-                ) : null}
-                {levels.map((level) => (
-                  <Command.Item
-                    key={level}
-                    value={level}
-                    disabled={pending !== undefined}
-                    onSelect={() => pick(level)}
-                    className={itemClass}
-                  >
-                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink">
-                      {thinkingNames[level]}
-                    </span>
-                    <Mark checked={current === level} saving={pending === level} />
-                  </Command.Item>
-                ))}
-              </Command.List>
-              {mutation.isError ? (
-                <div className="border-t border-line p-2">
-                  <Failure title="The thinking level did not change" error={mutation.error} />
-                </div>
-              ) : null}
-            </Command>
-          </Popover.Popup>
-        </Popover.Positioner>
-      </Popover.Portal>
-    </Popover.Root>
+      <PopoverTrigger render={trigger} />
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        aria-label="Thinking level"
+        initialFocus={root}
+        className="flex w-[240px] max-w-[calc(100vw-1rem)] origin-(--transform-origin) animate-[pop-in_180ms_var(--ease-out-strong)_both] flex-col overflow-hidden rounded-[12px] bg-surface shadow-raised outline-none"
+      >
+        <Command ref={root} defaultValue={current} label="Thinking level" className="outline-none">
+          <CommandList className="p-1">
+            {clearable ? (
+              <CommandItem
+                value="default"
+                disabled={pending !== undefined}
+                onSelect={() => pick(null)}
+                className={itemClass}
+              >
+                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink">Default</span>
+                <Mark checked={current === "default"} saving={pending === null} />
+              </CommandItem>
+            ) : null}
+            {levels.map((level) => (
+              <CommandItem
+                key={level}
+                value={level}
+                disabled={pending !== undefined}
+                onSelect={() => pick(level)}
+                className={itemClass}
+              >
+                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink">
+                  {thinkingNames[level]}
+                </span>
+                <Mark checked={current === level} saving={pending === level} />
+              </CommandItem>
+            ))}
+          </CommandList>
+          {mutation.isError ? (
+            <div className="border-t border-line p-2">
+              <Failure title="The thinking level did not change" error={mutation.error} />
+            </div>
+          ) : null}
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }

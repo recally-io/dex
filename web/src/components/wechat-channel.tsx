@@ -10,8 +10,8 @@ import {
   pollWechatLoginMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { refreshSettings } from "../lib/queries";
-import { Button } from "./atoms/Button";
-import { StatusPill } from "./atoms/StatusPill";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
 import { Failure, Spinner } from "./feedback";
 import { Field, Input } from "./form";
 import { Facts, Mono, Note, Panel, Section } from "./page";
@@ -76,9 +76,12 @@ export function WechatChannel({ settings }: { settings: Settings }) {
       <Panel className="space-y-4 px-4 py-3.5">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[13px] text-ink-2">Private messages from the owner only.</p>
-          <StatusPill tone={account.status.state === "running" ? "green" : "neutral"}>
+          <Badge
+            variant={account.status.state === "running" ? "secondary" : "outline"}
+            className={account.status.state === "running" ? "bg-green-tint text-green" : ""}
+          >
             {account.status.state === "needs_login" ? "Scan again" : account.status.state}
-          </StatusPill>
+          </Badge>
         </div>
         {account.enabled ? (
           <Facts
@@ -125,7 +128,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
                 <Button
                   type="submit"
                   size="sm"
-                  variant="primary"
+                  variant="default"
                   disabled={pending || !/^[0-9]{1,16}$/.test(code)}
                 >
                   Confirm
@@ -138,7 +141,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
-            variant="primary"
+            variant="default"
             disabled={start.isPending || pending}
             onClick={() => {
               poll.reset();

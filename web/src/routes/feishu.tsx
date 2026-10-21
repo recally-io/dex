@@ -9,7 +9,7 @@ import {
   setFeishuMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { Crumb } from "../components/crumb";
-import { Button } from "../components/atoms/Button";
+import { Button } from "../components/ui/button";
 import { Failure } from "../components/feedback";
 import { Field, Input } from "../components/form";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";

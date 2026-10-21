@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getHealthOptions } from "../api/generated/@tanstack/react-query.gen";
 import { Failure, Loading } from "../components/feedback";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
-import { StatusPill } from "../components/atoms/StatusPill";
+import { Badge } from "../components/ui/badge";
 import { ThemeToggle } from "../components/theme";
 import { GlobalSettingsSwitcher } from "../components/settings-switcher";
 
@@ -34,9 +34,13 @@ export function AboutPage() {
               rows={[
                 [
                   "Server",
-                  <StatusPill key="server" tone="green" className="h-5 px-2 text-[11.5px]">
+                  <Badge
+                    key="server"
+                    variant="secondary"
+                    className="h-5 bg-green-tint px-2 text-[11.5px] text-green"
+                  >
                     Running
-                  </StatusPill>,
+                  </Badge>,
                 ],
                 ["Version", <Mono key="version">{health.data.version}</Mono>],
               ]}

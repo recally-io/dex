@@ -12,8 +12,8 @@ import { errorText, queryClient } from "../lib/queries";
 import { useApp } from "../lib/app-state";
 import { Failure, Loading, Spinner } from "../components/feedback";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
-import { Button } from "../components/atoms/Button";
-import { StatusPill } from "../components/atoms/StatusPill";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 
 export function ExtensionsPage() {
   const agentId = useAgentId();
@@ -218,9 +218,12 @@ function ServerRow({ server: s }: { server: McpServer }) {
       <div className="flex flex-wrap items-center gap-2">
         <Header name={s.name} scope={s.scope} overrides={s.overrides} />
         <span className="flex-1" />
-        <StatusPill tone={state.tone} className="h-5 px-2 text-[11.5px]">
+        <Badge
+          variant={state.tone === "red" ? "destructive" : state.tone === "green" ? "secondary" : "outline"}
+          className={`h-5 px-2 text-[11.5px] ${state.tone === "green" ? "bg-green-tint text-green" : ""}`}
+        >
           {state.label}
-        </StatusPill>
+        </Badge>
       </div>
       {s.tools.length ? (
         <p className="mt-1 font-mono text-[11.5px] text-ink-2">{s.tools.join(", ")}</p>

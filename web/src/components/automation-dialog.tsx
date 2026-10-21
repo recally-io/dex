@@ -9,8 +9,8 @@ import {
 import { previewSchedule } from "../api/generated/sdk.gen";
 import { refreshAutomations } from "../lib/queries";
 import { runTime, weekdays } from "../lib/automations";
-import { Button } from "./atoms/Button";
-import { Switch } from "./atoms/Switch";
+import { Button } from "./ui/button";
+import { Switch } from "./ui/switch";
 import { Modal } from "./dialog";
 import { Failure, Spinner } from "./feedback";
 import { Field, Input, RadioSegments, Select, Textarea } from "./form";
@@ -120,7 +120,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
           </Button>
           <Button
             size="sm"
-            variant="primary"
+            variant="default"
             type="submit"
             form={formId}
             disabled={pending || !validSchedule || !name.trim() || !prompt.trim()}
@@ -274,7 +274,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
         </div>
         <div className="flex items-center justify-between gap-3">
           <span className="text-[12.5px] font-medium text-ink">Enabled</span>
-          <Switch checked={enabled} onChange={setEnabled} label="Enabled" />
+          <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Enabled" />
         </div>
         <section
           aria-live="polite"
