@@ -42,9 +42,11 @@ to read in an afternoon.
   the earlier transcript. Only a clear shows a divider. The bot is one page
   with tabs: Chat, Sessions, Automations, Extensions, and Settings. Its
   Settings tab holds General, Instructions, and Channels. Its header shows the
-  name, the tabs, the model, and the thinking level. A menu above the chat
-  names the open chat and switches between Main and the agent's Chat sessions.
-  The sidebar lists the agents and opens the global settings page: Providers,
+  name and the tabs. The model and the thinking level change in Settings. On the
+  Chat tab, the header has New chat and a Chats button. Chats opens a right
+  sidebar that lists Main and the agent's Chat sessions. It starts closed, and
+  the browser keeps the user's choice.
+  The left sidebar lists the agents and opens the global settings page: Providers,
   Secrets, and About. It starts collapsed to one icon per agent, and the browser
   keeps the user's choice. It has no chat list. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
@@ -130,7 +132,7 @@ Named dispatch and result labels open the task by its ID.
 Done means that the task returned a report. It does not prove goal completion.
 There are no task controls or progress percentages.
 
-`New chat` in the chat menu and `New session` in Sessions open a writable Chat
+`New chat` on the Chat tab and `New session` in Sessions open a writable Chat
 with its own model context. It reuses the
 newest empty Chat, so an abandoned click leaves no list row. The first message
 sets the title. Chat uses the bot's settings, instructions and shared memory.

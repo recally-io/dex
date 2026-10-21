@@ -1,21 +1,18 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { AgentContext, useAgentSettings, useAgentId } from "../lib/agent-scope";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
-import {
-  getChatOptions,
-  listAgentsOptions,
-  listModelsOptions,
-} from "../api/generated/@tanstack/react-query.gen";
-import { agentModel, saveAgent, thinkingNames, type AgentModel } from "../lib/agent";
+import { getChatOptions, listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { instructionsDirty } from "../lib/instructions";
 import { sessionKind } from "../lib/tasks";
 import { useApp } from "../lib/app-state";
 import { MainTimeline } from "../routes/chat";
-import { ModelPicker } from "./model-picker";
-import { ThinkingPicker } from "./thinking-picker";
+import { IconBubblePlus } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubblePlus";
+import { IconSidebarSimpleRightWide } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconSidebarSimpleRightWide";
+import { ChatList, useNewChat } from "./chat-list";
+import { IconButton } from "./icon-button";
 import { AgentAvatar } from "./agent-avatar";
 import { StatusPill } from "./atoms/StatusPill";
 import { Failure, Loading } from "./feedback";
@@ -43,6 +40,20 @@ const tabs: AgentTab[] = [
   { to: "/a/$agentId/extensions", label: "Extensions", segments: ["extensions"] },
   { to: "/a/$agentId/agent", label: "Settings", segments: ["agent", "instructions", "channels"] },
 ];
+
+const chatsKey = "dex-chats";
+
+/** The right Chats sidebar starts closed. The choice stays in this browser. */
+function useChatsOpen() {
+  const [open, setOpen] = useState(() => localStorage.getItem(chatsKey) === "open");
+
+  function toggle() {
+    localStorage.setItem(chatsKey, open ? "closed" : "open");
+    setOpen(!open);
+  }
+
+  return [open, toggle] as const;
+}
 
 /** Activity reads the bot list cache. Shell owns its polling interval. */
 export function useAgentActivity() {
@@ -126,8 +137,9 @@ function AgentPane({ settings }: { settings: Settings }) {
 
   const webChat = chat.data ? sessionKind(chat.data) === "Chat" : false;
   const current = webChat ? tabs[0] : tabs.find((tab) => tab.segments.includes(segment));
-  const models = useQuery(listModelsOptions());
-  const model = agentModel(settings.agent, models.data?.models);
+  const onChatTab = current === tabs[0];
+  const [chatsOpen, toggleChats] = useChatsOpen();
+  const newChat = useNewChat();
   const { draft } = useApp();
   const dirty = instructionsDirty(draft, settings.agent.instructions);
   const activity = useAgentActivity();
@@ -219,71 +231,36 @@ function AgentPane({ settings }: { settings: Settings }) {
               </Link>
             ))}
           </nav>
-          <ModelChips settings={settings} model={model} />
+          {onChatTab ? (
+            <div className="flex shrink-0 items-center gap-0.5">
+              <IconButton
+                label="New chat"
+                disabled={newChat.isPending}
+                onClick={() => newChat.mutate({ path: { agentId } })}
+              >
+                <IconBubblePlus size={17} />
+              </IconButton>
+              <IconButton
+                label="Chats"
+                aria-pressed={chatsOpen}
+                onClick={toggleChats}
+                className="hidden md:flex"
+              >
+                <IconSidebarSimpleRightWide size={17} />
+              </IconButton>
+            </div>
+          ) : null}
         </header>
-        <div inert={!onMain} className={cn("min-h-0 flex-1 flex-col", onMain ? "flex" : "hidden")}>
-          <MainTimeline settings={settings} />
+        <div className="flex min-h-0 flex-1">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div inert={!onMain} className={cn("min-h-0 flex-1 flex-col", onMain ? "flex" : "hidden")}>
+              <MainTimeline settings={settings} />
+            </div>
+            {!onMain ? <Outlet /> : null}
+          </div>
+          {onChatTab && chatsOpen ? <ChatList chatId={openChat} /> : null}
         </div>
-        {!onMain ? <Outlet /> : null}
       </section>
     </InPaneContext.Provider>
-  );
-}
-
-/** The model and the thinking level: one-step changes that fit in the header of every tab. */
-function ModelChips({ settings, model }: { settings: Settings; model: AgentModel }) {
-  const agentId = useAgentId();
-  const { notify } = useApp();
-
-  const caret = (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-      className="text-ink-3"
-    >
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-
-  const chip =
-    "flex h-7 min-w-0 items-center gap-1 rounded-control px-2 text-[12.5px] text-ink-2 transition-colors hover:bg-hover-2 hover:text-ink aria-expanded:bg-hover-2";
-
-  return (
-    <div className="hidden max-w-[240px] min-w-0 shrink items-center gap-0.5 md:flex">
-      <ModelPicker
-        trigger={
-          <button type="button" aria-label="Change model" className={chip}>
-            <span className={cn("min-w-0 truncate font-medium", model.ok ? "text-ink" : "text-orange")}>
-              {settings.agent.modelId ? model.label : "No model"}
-            </span>
-            {caret}
-          </button>
-        }
-      />
-      {model.model?.reasoning ? (
-        <ThinkingPicker
-          value={settings.agent.thinkingLevel}
-          levels={model.model.thinkingLevels}
-          save={async (level) => {
-            if (!level) return;
-            await saveAgent(agentId, (agent) => ({ ...agent, thinkingLevel: level }));
-            notify(`Thinking is now ${thinkingNames[level]}. It applies from the next message.`);
-          }}
-          trigger={
-            <button type="button" aria-label="Change thinking level" className={cn(chip, "shrink-0")}>
-              {thinkingNames[settings.agent.thinkingLevel]}
-              {caret}
-            </button>
-          }
-        />
-      ) : null}
-    </div>
   );
 }

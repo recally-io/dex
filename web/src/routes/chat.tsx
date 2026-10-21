@@ -24,7 +24,6 @@ import { agentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
 import { activeSessionCount, sessionKind, taskTime } from "../lib/tasks";
-import { ChatSwitcher } from "../components/chat-switcher";
 import { Composer } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
 import { RetryNotice, Transcript } from "../components/agent/transcript";
@@ -427,18 +426,14 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           embedded ? "min-h-0" : "lg:border-l lg:border-line",
         )}
       >
-        {/* Writable chats switch through one menu; the bot pane title stays the page title on Main. */}
+        {/* Writable chats switch in the Chats sidebar. The bot pane names Main; a Chat keeps a
+            title for focus and screen readers. */}
         {chat.data && switchable ? (
-          <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line-soft px-3 sm:px-4">
-            {embedded ? null : <MenuButton />}
-            {chat.data.main ? (
-              <ChatSwitcher chatId={chatId} title="Main" />
-            ) : (
-              <h1 id="page-title" tabIndex={-1} className="flex min-w-0 outline-none">
-                <ChatSwitcher chatId={chatId} title={chat.data.title || "New chat"} />
-              </h1>
-            )}
-          </header>
+          chat.data.main ? null : (
+            <h1 id="page-title" tabIndex={-1} className="sr-only">
+              {chat.data.title || "New chat"}
+            </h1>
+          )
         ) : (
           <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
             {embedded ? null : <MenuButton />}
