@@ -36,6 +36,7 @@ type Chat struct {
 	CreatedAt  int64
 	UpdatedAt  int64 // latest conversation, input, or task activity
 	Busy       bool  // a message has no answer yet
+	ArchivedAt int64 // zero when the Chat session is not archived
 	Settings   Settings
 	// ExecutionID is zero until native execution creates the conversation.
 	ExecutionID int64
@@ -365,7 +366,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 	for i, r := range rows {
 		chats[i] = Chat{
 			ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-			Busy: r.Pending > 0, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
+			Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 		}
 	}
 	return chats, nil
@@ -382,7 +383,7 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	}
 	return Chat{
 		ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-		Busy: r.Pending > 0, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
+		Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 		ExecutionID: r.ExecutionID.Int64,
 	}, nil
 }

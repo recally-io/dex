@@ -44,8 +44,14 @@ to read in an afternoon.
   Settings tab holds General, Instructions, and Channels. Its header shows the
   name and the tabs. The model and the thinking level change in Settings. On the
   Chat tab, the header has New chat and a Chats button. Chats opens a right
-  sidebar that lists Main and the agent's Chat sessions. It starts closed, and
-  the browser keeps the user's choice.
+  sidebar. Main comes first and cannot be archived. Chat sessions follow in
+  date groups by latest activity: Today, Yesterday, Previous 7 days, Previous
+  30 days, then one group per month. Archived chats come last. Only Today
+  starts open, and each group shows five chats until the user asks for more.
+  The row menu and a right-click archive or restore a Chat. Archiving keeps the
+  messages, records and files; a task result still returns to the chat.
+  Sessions does not list archived chats. New chat does not reuse an archived
+  empty chat. The sidebar starts closed, and the browser keeps the user's choice.
   The left sidebar lists the agents and opens the global settings page: Providers,
   Secrets, and About. It starts collapsed to one icon per agent, and the browser
   keeps the user's choice. It has no chat list. Each agent keeps its unsent main message, uploaded
