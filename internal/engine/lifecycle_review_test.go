@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -246,5 +247,54 @@ func TestUserConcurrentCloseAndReloadLeavesNoOpenResources(t *testing.T) {
 				t.Fatal("Close completed but concurrent Reload installed a live Harness")
 			}
 		}
+	}
+}
+
+func TestUserCloseDuringReloadReportsClosed(t *testing.T) {
+	if os.Getenv("DEX_CORE_SILENT_CHILD") == "1" {
+		// An MCP server that starts and never answers, so Reload stays in its open step.
+		if err := os.WriteFile(os.Getenv("MCP_STARTS"), []byte("start\n"), 0600); err != nil {
+			os.Exit(7)
+		}
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		os.Exit(0)
+	}
+	// Given a Reload that waits for an MCP server that does not answer.
+	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	starts := filepath.Join(t.TempDir(), "starts")
+	servers := map[string]any{"mcpServers": map[string]any{
+		"silent": map[string]any{"command": binary, "args": []string{"-test.run=^TestUserCloseDuringReloadReportsClosed$"}, "env": map[string]string{"DEX_CORE_SILENT_CHILD": "1", "MCP_STARTS": starts}},
+	}}
+	raw, err := json.Marshal(servers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	extensionFile(t, filepath.Join(config.DataDir, "agents", "alpha", ".agents", "mcp.json"), string(raw))
+	agents := coreEngine(t, config)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	reloaded := make(chan error, 1)
+	go func() { reloaded <- agents.Reload(ctx, "alpha") }()
+	for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if _, err := os.Stat(starts); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the MCP server did not start")
+		}
+	}
+
+	// When the engine closes while Reload opens the agent.
+	if err := agents.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// Then Reload reports that the engine closed, not a cancellation that the caller did not ask for.
+	if err := <-reloaded; !errors.Is(err, ErrClosed) {
+		t.Fatalf("Reload interrupted by Close: %v, want ErrClosed", err)
 	}
 }
