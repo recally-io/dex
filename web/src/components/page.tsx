@@ -48,6 +48,8 @@ type PageProps = {
   description?: ReactNode;
   badge?: ReactNode;
   actions?: ReactNode;
+  /** A control that switches between the pages of this area, shown above the content. */
+  toolbar?: ReactNode;
   children?: ReactNode;
 };
 
@@ -59,7 +61,7 @@ type PageProps = {
 export function FramedPage(props: PageProps) {
   if (useContext(InPaneContext)) return <PanePage {...props} />;
 
-  const { eyebrow, title, description, badge, actions, children } = props;
+  const { eyebrow, title, description, badge, actions, toolbar, children } = props;
 
   return (
     <MainPane>
@@ -83,6 +85,7 @@ export function FramedPage(props: PageProps) {
           </div>
           {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
         </header>
+        {toolbar ? <div className="mb-6">{toolbar}</div> : null}
         {children}
       </div>
     </MainPane>
@@ -93,7 +96,7 @@ export function FramedPage(props: PageProps) {
  * A page inside the bot pane. The tab already names the group, so the title is smaller here; the
  * page still opens with its own heading and one line of description.
  */
-function PanePage({ eyebrow, title, description, badge, actions, children }: PageProps) {
+function PanePage({ eyebrow, title, description, badge, actions, toolbar, children }: PageProps) {
   return (
     <MainPane>
       <div className="mx-auto w-full max-w-[1120px] px-6 pt-6 pb-10">
@@ -116,6 +119,7 @@ function PanePage({ eyebrow, title, description, badge, actions, children }: Pag
           </div>
           {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
         </header>
+        {toolbar ? <div className="mb-5">{toolbar}</div> : null}
         {children}
       </div>
     </MainPane>
@@ -137,15 +141,11 @@ export function Section({
   children: ReactNode;
 }) {
   const id = useId();
-  const inPane = useContext(InPaneContext);
 
   return (
     <section
       aria-labelledby={id}
-      className={cn(
-        "border-t border-line-soft py-7 first:border-t-0 first:pt-0",
-        inPane ? "last:border-t-0" : "last:border-t-0",
-      )}
+      className="border-t border-line-soft py-7 first-of-type:border-t-0 first-of-type:pt-0 last:border-t-0"
     >
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">

@@ -33,12 +33,10 @@ type AgentTab = {
 
 const tabs: AgentTab[] = [
   { to: "/a/$agentId", label: "Chat", segments: [undefined] },
-  { to: "/a/$agentId/instructions", label: "Instructions", segments: ["instructions"] },
-  { to: "/a/$agentId/channels", label: "Channels", segments: ["channels"] },
-  { to: "/a/$agentId/automations", label: "Automations", segments: ["automations"] },
   { to: "/a/$agentId/sessions", label: "Sessions", segments: ["sessions", "c", "tasks"] },
+  { to: "/a/$agentId/automations", label: "Automations", segments: ["automations"] },
   { to: "/a/$agentId/extensions", label: "Extensions", segments: ["extensions"] },
-  { to: "/a/$agentId/agent", label: "Settings", segments: ["agent"] },
+  { to: "/a/$agentId/agent", label: "Settings", segments: ["agent", "instructions", "channels"] },
 ];
 
 /** Activity reads the bot list cache. Shell owns its polling interval. */
@@ -119,10 +117,7 @@ function AgentPane({ settings }: { settings: Settings }) {
   const dirty = instructionsDirty(draft, settings.agent.instructions);
   const activity = useAgentActivity();
 
-  const counts = new Map([
-    ["Channels", activity.channels],
-    ["Automations", activity.automations],
-  ]);
+  const counts = new Map([["Automations", activity.automations]]);
 
   // The other tabs have their own page title.
   const Name = onChat ? "h1" : "span";
@@ -190,8 +185,12 @@ function AgentPane({ settings }: { settings: Settings }) {
                 {counts.get(tab.label) ? (
                   <span className="text-[11px] text-ink-3 tabular-nums">{counts.get(tab.label)}</span>
                 ) : null}
-                {tab.label === "Instructions" && dirty ? (
-                  <span role="img" aria-label="Unsaved draft" className="size-1.5 rounded-full bg-orange" />
+                {tab.label === "Settings" && dirty ? (
+                  <span
+                    role="img"
+                    aria-label="Unsaved instructions draft"
+                    className="size-1.5 rounded-full bg-orange"
+                  />
                 ) : null}
                 {tab.label === "Sessions" && activity.active > 0 ? (
                   <span

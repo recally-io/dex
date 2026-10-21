@@ -33,7 +33,7 @@ export function InstructionsEditor({
         placeholder="For example: Reply in the language I write in."
         onChange={(e) => setDraft(e.target.value)}
         className={cn(
-          "rounded-[11px] font-mono text-[12.5px] shadow-none focus:shadow-none",
+          "rounded-[8px] font-sans text-[13.5px] leading-relaxed shadow-none focus:shadow-none",
           grow && "h-full min-h-0 resize-none",
         )}
       />

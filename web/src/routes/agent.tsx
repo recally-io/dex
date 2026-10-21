@@ -10,6 +10,7 @@ import { ModelPicker } from "../components/model-picker";
 import { ThinkingPicker } from "../components/thinking-picker";
 import { Failure } from "../components/feedback";
 import { FramedPage, Note, Panel, Section } from "../components/page";
+import { BotSettingsSwitcher } from "../components/bot-settings-switcher";
 import { Input } from "../components/form";
 import { InstructionsEditor } from "../components/instructions-editor";
 import { Button } from "../components/atoms/Button";
@@ -24,8 +25,9 @@ export function AgentPage() {
 
   return (
     <FramedPage
-      title="Settings"
+      title="General"
       description={`The name and the model of ${saved.data?.agent.name ?? "dex"}. The timeline, its channels and its automations use them.`}
+      toolbar={<BotSettingsSwitcher segment="agent" />}
       badge={
         model && !model.ok ? (
           <StatusPill tone="orange" className="h-5 px-2 text-[11.5px]">
@@ -47,14 +49,13 @@ export function InstructionsPage() {
     <FramedPage
       title="Instructions"
       description={`Added to the system prompt of every run of ${saved.data?.agent.name ?? "dex"}. A change applies from the next message.`}
+      toolbar={<BotSettingsSwitcher segment="instructions" />}
     >
       <WithSettings>
         {(settings) => (
-          <div className="px-5 py-6 sm:px-8">
-            <Panel className="p-1">
-              <InstructionsEditor saved={settings.agent.instructions} rows={18} />
-            </Panel>
-          </div>
+          <Panel className="p-1">
+            <InstructionsEditor saved={settings.agent.instructions} rows={18} />
+          </Panel>
         )}
       </WithSettings>
     </FramedPage>

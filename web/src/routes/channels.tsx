@@ -20,6 +20,7 @@ import { Modal } from "../components/dialog";
 import { Failure, Loading, Spinner } from "../components/feedback";
 import { Field, Input, SavedSecret, Textarea } from "../components/form";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
+import { BotSettingsSwitcher } from "../components/bot-settings-switcher";
 import { Button } from "../components/atoms/Button";
 import { StatusPill } from "../components/atoms/StatusPill";
 import { FeishuChannel } from "./feishu";
@@ -82,11 +83,7 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
   );
 
   return (
-    <Section
-      n={1}
-      title="All channels"
-      caption="Channels share the main timeline. Open a channel to set it up."
-    >
+    <Section n={1} title="Connections" caption="Each channel talks to the same bot.">
       <Panel>
         <div className="divide-y divide-line">
           <ChannelRow
@@ -115,7 +112,11 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
 
 export function ChannelsPage() {
   return (
-    <FramedPage title="Channels">
+    <FramedPage
+      title="Channels"
+      description="Channels share the main timeline. Open one to set it up."
+      toolbar={<BotSettingsSwitcher segment="channels" />}
+    >
       <WithChannels>{(settings) => <ChannelsSection settings={settings} />}</WithChannels>
     </FramedPage>
   );
