@@ -31,7 +31,11 @@ export function Modal({
         if (!open && !pending) onClose();
       }}
     >
-      <DialogContent className="flex max-h-[92dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[18px] bg-surface p-0 shadow-overlay sm:rounded-window">
+      <DialogContent
+        // Cancel closes the dialog, so it needs no corner button.
+        showCloseButton={false}
+        className="flex max-h-[92dvh] w-full max-w-[520px] sm:max-w-[520px] flex-col overflow-hidden rounded-t-[18px] bg-surface p-0 shadow-overlay sm:rounded-window"
+      >
         <DialogHeader className="border-b border-line px-5 pt-5 pb-4">
           <DialogTitle className="text-[15px] font-semibold text-ink [overflow-wrap:anywhere]">
             {title}

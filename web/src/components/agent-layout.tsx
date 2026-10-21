@@ -14,6 +14,7 @@ import { ChatList, useNewChat } from "./chat-list";
 import { IconButton } from "./icon-button";
 import { AgentAvatar } from "./agent-avatar";
 import { Failure, Loading } from "./feedback";
+import { Badge } from "./ui/badge";
 import { InPaneContext, MainPane, PageHeader } from "./page";
 import { cn } from "../lib/utils";
 
@@ -171,6 +172,18 @@ function AgentPane({ settings }: { settings: Settings }) {
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:border-l lg:border-line">
         <PageHeader
           title={settings.agent.name}
+          // The other tabs open with their own page heading.
+          heading={onMain}
+          badge={
+            dirty ? (
+              <Badge
+                variant="outline"
+                className="hidden h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-ink sm:inline-flex"
+              >
+                Instructions draft
+              </Badge>
+            ) : null
+          }
           avatar={<AgentAvatar agent={settings.agent} className="size-5 rounded-[6px] text-[11px]" />}
           tabs={
             <nav

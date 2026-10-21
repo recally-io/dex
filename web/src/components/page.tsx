@@ -7,14 +7,33 @@ export const ShellContext = createContext({ openDrawer: () => {} });
 
 export type PageHeaderProps = {
   title: ReactNode;
+  /** Renders the title as the page heading, which takes focus after navigation. */
+  heading?: boolean;
   avatar?: ReactNode;
+  /** A link back to the parent page, shown before the title. */
+  crumb?: ReactNode;
+  badge?: ReactNode;
   tabs?: ReactNode;
   actions?: ReactNode;
+  /** False where the page sits inside another pane that has its own drawer button. */
+  menu?: boolean;
   className?: string;
 };
 
-/** Shared title bar used by bot and global settings pages. */
-export function PageHeader({ title, avatar, tabs, actions, className }: PageHeaderProps) {
+/** The title bar of every page. One height at every width; `data-page-header` marks it. */
+export function PageHeader({
+  title,
+  heading = false,
+  avatar,
+  crumb,
+  badge,
+  tabs,
+  actions,
+  menu = true,
+  className,
+}: PageHeaderProps) {
+  const Title = heading ? "h1" : "span";
+
   return (
     <header
       data-page-header
@@ -23,11 +42,25 @@ export function PageHeader({ title, avatar, tabs, actions, className }: PageHead
         className,
       )}
     >
-      <MenuButton />
+      {menu ? <MenuButton /> : null}
       {avatar}
-      <span className="max-w-[40%] shrink-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-ink sm:max-w-[200px]">
+      {crumb ? (
+        <>
+          {crumb}
+          <span aria-hidden className="text-line-strong">
+            /
+          </span>
+        </>
+      ) : null}
+      <Title
+        id={heading ? "page-title" : undefined}
+        tabIndex={heading ? -1 : undefined}
+        // The global heading font is for page headings; the bar keeps the body face on every page.
+        className="max-w-[40%] min-w-0 shrink-0 truncate font-sans text-[14px] font-semibold tracking-[-0.01em] text-ink outline-none sm:max-w-[200px]"
+      >
         {title}
-      </span>
+      </Title>
+      {badge}
       {tabs ? <>{tabs}</> : <span className="min-w-0 flex-1" />}
       {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
     </header>
@@ -246,7 +279,11 @@ export function Note({ children, tone = "neutral" }: { children: ReactNode; tone
 
 // Marks a capability that this version of dex does not have.
 export function NotAvailable() {
-  return <Badge className="h-5 shrink-0 px-2 text-[11.5px]">Not yet available</Badge>;
+  return (
+    <Badge variant="secondary" className="h-5 shrink-0 px-2 text-[11.5px]">
+      Not yet available
+    </Badge>
+  );
 }
 
 export function Mono({ children, className }: { children: ReactNode; className?: string }) {

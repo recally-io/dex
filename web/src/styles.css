@@ -289,12 +289,15 @@ body {
 /* ── interface hygiene (interfaces.dev cheat sheet) ────── */
 
 /* headings balance; descriptions avoid orphans (skip long-form — we have none) */
-h1,
-h2,
-h3,
-h4 {
-  font-family: "Merriweather Variable", Georgia, serif;
-  text-wrap: balance;
+/* In the base layer, so a utility class such as font-sans can override it. */
+@layer base {
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: "Merriweather Variable", Georgia, serif;
+    text-wrap: balance;
+  }
 }
 
 p {

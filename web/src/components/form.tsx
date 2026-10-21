@@ -86,14 +86,15 @@ export function RadioSegments<T extends string>({
         value={[value]}
         // SAFETY: ToggleGroup values come from the readonly options list above.
         onValueChange={(next) => next[0] && onChange(next[0] as T)}
-        className="h-8 rounded-full bg-line/60 p-0.5"
+        className="h-8 w-full rounded-full bg-line/60 p-0.5"
       >
         {options.map((option) => (
           <ToggleGroupItem
             key={option.value}
             value={option.value}
             aria-label={option.label}
-            className="h-7 rounded-full px-3 text-[13px]"
+            // The stock pressed color matches the track, so the chosen segment is raised instead.
+            className="h-7 flex-1 rounded-full px-3 text-[13px] text-ink-3 hover:bg-transparent hover:text-ink-2 aria-pressed:bg-surface aria-pressed:text-ink aria-pressed:shadow-hairline"
           >
             {option.label}
           </ToggleGroupItem>

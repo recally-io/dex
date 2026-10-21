@@ -354,7 +354,12 @@ function AgentRow({ agent, current, collapsed }: { agent: Agent; current: boolea
           <span className="truncate text-[11.5px] leading-tight text-ink-3">{status}</span>
         </span>
         {dirty ? (
-          <Badge className="h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-ink">Draft</Badge>
+          <Badge
+            variant="outline"
+            className="h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-ink"
+          >
+            Draft
+          </Badge>
         ) : null}
       </Link>
     </div>
