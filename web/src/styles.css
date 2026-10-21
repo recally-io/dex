@@ -9,115 +9,106 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* GENERIC FOUNDATION — tokens, @theme, base rules, the primitive-*
- * spacing utilities, and shared keyframes below are needed by EVERY
- * component. Blocks tagged COMPONENT-SPECIFIC further down belong to
- * one primitive each. */
 /* ──────────────────────────────────────────────────────────
- * Beautiful UI — design tokens
- * Cool near-white canvas, white cards, hairline borders, layered
- * single-digit-opacity shadows, a neutral ink ramp, and semantic
- * color used sparingly as a condiment.
+ * dex design tokens
+ *
+ * Direction: achromatic ledger (seed 96627522). The chrome holds no colour: the ground is a cool
+ * near-white taken from the product's world, cards are white, text is ink, and one blue marks the
+ * only live state on the screen. Separation is a 1px line or one tone step, never a shadow at rest.
  * ────────────────────────────────────────────────────────── */
 
 :root {
   /* surfaces — cool, blue-tinted neutrals */
-  --page: oklch(0.985 0.001 286.376);
-  --canvas: oklch(0.961 0.002 247.84);
-  --surface: oklch(1 0 0);
-  --inset: oklch(0.979 0.002 247.839);
-  --hover: oklch(0.97 0.002 247.839);
-  --hover-2: oklch(0.933 0.003 247.86);
+  --page: #ffffff;
+  --canvas: #f4f6f8;
+  --surface: #ffffff;
+  --inset: #f6f7f9;
+  --hover: #f1f3f5;
+  --hover-2: #e9ecef;
 
-  /* ink ramp */
-  --ink: oklch(0.247 0.006 258.361);
-  --ink-2: oklch(0.506 0.01 264.477);
-  --ink-3: oklch(0.695 0.009 264.505);
+  /* ink ramp — both greys carry words, so both hold 4.5:1 on white */
+  --ink: #0a0a0a;
+  --ink-2: #55565a;
+  --ink-3: #6b6b6b;
 
   /* borders — solid and crisp, not alpha */
-  --line: oklch(0.946 0.003 264.542);
-  --line-strong: oklch(0.912 0.005 258.326);
-  --line-soft: oklch(0.966 0.002 264.542);
+  --line: #e6e6e6;
+  --line-strong: #d4d4d4;
+  --line-soft: #f0f0f0;
   --grid-line: color-mix(in srgb, var(--line) 78%, transparent);
-  --field: oklch(0.961 0.001 286.375);
-  --stripe: oklch(0.405 0 0 / 0.075);
-  --stripe-bg: oklch(0.97 0 0);
+  --field: #ffffff;
+  --stripe: #e9ecef;
+  --stripe-bg: #f4f6f8;
 
-  /* accent */
-  --accent: oklch(0.626 0.205 254.947);
-  --accent-ink: oklch(0.556 0.187 255.617);
-  --accent-tint: oklch(0.96 0.019 252.878);
+  /* accent — the one hue on the screen, on the live state and the focus ring only */
+  --accent: #1d5fbf;
+  --accent-ink: #1a4f9e;
+  --accent-tint: #eaf0fa;
 
   /* semantic */
-  --green: oklch(0.603 0.155 150.883);
-  --green-tint: oklch(0.958 0.017 159.118);
-  --orange: oklch(0.689 0.179 49.902);
-  --orange-tint: oklch(0.964 0.021 67.581);
-  --red: oklch(0.621 0.192 23.042);
-  --red-tint: oklch(0.956 0.017 17.462);
+  --green: #2e7d32;
+  --green-tint: #e8f3e9;
+  --orange: #b45309;
+  --orange-tint: #fdf3e3;
+  --red: #c4242a;
+  --red-tint: #ffedea;
 
   /* chart overlays — neutral system colors with enough contrast on either theme */
-  --tooltip-bg: oklch(0.272 0.008 264.435);
-  --tooltip-fg: oklch(0.976 0.002 247.839);
-  --tooltip-muted: oklch(0.731 0.008 260.731);
-  --tooltip-border: oklch(0.356 0.007 264.474);
+  --tooltip-bg: #1c1c1e;
+  --tooltip-fg: #f5f5f5;
+  --tooltip-muted: #a8a8ad;
+  --tooltip-border: #333336;
 
-  /* shadows — our solid hairline ring + shadow-plugin's smooth layered stacks
-   * (--shadow-xs…lg come from shadow-plugin/unprefixed) so every surface reads
-   * consistently across the app. */
+  /* shadows — a hairline ring at rest; height only for what floats */
   --shadow-hairline: 0 0 0 1px var(--line);
-  --shadow-btn: 0 0 0 1px var(--line-strong), var(--shadow-xs);
-  --shadow-card: 0 0 0 1px var(--line), var(--shadow-sm);
-  --shadow-raised: 0 0 0 1px var(--line), var(--shadow-md);
-  --shadow-overlay: 0 0 0 1px var(--line), var(--shadow-lg);
-  --shadow-inset-field: inset 0 1px 2px oklch(0 0 0 / 0.12);
+  --shadow-btn: 0 0 0 1px var(--line-strong);
+  --shadow-card: 0 0 0 1px var(--line);
+  --shadow-raised: 0 0 0 1px var(--line-strong);
+  --shadow-overlay: 0 0 0 1px var(--line-strong), 0 12px 32px rgb(0 0 0 / 0.12);
+  --shadow-inset-field: inset 0 1px 2px rgb(0 0 0 / 0.06);
 }
 
 .dark {
-  --page: oklch(0.209 0.004 264.477);
-  --canvas: oklch(0.231 0.004 264.487);
-  --surface: oklch(0.26 0.006 271.191);
-  --inset: oklch(0.243 0.004 264.492);
-  --hover: oklch(0.289 0.006 271.22);
-  --hover-2: oklch(0.318 0.007 274.747);
+  --page: #141414;
+  --canvas: #0f0f0f;
+  --surface: #1a1a1a;
+  --inset: #171717;
+  --hover: #202020;
+  --hover-2: #272727;
 
-  --ink: oklch(0.964 0.002 247.839);
-  --ink-2: oklch(0.731 0.008 260.731);
-  --ink-3: oklch(0.541 0.01 264.484);
+  --ink: #f5f5f5;
+  --ink-2: #b4b4b4;
+  --ink-3: #949494;
 
-  --line: oklch(0.308 0.006 258.354);
-  --line-strong: oklch(0.356 0.007 264.474);
-  --line-soft: oklch(0.278 0.006 258.354);
-  --field: oklch(0.293 0.006 271.223);
-  --stripe: oklch(1 0 0 / 0.055);
-  --stripe-bg: oklch(0.226 0.004 264.485);
+  --line: #262626;
+  --line-strong: #3a3a3a;
+  --line-soft: #1f1f1f;
+  --field: #1a1a1a;
+  --stripe: #262626;
+  --stripe-bg: #0f0f0f;
 
-  --accent: oklch(0.68 0.173 253.301);
-  --accent-ink: oklch(0.788 0.113 248.33);
-  --accent-tint: oklch(0.68 0.173 253.301 / 0.16);
+  --accent: #5b9bf0;
+  --accent-ink: #8fbcf7;
+  --accent-tint: color-mix(in oklch, #5b9bf0 18%, transparent);
 
-  --green: oklch(0.705 0.154 153.814);
-  --green-tint: oklch(0.705 0.154 153.814 / 0.14);
-  --orange: oklch(0.746 0.156 55.642);
-  --orange-tint: oklch(0.746 0.156 55.642 / 0.14);
-  --red: oklch(0.666 0.18 21.433);
-  --red-tint: oklch(0.666 0.18 21.433 / 0.14);
+  --green: #3fc07a;
+  --green-tint: #172a1d;
+  --orange: #e0a25a;
+  --orange-tint: #2b2114;
+  --red: #e5566f;
+  --red-tint: #2c1a20;
 
-  --tooltip-bg: oklch(0.182 0.004 264.459);
-  --tooltip-fg: oklch(0.964 0.002 247.839);
-  --tooltip-muted: oklch(0.731 0.008 260.731);
-  --tooltip-border: oklch(0.308 0.006 258.354);
+  --tooltip-bg: #101010;
+  --tooltip-fg: #f5f5f5;
+  --tooltip-muted: #b4b4b4;
+  --tooltip-border: #262626;
 
   --shadow-hairline: 0 0 0 1px var(--line);
-  /* Elevation rings go to a subtle *light* hairline in dark mode: the ring
-   * paints over the surface behind the element, so a low-alpha white edge
-   * dissolves into the shadow as one continuous stroke (per smooth-shadow-ring),
-   * graduated by how far the surface floats. */
-  --shadow-btn: 0 0 0 1px oklch(1 0 0 / 0.1), 0 1px 2px oklch(0 0 0 / 0.3);
-  --shadow-card: 0 0 0 1px oklch(1 0 0 / 0.11), 0 1px 2px oklch(0 0 0 / 0.2), 0 2px 6px oklch(0 0 0 / 0.2);
-  --shadow-raised: 0 0 0 1px oklch(1 0 0 / 0.13), 0 2px 10px oklch(0 0 0 / 0.22);
-  --shadow-overlay: 0 0 0 1px oklch(1 0 0 / 0.15), 0 8px 28px oklch(0 0 0 / 0.34);
-  --shadow-inset-field: inset 0 1px 2px oklch(0 0 0 / 0.4);
+  --shadow-btn: 0 0 0 1px var(--line-strong);
+  --shadow-card: 0 0 0 1px var(--line);
+  --shadow-raised: 0 0 0 1px var(--line-strong);
+  --shadow-overlay: 0 0 0 1px var(--line-strong), 0 16px 40px rgb(0 0 0 / 0.5);
+  --shadow-inset-field: inset 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 @theme inline {
@@ -134,6 +125,8 @@
   --color-field: var(--field);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
+  --color-line-soft: var(--line-soft);
+  --color-grid-line: var(--grid-line);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-accent-tint: var(--accent-tint);
@@ -152,15 +145,15 @@
   --shadow-raised: var(--shadow-raised);
   --shadow-overlay: var(--shadow-overlay);
 
-  /* type */
+  /* type — the system face is the product's face on a desktop app that must work offline */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-mono-face), ui-monospace, "SF Mono", monospace;
 
-  /* radii — chips 6, controls 8, cards 10, windows 14, pills 999 */
-  --radius-chip: 6px;
-  --radius-control: 8px;
-  --radius-card: 10px;
-  --radius-window: 14px;
+  /* radii — chips 4, controls 6, cards 8, windows 12 */
+  --radius-chip: 4px;
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-window: 12px;
 
   /* easing — strong curves; built-ins are too weak */
   --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
@@ -178,19 +171,8 @@ html {
 
 body {
   background-color: var(--stripe-bg);
-  background-image: repeating-linear-gradient(
-    -45deg,
-    transparent 0,
-    transparent 7px,
-    var(--stripe) 7px,
-    var(--stripe) 8px
-  );
-  /* Pin the stripe pattern to the viewport so it stays put on scroll. */
-  background-attachment: fixed;
   color: var(--ink);
-  font-feature-settings: "cv11", "ss01";
   font-size: 14px;
-  letter-spacing: -0.01em;
   line-height: 1.5;
 }
 
@@ -251,15 +233,6 @@ select:focus-visible,
 
 /* ── shared keyframes ─────────────────────────────────── */
 
-@keyframes shimmer-text {
-  from {
-    background-position: 150% center;
-  }
-  to {
-    background-position: -50% center;
-  }
-}
-
 @keyframes fade-up {
   from {
     opacity: 0;
@@ -297,10 +270,10 @@ select:focus-visible,
  * Copy this block only alongside StreamText; it is not part of the
  * generic foundation above.
  * ══════════════════════════════════════════════════════════ */
+/* The newest characters stream in one tone lighter until the string settles. A tone step keeps
+   the tail readable and needs no mask. */
 .stream-tail {
-  filter: blur(1.6px);
-  -webkit-mask-image: linear-gradient(to right, oklch(0 0 0) 20%, oklch(0 0 0 / 0.2));
-  mask-image: linear-gradient(to right, oklch(0 0 0) 20%, oklch(0 0 0 / 0.2));
+  color: var(--ink-2);
 }
 
 .stream-caret {
@@ -387,20 +360,25 @@ select:focus-visible,
 /* Upstream sets these two with next/font. dex loads no web fonts, so it names the faces and
    falls back to the system faces when they are not installed. */
 :root {
-  --font-inter: "Inter", -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC";
-  --font-mono-face: "JetBrains Mono", "SF Mono";
+  --font-inter: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+  --font-mono-face: "JetBrains Maple Mono", "SF Mono", ui-monospace, monospace;
 }
 
-/* The hatch gutter around framed pages, the same stripe as the body. */
+/* The page gutter uses the same plain surface as the document. */
 .hatch {
   background-color: var(--stripe-bg);
-  background-image: repeating-linear-gradient(
-    -45deg,
-    transparent 0,
-    transparent 7px,
-    var(--stripe) 7px,
-    var(--stripe) 8px
-  );
+}
+
+/* An agent mark: one hue per agent, with a lightness that keeps the letter readable on either
+   theme. The hue is set by the component; only the lightness belongs here. */
+.agent-avatar {
+  background-color: oklch(0.955 0.022 var(--avatar-hue, 260));
+  color: oklch(0.42 0.06 var(--avatar-hue, 260));
+}
+
+.dark .agent-avatar {
+  background-color: oklch(0.3 0.03 var(--avatar-hue, 260));
+  color: oklch(0.86 0.05 var(--avatar-hue, 260));
 }
 
 /* The page title takes focus after navigation; it needs no ring. */

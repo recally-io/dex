@@ -59,7 +59,7 @@ type Message struct {
 	Settings    Settings
 }
 
-// ErrNoModel means that the agent has no model yet; the user chooses one in the settings.
+// ErrNoModel means that the bot has no model yet; the user chooses one in the settings.
 var ErrNoModel = engine.ErrNoModel
 
 // ErrNotFound means that the chat does not exist.

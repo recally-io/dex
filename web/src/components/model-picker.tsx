@@ -54,7 +54,7 @@ function search(list: Group[], query: string): Group[] {
   });
 }
 
-/** The model of one chat. null follows the agent's model; save reports its own success. */
+/** The model of one chat. null follows the bot's model; save reports its own success. */
 export type ModelOverride = {
   value: { provider: string; modelId: string } | null;
   defaultName: string;
@@ -63,7 +63,7 @@ export type ModelOverride = {
 };
 
 // An anchored, non-modal model list. A click on a model saves it at once; the list stays open
-// with the error when the save fails. Without override, the list sets the agent's model.
+// with the error when the save fails. Without override, the list sets the bot's model.
 export function ModelPicker({ trigger, override }: { trigger: ReactElement; override?: ModelOverride }) {
   const agentId = useAgentId();
   const { notify } = useApp();
@@ -79,8 +79,7 @@ export function ModelPicker({ trigger, override }: { trigger: ReactElement; over
     onSuccess: (_, model) => {
       setOpen(false);
 
-      if (!override && model)
-        notify(`The agent model is now ${model.name}. It applies from the next message.`);
+      if (!override && model) notify(`The bot model is now ${model.name}. It applies from the next message.`);
     },
   });
 
@@ -99,7 +98,7 @@ export function ModelPicker({ trigger, override }: { trigger: ReactElement; over
       <Popover.Portal>
         <Popover.Positioner align="start" sideOffset={6} collisionPadding={8} className="z-[60]">
           <Popover.Popup
-            aria-label={override ? "Chat model" : "Agent model"}
+            aria-label={override ? "Chat model" : "Bot model"}
             // The search takes focus when it mounts, also after the models load.
             initialFocus={false}
             className="flex max-h-[min(420px,var(--available-height))] w-[352px] max-w-[calc(100vw-1rem)] origin-(--transform-origin) animate-[pop-in_180ms_var(--ease-out-strong)_both] flex-col overflow-hidden rounded-[12px] bg-surface shadow-raised outline-none"

@@ -498,7 +498,7 @@ func mcpFailure(err error) string {
 }
 func (a *agentExtensions) EditEnv(ctx context.Context, scope, key string, value *string) (ExtensionInfo, error) {
 	if scope != "agent" && scope != "dex" {
-		return ExtensionInfo{}, &EnvEditError{Message: "only agent and dex environment files are writable"}
+		return ExtensionInfo{}, &EnvEditError{Message: "only bot and dex environment files are writable"}
 	}
 	if !envName.MatchString(key) {
 		return ExtensionInfo{}, &EnvEditError{Message: "the environment key is not valid"}
@@ -604,7 +604,7 @@ func skillsText(skills []SkillInfo) *string {
 	return new(strings.Join(lines, "\n"))
 }
 func extensionGuide(levels []ExtensionLevel) string {
-	lines := []string{"Extension levels for this agent, from wide to narrow. Each can hold skills/, mcp.json, and .env:"}
+	lines := []string{"Extension levels for this bot, from wide to narrow. Each can hold skills/, mcp.json, and .env:"}
 	for _, l := range levels {
 		lines = append(lines, "- "+l.Scope+": "+l.Dir+"/")
 	}

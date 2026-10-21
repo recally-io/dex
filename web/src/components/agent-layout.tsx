@@ -11,6 +11,7 @@ import { useApp } from "../lib/app-state";
 import { MainTimeline } from "../routes/chat";
 import { ModelPicker } from "./model-picker";
 import { ThinkingPicker } from "./thinking-picker";
+import { AgentAvatar } from "./agent-avatar";
 import { StatusPill } from "./atoms/StatusPill";
 import { Failure, Loading } from "./feedback";
 import { InPaneContext, MainPane, MenuButton } from "./page";
@@ -32,15 +33,13 @@ type AgentTab = {
 
 const tabs: AgentTab[] = [
   { to: "/a/$agentId", label: "Chat", segments: [undefined] },
-  { to: "/a/$agentId/instructions", label: "Instructions", segments: ["instructions"] },
-  { to: "/a/$agentId/channels", label: "Channels", segments: ["channels"] },
-  { to: "/a/$agentId/automations", label: "Automations", segments: ["automations"] },
   { to: "/a/$agentId/sessions", label: "Sessions", segments: ["sessions", "c", "tasks"] },
+  { to: "/a/$agentId/automations", label: "Automations", segments: ["automations"] },
   { to: "/a/$agentId/extensions", label: "Extensions", segments: ["extensions"] },
-  { to: "/a/$agentId/agent", label: "Settings", segments: ["agent"] },
+  { to: "/a/$agentId/agent", label: "Settings", segments: ["agent", "instructions", "channels"] },
 ];
 
-/** Activity reads the agent list cache. Shell owns its polling interval. */
+/** Activity reads the bot list cache. Shell owns its polling interval. */
 export function useAgentActivity() {
   const agentId = useAgentId();
   const agents = useQuery(listAgentsOptions());
@@ -54,9 +53,9 @@ export function useAgentActivity() {
 }
 
 /**
- * The page of one agent: its name, a tab for each part of it, and its model. Everything that
- * belongs to the agent is a tab here, so the sidebar only holds the list of agents and the
- * global settings. The main timeline stays mounted under the other tabs, so its stream and the
+ * The page of one bot: its name, a tab for each part of it, and its model. Everything that
+ * belongs to the bot is a tab here, so the sidebar only holds the list of bots and the global
+ * settings. The main timeline stays mounted under the other tabs, so its stream and the
  * unsent message survive a visit to them.
  */
 export function AgentLayout() {
@@ -79,9 +78,9 @@ function AgentView() {
     <MainPane>
       <div className="p-8">
         <h1 id="page-title" className="text-xl font-semibold">
-          Agent not found
+          Bot not found
         </h1>
-        <p className="mt-2 text-ink-2">Dex has no agent with this ID.</p>
+        <p className="mt-2 text-ink-2">Dex has no bot with this ID.</p>
         <Link to="/" className="mt-4 block underline">
           Open Dex
         </Link>
@@ -118,10 +117,7 @@ function AgentPane({ settings }: { settings: Settings }) {
   const dirty = instructionsDirty(draft, settings.agent.instructions);
   const activity = useAgentActivity();
 
-  const counts = new Map([
-    ["Channels", activity.channels],
-    ["Automations", activity.automations],
-  ]);
+  const counts = new Map([["Automations", activity.automations]]);
 
   // The other tabs have their own page title.
   const Name = onChat ? "h1" : "span";
@@ -149,13 +145,14 @@ function AgentPane({ settings }: { settings: Settings }) {
 
   return (
     <InPaneContext.Provider value>
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:rounded-window lg:border lg:border-line">
+      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page lg:border-l lg:border-line">
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line pr-2 pl-3 sm:pl-4 lg:h-11">
           <MenuButton />
+          <AgentAvatar agent={settings.agent} className="size-5 rounded-[6px] text-[11px]" />
           <Name
             id={onChat ? "page-title" : undefined}
             tabIndex={onChat ? -1 : undefined}
-            className="max-w-[40%] shrink-0 truncate text-[13px] font-semibold text-ink outline-none sm:max-w-[200px]"
+            className="max-w-[40%] shrink-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-ink outline-none sm:max-w-[200px]"
           >
             {settings.agent.name}
           </Name>
@@ -188,14 +185,18 @@ function AgentPane({ settings }: { settings: Settings }) {
                 {counts.get(tab.label) ? (
                   <span className="text-[11px] text-ink-3 tabular-nums">{counts.get(tab.label)}</span>
                 ) : null}
-                {tab.label === "Instructions" && dirty ? (
-                  <span role="img" aria-label="Unsaved draft" className="size-1.5 rounded-full bg-orange" />
+                {tab.label === "Settings" && dirty ? (
+                  <span
+                    role="img"
+                    aria-label="Unsaved instructions draft"
+                    className="size-1.5 rounded-full bg-orange"
+                  />
                 ) : null}
                 {tab.label === "Sessions" && activity.active > 0 ? (
                   <span
                     role="img"
                     aria-label={`${activity.active} active`}
-                    className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-orange-tint px-1.5 text-[11px] font-medium text-orange tabular-nums"
+                    className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent-tint px-1.5 text-[11px] font-medium text-accent-ink tabular-nums"
                   >
                     {activity.active}
                   </span>

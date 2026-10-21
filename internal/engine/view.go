@@ -232,7 +232,7 @@ func (p projection) render() []Item {
 			rendered = []Item{{Kind: "boundary", ID: key, Boundary: strings.TrimPrefix(e.Kind, "pi."), At: at}}
 		case "dex.withdrawn":
 			item := userItem(m, key, 0, m.Content)
-			rendered = []Item{item, {Kind: "error", ID: item.ID + ":error", Reason: "Stopped before the agent read it.", Aborted: true}}
+			rendered = []Item{item, {Kind: "error", ID: item.ID + ":error", Reason: "Stopped before the bot read it.", Aborted: true}}
 		default:
 			if len(e.Model) == 0 {
 				break

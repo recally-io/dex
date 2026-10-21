@@ -36,7 +36,7 @@ const labels = {
 
 const tones = {
   queued: "neutral",
-  running: "orange",
+  running: "accent",
   done: "green",
   failed: "red",
   cancelled: "neutral",
@@ -54,7 +54,13 @@ function TaskPill({ task }: { task: Pick<TaskSummary, "status"> }) {
 export function SessionsPage() {
   const agentId = useAgentId();
   const settings = useAgentSettings(agentId);
-  const sessions = useQuery({ ...listChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
+
+  const sessions = useQuery({
+    ...listChatsOptions({ path: { agentId } }),
+    placeholderData: (previous) => previous,
+    refetchInterval: 3000,
+  });
+
   const navigate = useNavigate();
 
   const create = useMutation({
@@ -174,7 +180,7 @@ function SessionRow({ chat }: { chat: Chat }) {
       {chat.task ? (
         <TaskPill task={chat.task} />
       ) : chat.busy ? (
-        <StatusPill tone="orange" className="h-5 shrink-0 px-2 text-[11.5px]">
+        <StatusPill tone="accent" className="h-5 shrink-0 px-2 text-[11.5px]">
           Running
         </StatusPill>
       ) : null}
@@ -235,7 +241,7 @@ function TaskWork({ chatId }: { chatId: number }) {
       {connection !== "ready" ? (
         <div role="status" className="text-[12px] text-ink-3">
           {streamError ||
-            (connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the agent…")}
+            (connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the bot…")}
           <Button size="xs" variant="secondary" onClick={() => reconnect.current?.()}>
             Reconnect
           </Button>

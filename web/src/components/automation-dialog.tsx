@@ -110,7 +110,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   return (
     <Modal
       title={existing ? "Edit automation" : "New automation"}
-      description="Set a prompt and a schedule. The agent's model and instructions run every automation."
+      description="Set a prompt and a schedule. The bot's model and instructions run every automation."
       pending={pending}
       onClose={onClose}
       footer={
@@ -149,7 +149,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             <Input id={id} required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
           )}
         </Field>
-        <Field label="Prompt" hint="Sent to the agent as a user message on each run.">
+        <Field label="Prompt" hint="Sent to the bot as a user message on each run.">
           {({ id, describedBy }) => (
             <Textarea
               id={id}
@@ -158,7 +158,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
               rows={3}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Tell the agent what to do."
+              placeholder="Tell the bot what to do."
             />
           )}
         </Field>
@@ -255,7 +255,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             label="Session for each run"
             hint={
               session === "reuse"
-                ? "The agent sees earlier runs. The session grows with each run. When the session is busy, the run is skipped."
+                ? "The bot sees earlier runs. The session grows with each run. When the session is busy, the run is skipped."
                 : "Each run starts fresh."
             }
           >

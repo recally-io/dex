@@ -87,7 +87,7 @@ export function AutomationsPage() {
   return (
     <FramedPage
       title="Automations"
-      description="Prompts that the agent runs on a schedule. Each run has its own session."
+      description="Prompts that the bot runs on a schedule. Each run has its own session."
     >
       <AutomationsSection />
     </FramedPage>
@@ -106,7 +106,7 @@ function AutomationsSection() {
   const [create, setCreate] = useState(false);
   const list = automations.data?.automations ?? [];
   const on = list.filter((a) => a.enabled).length;
-  // Every automation uses the agent model. Without one, a new automation could not run.
+  // Every automation uses the bot model. Without one, a new automation could not run.
   const noModel = !!settings.data && !settings.data.agent.modelId;
 
   return (
@@ -166,7 +166,7 @@ function AutomationsSection() {
         ) : (
           <Empty title="No automations yet">
             {noModel
-              ? "Choose an agent model first. Automations use the same model as every chat."
+              ? "Choose a bot model first. Automations use the same model as every chat."
               : "Create one to run a prompt every few minutes, every day, on some weekdays, or once."}
           </Empty>
         )}
@@ -245,7 +245,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
     filter === "All" ? history : history.filter((h) => h.status === "failed" || h.status === "skipped");
 
   const busy = history.some((h) => h.status === "running");
-  const blocked = model && !model.ok ? "Choose an available agent model first." : undefined;
+  const blocked = model && !model.ok ? "Choose an available bot model first." : undefined;
 
   const crumb = <Crumb to="/a/$agentId/automations">Automations</Crumb>;
 
@@ -323,7 +323,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
           ) : null}
         </div>
       ) : null}
-      <Section n={1} title="Prompt" caption="Sent to the agent as a user message on each run.">
+      <Section n={1} title="Prompt" caption="Sent to the bot as a user message on each run.">
         <Panel className="px-4 py-3.5">
           <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">
             {data.prompt}

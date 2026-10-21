@@ -16,6 +16,7 @@ import {
   abortChatMutation,
   listModelsOptions,
   listChatsOptions,
+  listAgentsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
@@ -23,7 +24,7 @@ import { refreshChats } from "../lib/queries";
 import { agentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
-import { activeSessionCount } from "../lib/tasks";
+import { activeSessionCount, taskTime } from "../lib/tasks";
 import { Composer } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
 import { RetryNotice, Transcript } from "../components/agent/transcript";
@@ -164,9 +165,9 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
 
   // Announce the start and the end of a run once each, not each streamed token.
   useEffect(() => {
-    if (state.running && !wasRunning.current) setAnnouncement("The agent is working.");
+    if (state.running && !wasRunning.current) setAnnouncement("The bot is working.");
 
-    if (!state.running && wasRunning.current) setAnnouncement("The agent finished.");
+    if (!state.running && wasRunning.current) setAnnouncement("The bot finished.");
 
     wasRunning.current = state.running;
   }, [state.running]);
@@ -192,10 +193,22 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     return () => observer.disconnect();
   }, []);
 
+  const blank = !items.length && state.historyBefore === undefined && connection === "ready";
+
+  const agents = useQuery(listAgentsOptions());
+
+  const channelsRunning =
+    agents.data?.agents.find((item) => item.id === agentId)?.activity?.runningChannels ?? 0;
+
+  const recent = (sessions.data?.chats ?? [])
+    .filter((item) => !item.main && item.id !== chatId)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, 3);
+
   const reason = !model.ok
     ? "Choose an available model before you send."
     : connection !== "ready"
-      ? "dex is reconnecting to the agent…"
+      ? "dex is reconnecting to the bot…"
       : undefined;
 
   const pending = send.isPending || abort.isPending;
@@ -206,7 +219,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     const ids = attachments.map((a) => a.id);
     const failed = failedMessage.current?.body;
 
-    // A transport retry keeps its ID. A retry of a failed agent turn gets a new ID.
+    // A transport retry keeps its ID. A retry of a failed bot turn gets a new ID.
     const body: MessageInput =
       failed?.text === text && failed.attachments?.join() === ids.join()
         ? failed
@@ -357,7 +370,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           >
             <div className="flex items-center gap-2 font-medium text-ink">
               <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-orange" />
-              {connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the agent…"}
+              {connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the bot…"}
             </div>
             <p className="pl-3.5 text-ink-2 [overflow-wrap:anywhere]">
               {streamError || "Messages are paused until the stream returns. Your transcript stays here."}
@@ -399,17 +412,8 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
             <LoadingState label="dex is working" variant="Dots" />
           </div>
         ) : null}
-        {!items.length && state.historyBefore === undefined && connection === "ready" ? (
-          <div className="my-auto py-12 text-center">
-            <h1 className="text-[22px] font-semibold text-ink sm:text-[26px]">
-              {readOnly ? "No messages yet." : `What should ${settings.agent.name} do?`}
-            </h1>
-            {!chat.data?.main && !readOnly ? (
-              <p className="mt-2 text-[13px] text-ink-3">
-                This session has its own context. It does not see the main timeline.
-              </p>
-            ) : null}
-          </div>
+        {blank && readOnly ? (
+          <p className="my-auto py-12 text-center text-[14px] text-ink-2">{`No messages yet.`}</p>
         ) : null}
       </>
     );
@@ -425,10 +429,10 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       <section
         className={cn(
           "flex min-w-0 flex-1 flex-col overflow-hidden bg-page",
-          embedded ? "min-h-0" : "lg:rounded-window lg:border lg:border-line",
+          embedded ? "min-h-0" : "lg:border-l lg:border-line",
         )}
       >
-        {/* The agent pane names the main timeline; a session names itself under the agent tabs. */}
+        {/* The bot pane names the main timeline; a session names itself under the bot tabs. */}
         {chat.data?.main ? null : (
           <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
             {embedded ? null : <MenuButton />}
@@ -460,7 +464,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           <div className="relative flex min-w-0 flex-1 flex-col">
             <div
               ref={scroller}
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", blank && "hidden")}
               onScroll={() => {
                 const el = scroller.current;
 
@@ -470,13 +474,30 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                 }
               }}
             >
-              <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col gap-6 px-4 py-8 sm:px-8">
+              <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col justify-end gap-6 px-4 py-8 sm:px-8">
                 {transcript}
               </div>
             </div>
             {readOnly ? null : (
-              <div className="shrink-0 px-3 pb-3 sm:px-8 sm:pb-5">
-                <div className="relative mx-auto max-w-[720px]">
+              <div
+                className={cn(
+                  "shrink-0 px-3 pb-3 sm:px-8 sm:pb-5",
+                  blank && "flex min-h-0 flex-1 items-center",
+                )}
+              >
+                <div className="relative mx-auto w-full max-w-[720px]">
+                  {blank ? (
+                    <div className="mb-4 px-2">
+                      <p className="text-[20px] leading-tight font-semibold tracking-[-0.01em] text-ink">
+                        {`What should ${settings.agent.name} do?`}
+                      </p>
+                      {!chat.data?.main ? (
+                        <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
+                          This session has its own context. It does not see the main timeline.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {jump ? (
                     <Button
                       size="xs"
@@ -496,6 +517,52 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                     </Button>
                   ) : null}
                   {composer}
+                  {blank ? (
+                    <div className="mt-6">
+                      <p className="mb-1 px-2 text-[12px] font-medium text-ink-3">This bot so far</p>
+                      <ul className="text-[13px]">
+                        <li className="flex items-baseline gap-3 border-t border-line-soft px-2 py-2 first:border-t-0">
+                          <span className="min-w-0 flex-1 text-ink-2">Model</span>
+                          <span className={model.ok ? "text-ink" : "text-ink-2"}>
+                            {model.ok ? model.label : "None chosen"}
+                          </span>
+                        </li>
+                        <li className="flex items-baseline gap-3 border-t border-line-soft px-2 py-2">
+                          <span className="min-w-0 flex-1 text-ink-2">Channels</span>
+                          <span className="text-ink">
+                            {channelsRunning ? `${channelsRunning} connected` : "None connected"}
+                          </span>
+                        </li>
+                        <li className="flex items-baseline gap-3 border-t border-line-soft px-2 py-2">
+                          <span className="min-w-0 flex-1 text-ink-2">Sessions</span>
+                          <span className="text-ink tabular-nums">{sessions.data?.chats.length ?? 0}</span>
+                        </li>
+                      </ul>
+                    </div>
+                  ) : null}
+                  {blank && recent.length ? (
+                    <div className="mt-6">
+                      <p className="mb-1 px-2 text-[12px] font-medium text-ink-3">Recent in this bot</p>
+                      <ul>
+                        {recent.map((item) => (
+                          <li key={item.id}>
+                            <Link
+                              to="/a/$agentId/c/$chatId"
+                              params={{ agentId, chatId: String(item.id) }}
+                              className="flex items-baseline gap-3 rounded-control px-2 py-2 hover:bg-hover"
+                            >
+                              <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
+                                {item.title || "New session"}
+                              </span>
+                              <span className="shrink-0 text-[12px] text-ink-3 tabular-nums">
+                                {taskTime(item.updatedAt)}
+                              </span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             )}

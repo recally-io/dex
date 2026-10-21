@@ -9,7 +9,7 @@ import { Button } from "./atoms/Button";
 import { cn } from "../lib/utils";
 
 const fieldClass =
-  "w-full rounded-control bg-surface px-3 text-[13px] text-ink shadow-btn outline-none transition-shadow placeholder:text-ink-3 focus:shadow-[0_0_0_1px_var(--accent),0_0_0_4px_var(--accent-tint)] disabled:opacity-60 aria-invalid:shadow-[0_0_0_1px_var(--red)]";
+  "w-full rounded-control bg-surface px-3 text-[13px] text-ink shadow-btn outline-none transition-shadow placeholder:text-ink-3 disabled:opacity-60 aria-invalid:shadow-[0_0_0_1px_var(--red)]";
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={cn(fieldClass, "h-9", className)} />;

@@ -25,7 +25,7 @@ import (
 var ErrInvalid = errors.New("invalid settings")
 
 // ErrNotFound means that the agent does not exist.
-var ErrNotFound = errors.New("agent not found")
+var ErrNotFound = errors.New("bot not found")
 
 var thinkingLevels = []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 

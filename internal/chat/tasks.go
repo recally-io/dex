@@ -234,7 +234,7 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r eng
 		return "", err
 	}
 	if count >= 2 {
-		return "", fmt.Errorf("%w: this agent already has two active executions", ErrTaskConflict)
+		return "", fmt.Errorf("%w: this bot already has two active executions", ErrTaskConflict)
 	}
 	now, id := s.now().UnixMilli(), uuid.NewV7().String()
 	conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: r.AgentID, ChannelKey: "task:" + id, Title: a.Title, ModelProvider: settings.Provider, ModelID: settings.ModelID, ThinkingLevel: settings.ThinkingLevel, CreatedAt: now})

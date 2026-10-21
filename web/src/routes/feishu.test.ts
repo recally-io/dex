@@ -91,7 +91,7 @@ test("user sees Feishu status and shared main context without a peer link", asyn
   expect(html).not.toContain('href="/c/2"');
   expect(html).not.toContain('href="/c/4"');
   expect(html).not.toContain("Open conversation");
-  expect(html).toContain("Channels share the main timeline.");
+  expect(html).toContain("Each channel talks to the same bot.");
 
   client.clear();
 });

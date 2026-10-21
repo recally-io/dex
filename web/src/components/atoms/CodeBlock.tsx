@@ -50,7 +50,7 @@ const DIFF: Row[] = [
   { old: 6, cur: 7, type: "ctx", pieces: [{ text: "}" }] },
 ];
 
-const HATCH = "repeating-linear-gradient(45deg, var(--red) 0, var(--red) 1.5px, transparent 1.5px, transparent 3px)";
+const REMOVED = "color-mix(in oklch, var(--red) 55%, transparent)";
 
 /* light syntax coloring — keywords/imports/conditionals, functions, strings & numbers */
 const KEYWORDS = new Set(["import", "from", "export", "default", "async", "function", "const", "let", "var", "await", "return", "if", "else", "for", "while", "new", "throw", "try", "catch", "null", "true", "false", "undefined"]);
@@ -206,7 +206,7 @@ export default function CodeBlock({
                     ${add ? "bg-green-tint" : del ? "bg-red-tint" : ""}`}
                 >
                   {(add || del) && (
-                    <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: add ? "var(--green)" : HATCH }} />
+                    <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: add ? "var(--green)" : REMOVED }} />
                   )}
                   <span className={`select-none text-center text-[11px] ${add ? "text-green" : del ? "text-red" : "text-ink-3"}`}>{num ?? ""}</span>
                   <code className="pr-3 pl-1 break-words whitespace-pre-wrap">

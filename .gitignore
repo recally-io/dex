@@ -7,3 +7,9 @@ node_modules/
 .env
 .local/
 .DS_Store
+
+# Design-tool working files (screenshots, dealt direction).
+.taste-skill/
+
+# Design prototypes and tool output stay out of the repository.
+designs/

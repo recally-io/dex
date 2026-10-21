@@ -131,7 +131,7 @@ export function Composer({
           files.add([...e.dataTransfer.files]);
         }}
         className={cn(
-          "relative isolate flex flex-col gap-2.5 overflow-hidden rounded-[22px] border border-line bg-surface p-3.5 shadow-card transition-[border-color] duration-150 focus-within:border-line-strong",
+          "relative isolate flex flex-col gap-2 overflow-hidden rounded-[12px] border border-line bg-surface px-3 pt-2 pb-2 transition-[border-color] duration-150 focus-within:border-line-strong",
           dropping && "border-accent focus-within:border-accent",
         )}
       >
@@ -161,7 +161,7 @@ export function Composer({
             }
           }}
           rows={1}
-          className="min-h-[52px] w-full min-w-0 resize-none bg-transparent px-2 py-1.5 text-[14px] leading-5 text-ink outline-none [overflow-wrap:anywhere] placeholder:text-ink-3 disabled:cursor-not-allowed"
+          className="min-h-[44px] w-full min-w-0 resize-none bg-transparent px-1 py-1.5 text-[14px] leading-5 text-ink outline-none [overflow-wrap:anywhere] placeholder:text-ink-3 disabled:cursor-not-allowed"
           maxLength={32000}
           placeholder={running ? "Queue a follow-up…" : placeholder}
           aria-label={running ? "Queue a follow-up…" : placeholder}
@@ -212,7 +212,7 @@ export function Composer({
                 title="Attach files"
                 disabled={!canAttach}
                 onClick={() => picker.current?.click()}
-                className="flex size-7 shrink-0 items-center justify-center rounded-[8px] text-ink-3 transition-[background-color,color,transform] duration-150 enabled:hover:bg-hover enabled:hover:text-ink enabled:active:scale-[0.94] disabled:opacity-40"
+                className="flex size-[30px] shrink-0 items-center justify-center rounded-control text-ink-3 transition-[background-color,color,transform] duration-150 enabled:hover:bg-hover enabled:hover:text-ink enabled:active:scale-[0.94] disabled:opacity-40"
               >
                 <IconPlusMedium size={16} />
               </button>
@@ -239,7 +239,7 @@ export function Composer({
               // A missing model blocks new messages, not stopping the current run.
               disabled={pending}
               onClick={onStop}
-              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-ink text-surface transition-[transform,opacity] duration-150 enabled:active:scale-[0.94] disabled:opacity-40"
+              className="flex size-[30px] shrink-0 items-center justify-center rounded-control bg-ink text-surface transition-[transform,opacity] duration-150 enabled:active:scale-[0.94] disabled:opacity-40"
             >
               <span aria-hidden className="size-2.5 rounded-[2px] bg-current" />
             </button>
@@ -251,7 +251,7 @@ export function Composer({
               title={blocked || (running ? "Queue message" : "Send message")}
               disabled={!canSend}
               className={cn(
-                "flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,color,transform] duration-200 enabled:active:scale-[0.94]",
+                "flex size-[30px] shrink-0 items-center justify-center rounded-control transition-[background-color,color,transform] duration-200 enabled:active:scale-[0.94]",
                 canSend ? "bg-ink text-surface" : "bg-line-strong text-ink-2",
               )}
             >

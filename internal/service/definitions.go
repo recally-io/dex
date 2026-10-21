@@ -67,7 +67,7 @@ func execLine(args []string) string {
 	return b.String()
 }
 func unit(c Config) []byte {
-	return fmt.Appendf(nil, "# dex-config: %s\n[Unit]\nDescription=dex agent host\n\n[Service]\nType=simple\nExecStart=%s\nWorkingDirectory=%%h\nEnvironment=%s\nRestart=on-failure\nTimeoutStopSec=60\n\n[Install]\nWantedBy=default.target\n", c.record(), execLine(c.args()), unitQuote("PATH="+c.Path, false))
+	return fmt.Appendf(nil, "# dex-config: %s\n[Unit]\nDescription=dex bot host\n\n[Service]\nType=simple\nExecStart=%s\nWorkingDirectory=%%h\nEnvironment=%s\nRestart=on-failure\nTimeoutStopSec=60\n\n[Install]\nWantedBy=default.target\n", c.record(), execLine(c.args()), unitQuote("PATH="+c.Path, false))
 }
 func updateUnit(c Config) []byte {
 	return fmt.Appendf(nil, "[Unit]\nDescription=dex daily update\n\n[Service]\nType=oneshot\nExecStart=%s\nWorkingDirectory=%%h\nEnvironment=%s\nTimeoutStartSec=10min\n", execLine([]string{c.Executable, "update", "--scheduled"}), unitQuote("PATH="+c.Path, false))
