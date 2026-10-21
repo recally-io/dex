@@ -1,9 +1,38 @@
 import { createContext, useContext, useId, type ReactNode } from "react";
-import { IconBurger } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBurger";
+import { Menu } from "lucide-react";
 import { StatusPill } from "./atoms/StatusPill";
 import { cn } from "../lib/utils";
 
 export const ShellContext = createContext({ openDrawer: () => {} });
+
+export type PageHeaderProps = {
+  title: ReactNode;
+  avatar?: ReactNode;
+  tabs?: ReactNode;
+  actions?: ReactNode;
+  className?: string;
+};
+
+/** Shared title bar used by bot and global settings pages. */
+export function PageHeader({ title, avatar, tabs, actions, className }: PageHeaderProps) {
+  return (
+    <header
+      data-page-header
+      className={cn(
+        "flex h-12 shrink-0 items-center gap-2 border-b border-line pr-2 pl-3 sm:pl-4",
+        className,
+      )}
+    >
+      <MenuButton />
+      {avatar}
+      <span className="max-w-[40%] shrink-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-ink sm:max-w-[200px]">
+        {title}
+      </span>
+      {tabs ? <>{tabs}</> : <span className="min-w-0 flex-1" />}
+      {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
+    </header>
+  );
+}
 
 /** The drawer button for screens below lg. */
 export function MenuButton() {
@@ -16,7 +45,7 @@ export function MenuButton() {
       onClick={openDrawer}
       className="-ml-1 flex size-9 shrink-0 items-center justify-center rounded-control text-ink-2 transition-colors hover:bg-hover hover:text-ink lg:hidden"
     >
-      <IconBurger size={18} />
+      <Menu size={18} />
     </button>
   );
 }
@@ -25,18 +54,21 @@ export function MenuButton() {
 export const InPaneContext = createContext(false);
 
 /** The rounded main pane. Below lg it has a small bar with the drawer button. */
-export function MainPane({ children, bar = true }: { children: ReactNode; bar?: boolean }) {
+export function MainPane({
+  children,
+  bar = true,
+  headerTitle = "dex",
+}: {
+  children: ReactNode;
+  bar?: boolean;
+  headerTitle?: ReactNode;
+}) {
   if (useContext(InPaneContext))
     return <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>;
 
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-page">
-      {bar ? (
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 lg:hidden">
-          <MenuButton />
-          <span className="text-[14px] font-semibold text-ink">dex</span>
-        </div>
-      ) : null}
+      {bar ? <PageHeader title={headerTitle} /> : null}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
     </section>
   );
@@ -64,7 +96,7 @@ export function FramedPage(props: PageProps) {
   const { eyebrow, title, description, badge, actions, toolbar, children } = props;
 
   return (
-    <MainPane>
+    <MainPane headerTitle="Settings">
       <div className="mx-auto w-full max-w-[1120px] px-6 py-8">
         <header className="mb-8 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
           <div className="min-w-0">
