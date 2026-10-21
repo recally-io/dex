@@ -40,10 +40,15 @@ to read in an afternoon.
   is idle. Earlier messages stay readable with Show earlier messages. A clear
   keeps long-term memory. After a summary, Show earlier messages can load
   the earlier transcript. Only a clear shows a divider. The bot is one page
-  with tabs: Chat, Instructions, Channels, Automations, Sessions, Extensions,
-  and Settings. Its header shows the name, the tabs, the model, and the thinking
-  level. The sidebar lists the agents and the global settings. It has no chat
-  list or New chat action. Each agent keeps its unsent main message, uploaded
+  with tabs: Chat, Sessions, Automations, Extensions, and Settings. Its
+  Settings tab holds General, Instructions, and Channels. Its header shows the
+  name and the tabs. The model and the thinking level change in Settings. On the
+  Chat tab, the header has New chat and a Chats button. Chats opens a right
+  sidebar that lists Main and the agent's Chat sessions. It starts closed, and
+  the browser keeps the user's choice.
+  The left sidebar lists the agents and opens the global settings page: Providers,
+  Secrets, and About. It starts collapsed to one icon per agent, and the browser
+  keeps the user's choice. It has no chat list. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
   URLs open the default agent. An unknown agent shows a not-found page.
   Every agent has channel setup controls.
@@ -127,14 +132,15 @@ Named dispatch and result labels open the task by its ID.
 Done means that the task returned a report. It does not prove goal completion.
 There are no task controls or progress percentages.
 
-`New session` opens a writable Chat with its own model context. It reuses the
+`New chat` on the Chat tab and `New session` in Sessions open a writable Chat
+with its own model context. It reuses the
 newest empty Chat, so an abandoned click leaves no list row. The first message
 sets the title. Chat uses the bot's settings, instructions and shared memory.
 Chat does not read the main timeline's context. A task started in Chat returns
 its result to that Chat. Clear context, Stop and earlier messages work within
 the selected session. Other sessions cannot enable its Stop. Task and Automation
-sessions stay read-only. Main stays the default view, and the
-sidebar keeps only the bot and the settings pages.
+sessions stay read-only. Main stays the default view. A Chat session opens
+under the Chat tab. Task and Automation sessions open under Sessions.
 
 The main agent names the work in one brief delegation confirmation, then
 returns to the user without polling for the result. When a report returns,
