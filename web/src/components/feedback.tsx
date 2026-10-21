@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import LoadingState from "./primitives/LoadingState";
-import { Button } from "./atoms/Button";
+import { Skeleton } from "./ui/skeleton";
+import { Button } from "./ui/button";
 import { errorText } from "../lib/queries";
 import { cn } from "../lib/utils";
 
@@ -38,8 +38,10 @@ export function Failure({
 // The label of LoadingState is the status region.
 export function Loading({ label = "Loading" }: { label?: string }) {
   return (
-    <div className="flex min-h-24 items-center justify-center">
-      <LoadingState label={label} variant="Dots" />
+    <div role="status" aria-label={label} className="flex min-h-24 items-center justify-center gap-1.5">
+      <Skeleton className="size-2 rounded-full" />
+      <Skeleton className="size-2 rounded-full" />
+      <Skeleton className="size-2 rounded-full" />
     </div>
   );
 }

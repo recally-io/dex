@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { Tooltip } from "@base-ui/react/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { cn } from "../lib/utils";
 
 /** A square icon button. Its label is the accessible name and shows as a tooltip on hover. */
@@ -10,8 +10,8 @@ export function IconButton({
   ...props
 }: ComponentProps<"button"> & { label: string }) {
   return (
-    <Tooltip.Root>
-      <Tooltip.Trigger
+    <Tooltip>
+      <TooltipTrigger
         delay={300}
         render={
           <button
@@ -26,14 +26,14 @@ export function IconButton({
         }
       >
         {children}
-      </Tooltip.Trigger>
-      <Tooltip.Portal>
-        <Tooltip.Positioner side="bottom" sideOffset={6} collisionPadding={8} className="z-50">
-          <Tooltip.Popup className="animate-[fade-in_120ms_ease-out_both] rounded-full bg-ink px-2.5 py-1 text-[12px] font-medium whitespace-nowrap text-canvas">
-            {label}
-          </Tooltip.Popup>
-        </Tooltip.Positioner>
-      </Tooltip.Portal>
-    </Tooltip.Root>
+      </TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        sideOffset={6}
+        className="rounded-full bg-ink px-2.5 py-1 text-[12px] font-medium text-canvas"
+      >
+        {label}
+      </TooltipContent>
+    </Tooltip>
   );
 }
