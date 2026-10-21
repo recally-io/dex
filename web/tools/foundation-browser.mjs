@@ -256,10 +256,15 @@ try {
           });
         }
         if (name === "bot-settings" && size === "desktop") {
-          await overlayByKeyboard(
-            `${theme} bot create dialog`,
-            "document.querySelector('button[aria-label=\"Create bot\"]')",
-            `${theme}-bot-create-dialog-desktop.png`,
+          await evaluate("document.querySelector('button[aria-label=\"Create bot\"]')?.focus()");
+          await press("Enter", "Enter", 13, "\r");
+          await waitFor("bot create dialog open", () =>
+            evaluate("!!document.querySelector('[role=dialog]')"),
+          );
+          await capture(`${theme}-bot-create-dialog-desktop.png`);
+          await press("Escape", "Escape", 27);
+          await waitFor("bot create dialog closed", () =>
+            evaluate("!document.querySelector('[role=dialog]')"),
           );
           const modelTrigger = await evaluate(
             "[...document.querySelectorAll('button')].find((button) => button.textContent.includes('Change model')) !== undefined",
