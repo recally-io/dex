@@ -4,9 +4,14 @@ import { useEffect, useRef } from "react";
 import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
-import { listAgentsOptions, listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
+import {
+  getChatOptions,
+  listAgentsOptions,
+  listModelsOptions,
+} from "../api/generated/@tanstack/react-query.gen";
 import { agentModel, saveAgent, thinkingNames, type AgentModel } from "../lib/agent";
 import { instructionsDirty } from "../lib/instructions";
+import { sessionKind } from "../lib/tasks";
 import { useApp } from "../lib/app-state";
 import { MainTimeline } from "../routes/chat";
 import { ModelPicker } from "./model-picker";
@@ -108,9 +113,19 @@ function AgentView() {
 function AgentPane({ settings }: { settings: Settings }) {
   const agentId = useAgentId();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const segment = path.split("/").filter(Boolean)[2];
-  const current = tabs.find((tab) => tab.segments.includes(segment));
-  const onChat = current?.label === "Chat";
+  const [, , segment, chatSegment] = path.split("/").filter(Boolean);
+  const onMain = segment === undefined;
+  const openChat = segment === "c" ? Number(chatSegment) : 0;
+
+  // The chat page reads the same query, so this adds no request. A writable Chat belongs to the
+  // Chat tab, next to Main; task, automation and channel records stay under Sessions.
+  const chat = useQuery({
+    ...getChatOptions({ path: { agentId, chatId: openChat } }),
+    enabled: openChat > 0,
+  });
+
+  const webChat = chat.data ? sessionKind(chat.data) === "Chat" : false;
+  const current = webChat ? tabs[0] : tabs.find((tab) => tab.segments.includes(segment));
   const models = useQuery(listModelsOptions());
   const model = agentModel(settings.agent, models.data?.models);
   const { draft } = useApp();
@@ -119,8 +134,8 @@ function AgentPane({ settings }: { settings: Settings }) {
 
   const counts = new Map([["Automations", activity.automations]]);
 
-  // The other tabs have their own page title.
-  const Name = onChat ? "h1" : "span";
+  // The other pages have their own page title.
+  const Name = onMain ? "h1" : "span";
   const nav = useRef<HTMLElement>(null);
 
   const label = current?.label;
@@ -150,8 +165,8 @@ function AgentPane({ settings }: { settings: Settings }) {
           <MenuButton />
           <AgentAvatar agent={settings.agent} className="size-5 rounded-[6px] text-[11px]" />
           <Name
-            id={onChat ? "page-title" : undefined}
-            tabIndex={onChat ? -1 : undefined}
+            id={onMain ? "page-title" : undefined}
+            tabIndex={onMain ? -1 : undefined}
             className="max-w-[40%] shrink-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-ink outline-none sm:max-w-[200px]"
           >
             {settings.agent.name}
@@ -206,10 +221,10 @@ function AgentPane({ settings }: { settings: Settings }) {
           </nav>
           <ModelChips settings={settings} model={model} />
         </header>
-        <div inert={!onChat} className={cn("min-h-0 flex-1 flex-col", onChat ? "flex" : "hidden")}>
+        <div inert={!onMain} className={cn("min-h-0 flex-1 flex-col", onMain ? "flex" : "hidden")}>
           <MainTimeline settings={settings} />
         </div>
-        {!onChat ? <Outlet /> : null}
+        {!onMain ? <Outlet /> : null}
       </section>
     </InPaneContext.Provider>
   );

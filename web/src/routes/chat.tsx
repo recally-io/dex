@@ -7,7 +7,6 @@ import { IconArrowDown } from "@central-icons-react/round-outlined-radius-2-stro
 import { IconClock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconClock";
 import { IconLock } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconLock";
 import { IconPaperPlane } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconPaperPlane";
-import { IconBubble2 } from "@central-icons-react/round-outlined-radius-2-stroke-2/IconBubble2";
 import type { Attachment, UserItem, MessageInput, Chat as ChatInfo } from "../api/generated/types.gen";
 import {
   getHealthOptions,
@@ -24,7 +23,8 @@ import { refreshChats } from "../lib/queries";
 import { agentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
-import { activeSessionCount, taskTime } from "../lib/tasks";
+import { activeSessionCount, sessionKind, taskTime } from "../lib/tasks";
+import { ChatSwitcher } from "../components/chat-switcher";
 import { Composer } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
 import { RetryNotice, Transcript } from "../components/agent/transcript";
@@ -81,13 +81,6 @@ export function MainTimeline({ settings }: { settings: Settings }) {
 function OriginPill({ chat }: { chat: ChatInfo }) {
   const agentId = useAgentId();
 
-  if (chat.channel === "web" && !chat.main)
-    return (
-      <StatusPill dot={false} className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
-        <IconBubble2 size={11} /> Chat
-      </StatusPill>
-    );
-
   if (!["web", "automation"].includes(chat.channel))
     return (
       <StatusPill dot={false} className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
@@ -125,6 +118,8 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     useChatStream(chatId);
 
   const readOnly = chat.data?.readOnly ?? true;
+  const kind = chat.data ? sessionKind(chat.data) : undefined;
+  const switchable = kind === "Main" || kind === "Chat";
 
   const sessions = useQuery({
     ...listChatsOptions({ path: { agentId } }),
@@ -432,8 +427,19 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           embedded ? "min-h-0" : "lg:border-l lg:border-line",
         )}
       >
-        {/* The bot pane names the main timeline; a session names itself under the bot tabs. */}
-        {chat.data?.main ? null : (
+        {/* Writable chats switch through one menu; the bot pane title stays the page title on Main. */}
+        {chat.data && switchable ? (
+          <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line-soft px-3 sm:px-4">
+            {embedded ? null : <MenuButton />}
+            {chat.data.main ? (
+              <ChatSwitcher chatId={chatId} title="Main" />
+            ) : (
+              <h1 id="page-title" tabIndex={-1} className="flex min-w-0 outline-none">
+                <ChatSwitcher chatId={chatId} title={chat.data.title || "New chat"} />
+              </h1>
+            )}
+          </header>
+        ) : (
           <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4 lg:h-11">
             {embedded ? null : <MenuButton />}
             {chat.data ? (
