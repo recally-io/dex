@@ -3,9 +3,9 @@ version: "3"
 tasks:
   build:
     env:
-      MACOSX_DEPLOYMENT_TARGET: "12.0"
-      CGO_CFLAGS: "-mmacosx-version-min=12.0"
-      CGO_LDFLAGS: "-mmacosx-version-min=12.0"
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+      CGO_CFLAGS: "-mmacosx-version-min=13.0"
+      CGO_LDFLAGS: "-mmacosx-version-min=13.0"
     cmds:
       - mise run build:web
       - mkdir -p bin

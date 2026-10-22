@@ -25,6 +25,10 @@ const (
 	appIdentifier = "io.recally.dex"
 )
 
+// version is the release tag. The release build sets it with -X; the desktop module cannot
+// read the tag from its build info, because it builds dex from a replace directive.
+var version = "desktop-dev"
+
 type desktopCloser struct {
 	close func(context.Context) error
 	once  sync.Once
@@ -243,7 +247,7 @@ func startBackend(cfg service.Config) (string, *desktopCloser, error) {
 		App: app.Config{
 			DataDir: cfg.DataDir,
 			ToolEnv: app.ToolEnv(os.Environ()),
-			Version: "desktop-dev",
+			Version: version,
 		},
 	})
 	if err != nil {

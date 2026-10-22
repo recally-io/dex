@@ -20,6 +20,9 @@ for a tag such as `v0.1.0`. Use a permanent directory: the service runs dex from
 The command starts dex now and at login. Open <http://127.0.0.1:8787>.
 On the Providers page, add a provider. On the Agent page, choose a model.
 
+On macOS 13 or later, the release also has `Dex_<tag>_macos_universal.zip`, a
+desktop app. It is not notarized; see [Release](desktop/wails3/README.md#release).
+
 To build from source, run `mise install`, `mise run install`, and
 `mise run build`. The binary is `bin/dex`. See [Development](docs/dev/development.md).
 
