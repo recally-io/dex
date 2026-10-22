@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#MISE description="Package the universal macOS Dex.app as dist/desktop/Dex_<tag>_macos_universal.zip"
+#MISE depends=["build:web"]
+set -euo pipefail
+
+# Usage: mise run package:desktop v0.7.0
+tag="${1:?usage: mise run package:desktop <tag>}"
+# CFBundleShortVersionString accepts only numbers and dots, so drop the v and any prerelease suffix.
+bundle_version="${tag#v}"
+bundle_version="${bundle_version%%-*}"
+
+out=dist/desktop
+app="$out/Dex.app"
+rm -rf "$out"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+
+# Go 1.27 targets macOS 13; Info.plist LSMinimumSystemVersion must match.
+export CGO_ENABLED=1 MACOSX_DEPLOYMENT_TARGET=13.0
+export CGO_CFLAGS=-mmacosx-version-min=13.0 CGO_LDFLAGS=-mmacosx-version-min=13.0
+for arch in arm64 amd64; do
+	(cd desktop/wails3 && GOARCH="$arch" go build -trimpath -ldflags "-s -w -X main.version=$tag" -o "../../$out/Dex-$arch" .)
+done
+lipo -create -output "$app/Contents/MacOS/Dex" "$out/Dex-arm64" "$out/Dex-amd64"
+rm "$out/Dex-arm64" "$out/Dex-amd64"
+
+cp desktop/wails3/build/macos/Info.plist "$app/Contents/Info.plist"
+plutil -replace CFBundleShortVersionString -string "$bundle_version" "$app/Contents/Info.plist"
+plutil -replace CFBundleVersion -string "$bundle_version" "$app/Contents/Info.plist"
+
+# Ad-hoc signature only: the app is not notarized, so a downloaded copy needs `xattr -cr`.
+codesign --force --deep --sign - "$app"
+codesign --verify --deep --strict "$app"
+
+# ditto keeps the bundle's symlinks and extended attributes; zip does not.
+ditto -c -k --keepParent "$app" "$out/Dex_${tag}_macos_universal.zip"
+lipo -archs "$app/Contents/MacOS/Dex"

@@ -87,9 +87,45 @@ jobs:
           page="$(curl -fsS http://127.0.0.1:18787/)"
           grep -q '<div id="root">' <<<"$page"
 
+  desktop:
+    name: Dex.app
+    needs: goreleaser
+    # lipo joins the arm64 and amd64 builds into one universal app.
+    runs-on: macos-26
+    timeout-minutes: 20
+    # Only a token with write access can upload to a draft release.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.2.0
+        with:
+          install: true
+          cache: true
+      - run: mise run install
+      - run: mise run package:desktop "$GITHUB_REF_NAME"
+      - name: Smoke test
+        run: |
+          app=dist/desktop/Dex.app/Contents/MacOS/Dex
+          for arch in arm64 x86_64; do
+            data="$(mktemp -d)"
+            DEX_DATA_DIR="$data" arch "-$arch" "$app" >"$data/log" 2>&1 &
+            pid=$!
+            url=""
+            for _ in $(seq 100); do
+              url="$(grep -oE 'url=http://[0-9.:]+' "$data/log" | cut -d= -f2)" && [ -n "$url" ] && break
+              sleep 0.2
+            done
+            test "$(curl -fsS "$url/api/health" | jq -r .version)" = "$GITHUB_REF_NAME"
+            kill -9 "$pid"
+          done
+      - run: gh release upload "$GITHUB_REF_NAME" dist/desktop/Dex_*_macos_universal.zip --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   publish:
     name: Publish
-    needs: smoke
+    needs: [smoke, desktop]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

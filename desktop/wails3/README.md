@@ -26,6 +26,23 @@ The build runs `mise run build:web` first. It writes the macOS binary to
 applies an ad-hoc signature for local testing. The binary embeds the same
 `web/dist` assets through the Dex `web` package.
 
+## Release
+
+The release workflow runs `mise run package:desktop <tag>` from the repository
+root. The task builds arm64 and amd64 binaries, joins them with `lipo`, sets the
+bundle version from the tag, and writes
+`dist/desktop/Dex_<tag>_macos_universal.zip`. The workflow starts each slice,
+checks that `/api/health` reports the tag, and uploads the zip to the release.
+
+The app has an ad-hoc signature and is not notarized. macOS reports a
+downloaded copy as damaged. Run this once after you move it to Applications:
+
+```sh
+xattr -cr /Applications/Dex.app
+```
+
+Go 1.27 builds for macOS 13 or later, so the app requires macOS 13.
+
 ## Development
 
 ```sh
@@ -51,9 +68,8 @@ proxy. The proxy adds the stored service token to backend requests and rewrites
 the origin for Dex's same-origin write protection. The WebView does not receive
 the token and does not show the token sign-in flow.
 
-The first version does not add a second API contract. The next desktop work must
-verify loopback startup, SSE reconnects, token handling, app signing, and
-notarization before release.
+The first version does not add a second API contract. Developer ID signing and
+notarization are not done yet.
 
 ## Native macOS shell
 
