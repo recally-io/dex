@@ -40,12 +40,19 @@ function nextText(automation: Automation) {
 }
 
 function RunPill({ run, className = "" }: { run: AutomationRun; className?: string }) {
+  const outcome = run.status === "done" ? run.outcome : "";
+  const changed = outcome === "changed";
+  const failed = run.status === "failed" || outcome === "failed";
+
+  const label =
+    outcome === "unchanged" ? "No change" : changed ? "Changed" : failed ? "Failed" : runLabel[run.status];
+
   return (
     <Badge
-      variant={run.status === "failed" ? "destructive" : run.status === "done" ? "secondary" : "outline"}
-      className={`h-5 shrink-0 px-2 text-[11.5px] ${run.status === "done" ? "bg-green-tint text-green" : run.status === "running" ? "border-orange/30 bg-orange-tint text-orange" : ""} ${className}`}
+      variant={failed ? "destructive" : run.status === "done" ? "secondary" : "outline"}
+      className={`h-5 shrink-0 px-2 text-[11.5px] ${changed ? "bg-green-tint text-green" : run.status === "running" ? "border-orange/30 bg-orange-tint text-orange" : ""} ${className}`}
     >
-      {runLabel[run.status]}
+      {label}
     </Badge>
   );
 }
