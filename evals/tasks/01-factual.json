@@ -1,0 +1,9 @@
+{
+  "id": "01-factual",
+  "prompt": "What is the capital of Japan? Reply in one short sentence.",
+  "rubric": "Correct answer, concise, no tools needed.",
+  "contains": [
+    "Tokyo"
+  ],
+  "maxSpawn": 0
+}

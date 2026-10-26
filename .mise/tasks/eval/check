@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Check the opt-in eval runner without provider requests"
+#MISE depends=["build:web"]
+set -euo pipefail
+golangci-lint run --build-tags agenteval ./cmd/agent-eval/...
+go test -race -tags agenteval ./cmd/agent-eval/...

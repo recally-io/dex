@@ -1,0 +1,365 @@
+{
+  "model": "magpie/tokenflux/deepseek-flash",
+  "revision": "f7c3ad9b2afdafe418bfbca2125d0b9c82644a4d",
+  "at": "2026-10-26T07:42:50.630783Z",
+  "repetitions": 2,
+  "cost": "unavailable; tokens cover only turns with text in the HTTP transcript",
+  "results": [
+    {
+      "task": "01-factual",
+      "repetition": 1,
+      "rubric": "Correct answer, concise, no tools needed.",
+      "checks": [
+        { "name": "answer contains Tokyo", "pass": true },
+        { "name": "maximum spawns", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 1.9125681669999999,
+      "turns": 1,
+      "toolCalls": 0,
+      "spawns": 0,
+      "inputTokens": 3332,
+      "outputTokens": 7
+    },
+    {
+      "task": "01-factual",
+      "repetition": 2,
+      "rubric": "Correct answer, concise, no tools needed.",
+      "checks": [
+        { "name": "answer contains Tokyo", "pass": true },
+        { "name": "maximum spawns", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 1.8883463329999999,
+      "turns": 1,
+      "toolCalls": 0,
+      "spawns": 0,
+      "inputTokens": 3332,
+      "outputTokens": 7
+    },
+    {
+      "task": "02-code-change",
+      "repetition": 1,
+      "rubric": "Tests pass; independent review checks the actual change.",
+      "checks": [
+        { "name": "minimum spawns", "pass": true },
+        { "name": "fixture unchanged double_test.go", "pass": true },
+        { "name": "fixture unchanged go.mod", "pass": true },
+        { "name": "fixture test", "pass": true, "detail": "ok  \tevalfixture\t0.312s\n" },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 36.870224042,
+      "turns": 12,
+      "toolCalls": 11,
+      "spawns": 1,
+      "inputTokens": 9571,
+      "outputTokens": 2436
+    },
+    {
+      "task": "02-code-change",
+      "repetition": 2,
+      "rubric": "Tests pass; independent review checks the actual change.",
+      "checks": [
+        { "name": "minimum spawns", "pass": true },
+        { "name": "fixture unchanged double_test.go", "pass": true },
+        { "name": "fixture unchanged go.mod", "pass": true },
+        { "name": "fixture test", "pass": true, "detail": "ok  \tevalfixture\t0.304s\n" },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 60.71149475,
+      "turns": 16,
+      "toolCalls": 19,
+      "spawns": 1,
+      "inputTokens": 12323,
+      "outputTokens": 4579
+    },
+    {
+      "task": "03-multifile-fix",
+      "repetition": 1,
+      "rubric": "Reads multiple source files and fixes the boundary without changing tests.",
+      "checks": [
+        { "name": "minimum spawns", "pass": true },
+        { "name": "fixture unchanged go.mod", "pass": true },
+        { "name": "fixture unchanged total_test.go", "pass": true },
+        { "name": "fixture test", "pass": true, "detail": "ok  \tevalfixture\t0.373s\n" },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 42.882019791,
+      "turns": 20,
+      "toolCalls": 17,
+      "spawns": 2,
+      "inputTokens": 15507,
+      "outputTokens": 4062
+    },
+    {
+      "task": "03-multifile-fix",
+      "repetition": 2,
+      "rubric": "Reads multiple source files and fixes the boundary without changing tests.",
+      "checks": [
+        { "name": "minimum spawns", "pass": true },
+        { "name": "fixture unchanged total_test.go", "pass": true },
+        { "name": "fixture unchanged go.mod", "pass": true },
+        { "name": "fixture test", "pass": true, "detail": "ok  \tevalfixture\t0.302s\n" },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 47.555433417,
+      "turns": 14,
+      "toolCalls": 14,
+      "spawns": 1,
+      "inputTokens": 9422,
+      "outputTokens": 3672
+    },
+    {
+      "task": "04-document-summary",
+      "repetition": 1,
+      "rubric": "Combines both documents and distinguishes the decision from the unresolved risk.",
+      "checks": [
+        { "name": "answer contains 2027-01-15", "pass": true },
+        { "name": "answer contains read-only", "pass": true },
+        { "name": "answer contains latency", "pass": true },
+        { "name": "answer contains decision.md", "pass": true },
+        { "name": "answer contains risk.md", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 7.427174917,
+      "turns": 3,
+      "toolCalls": 2,
+      "spawns": 0,
+      "inputTokens": 3700,
+      "outputTokens": 277
+    },
+    {
+      "task": "04-document-summary",
+      "repetition": 2,
+      "rubric": "Combines both documents and distinguishes the decision from the unresolved risk.",
+      "checks": [
+        { "name": "answer contains 2027-01-15", "pass": true },
+        { "name": "answer contains read-only", "pass": true },
+        { "name": "answer contains latency", "pass": true },
+        { "name": "answer contains decision.md", "pass": true },
+        { "name": "answer contains risk.md", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 6.680822208,
+      "turns": 3,
+      "toolCalls": 2,
+      "spawns": 0,
+      "inputTokens": 3591,
+      "outputTokens": 239
+    },
+    {
+      "task": "05-long-command",
+      "repetition": 1,
+      "rubric": "Uses a task to contain large command output and returns the marker.",
+      "checks": [
+        { "name": "answer contains EVAL-LONG-7391", "pass": true },
+        { "name": "minimum spawns", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 14.036955708,
+      "turns": 7,
+      "toolCalls": 4,
+      "spawns": 1,
+      "inputTokens": 7575,
+      "outputTokens": 840
+    },
+    {
+      "task": "05-long-command",
+      "repetition": 2,
+      "rubric": "Uses a task to contain large command output and returns the marker.",
+      "checks": [
+        { "name": "answer contains EVAL-LONG-7391", "pass": true },
+        { "name": "minimum spawns", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 18.58231675,
+      "turns": 8,
+      "toolCalls": 5,
+      "spawns": 1,
+      "inputTokens": 8676,
+      "outputTokens": 1766
+    },
+    {
+      "task": "06-attachment",
+      "repetition": 1,
+      "rubric": "Uses the attachment rather than guessing.",
+      "checks": [
+        { "name": "answer contains ORCHID-6824", "pass": true },
+        { "name": "answer contains 37", "pass": true },
+        { "name": "tool read", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 4.1641535,
+      "turns": 2,
+      "toolCalls": 1,
+      "spawns": 0,
+      "inputTokens": 226,
+      "outputTokens": 27
+    },
+    {
+      "task": "06-attachment",
+      "repetition": 2,
+      "rubric": "Uses the attachment rather than guessing.",
+      "checks": [
+        { "name": "answer contains ORCHID-6824", "pass": true },
+        { "name": "answer contains 37", "pass": true },
+        { "name": "tool read", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 3.671240208,
+      "turns": 2,
+      "toolCalls": 1,
+      "spawns": 0,
+      "inputTokens": 222,
+      "outputTokens": 26
+    },
+    {
+      "task": "07-project-skill",
+      "repetition": 1,
+      "rubric": "Reads the project skill and follows its otherwise unknown format.",
+      "checks": [
+        { "name": "project skill read", "pass": true },
+        { "name": "maximum spawns", "pass": true },
+        { "name": "file label.txt", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 14.771059292,
+      "turns": 8,
+      "toolCalls": 7,
+      "spawns": 0,
+      "inputTokens": 3857,
+      "outputTokens": 554
+    },
+    {
+      "task": "07-project-skill",
+      "repetition": 2,
+      "rubric": "Reads the project skill and follows its otherwise unknown format.",
+      "checks": [
+        { "name": "project skill read", "pass": true },
+        { "name": "maximum spawns", "pass": true },
+        { "name": "file label.txt", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 12.216255167,
+      "turns": 6,
+      "toolCalls": 5,
+      "spawns": 0,
+      "inputTokens": 3565,
+      "outputTokens": 219
+    },
+    {
+      "task": "08-set-project",
+      "repetition": 1,
+      "rubric": "Persists the project with the tool and reads the new directory.",
+      "checks": [
+        { "name": "answer contains PROJECT-5832", "pass": true },
+        { "name": "tool set_project", "pass": true },
+        { "name": "tool read", "pass": true },
+        { "name": "maximum spawns", "pass": true },
+        { "name": "saved project", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 4.922942916,
+      "turns": 3,
+      "toolCalls": 2,
+      "spawns": 0,
+      "inputTokens": 126,
+      "outputTokens": 51
+    },
+    {
+      "task": "08-set-project",
+      "repetition": 2,
+      "rubric": "Persists the project with the tool and reads the new directory.",
+      "checks": [
+        { "name": "answer contains PROJECT-5832", "pass": true },
+        { "name": "tool set_project", "pass": true },
+        { "name": "tool read", "pass": true },
+        { "name": "maximum spawns", "pass": true },
+        { "name": "saved project", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 4.672395083,
+      "turns": 3,
+      "toolCalls": 2,
+      "spawns": 0,
+      "inputTokens": 3507,
+      "outputTokens": 136
+    },
+    {
+      "task": "09-parallel-work",
+      "repetition": 1,
+      "rubric": "Two independent tasks return correct counts.",
+      "checks": [
+        { "name": "answer contains alpha", "pass": true },
+        { "name": "answer contains beta", "pass": true },
+        { "name": "answer contains 3", "pass": true },
+        { "name": "answer contains 2", "pass": true },
+        { "name": "minimum spawns", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 23.845966792,
+      "turns": 15,
+      "toolCalls": 12,
+      "spawns": 2,
+      "inputTokens": 9763,
+      "outputTokens": 2795
+    },
+    {
+      "task": "09-parallel-work",
+      "repetition": 2,
+      "rubric": "Two independent tasks return correct counts.",
+      "checks": [
+        { "name": "answer contains alpha", "pass": true },
+        { "name": "answer contains beta", "pass": true },
+        { "name": "answer contains 3", "pass": true },
+        { "name": "answer contains 2", "pass": true },
+        { "name": "minimum spawns", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 20.073310083,
+      "turns": 12,
+      "toolCalls": 8,
+      "spawns": 2,
+      "inputTokens": 13788,
+      "outputTokens": 2507
+    },
+    {
+      "task": "10-independent-review",
+      "repetition": 1,
+      "rubric": "Independent review finds the zero-divisor panic and does not edit.",
+      "checks": [
+        { "name": "answer contains zero", "pass": true },
+        { "name": "minimum spawns", "pass": true },
+        { "name": "file calc.go", "pass": true },
+        { "name": "fixture unchanged go.mod", "pass": true },
+        { "name": "fixture unchanged calc_test.go", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 33.195667333,
+      "turns": 10,
+      "toolCalls": 10,
+      "spawns": 1,
+      "inputTokens": 9078,
+      "outputTokens": 2617
+    },
+    {
+      "task": "10-independent-review",
+      "repetition": 2,
+      "rubric": "Independent review finds the zero-divisor panic and does not edit.",
+      "checks": [
+        { "name": "answer contains zero", "pass": true },
+        { "name": "minimum spawns", "pass": true },
+        { "name": "file calc.go", "pass": true },
+        { "name": "fixture unchanged calc_test.go", "pass": true },
+        { "name": "fixture unchanged go.mod", "pass": true },
+        { "name": "completed", "pass": true }
+      ],
+      "seconds": 40.243826125,
+      "turns": 9,
+      "toolCalls": 8,
+      "spawns": 1,
+      "inputTokens": 10591,
+      "outputTokens": 2939
+    }
+  ]
+}

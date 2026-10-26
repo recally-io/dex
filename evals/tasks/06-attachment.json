@@ -1,0 +1,13 @@
+{
+  "id": "06-attachment",
+  "prompt": "Read the attached file. What is the shipment code and how many units are approved?",
+  "rubric": "Uses the attachment rather than guessing.",
+  "attachment": "Shipment code: ORCHID-6824. Approved quantity: 37 units. Rejected quantity: 9 units.\n",
+  "contains": [
+    "ORCHID-6824",
+    "37"
+  ],
+  "tools": [
+    "read"
+  ]
+}

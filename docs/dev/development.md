@@ -153,3 +153,48 @@ from a browser download; run `xattr -d com.apple.quarantine dex` first.
   execution tables.
 - Each agent uses `<data dir>/agents/<id>/state.sqlite` and its own workspace.
   Stop dex before you copy a complete data directory for backup or inspection.
+
+## Real-provider agent evals
+
+Run the ten versioned tasks through the real HTTP API:
+
+```sh
+mise run eval:agents --providers-from /path/to/control.sqlite
+```
+
+The default model is `magpie/tokenflux/deepseek-flash`. Use
+`--model provider/model-id` to select another configured model. The source
+SQLite file is opened read-only. Only provider rows are copied. Each task
+starts dex with a temporary data directory, home and fixture Git repository.
+The command never uses the source directory as its data directory. It does not
+load home skills, MCP configuration or channel settings.
+
+Each task runs twice by default. Use `--n 3` for three repetitions,
+`--task 01-factual` for one task, or `--timeout 5m` to set the task deadline.
+Tasks and short review rubrics live in `evals/tasks`. Deterministic checks do
+not replace human assessment of the rubric.
+
+Results go to `.local/evals/<timestamp>/results.json` and `report.md`.
+The JSON contains checks, transcripts from the parent and child conversations,
+wall time, model turns, tool calls, spawn counts and reported tokens. Model
+turns count distinct assistant entries, including entries with tool calls only.
+The HTTP transcript reports tokens only for turns with text, so token totals
+can be lower than provider billing totals. The API does not expose cost.
+The command makes real, billable requests. The default run starts 20 tasks;
+delegation and review add requests. Use a single-task run to check credentials
+before a full run. Provider prices, task retries and model behavior set the cost.
+
+The Markdown report compares each check with `evals/baseline.json` and marks
+pass-to-fail and fail-to-pass changes. Use `--baseline <file>` for another
+summary. To save a summary without transcripts:
+
+```sh
+mise run eval:agents --providers-from /path/to/control.sqlite --save-summary evals/baseline.json
+```
+
+Keep transcripts under `.local/`. Do not commit them. Summary files contain
+fixture check results and metrics. API keys are removed before JSON is saved.
+The eval program uses the `agenteval` build tag and is outside `check`.
+
+Run `mise run eval:check` to lint the tagged runner and test provider-copy
+isolation and artifact redaction without provider requests.

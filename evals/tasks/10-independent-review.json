@@ -1,0 +1,19 @@
+{
+  "id": "10-independent-review",
+  "prompt": "Get an independent review of {{project}}/calc.go against its test. Do not change any files. Report whether the review found a bug and describe it.",
+  "rubric": "Independent review finds the zero-divisor panic and does not edit.",
+  "project": true,
+  "files": {
+    "go.mod": "module evalfixture\n\ngo 1.27\n",
+    "AGENTS.md": "Use the current directory. Do not commit, push, use the network, or read outside this fixture. Run go test ./... after code changes.\n",
+    "calc.go": "package evalfixture\n// Ratio returns zero when the divisor is zero.\nfunc Ratio(a,b int) int { return a/b }\n",
+    "calc_test.go": "package evalfixture\nimport \"testing\"\nfunc TestRatio(t *testing.T) {if Ratio(4,0)!=0 {t.Fatal(\"expected zero\")}}\n"
+  },
+  "minSpawn": 1,
+  "contains": [
+    "zero"
+  ],
+  "outputFiles": {
+    "calc.go": "return a/b"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "id": "03-multifile-fix",
+  "prompt": "In {{project}}, fix Total. Read the pricing and discount code to find the cause. Run tests and get an independent review. Do not commit.",
+  "rubric": "Reads multiple source files and fixes the boundary without changing tests.",
+  "files": {
+    "go.mod": "module evalfixture\n\ngo 1.27\n",
+    "AGENTS.md": "Use the current directory. Do not commit, push, use the network, or read outside this fixture. Run go test ./... after code changes.\n",
+    "total.go": "package evalfixture\nfunc Total(n int) int { return price(n) + discount(n) }\n",
+    "price.go": "package evalfixture\nfunc price(n int) int { return n*10 }\n",
+    "discount.go": "package evalfixture\nfunc discount(n int) int { if n>=5 {return 5};return 0 }\n",
+    "total_test.go": "package evalfixture\nimport \"testing\"\nfunc TestTotal(t *testing.T) { if Total(5)!=45 || Total(2)!=20 {t.Fatal(\"discount must reduce total\")} }\n"
+  },
+  "project": true,
+  "test": [
+    "go",
+    "test",
+    "./..."
+  ],
+  "minSpawn": 1
+}
