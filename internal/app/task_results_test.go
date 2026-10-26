@@ -281,7 +281,7 @@ func releaseResultGate(t *testing.T, dir, name string) {
 
 func taskResultDB(t *testing.T, dir string) *sql.DB {
 	t.Helper()
-	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?mode=ro")
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}

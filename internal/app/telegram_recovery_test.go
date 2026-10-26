@@ -54,7 +54,7 @@ func TestUserCannotPairSecondTelegramOwner(t *testing.T) {
 		t.Fatalf("pairing status = %d: %s", status, raw)
 	}
 	// When an old valid code remains in storage after an owner was set.
-	conn, err := sql.Open("sqlite", filepath.Join(dir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}

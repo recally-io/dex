@@ -253,7 +253,7 @@ func connectWechat(t *testing.T, d *dex) {
 
 func wxConn(t *testing.T, dir string) *sql.DB {
 	t.Helper()
-	conn, err := sql.Open("sqlite", filepath.Join(dir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}
