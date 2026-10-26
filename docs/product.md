@@ -119,7 +119,16 @@ to read in an afternoon.
   failures recover without a settings change. Bot settings show runtime
   status. Saved Lark settings keep the Lark platform. Groups, threads and
   outbound media are not supported.
-- Timers: scheduled messages to an agent.
+- Timers: scheduled messages to an agent. In main or a writable Chat, the
+  owner can ask the agent to list, create, inspect, update, pause, resume, or
+  run a routine. The agent can read the 10 most recent run results and their
+  transcript references. These tools use the current bot; they cannot manage another bot's
+  routines. The tools require a user-input turn. Automation runs, background
+  tasks, dreams, and task-result continuations cannot use them.
+  A partial update keeps fields that the owner did not change. Creation uses
+  the current project directory unless the owner selects another directory.
+  Replaying one tool call does not create another routine, start another run,
+  or move the schedule again. There is no routine deletion tool.
 
 Inputs store their origin. Web input uses `web`. Channel input uses the exact
 peer, such as `telegram:7`. A background result keeps the origin of its source

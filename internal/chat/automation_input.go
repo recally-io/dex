@@ -23,6 +23,26 @@ func (s *Service) EnqueueAutomation(ctx context.Context, in AutomationInput) (in
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
+	convID, created, err := StoreAutomationInput(ctx, q, in)
+	if err != nil || !created {
+		return 0, false, err
+	}
+	if err = tx.Commit(); err != nil {
+		return 0, false, err
+	}
+	s.AutomationCommitted(convID)
+	return convID, true, nil
+}
+
+// AutomationCommitted publishes a committed automation input to execution and watchers.
+func (s *Service) AutomationCommitted(chatID int64) {
+	s.signal(chatID)
+	s.Wake()
+}
+
+// StoreAutomationInput stores a run and input in the caller's control transaction.
+// The caller must wake delivery after commit.
+func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInput) (int64, bool, error) {
 	created, err := q.CreateAutomationRun(ctx, in.Run)
 	if err != nil || created == 0 {
 		return 0, false, err
@@ -41,10 +61,5 @@ func (s *Service) EnqueueAutomation(ctx context.Context, in AutomationInput) (in
 	if inserted != 1 {
 		return 0, false, errors.New("automation run ID already has an input intent")
 	}
-	if err = tx.Commit(); err != nil {
-		return 0, false, err
-	}
-	s.signal(conv.ID)
-	s.Wake()
 	return conv.ID, true, nil
 }

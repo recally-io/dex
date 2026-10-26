@@ -1442,18 +1442,34 @@ func (q *Queries) RequestExecutionAbort(ctx context.Context, id int64) error {
 	return err
 }
 
-const setAutomationNextDue = `-- name: SetAutomationNextDue :exec
-UPDATE automations SET next_due_at = ? WHERE id = ?
+const setAutomationNextDue = `-- name: SetAutomationNextDue :execrows
+UPDATE automations SET next_due_at = ?1
+WHERE id = ?2 AND next_due_at = ?3 AND updated_at = ?4
+  AND schedule = ?5 AND time_zone = ?6 AND enabled = 1
 `
 
 type SetAutomationNextDueParams struct {
-	NextDueAt sql.NullInt64 `json:"next_due_at"`
-	ID        string        `json:"id"`
+	NextDueAt         sql.NullInt64 `json:"next_due_at"`
+	ID                string        `json:"id"`
+	ExpectedDueAt     sql.NullInt64 `json:"expected_due_at"`
+	ExpectedUpdatedAt int64         `json:"expected_updated_at"`
+	ExpectedSchedule  string        `json:"expected_schedule"`
+	ExpectedTimeZone  string        `json:"expected_time_zone"`
 }
 
-func (q *Queries) SetAutomationNextDue(ctx context.Context, arg SetAutomationNextDueParams) error {
-	_, err := q.db.ExecContext(ctx, setAutomationNextDue, arg.NextDueAt, arg.ID)
-	return err
+func (q *Queries) SetAutomationNextDue(ctx context.Context, arg SetAutomationNextDueParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setAutomationNextDue,
+		arg.NextDueAt,
+		arg.ID,
+		arg.ExpectedDueAt,
+		arg.ExpectedUpdatedAt,
+		arg.ExpectedSchedule,
+		arg.ExpectedTimeZone,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const setConversationCwd = `-- name: SetConversationCwd :exec

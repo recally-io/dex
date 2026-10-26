@@ -97,6 +97,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	var (
 		chats         *chat.Service
+		routineTools  *automation.ToolService
 		prefs         *settings.Service
 		agentsService *agent.Service
 		hub           *live.Hub
@@ -133,12 +134,31 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return engine.TaskInfo(t), err
 		},
 	}
-	native, err := engine.New(engine.Config{DataDir: cfg.DataDir, Home: cfg.Home, BaseEnv: cfg.ToolEnv, FakeModel: cfg.FakeModel, Tasks: tools})
+	routines := engine.RoutineTools{
+		List: func(ctx context.Context, c engine.TaskContext) ([]engine.RoutineInfo, error) {
+			return routineTools.List(ctx, c)
+		},
+		Get: func(ctx context.Context, c engine.TaskContext, id string) (engine.RoutineInfo, error) {
+			return routineTools.Get(ctx, c, id)
+		},
+		Create: func(ctx context.Context, c engine.TaskContext, p engine.RoutinePatch) (engine.RoutineInfo, error) {
+			return routineTools.Create(ctx, c, p)
+		},
+		Update: func(ctx context.Context, c engine.TaskContext, p engine.RoutinePatch) (engine.RoutineInfo, error) {
+			return routineTools.Update(ctx, c, p)
+		},
+		Run: func(ctx context.Context, c engine.TaskContext, id string) (engine.RoutineRun, error) {
+			return routineTools.Run(ctx, c, id)
+		},
+	}
+	native, err := engine.New(engine.Config{DataDir: cfg.DataDir, Home: cfg.Home, BaseEnv: cfg.ToolEnv, FakeModel: cfg.FakeModel, Tasks: tools, Routines: routines})
 	if err != nil {
 		cancel()
 		return nil, errors.Join(err, jobs.Close(), conn.Close())
 	}
 	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
+	automations := automation.New(q, chats, time.Now)
+	routineTools = automation.NewToolService(conn, automations, chats.AutomationCommitted)
 	hub = live.New(chats, native)
 	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
 	a := &App{db: conn, engine: native, bots: bots, jobs: jobs, cancel: cancel}
@@ -207,7 +227,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		token = stored
 	}
 
-	automations := automation.New(q, chats, time.Now)
 	a.handler = server.New(server.Config{
 		RuntimeReady: func(ctx context.Context) bool { return native.Health(ctx) == nil },
 		Engine:       native,

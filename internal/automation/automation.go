@@ -291,7 +291,7 @@ func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, er
 		}
 		first := time.UnixMilli(row.NextDueAt.Int64)
 		// The times after the next one; a time that passed while dex did not run shows as is.
-		a.NextRuns = append([]int64{first.UnixMilli()}, millis(a.Schedule.upcoming(first, time.UnixMilli(row.UpdatedAt), loc, 2))...)
+		a.NextRuns = append([]int64{first.UnixMilli()}, millis(a.Schedule.upcoming(first, first, loc, 2))...)
 	}
 	runs, err := s.Runs(ctx, row.AgentID, row.ID, 1)
 	if err != nil {
@@ -370,7 +370,8 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 	if err != nil {
 		return err
 	}
-	anchor := time.UnixMilli(row.UpdatedAt)
+	// A saved due time is an aligned interval anchor, even after a metadata edit.
+	anchor := time.UnixMilli(row.NextDueAt.Int64)
 	latest := sched.latest(time.UnixMilli(row.NextDueAt.Int64), now, anchor, loc)
 	var skip string
 	if now.Sub(latest) > grace {
@@ -383,8 +384,11 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 		return err
 	}
 	next, ok := sched.next(now, anchor, loc)
-	err = s.q.SetAutomationNextDue(ctx, sqlc.SetAutomationNextDueParams{
+	// A concurrent schedule edit owns its new cursor.
+	_, err = s.q.SetAutomationNextDue(ctx, sqlc.SetAutomationNextDueParams{
 		NextDueAt: sql.NullInt64{Int64: next.UnixMilli(), Valid: ok}, ID: row.ID,
+		ExpectedDueAt: row.NextDueAt, ExpectedUpdatedAt: row.UpdatedAt,
+		ExpectedSchedule: row.Schedule, ExpectedTimeZone: row.TimeZone,
 	})
 	if err != nil {
 		return err

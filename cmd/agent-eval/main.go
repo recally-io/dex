@@ -36,20 +36,21 @@ import (
 )
 
 type task struct {
-	MaxMainToolOutputBytes *int              `json:"maxMainToolOutputBytes"`
-	ID                     string            `json:"id"`
-	Prompt                 string            `json:"prompt"`
-	Rubric                 string            `json:"rubric"`
-	Files                  map[string]string `json:"files"`
-	Project                bool              `json:"project"`
-	Attachment             string            `json:"attachment"`
-	Contains               []string          `json:"contains"`
-	Tools                  []string          `json:"tools"`
-	Skill                  string            `json:"skill"`
-	MinSpawn               int               `json:"minSpawn"`
-	MaxSpawn               *int              `json:"maxSpawn"`
-	OutputFiles            map[string]string `json:"outputFiles"`
-	Test                   []string          `json:"test"`
+	Routine                *routineExpectation `json:"routine,omitempty"`
+	MaxMainToolOutputBytes *int                `json:"maxMainToolOutputBytes"`
+	ID                     string              `json:"id"`
+	Prompt                 string              `json:"prompt"`
+	Rubric                 string              `json:"rubric"`
+	Files                  map[string]string   `json:"files"`
+	Project                bool                `json:"project"`
+	Attachment             string              `json:"attachment"`
+	Contains               []string            `json:"contains"`
+	Tools                  []string            `json:"tools"`
+	Skill                  string              `json:"skill"`
+	MinSpawn               int                 `json:"minSpawn"`
+	MaxSpawn               *int                `json:"maxSpawn"`
+	OutputFiles            map[string]string   `json:"outputFiles"`
+	Test                   []string            `json:"test"`
 }
 type check struct {
 	Name   string `json:"name"`
@@ -57,6 +58,7 @@ type check struct {
 	Detail string `json:"detail,omitempty"`
 }
 type result struct {
+	Routines            []routineState          `json:"routines,omitempty"`
 	MainToolOutputBytes int                     `json:"mainToolOutputBytes"`
 	Task                string                  `json:"task"`
 	Repetition          int                     `json:"repetition"`
@@ -216,7 +218,13 @@ func run(ctx context.Context, t task, repetition int, model string, rows []sqlc.
 	}()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	fail := func(err error) { r.Error = err.Error() }
+	fail := func(err error) {
+		if r.Error == "" {
+			r.Error = err.Error()
+		} else {
+			r.Error = errors.Join(errors.New(r.Error), err).Error()
+		}
+	}
 	root, err := os.MkdirTemp("", "dex-eval-")
 	if err != nil {
 		fail(err)
@@ -311,34 +319,10 @@ func run(ctx context.Context, t task, repetition int, model string, rows []sqlc.
 		fail(err)
 		return
 	}
-	ids := []int64{ch.ID}
-	for {
-		var all struct {
-			Chats []chat `json:"chats"`
-		}
-		if err = c.request("GET", "/api/agents/default/chats", nil, &all); err != nil {
-			fail(err)
-			break
-		}
-		busy := false
-		for _, v := range all.Chats {
-			if v.ID == ch.ID || (v.Task != nil && v.Task.Parent == ch.ID) {
-				if !slices.Contains(ids, v.ID) {
-					ids = append(ids, v.ID)
-				}
-				busy = busy || v.Busy || (v.Task != nil && (v.Task.Status == "queued" || v.Task.Status == "running"))
-			}
-		}
-		if !busy {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			fail(ctx.Err())
-		case <-time.After(250 * time.Millisecond):
-			continue
-		}
-		break
+	ids, states, err := c.waitForWork(ch.ID, t.Routine != nil)
+	r.Routines = states
+	if err != nil {
+		fail(err)
 	}
 	if ctx.Err() != nil {
 		recovery, stop := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
@@ -403,6 +387,13 @@ func run(ctx context.Context, t task, repetition int, model string, rows []sqlc.
 			case "error":
 				r.Checks = append(r.Checks, check{Name: "no execution error", Pass: false, Detail: item.Reason})
 			}
+		}
+	}
+	if t.Routine != nil {
+		checks, err := c.checkRoutine(*t.Routine, r.Routines, project, answer.String())
+		r.Checks = append(r.Checks, checks...)
+		if err != nil {
+			fail(err)
 		}
 	}
 	r.Turns = len(turnIDs)

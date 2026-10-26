@@ -112,6 +112,15 @@ type Provider struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
+type RoutineToolOperation struct {
+	Key             string `json:"key"`
+	AgentID         string `json:"agent_id"`
+	ConversationID  int64  `json:"conversation_id"`
+	SourceRequestID string `json:"source_request_id"`
+	Action          string `json:"action"`
+	Result          string `json:"result"`
+}
+
 type Submission struct {
 	ID             string         `json:"id"`
 	ConversationID int64          `json:"conversation_id"`

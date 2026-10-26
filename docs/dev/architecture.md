@@ -307,6 +307,25 @@ or separate worktrees for tasks that change the same repository.
 
 ## Automations
 
+Main and writable Chat conversations have five routine tools:
+`list_routines`, `get_routine`, `create_routine`, `update_routine`, and
+`run_routine`. Typed engine callbacks call the automation service. The model
+cannot select another bot. Business validation checks the calling execution
+and input before it exposes routine data or changes. Automation, task, and
+dream conversations cannot use these tools.
+
+Updates are partial. An enabled-only update pauses or resumes a routine
+without replacing its prompt or project directory. Creation inherits the
+calling conversation's project when `cwd` is omitted. A run result includes
+its chat ID so the agent can link to the saved transcript. The tools do not
+provide deletion.
+
+Each mutating tool call uses its bot ID and native tool task ID as a stable
+operation key. The control database commits its operation receipt with the
+routine change or run input. Replay returns the saved result. It does not
+repeat the write or advance the schedule. A new mutation requires an active
+user input; a saved receipt can still be read after that input settles.
+
 An automation runs a prompt on a schedule; see
 [ADR 0005](decisions/0005-automations.md).
 [`automation.Service`](../../internal/automation/automation.go) stores
