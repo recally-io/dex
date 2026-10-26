@@ -20,6 +20,7 @@ type ModelRef struct {
 	ModelID  string `json:"modelId"`
 }
 type Options struct {
+	Cwd           string
 	Model         ModelRef
 	ThinkingLevel string
 	Instructions  string

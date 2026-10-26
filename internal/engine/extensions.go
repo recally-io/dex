@@ -402,6 +402,13 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 		errs := []string{}
 		return skillsText(a.skills(cwd, &errs)), nil
 	}}}
+	loaded.Extension.Sections = append(loaded.Extension.Sections, &durable.PromptSection{Key: "project", Render: func(_ context.Context, input durable.PromptInput) (*string, error) {
+		cwd := a.workspace
+		if input.Env != nil {
+			cwd = input.Env.Cwd()
+		}
+		return new(fmt.Sprintf("Current project directory: %q. Only Chat sessions can call set_project to change or clear the project directory.", cwd)), nil
+	}})
 	names := map[string]bool{}
 	for index, entry := range s.servers {
 		if ctx.Err() != nil {

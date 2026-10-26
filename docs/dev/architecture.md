@@ -226,9 +226,23 @@ Narrower levels win. Paths are fixed before `.env` is read. Equal real paths
 are read once as the narrower level. See [ADR 0010](decisions/0010-extension-levels.md).
 Skills have a fourth, narrowest level: `.agents/skills` under the
 conversation's cwd. The skills prompt section reads that cwd from the request's
-execution environment, so it follows the conversation; dex does not set a
-conversation cwd yet, so it is the agent workspace. The Extensions API reads the
-workspace. Each level is walked like Pi's skill loader: a directory with
+execution environment, so it follows the conversation. Chat sessions store
+their `cwd` in `control.sqlite`. Empty uses the agent workspace. Every submit sets or clears the native cwd from that row. Tasks
+copy the parent's cwd when they are created. The `project` prompt section
+states the current execution directory.
+
+`PUT /api/agents/{agentId}/chats/{chatId}/project` changes the cwd for the
+next message. Only `chat:` conversations can set it. The API and `set_project`
+tool share one path validator: trim, expand `~` or `~/`, require an existing
+absolute directory, and clean the path. Empty clears the override.
+The foreground tool writes control state before it commits native
+`harness.Configure`, so later tools in the same run use the new directory.
+Replay writes the same value. Main and automation have the tool but return
+an error. Tasks and dreams do not have it. The Chat header refetches on tool
+completion and run completion. For a project cwd, native input uses absolute
+upload paths. The transcript keeps workspace-relative upload paths.
+
+The Extensions API reads the agent workspace. Each level is walked like Pi's skill loader: a directory with
 `SKILL.md` is one skill and the walk stops there; hidden directories and
 `node_modules` are skipped; symlinked directories are read once. The front matter
 `name` wins over the directory name. A second skill with the same name in one
@@ -857,7 +871,7 @@ the saved context token before each send, including after a restart.
 ## Security
 
 Agent tools (`read`, `write`, `edit`, `bash`) run on the host without a
-sandbox, inside the agent workspace. The HTTP server listens on
+sandbox, inside the selected project directory or the agent workspace. The HTTP server listens on
 `127.0.0.1:8787` by default. On loopback without DEX_TOKEN it has no
 authentication. On any other host, or with DEX_TOKEN, every `/api/` request
 needs the access token ([ADR 0007](decisions/0007-network-access-token.md)).

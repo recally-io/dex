@@ -617,7 +617,10 @@ type Chat struct {
 	// Channel External channel chats are read-only in the web UI.
 	Channel   ChatChannel `json:"channel"`
 	CreatedAt int64       `json:"createdAt"`
-	Id        int64       `json:"id"`
+
+	// Cwd The saved project directory. Empty means the agent workspace.
+	Cwd string `json:"cwd"`
+	Id  int64  `json:"id"`
 
 	// Main This is the agent's main timeline.
 	Main bool `json:"main"`
@@ -1125,6 +1128,11 @@ type GetChatHistoryParams struct {
 	Limit  *int  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// SetChatProjectJSONBody defines parameters for SetChatProject.
+type SetChatProjectJSONBody struct {
+	Cwd string `json:"cwd"`
+}
+
 // DeleteExtensionEnvParams defines parameters for DeleteExtensionEnv.
 type DeleteExtensionEnvParams struct {
 	Scope DeleteExtensionEnvParamsScope `form:"scope" json:"scope"`
@@ -1181,6 +1189,9 @@ type ClearContextJSONRequestBody ClearContextJSONBody
 
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = MessageInput
+
+// SetChatProjectJSONRequestBody defines body for SetChatProject for application/json ContentType.
+type SetChatProjectJSONRequestBody SetChatProjectJSONBody
 
 // SetChatSettingsJSONRequestBody defines body for SetChatSettings for application/json ContentType.
 type SetChatSettingsJSONRequestBody = ChatSettings
@@ -1758,6 +1769,9 @@ type ServerInterface interface {
 
 	// (POST /api/agents/{agentId}/chats/{chatId}/messages)
 	SendMessage(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
+	// (PUT /api/agents/{agentId}/chats/{chatId}/project)
+	SetChatProject(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
 	// (PUT /api/agents/{agentId}/chats/{chatId}/settings)
 	SetChatSettings(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
@@ -2835,6 +2849,41 @@ func (siw *ServerInterfaceWrapper) SendMessage(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// SetChatProject operation middleware
+func (siw *ServerInterfaceWrapper) SetChatProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetChatProject(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetChatSettings operation middleware
 func (siw *ServerInterfaceWrapper) SetChatSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -3401,6 +3450,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}", wrapper.GetChat)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/archive", wrapper.UnarchiveChat)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/archive", wrapper.ArchiveChat)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/project", wrapper.SetChatProject)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/settings", wrapper.SetChatSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/messages", wrapper.SendMessage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/clear", wrapper.ClearContext)
@@ -5294,6 +5344,89 @@ func (response SendMessagedefaultJSONResponse) VisitSendMessageResponse(w http.R
 	return err
 }
 
+type SetChatProjectRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  ChatId `json:"chatId"`
+	Body    *SetChatProjectJSONRequestBody
+}
+
+type SetChatProjectResponseObject interface {
+	VisitSetChatProjectResponse(w http.ResponseWriter) error
+}
+
+type SetChatProject200JSONResponse Chat
+
+func (response SetChatProject200JSONResponse) VisitSetChatProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatProject400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SetChatProject400JSONResponse) VisitSetChatProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatProject403JSONResponse Error
+
+func (response SetChatProject403JSONResponse) VisitSetChatProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatProject404JSONResponse Error
+
+func (response SetChatProject404JSONResponse) VisitSetChatProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatProjectdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetChatProjectdefaultJSONResponse) VisitSetChatProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SetChatSettingsRequestObject struct {
 	AgentId string `json:"agentId"`
 	ChatId  ChatId `json:"chatId"`
@@ -6363,6 +6496,9 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/chats/{chatId}/messages)
 	SendMessage(ctx context.Context, request SendMessageRequestObject) (SendMessageResponseObject, error)
 
+	// (PUT /api/agents/{agentId}/chats/{chatId}/project)
+	SetChatProject(ctx context.Context, request SetChatProjectRequestObject) (SetChatProjectResponseObject, error)
+
 	// (PUT /api/agents/{agentId}/chats/{chatId}/settings)
 	SetChatSettings(ctx context.Context, request SetChatSettingsRequestObject) (SetChatSettingsResponseObject, error)
 
@@ -7422,6 +7558,40 @@ func (sh *strictHandler) SendMessage(w http.ResponseWriter, r *http.Request, age
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SendMessageResponseObject); ok {
 		if err := validResponse.VisitSendMessageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetChatProject operation middleware
+func (sh *strictHandler) SetChatProject(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
+	var request SetChatProjectRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+
+	var body SetChatProjectJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetChatProject(ctx, request.(SetChatProjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetChatProject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetChatProjectResponseObject); ok {
+		if err := validResponse.VisitSetChatProjectResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

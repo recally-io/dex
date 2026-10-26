@@ -103,6 +103,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		bots          *channelRegistry
 	)
 	tools := engine.TaskTools{
+		SetProject: func(ctx context.Context, c engine.TaskContext, path string) (string, error) {
+			return chats.ToolSetProject(ctx, c, path)
+		},
 		Spawn: func(ctx context.Context, c engine.TaskContext, args engine.SpawnTaskArgs) (engine.TaskInfo, error) {
 			t, err := chats.SpawnTask(ctx, c, args)
 			return engine.TaskInfo(t), err

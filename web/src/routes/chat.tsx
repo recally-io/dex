@@ -21,6 +21,7 @@ import { agentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
 import { activeSessionCount, sessionKind, taskTime } from "../lib/tasks";
+import { ChatProject } from "../components/chat-project";
 import { Composer } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
 import { RetryNotice, Transcript } from "../components/agent/transcript";
@@ -426,9 +427,14 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
             title for focus and screen readers. */}
         {chat.data && switchable ? (
           chat.data.main ? null : (
-            <h1 id="page-title" tabIndex={-1} className="sr-only">
-              {chat.data.title || "New chat"}
-            </h1>
+            <header className="flex min-w-0 items-center justify-between gap-3 border-b border-border px-4 py-2">
+              <h1 id="page-title" tabIndex={-1} className="truncate text-sm font-medium">
+                {chat.data.title || "New chat"}
+              </h1>
+              <div className="min-w-0 max-w-1/2">
+                <ChatProject chatId={chatId} cwd={chat.data.cwd} />
+              </div>
+            </header>
           )
         ) : (
           <PageHeader

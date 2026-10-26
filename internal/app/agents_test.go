@@ -8,6 +8,7 @@ import (
 	"maps"
 	"mime/multipart"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -75,7 +76,8 @@ func TestUserCreatesAndValidatesAgents(t *testing.T) {
 
 func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
 	// Given two agents whose first execution conversations can have the same ID.
-	d := startDex(t, t.TempDir(), "")
+	dataDir := t.TempDir()
+	d := startDex(t, dataDir, "")
 	d.setModel(t, "echo")
 	var b apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "B", "provider": "faux", "modelId": "shout", "thinkingLevel": "off"}, &b, http.StatusCreated)
@@ -162,7 +164,7 @@ func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
 	}
 	d.must(t, http.MethodGet, aBase+"/uploads/"+uploaded.ID, nil, nil, http.StatusNotFound)
 	d.must(t, http.MethodPost, bPath+"/messages", map[string]any{"id": uuid.NewV7().String(), "text": "B attachment", "attachments": []string{uploaded.ID}}, nil, http.StatusAccepted)
-	bWatch.until(t, "B attachment answer", answered("shout: B attachment\n\nAttached files:\n- "+uploaded.Path))
+	bWatch.until(t, "B attachment answer", answered("shout: B attachment\n\nAttached files:\n- "+filepath.Join(dataDir, "agents", b.ID, "workspace", uploaded.Path)))
 	if !slices.ContainsFunc(bWatch.tr.items, func(i item) bool { return len(i.Attachments) == 1 && i.Attachments[0].ID == uploaded.ID }) {
 		t.Fatalf("missing attachment: %+v", bWatch.tr.items)
 	}

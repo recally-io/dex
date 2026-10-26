@@ -45,12 +45,13 @@ type TaskInfo struct {
 	Report        string `json:"report"`
 }
 
-// TaskTools connects the four tools directly to the application services.
+// TaskTools connects foreground tools to the application services.
 type TaskTools struct {
-	Spawn  func(context.Context, TaskContext, SpawnTaskArgs) (TaskInfo, error)
-	List   func(context.Context, TaskContext) ([]TaskInfo, error)
-	Get    func(context.Context, TaskContext, string) (TaskInfo, error)
-	Cancel func(context.Context, TaskContext, string) (TaskInfo, error)
+	SetProject func(context.Context, TaskContext, string) (string, error)
+	Spawn      func(context.Context, TaskContext, SpawnTaskArgs) (TaskInfo, error)
+	List       func(context.Context, TaskContext) ([]TaskInfo, error)
+	Get        func(context.Context, TaskContext, string) (TaskInfo, error)
+	Cancel     func(context.Context, TaskContext, string) (TaskInfo, error)
 }
 
 func codingSkill() *durable.Extension {
@@ -137,6 +138,44 @@ func taskExtension(agentID string, handlers TaskTools) *durable.Extension {
 			return action.call(ctx, source, args.ID)
 		}))
 	}
+	tools = append(tools, &durable.ToolRegistration{
+		Name: "set_project", Description: "Set the project directory for this Chat session. Use an absolute path, or an empty path to restore the agent workspace. Only Chat sessions can change it.",
+		Parameters: map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}}, "required": []string{"path"}, "additionalProperties": false},
+		Replay:     durable.ReplaySafe,
+		Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+			if handlers.SetProject == nil {
+				return durable.ToolExecutionResult{}, errors.New("project service is unavailable")
+			}
+			args, err := durable.FromJsonValue[struct {
+				Path string `json:"path"`
+			}](raw)
+			if err != nil {
+				return durable.ToolExecutionResult{}, err
+			}
+			requestID, err := taskSource(ctx, api)
+			if err != nil {
+				return durable.ToolExecutionResult{}, err
+			}
+			path, err := handlers.SetProject(ctx, TaskContext{AgentID: agentID, ConversationID: int64(api.ConversationId()), SourceRequestID: requestID}, args.Path)
+			if err != nil {
+				return durable.ToolExecutionResult{}, err
+			}
+			change := harness.AgentChange{Cwd: harness.Cleared[string]()}
+			if path != "" {
+				change.Cwd = harness.SetTo(path)
+			}
+			if _, err := api.Commit(ctx, func(tx durable.Tx) (any, error) {
+				return nil, harness.Configure(tx, api.ConversationId(), change)
+			}); err != nil {
+				return durable.ToolExecutionResult{}, err
+			}
+			data, err := json.Marshal(path)
+			if err != nil {
+				return durable.ToolExecutionResult{}, err
+			}
+			return durable.ToolExecutionResult{Output: []ai.ToolResultMessageContent{ai.TextContent{Text: string(data)}}}, nil
+		},
+	})
 	return &durable.Extension{Name: "tasks", Tools: tools, Sections: []*durable.PromptSection{
 		harness.Section("task-rules", func(context.Context, durable.PromptInput) (*string, error) { return new(taskRules), nil }, harness.SectionOptions{Tag: new(false)}),
 	}}

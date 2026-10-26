@@ -33,6 +33,7 @@ async function request(path, options) {
   assert.ok(response.ok, `${options?.method ?? "GET"} ${path}: ${response.status} ${body}`);
   return body ? JSON.parse(body) : null;
 }
+let projectChat;
 async function seed() {
   await request("/api/settings/providers/foundation", {
     method: "PUT",
@@ -74,6 +75,7 @@ async function seed() {
       method: "POST",
       body: JSON.stringify({ id: crypto.randomUUID(), text: `sidebar seed chat ${index + 1}` }),
     });
+    if (index === 1) projectChat = session.id;
     if (index === 0)
       await request(`/api/agents/default/chats/${session.id}/archive`, { method: "PUT", body: "{}" });
   }
@@ -161,6 +163,68 @@ async function typeText(value) {
       );
   }
 }
+async function projectEvidence(theme) {
+  const trigger = `document.querySelector('button[aria-label="Set project directory"]')`;
+  // The same harness also captures the base revision, which has no project control.
+  if (!(await evaluate(`!!${trigger}`))) return { available: false };
+  const project = join(isolated, "project");
+  const toolProject = join(isolated, "tool-project");
+  await mkdir(project, { recursive: true });
+  await mkdir(toolProject, { recursive: true });
+  await evaluate(`${trigger}.click()`);
+  await waitFor("project dialog", () => evaluate("!!document.querySelector('[role=dialog]')"));
+  async function fill(value) {
+    await evaluate(
+      "document.querySelector('[role=dialog] input').focus(); document.querySelector('[role=dialog] input').select()",
+    );
+    await call("Input.insertText", { text: value });
+  }
+  async function click(label) {
+    await evaluate(
+      `[...document.querySelectorAll('[role=dialog] button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}).click()`,
+    );
+  }
+  await fill("relative/project");
+  await click("Save");
+  await waitFor("project validation error", () =>
+    evaluate(`document.querySelector('[role=alert]')?.textContent.includes('path must be absolute')`),
+  );
+  await capture(`${theme}-chat-project-error.png`);
+  await fill(project);
+  await click("Save");
+  await waitFor("project saved", () =>
+    evaluate(`${trigger}?.title === ${JSON.stringify(project)} && !document.querySelector('[role=dialog]')`),
+  );
+  await capture(`${theme}-chat-project-selected.png`);
+  // The tool writes control state. Its completion must update the header without navigation.
+  const agent = await request("/api/agents/default");
+  await request("/api/agents/default", {
+    method: "PUT",
+    body: JSON.stringify({ ...agent, provider: "faux", modelId: "tool" }),
+  });
+  await request(`/api/agents/default/chats/${projectChat}/messages`, {
+    method: "POST",
+    body: JSON.stringify({
+      id: crypto.randomUUID(),
+      text: `set_project ${JSON.stringify({ path: toolProject })}`,
+    }),
+  });
+  await waitFor("tool project header refresh", () =>
+    evaluate(`${trigger}?.title === ${JSON.stringify(toolProject)}`),
+  );
+  await capture(`${theme}-chat-project-tool-refreshed.png`);
+  await evaluate(`${trigger}.click()`);
+  await waitFor("project dialog reopens", () => evaluate("!!document.querySelector('[role=dialog]')"));
+  await click("Clear project");
+  await waitFor("project cleared", () =>
+    evaluate(`${trigger}?.textContent.trim() === 'No project' && !document.querySelector('[role=dialog]')`),
+  );
+  await request("/api/agents/default", {
+    method: "PUT",
+    body: JSON.stringify({ ...agent, provider: "faux", modelId: "bash" }),
+  });
+  return { available: true, validation: true, saved: true, toolRefresh: true, cleared: true };
+}
 async function composerEvidence(theme) {
   const chatsToggle = `document.querySelector('button[aria-label="Chats"]')`;
   await waitFor("Chats toggle", () => evaluate(`!!${chatsToggle}`));
@@ -243,6 +307,8 @@ try {
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-background-networking",
+      // Each scenario navigates to a new document. Cached documents must not keep SSE sockets.
+      "--disable-features=BackForwardCache",
       "--remote-debugging-port=0",
       `--user-data-dir=${profile}`,
       "about:blank",
@@ -284,6 +350,7 @@ try {
   await seed();
   const pages = [
     ["chat", "/a/default"],
+    ["chat-session", `/a/default/c/${projectChat}`],
     ["sessions", "/a/default/sessions"],
     ["bot-settings", "/a/default/agent"],
     ["providers", "/providers"],
@@ -320,6 +387,12 @@ try {
           (await call("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }))
             .result?.value ?? "";
         results.push({ theme, page: name, size, path, textLength: text.length });
+        if (name === "chat-session" && size === "desktop") {
+          await waitFor("chat session ready", () =>
+            evaluate("!!document.querySelector('textarea[aria-label^=Message]')"),
+          );
+          results.push({ theme, page: "chat-project-interactions", ...(await projectEvidence(theme)) });
+        }
         if (name === "chat" && size === "desktop") {
           results.push({ theme, page: "chat-interactions", size, path, ...(await composerEvidence(theme)) });
         }
@@ -417,6 +490,7 @@ try {
       }
   await writeFile(join(output, "result.json"), JSON.stringify({ base, results }, null, 2));
 } catch (error) {
+  if (socket?.readyState === WebSocket.OPEN) await capture("failure.png");
   results.push({ error: String(error) });
   await writeFile(join(output, "result.json"), JSON.stringify({ base, results }, null, 2));
   throw error;

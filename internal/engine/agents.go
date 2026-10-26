@@ -336,7 +336,10 @@ func (a *Agents) conversation(ctx context.Context, ref Ref) (harness.Conversatio
 }
 
 func agentChange(options Options) harness.AgentChange {
-	change := harness.AgentChange{Model: harness.SetTo(durable.ModelRef{Provider: options.Model.Provider, ModelId: options.Model.ModelID}), ThinkingLevel: harness.SetTo(ai.ModelThinkingLevel(options.ThinkingLevel)), Instructions: harness.Cleared[string]()}
+	change := harness.AgentChange{Model: harness.SetTo(durable.ModelRef{Provider: options.Model.Provider, ModelId: options.Model.ModelID}), ThinkingLevel: harness.SetTo(ai.ModelThinkingLevel(options.ThinkingLevel)), Instructions: harness.Cleared[string](), Cwd: harness.Cleared[string]()}
+	if options.Cwd != "" {
+		change.Cwd = harness.SetTo(options.Cwd)
+	}
 	if options.Instructions != "" {
 		change.Instructions = harness.SetTo(options.Instructions)
 	}

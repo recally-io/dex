@@ -74,6 +74,7 @@ type Conversation struct {
 	ThinkingLevel string        `json:"thinking_level"`
 	AbortPending  int64         `json:"abort_pending"`
 	ArchivedAt    sql.NullInt64 `json:"archived_at"`
+	Cwd           string        `json:"cwd"`
 }
 
 type Dream struct {

@@ -30,6 +30,7 @@ type Reply struct {
 
 // Chat is one conversation on one channel.
 type Chat struct {
+	Cwd        string
 	ID         int64
 	ChannelKey string
 	Title      string
@@ -365,7 +366,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 	chats := make([]Chat, len(rows))
 	for i, r := range rows {
 		chats[i] = Chat{
-			ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+			Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 			Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 		}
 	}
@@ -382,7 +383,7 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 		return Chat{}, err
 	}
 	return Chat{
-		ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 		ExecutionID: r.ExecutionID.Int64,
 	}, nil
@@ -401,7 +402,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if err != nil {
 		return err
 	}
-	options := engine.Options{Model: engine.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel), Instructions: agent.Instructions}
+	options := engine.Options{Cwd: conv.Cwd, Model: engine.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel), Instructions: agent.Instructions}
 	if conv.ModelID != "" {
 		options.Model = engine.ModelRef{Provider: conv.ModelProvider, ModelID: conv.ModelID}
 	}

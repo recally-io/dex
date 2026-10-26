@@ -154,22 +154,31 @@ func metadata(value any) InputMetadata {
 
 func userItem(m InputMetadata, id string, at int64, text string) Item {
 	if len(m.Attachments) > 0 {
-		var paths strings.Builder
-		paths.WriteString("Attached files:\n")
-		for index, a := range m.Attachments {
-			if index > 0 {
-				paths.WriteByte('\n')
-			}
-			paths.WriteString("- " + a.Path)
-		}
-		if stripped, ok := strings.CutSuffix(text, paths.String()); ok {
-			text = strings.TrimRight(stripped, " \t\r\n")
-		}
+		text = stripAttachedFiles(text, m.Attachments)
 	}
 	if m.TaskID != "" || m.Kind == "dex.task_result" {
 		return Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle}
 	}
 	return Item{Kind: "user", ID: cmp.Or(m.RequestID, id), At: at, Text: text, Origin: m.Origin, Attachments: m.Attachments}
+}
+
+// stripAttachedFiles removes the file list that inputText appends. Older entries list workspace
+// paths, newer ones absolute paths, so each line only has to end with the workspace path.
+func stripAttachedFiles(text string, attachments []Attachment) string {
+	head, list, ok := strings.CutLast(text, "Attached files:\n")
+	if !ok {
+		return text
+	}
+	lines := strings.Split(list, "\n")
+	if len(lines) != len(attachments) {
+		return text
+	}
+	for i, a := range attachments {
+		if !strings.HasPrefix(lines[i], "- ") || !strings.HasSuffix(lines[i], a.Path) {
+			return text
+		}
+	}
+	return strings.TrimRight(head, " \t\r\n")
 }
 
 func userText(content ai.UserContent) string {
