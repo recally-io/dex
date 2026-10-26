@@ -111,6 +111,7 @@ SELECT
     c.model_provider,
     c.model_id,
     c.thinking_level,
+    c.cwd,
     c.created_at,
     c.archived_at,
     CAST(max(
@@ -140,6 +141,7 @@ SELECT
     c.model_provider,
     c.model_id,
     c.thinking_level,
+    c.cwd,
     c.created_at,
     c.archived_at,
     c.execution_id,
@@ -342,3 +344,6 @@ UPDATE conversations SET abort_pending = 0 WHERE agent_id = ? AND execution_id =
 
 -- name: ListPendingExecutionAborts :many
 SELECT id, agent_id, execution_id FROM conversations WHERE abort_pending = 1;
+
+-- name: SetConversationCwd :exec
+UPDATE conversations SET cwd = ? WHERE id = ? AND agent_id = ?;

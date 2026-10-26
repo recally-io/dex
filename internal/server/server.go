@@ -75,13 +75,13 @@ func New(cfg Config) http.Handler {
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
-				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrResetID), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected):
+				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrResetID), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, engine.ErrModelsPending):
 				status = http.StatusServiceUnavailable
-			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable):
+			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden):
 				status = http.StatusForbidden
 			case errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
@@ -226,7 +226,7 @@ func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRe
 func chatView(c chat.Chat) api.Chat {
 	out := api.Chat{
 		Id: c.ID, Channel: api.ChatChannelWeb, Title: c.Title, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Busy: c.Busy,
-		Settings: c.Settings, Main: c.ChannelKey == chat.MainKey, ReadOnly: !chat.Writable(c.ChannelKey),
+		Cwd: c.Cwd, Settings: c.Settings, Main: c.ChannelKey == chat.MainKey, ReadOnly: !chat.Writable(c.ChannelKey),
 	}
 	if strings.HasPrefix(c.ChannelKey, "telegram:") {
 		out.Channel = api.ChatChannelTelegram
@@ -366,6 +366,20 @@ func (h *handler) writableChat(ctx context.Context, id int64) (chat.Chat, error)
 		return chat.Chat{}, errReadOnly
 	}
 	return c, nil
+}
+
+func (h *handler) SetChatProject(ctx context.Context, req api.SetChatProjectRequestObject) (api.SetChatProjectResponseObject, error) {
+	if req.Body == nil {
+		return nil, errInvalid
+	}
+	if _, err := h.Chats.SetProject(ctx, agentID(ctx), req.ChatId, req.Body.Cwd); err != nil {
+		return nil, err
+	}
+	c, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId)
+	if err != nil {
+		return nil, err
+	}
+	return api.SetChatProject200JSONResponse(chatView(c)), nil
 }
 
 func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRequestObject) (api.SetChatSettingsResponseObject, error) {

@@ -68,6 +68,10 @@ export type Chat = {
      * The automation that created the chat.
      */
     automationId?: string;
+    /**
+     * The saved project directory. Empty means the agent workspace.
+     */
+    cwd: string;
     title: string;
     createdAt: number;
     /**
@@ -1628,6 +1632,48 @@ export type ArchiveChatResponses = {
 };
 
 export type ArchiveChatResponse = ArchiveChatResponses[keyof ArchiveChatResponses];
+
+export type SetChatProjectData = {
+    body: {
+        cwd: string;
+    };
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/project';
+};
+
+export type SetChatProjectErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetChatProjectError = SetChatProjectErrors[keyof SetChatProjectErrors];
+
+export type SetChatProjectResponses = {
+    /**
+     * The Chat session with its saved project directory.
+     */
+    200: Chat;
+};
+
+export type SetChatProjectResponse = SetChatProjectResponses[keyof SetChatProjectResponses];
 
 export type SetChatSettingsData = {
     body: ChatSettings;

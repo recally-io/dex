@@ -537,6 +537,39 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/chats/{chatId}/project:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    put:
+      operationId: setChatProject
+      description: >
+        Sets the project directory of a Chat session from the next message.
+        Other conversation kinds return 403. Empty cwd restores the agent workspace.
+        The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cwd]
+              properties:
+                cwd: { type: string }
+      responses:
+        "200":
+          description: The Chat session with its saved project directory.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chat" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/chats/{chatId}/settings:
     parameters:
       - in: path
@@ -1099,6 +1132,7 @@ components:
         settings,
         main,
         readOnly,
+        cwd,
       ]
       properties:
         id: { type: integer, format: int64 }
@@ -1114,6 +1148,9 @@ components:
         automationId:
           type: string
           description: The automation that created the chat.
+        cwd:
+          type: string
+          description: The saved project directory. Empty means the agent workspace.
         title: { type: string }
         createdAt: { type: integer, format: int64 }
         updatedAt:

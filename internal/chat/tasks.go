@@ -241,6 +241,9 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r eng
 	if err != nil {
 		return "", err
 	}
+	if err = q.SetConversationCwd(ctx, sqlc.SetConversationCwdParams{Cwd: parent.Cwd, ID: conv.ID, AgentID: r.AgentID}); err != nil {
+		return "", err
+	}
 	if _, err = q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: id, ConversationID: conv.ID, Content: a.Goal, Attachments: "null", Origin: "task", Kind: "message", CreatedAt: now}); err != nil {
 		return "", err
 	}

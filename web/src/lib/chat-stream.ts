@@ -52,7 +52,14 @@ export function useChatStream(chatId: number) {
           setConnection("ready");
           setStreamError("");
 
-          if (event.type === "run" && !event.running) void refreshChats(agentId);
+          if (
+            (event.type === "run" && !event.running) ||
+            (event.type === "item" &&
+              event.item.kind === "tool" &&
+              event.item.name === "set_project" &&
+              event.item.status !== "running")
+          )
+            void refreshChats(agentId);
         } catch {
           source.close();
           setConnection("error");

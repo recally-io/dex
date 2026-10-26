@@ -63,6 +63,7 @@ test("user sees Feishu status and shared main context without a peer link", asyn
       title: "Saved chat",
       busy: false,
       settings: {},
+      cwd: "",
     })),
   });
 

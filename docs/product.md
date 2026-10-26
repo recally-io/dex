@@ -196,7 +196,7 @@ and task-specific automation result routing are later work. Other chat channels 
 ## Non-goals
 
 - More than one host. One machine runs one dex process.
-- Sandboxes. Agent tools run on the host, inside the agent workspace.
+- Sandboxes. Agent tools run on the host, inside the selected project directory or the agent workspace.
 - Shared object storage. Agent files are local directories.
 - Automatic failover or data replication.
 
@@ -204,8 +204,14 @@ and task-specific automation result routing are later work. Other chat channels 
 
 Each agent reads skills, `mcp.json`, and `.env` from three `.agents/`
 directories: the user home, the resolved dex data directory, and the agent
-home (`<data dir>/agents/<id>`). The narrower level wins. Tools still start
-in the agent workspace. Memory stays in `<data dir>/memory`.
+home (`<data dir>/agents/<id>`). The narrower level wins. Tools start
+in the agent workspace by default. A Chat session can select an existing
+project directory in its header or with `set_project`. The directory applies
+from the next message after an API change. A tool change also applies to
+later tools in the same run. Clear the project to return to the agent
+workspace. Main, channels, tasks, automations, and dreams cannot set a
+project. Tasks inherit the parent Chat's directory. Project skills come from
+`<cwd>/.agents/skills/`. Memory stays in `<data dir>/memory`.
 
 The system prompt always includes a guide to these files, even with no
 skills. It explains paths, file formats, environment use, and Reload. It

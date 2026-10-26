@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 
 	"github.com/MichaelKinsy/PiG/ai"
@@ -90,7 +91,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if err != nil {
 			return nil, err
 		}
-		native, err = conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input)), WhenBusy: durable.WhenBusyFollowUp, InputEntry: &durable.InputEntry{Kind: kind, Data: data}})
+		native, err = conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"))), WhenBusy: durable.WhenBusyFollowUp, InputEntry: &durable.InputEntry{Kind: kind, Data: data}})
 		if err != nil {
 			if _, ok := errors.AsType[*durable.ConversationBusy](err); ok {
 				return nil, errors.Join(ErrBusy, err)
@@ -136,7 +137,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 	return result, nil
 }
 
-func inputText(input Input) string {
+func inputText(input Input, workspace string) string {
 	if len(input.Attachments) == 0 {
 		return input.Content
 	}
@@ -148,7 +149,12 @@ func inputText(input Input) string {
 	text.WriteString("Attached files:")
 	for _, attachment := range input.Attachments {
 		text.WriteString("\n- ")
-		text.WriteString(attachment.Path)
+		path := attachment.Path
+		if input.Cwd != "" {
+			// Uploads stay in the workspace when the conversation selects a project.
+			path = filepath.Join(workspace, path)
+		}
+		text.WriteString(path)
 	}
 	return text.String()
 }

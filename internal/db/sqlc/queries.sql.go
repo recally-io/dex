@@ -331,7 +331,7 @@ const ensureConversation = `-- name: EnsureConversation :one
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd
 `
 
 type EnsureConversationParams struct {
@@ -368,6 +368,7 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		&i.ThinkingLevel,
 		&i.AbortPending,
 		&i.ArchivedAt,
+		&i.Cwd,
 	)
 	return i, err
 }
@@ -385,7 +386,7 @@ VALUES (
     '', ?3
 )
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd
 `
 
 type EnsureEmptyChatParams struct {
@@ -410,6 +411,7 @@ func (q *Queries) EnsureEmptyChat(ctx context.Context, arg EnsureEmptyChatParams
 		&i.ThinkingLevel,
 		&i.AbortPending,
 		&i.ArchivedAt,
+		&i.Cwd,
 	)
 	return i, err
 }
@@ -508,6 +510,7 @@ SELECT
     c.model_provider,
     c.model_id,
     c.thinking_level,
+    c.cwd,
     c.created_at,
     c.archived_at,
     c.execution_id,
@@ -538,6 +541,7 @@ type GetChatRow struct {
 	ModelProvider string        `json:"model_provider"`
 	ModelID       string        `json:"model_id"`
 	ThinkingLevel string        `json:"thinking_level"`
+	Cwd           string        `json:"cwd"`
 	CreatedAt     int64         `json:"created_at"`
 	ArchivedAt    sql.NullInt64 `json:"archived_at"`
 	ExecutionID   sql.NullInt64 `json:"execution_id"`
@@ -555,6 +559,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 		&i.ModelProvider,
 		&i.ModelID,
 		&i.ThinkingLevel,
+		&i.Cwd,
 		&i.CreatedAt,
 		&i.ArchivedAt,
 		&i.ExecutionID,
@@ -565,7 +570,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at FROM conversations WHERE id = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd FROM conversations WHERE id = ?
 `
 
 func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
@@ -583,12 +588,13 @@ func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, 
 		&i.ThinkingLevel,
 		&i.AbortPending,
 		&i.ArchivedAt,
+		&i.Cwd,
 	)
 	return i, err
 }
 
 const getConversationByKey = `-- name: GetConversationByKey :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at FROM conversations WHERE agent_id = ? AND channel_key = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd FROM conversations WHERE agent_id = ? AND channel_key = ?
 `
 
 type GetConversationByKeyParams struct {
@@ -611,6 +617,7 @@ func (q *Queries) GetConversationByKey(ctx context.Context, arg GetConversationB
 		&i.ThinkingLevel,
 		&i.AbortPending,
 		&i.ArchivedAt,
+		&i.Cwd,
 	)
 	return i, err
 }
@@ -900,6 +907,7 @@ SELECT
     c.model_provider,
     c.model_id,
     c.thinking_level,
+    c.cwd,
     c.created_at,
     c.archived_at,
     CAST(max(
@@ -929,6 +937,7 @@ type ListChatsRow struct {
 	ModelProvider string        `json:"model_provider"`
 	ModelID       string        `json:"model_id"`
 	ThinkingLevel string        `json:"thinking_level"`
+	Cwd           string        `json:"cwd"`
 	CreatedAt     int64         `json:"created_at"`
 	ArchivedAt    sql.NullInt64 `json:"archived_at"`
 	UpdatedAt     int64         `json:"updated_at"`
@@ -951,6 +960,7 @@ func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow
 			&i.ModelProvider,
 			&i.ModelID,
 			&i.ThinkingLevel,
+			&i.Cwd,
 			&i.CreatedAt,
 			&i.ArchivedAt,
 			&i.UpdatedAt,
@@ -1318,6 +1328,21 @@ type SetAutomationNextDueParams struct {
 
 func (q *Queries) SetAutomationNextDue(ctx context.Context, arg SetAutomationNextDueParams) error {
 	_, err := q.db.ExecContext(ctx, setAutomationNextDue, arg.NextDueAt, arg.ID)
+	return err
+}
+
+const setConversationCwd = `-- name: SetConversationCwd :exec
+UPDATE conversations SET cwd = ? WHERE id = ? AND agent_id = ?
+`
+
+type SetConversationCwdParams struct {
+	Cwd     string `json:"cwd"`
+	ID      int64  `json:"id"`
+	AgentID string `json:"agent_id"`
+}
+
+func (q *Queries) SetConversationCwd(ctx context.Context, arg SetConversationCwdParams) error {
+	_, err := q.db.ExecContext(ctx, setConversationCwd, arg.Cwd, arg.ID, arg.AgentID)
 	return err
 }
 
