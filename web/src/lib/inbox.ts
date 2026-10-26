@@ -30,8 +30,9 @@ export function inboxCount(agents: Agent[]) {
   );
 }
 
+// The first line is plain text because the chat takes its title from the start of the message.
 export function resultQuote(item: InboxItem) {
-  return [
+  const quote = [
     item.automationName,
     `Outcome: ${item.outcome}`,
     item.summary,
@@ -41,4 +42,6 @@ export function resultQuote(item: InboxItem) {
     .split("\n")
     .map((line) => `> ${line}`)
     .join("\n");
+
+  return `Follow up on the ${item.automationName} result (${item.outcome}).\n\n${quote}`;
 }

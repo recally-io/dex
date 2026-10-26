@@ -62,6 +62,6 @@ test("rail counts sum the shared agent response, including zero activity", () =>
 
 test("Continue quotes the stored result and identifies the exact run transcript", () => {
   expect(resultQuote(result)).toBe(
-    "> Release check\n> \n> Outcome: changed\n> \n> Release available\n> Version 2\n> \n> Run transcript: /a/first/c/4 (run run)",
+    "Follow up on the Release check result (changed).\n\n> Release check\n> \n> Outcome: changed\n> \n> Release available\n> Version 2\n> \n> Run transcript: /a/first/c/4 (run run)",
   );
 });
