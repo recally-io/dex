@@ -1,12 +1,13 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowUp, Folder, GitBranch, House } from "lucide-react";
+import { ArrowUp, Folder, FolderOpen, GitBranch, House } from "lucide-react";
 import {
   listDirectoriesOptions,
   listRecentProjectsOptions,
   setChatProjectMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { useAgentId } from "../lib/agent-scope";
+import { canPickFolder, pickFolder } from "../lib/desktop";
 import { errorText, refreshChats } from "../lib/queries";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -155,6 +156,23 @@ export function ChatProject({ chatId, cwd }: { chatId: number; cwd: string }) {
             >
               <House />
             </Button>
+            {canPickFolder() ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label="Choose in Finder"
+                title="Choose in Finder"
+                disabled={save.isPending}
+                onClick={async () => {
+                  const chosen = await pickFolder(listing.data?.path || cwd);
+
+                  if (chosen) submit(chosen);
+                }}
+              >
+                <FolderOpen />
+              </Button>
+            ) : null}
           </form>
           <div
             className="grid min-h-0 flex-1 content-start gap-1 overflow-y-auto"

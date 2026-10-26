@@ -90,6 +90,13 @@ when a navigation finishes, so the menu reaches the web app through the
 `dex:settings` and `dex:new-chat` window events. The web app needs no other
 knowledge of the shell.
 
+The Chat project dialog has a Finder button in the app. The page posts
+`dex:pick-folder {id, start}` to the WKWebView `external` message handler. The
+shell accepts it only from the main frame of the Dex backend origin, shows the
+native folder panel, and answers with the `dex:folder-picked` window event. The
+chosen path is saved through the normal project API, with its validation. A
+browser has no handler, so the button does not show there.
+
 The main window frame is saved as JSON in the platform config directory
 (`~/Library/Application Support/Dex/window.json` on macOS). The file stores
 position, size and the maximized state; a maximized window keeps its last
