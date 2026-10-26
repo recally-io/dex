@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -20,18 +21,7 @@ var (
 )
 
 // Task is one internal execution. Its ID is used only by the dispatching agent.
-type Task struct {
-	ID            string `json:"id"`
-	Title         string `json:"title"`
-	Status        string `json:"status"`
-	Provider      string `json:"provider"`
-	ModelID       string `json:"modelId"`
-	ThinkingLevel string `json:"thinkingLevel"`
-	CreatedAt     int64  `json:"createdAt"`
-	StartedAt     *int64 `json:"startedAt,omitempty"`
-	EndedAt       *int64 `json:"endedAt,omitempty"`
-	Report        string `json:"report"`
-}
+type Task engine.TaskInfo
 
 func (s *Service) ConfigureTasks(check func(context.Context, Settings) error) {
 	s.checkTaskSettings = check
@@ -49,7 +39,22 @@ func taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task) (Task, error)
 	if err != nil {
 		return Task{}, err
 	}
+	var constraints, criteria []string
+	if err := json.Unmarshal([]byte(row.ConstraintsJson), &constraints); err != nil {
+		return Task{}, err
+	}
+	if err := json.Unmarshal([]byte(row.DoneCriteriaJson), &criteria); err != nil {
+		return Task{}, err
+	}
+	var report *engine.TaskReport
+	if row.StructuredReport != "" {
+		if err := json.Unmarshal([]byte(row.StructuredReport), &report); err != nil {
+			return Task{}, err
+		}
+	}
 	return Task{ID: row.ID, Title: row.Title, Status: row.Status,
+		Goal: row.Goal, Constraints: constraints, DoneCriteria: criteria, StructuredReport: report, HasStructuredReport: report != nil,
+		GoalMet:  row.Status == "done" && report != nil && report.Outcome == "done",
 		Provider: c.ModelProvider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel,
 		CreatedAt: row.CreatedAt, StartedAt: taskTime(row.StartedAt), EndedAt: taskTime(row.EndedAt),
 		Report: row.Report}, nil
@@ -182,6 +187,21 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r eng
 	if strings.TrimSpace(a.Title) == "" || strings.TrimSpace(a.Goal) == "" || len(a.Title) > 240 || len(a.Goal) > 128000 || !strings.HasPrefix(r.Key, r.AgentID+"/") {
 		return "", fmt.Errorf("%w: title (1–240 bytes), goal (1–128000 bytes), and a durable key are required", ErrTaskInvalid)
 	}
+	for _, items := range [][]string{a.Constraints, a.DoneCriteria} {
+		for _, item := range items {
+			if strings.TrimSpace(item) == "" {
+				return "", fmt.Errorf("%w: contract entries must not be empty", ErrTaskInvalid)
+			}
+		}
+	}
+	constraints, err := json.Marshal(a.Constraints)
+	if err != nil {
+		return "", err
+	}
+	criteria, err := json.Marshal(a.DoneCriteria)
+	if err != nil {
+		return "", err
+	}
 	if prior, err := s.q.GetTaskByKey(ctx, r.Key); err == nil {
 		if prior.ParentConversationID != parent.ID {
 			return "", ErrTaskNotFound
@@ -247,7 +267,7 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r eng
 	if _, err = q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: id, ConversationID: conv.ID, Content: a.Goal, Attachments: "null", Origin: "task", Kind: "message", CreatedAt: now}); err != nil {
 		return "", err
 	}
-	if err = q.CreateTask(ctx, sqlc.CreateTaskParams{ID: id, ParentConversationID: parent.ID, ConversationID: conv.ID, SpawnKey: r.Key, SourceRequestID: source.ID, Title: a.Title, CreatedAt: now}); err != nil {
+	if err = q.CreateTask(ctx, sqlc.CreateTaskParams{ID: id, ParentConversationID: parent.ID, ConversationID: conv.ID, SpawnKey: r.Key, SourceRequestID: source.ID, Title: a.Title, Goal: a.Goal, ConstraintsJson: string(constraints), DoneCriteriaJson: string(criteria), CreatedAt: now}); err != nil {
 		return "", err
 	}
 	if err = tx.Commit(); err != nil {
@@ -329,33 +349,30 @@ func (s *Service) withdrawTask(ctx context.Context, agentID string, parentID int
 
 // RecoverTasks isolates admitted executions before any Harness can resume them.
 func (s *Service) RecoverTasks(ctx context.Context) error {
-	s.taskMu.Lock()
-	defer s.taskMu.Unlock()
-	tx, q, err := s.taskTransaction(ctx)
+	live, err := s.q.ListLiveTasks(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
-	live, err := q.ListLiveTasks(ctx)
-	if err != nil {
-		return err
-	}
-	now := s.now().UnixMilli()
 	for _, t := range live {
-		// Keep isolation durable until native cancellation, including repeated restarts.
-		if err = q.RequestExecutionAbort(ctx, t.ConversationID); err != nil {
+		conv, err := s.q.GetConversation(ctx, t.ConversationID)
+		if err != nil {
 			return err
 		}
-		report := cmp.Or(t.Report, "The process restarted. Check artifacts and prior side effects before starting new work.")
-		if _, err = q.SettleTask(ctx, sqlc.SettleTaskParams{ID: t.ID, Status: "interrupted", Report: report, EndedAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
+		var outcome *engine.Outcome
+		if conv.ExecutionID.Valid {
+			outcome, err = s.engine.RecoveryOutcome(ctx, engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64}, t.ID)
+			if err != nil {
+				return err
+			}
+		}
+		status := ""
+		if outcome == nil {
+			status = "interrupted"
+			outcome = &engine.Outcome{Status: "unanswered", Reason: "interrupted"}
+		}
+		if _, err = s.settleTaskOutcome(ctx, t.ID, *outcome, status); err != nil {
 			return err
 		}
-		if _, err = q.SettleSubmission(ctx, sqlc.SettleSubmissionParams{ID: t.ID, Status: "unanswered", Reason: sql.NullString{String: "interrupted", Valid: true}, SettledAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
-			return err
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return err
 	}
 	aborts, err := s.q.ListPendingExecutionAborts(ctx)
 	if err != nil {

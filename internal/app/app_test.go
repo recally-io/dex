@@ -281,6 +281,10 @@ func (d *dex) watchPath(t *testing.T, path string) *watcher {
 			case strings.HasPrefix(line, "data: "):
 				var ev chatEvent
 				if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev); err != nil || ev.Type != typ {
+					// Cancellation at cleanup can cut the last event mid-line.
+					if ctx.Err() != nil {
+						return
+					}
 					t.Errorf("bad event %q %q: %v", typ, line, err)
 					return
 				}

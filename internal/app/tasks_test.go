@@ -116,6 +116,10 @@ func TestUserRestartDoesNotRerunStartedDelegationOrKeepItsSlot(t *testing.T) {
 	d.stop()
 	d = startDex(t, dir, "")
 	waitExecution(t, conn, parent, "Interrupted", "interrupted")
+	result := waitResultSubmission(t, conn, "task:"+task.ID+":result", "done")
+	if !strings.Contains(result.answer, "side effects may exist") {
+		t.Fatalf("interrupted task warning missing: %+v", result)
+	}
 	// Then new executions can use both slots, without rerunning the interrupted shell.
 	for _, name := range []string{"new-first", "new-second"} {
 		spawnExecution(t, d, parent, name, taskGate(t, dir, name), "bash")
@@ -128,10 +132,10 @@ func TestUserRestartDoesNotRerunStartedDelegationOrKeepItsSlot(t *testing.T) {
 	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE source_key = ?", "task:"+task.ID+":result").Scan(&results); err != nil {
 		t.Fatal(err)
 	}
-	if results != 0 {
-		t.Fatalf("interrupted execution created %d results", results)
+	if results != 1 {
+		t.Fatalf("interrupted execution must deliver one result, got %d", results)
 	}
-	t.Logf("interrupted=%s counter=one new_slots=2", task.ID)
+	t.Logf("interrupted=%s counter=one new_slots=2 results=%d", task.ID, results)
 }
 
 func spawnExecution(t *testing.T, d *dex, parent int64, title, goal, model string) string {

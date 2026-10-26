@@ -151,6 +151,10 @@ type Task struct {
 	CreatedAt            int64         `json:"created_at"`
 	StartedAt            sql.NullInt64 `json:"started_at"`
 	EndedAt              sql.NullInt64 `json:"ended_at"`
+	Goal                 string        `json:"goal"`
+	ConstraintsJson      string        `json:"constraints_json"`
+	DoneCriteriaJson     string        `json:"done_criteria_json"`
+	StructuredReport     string        `json:"structured_report"`
 }
 
 type TelegramSetting struct {

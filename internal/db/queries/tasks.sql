@@ -2,8 +2,8 @@
 SELECT * FROM conversations WHERE agent_id = ? AND execution_id = ?;
 
 -- name: CreateTask :exec
-INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, created_at)
-VALUES (?, ?, ?, ?, ?, ?, 'queued', ?);
+INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, goal, constraints_json, done_criteria_json, status, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?);
 
 -- name: GetTask :one
 SELECT * FROM tasks WHERE id = ?;
@@ -61,6 +61,12 @@ ORDER BY id;
 -- name: StopConversationSubmissions :execrows
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @now
 WHERE conversation_id = @chat_id AND status = 'pending';
+
+-- name: StageTaskReport :execrows
+UPDATE tasks SET structured_report = @report
+WHERE tasks.id = @id AND tasks.conversation_id = @conversation_id
+AND status IN ('queued', 'running') AND structured_report = ''
+AND EXISTS (SELECT 1 FROM submissions s WHERE s.id = tasks.id AND s.status = 'pending');
 
 -- name: GetTaskResultLabel :one
 SELECT t.id, t.title FROM submissions s

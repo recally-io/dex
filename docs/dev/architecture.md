@@ -79,7 +79,8 @@ backend readiness and maintenance lifecycle.
 | Skills and MCP servers               | the user's files  | `$HOME/.agents/`, `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/` |
 
 Control also owns internal delegation records (`tasks`). Each record
-has one read-only `task:<execution ID>` session and one input. The engine
+has one task conversation that is read-only on the web and one input. Background
+execution keeps bash and all coding tools. The engine
 owns its transcript and execution records. Business services do not query execution SQLite.
 The records retain the source submission, status, and report. A cancelled
 status records a cancellation request. It does not prove process exit. There
@@ -502,7 +503,8 @@ Each spawn creates one execution with fixed model and thinking settings.
 There is no goal acceptance lifecycle. The main agent checks saved records
 before it reports progress or starts another execution. The main agent owns
 implementation, independent review, fixes, final tests, and the user report.
-Background conversations cannot call delegation management tools. Control
+Background conversations cannot call delegation management tools. They can call
+`report_task` and use all coding tools, including bash. Control
 checks this boundary as well as the engine's tool list.
 
 Creation checks source ownership, pending input, deduplication, and capacity
@@ -513,13 +515,38 @@ tool that ignores cancellation can continue after another execution starts.
 The main agent handles failure, retry, and continuation from saved artifacts.
 The prompt requires a record check before progress reports or follow-up work.
 
-Normal completion (`done`) and execution failure (`failed`) create a durable
-`task_result` submission in the same transaction as settlement. The result
+Each task saves its goal, optional `constraints`, and optional `doneCriteria`
+at creation. Spawn replay retains the original contract. The engine prompt
+includes that contract. Constraints are instructions; they do not restrict tools
+or provide a sandbox.
+
+Only background tasks have `report_task`. It stages one report with outcome
+`done`, `blocked`, or `failed`, a summary, a cause, reproduction commands with
+an explicit `ran` flag, files, and open items. As with `report_check`, the saved
+report is provisional until execution settles. Replaying the same report is
+safe. A different report cannot replace it. `get_task` returns the full contract
+and structured report by task ID. `hasStructuredReport` marks report presence.
+`goalMet` requires successful execution and a structured `done` report. It is
+a worker claim that the main agent must check against artifacts and tests.
+An execution without `report_task` retains its final answer and has
+`hasStructuredReport: false` and `goalMet: false`.
+
+Normal completion (`done`), execution failure (`failed`), and recovery
+interruption (`interrupted`) create a durable `task_result` submission in the
+same control transaction as settlement. The parent input keeps the existing
+4,000-character report truncation. The main agent reads the full report with
+`get_task` before follow-up work. For a follow-up such as “OK, fix it”, it
+reads the report again by ID and checks the current files before editing.
+The result
 enters the native follow-up Inbox even when its source is busy. There is no
 reject-when-busy mode or business retry queue for task results. Stop and
-directed cancellation set active executions to `cancelled`. Process loss sets started
-executions to `interrupted` during startup recovery. These states create no
-result turn. A terminal record and its saved report stay unchanged when a late
+directed cancellation set active executions to `cancelled`. Cancellation creates
+no result turn. Startup recovery reads each live task's native terminal outcome
+before any Harness resumes. A saved native completion or failure follows the
+normal settlement path and retains its report. An unfinished execution becomes
+`interrupted`, with durable abort intent and one parent result. That result tells
+the main agent to report the interruption and warn that side effects may exist.
+A terminal record and its saved report stay unchanged when a late
 execution outcome arrives.
 
 Control passes a trusted input kind, task ID, and task title to the engine.
@@ -595,11 +622,18 @@ remote work can continue. Cancellation does not undo file writes or remote
 actions. A directed cancellation of a completed execution leaves its report
 and saved result unchanged.
 
-At process start, control marks started task executions `interrupted` and
-registers their execution references with `Agents.Recover` before any Harness
-can resume. Recovery isolates those conversations, including cancelled tasks
-whose abort did not complete. Queued execution that never started can start
-for the first time. Completed results already saved for delivery retain their
+At process start, control calls `Agents.RecoveryOutcome` with each live task's
+execution reference and stable request ID. The engine reads committed native
+submission and answer records through PiG storage without opening or resuming
+a Harness. Control never opens `state.sqlite`. Native terminal outcomes settle
+through the normal task transaction. Only unfinished executions become
+`interrupted`. Their abort intent, report, task receipt, and parent result commit
+together. Control then registers pending abort references with `Agents.Recover`
+before any Harness can resume. Recovery isolates those conversations, including
+cancelled tasks whose abort did not complete. A queued execution that never
+started can start for the first time. Repeated restarts retain one task record
+and one result input with request ID `task:<id>:result`. Native admission deduplicates
+that request ID. Completed results already saved for delivery retain their
 receipt state. Durable spawn replay returns the original task record.
 
 The SDK owns cancellation of run invocations and tools. Control does not track

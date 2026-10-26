@@ -179,7 +179,7 @@ func TestUserTaskResultReturnsToItsChatSession(t *testing.T) {
 	task := waitExecution(t, conn, side, "Chat report", "done")
 	resultID := "task:" + task.ID + ":result"
 	w := d.watch(t, side)
-	w.until(t, "Chat result answer", answeredWith(`task-result: {"id":"`+task.ID+`"`))
+	w.until(t, "Chat result answer", answeredWith(`"id":"`+task.ID+`"`))
 	waitResultSubmission(t, conn, resultID, "done")
 	var parent int64
 	var origin string
