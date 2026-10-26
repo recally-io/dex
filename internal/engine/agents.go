@@ -266,6 +266,9 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			return nil, err
 		}
 	}
+	if err := registry.Install(checkExtension(agentID, a.config.Tasks.ReportCheck)); err != nil {
+		return nil, err
+	}
 	store, err := storage.OpenNodeSqliteStorage(filepath.Join(dir, "state.sqlite"), storage.NodeSqliteStorageOptions{})
 	if err != nil {
 		return nil, err
@@ -273,7 +276,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	h, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{
 		Models: a.Catalog.Models, Registry: registry,
 		Settings: func() *harness.HarnessSettings {
-			return &harness.HarnessSettings{AfterFailedRun: durable.AfterFailedRunContinue}
+			return &harness.HarnessSettings{Extensions: extensions, AfterFailedRun: durable.AfterFailedRunContinue}
 		},
 		Env: func(_ context.Context, target harness.EnvTarget) (durableenv.ExecutionEnv, error) {
 			cwd := workspace

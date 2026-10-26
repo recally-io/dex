@@ -256,12 +256,12 @@ SELECT id FROM agents ORDER BY id;
 
 -- name: CreateAutomation :exec
 INSERT INTO automations (
-    id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at, cwd
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateAutomation :execrows
 UPDATE automations SET
-    name = ?, prompt = ?, schedule = ?, time_zone = ?, session = ?, enabled = ?, next_due_at = ?,
+    cwd = ?, name = ?, prompt = ?, schedule = ?, time_zone = ?, session = ?, enabled = ?, next_due_at = ?,
     updated_at = ?
 WHERE id = ? AND agent_id = ?;
 
@@ -289,9 +289,6 @@ INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_
 VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT DO NOTHING;
 
--- name: FailAutomationRun :exec
-UPDATE automation_runs SET status = 'failed', reason = ? WHERE id = ?;
-
 -- name: ListAutomationRuns :many
 -- The newest runs of an automation, with the message of each started run.
 SELECT
@@ -299,7 +296,7 @@ SELECT
     r.due_at,
     r.status,
     r.reason,
-    r.created_at,
+    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate,
     s.status AS message_status,
     s.reason AS message_reason,
     s.conversation_id AS chat_id
@@ -366,3 +363,32 @@ WITH activity AS (
 SELECT cwd FROM activity
 GROUP BY cwd
 ORDER BY max(updated_at) DESC, max(id) DESC;
+
+-- name: GetAutomationRun :one
+SELECT * FROM automation_runs WHERE id = ?;
+
+-- name: ReportAutomationRun :execrows
+UPDATE automation_runs SET outcome = @outcome, summary = @summary, change_key = @change_key
+WHERE automation_runs.id = @id AND automation_runs.outcome = '' AND automation_runs.status = 'started'
+    AND EXISTS (SELECT 1 FROM submissions WHERE id = @id AND status = 'pending');
+
+-- name: FinalizeAutomationRun :exec
+UPDATE automation_runs SET
+    outcome = CASE WHEN NOT (CAST(@execution_status AS TEXT) = 'done') OR outcome = '' THEN 'failed' ELSE outcome END,
+    summary = CASE
+        WHEN NOT (CAST(@execution_status AS TEXT) = 'done') THEN @failure
+        WHEN outcome = '' THEN 'run ended without report_check'
+        ELSE summary END,
+    status = CASE WHEN NOT (CAST(@execution_status AS TEXT) = 'done') OR outcome IN ('', 'failed') THEN 'failed' ELSE status END,
+    reason = CASE
+        WHEN NOT (CAST(@execution_status AS TEXT) = 'done') THEN @failure
+        WHEN outcome = '' THEN 'run ended without report_check'
+        WHEN outcome = 'failed' THEN summary
+        ELSE reason END,
+    duplicate = CASE WHEN (CAST(@execution_status AS TEXT) = 'done') AND outcome <> '' AND change_key <> '' AND EXISTS (
+        SELECT 1 FROM automation_runs prior JOIN submissions s ON s.id = prior.id
+        WHERE prior.automation_id = automation_runs.automation_id
+            AND prior.id <> automation_runs.id AND prior.change_key = automation_runs.change_key
+            AND prior.outcome <> '' AND s.status = 'done'
+    ) THEN 1 ELSE 0 END
+WHERE automation_runs.id = @id AND automation_runs.status = 'started';

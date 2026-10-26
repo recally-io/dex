@@ -77,9 +77,9 @@ func TestUserAutomationRunsAtItsTimeInANewChat(t *testing.T) {
 		t.Fatalf("run due at %d, want %d", run.DueAt, at)
 	}
 	d.watch(t, run.ChatID).until(t, "answer", answered("echo: summarize the day"))
-	eventually(t, "done run", func() (bool, any) {
+	eventually(t, "failed run without report", func() (bool, any) {
 		runs := d.runs(t, a.ID)
-		return len(runs) == 1 && runs[0].Status == "done", runs
+		return len(runs) == 1 && runs[0].Status == "failed", runs
 	})
 	var chat struct {
 		chatInfo
@@ -116,10 +116,10 @@ func TestUserAutomationReusesItsChatAndSkipsWhileBusy(t *testing.T) {
 	}
 	d.watch(t, first.ChatID).until(t, "first answer", answered("bash: checked"))
 	// The chat stays busy until the worker settles the submission, a moment after the answer.
-	eventually(t, "done first run", func() (bool, any) {
+	eventually(t, "settled first run without report", func() (bool, any) {
 		runs := d.runs(t, a.ID)
 		i := slices.IndexFunc(runs, func(r runInfo) bool { return r.ID == first.ID })
-		return i >= 0 && runs[i].Status == "done", runs
+		return i >= 0 && runs[i].Status == "failed", runs
 	})
 
 	// When the user runs it again

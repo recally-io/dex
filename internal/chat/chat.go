@@ -451,7 +451,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if err = json.Unmarshal([]byte(p.Attachments), &attachments); err != nil {
 		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: err.Error()})
 	}
-	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Background: background}
+	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Background: background, Automation: strings.HasPrefix(p.ChannelKey, "automation:")}
 	if p.Kind == "task_result" {
 		label, e := s.q.GetTaskResultLabel(ctx, sqlc.GetTaskResultLabelParams{ResultID: p.ID, ChatID: p.ConversationID})
 		if e != nil {
@@ -513,7 +513,7 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 	if handled {
 		return nil
 	}
-	changed, err := s.q.SettleSubmission(ctx, sqlc.SettleSubmissionParams{ID: id, Status: event.Status, Answer: sql.NullString{String: event.Answer, Valid: event.Status == "done"}, Reason: sql.NullString{String: event.Reason, Valid: event.Reason != ""}, SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+	changed, err := s.settleInput(ctx, id, event)
 	if err != nil || changed == 0 {
 		return err
 	}

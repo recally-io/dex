@@ -137,8 +137,8 @@ func (q *Queries) CreateAgentIfMissing(ctx context.Context, arg CreateAgentIfMis
 
 const createAutomation = `-- name: CreateAutomation :exec
 INSERT INTO automations (
-    id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at, cwd
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateAutomationParams struct {
@@ -153,6 +153,7 @@ type CreateAutomationParams struct {
 	NextDueAt sql.NullInt64 `json:"next_due_at"`
 	CreatedAt int64         `json:"created_at"`
 	UpdatedAt int64         `json:"updated_at"`
+	Cwd       string        `json:"cwd"`
 }
 
 func (q *Queries) CreateAutomation(ctx context.Context, arg CreateAutomationParams) error {
@@ -168,6 +169,7 @@ func (q *Queries) CreateAutomation(ctx context.Context, arg CreateAutomationPara
 		arg.NextDueAt,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.Cwd,
 	)
 	return err
 }
@@ -416,17 +418,36 @@ func (q *Queries) EnsureEmptyChat(ctx context.Context, arg EnsureEmptyChatParams
 	return i, err
 }
 
-const failAutomationRun = `-- name: FailAutomationRun :exec
-UPDATE automation_runs SET status = 'failed', reason = ? WHERE id = ?
+const finalizeAutomationRun = `-- name: FinalizeAutomationRun :exec
+UPDATE automation_runs SET
+    outcome = CASE WHEN NOT (CAST(?1 AS TEXT) = 'done') OR outcome = '' THEN 'failed' ELSE outcome END,
+    summary = CASE
+        WHEN NOT (CAST(?1 AS TEXT) = 'done') THEN ?2
+        WHEN outcome = '' THEN 'run ended without report_check'
+        ELSE summary END,
+    status = CASE WHEN NOT (CAST(?1 AS TEXT) = 'done') OR outcome IN ('', 'failed') THEN 'failed' ELSE status END,
+    reason = CASE
+        WHEN NOT (CAST(?1 AS TEXT) = 'done') THEN ?2
+        WHEN outcome = '' THEN 'run ended without report_check'
+        WHEN outcome = 'failed' THEN summary
+        ELSE reason END,
+    duplicate = CASE WHEN (CAST(?1 AS TEXT) = 'done') AND outcome <> '' AND change_key <> '' AND EXISTS (
+        SELECT 1 FROM automation_runs prior JOIN submissions s ON s.id = prior.id
+        WHERE prior.automation_id = automation_runs.automation_id
+            AND prior.id <> automation_runs.id AND prior.change_key = automation_runs.change_key
+            AND prior.outcome <> '' AND s.status = 'done'
+    ) THEN 1 ELSE 0 END
+WHERE automation_runs.id = ?3 AND automation_runs.status = 'started'
 `
 
-type FailAutomationRunParams struct {
-	Reason sql.NullString `json:"reason"`
-	ID     string         `json:"id"`
+type FinalizeAutomationRunParams struct {
+	ExecutionStatus string `json:"execution_status"`
+	Failure         string `json:"failure"`
+	ID              string `json:"id"`
 }
 
-func (q *Queries) FailAutomationRun(ctx context.Context, arg FailAutomationRunParams) error {
-	_, err := q.db.ExecContext(ctx, failAutomationRun, arg.Reason, arg.ID)
+func (q *Queries) FinalizeAutomationRun(ctx context.Context, arg FinalizeAutomationRunParams) error {
+	_, err := q.db.ExecContext(ctx, finalizeAutomationRun, arg.ExecutionStatus, arg.Failure, arg.ID)
 	return err
 }
 
@@ -475,7 +496,7 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
 }
 
 const getAutomation = `-- name: GetAutomation :one
-SELECT id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at FROM automations WHERE id = ? AND agent_id = ?
+SELECT id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at, cwd FROM automations WHERE id = ? AND agent_id = ?
 `
 
 type GetAutomationParams struct {
@@ -498,6 +519,29 @@ func (q *Queries) GetAutomation(ctx context.Context, arg GetAutomationParams) (A
 		&i.NextDueAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Cwd,
+	)
+	return i, err
+}
+
+const getAutomationRun = `-- name: GetAutomationRun :one
+SELECT id, automation_id, due_at, status, reason, created_at, outcome, summary, change_key, duplicate FROM automation_runs WHERE id = ?
+`
+
+func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRun, error) {
+	row := q.db.QueryRowContext(ctx, getAutomationRun, id)
+	var i AutomationRun
+	err := row.Scan(
+		&i.ID,
+		&i.AutomationID,
+		&i.DueAt,
+		&i.Status,
+		&i.Reason,
+		&i.CreatedAt,
+		&i.Outcome,
+		&i.Summary,
+		&i.ChangeKey,
+		&i.Duplicate,
 	)
 	return i, err
 }
@@ -800,7 +844,7 @@ SELECT
     r.due_at,
     r.status,
     r.reason,
-    r.created_at,
+    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate,
     s.status AS message_status,
     s.reason AS message_reason,
     s.conversation_id AS chat_id
@@ -822,6 +866,10 @@ type ListAutomationRunsRow struct {
 	Status        string         `json:"status"`
 	Reason        sql.NullString `json:"reason"`
 	CreatedAt     int64          `json:"created_at"`
+	Outcome       string         `json:"outcome"`
+	Summary       string         `json:"summary"`
+	ChangeKey     string         `json:"change_key"`
+	Duplicate     int64          `json:"duplicate"`
 	MessageStatus sql.NullString `json:"message_status"`
 	MessageReason sql.NullString `json:"message_reason"`
 	ChatID        sql.NullInt64  `json:"chat_id"`
@@ -843,6 +891,10 @@ func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRuns
 			&i.Status,
 			&i.Reason,
 			&i.CreatedAt,
+			&i.Outcome,
+			&i.Summary,
+			&i.ChangeKey,
+			&i.Duplicate,
 			&i.MessageStatus,
 			&i.MessageReason,
 			&i.ChatID,
@@ -861,7 +913,7 @@ func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRuns
 }
 
 const listAutomations = `-- name: ListAutomations :many
-SELECT id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at FROM automations WHERE agent_id = ? ORDER BY created_at, id
+SELECT id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at, cwd FROM automations WHERE agent_id = ? ORDER BY created_at, id
 `
 
 func (q *Queries) ListAutomations(ctx context.Context, agentID string) ([]Automation, error) {
@@ -885,6 +937,7 @@ func (q *Queries) ListAutomations(ctx context.Context, agentID string) ([]Automa
 			&i.NextDueAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Cwd,
 		); err != nil {
 			return nil, err
 		}
@@ -1061,7 +1114,7 @@ func (q *Queries) ListDreamInput(ctx context.Context, arg ListDreamInputParams) 
 }
 
 const listDueAutomations = `-- name: ListDueAutomations :many
-SELECT id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at FROM automations WHERE enabled = 1 AND next_due_at <= ? ORDER BY next_due_at
+SELECT id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at, cwd FROM automations WHERE enabled = 1 AND next_due_at <= ? ORDER BY next_due_at
 `
 
 func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt64) ([]Automation, error) {
@@ -1085,6 +1138,7 @@ func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt6
 			&i.NextDueAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Cwd,
 		); err != nil {
 			return nil, err
 		}
@@ -1351,6 +1405,32 @@ func (q *Queries) PairTelegramOwner(ctx context.Context, arg PairTelegramOwnerPa
 	return allowed_users, err
 }
 
+const reportAutomationRun = `-- name: ReportAutomationRun :execrows
+UPDATE automation_runs SET outcome = ?1, summary = ?2, change_key = ?3
+WHERE automation_runs.id = ?4 AND automation_runs.outcome = '' AND automation_runs.status = 'started'
+    AND EXISTS (SELECT 1 FROM submissions WHERE id = ?4 AND status = 'pending')
+`
+
+type ReportAutomationRunParams struct {
+	Outcome   string `json:"outcome"`
+	Summary   string `json:"summary"`
+	ChangeKey string `json:"change_key"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) ReportAutomationRun(ctx context.Context, arg ReportAutomationRunParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, reportAutomationRun,
+		arg.Outcome,
+		arg.Summary,
+		arg.ChangeKey,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const requestExecutionAbort = `-- name: RequestExecutionAbort :exec
 UPDATE conversations SET abort_pending = 1 WHERE id = ? AND execution_id IS NOT NULL
 `
@@ -1542,12 +1622,13 @@ func (q *Queries) UpdateAgentSettings(ctx context.Context, arg UpdateAgentSettin
 
 const updateAutomation = `-- name: UpdateAutomation :execrows
 UPDATE automations SET
-    name = ?, prompt = ?, schedule = ?, time_zone = ?, session = ?, enabled = ?, next_due_at = ?,
+    cwd = ?, name = ?, prompt = ?, schedule = ?, time_zone = ?, session = ?, enabled = ?, next_due_at = ?,
     updated_at = ?
 WHERE id = ? AND agent_id = ?
 `
 
 type UpdateAutomationParams struct {
+	Cwd       string        `json:"cwd"`
 	Name      string        `json:"name"`
 	Prompt    string        `json:"prompt"`
 	Schedule  string        `json:"schedule"`
@@ -1562,6 +1643,7 @@ type UpdateAutomationParams struct {
 
 func (q *Queries) UpdateAutomation(ctx context.Context, arg UpdateAutomationParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, updateAutomation,
+		arg.Cwd,
 		arg.Name,
 		arg.Prompt,
 		arg.Schedule,

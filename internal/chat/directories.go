@@ -36,7 +36,7 @@ func ListDirectories(path *string) (DirectoryListing, error) {
 			return DirectoryListing{}, fmt.Errorf("%w: path must be absolute", ErrProjectInvalid)
 		}
 	}
-	selected, err = projectPath(selected)
+	selected, err = ProjectPath(selected)
 	if err != nil {
 		return DirectoryListing{}, err
 	}

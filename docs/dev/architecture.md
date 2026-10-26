@@ -245,7 +245,7 @@ tool share one path validator: trim, expand `~` or `~/`, require an existing
 absolute directory, and clean the path. Empty clears the override.
 The foreground tool writes control state before it commits native
 `harness.Configure`, so later tools in the same run use the new directory.
-Replay writes the same value. Main and automation have the tool but return
+Replay writes the same value. Main and automation have the `set_project` tool but return
 an error. Tasks and dreams do not have it. The Chat header refetches on tool
 completion and run completion. For a project cwd, native input uses absolute
 upload paths. The transcript keeps workspace-relative upload paths.
@@ -312,6 +312,28 @@ automations and their runs in `control.sqlite`. One scheduler job calls its
 `next_due_at` has come, as a message to its chat (`automation:<id>`, or
 `automation:<id>:<run id>` for a new chat each run), and moves `next_due_at`
 past now. The message uses the normal durable delivery.
+
+Run records and durable message intents commit in one control transaction.
+The run ID is the input request ID. A crash before commit leaves neither
+record. A crash after commit leaves an input that normal chat reconciliation
+can admit. If the schedule cursor did not advance, the unique automation/due
+key prevents another input for that scheduled time.
+
+An automation can store a project `cwd`. The API uses the Chat path validator.
+Each run sets or clears its chat's cwd before it stores the input. Project
+skills therefore follow the run directory, including when a chat is reused.
+
+Only automation conversations have `report_check`. The tool stores an explicit
+`changed`, `unchanged`, or `failed` outcome, a summary, and an optional change
+key. The report is provisional while the run is active. Submission settlement
+and the final run outcome commit together. Missing reports and execution errors
+produce `failed`; answer text cannot imply `unchanged`. Old terminal runs
+without reports migrate to `failed`. Skipped runs have no outcome.
+
+A completed report with the same nonempty change key as an earlier
+completed report has `duplicate: true`. Both run records remain. Deduplication
+records repeated findings; it does not prevent or undo actions. The runs API
+exposes these fields for later Inbox work.
 
 ## Settings
 

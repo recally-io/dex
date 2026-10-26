@@ -18,8 +18,8 @@ var (
 	ErrProjectInvalid   = errors.New("invalid project directory")
 )
 
-// projectPath validates paths at the API and tool boundary. Empty restores the workspace.
-func projectPath(path string) (string, error) {
+// ProjectPath validates paths at the API and tool boundary. Empty restores the workspace.
+func ProjectPath(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return "", nil
@@ -57,7 +57,7 @@ func (s *Service) SetProject(ctx context.Context, agentID string, id int64, path
 	if !strings.HasPrefix(conv.ChannelKey, "chat:") {
 		return "", ErrProjectForbidden
 	}
-	path, err = projectPath(path)
+	path, err = ProjectPath(path)
 	if err != nil {
 		return "", err
 	}

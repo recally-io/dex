@@ -35,6 +35,7 @@ type Automation struct {
 	NextDueAt sql.NullInt64 `json:"next_due_at"`
 	CreatedAt int64         `json:"created_at"`
 	UpdatedAt int64         `json:"updated_at"`
+	Cwd       string        `json:"cwd"`
 }
 
 type AutomationRun struct {
@@ -44,6 +45,10 @@ type AutomationRun struct {
 	Status       string         `json:"status"`
 	Reason       sql.NullString `json:"reason"`
 	CreatedAt    int64          `json:"created_at"`
+	Outcome      string         `json:"outcome"`
+	Summary      string         `json:"summary"`
+	ChangeKey    string         `json:"change_key"`
+	Duplicate    int64          `json:"duplicate"`
 }
 
 type ChannelCommand struct {

@@ -36,6 +36,7 @@ type Input struct {
 	RequestID, Content, Kind, Origin, Source string
 	Attachments                              []Attachment
 	Options
+	Automation        bool
 	Background        bool
 	TaskID, TaskTitle string
 }

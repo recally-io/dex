@@ -33,6 +33,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   const formId = useId();
   const browserZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [name, setName] = useState(existing?.name ?? "");
+  const [cwd, setCwd] = useState(existing?.cwd ?? "");
   const [prompt, setPrompt] = useState(existing?.prompt ?? "");
   const [kind, setKind] = useState<Schedule["kind"]>(existing?.schedule.kind ?? "daily");
   const [minutes, setMinutes] = useState(existing?.schedule.minutes ?? 30);
@@ -138,7 +139,16 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
           event.preventDefault();
 
           if (!validSchedule || pending) return;
-          const body = { name: name.trim(), prompt: prompt.trim(), schedule, timeZone, session, enabled };
+
+          const body = {
+            name: name.trim(),
+            prompt: prompt.trim(),
+            cwd: cwd.trim(),
+            schedule,
+            timeZone,
+            session,
+            enabled,
+          };
 
           if (existing) update.mutate({ path: { agentId, automationId: existing.id }, body });
           else create.mutate({ path: { agentId }, body });
@@ -159,6 +169,19 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Tell the bot what to do."
+            />
+          )}
+        </Field>
+        <Field
+          label="Project directory"
+          hint="Use an absolute directory on the server. Leave empty to use the bot workspace."
+        >
+          {({ id, describedBy }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              value={cwd}
+              onChange={(e) => setCwd(e.target.value)}
             />
           )}
         </Field>
