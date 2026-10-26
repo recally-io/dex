@@ -565,7 +565,11 @@ export type ExtensionScope = 'home' | 'dex' | 'agent';
 export type Skill = {
     name: string;
     description: string;
-    scope: ExtensionScope;
+    /**
+     * A file level, or project for .agents/skills under the agent workspace. The prompt reads the project level under the conversation's cwd.
+     *
+     */
+    scope: 'home' | 'dex' | 'agent' | 'project';
     /**
      * The SKILL.md file.
      */

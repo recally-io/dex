@@ -13,6 +13,7 @@ import (
 
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/MichaelKinsy/PiG/durable"
+	envnode "github.com/MichaelKinsy/PiG/durable/env/node"
 	"github.com/recally-io/dex/internal/mcptest"
 )
 
@@ -61,6 +62,32 @@ func TestUserExtensionsMergeAndRefreshSkills(t *testing.T) {
 	prompt, err = loaded.Extension.Sections[1].Render(t.Context(), durable.PromptInput{})
 	if err != nil || prompt != nil {
 		t.Fatalf("broken skill exposed wider entry: %v %v", prompt, err)
+	}
+}
+func TestUserProjectSkillsFollowTheConversationCwd(t *testing.T) {
+	// Given a project skill in the bot workspace and another in a repository
+	a, _, data := extensionFixture(t)
+	repo := t.TempDir()
+	extensionFile(t, filepath.Join(data, "agents", "a", "workspace", ".agents", "skills", "notes", "SKILL.md"), "---\ndescription: workspace notes\n---\n")
+	extensionFile(t, filepath.Join(repo, ".agents", "skills", "tools", "lint", "SKILL.md"), "---\ndescription: repo lint\n---\n")
+	loaded, err := a.Load(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.Close(t.Context())
+	section := loaded.Extension.Sections[1]
+
+	// When a request has no environment, then the project level is the workspace
+	prompt, err := section.Render(t.Context(), durable.PromptInput{})
+	if err != nil || prompt == nil || !strings.Contains(*prompt, "workspace notes") || strings.Contains(*prompt, "repo lint") {
+		t.Fatalf("workspace prompt: %v %v", prompt, err)
+	}
+
+	// When the conversation's cwd is the repository, then the project level is the repository
+	env := envnode.NewNodeExecutionEnv(envnode.NodeExecutionEnvOptions{Cwd: repo})
+	prompt, err = section.Render(t.Context(), durable.PromptInput{Env: env})
+	if err != nil || prompt == nil || !strings.Contains(*prompt, "- lint: repo lint") || strings.Contains(*prompt, "workspace notes") {
+		t.Fatalf("repository prompt: %v %v", prompt, err)
 	}
 }
 func TestUserEnvEditsPreserveLinesAndRedactValues(t *testing.T) {

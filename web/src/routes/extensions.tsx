@@ -137,12 +137,16 @@ function Catalog({ extensions: e }: { extensions: Extensions }) {
           ) : null}
         </Section>
       ) : null}
-      <Section n={4} title="Skills" caption="Edits apply to the next model request.">
+      <Section
+        n={4}
+        title="Skills"
+        caption="Edits apply to the next model request. The project level is .agents/skills in the bot workspace and is narrower than the bot."
+      >
         <List
           items={e.skills.map((skill) => (
             <SkillRow key={skill.name} skill={skill} />
           ))}
-          empty={<>Add skills/&lt;name&gt;/SKILL.md in a level above.</>}
+          empty={<>Add skills/&lt;name&gt;/SKILL.md in a level above. Nested directories work too.</>}
         />
       </Section>
       <Section

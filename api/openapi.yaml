@@ -1732,7 +1732,12 @@ components:
       properties:
         name: { type: string }
         description: { type: string }
-        scope: { $ref: "#/components/schemas/ExtensionScope" }
+        scope:
+          type: string
+          description: >
+            A file level, or project for .agents/skills under the agent workspace. The
+            prompt reads the project level under the conversation's cwd.
+          enum: [home, dex, agent, project]
         path: { type: string, description: The SKILL.md file. }
         overrides:
           type: boolean

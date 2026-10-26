@@ -102,17 +102,24 @@ Other operating systems are not supported.
 
 dex reads skills and MCP servers from files, for all agents and for one agent:
 
-| Scope | Skills                                              | MCP servers                           |
-| ----- | --------------------------------------------------- | ------------------------------------- |
-| Home  | `~/.agents/skills/<name>/SKILL.md`                  | `~/.agents/mcp.json`                  |
-| Dex   | `~/.dex/.agents/skills/<name>/SKILL.md`             | `~/.dex/.agents/mcp.json`             |
-| Agent | `~/.dex/agents/<id>/.agents/skills/<name>/SKILL.md` | `~/.dex/agents/<id>/.agents/mcp.json` |
+| Scope   | Skills                                              | MCP servers                           |
+| ------- | --------------------------------------------------- | ------------------------------------- |
+| Home    | `~/.agents/skills/<name>/SKILL.md`                  | `~/.agents/mcp.json`                  |
+| Dex     | `~/.dex/.agents/skills/<name>/SKILL.md`             | `~/.dex/.agents/mcp.json`             |
+| Agent   | `~/.dex/agents/<id>/.agents/skills/<name>/SKILL.md` | `~/.dex/agents/<id>/.agents/mcp.json` |
+| Project | `<cwd>/.agents/skills/<name>/SKILL.md`              | none                                  |
 
-A narrower entry replaces the wider entry with the same name. Dex paths
-follow `DEX_DATA_DIR` when you change the data directory. A skill is a
-directory with a `SKILL.md` that starts with YAML front matter with a
-`description`. The prompt lists each skill; the agent reads the file when a
-task needs it. `mcp.json` has an `mcpServers` object, as in Claude Code and
+A narrower entry replaces the wider entry with the same name; Project is the
+narrowest. The project cwd is the agent workspace, `~/.dex/agents/<id>/workspace`.
+Dex paths follow `DEX_DATA_DIR` when you change the data directory.
+
+A skill is a directory with a `SKILL.md` that starts with YAML front matter
+with a `description` and an optional `name`. Without a `name`, the directory
+name is the skill name. A skill can be in a nested directory, such as
+`skills/team/review/SKILL.md`. dex does not look inside a skill, hidden
+directories, or `node_modules`. When two skills in one level have the same
+name, the first in path order wins, and the Extensions page shows a warning.
+The prompt lists each skill; the agent reads the file when a task needs it. `mcp.json` has an `mcpServers` object, as in Claude Code and
 Cursor:
 
 ```json
