@@ -174,6 +174,10 @@ export type SchedulePreview = {
 export type AutomationInput = {
     name: string;
     prompt: string;
+    /**
+     * Existing absolute project directory. Empty uses the agent workspace.
+     */
+    cwd?: string;
     schedule: Schedule;
     timeZone: string;
     /**
@@ -207,6 +211,16 @@ export type AutomationRun = {
     dueAt?: number;
     createdAt: number;
     status: 'running' | 'done' | 'failed' | 'skipped';
+    /**
+     * Empty before a report or for a skipped run. Terminal runs require a report or fail.
+     */
+    outcome: '' | 'changed' | 'unchanged' | 'failed';
+    summary: string;
+    changeKey?: string;
+    /**
+     * An earlier completed report has the same change key. Actions are not suppressed.
+     */
+    duplicate: boolean;
     reason?: string;
     chatId?: number;
 };

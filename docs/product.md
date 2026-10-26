@@ -59,8 +59,11 @@ to read in an afternoon.
   URLs open the default agent. An unknown agent shows a not-found page.
   Every agent has channel setup controls.
   Channel input shares main. Automation runs have separate read-only transcripts.
+  Each run requires an explicit changed, unchanged or failed report. Missing
+  reports and execution errors fail the run. Run records include a summary
+  and an optional change key; repeated keys mark duplicate reports.
 - Each conversation runs one main agent loop that does the work itself.
-  Skills, tools and the project directory provide capabilities. The main agent does ordinary work itself.
+  Skills, tools and the project directory provide capabilities.
   Internal background execution is limited to independent parallel work,
   long commands whose output would flood the context, and independent review.
   Each execution has one input and fixed model settings. The main agent
@@ -215,8 +218,9 @@ browses directories on the dex host and offers up to eight recent projects
 for the current agent. The directory applies
 from the next message after an API change. A tool change also applies to
 later tools in the same run. Clear the project to return to the agent
-workspace. Main, channels, tasks, automations, and dreams cannot set a
-project. Tasks inherit the parent Chat's directory. Project skills come from
+workspace. An automation can set its project directory in its dialog. The
+directory applies on every run, including a reused session. Main, channels,
+tasks, and dreams cannot set a project. Tasks inherit the parent Chat's directory. Project skills come from
 `<cwd>/.agents/skills/`. Memory stays in `<data dir>/memory`.
 
 The system prompt always includes a guide to these files, even with no

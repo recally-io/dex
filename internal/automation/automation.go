@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 	"uuid"
 
+	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
@@ -38,13 +39,14 @@ var ErrInvalid = errors.New("invalid automation")
 // ErrNotFound means that the automation does not exist.
 var ErrNotFound = errors.New("automation not found")
 
-// Poster stores a message in a chat and admits it to native execution.
+// Poster stores a run and its durable input intent together.
 type Poster interface {
-	Post(ctx context.Context, agentID, channelKey, title, id, content string) (int64, error)
+	EnqueueAutomation(context.Context, chat.AutomationInput) (int64, bool, error)
 }
 
 // Input is what the user sets.
 type Input struct {
+	Cwd      string   `json:"cwd"`
 	Name     string   `json:"name"`
 	Prompt   string   `json:"prompt"`
 	Schedule Schedule `json:"schedule"`
@@ -65,6 +67,10 @@ type Automation struct {
 
 // Run is one run of an automation.
 type Run struct {
+	Outcome   string `json:"outcome"`
+	Summary   string `json:"summary"`
+	ChangeKey string `json:"changeKey,omitempty"`
+	Duplicate bool   `json:"duplicate"`
 	ID        string `json:"id"`
 	DueAt     int64  `json:"dueAt,omitzero"` // 0 for a run that the user started
 	CreatedAt int64  `json:"createdAt"`
@@ -99,6 +105,11 @@ func invalid(reason string) error { return fmt.Errorf("%w: %s", ErrInvalid, reas
 
 // clean validates in and returns it with a clean schedule, and its time zone.
 func clean(in Input) (Input, *time.Location, error) {
+	cwd, err := chat.ProjectPath(in.Cwd)
+	if err != nil {
+		return in, nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	in.Cwd = cwd
 	in.Name = strings.TrimSpace(in.Name)
 	in.Prompt = strings.TrimSpace(in.Prompt)
 	if in.Name == "" || utf8.RuneCountInString(in.Name) > 100 {
@@ -191,7 +202,7 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 		return Automation{}, err
 	}
 	_, err = s.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{
-		Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone,
+		Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone,
 		Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, UpdatedAt: row.UpdatedAt,
 		ID: row.ID, AgentID: agentID,
 	})
@@ -210,6 +221,7 @@ func fill(row *sqlc.Automation, in Input, loc *time.Location, now time.Time) err
 	if in.Enabled && in.Schedule.Kind == "once" && !time.UnixMilli(in.Schedule.At).After(now) {
 		return invalid("the time is in the past")
 	}
+	row.Cwd = in.Cwd
 	row.Name, row.Prompt, row.Schedule, row.TimeZone, row.Session = in.Name, in.Prompt, string(sched), in.TimeZone, in.Session
 	row.Enabled, row.NextDueAt = 0, sql.NullInt64{}
 	if in.Enabled {
@@ -266,7 +278,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Automation, error
 
 func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, error) {
 	a := Automation{
-		Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1,
+		Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1,
 		ID: row.ID, NextRuns: []int64{}, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if err := json.Unmarshal([]byte(row.Schedule), &a.Schedule); err != nil {
@@ -302,7 +314,7 @@ func (s *Service) Runs(ctx context.Context, agentID string, id string, limit int
 	}
 	out := make([]Run, len(rows))
 	for i, r := range rows {
-		out[i] = Run{ID: r.ID, DueAt: r.DueAt.Int64, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason.String, ChatID: r.ChatID.Int64}
+		out[i] = Run{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate == 1, ID: r.ID, DueAt: r.DueAt.Int64, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason.String, ChatID: r.ChatID.Int64}
 		if r.Status != "started" {
 			continue
 		}
@@ -327,12 +339,9 @@ func (s *Service) RunNow(ctx context.Context, agentID string, id string) (Run, e
 	if err != nil {
 		return Run{}, err
 	}
-	run, _, err := s.admit(ctx, row, sql.NullInt64{}, "")
+	run, err := s.admit(ctx, row, sql.NullInt64{}, "")
 	if err != nil {
 		return Run{}, err
-	}
-	if run.Status == "started" {
-		s.deliver(ctx, row, &run)
 	}
 	return run, nil
 }
@@ -369,7 +378,7 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 	}
 	// The run comes before the next time: a crash between them repeats the check, which finds the
 	// run and does not store it again.
-	run, created, err := s.admit(ctx, row, sql.NullInt64{Int64: latest.UnixMilli(), Valid: true}, skip)
+	_, err = s.admit(ctx, row, sql.NullInt64{Int64: latest.UnixMilli(), Valid: true}, skip)
 	if err != nil {
 		return err
 	}
@@ -380,23 +389,20 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 	if err != nil {
 		return err
 	}
-	if created && run.Status == "started" {
-		s.deliver(ctx, row, &run)
-	}
 	return nil
 }
 
 // admit stores a run for due, skipped with the reason skip, or when the bot has no model or a
-// run of the automation is busy. It returns false when a run for due exists already.
-func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullInt64, skip string) (Run, bool, error) {
+// run of the automation is busy. An existing scheduled run creates no new input.
+func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullInt64, skip string) (Run, error) {
 	if skip == "" {
 		agent, err := s.q.GetAgent(ctx, row.AgentID)
 		if err != nil {
-			return Run{}, false, err
+			return Run{}, err
 		}
 		busy, err := s.q.CountAutomationPending(ctx, row.ID)
 		if err != nil {
-			return Run{}, false, err
+			return Run{}, err
 		}
 		switch {
 		case agent.ModelID == "":
@@ -409,28 +415,21 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 	if skip != "" {
 		run.Status = "skipped"
 	}
-	created, err := s.q.CreateAutomationRun(ctx, sqlc.CreateAutomationRunParams{
+	params := sqlc.CreateAutomationRunParams{
 		ID: run.ID, AutomationID: row.ID, DueAt: due, Status: run.Status,
 		Reason: sql.NullString{String: skip, Valid: skip != ""}, CreatedAt: run.CreatedAt,
-	})
-	return run, created > 0, err
-}
-
-// deliver posts the prompt of a started run. A failure marks the run failed.
-func (s *Service) deliver(ctx context.Context, row sqlc.Automation, run *Run) {
+	}
+	if skip != "" {
+		_, err := s.q.CreateAutomationRun(ctx, params)
+		return run, err
+	}
 	key := Channel + row.ID
 	if row.Session == "new" {
 		key += ":" + run.ID
 	}
-	chatID, err := s.chats.Post(ctx, row.AgentID, key, row.Name, run.ID, row.Prompt)
-	if err == nil {
+	chatID, created, err := s.chats.EnqueueAutomation(ctx, chat.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd})
+	if created {
 		run.Status, run.ChatID = "running", chatID
-		return
 	}
-	run.Status, run.Reason = "failed", err.Error()
-	if err := s.q.FailAutomationRun(ctx, sqlc.FailAutomationRunParams{
-		Reason: sql.NullString{String: err.Error(), Valid: true}, ID: run.ID,
-	}); err != nil {
-		slog.Error("record a failed automation run", "run", run.ID, "err", err)
-	}
+	return run, err
 }

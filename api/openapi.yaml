@@ -1349,6 +1349,9 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
         prompt: { type: string, minLength: 1, maxLength: 32000 }
+        cwd:
+          type: string
+          description: Existing absolute project directory. Empty uses the agent workspace.
         schedule: { $ref: "#/components/schemas/Schedule" }
         timeZone: { type: string }
         session:
@@ -1390,7 +1393,7 @@ components:
       x-go-type-import:
         path: github.com/recally-io/dex/internal/automation
       type: object
-      required: [id, status, createdAt]
+      required: [id, status, createdAt, outcome, summary, duplicate]
       properties:
         id: { type: string }
         dueAt:
@@ -1399,6 +1402,15 @@ components:
           description: The scheduled time; absent for a run that the user started.
         createdAt: { type: integer, format: int64 }
         status: { type: string, enum: [running, done, failed, skipped] }
+        outcome:
+          type: string
+          enum: ["", changed, unchanged, failed]
+          description: Empty before a report or for a skipped run. Terminal runs require a report or fail.
+        summary: { type: string }
+        changeKey: { type: string }
+        duplicate:
+          type: boolean
+          description: An earlier completed report has the same change key. Actions are not suppressed.
         reason: { type: string }
         chatId: { type: integer, format: int64 }
 
