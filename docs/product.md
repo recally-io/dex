@@ -59,8 +59,8 @@ to read in an afternoon.
   URLs open the default agent. An unknown agent shows a not-found page.
   Every agent has channel setup controls.
   Channel input shares main. Automation runs have separate read-only transcripts.
-- One main agent loop and one context per bot. Skills, tools and the project
-  directory provide capabilities. The main agent does ordinary work itself.
+- Each conversation runs one main agent loop that does the work itself.
+  Skills, tools and the project directory provide capabilities. The main agent does ordinary work itself.
   Internal background execution is limited to independent parallel work,
   long commands whose output would flood the context, and independent review.
   Each execution has one input and fixed model settings. The main agent

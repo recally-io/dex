@@ -430,8 +430,8 @@ reconciliation cover the gap between their commits.
 
 ## Internal delegation
 
-One bot has one main agent loop and one context. Skills, tools and the
-project directory provide capabilities. The main agent does ordinary work
+Each conversation runs one main agent loop. Main and each Chat have separate
+contexts. Skills, tools and the project directory provide capabilities. The main agent does ordinary work
 itself. It uses `spawn_task` only for independent parallel work, long commands
 whose output would flood its context, and independent review. It uses
 `list_tasks`, `get_task`, and `cancel_task` to manage that work.

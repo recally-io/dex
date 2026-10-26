@@ -261,7 +261,7 @@ func taskSource(ctx context.Context, api durable.ToolExecutionApi) (string, erro
 	return id, nil
 }
 
-const taskRules = `One bot has one main agent loop and one context. Do the work yourself with skills, tools, and the current project directory. Use spawn_task only for independent work that can run in parallel, long commands whose output would flood this context, or independent review. Keep sequential research, coding, fixes, and tests in this loop. Get an independent review of code changes. For each background task, include the repository path, required context, owned files, and completion criteria. Background conversations have no task tools.
+const taskRules = `You are the main agent loop of this conversation. Do the work yourself with skills, tools, and the current project directory. Use spawn_task only for independent work that can run in parallel, long commands whose output would flood this context, or independent review. Keep sequential research, coding, fixes, and tests in this loop. Get an independent review of code changes. For each background task, include the repository path, required context, owned files, and completion criteria. Background conversations have no task tools.
 
 When background tasks are running, continue any independent local work that remains in scope. When no local work remains, send one brief reply that names the background work and says that you will report back. Do not poll to wait for results. Results arrive as separate inputs.
 
