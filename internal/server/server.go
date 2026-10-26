@@ -667,3 +667,19 @@ func (h *handler) GetChatHistory(ctx context.Context, req api.GetChatHistoryRequ
 	}
 	return out, err
 }
+
+func (h *handler) ListDirectories(_ context.Context, req api.ListDirectoriesRequestObject) (api.ListDirectoriesResponseObject, error) {
+	listing, err := chat.ListDirectories(req.Params.Path)
+	if err != nil {
+		return nil, err
+	}
+	return api.ListDirectories200JSONResponse(listing), nil
+}
+
+func (h *handler) ListRecentProjects(ctx context.Context, _ api.ListRecentProjectsRequestObject) (api.ListRecentProjectsResponseObject, error) {
+	projects, err := h.Chats.RecentProjects(ctx, agentID(ctx))
+	if err != nil {
+		return nil, err
+	}
+	return api.ListRecentProjects200JSONResponse{Projects: projects}, nil
+}

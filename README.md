@@ -110,8 +110,11 @@ dex reads skills and MCP servers from files, for all agents and for one agent:
 | Project | `<cwd>/.agents/skills/<name>/SKILL.md`              | none                                  |
 
 A narrower entry replaces the wider entry with the same name; Project is the
-narrowest. Chat sessions can select a project directory in the chat header
-or with the `set_project` tool. The project cwd defaults to the agent workspace,
+narrowest. Chat sessions can select a project directory in the chat header.
+The picker browses folders on the dex host and lists recent projects for the
+current agent. Use Up or Home to navigate, or enter a path and press Enter.
+Select **Use this folder** to save the current folder. The `set_project` tool
+can also set the directory. The project cwd defaults to the agent workspace,
 `~/.dex/agents/<id>/workspace`. Clear the project to restore that default.
 Tasks inherit the parent session's project directory.
 Dex paths follow `DEX_DATA_DIR` when you change the data directory.

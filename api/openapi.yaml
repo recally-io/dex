@@ -537,6 +537,69 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/directories:
+    get:
+      operationId: listDirectories
+      description: >
+        Lists visible directories on the dex host, including symlinks to directories.
+        An absent path selects home. Paths must be absolute or start with ~ or ~/.
+        Entries are sorted by name without case and capped at 500.
+      parameters:
+        - in: query
+          name: path
+          schema: { type: string }
+      responses:
+        "200":
+          description: The current directory and its visible subdirectories.
+          content:
+            application/json:
+              schema:
+                type: object
+                x-go-type: chat.DirectoryListing
+                x-go-type-import:
+                  path: github.com/recally-io/dex/internal/chat
+                required: [path, parent, home, entries, truncated]
+                properties:
+                  path: { type: string }
+                  parent: { type: string }
+                  home: { type: string }
+                  truncated: { type: boolean }
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, path, git]
+                      properties:
+                        name: { type: string }
+                        path: { type: string }
+                        git: { type: boolean }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/projects:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    get:
+      operationId: listRecentProjects
+      description: Returns up to eight distinct existing project directories, newest activity first.
+      responses:
+        "200":
+          description: Recent project paths for this agent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [projects]
+                properties:
+                  projects:
+                    type: array
+                    items: { type: string }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/chats/{chatId}/project:
     parameters:
       - in: path

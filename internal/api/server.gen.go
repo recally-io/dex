@@ -1157,6 +1157,11 @@ type CreateUploadMultipartBody struct {
 	File openapi_types.File `json:"file"`
 }
 
+// ListDirectoriesParams defines parameters for ListDirectories.
+type ListDirectoriesParams struct {
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
 type CreateAgentJSONRequestBody = AgentInput
 
@@ -1788,6 +1793,9 @@ type ServerInterface interface {
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(w http.ResponseWriter, r *http.Request, agentId string)
 
+	// (GET /api/agents/{agentId}/projects)
+	ListRecentProjects(w http.ResponseWriter, r *http.Request, agentId string)
+
 	// (GET /api/agents/{agentId}/tasks/{taskId})
 	GetTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
 
@@ -1799,6 +1807,9 @@ type ServerInterface interface {
 
 	// (POST /api/automations/preview)
 	PreviewSchedule(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/directories)
+	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
 
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -3052,6 +3063,32 @@ func (siw *ServerInterfaceWrapper) ReloadExtensions(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListRecentProjects operation middleware
+func (siw *ServerInterfaceWrapper) ListRecentProjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRecentProjects(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTask operation middleware
 func (siw *ServerInterfaceWrapper) GetTask(w http.ResponseWriter, r *http.Request) {
 
@@ -3153,6 +3190,39 @@ func (siw *ServerInterfaceWrapper) PreviewSchedule(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PreviewSchedule(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDirectories operation middleware
+func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListDirectoriesParams
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDirectories(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3450,6 +3520,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}", wrapper.GetChat)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/archive", wrapper.UnarchiveChat)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/archive", wrapper.ArchiveChat)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/projects", wrapper.ListRecentProjects)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/project", wrapper.SetChatProject)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/settings", wrapper.SetChatSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/messages", wrapper.SendMessage)
@@ -5780,6 +5852,61 @@ func (response ReloadExtensionsdefaultJSONResponse) VisitReloadExtensionsRespons
 	return err
 }
 
+type ListRecentProjectsRequestObject struct {
+	AgentId string `json:"agentId"`
+}
+
+type ListRecentProjectsResponseObject interface {
+	VisitListRecentProjectsResponse(w http.ResponseWriter) error
+}
+
+type ListRecentProjects200JSONResponse struct {
+	Projects []string `json:"projects"`
+}
+
+func (response ListRecentProjects200JSONResponse) VisitListRecentProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRecentProjects404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListRecentProjects404JSONResponse) VisitListRecentProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRecentProjectsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListRecentProjectsdefaultJSONResponse) VisitListRecentProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetTaskRequestObject struct {
 	AgentId string `json:"agentId"`
 	TaskId  string `json:"taskId"`
@@ -6031,6 +6158,59 @@ type PreviewScheduledefaultJSONResponse struct {
 }
 
 func (response PreviewScheduledefaultJSONResponse) VisitPreviewScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDirectoriesRequestObject struct {
+	Params ListDirectoriesParams
+}
+
+type ListDirectoriesResponseObject interface {
+	VisitListDirectoriesResponse(w http.ResponseWriter) error
+}
+
+type ListDirectories200JSONResponse chat.DirectoryListing
+
+func (response ListDirectories200JSONResponse) VisitListDirectoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDirectories400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListDirectories400JSONResponse) VisitListDirectoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDirectoriesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListDirectoriesdefaultJSONResponse) VisitListDirectoriesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -6514,6 +6694,9 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(ctx context.Context, request ReloadExtensionsRequestObject) (ReloadExtensionsResponseObject, error)
 
+	// (GET /api/agents/{agentId}/projects)
+	ListRecentProjects(ctx context.Context, request ListRecentProjectsRequestObject) (ListRecentProjectsResponseObject, error)
+
 	// (GET /api/agents/{agentId}/tasks/{taskId})
 	GetTask(ctx context.Context, request GetTaskRequestObject) (GetTaskResponseObject, error)
 
@@ -6525,6 +6708,9 @@ type StrictServerInterface interface {
 
 	// (POST /api/automations/preview)
 	PreviewSchedule(ctx context.Context, request PreviewScheduleRequestObject) (PreviewScheduleResponseObject, error)
+
+	// (GET /api/directories)
+	ListDirectories(ctx context.Context, request ListDirectoriesRequestObject) (ListDirectoriesResponseObject, error)
 
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -7745,6 +7931,32 @@ func (sh *strictHandler) ReloadExtensions(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// ListRecentProjects operation middleware
+func (sh *strictHandler) ListRecentProjects(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request ListRecentProjectsRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRecentProjects(ctx, request.(ListRecentProjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRecentProjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRecentProjectsResponseObject); ok {
+		if err := validResponse.VisitListRecentProjectsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetTask operation middleware
 func (sh *strictHandler) GetTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
 	var request GetTaskRequestObject
@@ -7856,6 +8068,32 @@ func (sh *strictHandler) PreviewSchedule(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PreviewScheduleResponseObject); ok {
 		if err := validResponse.VisitPreviewScheduleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDirectories operation middleware
+func (sh *strictHandler) ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams) {
+	var request ListDirectoriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDirectories(ctx, request.(ListDirectoriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDirectories")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDirectoriesResponseObject); ok {
+		if err := validResponse.VisitListDirectoriesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

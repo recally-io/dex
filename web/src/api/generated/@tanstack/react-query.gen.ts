@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acquireMaintenance, archiveChat, beginFeishu, beginWechatLogin, clearContext, createAgent, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteExtensionEnv, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, getAgent, getAutomation, getChannels, getChat, getChatHistory, getExtensions, getFeishu, getHealth, getMainChat, getSettings, getTask, getUpload, listAgents, listAutomationRuns, listAutomations, listChats, listModels, type Options, pollFeishu, pollWechatLogin, previewSchedule, putExtensionEnv, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setChatProject, setChatSettings, setFeishu, setProvider, setTelegram, unarchiveChat, updateAgent, updateAutomation } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, ArchiveChatData, ArchiveChatError, ArchiveChatResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteExtensionEnvData, DeleteExtensionEnvError, DeleteExtensionEnvResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTaskData, GetTaskError, GetTaskResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListModelsData, ListModelsError, ListModelsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, PutExtensionEnvData, PutExtensionEnvError, PutExtensionEnvResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatProjectData, SetChatProjectError, SetChatProjectResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UnarchiveChatData, UnarchiveChatError, UnarchiveChatResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, archiveChat, beginFeishu, beginWechatLogin, clearContext, createAgent, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteExtensionEnv, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, getAgent, getAutomation, getChannels, getChat, getChatHistory, getExtensions, getFeishu, getHealth, getMainChat, getSettings, getTask, getUpload, listAgents, listAutomationRuns, listAutomations, listChats, listDirectories, listModels, listRecentProjects, type Options, pollFeishu, pollWechatLogin, previewSchedule, putExtensionEnv, releaseMaintenance, reloadExtensions, runAutomation, sendMessage, setChatProject, setChatSettings, setFeishu, setProvider, setTelegram, unarchiveChat, updateAgent, updateAutomation } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, ArchiveChatData, ArchiveChatError, ArchiveChatResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteExtensionEnvData, DeleteExtensionEnvError, DeleteExtensionEnvResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTaskData, GetTaskError, GetTaskResponse, GetUploadData, GetUploadError, GetUploadResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListDirectoriesData, ListDirectoriesError, ListDirectoriesResponse, ListModelsData, ListModelsError, ListModelsResponse, ListRecentProjectsData, ListRecentProjectsError, ListRecentProjectsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, PutExtensionEnvData, PutExtensionEnvError, PutExtensionEnvResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatProjectData, SetChatProjectError, SetChatProjectResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UnarchiveChatData, UnarchiveChatError, UnarchiveChatResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse } from '../types.gen';
 
 /**
  * Exchanges the access token for the session cookie.
@@ -562,6 +562,43 @@ export const archiveChatMutation = (options?: Partial<Options<ArchiveChatData>>)
     };
     return mutationOptions;
 };
+
+export const listDirectoriesQueryKey = (options?: Options<ListDirectoriesData>) => createQueryKey('listDirectories', options);
+
+/**
+ * Lists visible directories on the dex host, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
+ *
+ */
+export const listDirectoriesOptions = (options?: Options<ListDirectoriesData>) => queryOptions<ListDirectoriesResponse, ListDirectoriesError, ListDirectoriesResponse, ReturnType<typeof listDirectoriesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listDirectories({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listDirectoriesQueryKey(options)
+});
+
+export const listRecentProjectsQueryKey = (options: Options<ListRecentProjectsData>) => createQueryKey('listRecentProjects', options);
+
+/**
+ * Returns up to eight distinct existing project directories, newest activity first.
+ */
+export const listRecentProjectsOptions = (options: Options<ListRecentProjectsData>) => queryOptions<ListRecentProjectsResponse, ListRecentProjectsError, ListRecentProjectsResponse, ReturnType<typeof listRecentProjectsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listRecentProjects({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listRecentProjectsQueryKey(options)
+});
 
 /**
  * Sets the project directory of a Chat session from the next message. Other conversation kinds return 403. Empty cwd restores the agent workspace. The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
