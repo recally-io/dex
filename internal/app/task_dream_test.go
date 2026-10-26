@@ -12,6 +12,7 @@ import (
 )
 
 func TestUserDreamMemoryExcludesInternalTaskInput(t *testing.T) {
+	t.Parallel()
 	// Given a completed delegation and ordinary user JSON with the same shape.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")

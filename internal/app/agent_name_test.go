@@ -9,6 +9,7 @@ import (
 )
 
 func TestUserNamesBot(t *testing.T) {
+	t.Parallel()
 	// Given a bot with saved model settings.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")

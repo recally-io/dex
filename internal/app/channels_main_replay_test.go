@@ -11,6 +11,7 @@ import (
 )
 
 func TestUserChannelMainLegacyNewReplayPreservesContext(t *testing.T) {
+	t.Parallel()
 	// Given main context and an incomplete /new from the previous version.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
@@ -48,6 +49,7 @@ func TestUserChannelMainLegacyNewReplayPreservesContext(t *testing.T) {
 }
 
 func TestUserChannelMainLegacyStopReplayPreservesWork(t *testing.T) {
+	t.Parallel()
 	// Given main work and an old /stop before the channel starts.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
@@ -78,6 +80,7 @@ func TestUserChannelMainLegacyStopReplayPreservesWork(t *testing.T) {
 }
 
 func TestUserChannelMainStopReplayPreservesLaterWebInput(t *testing.T) {
+	t.Parallel()
 	// Given a committed withdrawal whose command completion fails.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
@@ -142,6 +145,7 @@ func TestUserChannelMainStopReplayPreservesLaterWebInput(t *testing.T) {
 }
 
 func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
+	t.Parallel()
 	// Given a Stop whose withdrawal commits but whose completion fails.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()

@@ -281,6 +281,7 @@ func pairFeishu(t *testing.T, d *dex, f *fakeFeishu) {
 }
 
 func TestUserChatsWithFeishuOwnerOnlyAndClearsMain(t *testing.T) {
+	t.Parallel()
 	// Given a manually configured bot, paired by the owner in a private chat.
 	f := newFakeFeishu(t)
 	dataDir := t.TempDir()
@@ -326,6 +327,7 @@ func TestUserChatsWithFeishuOwnerOnlyAndClearsMain(t *testing.T) {
 }
 
 func TestUserReceivesFeishuFileAndReplyAfterRestart(t *testing.T) {
+	t.Parallel()
 	// Given a paired bot and a platform that cannot accept replies.
 	f := newFakeFeishu(t)
 	dataDir := t.TempDir()
@@ -372,6 +374,7 @@ func TestUserReceivesFeishuFileAndReplyAfterRestart(t *testing.T) {
 }
 
 func TestUserSeesFeishuThinkingCardBecomeFinalAnswer(t *testing.T) {
+	t.Parallel()
 	// Given a real worker whose tool waits for a local HTTP boundary.
 	f := newFakeFeishu(t)
 	d := startFeishu(t, f, t.TempDir())
@@ -416,6 +419,7 @@ func TestUserSeesFeishuThinkingCardBecomeFinalAnswer(t *testing.T) {
 }
 
 func TestUserGetsPlainTextWhenFeishuRejectsCards(t *testing.T) {
+	t.Parallel()
 	// Given a paired app whose platform rejects interactive cards.
 	f := newFakeFeishu(t)
 	d := startFeishu(t, f, t.TempDir())
@@ -429,6 +433,7 @@ func TestUserGetsPlainTextWhenFeishuRejectsCards(t *testing.T) {
 }
 
 func TestUserCreatesFeishuAppAndPairsTheCreator(t *testing.T) {
+	t.Parallel()
 	// Given a local registration endpoint and the real settings service.
 	f := newFakeFeishu(t)
 	accounts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -486,6 +491,7 @@ func TestUserCreatesFeishuAppAndPairsTheCreator(t *testing.T) {
 }
 
 func TestUserStopsFeishuAnswer(t *testing.T) {
+	t.Parallel()
 	// Given a real tool call that waits for a local system boundary.
 	f := newFakeFeishu(t)
 	d := startFeishu(t, f, t.TempDir())
@@ -510,6 +516,7 @@ func TestUserStopsFeishuAnswer(t *testing.T) {
 }
 
 func TestUserGetsFeishuReplyAfterStartupFailure(t *testing.T) {
+	t.Parallel()
 	// Given a platform whose first startup request and REST retries fail.
 	f := newFakeFeishu(t)
 	f.startupFailures = 3
@@ -521,6 +528,7 @@ func TestUserGetsFeishuReplyAfterStartupFailure(t *testing.T) {
 }
 
 func TestUserGetsFeishuReplyAfterFiniteReconnectCount(t *testing.T) {
+	t.Parallel()
 	// Given a platform that disconnects once and advertises no reconnects.
 	f := newFakeFeishu(t)
 	f.disconnect = true
@@ -532,6 +540,7 @@ func TestUserGetsFeishuReplyAfterFiniteReconnectCount(t *testing.T) {
 }
 
 func TestUserDoesNotGetTextFallbackForTemporaryFeishuFailure(t *testing.T) {
+	t.Parallel()
 	// Given a platform that temporarily fails all three card attempts.
 	f := newFakeFeishu(t)
 	d := startFeishu(t, f, t.TempDir())
@@ -573,6 +582,7 @@ func waitFeishuStatus(t *testing.T, d *dex, want string) {
 }
 
 func TestUserSeesFeishuPreviewAfterReconnect(t *testing.T) {
+	t.Parallel()
 	// Given a real tool that waits while its input socket disconnects.
 	f := newFakeFeishu(t)
 	d := startFeishu(t, f, t.TempDir())
@@ -600,6 +610,7 @@ func TestUserSeesFeishuPreviewAfterReconnect(t *testing.T) {
 }
 
 func TestUserInvalidFeishuMessageDoesNotBlockLaterInput(t *testing.T) {
+	t.Parallel()
 	// Given a paired app and invalid platform content.
 	f := newFakeFeishu(t)
 	d := startFeishu(t, f, t.TempDir())
@@ -629,6 +640,7 @@ func TestUserInvalidFeishuMessageDoesNotBlockLaterInput(t *testing.T) {
 }
 
 func TestUserCancelsFeishuSetupWhileAccountsServiceWaits(t *testing.T) {
+	t.Parallel()
 	for _, action := range []string{"begin", "poll"} {
 		t.Run(action, func(t *testing.T) {
 			// Given a registration request that waits at the accounts boundary.

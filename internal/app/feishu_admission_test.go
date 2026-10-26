@@ -12,6 +12,7 @@ import (
 )
 
 func TestUserFeishuDisconnectDoesNotStrandDurableAdmission(t *testing.T) {
+	t.Parallel()
 	// Given native admission paused for maintenance.
 	f := newFakeFeishu(t)
 	f.pingInterval = 1

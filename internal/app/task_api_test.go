@@ -25,6 +25,7 @@ type taskInfo struct {
 }
 
 func TestUserReadsTaskReportsAndWork(t *testing.T) {
+	t.Parallel()
 	// Given completed main work and running channel work with the same title.
 	dir := t.TempDir()
 	f := newFakeTelegram(t)
@@ -106,6 +107,7 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 }
 
 func TestUserTasksStayWithinBot(t *testing.T) {
+	t.Parallel()
 	// Given a saved task owned by another bot in the same control database.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")

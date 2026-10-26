@@ -17,6 +17,7 @@ import (
 )
 
 func TestUserReadsExtensionLevelsAndPrivateEnvironment(t *testing.T) {
+	t.Parallel()
 	// Given three levels with the same skill and environment key.
 	data, home := t.TempDir(), t.TempDir()
 	for _, root := range []string{home, data, filepath.Join(data, "agents", "default")} {
@@ -47,6 +48,7 @@ func TestUserReadsExtensionLevelsAndPrivateEnvironment(t *testing.T) {
 }
 
 func TestUserUsesDexSkillsAndMCPEnvironment(t *testing.T) {
+	t.Parallel()
 	// Given a dex skill that replaces a home skill, and inherited server credentials.
 	data, home, inherited, explicit := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
 	writeSkill(t, filepath.Join(home, ".agents", "skills"), "notes", "description: Home notes")
@@ -78,6 +80,7 @@ func TestUserUsesDexSkillsAndMCPEnvironment(t *testing.T) {
 }
 
 func TestUserGetsNoFallbackFromInvalidExtensionFiles(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"mcp.json", ".env"} {
 		t.Run(kind, func(t *testing.T) {
 			// Given a valid home server and .env, with an invalid dex configuration.
@@ -117,6 +120,7 @@ func TestUserGetsNoFallbackFromInvalidExtensionFiles(t *testing.T) {
 }
 
 func TestUserUsesHeaderEnvironmentWithoutLeakingValues(t *testing.T) {
+	t.Parallel()
 	// Given an HTTP server that requires a home key at the agent level.
 	data, home := t.TempDir(), t.TempDir()
 	writeFile(t, filepath.Join(home, ".agents", ".env"), "TOKEN=private-header-token\nNESTED='${TOKEN}'\n")
@@ -151,6 +155,7 @@ func TestUserUsesHeaderEnvironmentWithoutLeakingValues(t *testing.T) {
 }
 
 func TestUserReloadsOneAgentWithoutChangingOtherEnvironments(t *testing.T) {
+	t.Parallel()
 	// Given two agents with distinct environments, both open.
 	data, home := t.TempDir(), t.TempDir()
 	d := startDexHome(t, app.Config{DataDir: data}, home)
@@ -195,6 +200,7 @@ func TestUserReloadsOneAgentWithoutChangingOtherEnvironments(t *testing.T) {
 }
 
 func TestUserReadsEqualHomeAndDexOnce(t *testing.T) {
+	t.Parallel()
 	// Given the data directory is HOME, reached through a symlink.
 	home := t.TempDir()
 	alias := filepath.Join(t.TempDir(), "home")
@@ -223,6 +229,7 @@ func TestUserReadsEqualHomeAndDexOnce(t *testing.T) {
 }
 
 func TestUserIsToldToMoveOldAgentExtensions(t *testing.T) {
+	t.Parallel()
 	// Given skills and an mcp.json in the agent directory, where dex read them before the levels.
 	data, home := t.TempDir(), t.TempDir()
 	root := filepath.Join(data, "agents", "default")

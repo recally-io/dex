@@ -11,6 +11,7 @@ import (
 )
 
 func TestUserCanRestartAfterStartupFailure(t *testing.T) {
+	t.Parallel()
 	for _, failure := range []string{"schedule", "saved channel"} {
 		t.Run(failure, func(t *testing.T) {
 			// Given a saved Telegram bot and an invalid startup input.

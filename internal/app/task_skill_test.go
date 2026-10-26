@@ -6,6 +6,7 @@ import (
 )
 
 func TestUserCanReadBuiltInCodingSkillInChatAndBackgroundExecution(t *testing.T) {
+	t.Parallel()
 	// Given a real app with no user-installed skills and the native runtime.
 	body, err := os.ReadFile("../engine/skills/coding/SKILL.md")
 	if err != nil {

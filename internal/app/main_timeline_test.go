@@ -24,6 +24,7 @@ func (d *dex) mainInfo(t *testing.T) sessionInfo {
 }
 
 func TestUserReturnsToMainAfterRestart(t *testing.T) {
+	t.Parallel()
 	// Given the main timeline with an answered message.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -59,6 +60,7 @@ func (d *dex) clearMain(t *testing.T, chatID int64, id string) {
 }
 
 func TestUserClearsMainAndReadsEarlierHistory(t *testing.T) {
+	t.Parallel()
 	// Given an answered message in the main timeline.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -144,6 +146,7 @@ func TestUserClearsMainAndReadsEarlierHistory(t *testing.T) {
 }
 
 func TestUserCannotClearBusyMain(t *testing.T) {
+	t.Parallel()
 	// Given a main answer held in a real shell tool, followed by a queued input.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -177,6 +180,7 @@ func TestUserCannotClearBusyMain(t *testing.T) {
 }
 
 func TestUserReadsFailedInputAcrossClear(t *testing.T) {
+	t.Parallel()
 	// Given a failed answer whose input and error appear in the transcript.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")

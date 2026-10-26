@@ -37,6 +37,7 @@ func listed(t *testing.T, d *dex, id int64) (archivedInfo, bool) {
 }
 
 func TestUserArchivesAndRestoresChatSession(t *testing.T) {
+	t.Parallel()
 	// Given a bot with Main and a Chat session that has a message.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
@@ -78,6 +79,7 @@ func TestUserArchivesAndRestoresChatSession(t *testing.T) {
 }
 
 func TestUserNewChatDoesNotReuseArchivedEmptyChat(t *testing.T) {
+	t.Parallel()
 	// Given an empty Chat session that the user archived.
 	d := startDex(t, t.TempDir(), "")
 	empty := d.newSession(t)

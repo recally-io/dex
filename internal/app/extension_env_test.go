@@ -16,6 +16,7 @@ import (
 )
 
 func TestUserEditsPrivateEnvironmentWithoutReadingValues(t *testing.T) {
+	t.Parallel()
 	// Given an agent with a loaded environment and a captured application log.
 	data := t.TempDir()
 	var logs bytes.Buffer
@@ -108,6 +109,7 @@ func TestUserEditsPrivateEnvironmentWithoutReadingValues(t *testing.T) {
 }
 
 func TestUserCannotWriteInvalidEnvironment(t *testing.T) {
+	t.Parallel()
 	// Given an isolated worker and real files.
 	data := t.TempDir()
 	d := startDexHome(t, app.Config{DataDir: data}, t.TempDir())
@@ -156,6 +158,7 @@ func TestUserCannotWriteInvalidEnvironment(t *testing.T) {
 }
 
 func TestUserSharesDexEnvironmentBetweenAgents(t *testing.T) {
+	t.Parallel()
 	// Given two agents that have already loaded their environments.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "bash")

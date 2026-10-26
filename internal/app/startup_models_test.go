@@ -105,6 +105,7 @@ data: [DONE]
 }
 
 func TestUserStartupServesHTTPAndRetainsPendingAdmissionDuringDiscovery(t *testing.T) {
+	t.Parallel()
 	// Given saved dynamic, static, and builtin providers, with discovery held on restart.
 	d, release, _, savedChat := startWithHeldDiscovery(t, false)
 	// Then health and Settings respond before discovery finishes.
@@ -163,6 +164,7 @@ func TestUserStartupServesHTTPAndRetainsPendingAdmissionDuringDiscovery(t *testi
 }
 
 func TestUserStartupDiscoveryFailureAppearsInSettings(t *testing.T) {
+	t.Parallel()
 	// Given a saved endpoint whose response is held while HTTP starts.
 	d, release, _, _ := startWithHeldDiscovery(t, true)
 	d.must(t, http.MethodGet, "/api/settings", nil, nil)
@@ -178,6 +180,7 @@ func TestUserStartupDiscoveryFailureAppearsInSettings(t *testing.T) {
 }
 
 func TestUserAppCloseCancelsHeldStartupDiscovery(t *testing.T) {
+	t.Parallel()
 	// Given an app that serves HTTP while its saved discovery request remains held.
 	d, _, stopped, _ := startWithHeldDiscovery(t, false)
 	// When the user stops the app, Close must cancel and join the request promptly.
@@ -197,6 +200,7 @@ func TestUserAppCloseCancelsHeldStartupDiscovery(t *testing.T) {
 }
 
 func TestUserCancelledProviderSaveContinuesDiscoveryAndAllowsOtherSaves(t *testing.T) {
+	t.Parallel()
 	// Given a real HTTP provider save that waits on discovery.
 	entered, release := make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })
@@ -252,6 +256,7 @@ func TestUserCancelledProviderSaveContinuesDiscoveryAndAllowsOtherSaves(t *testi
 }
 
 func TestUserResaveRetriesFailedDiscoveryAndKeepsErrorsUntilRecovery(t *testing.T) {
+	t.Parallel()
 	// Given a saved provider whose discovery fails at a real HTTP boundary.
 	var healthy atomic.Bool
 	var requests atomic.Int32

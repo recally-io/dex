@@ -15,6 +15,7 @@ type agentActivity struct {
 }
 
 func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
+	t.Parallel()
 	// Given two agents, one running bot, and durable sessions held before worker admission.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)

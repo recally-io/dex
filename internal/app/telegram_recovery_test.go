@@ -14,6 +14,7 @@ import (
 )
 
 func TestUserBlockedControlReplyDoesNotBlockOwner(t *testing.T) {
+	t.Parallel()
 	for _, attachment := range []bool{false, true} {
 		t.Run(fmt.Sprintf("attachment=%v", attachment), func(t *testing.T) {
 			// Given an owner and a peer that rejects control replies.
@@ -41,6 +42,7 @@ func TestUserBlockedControlReplyDoesNotBlockOwner(t *testing.T) {
 }
 
 func TestUserCannotPairSecondTelegramOwner(t *testing.T) {
+	t.Parallel()
 	// Given a bot with an owner.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
@@ -80,6 +82,7 @@ func assertTelegramOwner(t *testing.T, d *dex) {
 }
 
 func TestUserTelegramPairingAcknowledgementSurvivesFailure(t *testing.T) {
+	t.Parallel()
 	for _, restart := range []bool{false, true} {
 		t.Run(fmt.Sprintf("restart=%v", restart), func(t *testing.T) {
 			// Given an unpaired bot and a valid link.
@@ -119,6 +122,7 @@ func TestUserTelegramPairingAcknowledgementSurvivesFailure(t *testing.T) {
 }
 
 func TestUserGetsTelegramAnswerAfterStartupFailure(t *testing.T) {
+	t.Parallel()
 	// Given a temporary startup failure and a failing first poll.
 	f := newFakeTelegram(t)
 	f.failures["getMe"] = []platformFailure{{Code: 500}}

@@ -17,6 +17,7 @@ import (
 )
 
 func TestUserAnswersWhileDelegationRunsAndReceivesItsReport(t *testing.T) {
+	t.Parallel()
 	// Given a background execution with a real artifact and a file gate.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -51,6 +52,7 @@ func TestUserAnswersWhileDelegationRunsAndReceivesItsReport(t *testing.T) {
 }
 
 func TestUserDelegationSlotsAndToolsRespectConversationOwnership(t *testing.T) {
+	t.Parallel()
 	// Given two chats on one agent, each holding one background execution.
 	dir := t.TempDir()
 	f := newFakeTelegram(t)
@@ -100,6 +102,7 @@ func TestUserDelegationSlotsAndToolsRespectConversationOwnership(t *testing.T) {
 }
 
 func TestUserRestartDoesNotRerunStartedDelegationOrKeepItsSlot(t *testing.T) {
+	t.Parallel()
 	// Given a shell that records every start before waiting at a gate.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -215,6 +218,7 @@ func waitTaskPIDGone(t *testing.T, path string) {
 }
 
 func TestUserDelegationPreservesMCPReportAndReturnsExecutionFailure(t *testing.T) {
+	t.Parallel()
 	// Given a real HTTP MCP server available to the background execution.
 	dir := t.TempDir()
 	mcpDir := t.TempDir()

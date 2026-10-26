@@ -11,6 +11,7 @@ import (
 )
 
 func TestUserGetsExtensionGuideWithoutSkillsOrSecretNames(t *testing.T) {
+	t.Parallel()
 	// Given three environment files and no skills.
 	data, home := t.TempDir(), t.TempDir()
 	for i, root := range []string{home, data, filepath.Join(data, "agents", "default")} {

@@ -148,6 +148,7 @@ func readNotes(t *testing.T, dir string) string {
 }
 
 func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
+	t.Parallel()
 	// Given global skills review and notes, and agent skills review and broken
 	dataDir, home := t.TempDir(), t.TempDir()
 	globalDir := filepath.Join(home, ".agents", "skills")
@@ -205,6 +206,7 @@ func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
 }
 
 func TestUserFindsNestedAndProjectSkills(t *testing.T) {
+	t.Parallel()
 	// Given nested home skills, a skill whose front matter names it, two skills with one name in one
 	// level, skills in hidden directories and node_modules, a link cycle, and a project skill in the
 	// bot workspace that replaces a home skill
@@ -263,6 +265,7 @@ func TestUserFindsNestedAndProjectSkills(t *testing.T) {
 }
 
 func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
+	t.Parallel()
 	// Given global servers files (stdio), web (HTTP), shared and old, and agent servers that
 	// replace shared, turn off old, and add one whose command does not exist
 	dataDir, home := t.TempDir(), t.TempDir()
@@ -323,6 +326,7 @@ func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
 }
 
 func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
+	t.Parallel()
 	// Given an agent with one MCP server that has answered
 	dataDir, home, filesDir := t.TempDir(), t.TempDir(), t.TempDir()
 	agentMCP := filepath.Join(dataDir, "agents", app.DefaultAgentID, ".agents", "mcp.json")
@@ -390,6 +394,7 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 }
 
 func TestInterruptedMCPCallIsNotRepeatedAfterRestart(t *testing.T) {
+	t.Parallel()
 	// Given an MCP call that is running when dex stops
 	dataDir, home, filesDir := t.TempDir(), t.TempDir(), t.TempDir()
 	writeMCP(t, filepath.Join(home, ".agents", "mcp.json"), map[string]any{"files": stdioServer(t, filesDir)})
@@ -415,6 +420,7 @@ func TestInterruptedMCPCallIsNotRepeatedAfterRestart(t *testing.T) {
 }
 
 func TestFirstServerKeepsAToolNameThatTwoServersHave(t *testing.T) {
+	t.Parallel()
 	// Given server "a" with tool "b__append", and server "a__b" with tool "append": both are
 	// mcp__a__b__append. Server "a" also lists "b__read" twice.
 	dataDir, home, aDir, abDir := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()

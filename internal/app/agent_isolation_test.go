@@ -76,6 +76,7 @@ func isolationReceipt(ctx context.Context, t *testing.T, conn *sql.DB, id, statu
 }
 
 func TestUserOtherAgentWorksDuringSlowMCP(t *testing.T) {
+	t.Parallel()
 	for _, operation := range []string{"cold_open", "reload"} {
 		t.Run(operation, func(t *testing.T) {
 			// Given two agents and a real MCP server whose handshake is held for alpha.

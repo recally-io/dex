@@ -317,6 +317,7 @@ func answered(text string) func(*transcript) bool {
 }
 
 func TestUserGetsStreamedAnswerFromAgent(t *testing.T) {
+	t.Parallel()
 	// Given a running dex with a model, and a new chat
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
@@ -355,6 +356,7 @@ func answeredWith(text string) func(*transcript) bool {
 }
 
 func TestAgentRemembersAcrossChats(t *testing.T) {
+	t.Parallel()
 	// Given a new dex: the user's memory repo has the default MEMORY.md
 	dataDir := t.TempDir()
 	repo := filepath.Join(dataDir, "memory")
@@ -402,6 +404,7 @@ func gitLog(t *testing.T, dataDir string) []string {
 }
 
 func TestMemoryChangeLeftUncommittedIsCommittedAfterRestart(t *testing.T) {
+	t.Parallel()
 	// Given a memory change that has no commit, as after a crash between an edit and its commit
 	dataDir := t.TempDir()
 	d := startDex(t, dataDir, "")
@@ -434,6 +437,7 @@ func TestMemoryChangeLeftUncommittedIsCommittedAfterRestart(t *testing.T) {
 }
 
 func TestDreamingReadsEachChatOnce(t *testing.T) {
+	t.Parallel()
 	// Given dex that dreams every 300 ms with faux/bash, which writes the records of a dream to
 	// dreams.md in the memory
 	dataDir := t.TempDir()
@@ -493,6 +497,7 @@ func eventually(t *testing.T, what string, cond func() (bool, any)) {
 }
 
 func TestReloadShowsTheWholeChat(t *testing.T) {
+	t.Parallel()
 	// Given a chat with two answers
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
@@ -520,6 +525,7 @@ func TestReloadShowsTheWholeChat(t *testing.T) {
 }
 
 func TestToolCallsAreShownAndRunCanBeStopped(t *testing.T) {
+	t.Parallel()
 	// Given the faux/bash model, which runs the message as a bash command
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "bash")
@@ -565,6 +571,7 @@ func TestToolCallsAreShownAndRunCanBeStopped(t *testing.T) {
 }
 
 func TestUserMustChooseModelBeforeChatting(t *testing.T) {
+	t.Parallel()
 	// Given a dex that starts for the first time, without settings
 	d := startDex(t, t.TempDir(), "")
 
@@ -592,6 +599,7 @@ func TestUserMustChooseModelBeforeChatting(t *testing.T) {
 }
 
 func TestRetriedMessageIsStoredOnce(t *testing.T) {
+	t.Parallel()
 	// Given a chat
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
@@ -618,6 +626,7 @@ func TestRetriedMessageIsStoredOnce(t *testing.T) {
 }
 
 func TestModelChangeAppliesToExistingChat(t *testing.T) {
+	t.Parallel()
 	// Given a chat with the echo model
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
@@ -634,6 +643,7 @@ func TestModelChangeAppliesToExistingChat(t *testing.T) {
 }
 
 func TestUserProviderKeyIsSavedAndNeverShown(t *testing.T) {
+	t.Parallel()
 	const secret = "sk-ant-test-0123456789"
 	dataDir := t.TempDir()
 
@@ -694,6 +704,7 @@ func fakeModelsEndpoint(t *testing.T, path, header, value, body string) string {
 }
 
 func TestUserAddsCustomProviders(t *testing.T) {
+	t.Parallel()
 	// Given an OpenAI-compatible gateway and an Anthropic-compatible endpoint
 	openai := fakeModelsEndpoint(t, "/v1/models", "Authorization", "Bearer k1", `{"data":[{"id":"gw-model"}]}`)
 	anthropic := fakeModelsEndpoint(t, "/v1/models", "X-Api-Key", "k2",
@@ -736,6 +747,7 @@ func TestUserAddsCustomProviders(t *testing.T) {
 }
 
 func TestProviderWhoseModelListFailsIsSavedWithAnError(t *testing.T) {
+	t.Parallel()
 	// Given an endpoint that refuses the key
 	url := fakeModelsEndpoint(t, "/v1/models", "Authorization", "Bearer right", `{"data":[]}`)
 	d := startDex(t, t.TempDir(), "")
@@ -784,6 +796,7 @@ func containsAll(have, want []string) bool {
 }
 
 func TestInvalidRequestsAreRefused(t *testing.T) {
+	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
 	for _, c := range []struct {
@@ -820,6 +833,7 @@ func TestInvalidRequestsAreRefused(t *testing.T) {
 }
 
 func TestCrossSiteWriteIsRefused(t *testing.T) {
+	t.Parallel()
 	// Given a running dex
 	d := startDex(t, t.TempDir(), "")
 
@@ -844,6 +858,7 @@ func TestCrossSiteWriteIsRefused(t *testing.T) {
 }
 
 func TestUserMessageLeftPendingIsAnsweredAfterRestart(t *testing.T) {
+	t.Parallel()
 	dataDir := t.TempDir()
 
 	// Given a chat that exists, and a message that control stored but the worker never

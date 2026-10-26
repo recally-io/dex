@@ -9,6 +9,7 @@ import (
 )
 
 func TestUserReadsDelegationWorkWithoutForgingAResult(t *testing.T) {
+	t.Parallel()
 	// Given a background execution waiting in a real tool.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")

@@ -25,6 +25,7 @@ type apiAgent struct {
 }
 
 func TestUserCreatesAndValidatesAgents(t *testing.T) {
+	t.Parallel()
 	// Given dex with its default agent.
 	d := startDex(t, t.TempDir(), "")
 	var listed struct {
@@ -75,6 +76,7 @@ func TestUserCreatesAndValidatesAgents(t *testing.T) {
 }
 
 func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
+	t.Parallel()
 	// Given two agents whose first execution conversations can have the same ID.
 	dataDir := t.TempDir()
 	d := startDex(t, dataDir, "")
@@ -201,6 +203,7 @@ func TestUserKeepsAgentChatsAndUploadsSeparate(t *testing.T) {
 }
 
 func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
+	t.Parallel()
 	// Given a second agent that can spawn native tasks.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -265,6 +268,7 @@ func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
 }
 
 func TestUserGetsNotFoundForUnknownAgents(t *testing.T) {
+	t.Parallel()
 	// Given an ID that is absent from control storage.
 	d := startDex(t, t.TempDir(), "")
 	base := "/api/agents/" + uuid.NewV7().String()
@@ -290,6 +294,7 @@ func TestUserGetsNotFoundForUnknownAgents(t *testing.T) {
 }
 
 func TestUserDefaultAgentRequiresExplicitAPIPath(t *testing.T) {
+	t.Parallel()
 	// Given a new installation with the default agent.
 	d := startDex(t, t.TempDir(), "")
 	// When a caller uses a removed agent route, then it gets 404.

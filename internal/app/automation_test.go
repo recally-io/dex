@@ -53,6 +53,7 @@ func (d *dex) runNow(t *testing.T, id string) runInfo {
 }
 
 func TestUserAutomationRunsAtItsTimeInANewChat(t *testing.T) {
+	t.Parallel()
 	// Given dex that checks automations every 100 ms, and an automation for 1 s from now
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), AutomationCheck: 100 * time.Millisecond})
 	d.setModel(t, "echo")
@@ -98,6 +99,7 @@ func TestUserAutomationRunsAtItsTimeInANewChat(t *testing.T) {
 }
 
 func TestUserAutomationReusesItsChatAndSkipsWhileBusy(t *testing.T) {
+	t.Parallel()
 	// Given an automation that reuses its chat, with a prompt that takes 2 s
 	d := startDexWith(t, app.Config{DataDir: t.TempDir()})
 	d.setModel(t, "bash")
@@ -146,6 +148,7 @@ func TestUserAutomationReusesItsChatAndSkipsWhileBusy(t *testing.T) {
 }
 
 func TestInvalidAutomationsAreRefused(t *testing.T) {
+	t.Parallel()
 	d := startDexWith(t, app.Config{DataDir: t.TempDir()})
 	valid := func() map[string]any {
 		return map[string]any{
@@ -170,6 +173,7 @@ func TestInvalidAutomationsAreRefused(t *testing.T) {
 }
 
 func TestUserAutomationResponsesKeepTheirFields(t *testing.T) {
+	t.Parallel()
 	// Given dex and the four schedule kinds
 	d := startDex(t, t.TempDir(), "")
 	for _, schedule := range []map[string]any{

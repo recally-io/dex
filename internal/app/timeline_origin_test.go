@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserKeepsOriginThroughBackgroundFollowUps(t *testing.T) {
+	t.Parallel()
 	for _, origin := range []string{"web", "telegram:7"} {
 		t.Run(origin, func(t *testing.T) {
 			// Given a main or channel input that requests two successive background answers.
@@ -75,6 +76,7 @@ func assertSubmissionOrigin(t *testing.T, conn *sql.DB, id, want string) {
 }
 
 func TestUserClearOrdersWithConcurrentInput(t *testing.T) {
+	t.Parallel()
 	// Given an idle timeline, then Clear and message admission start at the same time.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -135,6 +137,7 @@ func TestUserClearOrdersWithConcurrentInput(t *testing.T) {
 }
 
 func TestUserClearsEmptyMainWithoutModel(t *testing.T) {
+	t.Parallel()
 	// Given a new timeline without a model, Clear does not need generation settings.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
