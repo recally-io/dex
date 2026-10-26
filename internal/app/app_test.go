@@ -868,7 +868,7 @@ func TestUserMessageLeftPendingIsAnsweredAfterRestart(t *testing.T) {
 	chatID := d.newChat(t, "hello")
 	d.watch(t, chatID).until(t, "answer", answered("echo: hello"))
 	d.stop()
-	conn, err := sql.Open("sqlite", filepath.Join(dataDir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,3 +7,10 @@ if grep -rEn --include='*_test.go' "$pattern" --exclude-dir=node_modules .; then
 	echo "Tests must not use mock libraries. See .agents/rules/testing.md." >&2
 	exit 1
 fi
+
+# Tests run in parallel, so a second connection to control.sqlite must wait for the app's writer
+# instead of failing with SQLITE_BUSY.
+if grep -rn --include='*_test.go' 'sql.Open("sqlite"' internal/app | grep -v 'busy_timeout'; then
+	echo "Open control.sqlite in internal/app tests with _pragma=busy_timeout(5000)." >&2
+	exit 1
+fi

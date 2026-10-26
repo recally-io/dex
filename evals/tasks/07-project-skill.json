@@ -1,0 +1,14 @@
+{
+  "id": "07-project-skill",
+  "prompt": "Use the parcel-label project skill to create label.txt in the current project for order 413.",
+  "rubric": "Reads the project skill and follows its otherwise unknown format.",
+  "project": true,
+  "files": {
+    ".agents/skills/parcel-label/SKILL.md": "---\nname: parcel-label\ndescription: Create a parcel label for an order.\n---\nWrite label.txt with exactly PARCEL-Z9|order=<number>|route=cedar. Do not delegate this small file operation.\n"
+  },
+  "skill": "parcel-label/SKILL.md",
+  "outputFiles": {
+    "label.txt": "PARCEL-Z9|order=413|route=cedar"
+  },
+  "maxSpawn": 0
+}

@@ -15,8 +15,12 @@ Confirm the repository path, applicable rules, and acceptance criteria before
 changes. Keep writes to the same repository serial, or use separate worktrees.
 Do not overwrite another task's changes.
 
-The main chat assigns bounded executions with `spawn_task`. Give each execution
-the repository path, owned files, required context, and completion criteria.
+The main agent implements changes, fixes findings, and runs tests in its own
+context. Skills, tools, and the project directory provide its capabilities.
+Use `spawn_task` only for independent work that can run in parallel, long
+commands whose output would flood the main context, or independent review.
+Give each such execution the repository path, owned files, required context,
+and completion criteria.
 Background conversations have no task tools. Return a report to the main chat.
 Before a progress answer or follow-up execution, the main chat must query
 `list_tasks` or `get_task`. At most 2 queued or running executions are admitted
@@ -37,7 +41,11 @@ actual diff and relevant context. For a large change, get independent reviews
 from two different models. The main chat assigns separate review executions.
 A coding execution must report when further review is needed.
 
-Fix supported review findings. Test the final revision after the fixes. If the
+Keep review within the requested scope. Ask reviewers to check correctness and
+regressions and to leave files unchanged. Fix findings that affect the acceptance
+criteria. Do not expand a small change for style preferences, unrelated cleanup,
+or speculative edge cases. Repeat review only when a fix changes behavior or a
+correctness concern remains. Test the final revision after the fixes. If the
 code changes again, repeat the checks affected by that change. Report what changed
 and why, review findings and their resolution, and the final test results.
 

@@ -297,8 +297,9 @@ extension gives foreground conversations and background executions the `coding-s
 section. Go embeds the full
 [built-in coding skill](../../internal/engine/skills/coding/SKILL.md) in the engine.
 It does not copy the skill into a user directory or add a new extension scope.
-The skill requires a repository path, project rules, independent review, tests
-of the final revision, and evidence in the report. It requires serial writes
+The skill keeps implementation, fixes and tests in the main context. It
+requires a repository path, project rules, independent review, tests of the
+final revision, and evidence in the report. It requires serial writes
 or separate worktrees for tasks that change the same repository.
 
 ## Automations
@@ -451,7 +452,11 @@ reconciliation cover the gap between their commits.
 
 ## Internal delegation
 
-The main agent uses `spawn_task`, `list_tasks`, `get_task`, and `cancel_task`.
+Each conversation runs one main agent loop. Main and each Chat have separate
+contexts. Skills, tools and the project directory provide capabilities. The main agent does ordinary work
+itself. It uses `spawn_task` only for independent parallel work, long commands
+whose output would flood its context, and independent review. It uses
+`list_tasks`, `get_task`, and `cancel_task` to manage that work.
 Each spawn creates one execution with fixed model and thinking settings.
 There is no goal acceptance lifecycle. The main agent checks saved records
 before it reports progress or starts another execution. The main agent owns

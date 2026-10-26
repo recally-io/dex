@@ -1,0 +1,17 @@
+{
+  "id": "04-document-summary",
+  "prompt": "Read the documents in {{project}} and summarize the rollout decision, deadline and unresolved risk. Cite the source file names.",
+  "rubric": "Combines both documents and distinguishes the decision from the unresolved risk.",
+  "files": {
+    "decision.md": "Decision: ship the read-only pilot on 2027-01-15. Owner: Mira.\n",
+    "risk.md": "The pilot has no write access. Unresolved risk: export latency above 2 seconds on large accounts.\n"
+  },
+  "project": true,
+  "contains": [
+    "2027-01-15",
+    "read-only",
+    "latency",
+    "decision.md",
+    "risk.md"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "11-parallel-judgment",
+  "prompt": "Run alpha.sh and beta.sh in {{project}} and report both audit findings. The audits are independent. Each audit needs the other audit to start within 20 seconds. Keep both result files.",
+  "rubric": "Recognizes the need for overlapping work without a delegation instruction. Both audits finish. Spawn count is evidence of the chosen strategy, not a pass condition.",
+  "project": true,
+  "files": {
+    "alpha.sh": "set -eu\ntrap 'rm -f alpha.started' EXIT\ntouch alpha.started\ndeadline=$(( $(date +%s) + 20 ))\nwhile [ ! -f beta.started ]; do\n if [ \"$(date +%s)\" -ge \"$deadline\" ]; then echo \"other audit did not start\" >&2; exit 1; fi\n sleep 0.1\ndone\ntouch alpha.ready\nwhile [ ! -f beta.ready ]; do\n if [ \"$(date +%s)\" -ge \"$deadline\" ]; then exit 1; fi\n sleep 0.1\ndone\necho 'alpha: 18 approved' > alpha.result\n",
+    "beta.sh": "set -eu\ntrap 'rm -f beta.started' EXIT\ntouch beta.started\ndeadline=$(( $(date +%s) + 20 ))\nwhile [ ! -f alpha.started ]; do\n if [ \"$(date +%s)\" -ge \"$deadline\" ]; then echo \"other audit did not start\" >&2; exit 1; fi\n sleep 0.1\ndone\ntouch beta.ready\nwhile [ ! -f alpha.ready ]; do\n if [ \"$(date +%s)\" -ge \"$deadline\" ]; then exit 1; fi\n sleep 0.1\ndone\necho 'beta: 7 approved' > beta.result\n"
+  },
+  "contains": [
+    "alpha",
+    "18",
+    "beta",
+    "7"
+  ],
+  "outputFiles": {
+    "alpha.result": "alpha: 18 approved",
+    "beta.result": "beta: 7 approved"
+  }
+}
