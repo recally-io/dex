@@ -71,6 +71,7 @@ func run() error {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
+		RawMessageHandler: handleFolderMessage(backendURL),
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: appIdentifier,
 			ExitCode: 1,
