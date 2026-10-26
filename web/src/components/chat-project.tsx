@@ -79,7 +79,7 @@ export function ChatProject({ chatId, cwd }: { chatId: number; cwd: string }) {
           />
         }
       >
-        <span className="truncate">{cwd ? cwd.split("/").filter(Boolean).pop() || "/" : "No project"}</span>
+        <span className="truncate">{cwd ? folderName(cwd) : "No project"}</span>
       </DialogTrigger>
       <DialogContent className="flex h-[min(40rem,calc(100dvh-2rem))] flex-col">
         <DialogHeader>
@@ -115,7 +115,11 @@ export function ChatProject({ chatId, cwd }: { chatId: number; cwd: string }) {
                 title={project}
               >
                 <Folder aria-hidden="true" />
-                <span className="truncate">{project}</span>
+                <span className="shrink-0">{folderName(project)}</span>
+                {/* The start of a long path matters least, so the path is cut from the left. */}
+                <span className="min-w-0 truncate text-muted-foreground [direction:rtl]">
+                  <bdi dir="ltr">{project}</bdi>
+                </span>
               </Button>
             ))}
           </section>
@@ -212,4 +216,8 @@ export function ChatProject({ chatId, cwd }: { chatId: number; cwd: string }) {
       </DialogContent>
     </Dialog>
   );
+}
+
+function folderName(path: string) {
+  return path.split("/").filter(Boolean).pop() || "/";
 }
