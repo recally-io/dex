@@ -1,3 +1,4 @@
+import { inboxCount } from "../lib/inbox";
 import { AgentContext, useAgentId } from "../lib/agent-scope";
 import { AgentAvatar } from "./agent-avatar";
 import { DexMark } from "./dex-mark";
@@ -8,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogClose, DialogContent } from "./ui/dialog";
-import { Settings, X, Search, Plus, PanelLeft } from "lucide-react";
+import { Settings, X, Search, Plus, PanelLeft, Inbox } from "lucide-react";
 
 import { getSettingsOptions, listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { Badge } from "./ui/badge";
@@ -162,6 +163,7 @@ function Sidebar({
   const onSettings = globalPages.some((page) => page.to === path);
 
   const list = agents.data?.agents ?? [];
+  const unread = inboxCount(list);
 
   const shown =
     query && !collapsed
@@ -191,6 +193,19 @@ function Sidebar({
           <span className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">dex</span>
         )}
       </div>
+      <Link
+        to="/inbox"
+        aria-label={`Inbox, ${unread.unread} unread${unread.failed ? ", needs you" : ""}`}
+        aria-current={path.startsWith("/inbox") ? "page" : undefined}
+        className={cn(
+          "relative mx-2 mt-2 flex h-9 items-center gap-2 rounded-md px-2 hover:bg-accent aria-[current=page]:bg-accent",
+          collapsed && "mx-0 size-9 justify-center px-0",
+        )}
+      >
+        <Inbox size={18} />
+        {collapsed ? null : <span className="flex-1 text-sm">Inbox</span>}
+        <UnreadBadge unread={unread.unread} failed={unread.failed} floating={collapsed} />
+      </Link>
       {collapsed ? (
         <span aria-hidden className="my-2 h-px w-6 shrink-0 bg-border" />
       ) : (
@@ -306,6 +321,8 @@ function AgentRow({ agent, current, collapsed }: { agent: Agent; current: boolea
   const dirty = instructionsDirty(draft, agent.instructions);
   const active = agent.activity?.activeSessions ?? 0;
   const channels = agent.activity?.runningChannels ?? 0;
+  const unread = agent.activity?.inboxUnread ?? 0;
+  const failed = agent.activity?.inboxFailed ?? 0;
 
   const status =
     active > 0
@@ -325,6 +342,7 @@ function AgentRow({ agent, current, collapsed }: { agent: Agent; current: boolea
         className="relative flex size-9 shrink-0 items-center justify-center rounded-md hover:bg-accent aria-[current=page]:bg-accent"
       >
         <AgentAvatar agent={agent} />
+        <UnreadBadge unread={unread} failed={failed} floating />
         {active > 0 || dirty ? (
           <span
             aria-hidden
@@ -355,6 +373,7 @@ function AgentRow({ agent, current, collapsed }: { agent: Agent; current: boolea
           </span>
           <span className="truncate text-[11.5px] leading-tight text-muted-foreground">{status}</span>
         </span>
+        <UnreadBadge unread={unread} failed={failed} />
         {dirty ? (
           <Badge
             variant="outline"
@@ -365,5 +384,27 @@ function AgentRow({ agent, current, collapsed }: { agent: Agent; current: boolea
         ) : null}
       </Link>
     </div>
+  );
+}
+
+function UnreadBadge({
+  unread,
+  failed,
+  floating = false,
+}: {
+  unread: number;
+  failed: number;
+  floating?: boolean;
+}) {
+  if (!unread) return null;
+
+  return (
+    <Badge
+      variant={failed ? "destructive" : "secondary"}
+      aria-label={`${unread} unread${failed ? ", needs you" : ""}`}
+      className={cn("h-4 min-w-4 px-1 text-[10px] tabular-nums", floating && "absolute -top-1 -right-1")}
+    >
+      {unread}
+    </Badge>
   );
 }

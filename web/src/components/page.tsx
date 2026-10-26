@@ -108,6 +108,7 @@ export function MainPane({
 }
 
 type PageProps = {
+  headerTitle?: string;
   eyebrow?: ReactNode;
   title: string;
   description?: ReactNode;
@@ -126,10 +127,10 @@ type PageProps = {
 export function FramedPage(props: PageProps) {
   if (useContext(InPaneContext)) return <PanePage {...props} />;
 
-  const { eyebrow, title, description, badge, actions, toolbar, children } = props;
+  const { eyebrow, title, description, badge, actions, toolbar, children, headerTitle = "Settings" } = props;
 
   return (
-    <MainPane headerTitle="Settings">
+    <MainPane headerTitle={headerTitle}>
       <div className="mx-auto w-full max-w-[1120px] px-6 py-8">
         <header className="mb-8 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
           <div className="min-w-0">

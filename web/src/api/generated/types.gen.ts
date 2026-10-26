@@ -203,6 +203,20 @@ export type AutomationList = {
     automations: Array<Automation>;
 };
 
+export type InboxItem = {
+    runId: string;
+    agentId: string;
+    agentName: string;
+    automationId: string;
+    automationName: string;
+    summary: string;
+    chatId: number;
+    createdAt: number;
+    outcome: 'changed' | 'failed';
+    read: boolean;
+    dismissed: boolean;
+};
+
 export type AutomationRun = {
     id: string;
     /**
@@ -434,6 +448,9 @@ export type Channels = {
 };
 
 export type AgentActivity = {
+    inboxUnread: number;
+    inboxFailed: number;
+    routineFailed: boolean;
     activeSessions: number;
     runningChannels: number;
     enabledAutomations: number;
@@ -717,6 +734,97 @@ export type AgentId = string;
 export type AutomationId = string;
 
 export type ChatId = number;
+
+export type ListInboxData = {
+    body?: never;
+    path?: never;
+    query?: {
+        includeDismissed?: boolean;
+    };
+    url: '/api/inbox';
+};
+
+export type ListInboxErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListInboxError = ListInboxErrors[keyof ListInboxErrors];
+
+export type ListInboxResponses = {
+    /**
+     * Inbox results.
+     */
+    200: {
+        items: Array<InboxItem>;
+    };
+};
+
+export type ListInboxResponse = ListInboxResponses[keyof ListInboxResponses];
+
+export type ReadInboxItemData = {
+    body?: never;
+    path: {
+        runId: string;
+    };
+    query?: never;
+    url: '/api/inbox/{runId}/read';
+};
+
+export type ReadInboxItemErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ReadInboxItemError = ReadInboxItemErrors[keyof ReadInboxItemErrors];
+
+export type ReadInboxItemResponses = {
+    /**
+     * State saved.
+     */
+    200: Ok;
+};
+
+export type ReadInboxItemResponse = ReadInboxItemResponses[keyof ReadInboxItemResponses];
+
+export type DismissInboxItemData = {
+    body?: never;
+    path: {
+        runId: string;
+    };
+    query?: never;
+    url: '/api/inbox/{runId}/dismiss';
+};
+
+export type DismissInboxItemErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DismissInboxItemError = DismissInboxItemErrors[keyof DismissInboxItemErrors];
+
+export type DismissInboxItemResponses = {
+    /**
+     * State saved.
+     */
+    200: Ok;
+};
+
+export type DismissInboxItemResponse = DismissInboxItemResponses[keyof DismissInboxItemResponses];
 
 export type CreateSessionData = {
     body: NewSession;

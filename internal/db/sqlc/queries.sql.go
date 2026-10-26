@@ -525,7 +525,7 @@ func (q *Queries) GetAutomation(ctx context.Context, arg GetAutomationParams) (A
 }
 
 const getAutomationRun = `-- name: GetAutomationRun :one
-SELECT id, automation_id, due_at, status, reason, created_at, outcome, summary, change_key, duplicate FROM automation_runs WHERE id = ?
+SELECT id, automation_id, due_at, status, reason, created_at, outcome, summary, change_key, duplicate, read_at, dismissed_at FROM automation_runs WHERE id = ?
 `
 
 func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRun, error) {
@@ -542,6 +542,8 @@ func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRu
 		&i.Summary,
 		&i.ChangeKey,
 		&i.Duplicate,
+		&i.ReadAt,
+		&i.DismissedAt,
 	)
 	return i, err
 }

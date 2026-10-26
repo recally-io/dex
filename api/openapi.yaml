@@ -18,6 +18,61 @@ security:
   - bearer: []
   - session: []
 paths:
+  /api/inbox:
+    get:
+      operationId: listInbox
+      description: Actionable routine results across all bots, newest first.
+      parameters:
+        - in: query
+          name: includeDismissed
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Inbox results.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/InboxItem" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/inbox/{runId}/read:
+    parameters:
+      - in: path
+        name: runId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: readInboxItem
+      description: Idempotently read one actionable result.
+      responses:
+        "200":
+          description: State saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/inbox/{runId}/dismiss:
+    parameters:
+      - in: path
+        name: runId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: dismissInboxItem
+      description: Idempotently dismiss one actionable result.
+      responses:
+        "200":
+          description: State saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
   /api/session:
     post:
       operationId: createSession
@@ -1388,6 +1443,37 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Automation" }
 
+    InboxItem:
+      x-go-type: automation.InboxItem
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/automation
+      type: object
+      required: [
+        runId,
+        agentId,
+        agentName,
+        automationId,
+        automationName,
+        chatId,
+        outcome,
+        summary,
+        createdAt,
+        read,
+        dismissed,
+      ]
+      properties:
+        runId: { type: string }
+        agentId: { type: string }
+        agentName: { type: string }
+        automationId: { type: string }
+        automationName: { type: string }
+        summary: { type: string }
+        chatId: { type: integer, format: int64 }
+        createdAt: { type: integer, format: int64 }
+        outcome: { type: string, enum: [changed, failed] }
+        read: { type: boolean }
+        dismissed: { type: boolean }
+
     AutomationRun:
       x-go-type: automation.Run
       x-go-type-import:
@@ -1668,8 +1754,18 @@ components:
       x-go-type-import:
         path: github.com/recally-io/dex/internal/agent
       type: object
-      required: [activeSessions, runningChannels, enabledAutomations]
+      required: [
+        inboxUnread,
+        inboxFailed,
+        routineFailed,
+        activeSessions,
+        runningChannels,
+        enabledAutomations,
+      ]
       properties:
+        inboxUnread: { type: integer, format: int64 }
+        inboxFailed: { type: integer, format: int64 }
+        routineFailed: { type: boolean }
         activeSessions: { type: integer, format: int64 }
         runningChannels: { type: integer, format: int64 }
         enabledAutomations: { type: integer, format: int64 }

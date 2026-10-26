@@ -26,7 +26,7 @@ export function AgentPage() {
   return (
     <FramedPage
       title="General"
-      description={`The name and the model of ${saved.data?.agent.name ?? "dex"}. The timeline, its channels and its automations use them.`}
+      description={`The name and the model of ${saved.data?.agent.name ?? "dex"}. The timeline, its channels and its routines use them.`}
       toolbar={<BotSettingsSwitcher segment="agent" />}
       badge={
         model && !model.ok ? (

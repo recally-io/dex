@@ -192,12 +192,8 @@ export function TaskPage({ taskId }: { taskId: string }) {
   return (
     <FramedPage
       eyebrow={
-        <Link
-          to="/a/$agentId/sessions"
-          params={{ agentId }}
-          className="hover:text-foreground hover:underline"
-        >
-          Sessions
+        <Link to="/a/$agentId" params={{ agentId }} className="hover:text-foreground hover:underline">
+          Chat
         </Link>
       }
       title={task.data?.title ?? "Task"}

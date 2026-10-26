@@ -110,8 +110,8 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
 
   return (
     <Modal
-      title={existing ? "Edit automation" : "New automation"}
-      description="Set a prompt and a schedule. The bot's model and instructions run every automation."
+      title={existing ? "Edit routine" : "New routine"}
+      description="Set a prompt and a schedule. The bot's model and instructions run every routine."
       pending={pending}
       onClose={onClose}
       footer={
@@ -127,7 +127,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             disabled={pending || !validSchedule || !name.trim() || !prompt.trim()}
           >
             {pending ? <Spinner className="border-background/40 border-t-canvas" /> : null}
-            {pending ? "Saving…" : "Save automation"}
+            {pending ? "Saving…" : "Save routine"}
           </Button>
         </>
       }
@@ -290,7 +290,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
                 onChange={(e) => setSession(e.target.value === "reuse" ? "reuse" : "new")}
               >
                 <option value="new">New session each run</option>
-                <option value="reuse">One session for this automation</option>
+                <option value="reuse">One session for this routine</option>
               </Select>
             )}
           </Field>
@@ -320,10 +320,10 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             <p>No future runs.</p>
           )}
           {!enabled ? (
-            <p className="mt-2 text-[12px]">This automation is paused. Enable it to run on this schedule.</p>
+            <p className="mt-2 text-[12px]">This routine is paused. Enable it to run on this schedule.</p>
           ) : null}
         </section>
-        {error ? <Failure title="Could not save automation" error={error} /> : null}
+        {error ? <Failure title="Could not save routine" error={error} /> : null}
       </form>
     </Modal>
   );

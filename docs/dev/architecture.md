@@ -107,7 +107,7 @@ same rule. The list excludes main, old channel conversations, dreams and
 Chat sessions with no message. Task rows add `task: TaskSummary`, without
 report bodies. The query does not read reports or transcripts. The active count
 includes tasks with status queued or running, and other busy sessions. Each row
-counts once. A kind filter counts only visible rows.
+counts once. The legacy Sessions route remains readable for saved links.
 
 Channel input enters the agent's main conversation. Chat and automation
 contexts stay separate. See [Product](../product.md#scope) for session behavior,
@@ -141,7 +141,10 @@ One owner can create several agents. `GET /api/agents` returns
 counts sessions and automations across all agents. A task counts when queued or
 running; other visible sessions count when they have pending input. Each session
 counts once. Channel counts come from the app registry. The web polls this
-list every three seconds and shares its cache across agent pages. `POST /api/agents` accepts a name,
+list every three seconds and shares its cache across agent pages. The same
+response includes per-agent `inboxUnread`, `inboxFailed`, and `routineFailed`.
+These fields come from the activity SQL query. The rail sums the unread counts
+for the global Inbox. No extra fast poll is needed. `POST /api/agents` accepts a name,
 provider, model ID, thinking level, and optional instructions. It returns the
 agent with a UUID v7 ID (`201`). The ID is read-only. `GET` and `PUT` on
 `/api/agents/{agentId}` read and save one agent. Names and models use the same
@@ -329,12 +332,30 @@ Only automation conversations have `report_check`. The tool stores an explicit
 key. The report is provisional while the run is active. Submission settlement
 and the final run outcome commit together. Missing reports and execution errors
 produce `failed`; answer text cannot imply `unchanged`. Old terminal runs
-without reports migrate to `failed`. Skipped runs have no outcome.
+without reports keep an unknown outcome. Old started runs without an input
+migrate to `failed`. Skipped runs have no outcome.
 
 A completed report with the same nonempty change key as an earlier
 completed report has `duplicate: true`. Both run records remain. Deduplication
 records repeated findings; it does not prevent or undo actions. The runs API
-exposes these fields for later Inbox work.
+exposes these fields in routine check history. The web calls automations
+Routines; API paths and code names remain `automation`.
+
+`automation_runs.read_at` and `dismissed_at` hold Inbox state. A separate table
+would add a one-to-one record with no independent lifecycle. `GET /api/inbox`
+uses one query across all agents. It joins runs, routines, agents, and inputs.
+Only settled `changed` and `failed` runs without a duplicate mark qualify.
+The query excludes dismissed results unless `includeDismissed=true`.
+Read and dismiss endpoints keep the first timestamp and return 404 for runs
+that do not qualify. Repeated writes are safe.
+
+The web uses the shared list for result details and history links. It refreshes
+the list every 10 seconds while an Inbox page is open. Read and dismiss writes
+invalidate the list and agent activity. Dismissed details remain readable by URL.
+Continue in chat uses the existing create Chat, project, and message APIs in
+that order. Its first message quotes the routine name, outcome, summary, and
+run transcript reference. A retry in the same detail view keeps the Chat and
+message request IDs.
 
 ## Settings
 
@@ -489,20 +510,22 @@ The web groups output after that mark until the next user or task item.
 A failed result reply cannot retry the user message before the mark.
 Neither layer uses message text or an ID pattern to hide results. Ordinary
 user JSON still appears and can use the normal Retry action. Task conversations
-appear in Sessions but stay absent from dream inputs. The human can read their chat,
+stay absent from dream inputs. The bot has no Sessions tab. The human can read their chat,
 history, and normal SSE stream. Web input, settings, clear, and abort are refused.
 Dream input selects only ordinary messages, so internal results in a source session
 cannot enter memory as user text.
 `GET /api/agents/{agentId}/tasks/{id}` returns one record with its report, times, and conversation
 ID. The task and session reads check the agent. Model task tools keep their
 parent conversation scope. There is no `GET /api/agents/{agentId}/tasks` list, HTTP task control,
-or separate task stream. The Sessions page and each writable session poll
-session summaries every 3 s.
+or separate task stream. Each writable session polls session summaries every 3 s. The legacy Sessions
+route remains available for saved links.
 Task details poll every 3 s while queued or running. Terminal details stop polling.
 Task details use the normal read-only chat, history, and SSE paths for Work.
 Successful `spawn_task` items carry the ID from the saved tool result. Result
 marks carry the ID and title saved in the native input metadata. The web links
-both labels by ID. It never matches tasks by title.
+both labels by ID to `/a/{agentId}/tasks/{taskId}`, a read-only task page.
+It never matches tasks by title. The four bot tabs are Chat, Routines,
+Extensions, and Settings. Task records need no list tab.
 The source session's normal SSE stream carries result marks and replies.
 A task started in Chat keeps that Chat as its parent. Its result returns to
 that Chat, with the source input's origin. Main does not receive the result.

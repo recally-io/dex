@@ -55,6 +55,9 @@ func New(q *sqlc.Queries, checkModel func(context.Context, string, string) error
 
 // Activity summarizes one agent for the agent list.
 type Activity struct {
+	InboxUnread        int64 `json:"inboxUnread"`
+	InboxFailed        int64 `json:"inboxFailed"`
+	RoutineFailed      bool  `json:"routineFailed"`
 	ActiveSessions     int64 `json:"activeSessions"`
 	RunningChannels    int64 `json:"runningChannels"`
 	EnabledAutomations int64 `json:"enabledAutomations"`
@@ -102,7 +105,7 @@ func (s *Service) ListAgents(ctx context.Context) ([]Agent, error) {
 	agents := make([]Agent, len(rows))
 	for i, row := range rows {
 		agents[i] = agentView(row.Agent)
-		current := Activity{ActiveSessions: row.ActiveSessions, EnabledAutomations: row.EnabledAutomations}
+		current := Activity{InboxUnread: row.InboxUnread, InboxFailed: row.InboxFailed, RoutineFailed: row.RoutineFailed == 1, ActiveSessions: row.ActiveSessions, EnabledAutomations: row.EnabledAutomations}
 		if s.ChannelStatus != nil {
 			for _, platform := range []string{"telegram", "wechat", "feishu"} {
 				if s.ChannelStatus(row.Agent.ID, platform).State == "running" {

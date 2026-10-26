@@ -23,16 +23,27 @@ Run `mise run build:web` to build it separately.
 
 Each page in `src/routes/` reads the API only. The app keeps no settings in
 `localStorage`. It stores only browser choices there: the theme (`dex-theme`),
-the open or closed Context panel of a chat (`dex-context`), and the automation
-unread marker (`dex-automations-seen`). The unsaved agent instructions are in
+the open or closed Context panel of a chat (`dex-context`), the bot rail
+(`dex-sidebar`), and the Chats sidebar (`dex-chats`). Inbox read and dismissed
+state live in `control.sqlite`, not browser storage. The unsaved agent instructions are in
 memory (`src/lib/app-state.tsx`), so a draft stays when the user opens another page, and a reload discards it.
 `src/lib/agent.ts` runs agent saves one at a time. Each save reads the saved
 agent first, so a model change does not overwrite the instructions.
 Main and ordinary Chat sessions use the agent's model and thinking level.
-New session sends `POST /api/agents/{agentId}/chats` with no request body.
+New chat sends `POST /api/agents/{agentId}/chats` with no request body.
 See the [API contract](../api/openapi.yaml) for request and response schemas.
 `src/lib/attachments.ts` uploads each file of the composer when the user adds
 it; a message sends only upload IDs.
+
+The bot workspace has exactly four tabs: Chat, Routines, Extensions, Settings.
+Bot links open Main. The right Chats sidebar starts closed. The global Inbox
+sits above the bots and filters settled routine results by bot and read state.
+Rail counts use the existing three-second agent poll. An open Inbox refreshes
+its shared list every ten seconds. Result details can create a writable Chat
+with the routine project and a quoted result through existing APIs.
+Routine history links to run transcripts and Inbox results. Successful
+`spawn_task` steps and task result marks link to read-only task detail pages.
+There is no Sessions tab. Legacy Sessions and transcript URLs remain readable.
 
 The old `/settings/<section>` addresses redirect to the new pages.
 
@@ -100,5 +111,7 @@ Run `mise run check:web` after every foundation update. The check includes a gua
 
 Run `mise run check:foundation-browser /tmp/dex-foundation-evidence` to start a
 real isolated app and Chrome profile. The task writes screenshots and
-`result.json` to the given directory for Chat, Sessions, bot Settings, and
-Providers at desktop and mobile widths in light and dark modes.
+`result.json` to the given directory for Chat, Inbox, Inbox details, Routines,
+routine history, the four-tab bar, bot Settings, and Providers at desktop and
+mobile widths in light and dark modes. The browser also checks Inbox read,
+dismissal, filters, and Continue in chat with the routine project.

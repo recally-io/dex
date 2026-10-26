@@ -136,7 +136,19 @@ WITH active AS (
     SELECT agent_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY agent_id
 )
 SELECT a.id, a.name, a.model_provider, a.model_id, a.instructions, a.created_at, a.thinking_level, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
-    CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations
+    CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations,
+    (SELECT count(*) FROM automation_runs r JOIN automations routine ON routine.id = r.automation_id
+     JOIN submissions s ON s.id = r.id
+     WHERE routine.agent_id = a.id AND r.outcome IN ('changed', 'failed') AND r.duplicate = 0
+       AND r.read_at IS NULL AND r.dismissed_at IS NULL AND s.status <> 'pending') AS inbox_unread,
+    (SELECT count(*) FROM automation_runs r JOIN automations routine ON routine.id = r.automation_id
+     JOIN submissions s ON s.id = r.id
+     WHERE routine.agent_id = a.id AND r.outcome = 'failed' AND r.duplicate = 0
+       AND r.read_at IS NULL AND r.dismissed_at IS NULL AND s.status <> 'pending') AS inbox_failed,
+    CAST(EXISTS (SELECT 1 FROM automations routine
+        JOIN automation_runs r ON r.id = (SELECT latest.id FROM automation_runs latest
+            WHERE latest.automation_id = routine.id ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1)
+        WHERE routine.agent_id = a.id AND routine.enabled = 1 AND r.outcome = 'failed' AND r.status = 'failed') AS INTEGER) AS routine_failed
 FROM agents a LEFT JOIN active ON active.agent_id = a.id LEFT JOIN enabled ON enabled.agent_id = a.id
 ORDER BY a.created_at, a.id
 `
@@ -145,6 +157,9 @@ type ListAgentActivityRow struct {
 	Agent              Agent `json:"agent"`
 	ActiveSessions     int64 `json:"active_sessions"`
 	EnabledAutomations int64 `json:"enabled_automations"`
+	InboxUnread        int64 `json:"inbox_unread"`
+	InboxFailed        int64 `json:"inbox_failed"`
+	RoutineFailed      int64 `json:"routine_failed"`
 }
 
 func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow, error) {
@@ -166,6 +181,9 @@ func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow
 			&i.Agent.ThinkingLevel,
 			&i.ActiveSessions,
 			&i.EnabledAutomations,
+			&i.InboxUnread,
+			&i.InboxFailed,
+			&i.RoutineFailed,
 		); err != nil {
 			return nil, err
 		}

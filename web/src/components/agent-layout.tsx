@@ -34,8 +34,7 @@ type AgentTab = {
 
 const tabs: AgentTab[] = [
   { to: "/a/$agentId", label: "Chat", segments: [undefined] },
-  { to: "/a/$agentId/sessions", label: "Sessions", segments: ["sessions", "c", "tasks"] },
-  { to: "/a/$agentId/automations", label: "Automations", segments: ["automations"] },
+  { to: "/a/$agentId/automations", label: "Routines", segments: ["automations"] },
   { to: "/a/$agentId/extensions", label: "Extensions", segments: ["extensions"] },
   { to: "/a/$agentId/agent", label: "Settings", segments: ["agent", "instructions", "channels"] },
 ];
@@ -64,6 +63,7 @@ export function useAgentActivity() {
     channels: activity?.runningChannels ?? 0,
     automations: activity?.enabledAutomations ?? 0,
     active: activity?.activeSessions ?? 0,
+    routineFailed: activity?.routineFailed ?? false,
   };
 }
 
@@ -128,14 +128,21 @@ function AgentPane({ settings }: { settings: Settings }) {
   const openChat = segment === "c" ? Number(chatSegment) : 0;
 
   // The chat page reads the same query, so this adds no request. A writable Chat belongs to the
-  // Chat tab, next to Main; task, automation and channel records stay under Sessions.
+  // Chat tab, next to Main. Routine transcripts open under Routines.
   const chat = useQuery({
     ...getChatOptions({ path: { agentId, chatId: openChat } }),
     enabled: openChat > 0,
   });
 
   const webChat = chat.data ? sessionKind(chat.data) === "Chat" : false;
-  const current = webChat ? tabs[0] : tabs.find((tab) => tab.segments.includes(segment));
+
+  const current =
+    webChat || segment === "tasks"
+      ? tabs[0]
+      : segment === "c"
+        ? tabs[1]
+        : tabs.find((tab) => tab.segments.includes(segment));
+
   const onChatTab = current === tabs[0];
   const [chatsOpen, toggleChats] = useChatsOpen();
   const newChat = useNewChat();
@@ -143,7 +150,7 @@ function AgentPane({ settings }: { settings: Settings }) {
   const dirty = instructionsDirty(draft, settings.agent.instructions);
   const activity = useAgentActivity();
 
-  const counts = new Map([["Automations", activity.automations]]);
+  const counts = new Map([["Routines", activity.automations]]);
 
   const nav = useRef<HTMLElement>(null);
 
@@ -218,14 +225,12 @@ function AgentPane({ settings }: { settings: Settings }) {
                       className="size-1.5 rounded-full bg-orange"
                     />
                   ) : null}
-                  {tab.label === "Sessions" && activity.active > 0 ? (
+                  {tab.label === "Routines" && activity.routineFailed ? (
                     <span
                       role="img"
-                      aria-label={`${activity.active} active`}
-                      className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary/10 px-1.5 text-[11px] font-medium text-primary tabular-nums"
-                    >
-                      {activity.active}
-                    </span>
+                      aria-label="Latest routine run failed"
+                      className="size-1.5 rounded-full bg-red"
+                    />
                   ) : null}
                 </Link>
               ))}

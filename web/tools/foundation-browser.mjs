@@ -34,6 +34,10 @@ async function request(path, options) {
   return body ? JSON.parse(body) : null;
 }
 let projectChat;
+let routineId;
+let resultRun;
+let hasInbox;
+let routineProject;
 async function seed() {
   await request("/api/settings/providers/foundation", {
     method: "PUT",
@@ -97,15 +101,60 @@ async function seed() {
       enabled: true,
     }),
   });
+  routineProject = recentProject;
+  await request("/api/agents/default", {
+    method: "PUT",
+    body: JSON.stringify({ ...agent, provider: "faux", modelId: "tool" }),
+  });
+  const other = await request("/api/agents", {
+    method: "POST",
+    body: JSON.stringify({ name: "Research bot", provider: "faux", modelId: "tool", thinkingLevel: "off" }),
+  });
+  for (const [agentId, name, outcomes] of [
+    ["default", "Release check", ["changed", "changed", "unchanged", "failed"]],
+    [other.id, "Weekly notes", ["changed"]],
+  ]) {
+    let routine;
+    for (const outcome of outcomes) {
+      const body = {
+        name,
+        prompt: `report_check ${JSON.stringify({ outcome, summary: { changed: "A new release is ready to review. Version 2 includes the project fixes.", unchanged: "No new releases since the last check.", failed: "The release check could not reach the upstream service. Review the run before retrying." }[outcome], changeKey: "version-2" })}`,
+        schedule: { kind: "daily", time: "09:00" },
+        timeZone: "UTC",
+        session: "new",
+        enabled: true,
+        cwd: routineProject,
+      };
+      routine = await request(`/api/agents/${agentId}/automations${routine ? `/${routine.id}` : ""}`, {
+        method: routine ? "PUT" : "POST",
+        body: JSON.stringify(body),
+      });
+      const run = await request(`/api/agents/${agentId}/automations/${routine.id}/run`, { method: "POST" });
+      await waitFor("routine settled", async () => {
+        const { runs } = await request(`/api/agents/${agentId}/automations/${routine.id}/runs`);
+        return runs.find((row) => row.id === run.id)?.status !== "running";
+      });
+      if (agentId === "default") {
+        routineId = routine.id;
+        resultRun = run.id;
+      }
+    }
+  }
+  await request("/api/agents/default", {
+    method: "PUT",
+    body: JSON.stringify({ ...agent, provider: "faux", modelId: "bash" }),
+  });
+  hasInbox = (await fetch(`${base}/api/inbox`)).ok;
 }
 let chrome;
 let socket;
 let nextId = 1;
 const pending = new Map();
+const loadedDocuments = new Set();
 function call(method, params = {}) {
   const id = nextId++;
   socket.send(JSON.stringify({ id, method, params }));
-  return new Promise((resolveCall, reject) => pending.set(id, { resolve: resolveCall, reject }));
+  return new Promise((resolveCall, reject) => pending.set(id, { resolve: resolveCall, reject, method }));
 }
 async function waitFor(name, fn, timeout = 30000) {
   const end = Date.now() + timeout;
@@ -120,6 +169,13 @@ async function waitFor(name, fn, timeout = 30000) {
 }
 async function evaluate(expression) {
   return (await call("Runtime.evaluate", { expression, returnByValue: true })).result?.value;
+}
+// Wait for the new document's load event. The previous React tree can still be
+// visible after Page.navigate returns, including when the URL stays the same.
+async function navigate(path) {
+  const navigation = await call("Page.navigate", { url: `${base}${path}` });
+  await waitFor(`${path} document loaded`, () => loadedDocuments.has(navigation.loaderId));
+  await waitFor(`${path} app mounted`, () => evaluate("!!document.querySelector('#root')?.children.length"));
 }
 // Chrome activates a button on Enter only when the key event carries its text.
 async function press(key, code, keyCode, text) {
@@ -430,10 +486,14 @@ try {
   socket = new WebSocket(page.webSocketDebuggerUrl);
   socket.addEventListener("message", ({ data }) => {
     const event = JSON.parse(String(data));
+    if (event.method === "Page.lifecycleEvent" && event.params.name === "load")
+      loadedDocuments.add(event.params.loaderId);
     if (event.id && pending.has(event.id)) {
       const task = pending.get(event.id);
       pending.delete(event.id);
-      event.error ? task.reject(new Error(JSON.stringify(event.error))) : task.resolve(event.result);
+      event.error
+        ? task.reject(new Error(`${task.method}: ${JSON.stringify(event.error)}`))
+        : task.resolve(event.result);
     }
   });
   await new Promise((resolveOpen, reject) => {
@@ -441,6 +501,7 @@ try {
     socket.addEventListener("error", reject, { once: true });
   });
   await call("Page.enable");
+  await call("Page.setLifecycleEventsEnabled", { enabled: true });
   await call("Runtime.enable");
   await call("DOM.enable");
   await call("Emulation.setDeviceMetricsOverride", {
@@ -453,23 +514,30 @@ try {
   const pages = [
     ["chat", "/a/default"],
     ["chat-session", `/a/default/c/${projectChat}`],
-    ["sessions", "/a/default/sessions"],
+    ["workspace-tabs", "/a/default"],
+    ["inbox", "/inbox"],
+    ["inbox-detail", `/inbox/${resultRun}`],
+    ["routine-history", `/a/default/automations/${routineId}`],
     ["bot-settings", "/a/default/agent"],
     ["providers", "/providers"],
-    ["automations", "/a/default/automations"],
+    ["routines", "/a/default/automations"],
     ["extensions", "/a/default/extensions"],
     ["channels", "/a/default/channels"],
     ["secrets", "/secrets"],
     ["about", "/about"],
   ];
   for (const theme of ["light", "dark"])
-    for (const [name, path] of pages)
+    for (const [name, path] of pages.filter(
+      ([name]) =>
+        !process.env.DEX_FOUNDATION_INBOX_ONLY ||
+        ["workspace-tabs", "inbox", "inbox-detail", "routines", "routine-history"].includes(name),
+    ))
       for (const [size, width, height, mobile] of [
         ["desktop", 1280, 900, false],
         ["mobile", 390, 844, true],
       ]) {
         await call("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile });
-        await call("Page.navigate", { url: `${base}${path}` });
+        await navigate(path);
         await waitFor(
           `${theme} ${name}`,
           async () =>
@@ -484,6 +552,18 @@ try {
           expression: `localStorage.setItem('dex-theme', '${theme}'); document.documentElement.classList.toggle('dark', '${theme}' === 'dark');`,
           returnByValue: true,
         });
+        if (hasInbox && name.startsWith("inbox"))
+          await waitFor("Inbox loaded", () =>
+            evaluate(
+              "document.body.innerText.includes('Release check') || document.body.innerText.includes('Run transcript')",
+            ),
+          );
+        if (hasInbox && name === "routine-history")
+          await waitFor("history loaded", () => evaluate("document.body.innerText.includes('duplicate')"));
+        if (name === "routine-history")
+          await evaluate(
+            "[...document.querySelectorAll('h2')].find(h => ['Check history', 'Run history'].includes(h.textContent))?.scrollIntoView({block: 'start'})",
+          );
         await capture(`${theme}-${name}-${size}.png`);
         const text =
           (await call("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }))
@@ -595,9 +675,86 @@ try {
           }
         }
       }
+
+  if (hasInbox) {
+    await call("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await navigate("/a/default");
+    await waitFor("four tabs", () =>
+      evaluate("document.querySelectorAll('nav[aria-label$=sections] a').length === 4"),
+    );
+    assert.deepEqual(
+      await evaluate(
+        "[...document.querySelectorAll('nav[aria-label$=sections] a')].map(a => a.textContent.trim().replace(/\\s*\\d+$/, ''))",
+      ),
+      ["Chat", "Routines", "Extensions", "Settings"],
+    );
+    await navigate(`/inbox/${resultRun}`);
+    await waitFor("result detail ready", () =>
+      evaluate("[...document.querySelectorAll('button')].some(b => b.textContent === 'Continue in chat')"),
+    );
+    await waitFor(
+      "result read",
+      async () => (await request("/api/inbox")).items.find((item) => item.runId === resultRun)?.read,
+    );
+    await navigate(`/inbox/${resultRun}`);
+    await waitFor("continue ready", () =>
+      evaluate("[...document.querySelectorAll('button')].some(b => b.textContent === 'Continue in chat')"),
+    );
+    await evaluate(
+      "[...document.querySelectorAll('button')].find(b => b.textContent === 'Continue in chat').click()",
+    );
+    await waitFor("continued chat", () =>
+      evaluate("location.pathname.includes('/c/') && !!document.querySelector('textarea')"),
+    );
+    const continuedPath = await evaluate("location.pathname");
+    const continued = await request(`/api/agents/default/chats/${continuedPath.split("/").at(-1)}`);
+    assert.equal(continued.cwd, routineProject);
+    await waitFor("quoted result", () =>
+      evaluate(
+        "document.body.innerText.includes('Outcome: failed') && document.body.innerText.includes('Run transcript: /a/default/c/')",
+      ),
+    );
+    await capture("inbox-continue-chat.png");
+    await navigate(`/inbox/${resultRun}`);
+    await waitFor("Done ready", () =>
+      evaluate("[...document.querySelectorAll('button')].some(b => b.textContent === 'Done')"),
+    );
+    await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent === 'Done').click()");
+    await waitFor(
+      "dismissed",
+      async () => !(await request("/api/inbox")).items.some((item) => item.runId === resultRun),
+    );
+    await waitFor("Inbox list", () => evaluate("location.pathname === '/inbox'"));
+    await evaluate(
+      "[...document.querySelectorAll('button')].find(b => b.textContent === 'Needs you').click()",
+    );
+    await waitFor("needs you filter", () =>
+      evaluate('document.body.innerText.includes("You\'re all caught up")'),
+    );
+    results.push({
+      page: "inbox-interactions",
+      fourTabs: true,
+      read: true,
+      continueProject: true,
+      quotedResult: true,
+      dismiss: true,
+      needsYouFilter: true,
+    });
+  }
   await writeFile(join(output, "result.json"), JSON.stringify({ base, results }, null, 2));
 } catch (error) {
-  if (socket?.readyState === WebSocket.OPEN) await capture("failure.png");
+  if (socket?.readyState === WebSocket.OPEN) {
+    try {
+      await capture("failure.png");
+    } catch {
+      /* Keep the original failure if Chrome lost its page. */
+    }
+  }
   results.push({ error: String(error) });
   await writeFile(join(output, "result.json"), JSON.stringify({ base, results }, null, 2));
   throw error;

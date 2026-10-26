@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#MISE description="Prove all Inbox logic tests reject removed implementations in an isolated snapshot"
+set -euo pipefail
+
+inbox_web_proof="$(mktemp -d)"
+trap 'rm -rf "$inbox_web_proof"' EXIT
+# The index includes new files before the first commit. HEAD is enough after commit.
+git archive "${1:-$(git write-tree)}" | tar -x -C "$inbox_web_proof"
+ln -s "$PWD/web/node_modules" "$inbox_web_proof/web/node_modules"
+python3 - "$inbox_web_proof/web/src/lib/inbox.ts" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+source = path.read_text()
+# Keep signatures so the real tests reach their assertions after the logic is removed.
+source = source[:source.index('export function inboxGroups')] + '''
+export function inboxGroups(items: InboxItem[], agentId: string, filter: InboxFilter) {
+  return { needsYou: [], results: [] };
+}
+export function inboxCount(agents: Agent[]) {
+  return { unread: 0, failed: 0 };
+}
+export function resultQuote(item: InboxItem) {
+  return "";
+}
+'''
+path.write_text(source)
+PY
+if (cd "$inbox_web_proof/web" && bunx --no-install vp test run src/lib/inbox.test.ts) > "$inbox_web_proof/failure.log" 2>&1; then
+  cat "$inbox_web_proof/failure.log"
+  echo 'Inbox logic tests passed with their implementations removed' >&2
+  exit 1
+fi
+cat "$inbox_web_proof/failure.log"
+rg '3 failed' "$inbox_web_proof/failure.log"

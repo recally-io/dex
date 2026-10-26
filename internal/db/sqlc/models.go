@@ -49,6 +49,8 @@ type AutomationRun struct {
 	Summary      string         `json:"summary"`
 	ChangeKey    string         `json:"change_key"`
 	Duplicate    int64          `json:"duplicate"`
+	ReadAt       sql.NullInt64  `json:"read_at"`
+	DismissedAt  sql.NullInt64  `json:"dismissed_at"`
 }
 
 type ChannelCommand struct {

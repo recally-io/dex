@@ -11,6 +11,7 @@ import {
   deleteAutomationMutation,
   runAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
+import { inboxOptions } from "../lib/inbox";
 import { refreshAutomations } from "../lib/queries";
 import { useAgentModel } from "../lib/agent";
 import { ago, runTime, scheduleText } from "../lib/automations";
@@ -75,12 +76,13 @@ function EnabledSwitch({ automation }: { automation: Automation }) {
                 timeZone: automation.timeZone,
                 session: automation.session,
                 enabled: !automation.enabled,
+                cwd: automation.cwd,
               },
             })
           }
         />
       </span>
-      {update.isError ? <Failure title="Could not change automation" error={update.error} /> : null}
+      {update.isError ? <Failure title="Could not change routine" error={update.error} /> : null}
     </span>
   );
 }
@@ -88,7 +90,7 @@ function EnabledSwitch({ automation }: { automation: Automation }) {
 export function AutomationsPage() {
   return (
     <FramedPage
-      title="Automations"
+      title="Routines"
       description="Prompts that the bot runs on a schedule. Each run has its own session."
     >
       <AutomationsSection />
@@ -115,12 +117,12 @@ function AutomationsSection() {
     <>
       <Section
         n={1}
-        title="All automations"
+        title="All routines"
         caption={`${on} of ${list.length} on. Open one to see its runs.`}
         // SAFETY: ToggleGroup values come only from the two Filter items below.
         action={
           <Button size="sm" disabled={noModel} onClick={() => setCreate(true)}>
-            New automation
+            New routine
           </Button>
         }
       >
@@ -128,7 +130,7 @@ function AutomationsSection() {
           <Loading />
         ) : automations.isError ? (
           <Failure
-            title="Could not load automations"
+            title="Could not load routines"
             error={automations.error}
             retry={() => void automations.refetch()}
           />
@@ -167,9 +169,9 @@ function AutomationsSection() {
             </ul>
           </Panel>
         ) : (
-          <Empty title="No automations yet">
+          <Empty title="No routines yet">
             {noModel
-              ? "Choose a bot model first. Automations use the same model as every chat."
+              ? "Choose a bot model first. Routines use the same model as every chat."
               : "Create one to run a prompt every few minutes, every day, on some weekdays, or once."}
           </Empty>
         )}
@@ -179,12 +181,33 @@ function AutomationsSection() {
   );
 }
 
-function RunRow({ run, timeZone, now }: { run: AutomationRun; timeZone: string; now: number }) {
+function RunRow({
+  run,
+  timeZone,
+  now,
+  inInbox,
+}: {
+  run: AutomationRun;
+  timeZone: string;
+  now: number;
+  inInbox: boolean;
+}) {
   const agentId = useAgentId();
 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
+      <span
+        role="img"
+        aria-label={run.outcome || "Unknown outcome"}
+        className={`size-2 shrink-0 rounded-full ${run.outcome === "failed" ? "bg-red" : run.outcome === "changed" ? "bg-green" : "bg-muted-foreground"}`}
+      />
       <RunPill run={run} className="w-[84px] justify-start" />
+      {run.duplicate ? <Badge variant="outline">duplicate</Badge> : null}
+      {inInbox ? (
+        <Link to="/inbox/$runId" params={{ runId: run.id }} className="text-xs underline">
+          In Inbox
+        </Link>
+      ) : null}
       <span className="font-mono text-[11.5px] text-muted-foreground tabular-nums">
         {runTime(run.dueAt ?? run.createdAt, timeZone)}
       </span>
@@ -199,13 +222,13 @@ function RunRow({ run, timeZone, now }: { run: AutomationRun; timeZone: string; 
             params={{ agentId, chatId: String(run.chatId) }}
             className="text-[12px] font-medium text-primary hover:underline"
           >
-            Open session
+            Run transcript
           </Link>
         ) : null}
       </span>
-      {run.reason ? (
+      {run.summary || run.reason ? (
         <p className="w-full pl-[96px] text-[12px] text-muted-foreground [overflow-wrap:anywhere] max-sm:pl-0">
-          {run.reason}
+          {run.summary || run.reason}
         </p>
       ) : null}
     </li>
@@ -215,6 +238,7 @@ function RunRow({ run, timeZone, now }: { run: AutomationRun; timeZone: string; 
 type Filter = "All" | "Problems";
 
 export function AutomationPage({ automationId }: { automationId: string }) {
+  const inbox = useQuery({ ...inboxOptions(), refetchInterval: 10_000 });
   const agentId = useAgentId();
   const navigate = useNavigate();
 
@@ -252,17 +276,17 @@ export function AutomationPage({ automationId }: { automationId: string }) {
   const busy = history.some((h) => h.status === "running");
   const blocked = model && !model.ok ? "Choose an available bot model first." : undefined;
 
-  const crumb = <Crumb to="/a/$agentId/automations">Automations</Crumb>;
+  const crumb = <Crumb to="/a/$agentId/automations">Routines</Crumb>;
 
   if (automation.isPending || automation.isError)
     return (
-      <FramedPage eyebrow={crumb} title={automation.isError ? "Could not load automation" : "Automation"}>
+      <FramedPage eyebrow={crumb} title={automation.isError ? "Could not load routine" : "Routine"}>
         <div className="px-5 py-8 sm:px-8">
           {automation.isPending ? (
             <Loading />
           ) : (
             <Failure
-              title="Could not load automation"
+              title="Could not load routine"
               error={automation.error}
               retry={() => void automation.refetch()}
             />
@@ -307,7 +331,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
       {blocked || run.isError || latestRun ? (
         <div className="flex flex-col gap-3 border-b border-dashed border-ring px-5 py-4 sm:px-8">
           {blocked ? <Note tone="warn">Run now is off. {blocked}</Note> : null}
-          {run.isError ? <Failure title="Could not run automation" error={run.error} /> : null}
+          {run.isError ? <Failure title="Could not run routine" error={run.error} /> : null}
           {latestRun ? (
             <div
               role="status"
@@ -321,7 +345,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
                   params={{ agentId, chatId: String(latestRun.chatId) }}
                   className="font-medium text-primary hover:underline"
                 >
-                  Open session
+                  Run transcript
                 </Link>
               ) : null}
               {latestRun.reason ? (
@@ -346,7 +370,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
               ["Time zone", <Mono key="tz">{data.timeZone}</Mono>],
               [
                 "Session for each run",
-                data.session === "reuse" ? "One session for this automation" : "New session each run",
+                data.session === "reuse" ? "One session for this routine" : "New session each run",
               ],
               [
                 "Next runs",
@@ -371,7 +395,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
       </Section>
       <Section
         n={3}
-        title="Run history"
+        title="Check history"
         caption={
           runs.data
             ? `${history.length} ${history.length === 1 ? "run" : "runs"} · ${data.timeZone}`
@@ -404,7 +428,15 @@ export function AutomationPage({ automationId }: { automationId: string }) {
             {shown.length ? (
               <ul className="divide-y divide-border">
                 {shown.map((h) => (
-                  <RunRow key={h.id} run={h} timeZone={data.timeZone} now={runs.dataUpdatedAt} />
+                  <RunRow
+                    key={h.id}
+                    run={h}
+                    timeZone={data.timeZone}
+                    now={runs.dataUpdatedAt}
+                    inInbox={
+                      inbox.data?.items.some((item) => item.runId === h.id && !item.dismissed) ?? false
+                    }
+                  />
                 ))}
               </ul>
             ) : (
@@ -427,15 +459,15 @@ export function AutomationPage({ automationId }: { automationId: string }) {
             setConfirm(true);
           }}
         >
-          Delete automation
+          Delete routine
         </Button>
       </Section>
       {edit ? <AutomationDialog existing={data} onClose={() => setEdit(false)} /> : null}
       {confirm ? (
         <Confirm
-          title="Delete automation?"
+          title="Delete routine?"
           confirmLabel="Delete"
-          description="This deletes the automation and its run history. Its sessions stay available."
+          description="This deletes the routine and its run history. Its sessions stay available."
           pending={remove.isPending}
           error={remove.error}
           onCancel={() => setConfirm(false)}
