@@ -59,9 +59,12 @@ to read in an afternoon.
   URLs open the default agent. An unknown agent shows a not-found page.
   Every agent has channel setup controls.
   Channel input shares main. Automation runs have separate read-only transcripts.
-- Internal background delegation for each agent. Each delegation has
-  one input and fixed model settings. The main agent stays available and
-  receives reports to plan review, fixes, tests, and the final answer.
+- Each conversation runs one main agent loop that does the work itself.
+  Skills, tools and the project directory provide capabilities. The main agent does ordinary work itself.
+  Internal background execution is limited to independent parallel work,
+  long commands whose output would flood the context, and independent review.
+  Each execution has one input and fixed model settings. The main agent
+  handles implementation, review findings, tests, and the final answer.
   Each agent admits at most 2 queued or running executions. Cancellation
   releases admission, but a tool can still complete actions. Background execution
   cannot delegate more work. The main agent handles failures and decides the
@@ -148,8 +151,9 @@ the selected session. Other sessions cannot enable its Stop. Task and Automation
 sessions stay read-only. Main stays the default view. A Chat session opens
 under the Chat tab. Task and Automation sessions open under Sessions.
 
-The main agent names the work in one brief delegation confirmation, then
-returns to the user without polling for the result. When a report returns,
+When the main agent starts background work, it continues independent local
+work within the same scope. When no local work remains, it names the background
+work in one brief reply and returns without polling for the result. When a report returns,
 the reply first names that work and gives its outcome. If work failed or
 remains incomplete, the reply states that outcome, the blocker, and what
 remains. If the user has changed topics, the reply gives a brief update about
