@@ -194,6 +194,7 @@ func startWechat(t *testing.T, f *fakeWechat, dir string) *dex {
 }
 
 func TestUserStartsWechatQRLogin(t *testing.T) {
+	t.Parallel()
 	// Given dex with a local iLink server and no saved WeChat account.
 	f := newFakeWechat(t)
 	d := startWechat(t, f, t.TempDir())
@@ -261,6 +262,7 @@ func wxConn(t *testing.T, dir string) *sql.DB {
 }
 
 func TestUserWechatQRHandlesVerificationRedirectAndExpiry(t *testing.T) {
+	t.Parallel()
 	// Given QR states from the official login protocol, including a region redirect.
 	f := newFakeWechat(t)
 	target := newFakeWechat(t)
@@ -300,6 +302,7 @@ func TestUserWechatQRHandlesVerificationRedirectAndExpiry(t *testing.T) {
 }
 
 func TestUserWechatQRStopsAfterThreeRefreshes(t *testing.T) {
+	t.Parallel()
 	for _, state := range []string{"expired", "verify_code_blocked"} {
 		t.Run(state, func(t *testing.T) {
 			// Given a server that repeatedly expires or blocks codes.
@@ -323,6 +326,7 @@ func TestUserWechatQRStopsAfterThreeRefreshes(t *testing.T) {
 }
 
 func TestUserWechatAlreadyBoundDoesNotInventAnOwner(t *testing.T) {
+	t.Parallel()
 	// Given an already-bound QR response with no credentials.
 	f := newFakeWechat(t)
 	f.statuses = []map[string]any{{"status": "binded_redirect"}}
@@ -343,6 +347,7 @@ func TestUserWechatAlreadyBoundDoesNotInventAnOwner(t *testing.T) {
 }
 
 func TestUserWechatIgnoresNonOwnerEchoesPartialAndGroups(t *testing.T) {
+	t.Parallel()
 	// Given messages from another sender, bot echoes, unfinished messages, and a group.
 	f := newFakeWechat(t)
 	echo := wxText(2, "owner", "echo")
@@ -384,6 +389,7 @@ func wxEncrypt(t *testing.T, plain, key []byte) []byte {
 }
 
 func TestUserWechatMediaBecomesUploadsAndVoiceBecomesText(t *testing.T) {
+	t.Parallel()
 	// Given encrypted images in both supported key formats and an encrypted file.
 	f := newFakeWechat(t)
 	key := []byte("0123456789abcdef")
@@ -447,6 +453,7 @@ func TestUserWechatMediaBecomesUploadsAndVoiceBecomesText(t *testing.T) {
 }
 
 func TestUserWechatSplitsRepliesAndKeepsSupportedMarkdown(t *testing.T) {
+	t.Parallel()
 	// Given a long answer with Chinese text, supported Markdown, and unsupported images and headings.
 	f := newFakeWechat(t)
 	text := strings.Repeat("中", 4010) + "\n##### Heading\n**bold**\n`![keep](code)`\n| a | b |\n![drop](https://example.test/image)\n*中文*\n***English***\n```md\n###### code\n![keep](fenced)\n```"
@@ -469,6 +476,7 @@ func TestUserWechatSplitsRepliesAndKeepsSupportedMarkdown(t *testing.T) {
 }
 
 func TestUserWechatCursorWaitsForDurableBatchAdmission(t *testing.T) {
+	t.Parallel()
 	// Given a batch whose second attachment cannot yet be downloaded.
 	f := newFakeWechat(t)
 	key := []byte("0123456789abcdef")
@@ -512,6 +520,7 @@ func TestUserWechatCursorWaitsForDurableBatchAdmission(t *testing.T) {
 }
 
 func TestUserWechatResumesCursorContextAndUndeliveredReply(t *testing.T) {
+	t.Parallel()
 	// Given a settled owner answer whose platform send failed.
 	f := newFakeWechat(t)
 	f.failSend.Store(true)
@@ -556,6 +565,7 @@ func TestUserWechatResumesCursorContextAndUndeliveredReply(t *testing.T) {
 }
 
 func TestUserWechatDuplicateUpdateGetsOneAnswer(t *testing.T) {
+	t.Parallel()
 	// Given the same remote message in two batches.
 	f := newFakeWechat(t)
 	f.batch("c1", wxText(1, "owner", "once"))
@@ -570,6 +580,7 @@ func TestUserWechatDuplicateUpdateGetsOneAnswer(t *testing.T) {
 }
 
 func TestUserWechatStaleLoginNeedsNewScan(t *testing.T) {
+	t.Parallel()
 	for _, field := range []string{"ret", "errcode"} {
 		t.Run(field, func(t *testing.T) {
 			// Given either official stale-session error field.
@@ -614,6 +625,7 @@ func TestUserWechatStaleLoginNeedsNewScan(t *testing.T) {
 }
 
 func TestUserWechatCommandsStop(t *testing.T) {
+	t.Parallel()
 	// Given an owner chat whose command source IDs are stable.
 	f := newFakeWechat(t)
 	f.batch("c1", wxText(1, "owner", "first"))
@@ -640,6 +652,7 @@ func TestUserWechatCommandsStop(t *testing.T) {
 }
 
 func TestUserWechatUsesOfficialRequestMetadata(t *testing.T) {
+	t.Parallel()
 	// Given an owner message on a local API boundary.
 	f := newFakeWechat(t)
 	f.batch("c1", wxText(1, "owner", "headers"))
@@ -677,6 +690,7 @@ func TestUserWechatUsesOfficialRequestMetadata(t *testing.T) {
 }
 
 func TestUserWechatQRTimeoutKeepsWaiting(t *testing.T) {
+	t.Parallel()
 	// Given a QR long poll that reaches its client timeout.
 	f := newFakeWechat(t)
 	f.waitQR.Store(true)
@@ -693,6 +707,7 @@ func TestUserWechatQRTimeoutKeepsWaiting(t *testing.T) {
 }
 
 func TestUserWechatCannotActivateWithoutOwner(t *testing.T) {
+	t.Parallel()
 	// Given an incomplete confirmed result from the platform.
 	f := newFakeWechat(t)
 	f.statuses = []map[string]any{{"status": "confirmed", "bot_token": "secret", "ilink_bot_id": "bot1", "baseurl": f.srv.URL}}
@@ -720,6 +735,7 @@ func TestUserWechatCannotActivateWithoutOwner(t *testing.T) {
 }
 
 func TestUserWechatTypingContinuesWhileAnswerIsPending(t *testing.T) {
+	t.Parallel()
 	// Given a tool run that waits for the test to release it.
 	f := newFakeWechat(t)
 	dir := t.TempDir()
@@ -753,6 +769,7 @@ func TestUserWechatTypingContinuesWhileAnswerIsPending(t *testing.T) {
 }
 
 func TestUserWechatRescanDeliversReplyAfterSendSessionExpires(t *testing.T) {
+	t.Parallel()
 	// Given a settled reply rejected with -14 at the send boundary.
 	f := newFakeWechat(t)
 	f.staleSend.Store(true)
@@ -775,6 +792,7 @@ func TestUserWechatRescanDeliversReplyAfterSendSessionExpires(t *testing.T) {
 }
 
 func TestUserWechatFullMessageIDRangeSurvivesBatchReplay(t *testing.T) {
+	t.Parallel()
 	// Given the largest protocol IDs, including a message outside the owner filter.
 	f := newFakeWechat(t)
 	const high uint64 = 1 << 63
@@ -808,6 +826,7 @@ func TestUserWechatFullMessageIDRangeSurvivesBatchReplay(t *testing.T) {
 }
 
 func TestUserWechatRetriesLocalActivationAfterFailedSave(t *testing.T) {
+	t.Parallel()
 	// Given a database failure during runtime initialization after a valid remote confirmation.
 	f := newFakeWechat(t)
 	dir := t.TempDir()
@@ -860,6 +879,7 @@ func wxFile(query, name string) map[string]any {
 }
 
 func TestUserWechatTemporaryCDNFailuresKeepBatch(t *testing.T) {
+	t.Parallel()
 	for _, code := range []int{http.StatusRequestTimeout, http.StatusTooManyRequests} {
 		t.Run(strconv.Itoa(code), func(t *testing.T) {
 			// Given a temporary CDN rejection of an owner attachment.
@@ -905,6 +925,7 @@ func TestUserWechatTemporaryCDNFailuresKeepBatch(t *testing.T) {
 }
 
 func TestUserWechatReplaySkipsAdmittedMediaAndCleansPartialUploads(t *testing.T) {
+	t.Parallel()
 	// Given an admitted file followed by a message with two files, whose second download fails.
 	f := newFakeWechat(t)
 	key := []byte("0123456789abcdef")
@@ -960,6 +981,7 @@ func TestUserWechatReplaySkipsAdmittedMediaAndCleansPartialUploads(t *testing.T)
 }
 
 func TestUserWechatRetriesRuntimeReadAfterRestart(t *testing.T) {
+	t.Parallel()
 	// Given saved credentials and a temporary runtime read failure on restart.
 	f := newFakeWechat(t)
 	dir := t.TempDir()
@@ -1035,6 +1057,7 @@ func (b *wechatJoinBody) Read(p []byte) (int, error) {
 }
 
 func TestUserWechatRescanJoinsOldRequestBeforeClearingPause(t *testing.T) {
+	t.Parallel()
 	// Given an old -14 response blocked at the HTTP boundary.
 	f := newFakeWechat(t)
 	f.staleRet.Store(-14)
@@ -1114,6 +1137,7 @@ func TestUserWechatRescanJoinsOldRequestBeforeClearingPause(t *testing.T) {
 }
 
 func TestUserWechatInterruptedCommandSkipsMediaBeforeCompletion(t *testing.T) {
+	t.Parallel()
 	// Given an admitted main input and an interrupted command receipt.
 	f := newFakeWechat(t)
 	f.batch("first", wxText(1, "owner", "hello"))
@@ -1151,6 +1175,7 @@ func TestUserWechatInterruptedCommandSkipsMediaBeforeCompletion(t *testing.T) {
 }
 
 func TestUserWechatRejectedMediaCleansUploadsBeforeCursorAdvance(t *testing.T) {
+	t.Parallel()
 	// Given a message with one valid file followed by invalid media.
 	f := newFakeWechat(t)
 	f.blobs["valid"] = wxEncrypt(t, []byte("unused"), []byte("0123456789abcdef"))

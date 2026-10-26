@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserConnectsTelegramBotsToSeparateAgents(t *testing.T) {
+	t.Parallel()
 	// Given two bots with separate platform queues and agents with different models.
 	first, second := newFakeTelegram(t), newFakeTelegram(t)
 	const secondToken = "456:second-secret"

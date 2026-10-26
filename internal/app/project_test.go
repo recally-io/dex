@@ -24,6 +24,7 @@ func assertProject(t *testing.T, d *dex, id int64, want string) {
 }
 
 func TestUserChatProjectRunsAndClearsToWorkspace(t *testing.T) {
+	t.Parallel()
 	// Given a Chat session and an existing project directory.
 	data, project := t.TempDir(), t.TempDir()
 	project, err := filepath.EvalSymlinks(project)
@@ -52,6 +53,7 @@ func TestUserChatProjectRunsAndClearsToWorkspace(t *testing.T) {
 }
 
 func TestUserChatProjectRejectsInvalidPaths(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"relative", "missing", "file"} {
 		t.Run(kind, func(t *testing.T) {
 			// Given an invalid project path.
@@ -73,6 +75,7 @@ func TestUserChatProjectRejectsInvalidPaths(t *testing.T) {
 }
 
 func TestUserMainRefusesProject(t *testing.T) {
+	t.Parallel()
 	// Given Main, even a valid path is forbidden.
 	d := startDex(t, t.TempDir(), "")
 	id := d.mainChat(t)
@@ -82,6 +85,7 @@ func TestUserMainRefusesProject(t *testing.T) {
 }
 
 func TestUserChatProjectLoadsSkills(t *testing.T) {
+	t.Parallel()
 	// Given a skill that exists only in a project directory.
 	project := t.TempDir()
 	writeSkill(t, filepath.Join(project, ".agents", "skills"), "project-check", "description: Project-only check")
@@ -99,6 +103,7 @@ func TestUserChatProjectLoadsSkills(t *testing.T) {
 }
 
 func TestUserChatToolSetsProjectForLaterMessages(t *testing.T) {
+	t.Parallel()
 	// Given a Chat using the real tool boundary.
 	project, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -125,6 +130,7 @@ func TestUserChatToolSetsProjectForLaterMessages(t *testing.T) {
 }
 
 func TestUserMainToolRefusesProject(t *testing.T) {
+	t.Parallel()
 	// Given Main with a valid directory.
 	d := startDex(t, t.TempDir(), "")
 	id := d.mainChat(t)
@@ -137,6 +143,7 @@ func TestUserMainToolRefusesProject(t *testing.T) {
 }
 
 func TestUserChatTaskInheritsProject(t *testing.T) {
+	t.Parallel()
 	// Given a Chat with a selected project.
 	data, project := t.TempDir(), t.TempDir()
 	project, err := filepath.EvalSymlinks(project)
@@ -161,6 +168,7 @@ func TestUserChatTaskInheritsProject(t *testing.T) {
 }
 
 func TestUserChatProjectExpandsHomeAndSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	// Given a Chat with a project expressed relative to the server's home.
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -181,6 +189,7 @@ func TestUserChatProjectExpandsHomeAndSurvivesRestart(t *testing.T) {
 }
 
 func TestUserOtherSessionsRefuseProject(t *testing.T) {
+	t.Parallel()
 	for _, key := range []string{"telegram:7", "task:test", "automation:test", "dream:test"} {
 		t.Run(key, func(t *testing.T) {
 			// Given a stored conversation outside Chat sessions.
@@ -196,6 +205,7 @@ func TestUserOtherSessionsRefuseProject(t *testing.T) {
 }
 
 func TestUserChatProjectKeepsUploadedFilesAccessible(t *testing.T) {
+	t.Parallel()
 	// Given an upload in the workspace and a Chat in a different project directory.
 	data := t.TempDir()
 	d := startDex(t, data, "")

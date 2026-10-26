@@ -54,6 +54,7 @@ func sessionFixture(t *testing.T, d *dex, key string, at int64) int64 {
 }
 
 func TestUserCreatesAndReusesEmptyChatSession(t *testing.T) {
+	t.Parallel()
 	// Given a new installation with no model, opening a session needs no message.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -122,6 +123,7 @@ func TestUserCreatesAndReusesEmptyChatSession(t *testing.T) {
 }
 
 func TestUserChatContextAndClearStaySeparateFromMain(t *testing.T) {
+	t.Parallel()
 	// Given main and a Chat session using the real worker's context provider.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "context")
@@ -162,6 +164,7 @@ func TestUserChatContextAndClearStaySeparateFromMain(t *testing.T) {
 }
 
 func TestUserTaskResultReturnsToItsChatSession(t *testing.T) {
+	t.Parallel()
 	// Given a Chat and main on the same bot, with a task started in Chat.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -200,6 +203,7 @@ func TestUserTaskResultReturnsToItsChatSession(t *testing.T) {
 }
 
 func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
+	t.Parallel()
 	// Given main and Chat, each with background work in a real gated shell.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -264,6 +268,7 @@ func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
 }
 
 func TestUserCannotWriteReadOnlySessionKinds(t *testing.T) {
+	t.Parallel()
 	// Given task, automation and channel sessions owned by the bot.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
@@ -282,6 +287,7 @@ func TestUserCannotWriteReadOnlySessionKinds(t *testing.T) {
 }
 
 func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
+	t.Parallel()
 	// Given saved sessions with equal activity times, task reports and hidden contexts.
 	d := startDex(t, t.TempDir(), "")
 	conn := sessionDB(t, d)
@@ -344,6 +350,7 @@ func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 }
 
 func TestUserSeesSessionActivityThroughTaskCompletion(t *testing.T) {
+	t.Parallel()
 	// Given an old task and newer Chats with equal completion times.
 	d := startDex(t, t.TempDir(), "")
 	conn := sessionDB(t, d)

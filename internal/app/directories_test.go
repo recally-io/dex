@@ -79,6 +79,7 @@ func TestUserBrowsesHostDirectories(t *testing.T) {
 }
 
 func TestUserDirectoryListingIsCapped(t *testing.T) {
+	t.Parallel()
 	// Given more than 500 visible host directories.
 	tree := t.TempDir()
 	for i := range 501 {
@@ -97,6 +98,7 @@ func TestUserDirectoryListingIsCapped(t *testing.T) {
 }
 
 func TestUserListsRecentAgentProjects(t *testing.T) {
+	t.Parallel()
 	// Given distinct projects, duplicates, a deleted project and another agent.
 	d := startDex(t, t.TempDir(), "")
 	conn := sessionDB(t, d)

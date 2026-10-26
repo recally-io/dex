@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserQueuedTelegramMessageDoesNotTakeFirstPreview(t *testing.T) {
+	t.Parallel()
 	// Given a tool run that waits until the next message is queued.
 	f := newFakeTelegram(t)
 	f.rejectDraft = true
@@ -68,6 +69,7 @@ func TestUserQueuedTelegramMessageDoesNotTakeFirstPreview(t *testing.T) {
 }
 
 func TestUserGetsTelegramAnswerDuringSlowInboundDownload(t *testing.T) {
+	t.Parallel()
 	// Given an answer held by a tool and a download held by the Bot API.
 	f := newFakeTelegram(t)
 	download := make(chan struct{})
@@ -102,6 +104,7 @@ func TestUserGetsTelegramAnswerDuringSlowInboundDownload(t *testing.T) {
 }
 
 func TestUserCanStopTelegramDuringPreviewRequest(t *testing.T) {
+	t.Parallel()
 	// Given a preview request that the Bot API has not completed.
 	f := newFakeTelegram(t)
 	gate := make(chan struct{})

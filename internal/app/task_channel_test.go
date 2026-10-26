@@ -8,6 +8,7 @@ import (
 )
 
 func TestUserChannelHelpHasNoTaskManagementCommands(t *testing.T) {
+	t.Parallel()
 	// Given a channel peer without a model conversation.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
@@ -30,6 +31,7 @@ func TestUserChannelHelpHasNoTaskManagementCommands(t *testing.T) {
 }
 
 func TestUserChannelStopCoversMainAcrossClearAndPreservesChat(t *testing.T) {
+	t.Parallel()
 	// Given two channel entries with running work on main and a separate Chat.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()

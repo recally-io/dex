@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Verify the native runtime has no worker or terminal UI and builds without cgo"
+#MISE depends=["build:web"]
 set -euo pipefail
 
 if git ls-files worker internal/worker internal/workerbin | rg .; then

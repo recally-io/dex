@@ -51,6 +51,7 @@ func maintenanceSubmit(t *testing.T, agents *engine.Agents, ref engine.Ref, comm
 func markerExists(path string) bool { _, err := os.Stat(path); return err == nil }
 
 func TestUserMaintenanceBlocksTranscriptRecovery(t *testing.T) {
+	t.Parallel()
 	for _, method := range []string{"watch", "history"} {
 		t.Run(method, func(t *testing.T) {
 			// Given a stored run with a queued input that must survive an engine close.
@@ -110,6 +111,7 @@ func TestUserMaintenanceBlocksTranscriptRecovery(t *testing.T) {
 }
 
 func TestUserMaintenanceWaitsForMemoryCommit(t *testing.T) {
+	t.Parallel()
 	// Given a native execution whose memory commit waits for a repository hook.
 	data := t.TempDir()
 	agents := maintenanceEngine(t, data)
@@ -148,6 +150,7 @@ func TestUserMaintenanceWaitsForMemoryCommit(t *testing.T) {
 }
 
 func TestUserCancelledWatchDoesNotStartAfterMaintenance(t *testing.T) {
+	t.Parallel()
 	// Given a native runtime paused before a browser subscribes.
 	agents := maintenanceEngine(t, t.TempDir())
 	ref := maintenanceConversation(t, agents)

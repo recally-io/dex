@@ -7,6 +7,7 @@ import (
 )
 
 func TestUserDelegatesWithoutTaskManagementAPI(t *testing.T) {
+	t.Parallel()
 	// Given an ordinary conversation.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")

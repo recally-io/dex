@@ -89,6 +89,7 @@ func (d *dex) setThinking(t *testing.T, thinkingLevel string) {
 }
 
 func TestUserSetsAgentThinkingLevel(t *testing.T) {
+	t.Parallel()
 	// Given dex with the reasoning model faux/think
 	d := startDex(t, t.TempDir(), "")
 
@@ -150,6 +151,7 @@ func TestUserSetsAgentThinkingLevel(t *testing.T) {
 }
 
 func TestUserMainUsesAgentSettings(t *testing.T) {
+	t.Parallel()
 	// Given the main timeline and the agent's model settings.
 	d := startDex(t, t.TempDir(), "")
 	d.setThinking(t, "high")
@@ -170,6 +172,7 @@ func TestUserMainUsesAgentSettings(t *testing.T) {
 }
 
 func TestUserSendsFilesToTheAgent(t *testing.T) {
+	t.Parallel()
 	// Given dex with a model
 	dataDir := t.TempDir()
 	d := startDex(t, dataDir, "")
@@ -252,6 +255,7 @@ func (d *dex) getUpload(t *testing.T, rawID string) (int, http.Header, []byte) {
 }
 
 func TestUploadIsServedSafely(t *testing.T) {
+	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
 	img := pngImage(t)
 	pic := d.mustUpload(t, "a.png", img)
@@ -321,6 +325,7 @@ func TestUploadIsServedSafely(t *testing.T) {
 }
 
 func TestInvalidUploadsAndAttachmentsAreRefused(t *testing.T) {
+	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
 	workspace := filepath.Join(d.dataDir(t), "agents", "default", "workspace")
@@ -390,6 +395,7 @@ func (d *dex) dataDir(t *testing.T) string {
 }
 
 func TestPendingMessageWithAttachmentsIsReplayedAfterRestart(t *testing.T) {
+	t.Parallel()
 	dataDir := t.TempDir()
 
 	// Given a chat, and a message with a file that control stored but the worker never got, as

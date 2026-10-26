@@ -11,6 +11,7 @@ import (
 )
 
 func TestUserUpdateWaitsForActiveTool(t *testing.T) {
+	t.Parallel()
 	// Given a real bash tool that waits for an explicit release file.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "bash")
@@ -38,6 +39,7 @@ func TestUserUpdateWaitsForActiveTool(t *testing.T) {
 }
 
 func TestUserMaintenanceRejectsWorkUntilReleaseOrRestart(t *testing.T) {
+	t.Parallel()
 	for _, restart := range []bool{false, true} {
 		t.Run(fmt.Sprintf("restart=%t", restart), func(t *testing.T) {
 			// Given an idle native runtime under maintenance and an empty Chat.

@@ -13,6 +13,7 @@ import (
 )
 
 func TestUserClearsChannelMainContextOnce(t *testing.T) {
+	t.Parallel()
 	// Given a Telegram peer with one conversation.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
@@ -38,6 +39,7 @@ func TestUserClearsChannelMainContextOnce(t *testing.T) {
 }
 
 func TestUserGetsUndeliveredTelegramReplyAfterRestart(t *testing.T) {
+	t.Parallel()
 	// Given a settled reply whose Bot API send fails.
 	f := newFakeTelegram(t)
 	f.failSend.Store(true)
@@ -82,6 +84,7 @@ func TestUserGetsUndeliveredTelegramReplyAfterRestart(t *testing.T) {
 }
 
 func TestUserStopsCurrentChannelAnswer(t *testing.T) {
+	t.Parallel()
 	// Given a Telegram chat whose agent runs a long command.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
@@ -117,6 +120,7 @@ func TestUserStopsCurrentChannelAnswer(t *testing.T) {
 }
 
 func TestUserStopsChannelMessageBeforeNativeAdmission(t *testing.T) {
+	t.Parallel()
 	// Given an idle native engine with admission closed for maintenance.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
@@ -145,6 +149,7 @@ func TestUserStopsChannelMessageBeforeNativeAdmission(t *testing.T) {
 }
 
 func TestUserRetrySkipsConfirmedTelegramParts(t *testing.T) {
+	t.Parallel()
 	// Given an answer that spans two Telegram messages, with the second send failing.
 	f := newFakeTelegram(t)
 	f.failAfter.Store(1)
@@ -165,6 +170,7 @@ func TestUserRetrySkipsConfirmedTelegramParts(t *testing.T) {
 }
 
 func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
+	t.Parallel()
 	// Given external channel chats in control storage.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -202,6 +208,7 @@ func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 }
 
 func TestUserBlockedPeerDoesNotStopOtherReplies(t *testing.T) {
+	t.Parallel()
 	// Given a bot that one peer has blocked.
 	f := newFakeTelegram(t)
 	f.permanentChat.Store(7)
@@ -216,6 +223,7 @@ func TestUserBlockedPeerDoesNotStopOtherReplies(t *testing.T) {
 }
 
 func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
+	t.Parallel()
 	// Given a chat whose execution conversation no longer exists.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
@@ -252,6 +260,7 @@ func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 }
 
 func TestUserStopsExistingChannelChatDuringMaintenance(t *testing.T) {
+	t.Parallel()
 	// Given a chat whose execution conversation already exists and admission is closed.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)

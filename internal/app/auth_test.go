@@ -42,6 +42,7 @@ func (d *dex) request(t *testing.T, method, path, body string, header map[string
 }
 
 func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
+	t.Parallel()
 	// Given dex on a host that is not loopback, which requires the stored token. The CLI reads
 	// the token through a file: URI, which must escape the space.
 	dataDir := filepath.Join(t.TempDir(), "data dir")
@@ -107,6 +108,7 @@ func TestUserOnNetworkHostNeedsTheStoredToken(t *testing.T) {
 }
 
 func TestUserTokenFromTheEnvironmentReplacesTheStoredToken(t *testing.T) {
+	t.Parallel()
 	// Given dex with DEX_TOKEN.
 	dataDir := t.TempDir()
 	own := "user-token-0123456789abcdefghijklmnopqrstuvwxyz"
@@ -126,6 +128,7 @@ func TestUserTokenFromTheEnvironmentReplacesTheStoredToken(t *testing.T) {
 }
 
 func TestUserOnLoopbackNeedsNoToken(t *testing.T) {
+	t.Parallel()
 	// Given dex on loopback without DEX_TOKEN, then the API needs no token.
 	d := startDex(t, t.TempDir(), "")
 	if resp := d.request(t, http.MethodGet, "/api/agents/default/chats", "", nil); resp.StatusCode != http.StatusOK {
@@ -134,6 +137,7 @@ func TestUserOnLoopbackNeedsNoToken(t *testing.T) {
 }
 
 func TestStoredTokenOfAnOlderDatabaseIsEmpty(t *testing.T) {
+	t.Parallel()
 	// Given a data directory with no database, and one with a schema from before tokens.
 	if token, err := settings.StoredToken(t.Context(), t.TempDir()); err != nil || token != "" {
 		t.Fatalf("no database: %q %v", token, err)
@@ -157,6 +161,7 @@ func TestStoredTokenOfAnOlderDatabaseIsEmpty(t *testing.T) {
 }
 
 func TestUserUpdaterHoldsMaintenanceOnANetworkHost(t *testing.T) {
+	t.Parallel()
 	// Given a service on a wildcard host, which requires the stored token.
 	dataDir := t.TempDir()
 	d := startDexWith(t, app.Config{DataDir: dataDir, RequireToken: true})

@@ -105,6 +105,7 @@ func (e mainEntry) wait(t *testing.T, text string) {
 }
 
 func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
+	t.Parallel()
 	for _, platform := range []string{"telegram", "wechat", "feishu"} {
 		t.Run(platform, func(t *testing.T) {
 			// Given a separate Chat and an old peer conversation with a model override.
@@ -186,6 +187,7 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 }
 
 func TestUserChannelMainTaskResultsFollowTheirSource(t *testing.T) {
+	t.Parallel()
 	for _, platform := range []string{"telegram", "wechat", "feishu"} {
 		t.Run(platform, func(t *testing.T) {
 			// Given channel work that will finish after a newer web message.
@@ -225,6 +227,7 @@ func TestUserChannelMainTaskResultsFollowTheirSource(t *testing.T) {
 }
 
 func TestUserChannelMainBusyInputsKeepAdmissionOrder(t *testing.T) {
+	t.Parallel()
 	// Given main held in a shell tool, with two channel destinations and one web input.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
@@ -290,6 +293,7 @@ func TestUserChannelMainBusyInputsKeepAdmissionOrder(t *testing.T) {
 }
 
 func TestUserChannelMainFeishuPreviewStopsBeforeQueuedWebInput(t *testing.T) {
+	t.Parallel()
 	// Given a channel answer that streams while a web input waits in main.
 	f := newFakeFeishu(t)
 	dir := t.TempDir()
@@ -331,6 +335,7 @@ func TestUserChannelMainFeishuPreviewStopsBeforeQueuedWebInput(t *testing.T) {
 }
 
 func TestUserChannelMainClearRefusesBusyAndDeduplicates(t *testing.T) {
+	t.Parallel()
 	// Given main running a web input. Channel Clear must refuse without changing context.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
@@ -344,6 +349,8 @@ func TestUserChannelMainClearRefusesBusyAndDeduplicates(t *testing.T) {
 	waitTaskChannelText(t, f, "Context not cleared. The main timeline is busy.")
 	releaseResultGate(t, dir, "channel-clear")
 	d.watch(t, main).until(t, "web answer after refusal", answered("bash: gate released"))
+	// The answer shows before control settles its submission, and Clear refuses until then.
+	eventually(t, "main idle", func() (bool, any) { c := d.mainInfo(t); return !c.Busy, c })
 	// When the platform replays the refused command after main becomes idle, it stays refused.
 	f.message(1, 42, 7, "/new")
 	f.message(2, 42, 7, "/new")
@@ -375,6 +382,7 @@ func TestUserChannelMainClearRefusesBusyAndDeduplicates(t *testing.T) {
 }
 
 func TestUserChannelMainStopKeepsChatAndAutomationWork(t *testing.T) {
+	t.Parallel()
 	// Given work started from two main entries, a separate Chat, and an automation.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()

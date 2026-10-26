@@ -19,6 +19,7 @@ import (
 )
 
 func TestUserTaskResultWaitsForBusyParent(t *testing.T) {
+	t.Parallel()
 	// Given independent shell gates for the background execution and its parent.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -82,6 +83,7 @@ func TestUserTaskResultWaitsForBusyParent(t *testing.T) {
 }
 
 func TestUserTaskResultRecoversFailedParentWithQueuedInput(t *testing.T) {
+	t.Parallel()
 	// Given a parent in a shell tool and a separate background execution.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
@@ -130,6 +132,7 @@ func TestUserTaskResultRecoversFailedParentWithQueuedInput(t *testing.T) {
 }
 
 func TestUserTaskResultSurvivesStopAfterParentAcceptsIt(t *testing.T) {
+	t.Parallel()
 	// Given a report that starts a real shell gate when faux/bash reads the result envelope.
 	// Shell substitution is intentional here: the model boundary executes the report text.
 	dir := t.TempDir()
@@ -180,6 +183,7 @@ func TestUserTaskResultSurvivesStopAfterParentAcceptsIt(t *testing.T) {
 }
 
 func TestUserKeepsQueuedQuestionAfterBackgroundResultOnReconnect(t *testing.T) {
+	t.Parallel()
 	// Given a result run held inside a real shell tool while a user question waits in its inbox.
 	dir := t.TempDir()
 	script := filepath.Join(dir, "result-gate.sh")
@@ -325,6 +329,7 @@ func assertResultExecution(t *testing.T, conn *sql.DB, parent int64, task chat.T
 }
 
 func TestUserFailedTaskResultStaysUnansweredAfterSuccessfulMessage(t *testing.T) {
+	t.Parallel()
 	// Given a provider that answers ordinary messages but fails result turns.
 	var calls atomic.Int64
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -408,6 +413,7 @@ data: [DONE]
 }
 
 func TestUserSeesBackgroundResultTitleRealtimeAndAfterReconnect(t *testing.T) {
+	t.Parallel()
 	// Given a watched parent whose background execution waits at a shell gate.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")

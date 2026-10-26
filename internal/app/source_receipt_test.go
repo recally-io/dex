@@ -13,6 +13,7 @@ import (
 )
 
 func TestUserTelegramPendingAttachmentReplayKeepsOneUpload(t *testing.T) {
+	t.Parallel()
 	// Given a stored attachment whose native admission is held across restart.
 	f := newFakeTelegram(t)
 	f.files["notes.txt"] = "remember the milk\n"
@@ -106,6 +107,7 @@ func TestUserTelegramPendingAttachmentReplayKeepsOneUpload(t *testing.T) {
 }
 
 func TestUserMovesTelegramBotWithoutReplayingOldInput(t *testing.T) {
+	t.Parallel()
 	// Given an attachment answered under the default agent and a second agent.
 	f := newFakeTelegram(t)
 	f.files["old.txt"] = "default attachment\n"

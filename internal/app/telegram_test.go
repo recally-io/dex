@@ -253,6 +253,7 @@ func startTelegram(t *testing.T, f *fakeTelegram, dataDir string, allowed ...int
 }
 
 func TestUserGetsAnswerInTelegram(t *testing.T) {
+	t.Parallel()
 	// Given dex with a Telegram bot that user 42 can use
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
@@ -279,6 +280,7 @@ func TestUserGetsAnswerInTelegram(t *testing.T) {
 }
 
 func TestTelegramIgnoresUsersWhoAreNotAllowed(t *testing.T) {
+	t.Parallel()
 	// Given dex with a Telegram bot that only user 42 can use
 	f := newFakeTelegram(t)
 	dataDir := t.TempDir()
@@ -316,6 +318,7 @@ func TestTelegramIgnoresUsersWhoAreNotAllowed(t *testing.T) {
 }
 
 func TestTelegramMessageDeliveredTwiceIsAnsweredOnce(t *testing.T) {
+	t.Parallel()
 	// Given dex with a Telegram bot that user 42 can use
 	f := newFakeTelegram(t)
 	startTelegram(t, f, t.TempDir(), 42)
@@ -334,6 +337,7 @@ func TestTelegramMessageDeliveredTwiceIsAnsweredOnce(t *testing.T) {
 }
 
 func TestUserGetsFormattedTelegramAnswer(t *testing.T) {
+	t.Parallel()
 	// Given a bot that user 42 can use.
 	f := newFakeTelegram(t)
 	startTelegram(t, f, t.TempDir(), 42)
@@ -347,6 +351,7 @@ func TestUserGetsFormattedTelegramAnswer(t *testing.T) {
 }
 
 func TestUserPairsTelegramOwnerOnce(t *testing.T) {
+	t.Parallel()
 	// Given a saved bot without an owner.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir())
@@ -387,6 +392,7 @@ func TestUserPairsTelegramOwnerOnce(t *testing.T) {
 }
 
 func TestUserGetsSplitTelegramCode(t *testing.T) {
+	t.Parallel()
 	// Given a bot and a code block that cannot fit in one Telegram message.
 	f := newFakeTelegram(t)
 	startTelegram(t, f, t.TempDir(), 42)
@@ -412,6 +418,7 @@ func TestUserGetsSplitTelegramCode(t *testing.T) {
 }
 
 func TestUserGetsPlainTelegramAnswerWhenHTMLIsRejected(t *testing.T) {
+	t.Parallel()
 	// Given a Bot API that rejects formatted messages.
 	f := newFakeTelegram(t)
 	f.rejectHTML = true
@@ -426,6 +433,7 @@ func TestUserGetsPlainTelegramAnswerWhenHTMLIsRejected(t *testing.T) {
 }
 
 func TestUserGetsTelegramAnswerAfterDurableFloodRetry(t *testing.T) {
+	t.Parallel()
 	// Given a Bot API that rejects the first final send with 429.
 	f := newFakeTelegram(t)
 	f.failures["sendMessage"] = []platformFailure{{Code: 429, Retry: 1}}
@@ -456,6 +464,7 @@ func (f *fakeTelegram) nextEvent(t *testing.T, method string) platformEvent {
 }
 
 func TestUserSeesTelegramDraft(t *testing.T) {
+	t.Parallel()
 	// Given a bot and an answer that takes several seconds to produce.
 	f := newFakeTelegram(t)
 	startTelegram(t, f, t.TempDir(), 42)
@@ -473,6 +482,7 @@ func TestUserSeesTelegramDraft(t *testing.T) {
 }
 
 func TestUserSeesTelegramEditWhenDraftIsUnsupported(t *testing.T) {
+	t.Parallel()
 	// Given an older Bot API without draft support.
 	f := newFakeTelegram(t)
 	f.rejectDraft = true
@@ -497,6 +507,7 @@ func TestUserSeesTelegramEditWhenDraftIsUnsupported(t *testing.T) {
 }
 
 func TestUserSendsTelegramPhotoAndDocument(t *testing.T) {
+	t.Parallel()
 	// Given a bot, two photo sizes, and a document.
 	f := newFakeTelegram(t)
 	f.files["small.png"] = string(pngImage(t))
@@ -557,6 +568,7 @@ func TestUserSendsTelegramPhotoAndDocument(t *testing.T) {
 }
 
 func TestUserCannotPairTelegramWithExpiredCode(t *testing.T) {
+	t.Parallel()
 	// Given a bot with a pairing link that has expired in durable storage.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
@@ -593,6 +605,7 @@ func TestUserCannotPairTelegramWithExpiredCode(t *testing.T) {
 }
 
 func TestUserPairsTelegramAfterControlRestart(t *testing.T) {
+	t.Parallel()
 	// Given a pending pairing link.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
@@ -620,6 +633,7 @@ func TestUserPairsTelegramAfterControlRestart(t *testing.T) {
 }
 
 func TestUserCannotSendOversizeTelegramDocument(t *testing.T) {
+	t.Parallel()
 	// Given a bot that admits only owner 42.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
@@ -651,6 +665,7 @@ func TestUserCannotSendOversizeTelegramDocument(t *testing.T) {
 }
 
 func TestUserSeesInvalidTelegramTokenStatus(t *testing.T) {
+	t.Parallel()
 	// Given a Bot API that rejects getUpdates.
 	f := newFakeTelegram(t)
 	f.failures["getUpdates"] = []platformFailure{{Code: 401}}
@@ -661,6 +676,7 @@ func TestUserSeesInvalidTelegramTokenStatus(t *testing.T) {
 }
 
 func TestUserSeesTelegramPollingErrorAndRecovery(t *testing.T) {
+	t.Parallel()
 	// Given a Bot API whose first poll fails.
 	f := newFakeTelegram(t)
 	f.failures["getUpdates"] = []platformFailure{{Code: 500}}

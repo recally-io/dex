@@ -66,8 +66,60 @@ jobs:
         with:
           install: true
           cache: true
+      # Without the build cache every run compiles PiG and the other modules again. Only main saves
+      # it, so pull requests cannot fill the repository cache with one entry per commit.
+      - id: go-cache
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+          key: go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ runner.os }}-
       - run: go mod download
       # Go builds embed the web UI.
       - run: mise run install
       - run: mise run check:go
+      - if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
+
+  # The four cross builds take minutes, so they run beside the tests instead of after them.
+  native:
+    name: Native builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.2.0
+        with:
+          install: true
+          cache: true
+      - id: go-cache
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-native-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-native-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-native-${{ runner.os }}-
+      - run: go mod download
+      - run: mise run install
       - run: mise run check:native
+      - if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
