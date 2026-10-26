@@ -137,43 +137,41 @@ func canonicalExtensionPath(path string) string {
 	}
 	return filepath.Join(canonicalExtensionPath(parent), filepath.Base(path))
 }
-func (a *agentExtensions) distinct() []ExtensionLevel {
+func (a *agentExtensions) distinct() []ExtensionLevel { return distinctLevels(a.levels) }
+
+// distinctLevels keeps the narrowest of levels with the same directory.
+func distinctLevels(levels []ExtensionLevel) []ExtensionLevel {
 	out := []ExtensionLevel{}
-	for i, l := range a.levels {
-		if !slices.ContainsFunc(a.levels[i+1:], func(next ExtensionLevel) bool { return next.Dir == l.Dir }) {
+	for i, l := range levels {
+		if !slices.ContainsFunc(levels[i+1:], func(next ExtensionLevel) bool { return next.Dir == l.Dir }) {
 			out = append(out, l)
 		}
 	}
 	return out
 }
-func (a *agentExtensions) skills(errs *[]string) []SkillInfo {
+
+// skills reads the skills of the three file levels and of the project level, cwd/.agents/skills.
+// The project level holds only skills; mcp.json and .env stay with the file levels.
+func (a *agentExtensions) skills(cwd string, errs *[]string) []SkillInfo {
+	levels := append(slices.Clone(a.levels), ExtensionLevel{"project", canonicalExtensionPath(filepath.Join(cwd, ".agents"))})
 	byName := map[string]SkillInfo{}
-	for _, l := range a.distinct() {
+	for _, l := range distinctLevels(levels) {
 		dir := filepath.Join(l.Dir, "skills")
-		entries, err := os.ReadDir(dir)
-		if err != nil {
+		if _, err := os.Stat(dir); err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
 				*errs = append(*errs, dir+": cannot read skills")
 			}
 			continue
 		}
-		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), ".") {
+		level := map[string]bool{}
+		for _, skill := range findSkills(dir, map[string]bool{}, errs) {
+			if level[skill.Name] {
+				*errs = append(*errs, skill.Path+": another skill in "+dir+" has the name "+skill.Name)
 				continue
 			}
-			path := filepath.Join(dir, entry.Name())
-			stat, err := os.Stat(path)
-			if err != nil || !stat.IsDir() {
-				continue
-			}
-			skill := SkillInfo{Name: entry.Name(), Scope: l.Scope, Path: filepath.Join(path, "SKILL.md")}
+			level[skill.Name] = true
+			skill.Scope = l.Scope
 			_, skill.Overrides = byName[skill.Name]
-			data, err := os.ReadFile(skill.Path)
-			if err != nil {
-				skill.Error = "cannot read SKILL.md"
-			} else {
-				skill.Description, skill.Error = parseSkill(string(data), skill.Name)
-			}
 			byName[skill.Name] = skill
 		}
 	}
@@ -183,33 +181,75 @@ func (a *agentExtensions) skills(errs *[]string) []SkillInfo {
 	}
 	return out
 }
-func parseSkill(text, name string) (string, string) {
+
+// findSkills walks dir as Pi's skill loader does. A directory with a SKILL.md file is one skill,
+// and the walk does not go into it. Hidden directories and node_modules are skipped. seen holds
+// real paths, so a symlinked directory is read once and a link cycle ends.
+func findSkills(dir string, seen map[string]bool, errs *[]string) []SkillInfo {
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil || seen[resolved] {
+		return nil
+	}
+	seen[resolved] = true
+	path := filepath.Join(dir, "SKILL.md")
+	if stat, err := os.Stat(path); err == nil && stat.Mode().IsRegular() {
+		skill := SkillInfo{Name: filepath.Base(dir), Path: path}
+		data, err := os.ReadFile(path) //nolint:gosec // A SKILL.md under an extension level, found by the walk.
+		if err != nil {
+			skill.Error = "cannot read SKILL.md"
+		} else {
+			skill.Name, skill.Description, skill.Error = parseSkill(string(data), skill.Name)
+		}
+		return []SkillInfo{skill}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		*errs = append(*errs, dir+": cannot read skills")
+		return nil
+	}
+	var out []SkillInfo
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".") || entry.Name() == "node_modules" {
+			continue
+		}
+		child := filepath.Join(dir, entry.Name())
+		if stat, err := os.Stat(child); err == nil && stat.IsDir() {
+			out = append(out, findSkills(child, seen, errs)...)
+		}
+	}
+	return out
+}
+
+// parseSkill returns the name, the description and an error. The front matter name wins over
+// the directory name, so a nested skill keeps its public name.
+func parseSkill(text, dirName string) (string, string, string) {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	if !strings.HasPrefix(text, "---\n") {
-		return "", "SKILL.md must start with YAML front matter between --- lines"
+		return dirName, "", "SKILL.md must start with YAML front matter between --- lines"
 	}
 	front, rest, ok := strings.Cut(text[4:], "\n---")
 	if !ok || (rest != "" && !strings.HasPrefix(rest, "\n")) {
-		return "", "SKILL.md must start with YAML front matter between --- lines"
+		return dirName, "", "SKILL.md must start with YAML front matter between --- lines"
 	}
 	var meta map[string]any
 	if err := yaml.Unmarshal([]byte(front), &meta); err != nil {
-		return "", "the front matter is not valid YAML"
+		return dirName, "", "the front matter is not valid YAML"
 	}
-	description, ok := meta["description"].(string)
-	if !ok || strings.TrimSpace(description) == "" || utf8.RuneCountInString(description) > 1024 {
-		return "", "the front matter needs a description of 1 to 1024 characters"
-	}
+	name := dirName
 	if declared, present := meta["name"]; present {
 		value, ok := declared.(string)
 		if !ok {
-			return "", "the front matter needs a name that is text"
+			return dirName, "", "the front matter needs a name that is text"
 		}
-		if value != name {
-			return "", "the name is not the directory name"
+		if value = strings.TrimSpace(value); value != "" {
+			name = value
 		}
 	}
-	return strings.Join(strings.Fields(description), " "), ""
+	description, ok := meta["description"].(string)
+	if !ok || strings.TrimSpace(description) == "" || utf8.RuneCountInString(description) > 1024 {
+		return name, "", "the front matter needs a description of 1 to 1024 characters"
+	}
+	return name, strings.Join(strings.Fields(description), " "), ""
 }
 func readExtensionEnv(path string) (map[string]string, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // Fixed extension paths come from the agent configuration.
@@ -266,7 +306,7 @@ func (a *agentExtensions) scan() extensionScan {
 	if s.env == nil {
 		s.env = map[string]string{}
 	}
-	s.info.Skills = a.skills(&s.info.Errors)
+	s.info.Skills = a.skills(a.workspace, &s.info.Warnings)
 	servers := map[string]serverEntry{}
 	valid, validEnv := true, true
 	for _, l := range a.distinct() {
@@ -353,9 +393,14 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 	// Keep the status slice stable before any connection can call OnClose.
 	loaded := &loadedExtensions{Env: s.env, Servers: s.info.Servers, Extension: &durable.Extension{Name: "extensions"}}
 	guide := extensionGuide(a.levels)
-	loaded.Extension.Sections = []*durable.PromptSection{{Key: "extension-guide", Render: func(context.Context, durable.PromptInput) (*string, error) { return new(guide), nil }}, {Key: "skills", Render: func(context.Context, durable.PromptInput) (*string, error) {
+	loaded.Extension.Sections = []*durable.PromptSection{{Key: "extension-guide", Render: func(context.Context, durable.PromptInput) (*string, error) { return new(guide), nil }}, {Key: "skills", Render: func(_ context.Context, input durable.PromptInput) (*string, error) {
+		// The project level follows the conversation's cwd, which the request's environment has.
+		cwd := a.workspace
+		if input.Env != nil {
+			cwd = input.Env.Cwd()
+		}
 		errs := []string{}
-		return skillsText(a.skills(&errs)), nil
+		return skillsText(a.skills(cwd, &errs)), nil
 	}}}
 	names := map[string]bool{}
 	for index, entry := range s.servers {
@@ -611,7 +656,7 @@ func extensionGuide(levels []ExtensionLevel) string {
 	lines = append(lines,
 		"Narrower levels win. A skill or MCP server with the same name replaces the wider entry as a whole. Environment values merge per key.",
 		"",
-		"Skills: use <level>/skills/<name>/SKILL.md. Start with YAML front matter fields name and description. Skill edits apply on the next request. Use the skills list when it is present.",
+		"Skills: use <level>/skills/<name>/SKILL.md, or <cwd>/.agents/skills/ for the project level, which is narrower than agent. A skill can be in a nested directory; the walk does not go into a skill. Start with YAML front matter fields name and description; name defaults to the directory name. Skill edits apply on the next request. Use the skills list when it is present.",
 		`MCP: use <level>/mcp.json with a mcpServers object. For stdio, use command, args, env, and cwd. For HTTP, use "type": "http", url, and headers. {"disabled": true} turns off a wider server with the same name.`,
 		"",
 		".env: values are in the tool environment. Use $KEY in bash and ${KEY} in mcp.json headers. Never print, echo, or write a value into chat, memory, or files. The user sets values on the Secrets page.",

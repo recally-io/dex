@@ -274,6 +274,30 @@ func (e RunEventType) Valid() bool {
 	}
 }
 
+// Defines values for SkillScope.
+const (
+	SkillScopeAgent   SkillScope = "agent"
+	SkillScopeDex     SkillScope = "dex"
+	SkillScopeHome    SkillScope = "home"
+	SkillScopeProject SkillScope = "project"
+)
+
+// Valid indicates whether the value is a known member of the SkillScope enum.
+func (e SkillScope) Valid() bool {
+	switch e {
+	case SkillScopeAgent:
+		return true
+	case SkillScopeDex:
+		return true
+	case SkillScopeHome:
+		return true
+	case SkillScopeProject:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SnapshotEventType.
 const (
 	Snapshot SnapshotEventType = "snapshot"
@@ -915,9 +939,12 @@ type Skill struct {
 	// Path The SKILL.md file.
 	Path string `json:"path"`
 
-	// Scope Home, resolved data directory, or agent home, each under .agents/.
-	Scope ExtensionScope `json:"scope"`
+	// Scope A file level, or project for .agents/skills under the agent workspace. The prompt reads the project level under the conversation's cwd.
+	Scope SkillScope `json:"scope"`
 }
+
+// SkillScope A file level, or project for .agents/skills under the agent workspace. The prompt reads the project level under the conversation's cwd.
+type SkillScope string
 
 // SnapshotEvent defines model for SnapshotEvent.
 type SnapshotEvent struct {

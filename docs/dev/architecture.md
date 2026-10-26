@@ -224,6 +224,15 @@ Skills, MCP servers, and `.env` come from three levels: home (`$HOME/.agents/`),
 dex (`<resolved data dir>/.agents/`), and agent (`<data dir>/agents/<id>/.agents/`).
 Narrower levels win. Paths are fixed before `.env` is read. Equal real paths
 are read once as the narrower level. See [ADR 0010](decisions/0010-extension-levels.md).
+Skills have a fourth, narrowest level: `.agents/skills` under the
+conversation's cwd. The skills prompt section reads that cwd from the request's
+execution environment, so it follows the conversation; dex does not set a
+conversation cwd yet, so it is the agent workspace. The Extensions API reads the
+workspace. Each level is walked like Pi's skill loader: a directory with
+`SKILL.md` is one skill and the walk stops there; hidden directories and
+`node_modules` are skipped; symlinked directories are read once. The front matter
+`name` wins over the directory name. A second skill with the same name in one
+level is a warning, not an error, so it does not block MCP Reload.
 Each agent has its own environment snapshot for tools and stdio MCP servers.
 Invalid `.env` or MCP files prevent all MCP startup for that agent. Invalid
 `.env` also removes all file environment values from that snapshot.
