@@ -747,6 +747,9 @@ type HistoryPage struct {
 	NextBefore *int64 `json:"nextBefore,omitempty"`
 }
 
+// InboxItem defines model for InboxItem.
+type InboxItem = automation.InboxItem
+
 // Item defines model for Item.
 type Item struct {
 	union json.RawMessage
@@ -1160,6 +1163,11 @@ type CreateUploadMultipartBody struct {
 // ListDirectoriesParams defines parameters for ListDirectories.
 type ListDirectoriesParams struct {
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// ListInboxParams defines parameters for ListInbox.
+type ListInboxParams struct {
+	IncludeDismissed *bool `form:"includeDismissed,omitempty" json:"includeDismissed,omitempty"`
 }
 
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
@@ -1813,6 +1821,15 @@ type ServerInterface interface {
 
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/inbox)
+	ListInbox(w http.ResponseWriter, r *http.Request, params ListInboxParams)
+
+	// (POST /api/inbox/{runId}/dismiss)
+	DismissInboxItem(w http.ResponseWriter, r *http.Request, runId string)
+
+	// (POST /api/inbox/{runId}/read)
+	ReadInboxItem(w http.ResponseWriter, r *http.Request, runId string)
 
 	// (DELETE /api/maintenance)
 	ReleaseMaintenance(w http.ResponseWriter, r *http.Request)
@@ -3246,6 +3263,91 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListInbox operation middleware
+func (siw *ServerInterfaceWrapper) ListInbox(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListInboxParams
+
+	// ------------- Optional query parameter "includeDismissed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeDismissed", r.URL.Query(), &params.IncludeDismissed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeDismissed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeDismissed", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInbox(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DismissInboxItem operation middleware
+func (siw *ServerInterfaceWrapper) DismissInboxItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runId" -------------
+	var runId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runId", r.PathValue("runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DismissInboxItem(w, r, runId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReadInboxItem operation middleware
+func (siw *ServerInterfaceWrapper) ReadInboxItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runId" -------------
+	var runId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runId", r.PathValue("runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReadInboxItem(w, r, runId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReleaseMaintenance operation middleware
 func (siw *ServerInterfaceWrapper) ReleaseMaintenance(w http.ResponseWriter, r *http.Request) {
 
@@ -3488,6 +3590,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox", wrapper.ListInbox)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/read", wrapper.ReadInboxItem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/dismiss", wrapper.DismissInboxItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/session", wrapper.CreateSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/maintenance", wrapper.ReleaseMaintenance)
@@ -6243,6 +6348,153 @@ func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	return err
 }
 
+type ListInboxRequestObject struct {
+	Params ListInboxParams
+}
+
+type ListInboxResponseObject interface {
+	VisitListInboxResponse(w http.ResponseWriter) error
+}
+
+type ListInbox200JSONResponse struct {
+	Items []InboxItem `json:"items"`
+}
+
+func (response ListInbox200JSONResponse) VisitListInboxResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInboxdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListInboxdefaultJSONResponse) VisitListInboxResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissInboxItemRequestObject struct {
+	RunId string `json:"runId"`
+}
+
+type DismissInboxItemResponseObject interface {
+	VisitDismissInboxItemResponse(w http.ResponseWriter) error
+}
+
+type DismissInboxItem200JSONResponse Ok
+
+func (response DismissInboxItem200JSONResponse) VisitDismissInboxItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissInboxItem404JSONResponse struct{ ErrorJSONResponse }
+
+func (response DismissInboxItem404JSONResponse) VisitDismissInboxItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissInboxItemdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DismissInboxItemdefaultJSONResponse) VisitDismissInboxItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadInboxItemRequestObject struct {
+	RunId string `json:"runId"`
+}
+
+type ReadInboxItemResponseObject interface {
+	VisitReadInboxItemResponse(w http.ResponseWriter) error
+}
+
+type ReadInboxItem200JSONResponse Ok
+
+func (response ReadInboxItem200JSONResponse) VisitReadInboxItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadInboxItem404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ReadInboxItem404JSONResponse) VisitReadInboxItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadInboxItemdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ReadInboxItemdefaultJSONResponse) VisitReadInboxItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReleaseMaintenanceRequestObject struct {
 }
 
@@ -6714,6 +6966,15 @@ type StrictServerInterface interface {
 
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+
+	// (GET /api/inbox)
+	ListInbox(ctx context.Context, request ListInboxRequestObject) (ListInboxResponseObject, error)
+
+	// (POST /api/inbox/{runId}/dismiss)
+	DismissInboxItem(ctx context.Context, request DismissInboxItemRequestObject) (DismissInboxItemResponseObject, error)
+
+	// (POST /api/inbox/{runId}/read)
+	ReadInboxItem(ctx context.Context, request ReadInboxItemRequestObject) (ReadInboxItemResponseObject, error)
 
 	// (DELETE /api/maintenance)
 	ReleaseMaintenance(ctx context.Context, request ReleaseMaintenanceRequestObject) (ReleaseMaintenanceResponseObject, error)
@@ -8118,6 +8379,84 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListInbox operation middleware
+func (sh *strictHandler) ListInbox(w http.ResponseWriter, r *http.Request, params ListInboxParams) {
+	var request ListInboxRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInbox(ctx, request.(ListInboxRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInbox")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInboxResponseObject); ok {
+		if err := validResponse.VisitListInboxResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DismissInboxItem operation middleware
+func (sh *strictHandler) DismissInboxItem(w http.ResponseWriter, r *http.Request, runId string) {
+	var request DismissInboxItemRequestObject
+
+	request.RunId = runId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DismissInboxItem(ctx, request.(DismissInboxItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DismissInboxItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DismissInboxItemResponseObject); ok {
+		if err := validResponse.VisitDismissInboxItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReadInboxItem operation middleware
+func (sh *strictHandler) ReadInboxItem(w http.ResponseWriter, r *http.Request, runId string) {
+	var request ReadInboxItemRequestObject
+
+	request.RunId = runId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReadInboxItem(ctx, request.(ReadInboxItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReadInboxItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReadInboxItemResponseObject); ok {
+		if err := validResponse.VisitReadInboxItemResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

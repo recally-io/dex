@@ -87,7 +87,7 @@ function OriginPill({ chat }: { chat: ChatInfo }) {
   if (chat.channel === "automation") {
     const pill = (
       <Badge variant="secondary" className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
-        <Clock className="size-[11px]" /> Automation
+        <Clock className="size-[11px]" /> Routine
       </Badge>
     );
 
@@ -444,11 +444,11 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
             crumb={
               chat.data ? (
                 <Link
-                  to="/a/$agentId/sessions"
+                  to="/a/$agentId/automations"
                   params={{ agentId }}
                   className="shrink-0 text-[13px] text-muted-foreground hover:text-foreground hover:underline"
                 >
-                  Sessions
+                  Routines
                 </Link>
               ) : null
             }

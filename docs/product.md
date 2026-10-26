@@ -21,7 +21,7 @@ to read in an afternoon.
   Loopback access needs no token by default. Other listening addresses require
   an access token. See [network access](../README.md#access-from-other-devices).
 - Bot settings in the web UI: name, model, thinking level, instructions,
-  channels, and automations with their runs. The name has 1 to 40 characters
+  channels, and routines with their runs. The name has 1 to 40 characters
   after spaces are trimmed. Providers, Secrets, and About are global pages.
   Tool secrets can be set for the current agent or for all dex agents.
   The CLI manages the service address, data directory, and update policy.
@@ -40,7 +40,7 @@ to read in an afternoon.
   is idle. Earlier messages stay readable with Show earlier messages. A clear
   keeps long-term memory. After a summary, Show earlier messages can load
   the earlier transcript. Only a clear shows a divider. The bot is one page
-  with tabs: Chat, Sessions, Automations, Extensions, and Settings. Its
+  with exactly four tabs: Chat, Routines, Extensions, and Settings. Its
   Settings tab holds General, Instructions, and Channels. Its header shows the
   name and the tabs. The model and the thinking level change in Settings. On the
   Chat tab, the header has New chat and a Chats button. Chats opens a right
@@ -50,9 +50,9 @@ to read in an afternoon.
   starts open, and each group shows five chats until the user asks for more.
   The row menu and a right-click archive or restore a Chat. Archiving keeps the
   messages, records and files; a task result still returns to the chat.
-  Sessions does not list archived chats. New chat does not reuse an archived
+  New chat does not reuse an archived
   empty chat. The sidebar starts closed, and the browser keeps the user's choice.
-  The left sidebar lists the agents and opens the global settings page: Providers,
+  The left sidebar puts the global Inbox above the agents. It opens the global settings page: Providers,
   Secrets, and About. It starts collapsed to one icon per agent, and the browser
   keeps the user's choice. It has no chat list. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
@@ -127,24 +127,23 @@ input, also when that source is another result. Automation, internal execution,
 and memory consolidation use `automation`, `task`, and `dream`. Channel delivery
 uses origin, including for results that finish after a newer input from another
 entry. Channel input cannot reach a separate Chat session. Old per-peer
-conversations receive no new channel input and do not show in Sessions.
+conversations receive no new channel input. Their saved transcript URLs remain readable.
 
 The main chat shows the user's messages and the main agent's answers.
 The web chat marks a delegation with the work's title. A returned result has
 a named label and a thin line that groups its replies and tool calls. The mark
 shows where the report belongs; it does not confirm that the work reached its goal.
 The chat does not show the internal report as input. Read-only task records
-give the human the saved report, status, times, and work transcript. The Sessions
-link opens one list of Chat, Task and Automation sessions, newest
-activity first. The list excludes main, old channel conversations, internal dreams
-and empty Chat sessions.
-The user can filter by kind. Its active count includes queued or running tasks
-and other busy sessions. Each row counts once. A filter counts only visible rows.
+give the human the saved report, status, times, and work transcript.
+The bot has no Sessions tab. The Chats sidebar lists writable Chats.
+Routine run history links to read-only automation transcripts.
+Old channel transcript URLs remain readable. The legacy Sessions URL remains
+available for saved links.
 Named dispatch and result labels open the task by its ID.
 Done means that the task returned a report. It does not prove goal completion.
 There are no task controls or progress percentages.
 
-`New chat` on the Chat tab and `New session` in Sessions open a writable Chat
+`New chat` on the Chat tab opens a writable Chat
 with its own model context. It reuses the
 newest empty Chat, so an abandoned click leaves no list row. The first message
 sets the title. Chat uses the bot's settings, instructions and shared memory.
@@ -152,7 +151,22 @@ Chat does not read the main timeline's context. A task started in Chat returns
 its result to that Chat. Clear context, Stop and earlier messages work within
 the selected session. Other sessions cannot enable its Stop. Task and Automation
 sessions stay read-only. Main stays the default view. A Chat session opens
-under the Chat tab. Task and Automation sessions open under Sessions.
+under the Chat tab. Task pages open under Chat. Automation transcripts open under Routines.
+
+The global Inbox answers what needs the owner now. It contains only settled
+routine runs with `changed` or `failed` outcomes and no duplicate mark.
+Unknown and `unchanged` outcomes stay in run history. Needs you contains failed
+runs. Results contains changed runs. The owner can filter by bot, All, Unread,
+or Needs you. Opening a result marks it read. Done dismisses it. Both states
+survive restart. Global and per-bot unread counts appear in the left rail;
+a count is red when it includes an unread failure.
+
+Result details show the outcome, routine, bot, time, summary, and run transcript.
+Continue in chat opens a writable Chat for that bot, sets the routine's current
+project directory, and sends a first message that quotes the stored result
+and exact run reference. Routine history shows outcome dots, summaries,
+duplicate marks, and links to results that remain in the Inbox. The Routines
+tab shows a red dot when an enabled routine's latest run failed.
 
 When the main agent starts background work, it continues independent local
 work within the same scope. When no local work remains, it names the background

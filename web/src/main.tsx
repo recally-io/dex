@@ -11,6 +11,7 @@ import {
   Link,
 } from "@tanstack/react-router";
 import { errorText, queryClient } from "./lib/queries";
+import { InboxPage } from "./routes/inbox";
 import { Shell } from "./components/shell";
 import { AgentLayout } from "./components/agent-layout";
 import { ChatPage } from "./routes/chat";
@@ -74,6 +75,14 @@ const agent = agentPage("/agent", AgentPage);
 const instructions = agentPage("/instructions", InstructionsPage);
 const channels = agentPage("/channels", ChannelsPage);
 const automations = agentPage("/automations", AutomationsPage);
+const inbox = page("/inbox", () => <InboxPage />);
+
+const inboxDetail = page("/inbox/$runId", () => {
+  const { runId } = inboxDetail.useParams();
+
+  return <InboxPage runId={runId} />;
+});
+
 const providers = page("/providers", ProvidersPage);
 
 const extensions = agentPage("/extensions", ExtensionsPage);
@@ -205,6 +214,8 @@ const router = createRouter({
     ]),
     ...oldAgentRoutes,
     tasks,
+    inbox,
+    inboxDetail,
     providers,
     secrets,
     about,
