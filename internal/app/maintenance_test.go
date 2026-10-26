@@ -55,7 +55,7 @@ func TestUserMaintenanceRejectsWorkUntilReleaseOrRestart(t *testing.T) {
 
 			// When submission is refused, it stores no intent that could execute later.
 			d.must(t, http.MethodPost, path, body, nil, http.StatusConflict)
-			conn, err := sql.Open("sqlite", "file:"+filepath.Join(data, "control.sqlite")+"?mode=ro")
+			conn, err := sql.Open("sqlite", "file:"+filepath.Join(data, "control.sqlite")+"?mode=ro&_pragma=busy_timeout(5000)")
 			if err != nil {
 				t.Fatal(err)
 			}

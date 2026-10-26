@@ -298,7 +298,7 @@ func TestUserChatsWithFeishuOwnerOnlyAndClearsMain(t *testing.T) {
 	f.text(t, "first", "owner", "p2p", "hello owner")
 	f.text(t, "first", "owner", "p2p", "hello owner")
 	f.waitReply(t, "echo: hello owner")
-	conn, err := sql.Open("sqlite", filepath.Join(dataDir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}
