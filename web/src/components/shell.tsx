@@ -234,7 +234,9 @@ function Sidebar({
           />
         </div>
       ) : null}
-      <div className={cn("min-h-0 overflow-y-auto", collapsed && "flex flex-col items-center gap-1")}>
+      <div
+        className={cn("min-h-0 overflow-y-auto", collapsed && "flex flex-col items-center gap-1 px-1 pt-1")}
+      >
         {shown.map((agent) => (
           <AgentContext.Provider key={agent.id} value={agent.id!}>
             <AgentRow agent={agent} current={a === "a" && agent.id === selected} collapsed={collapsed} />
