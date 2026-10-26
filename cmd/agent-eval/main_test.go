@@ -4,10 +4,14 @@ package main
 
 import (
 	"bytes"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
@@ -89,5 +93,40 @@ func TestUserEvalArtifactsRemoveProviderKeys(t *testing.T) {
 	}
 	if !bytes.Contains(data, []byte("[REDACTED]")) || bytes.Contains(data, []byte("test-key-")) {
 		t.Fatal("provider key remained in artifact")
+	}
+}
+
+func TestUserEvalChatUsesFixtureDirectory(t *testing.T) {
+	// Given the real HTTP API and an isolated fixture directory.
+	home := t.TempDir()
+	a, err := app.Start(t.Context(), app.Config{DataDir: t.TempDir(), Home: home, FakeModel: true, ToolEnv: map[string]string{"PATH": os.Getenv("PATH"), "HOME": home}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := a.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	server := httptest.NewServer(a.Handler())
+	defer server.Close()
+	c := client{base: server.URL, ctx: t.Context()}
+	var ch chat
+	if err := c.request(http.MethodPost, "/api/agents/default/chats", nil, &ch); err != nil {
+		t.Fatal(err)
+	}
+	project := t.TempDir()
+	// When the eval selects the project through the API.
+	path := fmt.Sprintf("/api/agents/default/chats/%d", ch.ID)
+	if err := c.setProject(path, project); err != nil {
+		t.Fatal(err)
+	}
+	// Then the next input uses the fixture directory, not the workspace.
+	var saved chat
+	if err := c.request(http.MethodGet, path, nil, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Cwd != project {
+		t.Fatalf("Chat cwd = %q, want fixture directory %q", saved.Cwd, project)
 	}
 }

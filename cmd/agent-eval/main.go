@@ -19,13 +19,16 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"uuid"
 
+	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -33,19 +36,20 @@ import (
 )
 
 type task struct {
-	ID          string            `json:"id"`
-	Prompt      string            `json:"prompt"`
-	Rubric      string            `json:"rubric"`
-	Files       map[string]string `json:"files"`
-	Project     bool              `json:"project"`
-	Attachment  string            `json:"attachment"`
-	Contains    []string          `json:"contains"`
-	Tools       []string          `json:"tools"`
-	Skill       string            `json:"skill"`
-	MinSpawn    int               `json:"minSpawn"`
-	MaxSpawn    *int              `json:"maxSpawn"`
-	OutputFiles map[string]string `json:"outputFiles"`
-	Test        []string          `json:"test"`
+	MaxMainToolOutputBytes *int              `json:"maxMainToolOutputBytes"`
+	ID                     string            `json:"id"`
+	Prompt                 string            `json:"prompt"`
+	Rubric                 string            `json:"rubric"`
+	Files                  map[string]string `json:"files"`
+	Project                bool              `json:"project"`
+	Attachment             string            `json:"attachment"`
+	Contains               []string          `json:"contains"`
+	Tools                  []string          `json:"tools"`
+	Skill                  string            `json:"skill"`
+	MinSpawn               int               `json:"minSpawn"`
+	MaxSpawn               *int              `json:"maxSpawn"`
+	OutputFiles            map[string]string `json:"outputFiles"`
+	Test                   []string          `json:"test"`
 }
 type check struct {
 	Name   string `json:"name"`
@@ -53,18 +57,19 @@ type check struct {
 	Detail string `json:"detail,omitempty"`
 }
 type result struct {
-	Task         string                  `json:"task"`
-	Repetition   int                     `json:"repetition"`
-	Rubric       string                  `json:"rubric"`
-	Checks       []check                 `json:"checks"`
-	Seconds      float64                 `json:"seconds"`
-	Turns        int                     `json:"turns"`
-	ToolCalls    int                     `json:"toolCalls"`
-	Spawns       int                     `json:"spawns"`
-	InputTokens  int                     `json:"inputTokens"`
-	OutputTokens int                     `json:"outputTokens"`
-	Error        string                  `json:"error,omitempty"`
-	Transcript   map[int64][]engine.Item `json:"transcript,omitempty"`
+	MainToolOutputBytes int                     `json:"mainToolOutputBytes"`
+	Task                string                  `json:"task"`
+	Repetition          int                     `json:"repetition"`
+	Rubric              string                  `json:"rubric"`
+	Checks              []check                 `json:"checks"`
+	Seconds             float64                 `json:"seconds"`
+	Turns               int                     `json:"turns"`
+	ToolCalls           int                     `json:"toolCalls"`
+	Spawns              int                     `json:"spawns"`
+	InputTokens         int                     `json:"inputTokens"`
+	OutputTokens        int                     `json:"outputTokens"`
+	Error               string                  `json:"error,omitempty"`
+	Transcript          map[int64][]engine.Item `json:"transcript,omitempty"`
 }
 type report struct {
 	Model       string   `json:"model"`
@@ -123,6 +128,16 @@ func (c client) request(method, path string, body any, out any) error {
 		return err
 	}
 	return json.UnmarshalRead(resp.Body, out)
+}
+func (c client) setProject(path, project string) error {
+	var saved chat
+	if err := c.request("PUT", path+"/project", api.SetChatProjectJSONRequestBody{Cwd: project}, &saved); err != nil {
+		return err
+	}
+	if saved.Cwd != project {
+		return errors.New("project override was not saved")
+	}
+	return nil
 }
 func (c client) upload(text string) (string, error) {
 	var b bytes.Buffer
@@ -276,7 +291,7 @@ func run(ctx context.Context, t task, repetition int, model string, rows []sqlc.
 	}
 	path := "/api/agents/default/chats/" + strconv.FormatInt(ch.ID, 10)
 	if t.Project {
-		if err = c.request("PUT", path+"/project", map[string]string{"path": project}, nil); err != nil {
+		if err = c.setProject(path, project); err != nil {
 			fail(err)
 			return
 		}
@@ -366,6 +381,9 @@ func run(ctx context.Context, t task, repetition int, model string, rows []sqlc.
 					r.OutputTokens += item.Usage.Output
 				}
 			case "tool":
+				if id == ch.ID {
+					r.MainToolOutputBytes += len(item.Output)
+				}
 				r.ToolCalls++
 				tools[item.Name]++
 				if item.Name == "spawn_task" {
@@ -396,6 +414,9 @@ func run(ctx context.Context, t task, repetition int, model string, rows []sqlc.
 	}
 	if t.Skill != "" {
 		r.Checks = append(r.Checks, check{Name: "project skill read", Pass: skillRead})
+	}
+	if t.MaxMainToolOutputBytes != nil {
+		r.Checks = append(r.Checks, check{Name: "maximum main tool output bytes", Pass: r.MainToolOutputBytes <= *t.MaxMainToolOutputBytes, Detail: strconv.Itoa(r.MainToolOutputBytes)})
 	}
 	if t.MinSpawn > 0 {
 		r.Checks = append(r.Checks, check{Name: "minimum spawns", Pass: r.Spawns >= t.MinSpawn})
@@ -453,7 +474,7 @@ func main() {
 }
 func mainRun() error {
 	source := flag.String("providers-from", "", "Read provider rows from this control.sqlite (read-only)")
-	model := flag.String("model", "magpie/tokenflux/deepseek-flash", "Provider/model ID")
+	model := flag.String("model", "", "Provider/model ID (required)")
 	n := flag.Int("n", 2, "Repetitions per task")
 	baseline := flag.String("baseline", "evals/baseline.json", "Summary to compare")
 	summary := flag.String("save-summary", "", "Write a summary without transcripts")
@@ -465,7 +486,8 @@ func mainRun() error {
 		return errors.New("--providers-from and a provider/model are required; n must be positive")
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	rows, err := providers(ctx, *source)
 	if err != nil {
 		return errors.New("cannot read provider rows from source database")
@@ -503,13 +525,18 @@ func mainRun() error {
 		return errors.New("no eval tasks selected")
 	}
 	revision, _ := command(ctx, ".", "git", "rev-parse", "HEAD")
-	rep := report{Model: *model, Revision: strings.TrimSpace(revision), At: time.Now().UTC().Format(time.RFC3339Nano), Repetitions: *n, Cost: "unavailable; tokens cover only turns with text in the HTTP transcript"}
+	_, modelName, _ := strings.CutLast(*model, "/")
+	rep := report{Model: modelName, Revision: strings.TrimSpace(revision), At: time.Now().UTC().Format(time.RFC3339Nano), Repetitions: *n, Cost: "unavailable; tokens cover only turns with text in the HTTP transcript"}
 	dir := filepath.Join(".local/evals", time.Now().UTC().Format("20060102T150405.000000000"))
 	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+taskRuns:
 	for _, t := range tasks {
 		for i := range *n {
+			if ctx.Err() != nil {
+				break taskRuns
+			}
 			r := run(ctx, t, i+1, *model, rows, *timeout)
 			rep.Results = append(rep.Results, r)
 			fmt.Printf("%s %d/%d pass=%t time=%.1fs turns=%d tools=%d spawn=%d tokens=%d/%d\n", t.ID, i+1, *n, passed(r), r.Seconds, r.Turns, r.ToolCalls, r.Spawns, r.InputTokens, r.OutputTokens)
@@ -550,6 +577,9 @@ func mainRun() error {
 	}
 	fmt.Print(md.String())
 	fmt.Println("Artifacts:", dir)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if *summary != "" {
 		for i := range rep.Results {
 			rep.Results[i].Transcript = nil

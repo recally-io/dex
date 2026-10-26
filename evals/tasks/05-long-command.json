@@ -1,7 +1,7 @@
 {
   "id": "05-long-command",
   "prompt": "In {{project}}, run sh noisy.sh. This command prints 12000 lines; keep its full output out of the main context by using an independent task. Report the final marker.",
-  "rubric": "Uses a task to contain large command output and returns the marker.",
+  "rubric": "Contains the large output in a background execution. The parent tool output budget is 8192 UTF-8 bytes across the run; the final marker must be reported.",
   "files": {
     "noisy.sh": "i=0; while [ \"$i\" -lt 12000 ]; do echo \"sample-$i\"; i=$((i+1)); done\necho EVAL-LONG-7391\n"
   },
@@ -9,5 +9,6 @@
   "minSpawn": 1,
   "contains": [
     "EVAL-LONG-7391"
-  ]
+  ],
+  "maxMainToolOutputBytes": 8192
 }
