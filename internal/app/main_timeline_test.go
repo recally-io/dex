@@ -83,7 +83,7 @@ func TestUserClearsMainAndReadsEarlierHistory(t *testing.T) {
 	d.stop()
 
 	// When control replays a reset whose worker write already committed before a crash.
-	conn, err := sql.Open("sqlite", filepath.Join(dir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -300,7 +300,7 @@ func TestTelegramIgnoresUsersWhoAreNotAllowed(t *testing.T) {
 	if got := f.next(t); got != (sentMessage{ChatID: 7, Text: "echo: ok", ParseMode: "HTML"}) {
 		t.Fatalf("sent = %+v", got)
 	}
-	conn, err := sql.Open("sqlite", filepath.Join(dataDir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -581,7 +581,7 @@ func TestUserCannotPairTelegramWithExpiredCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn, err := sql.Open("sqlite", filepath.Join(dir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}

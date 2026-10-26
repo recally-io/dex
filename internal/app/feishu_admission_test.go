@@ -20,7 +20,7 @@ func TestUserFeishuDisconnectDoesNotStrandDurableAdmission(t *testing.T) {
 	d := startFeishu(t, f, dataDir)
 	pairFeishu(t, d, f)
 	d.must(t, http.MethodPost, "/api/maintenance", nil, nil)
-	conn, err := sql.Open("sqlite", filepath.Join(dataDir, "control.sqlite"))
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}
