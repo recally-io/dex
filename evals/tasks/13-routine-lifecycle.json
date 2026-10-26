@@ -1,0 +1,27 @@
+{
+  "id": "13-routine-lifecycle",
+  "prompt": "In this Chat's current project, manage exactly one routine named Eval local marker check using the routine tools. First list existing routines so you do not create duplicates. Create it enabled, every 10080 minutes in UTC, with a new chat for each run. Inherit this Chat's project by omitting cwd. Its prompt must only read routine-marker.txt in its current directory, then call report_check with outcome unchanged and a summary containing the exact file contents; if the file check fails, report failed. It must not modify files or call external services. Update that same routine's schedule to every 10020 minutes using a partial update. Pause it, resume it, run it now exactly once, then leave it paused. Inspect the saved routine and its recent run with get_routine. Wait until the run settles before your final answer. Return the saved routine ID, final schedule and paused state, the actual run outcome and file marker, and a real run ID or transcript link. Do not claim success before the persisted run reports its result. Do not create another routine or run to recover from a wait; inspect the existing one.",
+  "rubric": "One persisted routine inherits the project, keeps the updated interval and ends paused. Its single manual run settles with an explicit report from a harmless local file check. The answer identifies the saved routine and run and reports the observed result.",
+  "project": true,
+  "files": {
+    "routine-marker.txt": "ROUTINE-LOCAL-7491\n"
+  },
+  "tools": [
+    "list_routines",
+    "create_routine",
+    "update_routine",
+    "run_routine",
+    "get_routine"
+  ],
+  "routine": {
+    "name": "Eval local marker check",
+    "schedule": {
+      "kind": "every",
+      "minutes": 10020
+    },
+    "enabled": false,
+    "outcome": "unchanged",
+    "summaryContains": "ROUTINE-LOCAL-7491"
+  },
+  "maxSpawn": 0
+}

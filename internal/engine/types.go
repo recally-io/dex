@@ -57,4 +57,5 @@ type Config struct {
 	BaseEnv       map[string]string
 	FakeModel     bool
 	Tasks         TaskTools
+	Routines      RoutineTools
 }

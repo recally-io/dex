@@ -274,8 +274,10 @@ SELECT * FROM automations WHERE agent_id = ? ORDER BY created_at, id;
 -- name: ListDueAutomations :many
 SELECT * FROM automations WHERE enabled = 1 AND next_due_at <= ? ORDER BY next_due_at;
 
--- name: SetAutomationNextDue :exec
-UPDATE automations SET next_due_at = ? WHERE id = ?;
+-- name: SetAutomationNextDue :execrows
+UPDATE automations SET next_due_at = @next_due_at
+WHERE id = @id AND next_due_at = @expected_due_at AND updated_at = @expected_updated_at
+  AND schedule = @expected_schedule AND time_zone = @expected_time_zone AND enabled = 1;
 
 -- name: DeleteAutomationRuns :exec
 DELETE FROM automation_runs WHERE automation_id = ?;

@@ -156,7 +156,7 @@ from a browser download; run `xattr -d com.apple.quarantine dex` first.
 
 ## Real-provider agent evals
 
-Run the twelve versioned tasks through the real HTTP API:
+Run the thirteen versioned tasks through the real HTTP API:
 
 ```sh
 mise run eval:agents --providers-from /path/to/control.sqlite --model provider/model-id
@@ -178,6 +178,10 @@ and files. They record delegation as a metric. Tasks 09 and 10 check explicit
 parallel-work and review requests. Tasks 11 and 12 check execution judgment
 without delegation instructions. Task 05 limits parent tool output to 8192
 UTF-8 bytes so large output in the parent context fails the check.
+Task 13 checks routine management. It reads saved routines and runs through
+HTTP, waits for routine execution to settle, and checks the final schedule,
+paused state, inherited project, result, and transcript reference. The task
+uses one local file and does not call an external service from the routine.
 
 Results go to `.local/evals/<timestamp>/results.json` and `report.md`.
 The JSON contains checks, transcripts from the parent and child conversations,
@@ -185,7 +189,7 @@ wall time, model turns, tool calls, spawn counts and reported tokens. Model
 turns count distinct assistant entries, including entries with tool calls only.
 The HTTP transcript reports tokens only for turns with text, so token totals
 can be lower than provider billing totals. The API does not expose cost.
-The command makes real, billable requests. The default run starts 24 tasks;
+The command makes real, billable requests. The default run starts 26 tasks;
 delegation and review add requests. Use a single-task run to check credentials
 before a full run. Provider prices, task retries and model behavior set the cost.
 
@@ -202,4 +206,4 @@ fixture check results and metrics. API keys are removed before JSON is saved.
 The eval program uses the `agenteval` build tag and is outside `check`.
 
 Run `mise run eval:check` to lint the tagged runner and test provider-copy
-isolation and artifact redaction without provider requests.
+isolation, artifact redaction, and routine result checks without provider requests.
