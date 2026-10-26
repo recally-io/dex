@@ -121,6 +121,14 @@ func TestUserAutomationReportsStructuredOutcomesAndDuplicates(t *testing.T) {
 			if len(routineRuns(t, d, a.ID)) != 2 {
 				t.Fatal("duplicate run was dropped")
 			}
+			// When a third run reports another outcome with the same key, it is not a duplicate.
+			other := map[string]string{"changed": "unchanged", "unchanged": "changed", "failed": "changed"}[outcome]
+			body := map[string]any{"name": "Check", "prompt": fmt.Sprintf(`report_check {"outcome":%q,"summary":"fixture check completed","changeKey":"release-73"}`, other), "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "Asia/Shanghai", "session": "new", "enabled": true}
+			d.must(t, http.MethodPut, "/api/agents/default/automations/"+a.ID, body, nil)
+			third := settledRoutine(t, d, a.ID, d.runNow(t, a.ID).ID)
+			if third.Outcome != other || third.Duplicate {
+				t.Fatalf("other outcome with the same key = %+v", third)
+			}
 		})
 	}
 }

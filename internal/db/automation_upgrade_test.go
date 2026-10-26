@@ -48,8 +48,9 @@ func TestUserAutomationUpgradeDoesNotInventSuccessfulReports(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	// Then old terminal runs fail explicitly; pending and skipped runs remain distinct.
-	for _, check := range []struct{ id, status, outcome string }{{"done", "failed", "failed"}, {"orphan", "failed", "failed"}, {"pending", "started", ""}, {"skipped", "skipped", ""}} {
+	// Then a run stored without its message fails; a completed run keeps its status and an unknown
+	// outcome instead of an invented failure; pending and skipped runs stay as they were.
+	for _, check := range []struct{ id, status, outcome string }{{"done", "started", ""}, {"orphan", "failed", "failed"}, {"pending", "started", ""}, {"skipped", "skipped", ""}} {
 		var status, outcome, summary string
 		if err = conn.QueryRowContext(t.Context(), "SELECT status,outcome,summary FROM automation_runs WHERE id=?", check.id).Scan(&status, &outcome, &summary); err != nil {
 			t.Fatal(err)
@@ -58,5 +59,5 @@ func TestUserAutomationUpgradeDoesNotInventSuccessfulReports(t *testing.T) {
 			t.Fatalf("%s: status=%q outcome=%q summary=%q", check.id, status, outcome, summary)
 		}
 	}
-	t.Log("artifact: completed and orphaned runs failed; pending and skipped runs retained")
+	t.Log("artifact: orphaned run failed; completed, pending and skipped runs retained without a report")
 }

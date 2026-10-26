@@ -389,6 +389,6 @@ UPDATE automation_runs SET
         SELECT 1 FROM automation_runs prior JOIN submissions s ON s.id = prior.id
         WHERE prior.automation_id = automation_runs.automation_id
             AND prior.id <> automation_runs.id AND prior.change_key = automation_runs.change_key
-            AND prior.outcome <> '' AND s.status = 'done'
+            AND prior.outcome = automation_runs.outcome AND s.status = 'done'
     ) THEN 1 ELSE 0 END
 WHERE automation_runs.id = @id AND automation_runs.status = 'started';
