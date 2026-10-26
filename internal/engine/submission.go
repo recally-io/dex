@@ -149,12 +149,9 @@ func inputText(input Input, workspace string) string {
 	text.WriteString("Attached files:")
 	for _, attachment := range input.Attachments {
 		text.WriteString("\n- ")
-		path := attachment.Path
-		if input.Cwd != "" {
-			// Uploads stay in the workspace when the conversation selects a project.
-			path = filepath.Join(workspace, path)
-		}
-		text.WriteString(path)
+		// Uploads stay in the workspace. An absolute path keeps working after set_project changes
+		// the cwd, also later in the same run.
+		text.WriteString(filepath.Join(workspace, attachment.Path))
 	}
 	return text.String()
 }

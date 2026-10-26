@@ -201,7 +201,8 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 	w := d.watch(t, created.ID)
 
 	// Then the model gets the text and the paths, and the transcript shows the text and the files
-	paths := "Attached files:\n- " + pic.Path + "\n- " + notes.Path
+	workspace := filepath.Join(dataDir, "agents", "default", "workspace")
+	paths := "Attached files:\n- " + filepath.Join(workspace, pic.Path) + "\n- " + filepath.Join(workspace, notes.Path)
 	w.until(t, "answer", answered("echo: look\n\n"+paths))
 	user := w.tr.items[0]
 	if user.Kind != "user" || user.Text != "look" || !slices.Equal(user.Attachments, []attachment{pic, notes}) {
@@ -221,7 +222,7 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 		t.Fatalf("file-only title: %+v", created)
 	}
 	w2 := d.watch(t, created.ID)
-	w2.until(t, "answer", answered("echo: Attached files:\n- "+only.Path))
+	w2.until(t, "answer", answered("echo: Attached files:\n- "+filepath.Join(workspace, only.Path)))
 
 	// And a reload shows the files with the message
 	again := d.watch(t, created.ID)
@@ -422,7 +423,7 @@ func TestPendingMessageWithAttachmentsIsReplayedAfterRestart(t *testing.T) {
 	w := d.watch(t, chatID)
 
 	// Then the worker gets the same message with the file
-	w.until(t, "answer", answered("echo: read it\n\nAttached files:\n- "+notes.Path))
+	w.until(t, "answer", answered("echo: read it\n\nAttached files:\n- "+filepath.Join(dataDir, "agents", "default", "workspace", notes.Path)))
 	i := slices.IndexFunc(w.tr.items, func(it item) bool { return it.ID == pendingID })
 	if i < 0 || w.tr.items[i].Text != "read it" || !slices.Equal(w.tr.items[i].Attachments, []attachment{notes}) {
 		t.Fatalf("items = %+v", w.tr.items)

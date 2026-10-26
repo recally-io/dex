@@ -208,7 +208,12 @@ func TestUserChatProjectKeepsUploadedFilesAccessible(t *testing.T) {
 		"id": uuid.NewV7().String(), "text": "read notes", "attachments": []string{file.ID},
 	}, nil, http.StatusAccepted)
 	path := filepath.Join(data, "agents", "default", "workspace", file.Path)
-	d.watch(t, id).until(t, "absolute attachment path", answered("echo: read notes\n\nAttached files:\n- "+path))
+	w := d.watch(t, id)
+	w.until(t, "absolute attachment path", answered("echo: read notes\n\nAttached files:\n- "+path))
+	// And the transcript shows the user's text without the file list.
+	if user := w.tr.items[0]; user.Kind != "user" || user.Text != "read notes" || len(user.Attachments) != 1 {
+		t.Fatalf("user item = %+v", user)
+	}
 	// Then that path resolves to the uploaded file, regardless of the selected project.
 	content, err := os.ReadFile(path)
 	if err != nil || string(content) != "project evidence" {
