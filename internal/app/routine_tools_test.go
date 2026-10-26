@@ -36,7 +36,7 @@ func TestUserManagesRoutinesThroughChat(t *testing.T) {
 	d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": project}, nil)
 	// When the user creates a routine, omitted cwd inherits the Chat project.
 	var created automation.Automation
-	routineToolJSON(t, d, id, "create_routine", map[string]any{"name": "Morning check", "prompt": "report_check {\"outcome\":\"changed\",\"summary\":\"New result\"}", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC", "enabled": true, "session": "new"}, &created)
+	routineToolJSON(t, d, id, "create_routine", map[string]any{"name": "Morning check", "prompt": "report_check {\"outcome\":\"changed\",\"summary\":\"New result\",\"changeKey\":\"same-result\"}", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC", "enabled": true, "session": "new"}, &created)
 	if created.ID == "" || !created.Enabled || created.Cwd != project || created.TimeZone != "UTC" || len(created.NextRuns) == 0 {
 		t.Fatalf("created: %+v", created)
 	}
@@ -91,7 +91,21 @@ func TestUserManagesRoutinesThroughChat(t *testing.T) {
 	if len(listed.Routines) != 1 || listed.Routines[0].ID != created.ID || listed.Routines[0].LastRun == nil {
 		t.Fatalf("list: %+v", listed)
 	}
-	t.Logf("routine=%s run=%s transcript chat=%d", created.ID, run.ID, run.ChatID)
+	// A second requested execution can report the same finding.
+	var second automation.Run
+	routineToolJSON(t, d, id, "run_routine", map[string]string{"id": created.ID}, &second)
+	settledRoutine(t, d, created.ID, second.ID)
+	var findings struct {
+		Runs []struct {
+			ID              string `json:"id"`
+			RepeatedFinding bool   `json:"repeatedFinding"`
+		} `json:"runs"`
+	}
+	routineToolJSON(t, d, id, "get_routine", map[string]string{"id": created.ID}, &findings)
+	if len(findings.Runs) != 2 || findings.Runs[0].ID != second.ID || second.ID == run.ID || !findings.Runs[0].RepeatedFinding || findings.Runs[1].RepeatedFinding {
+		t.Fatalf("execution count and repeated finding: %+v", findings)
+	}
+	t.Logf("routine=%s run=%s transcript chat=%d repeated finding run=%s", created.ID, run.ID, run.ChatID, second.ID)
 }
 
 // savedRoutineCaller reads the business receipt of a real native tool invocation.

@@ -317,8 +317,9 @@ dream conversations cannot use these tools.
 Updates are partial. An enabled-only update pauses or resumes a routine
 without replacing its prompt or project directory. Creation inherits the
 calling conversation's project when `cwd` is omitted. A run result includes
-its chat ID so the agent can link to the saved transcript. The tools do not
-provide deletion.
+its chat ID so the agent can link to the saved transcript. Tool results name
+the duplicate-finding flag `repeatedFinding` to distinguish it from execution
+counts. The HTTP API keeps its `duplicate` field. The tools do not provide deletion.
 
 Each mutating tool call uses its bot ID and native tool task ID as a stable
 operation key. The control database commits its operation receipt with the
