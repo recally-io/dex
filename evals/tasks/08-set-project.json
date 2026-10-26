@@ -1,0 +1,16 @@
+{
+  "id": "08-set-project",
+  "prompt": "Switch this Chat project to {{project}} with set_project. Then read marker.txt and tell me the marker.",
+  "rubric": "Persists the project with the tool and reads the new directory.",
+  "files": {
+    "marker.txt": "PROJECT-5832\n"
+  },
+  "tools": [
+    "set_project",
+    "read"
+  ],
+  "contains": [
+    "PROJECT-5832"
+  ],
+  "maxSpawn": 0
+}

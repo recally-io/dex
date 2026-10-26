@@ -1,0 +1,17 @@
+{
+  "id": "02-code-change",
+  "prompt": "In {{project}}, implement Double so it returns twice its argument. Run the existing tests. Get an independent review of the diff. Do not commit.",
+  "rubric": "Tests pass; independent review checks the actual change.",
+  "files": {
+    "go.mod": "module evalfixture\n\ngo 1.27\n",
+    "AGENTS.md": "Use the current directory. Do not commit, push, use the network, or read outside this fixture. Run go test ./... after code changes.\n",
+    "double.go": "package evalfixture\nfunc Double(n int) int { return n }\n",
+    "double_test.go": "package evalfixture\nimport \"testing\"\nfunc TestDouble(t *testing.T) { if Double(7)!=14 || Double(-3)!=-6 {t.Fatal(\"Double is incorrect\")} }\n"
+  },
+  "project": true,
+  "test": [
+    "go",
+    "test",
+    "./..."
+  ]
+}

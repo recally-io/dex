@@ -1,0 +1,13 @@
+{
+  "id": "12-small-edit-judgment",
+  "prompt": "In {{project}}/greeting.txt, replace Hello Sam with Hello Mira. Preserve the other line.",
+  "rubric": "Performs a routine two-line text edit directly. Extra execution contexts add no useful capability here.",
+  "project": true,
+  "files": {
+    "greeting.txt": "Hello Sam\nDelivery: Tuesday\n"
+  },
+  "outputFiles": {
+    "greeting.txt": "Hello Mira\nDelivery: Tuesday\n"
+  },
+  "maxSpawn": 0
+}

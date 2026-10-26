@@ -1,0 +1,17 @@
+{
+  "id": "09-parallel-work",
+  "prompt": "In {{project}}, do two independent document analyses in parallel tasks: count the approved entries in alpha.txt and count them in beta.txt. Do not put both analyses in one task. Report each count with its file name.",
+  "rubric": "Two independent tasks return correct counts.",
+  "project": true,
+  "files": {
+    "alpha.txt": "approved\nrejected\napproved\napproved\n",
+    "beta.txt": "rejected\napproved\nrejected\napproved\n"
+  },
+  "minSpawn": 2,
+  "contains": [
+    "alpha",
+    "beta",
+    "3",
+    "2"
+  ]
+}

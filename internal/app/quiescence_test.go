@@ -124,7 +124,10 @@ func TestUserMaintenanceWaitsForMemoryCommit(t *testing.T) {
 	if err := os.WriteFile(script, []byte(filter), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if output, err := exec.CommandContext(t.Context(), "git", "-C", filepath.Join(data, "memory"), "config", "filter.gate.clean", script).CombinedOutput(); err != nil {
+	cmd := exec.CommandContext(t.Context(), "git", "-C", filepath.Join(data, "memory"), "config", "filter.gate.clean", script)
+	// Git hooks export GIT_DIR; do not configure the checkout that runs the test.
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
+	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("configure commit filter: %s: %v", output, err)
 	}
 	if err := os.WriteFile(filepath.Join(data, "memory", ".gitattributes"), []byte("MEMORY.md filter=gate\n"), 0600); err != nil {

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Run opt-in agent evals with a real provider"
+#MISE depends=["build:web"]
+set -euo pipefail
+go run -tags agenteval ./cmd/agent-eval "$@"
