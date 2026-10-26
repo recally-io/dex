@@ -1633,6 +1633,80 @@ export type ArchiveChatResponses = {
 
 export type ArchiveChatResponse = ArchiveChatResponses[keyof ArchiveChatResponses];
 
+export type ListDirectoriesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        path?: string;
+    };
+    url: '/api/directories';
+};
+
+export type ListDirectoriesErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListDirectoriesError = ListDirectoriesErrors[keyof ListDirectoriesErrors];
+
+export type ListDirectoriesResponses = {
+    /**
+     * The current directory and its visible subdirectories.
+     */
+    200: {
+        path: string;
+        parent: string;
+        home: string;
+        truncated: boolean;
+        entries: Array<{
+            name: string;
+            path: string;
+            git: boolean;
+        }>;
+    };
+};
+
+export type ListDirectoriesResponse = ListDirectoriesResponses[keyof ListDirectoriesResponses];
+
+export type ListRecentProjectsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/projects';
+};
+
+export type ListRecentProjectsErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListRecentProjectsError = ListRecentProjectsErrors[keyof ListRecentProjectsErrors];
+
+export type ListRecentProjectsResponses = {
+    /**
+     * Recent project paths for this agent.
+     */
+    200: {
+        projects: Array<string>;
+    };
+};
+
+export type ListRecentProjectsResponse = ListRecentProjectsResponses[keyof ListRecentProjectsResponses];
+
 export type SetChatProjectData = {
     body: {
         cwd: string;

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#MISE description="Test host directory browsing and recent projects; --baseline proves regression on origin/main"
+#MISE depends=["build:web"]
+set -euo pipefail
+
+picker_baseline="${1:-}"
+set --
+if [[ "$picker_baseline" == "--baseline" ]]; then
+  picker_overlay="$(mktemp -d)"
+  trap 'rm -rf "$picker_overlay"' EXIT
+  python3 - "$picker_overlay" <<'PY'
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+root = Path.cwd()
+out = Path(sys.argv[1])
+replacements = {}
+for name in ["internal/api/server.gen.go", "internal/server/server.go",
+             "internal/chat/project.go", "internal/db/sqlc/queries.sql.go"]:
+    target = out / Path(name).name
+    target.write_bytes(subprocess.check_output(["git", "show", f"origin/main:{name}"]))
+    replacements[str(root / name)] = str(target)
+empty = out / "directories.go"
+empty.write_text("package chat\n")
+replacements[str(root / "internal/chat/directories.go")] = str(empty)
+(out / "overlay.json").write_text(json.dumps({"Replace": replacements}))
+PY
+  set -- "-overlay=$picker_overlay/overlay.json"
+fi
+go test "$@" ./internal/app -run 'TestUser(BrowsesHostDirectories|DirectoryListingIsCapped|ListsRecentAgentProjects)$' -count=1 -v

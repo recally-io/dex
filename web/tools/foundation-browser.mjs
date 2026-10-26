@@ -79,6 +79,13 @@ async function seed() {
     if (index === 0)
       await request(`/api/agents/default/chats/${session.id}/archive`, { method: "PUT", body: "{}" });
   }
+  const recentProject = join(isolated, "home", "Documents");
+  await mkdir(recentProject, { recursive: true });
+  const recentSession = await request("/api/agents/default/chats", { method: "POST" });
+  await request(`/api/agents/default/chats/${recentSession.id}/project`, {
+    method: "PUT",
+    body: JSON.stringify({ cwd: recentProject }),
+  });
   await request("/api/agents/default/automations", {
     method: "POST",
     body: JSON.stringify({
@@ -163,7 +170,7 @@ async function typeText(value) {
       );
   }
 }
-async function projectEvidence(theme) {
+async function projectEvidence(theme, size) {
   const trigger = `document.querySelector('button[aria-label="Set project directory"]')`;
   // The same harness also captures the base revision, which has no project control.
   if (!(await evaluate(`!!${trigger}`))) return { available: false };
@@ -171,8 +178,35 @@ async function projectEvidence(theme) {
   const toolProject = join(isolated, "tool-project");
   await mkdir(project, { recursive: true });
   await mkdir(toolProject, { recursive: true });
-  await evaluate(`${trigger}.click()`);
+  const browseRoot = join(isolated, "home");
+  await mkdir(join(browseRoot, "Projects", ".git"), { recursive: true });
+  await mkdir(join(browseRoot, "Documents"), { recursive: true });
+  await request(`/api/agents/default/chats/${projectChat}/project`, {
+    method: "PUT",
+    body: JSON.stringify({ cwd: "" }),
+  });
+  await evaluate(`${trigger}.focus()`);
+  await press("Enter", "Enter", 13, "\r");
   await waitFor("project dialog", () => evaluate("!!document.querySelector('[role=dialog]')"));
+  const picker = await evaluate("!!document.querySelector('[aria-label=\"Directory path\"]')");
+  if (picker)
+    await waitFor("directory listing", () =>
+      evaluate(
+        "document.querySelector('[aria-label=\"Subdirectories\"]')?.getAttribute('aria-busy') === 'false'",
+      ),
+    );
+  if (picker)
+    assert.ok(
+      await evaluate(
+        `[...document.querySelectorAll('[aria-label="Recent projects"], [aria-label="Subdirectories"]')].every(el => el.scrollWidth <= el.clientWidth)`,
+      ),
+      "picker lists do not overflow horizontally",
+    );
+  await capture(`${theme}-chat-project-open-${size}.png`);
+  if (size === "mobile") {
+    await press("Escape", "Escape", 27);
+    return { available: true, picker, open: true };
+  }
   async function fill(value) {
     await evaluate(
       "document.querySelector('[role=dialog] input').focus(); document.querySelector('[role=dialog] input').select()",
@@ -184,14 +218,73 @@ async function projectEvidence(theme) {
       `[...document.querySelectorAll('[role=dialog] button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}).click()`,
     );
   }
+  if (picker) {
+    const height = await evaluate("document.querySelector('[role=dialog]').getBoundingClientRect().height");
+    const home = join(isolated, "home");
+    const repo = join(home, "Projects");
+    async function atPath(path) {
+      await waitFor(`directory ${path}`, () =>
+        evaluate(
+          `document.querySelector('[aria-label="Directory path"]')?.value === ${JSON.stringify(path)} && document.querySelector('[aria-label="Subdirectories"]')?.getAttribute('aria-busy') === 'false'`,
+        ),
+      );
+    }
+    await evaluate(
+      `[...document.querySelectorAll('[aria-label="Subdirectories"] button')].find(b => b.textContent.trim() === 'Projects').focus()`,
+    );
+    await press(" ", "Space", 32, " ");
+    await atPath(repo);
+    assert.ok(
+      await evaluate(
+        "document.activeElement === document.querySelector('[aria-label=\"Directory path\"]') && document.activeElement.matches(':focus-visible')",
+      ),
+      "keyboard navigation keeps visible focus",
+    );
+    await evaluate("document.querySelector('button[aria-label=Up]').click()");
+    await atPath(home);
+    await evaluate("document.querySelector('button[aria-label=Up]').click()");
+    await atPath(isolated);
+    await evaluate("document.querySelector('button[aria-label=Home]').click()");
+    await atPath(home);
+    await evaluate("document.querySelector('[aria-label=\"Subdirectories\"] button').focus()");
+    assert.ok(
+      await evaluate("document.activeElement.matches(':focus-visible')"),
+      "directory row has visible keyboard focus",
+    );
+    await capture(`${theme}-chat-project-keyboard-${size}.png`);
+    assert.equal(
+      await evaluate("document.querySelector('[role=dialog]').getBoundingClientRect().height"),
+      height,
+    );
+    await evaluate("document.querySelector('[aria-label=\"Recent projects\"] button').focus()");
+    await press("Enter", "Enter", 13, "\r");
+    const recentProject = join(home, "Documents");
+    await waitFor("recent project saved", () =>
+      evaluate(
+        `${trigger}?.title === ${JSON.stringify(recentProject)} && !document.querySelector('[role=dialog]')`,
+      ),
+    );
+    await evaluate(`${trigger}.click()`);
+    await waitFor("picker opens at current cwd", () => evaluate("!!document.querySelector('[role=dialog]')"));
+    await atPath(recentProject);
+  }
   await fill("relative/project");
-  await click("Save");
+  if (picker) await press("Enter", "Enter", 13, "\r");
+  else await click("Save");
   await waitFor("project validation error", () =>
     evaluate(`document.querySelector('[role=alert]')?.textContent.includes('path must be absolute')`),
   );
   await capture(`${theme}-chat-project-error.png`);
   await fill(project);
-  await click("Save");
+  if (picker) {
+    await press("Enter", "Enter", 13, "\r");
+    await waitFor("navigate project", () =>
+      evaluate(
+        `document.querySelector('[aria-label="Directory path"]')?.value === ${JSON.stringify(project)} && document.querySelector('[aria-label="Subdirectories"]')?.getAttribute('aria-busy') === 'false' && !document.querySelector('[role=alert]')`,
+      ),
+    );
+  }
+  await click(picker ? "Use this folder" : "Save");
   await waitFor("project saved", () =>
     evaluate(`${trigger}?.title === ${JSON.stringify(project)} && !document.querySelector('[role=dialog]')`),
   );
@@ -223,7 +316,16 @@ async function projectEvidence(theme) {
     method: "PUT",
     body: JSON.stringify({ ...agent, provider: "faux", modelId: "bash" }),
   });
-  return { available: true, validation: true, saved: true, toolRefresh: true, cleared: true };
+  return {
+    available: true,
+    picker,
+    keyboard: picker,
+    recent: picker,
+    validation: true,
+    saved: true,
+    toolRefresh: true,
+    cleared: true,
+  };
 }
 async function composerEvidence(theme) {
   const chatsToggle = `document.querySelector('button[aria-label="Chats"]')`;
@@ -387,11 +489,16 @@ try {
           (await call("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }))
             .result?.value ?? "";
         results.push({ theme, page: name, size, path, textLength: text.length });
-        if (name === "chat-session" && size === "desktop") {
+        if (name === "chat-session") {
           await waitFor("chat session ready", () =>
             evaluate("!!document.querySelector('textarea[aria-label^=Message]')"),
           );
-          results.push({ theme, page: "chat-project-interactions", ...(await projectEvidence(theme)) });
+          results.push({
+            theme,
+            page: "chat-project-interactions",
+            size,
+            ...(await projectEvidence(theme, size)),
+          });
         }
         if (name === "chat" && size === "desktop") {
           results.push({ theme, page: "chat-interactions", size, path, ...(await composerEvidence(theme)) });

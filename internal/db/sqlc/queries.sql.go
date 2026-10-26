@@ -1278,6 +1278,49 @@ func (q *Queries) ListProviders(ctx context.Context) ([]Provider, error) {
 	return items, nil
 }
 
+const listRecentProjects = `-- name: ListRecentProjects :many
+WITH activity AS (
+    SELECT c.cwd, c.id, max(
+        c.created_at,
+        coalesce(max(s.created_at), c.created_at),
+        coalesce(max(s.settled_at), c.created_at),
+        coalesce(t.started_at, c.created_at),
+        coalesce(t.ended_at, c.created_at)
+    ) AS updated_at
+    FROM conversations c
+    LEFT JOIN submissions s ON s.conversation_id = c.id
+    LEFT JOIN tasks t ON t.conversation_id = c.id
+    WHERE c.agent_id = ? AND c.cwd <> ''
+    GROUP BY c.id
+)
+SELECT cwd FROM activity
+GROUP BY cwd
+ORDER BY max(updated_at) DESC, max(id) DESC
+`
+
+func (q *Queries) ListRecentProjects(ctx context.Context, agentID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listRecentProjects, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var cwd string
+		if err := rows.Scan(&cwd); err != nil {
+			return nil, err
+		}
+		items = append(items, cwd)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pairTelegramOwner = `-- name: PairTelegramOwner :one
 UPDATE telegram_settings
 SET allowed_users = CAST(?1 AS TEXT),

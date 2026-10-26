@@ -231,6 +231,14 @@ their `cwd` in `control.sqlite`. Empty uses the agent workspace. Every submit se
 copy the parent's cwd when they are created. The `project` prompt section
 states the current execution directory.
 
+`GET /api/directories` lists visible host directories with the same path validation
+as project changes. It follows directory symlinks, marks Git repositories, sorts
+names without case, and returns at most 500 entries. It requires the same API
+authentication and never returns file contents. `GET /api/agents/{agentId}/projects`
+reads distinct conversation paths in activity order with one control query.
+It checks each path and returns up to eight existing directories.
+The Chat picker uses these routes because a remote browser cannot select host paths.
+
 `PUT /api/agents/{agentId}/chats/{chatId}/project` changes the cwd for the
 next message. Only `chat:` conversations can set it. The API and `set_project`
 tool share one path validator: trim, expand `~` or `~/`, require an existing

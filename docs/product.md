@@ -206,7 +206,9 @@ Each agent reads skills, `mcp.json`, and `.env` from three `.agents/`
 directories: the user home, the resolved dex data directory, and the agent
 home (`<data dir>/agents/<id>`). The narrower level wins. Tools start
 in the agent workspace by default. A Chat session can select an existing
-project directory in its header or with `set_project`. The directory applies
+project directory in its header or with `set_project`. The header picker
+browses directories on the dex host and offers up to eight recent projects
+for the current agent. The directory applies
 from the next message after an API change. A tool change also applies to
 later tools in the same run. Clear the project to return to the agent
 workspace. Main, channels, tasks, automations, and dreams cannot set a

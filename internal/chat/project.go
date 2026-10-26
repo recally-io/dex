@@ -27,7 +27,7 @@ func projectPath(path string) (string, error) {
 	if path == "~" || strings.HasPrefix(path, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", fmt.Errorf("%w: %w", ErrProjectInvalid, err)
+			return "", fmt.Errorf("%w: home directory is unavailable", ErrProjectInvalid)
 		}
 		path = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(path, "~"), "/"))
 	}
@@ -37,7 +37,7 @@ func projectPath(path string) (string, error) {
 	path = filepath.Clean(path)
 	info, err := os.Stat(path)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrProjectInvalid, err)
+		return "", fmt.Errorf("%w: directory is unavailable", ErrProjectInvalid)
 	}
 	if !info.IsDir() {
 		return "", fmt.Errorf("%w: path must be a directory", ErrProjectInvalid)
@@ -73,4 +73,22 @@ func (s *Service) ToolSetProject(ctx context.Context, source engine.TaskContext,
 		return "", err
 	}
 	return s.SetProject(ctx, source.AgentID, conv.ID, path)
+}
+
+// RecentProjects reads activity once and filters paths that no longer exist.
+func (s *Service) RecentProjects(ctx context.Context, agentID string) ([]string, error) {
+	paths, err := s.q.ListRecentProjects(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	projects := []string{}
+	for _, path := range paths {
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			projects = append(projects, path)
+			if len(projects) == 8 {
+				break
+			}
+		}
+	}
+	return projects, nil
 }

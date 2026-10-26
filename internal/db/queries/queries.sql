@@ -347,3 +347,22 @@ SELECT id, agent_id, execution_id FROM conversations WHERE abort_pending = 1;
 
 -- name: SetConversationCwd :exec
 UPDATE conversations SET cwd = ? WHERE id = ? AND agent_id = ?;
+
+-- name: ListRecentProjects :many
+WITH activity AS (
+    SELECT c.cwd, c.id, max(
+        c.created_at,
+        coalesce(max(s.created_at), c.created_at),
+        coalesce(max(s.settled_at), c.created_at),
+        coalesce(t.started_at, c.created_at),
+        coalesce(t.ended_at, c.created_at)
+    ) AS updated_at
+    FROM conversations c
+    LEFT JOIN submissions s ON s.conversation_id = c.id
+    LEFT JOIN tasks t ON t.conversation_id = c.id
+    WHERE c.agent_id = ? AND c.cwd <> ''
+    GROUP BY c.id
+)
+SELECT cwd FROM activity
+GROUP BY cwd
+ORDER BY max(updated_at) DESC, max(id) DESC;
