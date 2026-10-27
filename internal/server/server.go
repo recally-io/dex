@@ -281,14 +281,14 @@ func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (
 			refs = append(refs, engine.Ref{AgentID: agentID(ctx), ID: t.ExecutionID.Int64})
 		}
 	}
+	waitReasons, err := h.Chats.TaskWaitReasons(ctx, agentID(ctx))
+	if err != nil {
+		return nil, err
+	}
 	activities := h.Engine.Activity(refs)
 	for _, t := range tasks {
 		activity := activities[engine.Ref{AgentID: agentID(ctx), ID: t.ExecutionID.Int64}]
-		waitReason, err := h.Chats.TaskWaitReason(ctx, agentID(ctx), t.ID)
-		if err != nil {
-			return nil, err
-		}
-		byConversation[t.ConversationID] = taskSummary(t, activity, waitReason)
+		byConversation[t.ConversationID] = taskSummary(t, activity, waitReasons[t.ID])
 	}
 	out := api.ListChats200JSONResponse{Chats: make([]api.Chat, len(chats))}
 	for i, c := range chats {

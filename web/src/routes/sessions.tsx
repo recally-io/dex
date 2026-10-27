@@ -23,6 +23,7 @@ import { Select } from "../components/form";
 
 const labels = {
   queued: "Queued",
+  admitting: "Starting",
   running: "Running",
   done: "Done",
   failed: "Failed",
@@ -33,8 +34,14 @@ const labels = {
 function TaskPill({ task }: { task: Pick<TaskSummary, "status"> }) {
   return (
     <Badge
-      variant={task.status === "failed" ? "destructive" : task.status === "running" ? "secondary" : "outline"}
-      className={`h-5 shrink-0 px-2 text-[11.5px] ${task.status === "running" ? "bg-orange-tint text-orange" : ""}`}
+      variant={
+        task.status === "failed"
+          ? "destructive"
+          : task.status === "running" || task.status === "admitting"
+            ? "secondary"
+            : "outline"
+      }
+      className={`h-5 shrink-0 px-2 text-[11.5px] ${task.status === "running" || task.status === "admitting" ? "bg-orange-tint text-orange" : ""}`}
     >
       {labels[task.status]}
     </Badge>

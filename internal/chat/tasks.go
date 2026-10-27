@@ -34,7 +34,7 @@ func taskTime(n sql.NullInt64) *int64 {
 	return nil
 }
 
-func (s *Service) taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task) (Task, error) {
+func (s *Service) taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task, waitReason string) (Task, error) {
 	c, err := q.GetConversation(ctx, row.ConversationID)
 	if err != nil {
 		return Task{}, err
@@ -59,7 +59,7 @@ func (s *Service) taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task) 
 	}
 	view := Task{ID: row.ID, Title: row.Title, Status: row.Status,
 		Goal: goal.Content, Constraints: constraints, DoneCriteria: criteria, StructuredReport: report, HasStructuredReport: report != nil,
-		GoalMet: row.Status == "done" && report != nil && report.Outcome == "done", WaitReason: s.taskWaitReason(ctx, row),
+		GoalMet: row.Status == "done" && report != nil && report.Outcome == "done", WaitReason: waitReason,
 		Provider: c.ModelProvider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel,
 		CreatedAt: row.CreatedAt, StartedAt: taskTime(row.StartedAt), EndedAt: taskTime(row.EndedAt),
 		Report: row.Report}
@@ -80,8 +80,17 @@ func (s *Service) ListTasks(ctx context.Context, agentID string, parentID int64)
 		return nil, err
 	}
 	tasks := make([]Task, 0, len(rows))
+	admissions, err := s.q.ListTaskAdmissions(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for _, row := range rows {
-		t, err := s.taskView(ctx, s.q, row)
+		conv, err := s.q.GetConversation(ctx, row.ConversationID)
+		if err != nil {
+			return nil, err
+		}
+		waitReason := taskWaitReasonFrom(admissions, row, conv)
+		t, err := s.taskView(ctx, s.q, row, waitReason)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +122,11 @@ func (s *Service) GetTask(ctx context.Context, agentID string, parentID int64, i
 	if err != nil {
 		return Task{}, err
 	}
-	return s.taskView(ctx, s.q, row)
+	waitReason, err := s.taskWaitReason(ctx, row)
+	if err != nil && row.Status == "queued" {
+		waitReason = "unknown"
+	}
+	return s.taskView(ctx, s.q, row, waitReason)
 }
 
 // Acquire SQLite's writer before checking the source and capacity.
@@ -297,7 +310,7 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r eng
 }
 
 func occupied(status string) bool {
-	return status == "queued" || status == "running"
+	return status == "queued" || status == "admitting" || status == "running"
 }
 
 const (
@@ -313,19 +326,22 @@ func admissionCwd(agentID, cwd string) string {
 	return "cwd:" + cwd
 }
 
-// taskWaitReason computes a queued task's current admission explanation from durable state.
-func (s *Service) taskWaitReason(ctx context.Context, task sqlc.Task) string {
+func (s *Service) taskWaitReason(ctx context.Context, task sqlc.Task) (string, error) {
 	if task.Status != "queued" {
-		return ""
+		return "", nil
 	}
 	admissions, err := s.q.ListTaskAdmissions(ctx)
 	if err != nil {
-		return ""
+		return "", err
 	}
 	conv, err := s.q.GetConversation(ctx, task.ConversationID)
 	if err != nil {
-		return ""
+		return "", err
 	}
+	return taskWaitReasonFrom(admissions, task, conv), nil
+}
+
+func taskWaitReasonFrom(admissions []sqlc.ListTaskAdmissionsRow, task sqlc.Task, conv sqlc.Conversation) string {
 	for _, candidate := range admissions {
 		if candidate.ID == task.ID {
 			break
@@ -336,7 +352,7 @@ func (s *Service) taskWaitReason(ctx context.Context, task sqlc.Task) string {
 	}
 	botRunning, globalRunning := int64(0), int64(0)
 	for _, candidate := range admissions {
-		if candidate.Status != "running" {
+		if candidate.Status != "admitting" && candidate.Status != "running" {
 			continue
 		}
 		globalRunning++
@@ -410,7 +426,7 @@ func (s *Service) withdrawTask(ctx context.Context, agentID string, parentID int
 		row.Status, row.EndedAt = "cancelled", now
 
 	}
-	t, err := s.taskView(ctx, q, row)
+	t, err := s.taskView(ctx, q, row, "")
 	if err != nil {
 		return Task{}, target, err
 	}

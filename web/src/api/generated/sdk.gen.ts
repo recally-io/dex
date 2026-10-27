@@ -408,7 +408,7 @@ export const cancelTask = <ThrowOnError extends boolean = false>(options: Option
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/tasks/{taskId}',
+    url: '/api/agents/{agentId}/tasks/{taskId}/cancel',
     ...options
 });
 

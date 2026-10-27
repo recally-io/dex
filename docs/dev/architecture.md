@@ -504,7 +504,7 @@ Background conversations cannot call delegation management tools. They can call
 `report_task` and use all coding tools, including bash. Control
 checks this boundary as well as the engine's tool list.
 
-Creation checks source ownership, pending input, and deduplication in one SQLite write transaction. The durable spawn key is the agent ID plus PiG's tool task ID. Replay returns the same execution. Each agent admits up to 20 queued or running executions. Four tasks run per bot and eight tasks run across all bots. The scheduler preserves FIFO order per bot and holds modifying tasks exclusively by cwd across all bots; read-only tasks may share a cwd. Cancellation withdraws queued work or requests cancellation of running work. The main agent handles failure, retry, and continuation from saved artifacts.
+Creation checks source ownership, pending input, and deduplication in one SQLite write transaction. The durable spawn key is the agent ID plus PiG's tool task ID. Replay returns the same execution. Each agent admits up to 20 queued, admitting, or running executions. Four tasks run per bot and eight tasks run across all bots. The scheduler preserves FIFO order per bot and holds modifying tasks exclusively by cwd across all bots; read-only tasks may share a cwd. Cancellation withdraws queued work or requests cancellation of running work. The main agent handles failure, retry, and continuation from saved artifacts.
 The prompt requires a record check before progress reports or follow-up work.
 
 The goal is the content of the task's own submission. Each task also saves

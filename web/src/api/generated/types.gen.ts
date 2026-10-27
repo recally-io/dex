@@ -32,7 +32,7 @@ export type Health = {
 export type TaskSummary = {
     id: string;
     title: string;
-    status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'interrupted';
+    status: 'queued' | 'admitting' | 'running' | 'done' | 'failed' | 'cancelled' | 'interrupted';
     createdAt: number;
     startedAt?: number;
     endedAt?: number;
@@ -1585,7 +1585,7 @@ export type CancelTaskData = {
         taskId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/tasks/{taskId}';
+    url: '/api/agents/{agentId}/tasks/{taskId}/cancel';
 };
 
 export type CancelTaskErrors = {

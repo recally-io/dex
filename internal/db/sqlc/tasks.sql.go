@@ -12,7 +12,7 @@ import (
 
 const countTaskSlots = `-- name: CountTaskSlots :one
 SELECT count(*) FROM tasks t JOIN conversations c ON c.id = t.conversation_id
-WHERE c.agent_id = ? AND t.status IN ('queued', 'running')
+WHERE c.agent_id = ? AND t.status IN ('queued', 'admitting', 'running')
 `
 
 func (q *Queries) CountTaskSlots(ctx context.Context, agentID string) (int64, error) {
@@ -226,7 +226,7 @@ func (q *Queries) GetTaskResultLabel(ctx context.Context, arg GetTaskResultLabel
 }
 
 const listActiveTasks = `-- name: ListActiveTasks :many
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files FROM tasks WHERE parent_conversation_id = ? AND status IN ('queued', 'running')
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files FROM tasks WHERE parent_conversation_id = ? AND status IN ('queued', 'admitting', 'running')
 `
 
 func (q *Queries) ListActiveTasks(ctx context.Context, parentConversationID int64) ([]Task, error) {
@@ -323,7 +323,7 @@ func (q *Queries) ListAgentTasks(ctx context.Context, agentID string) ([]ListAge
 }
 
 const listLiveTasks = `-- name: ListLiveTasks :many
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files FROM tasks WHERE status = 'running'
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files FROM tasks WHERE status IN ('admitting', 'running')
 `
 
 func (q *Queries) ListLiveTasks(ctx context.Context) ([]Task, error) {
@@ -415,7 +415,7 @@ func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConvers
 const listTaskAdmissions = `-- name: ListTaskAdmissions :many
 SELECT t.id, t.status, t.created_at, t.modifies_files, c.agent_id, c.cwd
 FROM tasks t JOIN conversations c ON c.id = t.conversation_id
-WHERE t.status IN ('queued', 'running')
+WHERE t.status IN ('queued', 'admitting', 'running')
 ORDER BY t.created_at, t.id
 `
 
@@ -507,7 +507,7 @@ func (q *Queries) ListTasks(ctx context.Context, parentID int64) ([]Task, error)
 
 const resetTaskAdmission = `-- name: ResetTaskAdmission :execrows
 UPDATE tasks SET status = 'queued', started_at = NULL
-WHERE id = ? AND status = 'running' AND ended_at IS NULL
+WHERE id = ? AND status = 'admitting' AND ended_at IS NULL
 `
 
 func (q *Queries) ResetTaskAdmission(ctx context.Context, id string) (int64, error) {
@@ -518,9 +518,22 @@ func (q *Queries) ResetTaskAdmission(ctx context.Context, id string) (int64, err
 	return result.RowsAffected()
 }
 
+const runTask = `-- name: RunTask :execrows
+UPDATE tasks SET status = 'running'
+WHERE id = ?1 AND status = 'admitting'
+`
+
+func (q *Queries) RunTask(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, runTask, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const settleTask = `-- name: SettleTask :execrows
 UPDATE tasks SET status = ?, report = ?, ended_at = ?
-WHERE id = ? AND status IN ('queued', 'running')
+WHERE id = ? AND status IN ('queued', 'admitting', 'running')
 `
 
 type SettleTaskParams struct {
@@ -546,7 +559,7 @@ func (q *Queries) SettleTask(ctx context.Context, arg SettleTaskParams) (int64, 
 const stageTaskReport = `-- name: StageTaskReport :execrows
 UPDATE tasks SET structured_report = ?1
 WHERE tasks.id = ?2 AND tasks.conversation_id = ?3
-AND status IN ('queued', 'running') AND structured_report = ''
+AND status IN ('queued', 'admitting', 'running') AND structured_report = ''
 AND EXISTS (SELECT 1 FROM submissions s WHERE s.id = tasks.id AND s.status = 'pending')
 `
 
@@ -565,7 +578,7 @@ func (q *Queries) StageTaskReport(ctx context.Context, arg StageTaskReportParams
 }
 
 const startTask = `-- name: StartTask :execrows
-UPDATE tasks SET status = 'running', started_at = ?1
+UPDATE tasks SET status = 'admitting', started_at = ?1
 WHERE id = ?2 AND status = 'queued'
 `
 

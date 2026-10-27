@@ -336,6 +336,7 @@ func (e TaskReportOutcome) Valid() bool {
 
 // Defines values for TaskStatus.
 const (
+	TaskStatusAdmitting   TaskStatus = "admitting"
 	TaskStatusCancelled   TaskStatus = "cancelled"
 	TaskStatusDone        TaskStatus = "done"
 	TaskStatusFailed      TaskStatus = "failed"
@@ -347,6 +348,8 @@ const (
 // Valid indicates whether the value is a known member of the TaskStatus enum.
 func (e TaskStatus) Valid() bool {
 	switch e {
+	case TaskStatusAdmitting:
+		return true
 	case TaskStatusCancelled:
 		return true
 	case TaskStatusDone:
@@ -402,6 +405,7 @@ func (e TaskSummaryReportOutcome) Valid() bool {
 
 // Defines values for TaskSummaryStatus.
 const (
+	TaskSummaryStatusAdmitting   TaskSummaryStatus = "admitting"
 	TaskSummaryStatusCancelled   TaskSummaryStatus = "cancelled"
 	TaskSummaryStatusDone        TaskSummaryStatus = "done"
 	TaskSummaryStatusFailed      TaskSummaryStatus = "failed"
@@ -413,6 +417,8 @@ const (
 // Valid indicates whether the value is a known member of the TaskSummaryStatus enum.
 func (e TaskSummaryStatus) Valid() bool {
 	switch e {
+	case TaskSummaryStatusAdmitting:
+		return true
 	case TaskSummaryStatusCancelled:
 		return true
 	case TaskSummaryStatusDone:
@@ -1885,7 +1891,7 @@ type ServerInterface interface {
 	// (GET /api/agents/{agentId}/tasks/{taskId})
 	GetTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
 
-	// (POST /api/agents/{agentId}/tasks/{taskId})
+	// (POST /api/agents/{agentId}/tasks/{taskId}/cancel)
 	CancelTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
 
 	// (POST /api/agents/{agentId}/uploads)
@@ -3735,7 +3741,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}", wrapper.GetAgent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}", wrapper.UpdateAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}", wrapper.GetTask)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}", wrapper.CancelTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}/cancel", wrapper.CancelTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/main", wrapper.GetMainChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.ListChats)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.CreateChat)
@@ -7123,7 +7129,7 @@ type StrictServerInterface interface {
 	// (GET /api/agents/{agentId}/tasks/{taskId})
 	GetTask(ctx context.Context, request GetTaskRequestObject) (GetTaskResponseObject, error)
 
-	// (POST /api/agents/{agentId}/tasks/{taskId})
+	// (POST /api/agents/{agentId}/tasks/{taskId}/cancel)
 	CancelTask(ctx context.Context, request CancelTaskRequestObject) (CancelTaskResponseObject, error)
 
 	// (POST /api/agents/{agentId}/uploads)

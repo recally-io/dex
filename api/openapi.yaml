@@ -484,14 +484,20 @@ paths:
               schema: { $ref: "#/components/schemas/Task" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/tasks/{taskId}/cancel:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - in: path
+        name: taskId
+        required: true
+        schema: { type: string }
     post:
       operationId: cancelTask
       description: Requests cancellation of a task owned by this agent. Queued tasks are withdrawn without execution.
-      parameters:
-        - in: path
-          name: taskId
-          required: true
-          schema: { type: string }
       responses:
         "200":
           description: The cancellation request was accepted.
@@ -1236,7 +1242,15 @@ components:
         title: { type: string }
         status:
           type: string
-          enum: [queued, running, done, failed, cancelled, interrupted]
+          enum: [
+            queued,
+            admitting,
+            running,
+            done,
+            failed,
+            cancelled,
+            interrupted,
+          ]
         createdAt: { type: integer, format: int64 }
         startedAt: { type: integer, format: int64 }
         endedAt: { type: integer, format: int64 }
