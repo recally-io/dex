@@ -101,6 +101,48 @@ func TestUserReadOnlyTaskPromptDeclaresFileBoundary(t *testing.T) {
 		t.Fatalf("read-only prompt: %s", prompt)
 	}
 }
+func TestUserCancelAdmittingTaskNeverCreatesResult(t *testing.T) {
+	r := startNative(t, "echo")
+	parent, source := taskParent(t, r)
+	task, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "admitting", Goal: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.q.StartTask(t.Context(), sqlc.StartTaskParams{ID: task.ID, Now: sql.NullInt64{Int64: 1, Valid: true}}); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, err := r.service.CancelTask(t.Context(), "bot", parent, task.ID)
+	if err != nil || cancelled.Status != "cancelled" {
+		t.Fatalf("cancelled admitting task: %+v %v", cancelled, err)
+	}
+	var results int
+	if err = r.conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE source_key = ?", "task:"+task.ID+":result").Scan(&results); err != nil || results != 0 {
+		t.Fatalf("result count=%d err=%v", results, err)
+	}
+}
+
+func TestUserPermanentAdmissionFailureCreatesOneResult(t *testing.T) {
+	r := startNative(t, "echo")
+	parent, source := taskParent(t, r)
+	task, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "failed", Goal: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.q.StartTask(t.Context(), sqlc.StartTaskParams{ID: task.ID, Now: sql.NullInt64{Int64: 1, Valid: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.service.finishAdmissionError(t.Context(), task.ID, ErrNoModel); err != nil {
+		t.Fatal(err)
+	}
+	failed, err := r.service.GetTask(t.Context(), "bot", parent, task.ID)
+	if err != nil || failed.Status != "failed" {
+		t.Fatalf("failed task: %+v %v", failed, err)
+	}
+	var results int
+	if err = r.conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE source_key = ?", "task:"+task.ID+":result").Scan(&results); err != nil || results != 1 {
+		t.Fatalf("result count=%d err=%v", results, err)
+	}
+}
 func TestUserTaskValidatesSourceAndRejectsBackgroundDelegation(t *testing.T) {
 	r := startNative(t, "echo")
 	_, source := taskParent(t, r)
