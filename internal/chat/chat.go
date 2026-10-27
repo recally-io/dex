@@ -502,6 +502,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		}
 		s.taskMu.Unlock()
 		if err != nil {
+			_, _ = s.abort(context.WithoutCancel(ctx), ref)
 			return err
 		}
 		if task.Status == "cancelled" {
@@ -518,7 +519,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if _, loaded := s.waiting.LoadOrStore(p.ID, struct{}{}); loaded {
 		return nil
 	}
-	if !s.startWorker(func() {
+	started := s.startWorker(func() {
 		outcome, err := sub.Wait(s.ctx)
 		if err == nil {
 			err = s.settle(s.ctx, p.ID, outcome)
@@ -528,7 +529,9 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 			slog.Error("reconcile execution receipt", "submission", p.ID, "err", err)
 			s.scheduleRetry()
 		}
-	}) {
+	})
+	if !started {
+		slog.Warn("task worker did not start", "task", p.ID)
 		s.waiting.Delete(p.ID)
 	}
 	return nil
