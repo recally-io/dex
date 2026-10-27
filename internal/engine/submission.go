@@ -105,6 +105,13 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		}
 	}
 	result := &Submission{ID: int64(native.Id()), done: make(chan struct{})}
+	var stopActivity func()
+	if input.Background {
+		stopActivity, err = a.startActivityWatch(ctx, ref, conversation)
+		if err != nil {
+			slog.Error("track background activity", "agent", ref.AgentID, "conversation", ref.ID, "error", err)
+		}
+	}
 	a.mu.Lock()
 	a.settling++
 	a.mu.Unlock()
@@ -112,6 +119,9 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 	a.settlements.Go(func() {
 		defer func() { a.mu.Lock(); a.settling--; a.mu.Unlock() }()
 		defer close(result.done)
+		if stopActivity != nil {
+			defer stopActivity()
+		}
 		settled, err := native.Wait(settlementCtx)
 		if err != nil {
 			result.err = err

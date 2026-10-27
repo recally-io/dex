@@ -356,6 +356,18 @@ func TestUserTaskStructuredReportAndContractRoundTrip(t *testing.T) {
 					t.Fatalf("report truncation/full read: input=%d full=%d", len(result.content), len(saved.Report))
 				}
 			}
+			// The HTTP task summary exposes the structured outcome so the panel can show blocked work.
+			var summary struct {
+				ReportOutcome string `json:"reportOutcome"`
+			}
+			d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/tasks/%s", task.ID), nil, &summary)
+			want := outcome
+			if outcome == "missing" {
+				want = ""
+			}
+			if summary.ReportOutcome != want {
+				t.Fatalf("reportOutcome=%q, want %q", summary.ReportOutcome, want)
+			}
 			t.Logf("artifact: task=%s outcome=%s structured=%v goalMet=%v full=%d parent=%d", task.ID, outcome, saved.HasStructuredReport, saved.GoalMet, len(saved.Report), len(result.content))
 		})
 	}

@@ -37,6 +37,34 @@ type agentResources struct {
 	loaded  *loadedExtensions
 }
 
+type activityRecord struct {
+	lastAction     string
+	lastActivityAt int64
+	toolStarted    map[string]int64
+}
+
+// Activity is the in-memory activity snapshot for already-open conversations.
+// It never opens a Harness or execution storage.
+func (a *Agents) Activity(refs []Ref) map[Ref]Activity {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make(map[Ref]Activity, len(refs))
+	for _, ref := range refs {
+		r := a.activity[ref]
+		if r == nil || r.lastActivityAt == 0 {
+			continue
+		}
+		activity := Activity{LastAction: r.lastAction, LastActivityAt: new(r.lastActivityAt)}
+		for _, started := range r.toolStarted {
+			if activity.ToolStartedAt == nil || started < *activity.ToolStartedAt {
+				activity.ToolStartedAt = new(started)
+			}
+		}
+		out[ref] = activity
+	}
+	return out
+}
+
 // Agents owns the native execution resources. Harnesses stay open until Close or Reload.
 type Agents struct {
 	Catalog          *Catalog
@@ -44,6 +72,8 @@ type Agents struct {
 	memory           *MemoryRepo
 	mu               sync.Mutex
 	resources        map[string]*agentResources
+	activity         map[Ref]*activityRecord
+	activityWatches  map[Ref]int // internal watches per background conversation; at most one
 	opening          map[string]*agentOpening
 	recovering       map[string]map[durable.ConversationId]bool
 	serial           map[Ref]chan struct{}
@@ -70,7 +100,7 @@ func New(config Config) (*Agents, error) {
 		}
 	}
 	config.BaseEnv = maps.Clone(config.BaseEnv)
-	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: NewMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), resources: map[string]*agentResources{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
+	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: NewMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]int{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
 }
 
 func (a *Agents) begin() error {

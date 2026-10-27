@@ -313,6 +313,27 @@ func (e SnapshotEventType) Valid() bool {
 	}
 }
 
+// Defines values for TaskReportOutcome.
+const (
+	TaskReportOutcomeBlocked TaskReportOutcome = "blocked"
+	TaskReportOutcomeDone    TaskReportOutcome = "done"
+	TaskReportOutcomeFailed  TaskReportOutcome = "failed"
+)
+
+// Valid indicates whether the value is a known member of the TaskReportOutcome enum.
+func (e TaskReportOutcome) Valid() bool {
+	switch e {
+	case TaskReportOutcomeBlocked:
+		return true
+	case TaskReportOutcomeDone:
+		return true
+	case TaskReportOutcomeFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TaskStatus.
 const (
 	TaskStatusCancelled   TaskStatus = "cancelled"
@@ -352,6 +373,27 @@ const (
 func (e TaskItemKind) Valid() bool {
 	switch e {
 	case TaskItemKindTask:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskSummaryReportOutcome.
+const (
+	TaskSummaryReportOutcomeBlocked TaskSummaryReportOutcome = "blocked"
+	TaskSummaryReportOutcomeDone    TaskSummaryReportOutcome = "done"
+	TaskSummaryReportOutcomeFailed  TaskSummaryReportOutcome = "failed"
+)
+
+// Valid indicates whether the value is a known member of the TaskSummaryReportOutcome enum.
+func (e TaskSummaryReportOutcome) Valid() bool {
+	switch e {
+	case TaskSummaryReportOutcomeBlocked:
+		return true
+	case TaskSummaryReportOutcomeDone:
+		return true
+	case TaskSummaryReportOutcomeFailed:
 		return true
 	default:
 		return false
@@ -972,15 +1014,30 @@ type Task struct {
 	EndedAt        *int64 `json:"endedAt,omitempty"`
 	Id             string `json:"id"`
 
+	// LastAction The latest observed tool call, when the task is running.
+	LastAction *string `json:"lastAction,omitempty"`
+
+	// LastActivityAt The latest engine observation of task activity, when the task is running.
+	LastActivityAt *int64 `json:"lastActivityAt,omitempty"`
+
 	// ParentConversationId The conversation that started this task and can stop it.
 	ParentConversationId int64 `json:"parentConversationId"`
 
 	// Report The saved report in Markdown.
-	Report    string     `json:"report"`
-	StartedAt *int64     `json:"startedAt,omitempty"`
-	Status    TaskStatus `json:"status"`
-	Title     string     `json:"title"`
+	Report string `json:"report"`
+
+	// ReportOutcome The structured report outcome, when the task has a report.
+	ReportOutcome *TaskReportOutcome `json:"reportOutcome,omitempty"`
+	StartedAt     *int64             `json:"startedAt,omitempty"`
+	Status        TaskStatus         `json:"status"`
+	Title         string             `json:"title"`
+
+	// ToolStartedAt The earliest start of a currently running tool, when the task is running a tool.
+	ToolStartedAt *int64 `json:"toolStartedAt,omitempty"`
 }
+
+// TaskReportOutcome The structured report outcome, when the task has a report.
+type TaskReportOutcome string
 
 // TaskStatus defines model for Task.Status.
 type TaskStatus string
@@ -1007,12 +1064,27 @@ type TaskSummary struct {
 	EndedAt        *int64 `json:"endedAt,omitempty"`
 	Id             string `json:"id"`
 
+	// LastAction The latest observed tool call, when the task is running.
+	LastAction *string `json:"lastAction,omitempty"`
+
+	// LastActivityAt The latest engine observation of task activity, when the task is running.
+	LastActivityAt *int64 `json:"lastActivityAt,omitempty"`
+
 	// ParentConversationId The conversation that started this task and can stop it.
-	ParentConversationId int64             `json:"parentConversationId"`
-	StartedAt            *int64            `json:"startedAt,omitempty"`
-	Status               TaskSummaryStatus `json:"status"`
-	Title                string            `json:"title"`
+	ParentConversationId int64 `json:"parentConversationId"`
+
+	// ReportOutcome The structured report outcome, when the task has a report.
+	ReportOutcome *TaskSummaryReportOutcome `json:"reportOutcome,omitempty"`
+	StartedAt     *int64                    `json:"startedAt,omitempty"`
+	Status        TaskSummaryStatus         `json:"status"`
+	Title         string                    `json:"title"`
+
+	// ToolStartedAt The earliest start of a currently running tool, when the task is running a tool.
+	ToolStartedAt *int64 `json:"toolStartedAt,omitempty"`
 }
+
+// TaskSummaryReportOutcome The structured report outcome, when the task has a report.
+type TaskSummaryReportOutcome string
 
 // TaskSummaryStatus defines model for TaskSummary.Status.
 type TaskSummaryStatus string

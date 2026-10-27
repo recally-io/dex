@@ -15,6 +15,11 @@ type Ref struct {
 	AgentID string
 	ID      int64
 }
+type Activity struct {
+	LastAction     string
+	LastActivityAt *int64
+	ToolStartedAt  *int64
+}
 type ModelRef struct {
 	Provider string `json:"provider"`
 	ModelID  string `json:"modelId"`

@@ -105,10 +105,7 @@ by `updatedAt` descending, then ID descending. `updatedAt` is the latest
 conversation creation, input creation or settlement, or task start or end time.
 Task times apply only to the task's own conversation. List and detail use the
 same rule. The list excludes main, old channel conversations, dreams and
-Chat sessions with no message. Task rows add `task: TaskSummary`, without
-report bodies. The query does not read reports or transcripts. The active count
-includes tasks with status queued or running, and other busy sessions. Each row
-counts once. The legacy Sessions route remains readable for saved links.
+Chat sessions with no message. Task rows add `task: TaskSummary`, without report bodies. Running task rows also include the latest observed tool action, activity time, and earliest currently running tool start time when the task conversation view is already open in the engine. These three fields are in-memory only and disappear when the task settles; a restart interrupts running tasks and does not restore them. A structured report adds `reportOutcome` (`done`, `blocked`, or `failed`) regardless of task status. The activity tracker reads existing native views and never opens a Harness or `state.sqlite` while serving this list. The tracker observes activity only while a conversation view is open, so a cold agent has no activity data. A running task is considered potentially stalled by the client after five minutes without a tool or thirty minutes in a tool; these thresholds should change only when measured false positives or user needs justify it. The query does not read reports or transcripts. The active count includes tasks with status queued or running, and other busy sessions. Each row counts once. The legacy Sessions route remains readable for saved links.
 
 Channel input enters the agent's main conversation. Chat and automation
 contexts stay separate. See [Product](../product.md#scope) for session behavior,

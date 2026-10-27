@@ -41,6 +41,22 @@ export type TaskSummary = {
      * The conversation that started this task and can stop it.
      */
     parentConversationId: number;
+    /**
+     * The latest observed tool call, when the task is running.
+     */
+    lastAction?: string;
+    /**
+     * The latest engine observation of task activity, when the task is running.
+     */
+    lastActivityAt?: number;
+    /**
+     * The earliest start of a currently running tool, when the task is running a tool.
+     */
+    toolStartedAt?: number;
+    /**
+     * The structured report outcome, when the task has a report.
+     */
+    reportOutcome?: 'done' | 'blocked' | 'failed';
 };
 
 export type Task = TaskSummary & {

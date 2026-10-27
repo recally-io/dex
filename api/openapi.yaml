@@ -1229,6 +1229,21 @@ components:
           type: integer
           format: int64
           description: The conversation that started this task and can stop it.
+        lastAction:
+          type: string
+          description: The latest observed tool call, when the task is running.
+        lastActivityAt:
+          type: integer
+          format: int64
+          description: The latest engine observation of task activity, when the task is running.
+        toolStartedAt:
+          type: integer
+          format: int64
+          description: The earliest start of a currently running tool, when the task is running a tool.
+        reportOutcome:
+          type: string
+          enum: [done, blocked, failed]
+          description: The structured report outcome, when the task has a report.
 
     Task:
       allOf:
