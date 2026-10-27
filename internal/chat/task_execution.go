@@ -12,11 +12,11 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-func taskInstructions(base string, task sqlc.Task) string {
+func taskInstructions(base, goal string, task sqlc.Task) string {
 	var instructions strings.Builder
 	instructions.WriteString(base)
 	instructions.WriteString("\n\nThis is one background execution. Complete the saved goal and call report_task before your final answer. You cannot create or manage background executions. All coding tools, including bash, remain available. Constraints below are instructions. Use foreground, non-interactive tools. Do not detach processes or start daemons. Never claim that failed or unrun checks passed. The main agent decides the next action.\n\nGoal:\n")
-	instructions.WriteString(task.Goal)
+	instructions.WriteString(goal)
 	for _, section := range []struct{ name, data string }{{"Constraints", task.ConstraintsJson}, {"Done criteria", task.DoneCriteriaJson}} {
 		instructions.WriteString("\n\n" + section.name + ":\n")
 		instructions.WriteString(section.data)

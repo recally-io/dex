@@ -415,7 +415,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		if err != nil {
 			return err
 		}
-		options.Instructions = taskInstructions(options.Instructions, task)
+		options.Instructions = taskInstructions(options.Instructions, p.Content, task)
 	}
 	ref, err := s.execution(ctx, conv.ID, p.AgentID, options)
 	if err != nil {

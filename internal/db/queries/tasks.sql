@@ -2,8 +2,8 @@
 SELECT * FROM conversations WHERE agent_id = ? AND execution_id = ?;
 
 -- name: CreateTask :exec
-INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, goal, constraints_json, done_criteria_json, status, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?);
+INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, constraints_json, done_criteria_json, status, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?);
 
 -- name: GetTask :one
 SELECT * FROM tasks WHERE id = ?;

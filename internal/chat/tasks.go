@@ -39,6 +39,11 @@ func taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task) (Task, error)
 	if err != nil {
 		return Task{}, err
 	}
+	// The task's own submission keeps its immutable goal.
+	goal, err := q.GetSubmission(ctx, row.ID)
+	if err != nil {
+		return Task{}, err
+	}
 	var constraints, criteria []string
 	if err := json.Unmarshal([]byte(row.ConstraintsJson), &constraints); err != nil {
 		return Task{}, err
@@ -53,7 +58,7 @@ func taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task) (Task, error)
 		}
 	}
 	return Task{ID: row.ID, Title: row.Title, Status: row.Status,
-		Goal: row.Goal, Constraints: constraints, DoneCriteria: criteria, StructuredReport: report, HasStructuredReport: report != nil,
+		Goal: goal.Content, Constraints: constraints, DoneCriteria: criteria, StructuredReport: report, HasStructuredReport: report != nil,
 		GoalMet:  row.Status == "done" && report != nil && report.Outcome == "done",
 		Provider: c.ModelProvider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel,
 		CreatedAt: row.CreatedAt, StartedAt: taskTime(row.StartedAt), EndedAt: taskTime(row.EndedAt),
@@ -267,7 +272,7 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r eng
 	if _, err = q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: id, ConversationID: conv.ID, Content: a.Goal, Attachments: "null", Origin: "task", Kind: "message", CreatedAt: now}); err != nil {
 		return "", err
 	}
-	if err = q.CreateTask(ctx, sqlc.CreateTaskParams{ID: id, ParentConversationID: parent.ID, ConversationID: conv.ID, SpawnKey: r.Key, SourceRequestID: source.ID, Title: a.Title, Goal: a.Goal, ConstraintsJson: string(constraints), DoneCriteriaJson: string(criteria), CreatedAt: now}); err != nil {
+	if err = q.CreateTask(ctx, sqlc.CreateTaskParams{ID: id, ParentConversationID: parent.ID, ConversationID: conv.ID, SpawnKey: r.Key, SourceRequestID: source.ID, Title: a.Title, ConstraintsJson: string(constraints), DoneCriteriaJson: string(criteria), CreatedAt: now}); err != nil {
 		return "", err
 	}
 	if err = tx.Commit(); err != nil {

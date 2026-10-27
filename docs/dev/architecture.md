@@ -515,8 +515,8 @@ tool that ignores cancellation can continue after another execution starts.
 The main agent handles failure, retry, and continuation from saved artifacts.
 The prompt requires a record check before progress reports or follow-up work.
 
-Each task saves its goal, optional `constraints`, and optional `doneCriteria`
-at creation. Spawn replay retains the original contract. The engine prompt
+The goal is the content of the task's own submission. Each task also saves
+optional `constraints` and optional `doneCriteria` at creation. Spawn replay retains the original contract. The engine prompt
 includes that contract. Constraints are instructions; they do not restrict tools
 or provide a sandbox.
 

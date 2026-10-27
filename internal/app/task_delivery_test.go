@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -67,6 +68,55 @@ func TestUserTaskNativeCompletionSurvivesRestartBeforeControlSettlement(t *testi
 	t.Logf("artifact: task=%s result=%s report=%q count=%d", task.ID, resultID, task.Report, count)
 }
 
+func TestUserTaskNativeFailureSurvivesRestartBeforeControlSettlement(t *testing.T) {
+	// Given a real app whose control settlement fails after the native execution failed.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err = conn.ExecContext(t.Context(), `CREATE TRIGGER hold_task_settlement BEFORE UPDATE OF status ON tasks WHEN NEW.status IN ('done','failed') BEGIN SELECT RAISE(FAIL, 'crash window before control settlement'); END`); err != nil {
+		t.Fatal(err)
+	}
+	d.setModel(t, "spawn")
+	parent := d.newChat(t, taskJSON(t, map[string]string{"title": "Recover native failure", "goal": "invalid JSON", "provider": "faux", "modelId": "spawn"}))
+	task := waitExecution(t, conn, parent, "Recover native failure", "running")
+	var conversation int64
+	if err = conn.QueryRowContext(t.Context(), "SELECT conversation_id FROM tasks WHERE id = ?", task.ID).Scan(&conversation); err != nil {
+		t.Fatal(err)
+	}
+	w := d.watch(t, conversation)
+	w.until(t, "native task failure committed", func(tr *transcript) bool {
+		return !tr.running && slices.ContainsFunc(tr.items, func(it item) bool { return it.Kind == "error" })
+	})
+	w.cancel()
+	d.stop()
+	if _, err = conn.ExecContext(t.Context(), "DROP TRIGGER hold_task_settlement"); err != nil {
+		t.Fatal(err)
+	}
+	// When the app restarts before the failure reaches control.
+	d = startDex(t, dir, "")
+	task = waitExecution(t, conn, parent, "Recover native failure", "failed")
+	if task.Report != "model_error" {
+		t.Fatalf("native failure became another outcome: %+v", task)
+	}
+	// Then the parent receives one failed result, and another restart keeps it single.
+	resultID := "task:" + task.ID + ":result"
+	result := waitResultSubmission(t, conn, resultID, "done")
+	if !strings.Contains(result.content, `"status":"failed"`) || !strings.Contains(result.content, `"goalMet":false`) {
+		t.Fatalf("parent result: %+v", result)
+	}
+	d.stop()
+	_ = startDex(t, dir, "")
+	var count int
+	if err = conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE id = ?", resultID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("result count=%d err=%v", count, err)
+	}
+	t.Logf("artifact: task=%s result=%s report=%q count=%d", task.ID, resultID, task.Report, count)
+}
+
 func TestUserStructuredTaskReportSurvivesRestartBeforeControlSettlement(t *testing.T) {
 	// Given a structured report staged by the real task tool and a failed control commit.
 	dir := t.TempDir()
@@ -92,7 +142,7 @@ func TestUserStructuredTaskReportSurvivesRestartBeforeControlSettlement(t *testi
 		t.Fatal(err)
 	}
 	w := d.watch(t, conversation)
-	w.until(t, "native structured report completed", answered("tool: Report saved."))
+	w.until(t, "native structured report completed", answered("tool: Task report saved."))
 	w.cancel()
 	d.stop()
 	if _, err = conn.ExecContext(t.Context(), "DROP TRIGGER hold_structured_settlement"); err != nil {
@@ -163,7 +213,7 @@ func TestUserInterruptedTaskReturnsOneWarningToItsChat(t *testing.T) {
 	if _, err = q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "unfinished-task", ConversationID: conv.ID, Content: "unfinished", Attachments: "null", Origin: "task", Kind: "message", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err = q.CreateTask(t.Context(), sqlc.CreateTaskParams{ID: "unfinished-task", ParentConversationID: parent, ConversationID: conv.ID, SpawnKey: "default/unfinished", SourceRequestID: source, Title: "Interrupted work", Goal: "unfinished", ConstraintsJson: "[]", DoneCriteriaJson: "[]", CreatedAt: 1}); err != nil {
+	if err = q.CreateTask(t.Context(), sqlc.CreateTaskParams{ID: "unfinished-task", ParentConversationID: parent, ConversationID: conv.ID, SpawnKey: "default/unfinished", SourceRequestID: source, Title: "Interrupted work", ConstraintsJson: "[]", DoneCriteriaJson: "[]", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = q.StartTask(t.Context(), sqlc.StartTaskParams{ID: "unfinished-task", Now: sql.NullInt64{Int64: 1, Valid: true}}); err != nil {
