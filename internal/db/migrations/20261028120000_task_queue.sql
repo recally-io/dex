@@ -40,9 +40,9 @@ CREATE TABLE tasks (
     ended_at INTEGER,
     constraints_json TEXT NOT NULL DEFAULT '[]',
     done_criteria_json TEXT NOT NULL DEFAULT '[]',
-    structured_report TEXT NOT NULL DEFAULT '',
-    modifies_files INTEGER NOT NULL DEFAULT 1
+    structured_report TEXT NOT NULL DEFAULT ''
 ) STRICT;
-INSERT INTO tasks SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files FROM tasks_new;
+-- The old schema has no admitting state; such tasks have not started native work yet.
+INSERT INTO tasks SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, CASE status WHEN 'admitting' THEN 'queued' ELSE status END, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report FROM tasks_new;
 DROP TABLE tasks_new;
 CREATE INDEX tasks_parent ON tasks (parent_conversation_id, created_at);

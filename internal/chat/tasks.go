@@ -342,6 +342,9 @@ func (s *Service) taskWaitReason(ctx context.Context, task sqlc.Task) (string, e
 }
 
 func taskWaitReasonFrom(admissions []sqlc.ListTaskAdmissionsRow, task sqlc.Task, conv sqlc.Conversation) string {
+	if task.Status != "queued" {
+		return ""
+	}
 	for _, candidate := range admissions {
 		if candidate.ID == task.ID {
 			break
@@ -379,6 +382,13 @@ func (s *Service) CancelTask(ctx context.Context, agentID string, parentID int64
 }
 
 func (s *Service) cancelTask(ctx context.Context, agentID string, parentID int64, id string, caller *engine.TaskContext) (Task, error) {
+	// Queued and admitting tasks need no delivery gate: a slow admission holds it.
+	// The admission step and the next reconcile abort any native work from the saved intent.
+	if row, err := s.q.GetAgentTask(ctx, sqlc.GetAgentTaskParams{ID: id, AgentID: agentID}); err == nil && (row.Status == "queued" || row.Status == "admitting") {
+		t, _, err := s.withdrawTask(ctx, agentID, parentID, id, caller)
+		s.Wake()
+		return t, err
+	}
 	unlock, err := s.lockAgent(ctx, agentID)
 	if err != nil {
 		return Task{}, err

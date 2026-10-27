@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json/v2"
 	"fmt"
 	"io"
@@ -139,6 +140,36 @@ func TestUserGlobalTaskLimitQueuesAnIdleBot(t *testing.T) {
 	waitExecution(t, conn, idle.chat, "idle-task", "done")
 }
 
+// promptCancel cancels a task and fails if the request waits for another admission.
+func promptCancel(t *testing.T, d *dex, path, what string) {
+	t.Helper()
+	done := make(chan int, 1)
+	go func() {
+		status, _ := d.call(t, http.MethodPost, path, nil)
+		done <- status
+	}()
+	select {
+	case status := <-done:
+		if status != http.StatusOK {
+			t.Fatalf("cancel %s: status=%d", what, status)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("cancelling %s waited for a blocked admission", what)
+	}
+}
+
+// message sends ordinary text and waits until the bot settles it.
+func (b botTasks) message(t *testing.T, conn *sql.DB, text string) {
+	t.Helper()
+	id := uuid.NewV7().String()
+	b.d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/messages", b.agent, b.chat), map[string]string{"id": id, "text": text}, nil, http.StatusAccepted)
+	eventually(t, "settled "+text, func() (bool, any) {
+		var status string
+		err := conn.QueryRowContext(t.Context(), "SELECT status FROM submissions WHERE id = ?", id).Scan(&status)
+		return err == nil && status != "pending", status
+	})
+}
+
 // heldMCP is an MCP server whose initialize waits until release.
 func heldMCP(t *testing.T) (map[string]any, <-chan struct{}, func()) {
 	t.Helper()
@@ -189,6 +220,7 @@ func TestUserCancelDuringSlowAdmissionDoesNotBlockOtherBots(t *testing.T) {
 	server, entered, release := heldMCP(t)
 	writeMCP(t, filepath.Join(dir, "agents", b.agent, ".agents", "mcp.json"), map[string]any{"held": server})
 	d = startDex(t, dir, "")
+	b.d = d
 	select {
 	case <-entered:
 	case <-time.After(30 * time.Second):
@@ -200,27 +232,14 @@ func TestUserCancelDuringSlowAdmissionDoesNotBlockOtherBots(t *testing.T) {
 	a.spawn(t, dir, "a-running", true)
 	waitTaskFile(t, filepath.Join(dir, "a-running.pid"))
 	running := waitExecution(t, conn, a.chat, "a-running", "running")
-	done := make(chan int, 1)
-	go func() {
-		status, _ := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/tasks/%s/cancel", running.ID), nil)
-		done <- status
-	}()
-	select {
-	case status := <-done:
-		if status != http.StatusOK {
-			t.Fatalf("cancel A status=%d", status)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("cancelling bot A waited for bot B's admission")
-	}
+	promptCancel(t, d, "/api/agents/default/tasks/"+running.ID+"/cancel", "bot A's running task")
 	waitExecution(t, conn, a.chat, "a-running", "cancelled")
-	// And B's task cancelled during admission never runs or reports.
-	if status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/tasks/%s/cancel", b.agent, target.ID), nil); status != http.StatusOK {
-		t.Fatalf("cancel B status=%d %s", status, raw)
-	}
+	// And B's own task can be cancelled while its admission is still blocked.
+	promptCancel(t, d, fmt.Sprintf("/api/agents/%s/tasks/%s/cancel", b.agent, target.ID), "bot B's admitting task")
 	waitExecution(t, conn, b.chat, "b-target", "cancelled")
 	release()
-	time.Sleep(2 * time.Second) // observe that a late admission does not start the cancelled task
+	// B's worker admits inputs in order, so a later answered message proves the admission ended.
+	b.message(t, conn, "after release")
 	if _, err := os.Stat(filepath.Join(dir, "b-target.pid")); !os.IsNotExist(err) {
 		t.Fatalf("cancelled task ran: %v", err)
 	}
@@ -229,4 +248,41 @@ func TestUserCancelDuringSlowAdmissionDoesNotBlockOtherBots(t *testing.T) {
 		t.Fatalf("cancelled task results=%d err=%v", results, err)
 	}
 	waitExecution(t, conn, b.chat, "b-target", "cancelled")
+}
+
+func TestUserTaskFinishesAfterItsAdmissionReceiptFailsOnce(t *testing.T) {
+	t.Parallel()
+	// Given a queued writer whose admission receipt write will fail once.
+	dir, project := t.TempDir(), t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	rw, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = rw.Close() })
+	a := newBotTasks(t, d, "default", project)
+	a.spawn(t, dir, "holder", true)
+	waitTaskFile(t, filepath.Join(dir, "holder.pid"))
+	a.spawn(t, dir, "receipt", true)
+	target := waitExecution(t, conn, a.chat, "receipt", "queued")
+	if _, err = rw.ExecContext(t.Context(), fmt.Sprintf(`CREATE TRIGGER fail_receipt BEFORE UPDATE OF admitted_at ON submissions WHEN NEW.id = '%s' BEGIN SELECT RAISE(FAIL, 'receipt write failed'); END`, target.ID)); err != nil {
+		t.Fatal(err)
+	}
+	// When the task starts natively but its receipt is not saved.
+	releaseResultGate(t, dir, "holder")
+	waitTaskFile(t, filepath.Join(dir, "receipt.pid"))
+	waitExecution(t, conn, a.chat, "receipt", "running")
+	if _, err = rw.ExecContext(t.Context(), "DROP TRIGGER fail_receipt"); err != nil {
+		t.Fatal(err)
+	}
+	// Then a retry recovers the receipt, and the task settles with one result.
+	releaseResultGate(t, dir, "receipt")
+	waitExecution(t, conn, a.chat, "receipt", "done")
+	result := "task:" + target.ID + ":result"
+	waitResultSubmission(t, conn, result, "done")
+	var count int
+	if err = conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE id = ?", result).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("results=%d err=%v", count, err)
+	}
 }

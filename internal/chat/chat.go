@@ -418,11 +418,17 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		}
 		// taskMu protects the durable admission transition. Native work runs without it.
 		s.taskMu.Lock()
-		if task.Status != "queued" {
+		// A running task whose input is still pending lost its admission receipt.
+		// Submit replays by request ID, so retry from there.
+		resumed := task.Status == "running"
+		if task.Status != "queued" && !resumed {
 			s.taskMu.Unlock()
 			return nil
 		}
-		waitReason, waitErr := s.taskWaitReason(ctx, task)
+		waitReason, waitErr := "", error(nil)
+		if !resumed {
+			waitReason, waitErr = s.taskWaitReason(ctx, task)
+		}
 		if waitErr != nil {
 			s.taskMu.Unlock()
 			return waitErr
@@ -431,12 +437,14 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 			s.taskMu.Unlock()
 			return nil
 		}
-		if _, err = s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
-			s.taskMu.Unlock()
-			return err
+		if !resumed {
+			if _, err = s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
+				s.taskMu.Unlock()
+				return err
+			}
+			task.Status = "admitting"
 		}
 		s.taskMu.Unlock()
-		task.Status = "admitting"
 		options.Instructions = taskInstructions(options.Instructions, p.Content, task)
 	}
 	ref, err := s.execution(ctx, conv.ID, p.AgentID, options)
@@ -458,7 +466,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		if err != nil {
 			return err
 		}
-		if task.Status != "admitting" {
+		if task.Status != "admitting" && task.Status != "running" {
 			_, _ = s.abort(context.WithoutCancel(ctx), ref)
 			return nil
 		}
