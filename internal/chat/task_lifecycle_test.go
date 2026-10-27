@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,6 +79,28 @@ func TestUserTaskReplayKeepsIdentityAndQueuesBeyondRunningLimit(t *testing.T) {
 	}
 }
 
+func TestUserTwentyFirstTaskIsRejectedAfterTwentyQueuedSlots(t *testing.T) {
+	r := startNative(t, "echo")
+	parent, source := taskParent(t, r)
+	for i := range 20 {
+		source.Key = fmt.Sprintf("bot/queue-%d", i)
+		if _, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: fmt.Sprintf("Queue %d", i), Goal: "queued"}); err != nil {
+			t.Fatalf("spawn %d: %v", i, err)
+		}
+	}
+	source.Key = "bot/queue-20"
+	if _, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "Queue 20", Goal: "rejected"}); !errors.Is(err, ErrTaskConflict) {
+		t.Fatalf("21st spawn error: %v", err)
+	}
+	_ = parent
+}
+
+func TestUserReadOnlyTaskPromptDeclaresFileBoundary(t *testing.T) {
+	prompt := taskInstructions("base", "inspect", sqlc.Task{ModifiesFiles: 0})
+	if !strings.Contains(prompt, "do not create, edit, or delete files") || !strings.Contains(prompt, "Other read-only tasks may share this directory") {
+		t.Fatalf("read-only prompt: %s", prompt)
+	}
+}
 func TestUserTaskValidatesSourceAndRejectsBackgroundDelegation(t *testing.T) {
 	r := startNative(t, "echo")
 	_, source := taskParent(t, r)
