@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -69,6 +70,12 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 	}
 	if tasks[0].LastAction == nil || tasks[0].LastActivityAt == nil || tasks[0].ToolStartedAt == nil {
 		t.Fatalf("running task activity missing from ListChats without events: %+v", tasks[0])
+	}
+	// The main agent reads the same live activity through get_task.
+	answer := taskTool(t, d, channel, "get_task", map[string]string{"id": second.ID})
+	var live taskInfo
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(answer, "tool: ")), &live); err != nil || live.LastAction == nil || !strings.HasPrefix(*live.LastAction, "bash: ") || live.LastActivityAt == nil || live.ToolStartedAt == nil {
+		t.Fatalf("get_task lacks live activity: %s %v", answer, err)
 	}
 	if tasks[0].ParentConversationID != channel || tasks[1].ParentConversationID != main {
 		t.Fatalf("session list lost its Stop scope: %+v", tasks)

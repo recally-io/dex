@@ -34,7 +34,7 @@ func taskTime(n sql.NullInt64) *int64 {
 	return nil
 }
 
-func taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task) (Task, error) {
+func (s *Service) taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task) (Task, error) {
 	c, err := q.GetConversation(ctx, row.ConversationID)
 	if err != nil {
 		return Task{}, err
@@ -57,12 +57,18 @@ func taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task) (Task, error)
 			return Task{}, err
 		}
 	}
-	return Task{ID: row.ID, Title: row.Title, Status: row.Status,
+	view := Task{ID: row.ID, Title: row.Title, Status: row.Status,
 		Goal: goal.Content, Constraints: constraints, DoneCriteria: criteria, StructuredReport: report, HasStructuredReport: report != nil,
 		GoalMet:  row.Status == "done" && report != nil && report.Outcome == "done",
 		Provider: c.ModelProvider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel,
 		CreatedAt: row.CreatedAt, StartedAt: taskTime(row.StartedAt), EndedAt: taskTime(row.EndedAt),
-		Report: row.Report}, nil
+		Report: row.Report}
+	if row.Status == "running" && c.ExecutionID.Valid {
+		ref := engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}
+		a := s.engine.Activity([]engine.Ref{ref})[ref]
+		view.LastAction, view.LastActivityAt, view.ToolStartedAt = a.LastAction, a.LastActivityAt, a.ToolStartedAt
+	}
+	return view, nil
 }
 
 func (s *Service) ListTasks(ctx context.Context, agentID string, parentID int64) ([]Task, error) {
@@ -75,7 +81,7 @@ func (s *Service) ListTasks(ctx context.Context, agentID string, parentID int64)
 	}
 	tasks := make([]Task, 0, len(rows))
 	for _, row := range rows {
-		t, err := taskView(ctx, s.q, row)
+		t, err := s.taskView(ctx, s.q, row)
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +113,7 @@ func (s *Service) GetTask(ctx context.Context, agentID string, parentID int64, i
 	if err != nil {
 		return Task{}, err
 	}
-	return taskView(ctx, s.q, row)
+	return s.taskView(ctx, s.q, row)
 }
 
 // Acquire SQLite's writer before checking the source and capacity.
@@ -340,7 +346,7 @@ func (s *Service) withdrawTask(ctx context.Context, agentID string, parentID int
 		row.Status, row.EndedAt = "cancelled", now
 
 	}
-	t, err := taskView(ctx, q, row)
+	t, err := s.taskView(ctx, q, row)
 	if err != nil {
 		return Task{}, target, err
 	}
