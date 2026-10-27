@@ -616,10 +616,9 @@ export function Transcript({
         className="flex min-w-0 flex-col gap-2"
       >
         <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />
+        {/* The main agent answers the user here; indenting it made the reply read as background output. */}
         {block.blocks.length ? (
-          <div className="ml-2 flex min-w-0 flex-col gap-4 border-l border-ring pl-[15px]">
-            {block.blocks.map(content)}
-          </div>
+          <div className="flex min-w-0 flex-col gap-4">{block.blocks.map(content)}</div>
         ) : null}
       </section>
     ) : (
