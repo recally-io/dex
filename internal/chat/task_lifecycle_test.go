@@ -47,12 +47,12 @@ func taskInput(t *testing.T, r *nativeTest, id string) sqlc.ListPendingSubmissio
 func TestUserTaskReplayKeepsIdentityAndCapacity(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
-	first, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "One", Goal: "one"})
+	first, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "One", Goal: "one", Constraints: []string{"Do not change code"}, DoneCriteria: []string{"Explain the cause"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	replay, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "Replay", Goal: "different"})
-	if err != nil || replay.ID != first.ID {
+	if err != nil || replay.ID != first.ID || replay.Goal != first.Goal || len(replay.Constraints) != 1 || replay.Constraints[0] != "Do not change code" || len(replay.DoneCriteria) != 1 || replay.DoneCriteria[0] != "Explain the cause" {
 		t.Fatalf("replay: %+v %v", replay, err)
 	}
 	source.Key = "bot/spawn-2"

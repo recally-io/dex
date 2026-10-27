@@ -79,7 +79,9 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if input.Automation {
 			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck)}}})
 		}
-		if input.Background || input.Origin == "dream" || strings.Contains(input.Source, "/dream/") {
+		if input.Background {
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{taskExtension(ref.AgentID, a.config.Tasks), routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{taskReportExtension(ref.AgentID, a.config.Tasks.ReportTask)}}})
+		} else if input.Origin == "dream" || strings.Contains(input.Source, "/dream/") {
 			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{taskExtension(ref.AgentID, a.config.Tasks), routineExtension(ref.AgentID, a.config.Routines)}}})
 		}
 		if err := conversation.Configure(ctx, change); err != nil {

@@ -68,7 +68,7 @@ func TestUserTaskResultWaitsForBusyParent(t *testing.T) {
 
 	// Then releasing the parent processes the admitted result without another user input.
 	releaseResultGate(t, dir, "parent")
-	w.until(t, "background result answer", answeredWith(`"id":"`+task.ID+`"`))
+	w.until(t, "background result answer", answeredTaskResult(task.ID))
 	processed := waitResultSubmission(t, conn, resultID, "done")
 	if !strings.HasPrefix(processed.answer, "task-result: ") || !strings.Contains(processed.answer, task.ID) || processed.content != result.content {
 		t.Fatalf("result was not processed intact: before=%+v after=%+v", result, processed)
@@ -123,7 +123,7 @@ func TestUserTaskResultRecoversFailedParentWithQueuedInput(t *testing.T) {
 		t.Fatalf("queued input answer: %+v", continued)
 	}
 	processed := waitResultSubmission(t, conn, resultID, "done")
-	w.until(t, "result after failed run", answeredWith(`"id":"`+task.ID+`"`))
+	w.until(t, "result after failed run", answeredTaskResult(task.ID))
 	if !strings.Contains(processed.answer, task.ID) || !strings.Contains(processed.answer, "gate released") {
 		t.Fatalf("lost result after model failure: %+v", processed)
 	}
@@ -452,7 +452,7 @@ func TestUserSeesBackgroundResultTitleRealtimeAndAfterReconnect(t *testing.T) {
 	releaseResultGate(t, dir, "label")
 	task := waitExecution(t, conn, parent, "Check saved logs", "done")
 	id := "task:" + task.ID + ":result"
-	w.until(t, "background result answer", answeredWith(`"id":"`+task.ID+`"`))
+	w.until(t, "background result answer", answeredTaskResult(task.ID))
 	idx := slices.IndexFunc(w.tr.items, func(it item) bool { return it.Kind == "task" && it.ID == id })
 	if idx < 0 {
 		t.Fatalf("live result has no task anchor: %+v", w.tr.items)

@@ -281,6 +281,10 @@ func (d *dex) watchPath(t *testing.T, path string) *watcher {
 			case strings.HasPrefix(line, "data: "):
 				var ev chatEvent
 				if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev); err != nil || ev.Type != typ {
+					// Cancellation at cleanup can cut the last event mid-line.
+					if ctx.Err() != nil {
+						return
+					}
 					t.Errorf("bad event %q %q: %v", typ, line, err)
 					return
 				}
@@ -348,6 +352,14 @@ func TestUserGetsStreamedAnswerFromAgent(t *testing.T) {
 }
 
 // answeredWith holds when the run is over and the last item is an answer that contains text.
+// answeredTaskResult waits for the result turn of a task. The spawn answer also contains the task ID.
+func answeredTaskResult(id string) func(*transcript) bool {
+	return func(tr *transcript) bool {
+		n := len(tr.items)
+		return answeredWith(`"id":"`+id+`"`)(tr) && strings.HasPrefix(tr.items[n-1].Text, "task-result: ")
+	}
+}
+
 func answeredWith(text string) func(*transcript) bool {
 	return func(tr *transcript) bool {
 		n := len(tr.items)

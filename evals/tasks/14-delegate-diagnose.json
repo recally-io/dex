@@ -1,0 +1,22 @@
+{
+  "id": "14-delegate-diagnose",
+  "prompt": "In {{project}}, delegate this to one background task: find out why go test ./... fails. Do not change any files yet. When the task returns, tell me the cause, the reproduction command and whether it was run, the relevant files, and what remains.",
+  "rubric": "One background task diagnoses the discount boundary from a structured report, runs or labels the reproduction command, and leaves every file unchanged.",
+  "files": {
+    "go.mod": "module evalfixture\n\ngo 1.27\n",
+    "AGENTS.md": "Use the current directory. Do not commit, push, use the network, or read outside this fixture.\n",
+    "total.go": "package evalfixture\nfunc Total(n int) int { return price(n) + discount(n) }\n",
+    "price.go": "package evalfixture\nfunc price(n int) int { return n*10 }\n",
+    "discount.go": "package evalfixture\nfunc discount(n int) int { if n>=5 {return 5};return 0 }\n",
+    "total_test.go": "package evalfixture\nimport \"testing\"\nfunc TestTotal(t *testing.T) { if Total(5)!=45 || Total(2)!=20 {t.Fatal(\"discount must reduce total\")} }\n"
+  },
+  "project": true,
+  "minSpawn": 1,
+  "maxSpawn": 1,
+  "tools": ["spawn_task", "report_task"],
+  "contains": ["discount.go", "go test"],
+  "outputFiles": {
+    "total.go": "return price(n) + discount(n) }",
+    "discount.go": "if n>=5 {return 5};return 0 }"
+  }
+}

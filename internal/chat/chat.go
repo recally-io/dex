@@ -411,7 +411,11 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	}
 	background := strings.HasPrefix(p.ChannelKey, "task:")
 	if background {
-		options.Instructions = taskInstructions(options.Instructions)
+		task, err := s.q.GetTask(ctx, p.ID)
+		if err != nil {
+			return err
+		}
+		options.Instructions = taskInstructions(options.Instructions, p.Content, task)
 	}
 	ref, err := s.execution(ctx, conv.ID, p.AgentID, options)
 	if err != nil {

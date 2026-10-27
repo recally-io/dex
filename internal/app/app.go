@@ -104,6 +104,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		bots          *channelRegistry
 	)
 	tools := engine.TaskTools{
+		ReportTask: func(ctx context.Context, c engine.TaskContext, r engine.TaskReport) error {
+			return chats.ToolReportTask(ctx, c, r)
+		},
 		ReportCheck: func(ctx context.Context, c engine.TaskContext, r engine.CheckReport) error {
 			return chats.ToolReportCheck(ctx, c, r)
 		},
