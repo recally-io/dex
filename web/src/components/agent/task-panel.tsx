@@ -178,16 +178,23 @@ export function TaskSummaryButton({
             />
           }
         >
-          {counts.running ? <CircleDot className="size-3.5 text-primary" /> : null}
-          {counts.queued ? <Clock3 className="size-3.5 text-muted-foreground" /> : null}
-          {counts["needs-you"] ? <CircleAlert className="size-3.5 text-orange" /> : null}
-          {counts.done ? <Check className="size-3.5 text-green" /> : null}
+          {/* Each count sits next to its own icon. */}
+          {(
+            [
+              ["running", CircleDot, "text-primary"],
+              ["queued", Clock3, "text-muted-foreground"],
+              ["needs-you", CircleAlert, "text-orange"],
+              ["done", Check, "text-green"],
+            ] as const
+          ).map(([bucket, Icon, color]) =>
+            counts[bucket] ? (
+              <span key={bucket} className="flex items-center gap-1">
+                <Icon className={`size-3.5 ${color}`} />
+                {counts[bucket]}
+              </span>
+            ) : null,
+          )}
           {!visibleTasks.length ? <PanelRightClose className="size-3.5 text-muted-foreground" /> : null}
-          {Object.entries(counts)
-            .filter(([, count]) => count)
-            .map(([bucket, count]) => (
-              <span key={bucket}>{count}</span>
-            ))}
         </TooltipTrigger>
         <TooltipContent>Background tasks</TooltipContent>
       </Tooltip>
@@ -265,8 +272,8 @@ export function TaskPanel(props: {
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {ordered.filter((task) => taskBucket(task, now) === "needs-you").map(row)}
-        {active.filter((task) => taskBucket(task, now) === "running").length ? (
-          <div className="px-3 pt-3 pb-1 text-[10.5px] font-medium text-muted-foreground">RUNNING</div>
+        {ordered.some((task) => taskBucket(task, now) === "needs-you") && active.length ? (
+          <div className="mx-3 mt-2 border-t border-border" />
         ) : null}
         {grouped
           ? [...grouped].map(([title, group]) => (
