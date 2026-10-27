@@ -2,8 +2,11 @@ package app_test
 
 import (
 	"database/sql"
+	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,15 +16,19 @@ import (
 )
 
 type taskInfo struct {
-	ID                   string `json:"id"`
-	Title                string `json:"title"`
-	Status               string `json:"status"`
-	Report               string `json:"report"`
-	CreatedAt            int64  `json:"createdAt"`
-	StartedAt            *int64 `json:"startedAt"`
-	EndedAt              *int64 `json:"endedAt"`
-	ConversationID       int64  `json:"conversationId"`
-	ParentConversationID int64  `json:"parentConversationId"`
+	ID                   string  `json:"id"`
+	Title                string  `json:"title"`
+	Status               string  `json:"status"`
+	Report               string  `json:"report"`
+	CreatedAt            int64   `json:"createdAt"`
+	StartedAt            *int64  `json:"startedAt"`
+	EndedAt              *int64  `json:"endedAt"`
+	ConversationID       int64   `json:"conversationId"`
+	ParentConversationID int64   `json:"parentConversationId"`
+	LastAction           *string `json:"lastAction"`
+	LastActivityAt       *int64  `json:"lastActivityAt"`
+	ToolStartedAt        *int64  `json:"toolStartedAt"`
+	ReportOutcome        string  `json:"reportOutcome"`
 }
 
 func TestUserReadsTaskReportsAndWork(t *testing.T) {
@@ -60,6 +67,15 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 	}
 	if len(tasks) != 2 || tasks[0].ID != second.ID || tasks[1].ID != first.ID {
 		t.Fatalf("tasks=%+v", tasks)
+	}
+	if tasks[0].LastAction == nil || tasks[0].LastActivityAt == nil || tasks[0].ToolStartedAt == nil {
+		t.Fatalf("running task activity missing from ListChats without events: %+v", tasks[0])
+	}
+	// The main agent reads the same live activity through get_task.
+	answer := taskTool(t, d, channel, "get_task", map[string]string{"id": second.ID})
+	var live taskInfo
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(answer, "tool: ")), &live); err != nil || live.LastAction == nil || !strings.HasPrefix(*live.LastAction, "bash: ") || live.LastActivityAt == nil || live.ToolStartedAt == nil {
+		t.Fatalf("get_task lacks live activity: %s %v", answer, err)
 	}
 	if tasks[0].ParentConversationID != channel || tasks[1].ParentConversationID != main {
 		t.Fatalf("session list lost its Stop scope: %+v", tasks)
@@ -144,4 +160,23 @@ func TestUserTasksStayWithinBot(t *testing.T) {
 	}
 	d.must(t, http.MethodGet, "/api/agents/default/tasks/"+fmt.Sprint(work.ID), nil, nil, http.StatusNotFound)
 	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", work.ID), nil, nil, http.StatusNotFound)
+}
+
+func TestUserTaskSummariesDoNotOpenColdBots(t *testing.T) {
+	t.Parallel()
+	// Given a bot that has never run.
+	d := startDex(t, t.TempDir(), "")
+	var b apiAgent
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Cold", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &b, http.StatusCreated)
+	state := filepath.Join(d.dataDir(t), "agents", b.ID, "state.sqlite")
+	if _, err := os.Stat(state); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("new bot already has native state: %v", err)
+	}
+	// When the task panel polls its chats, the bot's native state stays closed.
+	for range 3 {
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/%s/chats", b.ID), nil, nil)
+	}
+	if _, err := os.Stat(state); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("listing chats opened native state: %v", err)
+	}
 }

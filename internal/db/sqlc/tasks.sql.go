@@ -263,8 +263,8 @@ func (q *Queries) ListActiveTasks(ctx context.Context, parentConversationID int6
 }
 
 const listAgentTasks = `-- name: ListAgentTasks :many
-SELECT t.id, t.parent_conversation_id, t.conversation_id, t.title, t.status,
-    t.created_at, t.started_at, t.ended_at
+SELECT t.id, t.parent_conversation_id, t.conversation_id, c.execution_id, t.title, t.status,
+    t.created_at, t.started_at, t.ended_at, t.structured_report
 FROM tasks t JOIN conversations c ON c.id = t.conversation_id
 WHERE c.agent_id = ? ORDER BY t.created_at DESC, t.id DESC
 `
@@ -273,11 +273,13 @@ type ListAgentTasksRow struct {
 	ID                   string        `json:"id"`
 	ParentConversationID int64         `json:"parent_conversation_id"`
 	ConversationID       int64         `json:"conversation_id"`
+	ExecutionID          sql.NullInt64 `json:"execution_id"`
 	Title                string        `json:"title"`
 	Status               string        `json:"status"`
 	CreatedAt            int64         `json:"created_at"`
 	StartedAt            sql.NullInt64 `json:"started_at"`
 	EndedAt              sql.NullInt64 `json:"ended_at"`
+	StructuredReport     string        `json:"structured_report"`
 }
 
 func (q *Queries) ListAgentTasks(ctx context.Context, agentID string) ([]ListAgentTasksRow, error) {
@@ -293,11 +295,13 @@ func (q *Queries) ListAgentTasks(ctx context.Context, agentID string) ([]ListAge
 			&i.ID,
 			&i.ParentConversationID,
 			&i.ConversationID,
+			&i.ExecutionID,
 			&i.Title,
 			&i.Status,
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.EndedAt,
+			&i.StructuredReport,
 		); err != nil {
 			return nil, err
 		}
