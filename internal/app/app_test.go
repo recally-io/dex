@@ -352,6 +352,14 @@ func TestUserGetsStreamedAnswerFromAgent(t *testing.T) {
 }
 
 // answeredWith holds when the run is over and the last item is an answer that contains text.
+// answeredTaskResult waits for the result turn of a task. The spawn answer also contains the task ID.
+func answeredTaskResult(id string) func(*transcript) bool {
+	return func(tr *transcript) bool {
+		n := len(tr.items)
+		return answeredWith(`"id":"`+id+`"`)(tr) && strings.HasPrefix(tr.items[n-1].Text, "task-result: ")
+	}
+}
+
 func answeredWith(text string) func(*transcript) bool {
 	return func(tr *transcript) bool {
 		n := len(tr.items)

@@ -37,7 +37,7 @@ func TestUserAnswersWhileDelegationRunsAndReceivesItsReport(t *testing.T) {
 	// Then the result returns to the original conversation and its report remains queryable.
 	d.setModel(t, "spawn")
 	releaseResultGate(t, dir, "artifact")
-	d.watch(t, parent).until(t, "source result", answeredWith(`"id":"`+task.ID+`"`))
+	d.watch(t, parent).until(t, "source result", answeredTaskResult(task.ID))
 	task = waitExecution(t, conn, parent, "Artifact", "done")
 	if !strings.Contains(taskTool(t, d, parent, "get_task", map[string]string{"id": task.ID}), "gate released") {
 		t.Fatal("get_task lost report")
