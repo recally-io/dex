@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   Check,
@@ -12,6 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { Chat, Item, TaskSummary } from "../../api/generated/types.gen";
+import { cancelTaskMutation, listChatsQueryKey } from "../../api/generated/@tanstack/react-query.gen";
 import { useChatStream } from "../../lib/chat-stream";
 import { useAgentId } from "../../lib/agent-scope";
 import {
@@ -37,7 +39,8 @@ function statusIcon(task: TaskSummary, className: string) {
 
   if (bucket === "queued") return <Clock3 className={className} />;
 
-  if (task.status === "failed" || task.status === "interrupted") return <XCircle className={className} />;
+  if (task.status === "failed" || task.status === "interrupted" || task.status === "cancelled")
+    return <XCircle className={className} />;
 
   return <Check className={className} />;
 }
@@ -65,6 +68,14 @@ function taskStep(item: Item) {
 
 function ExpandedTask({ task, onSeen }: { task: TaskSummary; onSeen: (id: string) => void }) {
   const agentId = useAgentId();
+  const queryClient = useQueryClient();
+
+  const stop = useMutation({
+    ...cancelTaskMutation(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: listChatsQueryKey({ path: { agentId } }) }),
+  });
+
+  const stoppable = ["queued", "admitting", "running"].includes(task.status);
   const { state, connection, streamError, reconnect } = useChatStream(task.conversationId);
 
   const steps = state.items
@@ -91,13 +102,27 @@ function ExpandedTask({ task, onSeen }: { task: TaskSummary; onSeen: (id: string
           </Button>
         </div>
       ) : null}
-      <Link
-        to="/a/$agentId/tasks/$taskId"
-        params={{ agentId, taskId: task.id }}
-        className="font-medium text-primary hover:underline"
-      >
-        Open full record →
-      </Link>
+      <div className="flex items-center gap-3">
+        {stoppable ? (
+          <Button
+            size="xs"
+            variant="outline"
+            className="text-destructive"
+            disabled={stop.isPending}
+            onClick={() => stop.mutate({ path: { agentId, taskId: task.id } })}
+          >
+            Stop
+          </Button>
+        ) : null}
+        <Link
+          to="/a/$agentId/tasks/$taskId"
+          params={{ agentId, taskId: task.id }}
+          className="font-medium text-primary hover:underline"
+        >
+          Open full record →
+        </Link>
+      </div>
+      {stop.error ? <div className="text-destructive">Could not stop the task.</div> : null}
     </div>
   );
 }
@@ -127,7 +152,18 @@ function TaskRow({
 
   return (
     <div className={cn("px-3 py-2 hover:bg-muted", expanded && "bg-muted")}>
-      <button type="button" className="flex w-full min-w-0 items-center gap-2 text-left" onClick={onToggle}>
+      <button
+        type="button"
+        className="flex w-full min-w-0 items-center gap-2 text-left"
+        onClick={onToggle}
+        title={
+          task.status === "queued"
+            ? `Waiting: ${task.waitReason ?? "starting soon"}`
+            : task.status === "admitting"
+              ? "Starting"
+              : undefined
+        }
+      >
         {statusIcon(task, iconClass)}
         <span className="min-w-0 flex-1 truncate text-[12.5px]">{task.title}</span>
         <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{elapsed(task, now)}</span>
@@ -202,15 +238,9 @@ export function TaskSummaryButton({
   );
 }
 
-export function TaskPanel(props: {
-  chats: Chat[];
-  open: boolean;
-  onClose: () => void;
-  onStop?: (task: TaskSummary) => void;
-}) {
-  const { chats, open, onClose, onStop } = props;
+export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => void }) {
+  const { chats, open, onClose } = props;
   const agentId = useAgentId();
-  void onStop; // PR 2 adds the cancel request; the row keeps this seam without a control yet.
   const [expanded, setExpanded] = useState<string | undefined>();
   const [doneOpen, setDoneOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());

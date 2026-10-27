@@ -21,7 +21,7 @@ export function sessionKind(chat: Pick<Chat, "channel" | "main">) {
 
 export function activeSessionCount(sessions: Pick<Chat, "busy" | "task">[]) {
   return sessions.filter((chat) =>
-    chat.task ? chat.task.status === "running" || chat.task.status === "queued" : chat.busy,
+    chat.task ? ["running", "admitting", "queued"].includes(chat.task.status) : chat.busy,
   ).length;
 }
 
@@ -74,7 +74,7 @@ export function taskBucket(task: TaskSummary, now = Date.now()): TaskBucket {
   )
     return "needs-you";
 
-  if (task.status === "running") return "running";
+  if (task.status === "running" || task.status === "admitting") return "running";
 
   if (task.status === "queued") return "queued";
 
