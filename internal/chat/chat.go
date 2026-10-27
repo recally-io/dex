@@ -410,11 +410,36 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		options.Instructions = dream.Instructions(p.AgentID, options.Instructions)
 	}
 	background := strings.HasPrefix(p.ChannelKey, "task:")
+	var task sqlc.Task
+	var admitted bool
 	if background {
-		task, err := s.q.GetTask(ctx, p.ID)
+		task, err = s.q.GetTask(ctx, p.ID)
 		if err != nil {
 			return err
 		}
+		// Admission, the state re-read, native submit, and cancellation serialize here.
+		s.taskMu.Lock()
+		defer s.taskMu.Unlock()
+		if task.Status != "queued" {
+			return nil
+		}
+		if reason := s.taskWaitReason(ctx, task); reason != "" {
+			return nil
+		}
+		if _, err = s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
+			return err
+		}
+		defer func() {
+			if !admitted {
+				_, _ = s.q.ResetTaskAdmission(ctx, p.ID)
+			}
+		}()
+		task, err = s.q.GetTask(ctx, p.ID)
+		if err != nil {
+			return err
+		}
+	}
+	if background {
 		options.Instructions = taskInstructions(options.Instructions, p.Content, task)
 	}
 	ref, err := s.execution(ctx, conv.ID, p.AgentID, options)
@@ -429,16 +454,11 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		return nil
 	}
 	if background {
-		s.taskMu.Lock()
 		task, e := s.q.GetTask(ctx, p.ID)
-		if e == nil && task.Status == "queued" {
-			_, e = s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
-		}
-		s.taskMu.Unlock()
 		if e != nil {
 			return e
 		}
-		if task.Status != "queued" && task.Status != "running" {
+		if task.Status != "running" {
 			return nil
 		}
 	}
@@ -465,7 +485,13 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	}
 	sub, err := s.engine.Submit(ctx, ref, input)
 	if err != nil {
+		if background {
+			return err
+		}
 		return s.admissionError(ctx, p.ID, err)
+	}
+	if background {
+		admitted = true
 	}
 	if err = s.markAdmitted(ctx, p.ID); err != nil {
 		return err

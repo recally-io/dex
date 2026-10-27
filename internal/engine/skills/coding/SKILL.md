@@ -23,8 +23,7 @@ Give each such execution the repository path, owned files, required context,
 and completion criteria.
 Background conversations have no task tools. Return a report to the main chat.
 Before a progress answer or follow-up execution, the main chat must query
-`list_tasks` or `get_task`. At most 2 queued or running executions are admitted
-per agent. Cancellation frees admission; a tool may still finish side effects.
+`list_tasks` or `get_task`. At most 20 queued or running executions are admitted per agent. Four tasks run per bot and eight tasks run across all bots; queued tasks wait in FIFO order. Cancellation withdraws queued work or requests cancellation of running work.
 If an execution fails or stops, inspect its report and artifacts before deciding
 whether to retry or continue from saved work. The system does not retry failed
 executions or result delivery. Avoid repeated attempts without new evidence.

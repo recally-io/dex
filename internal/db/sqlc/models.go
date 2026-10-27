@@ -154,6 +154,7 @@ type Task struct {
 	ConstraintsJson      string        `json:"constraints_json"`
 	DoneCriteriaJson     string        `json:"done_criteria_json"`
 	StructuredReport     string        `json:"structured_report"`
+	ModifiesFiles        int64         `json:"modifies_files"`
 }
 
 type TelegramSetting struct {

@@ -44,7 +44,7 @@ func taskInput(t *testing.T, r *nativeTest, id string) sqlc.ListPendingSubmissio
 	return sqlc.ListPendingSubmissionsRow{}
 }
 
-func TestUserTaskReplayKeepsIdentityAndCapacity(t *testing.T) {
+func TestUserTaskReplayKeepsIdentityAndQueuesBeyondRunningLimit(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
 	first, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "One", Goal: "one", Constraints: []string{"Do not change code"}, DoneCriteria: []string{"Explain the cause"}})
@@ -61,8 +61,9 @@ func TestUserTaskReplayKeepsIdentityAndCapacity(t *testing.T) {
 		t.Fatal(err)
 	}
 	source.Key = "bot/spawn-3"
-	if _, err = r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "Three", Goal: "three"}); !errors.Is(err, ErrTaskConflict) {
-		t.Fatalf("capacity: %v", err)
+	third, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "Three", Goal: "three"})
+	if err != nil || third.Status != "queued" {
+		t.Fatalf("queued third task: %+v %v", third, err)
 	}
 	cancelled, err := r.service.CancelTask(t.Context(), "bot", parent, first.ID)
 	if err != nil || cancelled.Status != "cancelled" {

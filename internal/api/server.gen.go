@@ -1034,6 +1034,9 @@ type Task struct {
 
 	// ToolStartedAt The earliest start of a currently running tool, when the task is running a tool.
 	ToolStartedAt *int64 `json:"toolStartedAt,omitempty"`
+
+	// WaitReason Why a queued task is waiting. Values are bot limit, global limit, waiting for an earlier task, or cwd held by task <id>.
+	WaitReason *string `json:"waitReason,omitempty"`
 }
 
 // TaskReportOutcome The structured report outcome, when the task has a report.
@@ -1081,6 +1084,9 @@ type TaskSummary struct {
 
 	// ToolStartedAt The earliest start of a currently running tool, when the task is running a tool.
 	ToolStartedAt *int64 `json:"toolStartedAt,omitempty"`
+
+	// WaitReason Why a queued task is waiting. Values are bot limit, global limit, waiting for an earlier task, or cwd held by task <id>.
+	WaitReason *string `json:"waitReason,omitempty"`
 }
 
 // TaskSummaryReportOutcome The structured report outcome, when the task has a report.
@@ -1878,6 +1884,9 @@ type ServerInterface interface {
 
 	// (GET /api/agents/{agentId}/tasks/{taskId})
 	GetTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
+
+	// (POST /api/agents/{agentId}/tasks/{taskId})
+	CancelTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
 
 	// (POST /api/agents/{agentId}/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request, agentId string)
@@ -3213,6 +3222,41 @@ func (siw *ServerInterfaceWrapper) GetTask(w http.ResponseWriter, r *http.Reques
 	handler.ServeHTTP(w, r)
 }
 
+// CancelTask operation middleware
+func (siw *ServerInterfaceWrapper) CancelTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelTask(w, r, agentId, taskId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateUpload operation middleware
 func (siw *ServerInterfaceWrapper) CreateUpload(w http.ResponseWriter, r *http.Request) {
 
@@ -3691,6 +3735,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}", wrapper.GetAgent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}", wrapper.UpdateAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}", wrapper.GetTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}", wrapper.CancelTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/main", wrapper.GetMainChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.ListChats)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.CreateChat)
@@ -6138,6 +6183,60 @@ func (response GetTaskdefaultJSONResponse) VisitGetTaskResponse(w http.ResponseW
 	return err
 }
 
+type CancelTaskRequestObject struct {
+	AgentId string `json:"agentId"`
+	TaskId  string `json:"taskId"`
+}
+
+type CancelTaskResponseObject interface {
+	VisitCancelTaskResponse(w http.ResponseWriter) error
+}
+
+type CancelTask200JSONResponse Task
+
+func (response CancelTask200JSONResponse) VisitCancelTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelTask404JSONResponse struct{ ErrorJSONResponse }
+
+func (response CancelTask404JSONResponse) VisitCancelTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelTaskdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CancelTaskdefaultJSONResponse) VisitCancelTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateUploadRequestObject struct {
 	AgentId string `json:"agentId"`
 	Body    *multipart.Reader
@@ -7023,6 +7122,9 @@ type StrictServerInterface interface {
 
 	// (GET /api/agents/{agentId}/tasks/{taskId})
 	GetTask(ctx context.Context, request GetTaskRequestObject) (GetTaskResponseObject, error)
+
+	// (POST /api/agents/{agentId}/tasks/{taskId})
+	CancelTask(ctx context.Context, request CancelTaskRequestObject) (CancelTaskResponseObject, error)
 
 	// (POST /api/agents/{agentId}/uploads)
 	CreateUpload(ctx context.Context, request CreateUploadRequestObject) (CreateUploadResponseObject, error)
@@ -8310,6 +8412,33 @@ func (sh *strictHandler) GetTask(w http.ResponseWriter, r *http.Request, agentId
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetTaskResponseObject); ok {
 		if err := validResponse.VisitGetTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelTask operation middleware
+func (sh *strictHandler) CancelTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
+	var request CancelTaskRequestObject
+
+	request.AgentId = agentId
+	request.TaskId = taskId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelTask(ctx, request.(CancelTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelTaskResponseObject); ok {
+		if err := validResponse.VisitCancelTaskResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

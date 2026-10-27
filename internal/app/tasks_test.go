@@ -59,10 +59,10 @@ func TestUserDelegationSlotsAndToolsRespectConversationOwnership(t *testing.T) {
 	d := startTelegram(t, f, dir, 42)
 	conn := taskResultDB(t, dir)
 	d.setModel(t, "spawn")
-	firstChat := d.newChat(t, taskJSON(t, map[string]string{"title": "First", "goal": taskGate(t, dir, "first"), "provider": "faux", "modelId": "bash"}))
+	firstChat := d.newChat(t, taskJSON(t, map[string]any{"title": "First", "goal": taskGate(t, dir, "first"), "provider": "faux", "modelId": "bash", "modifiesFiles": false}))
 	first := waitExecution(t, conn, firstChat, "First", "running")
 	waitTaskFile(t, filepath.Join(dir, "first.pid"))
-	f.message(1, 42, 7, taskJSON(t, map[string]string{"title": "Second", "goal": taskGate(t, dir, "second"), "provider": "faux", "modelId": "bash"}))
+	f.message(1, 42, 7, taskJSON(t, map[string]any{"title": "Second", "goal": taskGate(t, dir, "second"), "provider": "faux", "modelId": "bash", "modifiesFiles": false}))
 	var secondChat int64
 	eventually(t, "channel conversation", func() (bool, any) {
 		err := conn.QueryRowContext(t.Context(), "SELECT id FROM conversations WHERE channel_key='main'").Scan(&secondChat)
@@ -79,8 +79,8 @@ func TestUserDelegationSlotsAndToolsRespectConversationOwnership(t *testing.T) {
 		f.message(update, 42, 7, name+" "+taskJSON(t, args))
 		return f.next(t).Text
 	}
-	// When another dispatch is attempted, the agent-wide limit rejects it.
-	if got := spawnExecution(t, d, firstChat, "Third", "must not run", "echo"); !strings.Contains(got, "error") {
+	// When another dispatch is attempted, it is accepted into the queue.
+	if got := spawnExecution(t, d, firstChat, "Third", "waits", "echo"); !strings.Contains(got, `"id"`) {
 		t.Fatal(got)
 	}
 	// Then another conversation cannot inspect or cancel the first execution.
@@ -141,7 +141,7 @@ func TestUserRestartDoesNotRerunStartedDelegationOrKeepItsSlot(t *testing.T) {
 func spawnExecution(t *testing.T, d *dex, parent int64, title, goal, model string) string {
 	t.Helper()
 	d.setModel(t, "spawn")
-	return taskTurn(t, d, parent, taskJSON(t, map[string]string{"title": title, "goal": goal, "provider": "faux", "modelId": model}))
+	return taskTurn(t, d, parent, taskJSON(t, map[string]any{"title": title, "goal": goal, "provider": "faux", "modelId": model, "modifiesFiles": false}))
 }
 
 func waitExecution(t *testing.T, conn *sql.DB, parent int64, title, status string) chat.Task {

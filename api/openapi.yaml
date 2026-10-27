@@ -484,6 +484,22 @@ paths:
               schema: { $ref: "#/components/schemas/Task" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: cancelTask
+      description: Requests cancellation of a task owned by this agent. Queued tasks are withdrawn without execution.
+      parameters:
+        - in: path
+          name: taskId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The cancellation request was accepted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/agents/{agentId}/chats/main:
     parameters:
@@ -1244,6 +1260,9 @@ components:
           type: string
           enum: [done, blocked, failed]
           description: The structured report outcome, when the task has a report.
+        waitReason:
+          type: string
+          description: Why a queued task is waiting. Values are bot limit, global limit, waiting for an earlier task, or cwd held by task <id>.
 
     Task:
       allOf:

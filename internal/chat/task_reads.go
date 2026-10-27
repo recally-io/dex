@@ -21,6 +21,16 @@ func (s *Service) TaskRecord(ctx context.Context, agentID, id string) (sqlc.Task
 	return t, err
 }
 
+func (s *Service) TaskWaitReason(ctx context.Context, agentID, id string) (string, error) {
+	t, err := s.q.GetAgentTask(ctx, sqlc.GetAgentTaskParams{ID: id, AgentID: agentID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrTaskNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	return s.taskWaitReason(ctx, t), nil
+}
 func (s *Service) TaskExecution(ctx context.Context, agentID, id string) (int64, error) {
 	t, err := s.q.GetAgentTask(ctx, sqlc.GetAgentTaskParams{ID: id, AgentID: agentID})
 	if err != nil {

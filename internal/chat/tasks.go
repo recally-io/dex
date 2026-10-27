@@ -59,7 +59,7 @@ func (s *Service) taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task) 
 	}
 	view := Task{ID: row.ID, Title: row.Title, Status: row.Status,
 		Goal: goal.Content, Constraints: constraints, DoneCriteria: criteria, StructuredReport: report, HasStructuredReport: report != nil,
-		GoalMet:  row.Status == "done" && report != nil && report.Outcome == "done",
+		GoalMet: row.Status == "done" && report != nil && report.Outcome == "done", WaitReason: s.taskWaitReason(ctx, row),
 		Provider: c.ModelProvider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel,
 		CreatedAt: row.CreatedAt, StartedAt: taskTime(row.StartedAt), EndedAt: taskTime(row.EndedAt),
 		Report: row.Report}
@@ -259,13 +259,15 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r eng
 	if err != nil {
 		return "", err
 	}
-	// Cancellation frees admission; a tool that ignores abort can outlive this limit.
+	// A bot may retain at most 20 queued or running tasks. Increase this only after
+	// measuring control-store and scheduler latency under larger queues.
+	const maxTaskSlots = 20
 	count, err := q.CountTaskSlots(ctx, r.AgentID)
 	if err != nil {
 		return "", err
 	}
-	if count >= 2 {
-		return "", fmt.Errorf("%w: this bot already has two active executions", ErrTaskConflict)
+	if count >= maxTaskSlots {
+		return "", fmt.Errorf("%w: this bot already has %d queued or running tasks", ErrTaskConflict, maxTaskSlots)
 	}
 	now, id := s.now().UnixMilli(), uuid.NewV7().String()
 	conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: r.AgentID, ChannelKey: "task:" + id, Title: a.Title, ModelProvider: settings.Provider, ModelID: settings.ModelID, ThinkingLevel: settings.ThinkingLevel, CreatedAt: now})
@@ -278,7 +280,11 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r eng
 	if _, err = q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: id, ConversationID: conv.ID, Content: a.Goal, Attachments: "null", Origin: "task", Kind: "message", CreatedAt: now}); err != nil {
 		return "", err
 	}
-	if err = q.CreateTask(ctx, sqlc.CreateTaskParams{ID: id, ParentConversationID: parent.ID, ConversationID: conv.ID, SpawnKey: r.Key, SourceRequestID: source.ID, Title: a.Title, ConstraintsJson: string(constraints), DoneCriteriaJson: string(criteria), CreatedAt: now}); err != nil {
+	modifiesFiles := int64(1)
+	if a.ModifiesFiles != nil && !*a.ModifiesFiles {
+		modifiesFiles = 0
+	}
+	if err = q.CreateTask(ctx, sqlc.CreateTaskParams{ID: id, ParentConversationID: parent.ID, ConversationID: conv.ID, SpawnKey: r.Key, SourceRequestID: source.ID, Title: a.Title, ConstraintsJson: string(constraints), DoneCriteriaJson: string(criteria), ModifiesFiles: modifiesFiles, CreatedAt: now}); err != nil {
 		return "", err
 	}
 	if err = tx.Commit(); err != nil {
@@ -292,6 +298,64 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r eng
 
 func occupied(status string) bool {
 	return status == "queued" || status == "running"
+}
+
+const (
+	waitReasonBotLimit    = "bot limit"
+	waitReasonGlobalLimit = "global limit"
+	waitReasonEarlier     = "waiting for an earlier task"
+)
+
+func admissionCwd(agentID, cwd string) string {
+	if cwd == "" {
+		return "agent:" + agentID
+	}
+	return "cwd:" + cwd
+}
+
+// taskWaitReason computes a queued task's current admission explanation from durable state.
+func (s *Service) taskWaitReason(ctx context.Context, task sqlc.Task) string {
+	if task.Status != "queued" {
+		return ""
+	}
+	admissions, err := s.q.ListTaskAdmissions(ctx)
+	if err != nil {
+		return ""
+	}
+	conv, err := s.q.GetConversation(ctx, task.ConversationID)
+	if err != nil {
+		return ""
+	}
+	for _, candidate := range admissions {
+		if candidate.ID == task.ID {
+			break
+		}
+		if candidate.AgentID == conv.AgentID && candidate.Status == "queued" {
+			return waitReasonEarlier
+		}
+	}
+	botRunning, globalRunning := int64(0), int64(0)
+	for _, candidate := range admissions {
+		if candidate.Status != "running" {
+			continue
+		}
+		globalRunning++
+		if candidate.AgentID == conv.AgentID {
+			botRunning++
+		}
+		if admissionCwd(candidate.AgentID, candidate.Cwd) == admissionCwd(conv.AgentID, conv.Cwd) && (task.ModifiesFiles != 0 || candidate.ModifiesFiles != 0) {
+			return fmt.Sprintf("cwd held by task %s", candidate.ID)
+		}
+	}
+	// A bot may run at most four tasks. Raise this after measuring provider fairness.
+	if botRunning >= 4 {
+		return waitReasonBotLimit
+	}
+	// The process may run at most eight tasks across all bots. Raise this after measuring host load.
+	if globalRunning >= 8 {
+		return waitReasonGlobalLimit
+	}
+	return ""
 }
 
 func (s *Service) CancelTask(ctx context.Context, agentID string, parentID int64, id string) (Task, error) {

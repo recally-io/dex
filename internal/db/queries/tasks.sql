@@ -2,8 +2,8 @@
 SELECT * FROM conversations WHERE agent_id = ? AND execution_id = ?;
 
 -- name: CreateTask :exec
-INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, constraints_json, done_criteria_json, status, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?);
+INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, constraints_json, done_criteria_json, modifies_files, status, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?);
 
 -- name: GetTask :one
 SELECT * FROM tasks WHERE id = ?;
@@ -28,6 +28,12 @@ WHERE t.parent_conversation_id = @parent_id AND
 AND recent.ended_at IS NOT NULL ORDER BY recent.ended_at DESC, recent.id DESC LIMIT 10))
 ORDER BY t.created_at DESC, t.id DESC;
 
+-- name: ListTaskAdmissions :many
+SELECT t.id, t.status, t.created_at, t.modifies_files, c.agent_id, c.cwd
+FROM tasks t JOIN conversations c ON c.id = t.conversation_id
+WHERE t.status IN ('queued', 'running')
+ORDER BY t.created_at, t.id;
+
 -- name: CountTaskSlots :one
 SELECT count(*) FROM tasks t JOIN conversations c ON c.id = t.conversation_id
 WHERE c.agent_id = ? AND t.status IN ('queued', 'running');
@@ -35,6 +41,10 @@ WHERE c.agent_id = ? AND t.status IN ('queued', 'running');
 -- name: StartTask :execrows
 UPDATE tasks SET status = 'running', started_at = @now
 WHERE id = @id AND status = 'queued';
+
+-- name: ResetTaskAdmission :execrows
+UPDATE tasks SET status = 'queued', started_at = NULL
+WHERE id = ? AND status = 'running' AND ended_at IS NULL;
 
 -- name: SettleTask :execrows
 UPDATE tasks SET status = ?, report = ?, ended_at = ?
