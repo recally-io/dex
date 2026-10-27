@@ -4,13 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
-import { getChatOptions, listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
+import {
+  getChatOptions,
+  listAgentsOptions,
+  listChatsOptions,
+} from "../api/generated/@tanstack/react-query.gen";
 import { instructionsDirty } from "../lib/instructions";
 import { sessionKind } from "../lib/tasks";
 import { useApp } from "../lib/app-state";
 import { MainTimeline } from "../routes/chat";
 import { MessageCirclePlus, PanelRight } from "lucide-react";
 import { ChatList, useNewChat } from "./chat-list";
+import { TaskPanel, TaskSummaryButton } from "./agent/task-panel";
 import { IconButton } from "./icon-button";
 import { AgentAvatar } from "./agent-avatar";
 import { Failure, Loading } from "./feedback";
@@ -50,7 +55,12 @@ function useChatsOpen() {
     setOpen(!open);
   }
 
-  return [open, toggle] as const;
+  function close() {
+    localStorage.setItem(chatsKey, "closed");
+    setOpen(false);
+  }
+
+  return [open, toggle, close] as const;
 }
 
 /** Activity reads the bot list cache. Shell owns its polling interval. */
@@ -134,6 +144,8 @@ function AgentPane({ settings }: { settings: Settings }) {
     enabled: openChat > 0,
   });
 
+  const chats = useQuery({ ...listChatsOptions({ path: { agentId } }) });
+
   const webChat = chat.data ? sessionKind(chat.data) === "Chat" : false;
 
   const current =
@@ -144,7 +156,25 @@ function AgentPane({ settings }: { settings: Settings }) {
         : tabs.find((tab) => tab.segments.includes(segment));
 
   const onChatTab = current === tabs[0];
-  const [chatsOpen, toggleChats] = useChatsOpen();
+  const [chatsOpen, toggleChats, closeChats] = useChatsOpen();
+
+  const [tasksOpen, setTasksOpen] = useState(
+    () => localStorage.getItem(`dex-task-panel:${agentId}`) === "open",
+  );
+
+  const toggleTasks = () => {
+    const next = !tasksOpen;
+    localStorage.setItem(`dex-task-panel:${agentId}`, next ? "open" : "closed");
+    setTasksOpen(next);
+
+    if (next) closeChats();
+  };
+
+  const closeTasks = () => {
+    localStorage.setItem(`dex-task-panel:${agentId}`, "closed");
+    setTasksOpen(false);
+  };
+
   const newChat = useNewChat();
   const { draft } = useApp();
   const dirty = instructionsDirty(draft, settings.agent.instructions);
@@ -239,6 +269,11 @@ function AgentPane({ settings }: { settings: Settings }) {
           actions={
             onChatTab ? (
               <>
+                <TaskSummaryButton
+                  tasks={(chats.data?.chats ?? []).flatMap((item) => (item.task ? [item.task] : []))}
+                  open={tasksOpen}
+                  onClick={toggleTasks}
+                />
                 <IconButton
                   label="New chat"
                   disabled={newChat.isPending}
@@ -249,7 +284,11 @@ function AgentPane({ settings }: { settings: Settings }) {
                 <IconButton
                   label="Chats"
                   aria-pressed={chatsOpen}
-                  onClick={toggleChats}
+                  onClick={() => {
+                    toggleChats();
+
+                    if (!chatsOpen) closeTasks();
+                  }}
                   className="hidden md:flex"
                 >
                   <PanelRight size={17} />
@@ -266,6 +305,9 @@ function AgentPane({ settings }: { settings: Settings }) {
             {!onMain ? <Outlet /> : null}
           </div>
           {onChatTab && chatsOpen ? <ChatList chatId={openChat} /> : null}
+          {onChatTab ? (
+            <TaskPanel chats={chats.data?.chats ?? []} open={tasksOpen} onClose={closeTasks} />
+          ) : null}
         </div>
       </section>
     </InPaneContext.Provider>

@@ -1,5 +1,5 @@
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ChevronRight, MessageCircle, ListTodo, Clock3, Plus } from "lucide-react";
@@ -9,7 +9,7 @@ import {
   listChatsOptions,
   createChatMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { activeSessionCount, sessionKind, taskTime, taskTimes } from "../lib/tasks";
+import { activeSessionCount, markTaskSeen, sessionKind, taskTime, taskTimes } from "../lib/tasks";
 import { refreshChats } from "../lib/queries";
 import { useChatStream } from "../lib/chat-stream";
 import { mergeHistory } from "../lib/chat-state";
@@ -195,6 +195,10 @@ export function TaskPage({ taskId }: { taskId: string }) {
     refetchInterval: ({ state }) =>
       state.data?.status === "queued" || state.data?.status === "running" ? 3000 : false,
   });
+
+  useEffect(() => {
+    if (task.data) markTaskSeen(agentId, task.data.id);
+  }, [agentId, task.data]);
 
   return (
     <FramedPage

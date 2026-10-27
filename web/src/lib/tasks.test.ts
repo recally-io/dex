@@ -1,14 +1,29 @@
 import { expect, test } from "vite-plus/test";
 import type { Chat, TaskSummary } from "../api/generated/types.gen";
-import { activeSessionCount, sessionKind, taskDuration, taskTimes } from "./tasks";
+import {
+  activeSessionCount,
+  isStalled,
+  orderTasks,
+  pruneSeen,
+  sessionKind,
+  taskBucket,
+  taskDuration,
+  taskTimes,
+} from "./tasks";
 
-const task = (id: string, status: TaskSummary["status"], createdAt: number): TaskSummary => ({
+const task = (
+  id: string,
+  status: TaskSummary["status"],
+  createdAt: number,
+  extra: Partial<TaskSummary> = {},
+): TaskSummary => ({
   id,
   title: "Same title",
   status,
   createdAt,
   conversationId: createdAt,
   parentConversationId: 1,
+  ...extra,
 });
 
 test("user sees one count for every active session pill", () => {
@@ -36,6 +51,28 @@ test("user can filter each session kind", () => {
   expect(kind("automation")).toBe("Automation");
 
   for (const channel of ["telegram", "wechat", "feishu"] as const) expect(kind(channel)).toBe("Channel");
+});
+
+test("user sees task exceptions before active and completed work", () => {
+  const now = 1_000_000;
+
+  const make = (id: string, status: TaskSummary["status"], extra: Partial<TaskSummary> = {}) =>
+    task(id, status, now - 1_000, extra);
+
+  expect(isStalled(make("idle", "running", { lastActivityAt: now - 6 * 60_000 }), now)).toBe(true);
+  expect(taskBucket(make("blocked", "done", { reportOutcome: "blocked" }), now)).toBe("needs-you");
+  expect(
+    orderTasks(
+      [make("done", "done"), make("queued", "queued"), make("need", "failed"), make("running", "running")],
+      now,
+    ).map((item) => item.id),
+  ).toEqual(["need", "running", "queued", "done"]);
+});
+
+test("user keeps only recent completed task ids in seen storage", () => {
+  expect(pruneSeen({ fresh: 999_999, old: 1_000_000 - 25 * 60 * 60 * 1000 }, 1_000_000)).toEqual({
+    fresh: 999_999,
+  });
 });
 
 test("user sees factual times for queued and completed work", () => {
