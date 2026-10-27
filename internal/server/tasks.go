@@ -53,7 +53,7 @@ func taskView(t sqlc.Task, executionID int64, activity engine.Activity, waitReas
 		CreatedAt: summary.CreatedAt, StartedAt: summary.StartedAt, EndedAt: summary.EndedAt,
 		ConversationId: summary.ConversationId, ParentConversationId: summary.ParentConversationId,
 		LastAction: summary.LastAction, LastActivityAt: summary.LastActivityAt, ToolStartedAt: summary.ToolStartedAt,
-		ReportOutcome: taskReportOutcome(summary.ReportOutcome), Report: t.Report,
+		ReportOutcome: taskReportOutcome(summary.ReportOutcome), WaitReason: summary.WaitReason, Report: t.Report,
 	}
 }
 
