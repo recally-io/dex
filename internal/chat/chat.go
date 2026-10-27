@@ -411,16 +411,19 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	}
 	background := strings.HasPrefix(p.ChannelKey, "task:")
 	var task sqlc.Task
+	resumed := false
 	if background {
+		// taskMu protects the durable admission transition. Native work runs without it.
+		// State changes are conditional updates, so a cancel between them stops admission.
+		s.taskMu.Lock()
 		task, err = s.q.GetTask(ctx, p.ID)
 		if err != nil {
+			s.taskMu.Unlock()
 			return err
 		}
-		// taskMu protects the durable admission transition. Native work runs without it.
-		s.taskMu.Lock()
 		// A running task whose input is still pending lost its admission receipt.
 		// Submit replays by request ID, so retry from there.
-		resumed := task.Status == "running"
+		resumed = task.Status == "running"
 		if task.Status != "queued" && !resumed {
 			s.taskMu.Unlock()
 			return nil
@@ -438,7 +441,8 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 			return nil
 		}
 		if !resumed {
-			if _, err = s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
+			started, err := s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+			if err != nil || started == 0 {
 				s.taskMu.Unlock()
 				return err
 			}
@@ -454,6 +458,14 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		}
 		return err
 	}
+	// This admission owns the native work it starts: every exit before the task
+	// becomes running aborts it. A resumed task was already running natively.
+	owned := background && !resumed
+	defer func() {
+		if owned {
+			_, _ = s.abort(context.WithoutCancel(ctx), ref)
+		}
+	}()
 	current, err := s.q.GetSubmission(ctx, p.ID)
 	if err != nil {
 		return err
@@ -467,7 +479,6 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 			return err
 		}
 		if task.Status != "admitting" && task.Status != "running" {
-			_, _ = s.abort(context.WithoutCancel(ctx), ref)
 			return nil
 		}
 	}
@@ -499,27 +510,14 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		}
 		return s.admissionError(ctx, p.ID, err)
 	}
-	if background {
+	if background && !resumed {
 		s.taskMu.Lock()
-		task, err = s.q.GetTask(ctx, p.ID)
-		if err == nil && task.Status == "admitting" {
-			_, err = s.q.RunTask(ctx, p.ID)
-			if err == nil {
-				task.Status = "running"
-			}
-		}
+		running, err := s.q.RunTask(ctx, p.ID)
 		s.taskMu.Unlock()
-		if err != nil {
-			_, _ = s.abort(context.WithoutCancel(ctx), ref)
+		if err != nil || running == 0 {
 			return err
 		}
-		if task.Status == "cancelled" {
-			_, _ = s.abort(context.WithoutCancel(ctx), ref)
-			return nil
-		}
-		if task.Status != "running" {
-			return nil
-		}
+		owned = false
 	}
 	if err = s.markAdmitted(ctx, p.ID); err != nil {
 		return err
