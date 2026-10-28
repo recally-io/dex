@@ -200,6 +200,9 @@ export function TaskSummaryButton({
     { "needs-you": 0, running: 0, queued: 0, done: 0 },
   );
 
+  // With no task to report, the summary would only repeat the panel toggle.
+  if (!visibleTasks.length) return null;
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -230,7 +233,6 @@ export function TaskSummaryButton({
               </span>
             ) : null,
           )}
-          {!visibleTasks.length ? <PanelRightClose className="size-3.5 text-muted-foreground" /> : null}
         </TooltipTrigger>
         <TooltipContent>Background tasks</TooltipContent>
       </Tooltip>
