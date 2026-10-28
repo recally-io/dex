@@ -129,7 +129,7 @@ WITH active AS (
       AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
           SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
       ))
-      AND CASE WHEN t.id IS NOT NULL THEN t.status IN ('queued', 'running')
+      AND CASE WHEN t.id IS NOT NULL THEN t.status IN ('queued', 'admitting', 'running')
           ELSE EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') END
     GROUP BY c.agent_id
 ), enabled AS (

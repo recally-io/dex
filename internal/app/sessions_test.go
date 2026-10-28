@@ -215,7 +215,7 @@ func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
 		id   int64
 		gate string
 	}{{main, "scope-main-task"}, {side, "scope-chat-task"}} {
-		d.send(t, c.id, taskJSON(t, map[string]string{"title": c.gate, "goal": taskGate(t, dir, c.gate), "provider": "faux", "modelId": "bash"}))
+		d.send(t, c.id, taskJSON(t, map[string]any{"title": c.gate, "goal": taskGate(t, dir, c.gate), "provider": "faux", "modelId": "bash", "modifiesFiles": false}))
 		waitTaskFile(t, filepath.Join(dir, c.gate+".pid"))
 		waitExecution(t, conn, c.id, c.gate, "running")
 	}
@@ -245,7 +245,7 @@ func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
 	})
 	// A later main Stop must also leave Chat's next task and foreground turn alone.
 	d.setModel(t, "spawn")
-	d.send(t, side, taskJSON(t, map[string]string{"title": "scope-chat-next", "goal": taskGate(t, dir, "scope-chat-next"), "provider": "faux", "modelId": "bash"}))
+	d.send(t, side, taskJSON(t, map[string]any{"title": "scope-chat-next", "goal": taskGate(t, dir, "scope-chat-next"), "provider": "faux", "modelId": "bash", "modifiesFiles": false}))
 	waitTaskFile(t, filepath.Join(dir, "scope-chat-next.pid"))
 	waitExecution(t, conn, side, "scope-chat-next", "running")
 	d.setModel(t, "bash")

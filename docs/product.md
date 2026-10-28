@@ -68,9 +68,7 @@ to read in an afternoon.
   long commands whose output would flood the context, and independent review.
   Each execution has one input and fixed model settings. The main agent
   handles implementation, review findings, tests, and the final answer.
-  Each agent admits at most 2 queued or running executions. Cancellation
-  releases admission, but a tool can still complete actions. Background execution
-  cannot delegate more work. The main agent handles failures and decides the
+  Each agent admits up to 20 queued, admitting, or running executions. Four tasks run per bot and eight tasks run across all bots; additional tasks wait in FIFO order until capacity and project locks are available. Cancellation withdraws queued work or requests cancellation of running work, and a tool may still complete actions. Background execution cannot delegate more work. The main agent handles failures and decides the
   next action.
 - Telegram setup: save a bot token, then open a single-use pairing link to
   allow the owner's account while the bot has no owner. Links expire after

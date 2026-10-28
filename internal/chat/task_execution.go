@@ -17,6 +17,9 @@ func taskInstructions(base, goal string, task sqlc.Task) string {
 	instructions.WriteString(base)
 	instructions.WriteString("\n\nThis is one background execution. Complete the saved goal and call report_task before your final answer. You cannot create or manage background executions. All coding tools, including bash, remain available. Constraints below are instructions. Use foreground, non-interactive tools. Do not detach processes or start daemons. Never claim that failed or unrun checks passed. The main agent decides the next action.\n\nGoal:\n")
 	instructions.WriteString(goal)
+	if task.ModifiesFiles == 0 {
+		instructions.WriteString("\n\nRead-only task: do not create, edit, or delete files. Other read-only tasks may share this directory.")
+	}
 	for _, section := range []struct{ name, data string }{{"Constraints", task.ConstraintsJson}, {"Done criteria", task.DoneCriteriaJson}} {
 		instructions.WriteString("\n\n" + section.name + ":\n")
 		instructions.WriteString(section.data)

@@ -2,8 +2,8 @@
 SELECT * FROM conversations WHERE agent_id = ? AND execution_id = ?;
 
 -- name: CreateTask :exec
-INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, constraints_json, done_criteria_json, status, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?);
+INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, constraints_json, done_criteria_json, modifies_files, status, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?);
 
 -- name: GetTask :one
 SELECT * FROM tasks WHERE id = ?;
@@ -28,20 +28,34 @@ WHERE t.parent_conversation_id = @parent_id AND
 AND recent.ended_at IS NOT NULL ORDER BY recent.ended_at DESC, recent.id DESC LIMIT 10))
 ORDER BY t.created_at DESC, t.id DESC;
 
+-- name: ListTaskAdmissions :many
+SELECT t.id, t.status, t.created_at, t.modifies_files, c.agent_id, c.cwd
+FROM tasks t JOIN conversations c ON c.id = t.conversation_id
+WHERE t.status IN ('queued', 'admitting', 'running')
+ORDER BY t.created_at, t.id;
+
 -- name: CountTaskSlots :one
 SELECT count(*) FROM tasks t JOIN conversations c ON c.id = t.conversation_id
-WHERE c.agent_id = ? AND t.status IN ('queued', 'running');
+WHERE c.agent_id = ? AND t.status IN ('queued', 'admitting', 'running');
 
 -- name: StartTask :execrows
-UPDATE tasks SET status = 'running', started_at = @now
+UPDATE tasks SET status = 'admitting', started_at = @now
 WHERE id = @id AND status = 'queued';
+
+-- name: RunTask :execrows
+UPDATE tasks SET status = 'running'
+WHERE id = @id AND status = 'admitting';
+
+-- name: ResetTaskAdmission :execrows
+UPDATE tasks SET status = 'queued', started_at = NULL
+WHERE id = ? AND status = 'admitting' AND ended_at IS NULL;
 
 -- name: SettleTask :execrows
 UPDATE tasks SET status = ?, report = ?, ended_at = ?
-WHERE id = ? AND status IN ('queued', 'running');
+WHERE id = ? AND status IN ('queued', 'admitting', 'running');
 
 -- name: ListActiveTasks :many
-SELECT * FROM tasks WHERE parent_conversation_id = ? AND status IN ('queued', 'running');
+SELECT * FROM tasks WHERE parent_conversation_id = ? AND status IN ('queued', 'admitting', 'running');
 
 -- name: CreateTaskResult :exec
 INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
@@ -51,7 +65,7 @@ WHERE t.id = @task_id
 ON CONFLICT DO NOTHING;
 
 -- name: ListLiveTasks :many
-SELECT * FROM tasks WHERE status = 'running';
+SELECT * FROM tasks WHERE status IN ('admitting', 'running');
 
 -- name: ListStopConversations :many
 SELECT * FROM conversations WHERE agent_id = @agent_id
@@ -65,7 +79,7 @@ WHERE conversation_id = @chat_id AND status = 'pending';
 -- name: StageTaskReport :execrows
 UPDATE tasks SET structured_report = @report
 WHERE tasks.id = @id AND tasks.conversation_id = @conversation_id
-AND status IN ('queued', 'running') AND structured_report = ''
+AND status IN ('queued', 'admitting', 'running') AND structured_report = ''
 AND EXISTS (SELECT 1 FROM submissions s WHERE s.id = tasks.id AND s.status = 'pending');
 
 -- name: GetTaskResultLabel :one

@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,7 +46,7 @@ func taskInput(t *testing.T, r *nativeTest, id string) sqlc.ListPendingSubmissio
 	return sqlc.ListPendingSubmissionsRow{}
 }
 
-func TestUserTaskReplayKeepsIdentityAndCapacity(t *testing.T) {
+func TestUserTaskReplayKeepsIdentityAndQueuesBeyondRunningLimit(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
 	first, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "One", Goal: "one", Constraints: []string{"Do not change code"}, DoneCriteria: []string{"Explain the cause"}})
@@ -61,8 +63,9 @@ func TestUserTaskReplayKeepsIdentityAndCapacity(t *testing.T) {
 		t.Fatal(err)
 	}
 	source.Key = "bot/spawn-3"
-	if _, err = r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "Three", Goal: "three"}); !errors.Is(err, ErrTaskConflict) {
-		t.Fatalf("capacity: %v", err)
+	third, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "Three", Goal: "three"})
+	if err != nil || third.Status != "queued" {
+		t.Fatalf("queued third task: %+v %v", third, err)
 	}
 	cancelled, err := r.service.CancelTask(t.Context(), "bot", parent, first.ID)
 	if err != nil || cancelled.Status != "cancelled" {
@@ -76,6 +79,70 @@ func TestUserTaskReplayKeepsIdentityAndCapacity(t *testing.T) {
 	}
 }
 
+func TestUserTwentyFirstTaskIsRejectedAfterTwentyQueuedSlots(t *testing.T) {
+	r := startNative(t, "echo")
+	parent, source := taskParent(t, r)
+	for i := range 20 {
+		source.Key = fmt.Sprintf("bot/queue-%d", i)
+		if _, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: fmt.Sprintf("Queue %d", i), Goal: "queued"}); err != nil {
+			t.Fatalf("spawn %d: %v", i, err)
+		}
+	}
+	source.Key = "bot/queue-20"
+	if _, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "Queue 20", Goal: "rejected"}); !errors.Is(err, ErrTaskConflict) {
+		t.Fatalf("21st spawn error: %v", err)
+	}
+	_ = parent
+}
+
+func TestUserReadOnlyTaskPromptDeclaresFileBoundary(t *testing.T) {
+	prompt := taskInstructions("base", "inspect", sqlc.Task{ModifiesFiles: 0})
+	if !strings.Contains(prompt, "do not create, edit, or delete files") || !strings.Contains(prompt, "Other read-only tasks may share this directory") {
+		t.Fatalf("read-only prompt: %s", prompt)
+	}
+}
+func TestUserCancelAdmittingTaskNeverCreatesResult(t *testing.T) {
+	r := startNative(t, "echo")
+	parent, source := taskParent(t, r)
+	task, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "admitting", Goal: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.q.StartTask(t.Context(), sqlc.StartTaskParams{ID: task.ID, Now: sql.NullInt64{Int64: 1, Valid: true}}); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, err := r.service.CancelTask(t.Context(), "bot", parent, task.ID)
+	if err != nil || cancelled.Status != "cancelled" {
+		t.Fatalf("cancelled admitting task: %+v %v", cancelled, err)
+	}
+	var results int
+	if err = r.conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE source_key = ?", "task:"+task.ID+":result").Scan(&results); err != nil || results != 0 {
+		t.Fatalf("result count=%d err=%v", results, err)
+	}
+}
+
+func TestUserPermanentAdmissionFailureCreatesOneResult(t *testing.T) {
+	r := startNative(t, "echo")
+	parent, source := taskParent(t, r)
+	task, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "failed", Goal: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.q.StartTask(t.Context(), sqlc.StartTaskParams{ID: task.ID, Now: sql.NullInt64{Int64: 1, Valid: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = r.service.finishAdmissionError(t.Context(), task.ID, ErrNoModel); err != nil {
+		t.Fatal(err)
+	}
+	failed, err := r.service.GetTask(t.Context(), "bot", parent, task.ID)
+	if err != nil || failed.Status != "failed" {
+		t.Fatalf("failed task: %+v %v", failed, err)
+	}
+	var results int
+	if err = r.conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE source_key = ?", "task:"+task.ID+":result").Scan(&results); err != nil || results != 1 {
+		t.Fatalf("result count=%d err=%v", results, err)
+	}
+}
 func TestUserTaskValidatesSourceAndRejectsBackgroundDelegation(t *testing.T) {
 	r := startNative(t, "echo")
 	_, source := taskParent(t, r)

@@ -32,7 +32,7 @@ export type Health = {
 export type TaskSummary = {
     id: string;
     title: string;
-    status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'interrupted';
+    status: 'queued' | 'admitting' | 'running' | 'done' | 'failed' | 'cancelled' | 'interrupted';
     createdAt: number;
     startedAt?: number;
     endedAt?: number;
@@ -57,6 +57,10 @@ export type TaskSummary = {
      * The structured report outcome, when the task has a report.
      */
     reportOutcome?: 'done' | 'blocked' | 'failed';
+    /**
+     * Why a queued task is waiting. Values are bot limit, global limit, waiting for an earlier task, or cwd held by task <id>.
+     */
+    waitReason?: string;
 };
 
 export type Task = TaskSummary & {
@@ -1573,6 +1577,38 @@ export type GetTaskResponses = {
 };
 
 export type GetTaskResponse = GetTaskResponses[keyof GetTaskResponses];
+
+export type CancelTaskData = {
+    body?: never;
+    path: {
+        agentId: string;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/tasks/{taskId}/cancel';
+};
+
+export type CancelTaskErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CancelTaskError = CancelTaskErrors[keyof CancelTaskErrors];
+
+export type CancelTaskResponses = {
+    /**
+     * The cancellation request was accepted.
+     */
+    200: Task;
+};
+
+export type CancelTaskResponse = CancelTaskResponses[keyof CancelTaskResponses];
 
 export type GetMainChatData = {
     body?: never;

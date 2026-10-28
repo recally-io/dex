@@ -206,12 +206,13 @@ func TestUserChannelMainTaskResultsFollowTheirSource(t *testing.T) {
 				t.Fatalf("channel work parent=%d main=%d", parent, main)
 			}
 			work := waitExecution(t, conn, main, "Channel result", "running")
-			web := d.send(t, main, taskJSON(t, map[string]string{"title": "Web result", "goal": "web report", "provider": "faux", "modelId": "echo"}))
+			// A read-only task still waits while a modifying task holds the cwd.
+			releaseResultGate(t, e.dir, "channel-result")
+			web := d.send(t, main, taskJSON(t, map[string]any{"title": "Web result", "goal": "web report", "provider": "faux", "modelId": "echo", "modifiesFiles": false}))
 			waitResultSubmission(t, conn, web, "done")
 			webTask := waitExecution(t, conn, main, "Web result", "done")
 			webResult := waitResultSubmission(t, conn, "task:"+webTask.ID+":result", "done")
 			// When the old channel work completes, its result returns to its source peer.
-			releaseResultGate(t, e.dir, "channel-result")
 			resultID := "task:" + work.ID + ":result"
 			result := waitResultSubmission(t, conn, resultID, "done")
 			e.wait(t, result.answer)

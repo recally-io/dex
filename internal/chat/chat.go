@@ -410,17 +410,62 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		options.Instructions = dream.Instructions(p.AgentID, options.Instructions)
 	}
 	background := strings.HasPrefix(p.ChannelKey, "task:")
+	var task sqlc.Task
+	resumed := false
 	if background {
-		task, err := s.q.GetTask(ctx, p.ID)
+		// taskMu protects the durable admission transition. Native work runs without it.
+		// State changes are conditional updates, so a cancel between them stops admission.
+		s.taskMu.Lock()
+		task, err = s.q.GetTask(ctx, p.ID)
 		if err != nil {
+			s.taskMu.Unlock()
 			return err
 		}
+		// A running task whose input is still pending lost its admission receipt.
+		// Submit replays by request ID, so retry from there.
+		resumed = task.Status == "running"
+		if task.Status != "queued" && !resumed {
+			s.taskMu.Unlock()
+			return nil
+		}
+		waitReason, waitErr := "", error(nil)
+		if !resumed {
+			waitReason, waitErr = s.taskWaitReason(ctx, task)
+		}
+		if waitErr != nil {
+			s.taskMu.Unlock()
+			return waitErr
+		}
+		if waitReason != "" {
+			s.taskMu.Unlock()
+			return nil
+		}
+		if !resumed {
+			started, err := s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+			if err != nil || started == 0 {
+				s.taskMu.Unlock()
+				return err
+			}
+			task.Status = "admitting"
+		}
+		s.taskMu.Unlock()
 		options.Instructions = taskInstructions(options.Instructions, p.Content, task)
 	}
 	ref, err := s.execution(ctx, conv.ID, p.AgentID, options)
 	if err != nil {
+		if background {
+			return s.finishAdmissionError(ctx, p.ID, err)
+		}
 		return err
 	}
+	// This admission owns the native work it starts: every exit before the task
+	// becomes running aborts it. A resumed task was already running natively.
+	owned := background && !resumed
+	defer func() {
+		if owned {
+			_, _ = s.abort(context.WithoutCancel(ctx), ref)
+		}
+	}()
 	current, err := s.q.GetSubmission(ctx, p.ID)
 	if err != nil {
 		return err
@@ -429,16 +474,11 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		return nil
 	}
 	if background {
-		s.taskMu.Lock()
-		task, e := s.q.GetTask(ctx, p.ID)
-		if e == nil && task.Status == "queued" {
-			_, e = s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+		task, err = s.q.GetTask(ctx, p.ID)
+		if err != nil {
+			return err
 		}
-		s.taskMu.Unlock()
-		if e != nil {
-			return e
-		}
-		if task.Status != "queued" && task.Status != "running" {
+		if task.Status != "admitting" && task.Status != "running" {
 			return nil
 		}
 	}
@@ -465,7 +505,19 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	}
 	sub, err := s.engine.Submit(ctx, ref, input)
 	if err != nil {
+		if background {
+			return s.finishAdmissionError(ctx, p.ID, err)
+		}
 		return s.admissionError(ctx, p.ID, err)
+	}
+	if background && !resumed {
+		s.taskMu.Lock()
+		running, err := s.q.RunTask(ctx, p.ID)
+		s.taskMu.Unlock()
+		if err != nil || running == 0 {
+			return err
+		}
+		owned = false
 	}
 	if err = s.markAdmitted(ctx, p.ID); err != nil {
 		return err
@@ -473,7 +525,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if _, loaded := s.waiting.LoadOrStore(p.ID, struct{}{}); loaded {
 		return nil
 	}
-	if !s.startWorker(func() {
+	started := s.startWorker(func() {
 		outcome, err := sub.Wait(s.ctx)
 		if err == nil {
 			err = s.settle(s.ctx, p.ID, outcome)
@@ -483,12 +535,27 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 			slog.Error("reconcile execution receipt", "submission", p.ID, "err", err)
 			s.scheduleRetry()
 		}
-	}) {
+	})
+	if !started {
+		slog.Warn("task worker did not start", "task", p.ID)
 		s.waiting.Delete(p.ID)
 	}
 	return nil
 }
 
+func admissionPermanent(err error) bool {
+	return errors.Is(err, engine.ErrInvalidInput) || errors.Is(err, engine.ErrNotFound) || errors.Is(err, ErrNoModel)
+}
+
+func (s *Service) finishAdmissionError(ctx context.Context, id string, err error) error {
+	cleanup := context.WithoutCancel(ctx)
+	if admissionPermanent(err) {
+		_, settleErr := s.settleTask(cleanup, id, engine.Outcome{Status: "unanswered", Reason: err.Error()})
+		return settleErr
+	}
+	_, resetErr := s.q.ResetTaskAdmission(cleanup, id)
+	return errors.Join(err, resetErr)
+}
 func (s *Service) markAdmitted(ctx context.Context, id string) error {
 	return s.q.AdmitSubmission(ctx, sqlc.AdmitSubmissionParams{ID: id, AdmittedAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
 }

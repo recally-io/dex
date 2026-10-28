@@ -1,0 +1,29 @@
+{
+  "id": "15-five-readonly-tasks",
+  "prompt": "In {{project}}, count the approved entries in each of north.txt, south.txt, east.txt, west.txt, and center.txt. Use one read-only background task per file, five tasks in total, and do not modify any file. Report each file name with its count.",
+  "rubric": "Five read-only tasks are accepted beyond the running limit, each returns once, and the counts are correct.",
+  "project": true,
+  "files": {
+    "north.txt": "approved\nrejected\nrejected\nrejected\nrejected\nrejected\nrejected\n",
+    "south.txt": "approved\nrejected\napproved\nrejected\nrejected\nrejected\nrejected\nrejected\n",
+    "east.txt": "approved\nrejected\napproved\nrejected\napproved\nrejected\nrejected\nrejected\nrejected\n",
+    "west.txt": "approved\nrejected\napproved\nrejected\napproved\nrejected\napproved\nrejected\nrejected\nrejected\n",
+    "center.txt": "approved\nrejected\napproved\nrejected\napproved\nrejected\napproved\nrejected\napproved\nrejected\nrejected\n"
+  },
+  "minSpawn": 5,
+  "maxSpawn": 5,
+  "contains": [
+    "north",
+    "south",
+    "east",
+    "west",
+    "center"
+  ],
+  "outputFiles": {
+    "north.txt": "approved\nrejected\nrejected\nrejected\nrejected\nrejected\nrejected\n",
+    "south.txt": "approved\nrejected\napproved\nrejected\nrejected\nrejected\nrejected\nrejected\n",
+    "east.txt": "approved\nrejected\napproved\nrejected\napproved\nrejected\nrejected\nrejected\nrejected\n",
+    "west.txt": "approved\nrejected\napproved\nrejected\napproved\nrejected\napproved\nrejected\nrejected\nrejected\n",
+    "center.txt": "approved\nrejected\napproved\nrejected\napproved\nrejected\napproved\nrejected\napproved\nrejected\nrejected\n"
+  }
+}

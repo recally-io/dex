@@ -40,7 +40,7 @@ func TestUserChannelStopCoversMainAcrossClearAndPreservesChat(t *testing.T) {
 	d.setModel(t, "spawn")
 	spawn := func(update, peer int64, name string) int64 {
 		t.Helper()
-		f.message(update, 42, peer, taskJSON(t, map[string]string{"title": name, "goal": taskGate(t, dir, name), "provider": "faux", "modelId": "bash"}))
+		f.message(update, 42, peer, taskJSON(t, map[string]any{"title": name, "goal": taskGate(t, dir, name), "provider": "faux", "modelId": "bash", "modifiesFiles": false}))
 		var parent int64
 		eventually(t, "parent "+name, func() (bool, any) {
 			err := conn.QueryRowContext(t.Context(), "SELECT parent_conversation_id FROM tasks WHERE title = ?", name).Scan(&parent)
