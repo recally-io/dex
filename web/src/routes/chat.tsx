@@ -20,7 +20,7 @@ import { refreshChats } from "../lib/queries";
 import { agentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
-import { activeSessionCount, sessionKind, taskTime } from "../lib/tasks";
+import { activeSessionCount, markTaskSeen, sessionKind, taskTime } from "../lib/tasks";
 import { ChatProject } from "../components/chat-project";
 import { Composer } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
@@ -122,6 +122,13 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     enabled: !readOnly,
     refetchInterval: 3000,
   });
+
+  useEffect(() => {
+    for (const session of sessions.data?.chats ?? []) {
+      if (session.task?.parentConversationId === chatId && session.task.status === "done")
+        markTaskSeen(agentId, session.task.id);
+    }
+  }, [agentId, chatId, sessions.data]);
 
   const activeHere = activeSessionCount(
     (sessions.data?.chats ?? []).filter((session) => session.task?.parentConversationId === chatId),
