@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { createChat, getChat, setChatProject } from "../../api/generated/sdk.gen";
 import { listArtifactsOptions } from "../../api/generated/@tanstack/react-query.gen";
 import type { Artifact } from "../../api/generated/types.gen";
 import { useAgentId } from "../../lib/agent-scope";
@@ -24,6 +25,7 @@ function reference(item: Artifact) {
 
 export function Artifacts({ chatId, onContinue }: { chatId: number; onContinue?: (text: string) => void }) {
   const agentId = useAgentId();
+  const navigate = useNavigate();
 
   const list = useQuery({ ...listArtifactsOptions({ path: { agentId, chatId } }), refetchInterval: 3000 });
 
@@ -33,7 +35,7 @@ export function Artifacts({ chatId, onContinue }: { chatId: number; onContinue?:
     ? `/api/agents/${encodeURIComponent(agentId)}/chats/${chatId}/artifacts/${encodeURIComponent(selected.id)}`
     : "";
 
-  const markdown = !!selected && /\.md(?:own)?$/i.test(selected.name);
+  const markdown = !!selected && /\.(md|mdown|markdown)$/i.test(selected.name);
 
   const image = !!selected && /\.(png|jpe?g|gif|webp)$/i.test(selected.name);
 
@@ -46,6 +48,33 @@ export function Artifacts({ chatId, onContinue }: { chatId: number; onContinue?:
       if (!response.ok) throw new Error("Could not load file");
 
       return response.text();
+    },
+  });
+
+  const continuation = useMutation({
+    mutationFn: async (item: Artifact) => {
+      const source = await getChat({
+        path: { agentId, chatId: item.displayConversationId },
+        throwOnError: true,
+      });
+
+      let target = source.data;
+
+      if (target.readOnly) {
+        const chat = await createChat({ path: { agentId }, throwOnError: true });
+        target = chat.data;
+        await setChatProject({
+          path: { agentId, chatId: target.id },
+          body: { cwd: source.data.cwd ?? "" },
+          throwOnError: true,
+        });
+      }
+
+      sessionStorage.setItem(keyFor(agentId, target.id), reference(item));
+      window.dispatchEvent(new Event("dex-artifact-draft"));
+
+      if (target.main) await navigate({ to: "/a/$agentId", params: { agentId } });
+      else await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(target.id) } });
     },
   });
 
@@ -78,18 +107,17 @@ export function Artifacts({ chatId, onContinue }: { chatId: number; onContinue?:
                 Continue editing
               </Button>
             ) : (
-              <Link
-                className="text-sm text-primary underline"
-                to="/a/$agentId/c/$chatId"
-                params={{ agentId, chatId: String(selected.displayConversationId) }}
-                onClick={() =>
-                  sessionStorage.setItem(keyFor(agentId, selected.displayConversationId), reference(selected))
-                }
+              <Button
+                size="xs"
+                variant="secondary"
+                disabled={continuation.isPending}
+                onClick={() => continuation.mutate(selected)}
               >
                 Continue editing
-              </Link>
+              </Button>
             )}
           </div>
+          {continuation.isError ? <p role="alert">Could not open a writable chat. Try again.</p> : null}
           {markdown ? (
             content.isPending ? (
               <p>Loading file…</p>

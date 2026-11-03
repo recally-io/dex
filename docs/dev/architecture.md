@@ -74,6 +74,7 @@ backend readiness and maintenance lifecycle.
 | Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))  |
 | Transcripts, runs, tool calls, usage | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                      |
 | Agent files                          | the agent's tools | `<data dir>/agents/<id>/workspace/`                                        |
+| Delivered snapshots                  | control           | `<data dir>/agents/<id>/artifacts/<id>` and `control.sqlite`               |
 | Uploaded files                       | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`              |
 | Memory (git repo)                    | the agent's tools | `<data dir>/memory/`                                                       |
 | Skills and MCP servers               | the user's files  | `$HOME/.agents/`, `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/` |
@@ -127,6 +128,20 @@ routes ordinary replies and task results by origin. Web input sends no channel r
 The engine stores origin with native input metadata. One projection exposes it
 in queued input, snapshots, live events, and history pages. The web shows the
 channel name beside each channel input.
+
+An agent calls `deliver_file` with a workspace-relative path to publish one
+regular file. The tool copies at most 20 MiB to an immutable snapshot and
+records the source agent and conversation. A project cwd does not widen this
+boundary. The agent copies a selected project file to its workspace first.
+Rooted filesystem operations prevent paths and symlinks from escaping the
+workspace. The API checks the agent and source or parent conversation before
+it serves a snapshot. Background task snapshots also appear in the parent
+conversation. `report_task.files` does not publish files. Only detected PNG,
+JPEG, GIF, and WebP content is served inline. Other content is downloaded;
+Markdown is rendered as text by the client. HTML and SVG never run inline.
+Continue editing references the snapshot ID, name, and source. Main and Chat
+reuse the writable conversation. A read-only source opens a new writable Chat
+with the source project directory. A new delivery creates a new snapshot.
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
 each agent execution store. Run one dex process per data directory.

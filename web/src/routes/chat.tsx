@@ -143,9 +143,16 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const setDraft = main ? app.setComposerText : setLocalDraft;
 
   useEffect(() => {
-    const text = takeArtifactDraft(agentId, chatId);
+    function receiveArtifactDraft() {
+      const text = takeArtifactDraft(agentId, chatId);
 
-    if (text) setDraft((prior) => (prior ? `${prior}\n\n${text}` : text));
+      if (text) setDraft((prior) => (prior ? `${prior}\n\n${text}` : text));
+    }
+
+    receiveArtifactDraft();
+    window.addEventListener("dex-artifact-draft", receiveArtifactDraft);
+
+    return () => window.removeEventListener("dex-artifact-draft", receiveArtifactDraft);
   }, [agentId, chatId, setDraft]);
 
   const embedded = useContext(InPaneContext);

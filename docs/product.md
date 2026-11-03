@@ -90,6 +90,12 @@ to read in an afternoon.
   Reply delivery resumes after a restart and skips confirmed
   parts. A crash after remote success can duplicate one part. Bot settings
   show each channel's runtime status and setup.
+- Agents can deliver files from main, Chat, Routine runs, and background tasks.
+  Dex stores each delivery as an immutable snapshot of at most 20 MiB. The user
+  can preview Markdown and safe raster images in Dex and download other files.
+  Task deliveries appear in the task record and the parent conversation.
+  Continue editing adds the snapshot ID, name, and source to a writable Chat.
+  A new delivery is required to publish later changes.
 - In main and Chat sessions, the user can attach files and images (at most 10 per
   message, 20 MB each). The agent reads them with its tools. Telegram
   chats and automations use the agent's settings. Telegram accepts photos and

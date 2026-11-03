@@ -39,7 +39,7 @@ func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path s
 	}
 	parent := conv.ID
 	switch {
-	case conv.ChannelKey == "main", strings.HasPrefix(conv.ChannelKey, "chat:"):
+	case conv.ChannelKey == "main", strings.HasPrefix(conv.ChannelKey, "chat:"), strings.HasPrefix(conv.ChannelKey, "automation:"):
 	case strings.HasPrefix(conv.ChannelKey, "task:"):
 		task, err := q.GetTask(ctx, strings.TrimPrefix(conv.ChannelKey, "task:"))
 		if err != nil {
@@ -73,15 +73,16 @@ func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path s
 	}
 	defer func() { _ = tx.Rollback() }()
 	q = sqlc.New(tx)
+	// Take the writer before reading, so concurrent deliveries cannot upgrade a stale WAL snapshot.
+	locked, err := q.LockArtifactInput(ctx, sqlc.LockArtifactInputParams{ID: caller.SourceRequestID, ConversationID: conv.ID})
+	if err != nil {
+		return engine.ArtifactInfo{}, err
+	}
 	prior, err = q.GetArtifactByOperation(ctx, sqlc.GetArtifactByOperationParams{OperationKey: caller.Key, AgentID: caller.AgentID})
 	if err == nil {
 		return artifactInfo(prior), nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return engine.ArtifactInfo{}, err
-	}
-	locked, err := q.LockArtifactInput(ctx, sqlc.LockArtifactInputParams{ID: caller.SourceRequestID, ConversationID: conv.ID})
-	if err != nil {
 		return engine.ArtifactInfo{}, err
 	}
 	if locked != 1 {
