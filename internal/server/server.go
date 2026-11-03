@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/api"
+	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
@@ -33,6 +35,7 @@ type Config struct {
 	Automations  *automation.Service
 	Settings     *settings.Service
 	Agents       *agent.Service
+	Artifacts    *artifact.Service
 	Live         *live.Hub
 	DataDir      string
 	Version      string
@@ -83,7 +86,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusServiceUnavailable
 			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden):
 				status = http.StatusForbidden
-			case errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
+			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
 			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
@@ -469,6 +472,48 @@ func (h *handler) GetUpload(ctx context.Context, req api.GetUploadRequestObject)
 		Body: f, ContentType: contentType, ContentLength: a.Size,
 		Headers: api.GetUpload200ResponseHeaders{ContentDisposition: &disposition, XContentTypeOptions: &nosniff},
 	}, nil
+}
+
+func (h *handler) ListArtifacts(ctx context.Context, req api.ListArtifactsRequestObject) (api.ListArtifactsResponseObject, error) {
+	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
+		return nil, err
+	}
+	rows, err := h.Artifacts.List(ctx, agentID(ctx), req.ChatId)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.Artifact, 0, len(rows))
+	for _, a := range rows {
+		out = append(out, api.Artifact{Id: a.ID, Name: a.Name, Size: a.Size, ConversationId: a.ConversationID, DisplayConversationId: a.DisplayConversationID})
+	}
+	return api.ListArtifacts200JSONResponse{Artifacts: out}, nil
+}
+
+func (h *handler) GetArtifact(ctx context.Context, req api.GetArtifactRequestObject) (api.GetArtifactResponseObject, error) {
+	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
+		return nil, err
+	}
+	a, err := h.Artifacts.Get(ctx, agentID(ctx), req.ChatId, req.ArtifactId)
+	if err != nil {
+		return nil, err
+	}
+	f, err := artifact.Open(agent.Home(h.DataDir, agentID(ctx)), a.ID)
+	if err != nil {
+		return nil, err
+	}
+	head := make([]byte, 512)
+	n, err := f.ReadAt(head, 0)
+	if err != nil && !errors.Is(err, io.EOF) {
+		_ = f.Close()
+		return nil, err
+	}
+	contentType, disposition := "application/octet-stream", "attachment"
+	if detected := http.DetectContentType(head[:n]); slices.Contains(inlineTypes, detected) {
+		contentType, disposition = detected, "inline"
+	}
+	disposition = mime.FormatMediaType(disposition, map[string]string{"filename": a.Name})
+	nosniff := "nosniff"
+	return api.GetArtifact200AsteriskResponse{Body: f, ContentType: contentType, ContentLength: a.Size, Headers: api.GetArtifact200ResponseHeaders{ContentDisposition: &disposition, XContentTypeOptions: &nosniff}}, nil
 }
 
 func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject) (api.AbortChatResponseObject, error) {

@@ -14,6 +14,7 @@ import { refreshChats } from "../lib/queries";
 import { useChatStream } from "../lib/chat-stream";
 import { mergeHistory } from "../lib/chat-state";
 import { Markdown, Transcript, RetryNotice } from "../components/agent/transcript";
+import { Artifacts } from "../components/agent/artifacts";
 import { Empty, FramedPage, Panel, Section } from "../components/page";
 import { Failure, Loading } from "../components/feedback";
 import { LoadEarlierButton } from "../components/timeline-actions";
@@ -221,6 +222,7 @@ export function TaskPage({ taskId }: { taskId: string }) {
             <Panel className="px-4 py-3.5">
               <Markdown text={task.data.report || "No report yet."} />
             </Panel>
+            <Artifacts chatId={task.data.conversationId} />
           </Section>
           <Section n={2} title="Work" caption="What the task did. Read-only.">
             <TaskWork key={task.data.conversationId} chatId={task.data.conversationId} />

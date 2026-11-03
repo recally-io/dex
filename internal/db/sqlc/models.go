@@ -23,6 +23,17 @@ type Agent struct {
 	ThinkingLevel string `json:"thinking_level"`
 }
 
+type Artifact struct {
+	ID                    string `json:"id"`
+	AgentID               string `json:"agent_id"`
+	ConversationID        int64  `json:"conversation_id"`
+	DisplayConversationID int64  `json:"display_conversation_id"`
+	OperationKey          string `json:"operation_key"`
+	Name                  string `json:"name"`
+	Size                  int64  `json:"size"`
+	CreatedAt             int64  `json:"created_at"`
+}
+
 type Automation struct {
 	ID        string        `json:"id"`
 	AgentID   string        `json:"agent_id"`

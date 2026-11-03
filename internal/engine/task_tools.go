@@ -60,15 +60,24 @@ type TaskInfo struct {
 	WaitReason     string `json:"waitReason,omitempty"`
 }
 
+type ArtifactInfo struct {
+	ID                    string `json:"id"`
+	Name                  string `json:"name"`
+	Size                  int64  `json:"size"`
+	ConversationID        int64  `json:"conversationId"`
+	DisplayConversationID int64  `json:"displayConversationId"`
+}
+
 // TaskTools connects foreground tools to the application services.
 type TaskTools struct {
-	ReportTask  func(context.Context, TaskContext, TaskReport) error
-	ReportCheck func(context.Context, TaskContext, CheckReport) error
-	SetProject  func(context.Context, TaskContext, string) (string, error)
-	Spawn       func(context.Context, TaskContext, SpawnTaskArgs) (TaskInfo, error)
-	List        func(context.Context, TaskContext) ([]TaskInfo, error)
-	Get         func(context.Context, TaskContext, string) (TaskInfo, error)
-	Cancel      func(context.Context, TaskContext, string) (TaskInfo, error)
+	DeliverArtifact func(context.Context, TaskContext, string) (ArtifactInfo, error)
+	ReportTask      func(context.Context, TaskContext, TaskReport) error
+	ReportCheck     func(context.Context, TaskContext, CheckReport) error
+	SetProject      func(context.Context, TaskContext, string) (string, error)
+	Spawn           func(context.Context, TaskContext, SpawnTaskArgs) (TaskInfo, error)
+	List            func(context.Context, TaskContext) ([]TaskInfo, error)
+	Get             func(context.Context, TaskContext, string) (TaskInfo, error)
+	Cancel          func(context.Context, TaskContext, string) (TaskInfo, error)
 }
 
 func codingSkill() *durable.Extension {

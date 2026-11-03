@@ -947,6 +947,65 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/chats/{chatId}/artifacts:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - in: path
+        name: chatId
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      operationId: listArtifacts
+      description: Delivered snapshots from this conversation and its background tasks.
+      responses:
+        "200":
+          description: Delivered snapshots.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [artifacts]
+                properties:
+                  artifacts:
+                    type: array
+                    items: { $ref: "#/components/schemas/Artifact" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - in: path
+        name: chatId
+        required: true
+        schema: { type: integer, format: int64 }
+      - in: path
+        name: artifactId
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getArtifact
+      description: The immutable snapshot. Only safe raster images are inline.
+      responses:
+        "200":
+          description: Snapshot bytes.
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+            X-Content-Type-Options:
+              schema: { type: string }
+          content:
+            "*/*":
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/extensions:
     parameters:
       - in: path
@@ -1380,6 +1439,15 @@ components:
           description: Upload IDs from POST /api/agents/{agentId}/uploads, at most 10.
           items: { type: string }
 
+    Artifact:
+      type: object
+      required: [id, name, size, conversationId, displayConversationId]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        size: { type: integer, format: int64 }
+        conversationId: { type: integer, format: int64 }
+        displayConversationId: { type: integer, format: int64 }
     Attachment:
       x-go-type: engine.Attachment
       x-go-type-import:

@@ -590,6 +590,15 @@ type AppendEvent struct {
 // AppendEventType defines model for AppendEvent.Type.
 type AppendEventType string
 
+// Artifact defines model for Artifact.
+type Artifact struct {
+	ConversationId        int64  `json:"conversationId"`
+	DisplayConversationId int64  `json:"displayConversationId"`
+	Id                    string `json:"id"`
+	Name                  string `json:"name"`
+	Size                  int64  `json:"size"`
+}
+
 // AssistantItem defines model for AssistantItem.
 type AssistantItem struct {
 	EntryId *int64            `json:"entryId,omitempty"`
@@ -1855,6 +1864,12 @@ type ServerInterface interface {
 	// (PUT /api/agents/{agentId}/chats/{chatId}/archive)
 	ArchiveChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
+	// (GET /api/agents/{agentId}/chats/{chatId}/artifacts)
+	ListArtifacts(w http.ResponseWriter, r *http.Request, agentId string, chatId int64)
+
+	// (GET /api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId})
+	GetArtifact(w http.ResponseWriter, r *http.Request, agentId string, chatId int64, artifactId string)
+
 	// (POST /api/agents/{agentId}/chats/{chatId}/clear)
 	ClearContext(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
@@ -2786,6 +2801,85 @@ func (siw *ServerInterfaceWrapper) ArchiveChat(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ArchiveChat(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListArtifacts operation middleware
+func (siw *ServerInterfaceWrapper) ListArtifacts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListArtifacts(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetArtifact operation middleware
+func (siw *ServerInterfaceWrapper) GetArtifact(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "artifactId" -------------
+	var artifactId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "artifactId", r.PathValue("artifactId"), &artifactId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artifactId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetArtifact(w, r, agentId, chatId, artifactId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3759,6 +3853,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/events", wrapper.WatchChat)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/uploads", wrapper.CreateUpload)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/uploads/{uploadId}", wrapper.GetUpload)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/artifacts", wrapper.ListArtifacts)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}", wrapper.GetArtifact)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/extensions", wrapper.GetExtensions)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/extensions/env", wrapper.DeleteExtensionEnv)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/extensions/env", wrapper.PutExtensionEnv)
@@ -5304,6 +5400,136 @@ type ArchiveChatdefaultJSONResponse struct {
 }
 
 func (response ArchiveChatdefaultJSONResponse) VisitArchiveChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListArtifactsRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  int64  `json:"chatId"`
+}
+
+type ListArtifactsResponseObject interface {
+	VisitListArtifactsResponse(w http.ResponseWriter) error
+}
+
+type ListArtifacts200JSONResponse struct {
+	Artifacts []Artifact `json:"artifacts"`
+}
+
+func (response ListArtifacts200JSONResponse) VisitListArtifactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListArtifacts404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListArtifacts404JSONResponse) VisitListArtifactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListArtifactsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListArtifactsdefaultJSONResponse) VisitListArtifactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtifactRequestObject struct {
+	AgentId    string `json:"agentId"`
+	ChatId     int64  `json:"chatId"`
+	ArtifactId string `json:"artifactId"`
+}
+
+type GetArtifactResponseObject interface {
+	VisitGetArtifactResponse(w http.ResponseWriter) error
+}
+
+type GetArtifact200ResponseHeaders struct {
+	ContentDisposition  *string
+	XContentTypeOptions *string
+}
+
+type GetArtifact200AsteriskResponse struct {
+	Body          io.Reader
+	Headers       GetArtifact200ResponseHeaders
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetArtifact200AsteriskResponse) VisitGetArtifactResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	if response.Headers.XContentTypeOptions != nil {
+		w.Header().Set("X-Content-Type-Options", fmt.Sprint(*response.Headers.XContentTypeOptions))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetArtifact404JSONResponse struct{ ErrorJSONResponse }
+
+func (response GetArtifact404JSONResponse) VisitGetArtifactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtifactdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetArtifactdefaultJSONResponse) VisitGetArtifactResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -7093,6 +7319,12 @@ type StrictServerInterface interface {
 	// (PUT /api/agents/{agentId}/chats/{chatId}/archive)
 	ArchiveChat(ctx context.Context, request ArchiveChatRequestObject) (ArchiveChatResponseObject, error)
 
+	// (GET /api/agents/{agentId}/chats/{chatId}/artifacts)
+	ListArtifacts(ctx context.Context, request ListArtifactsRequestObject) (ListArtifactsResponseObject, error)
+
+	// (GET /api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId})
+	GetArtifact(ctx context.Context, request GetArtifactRequestObject) (GetArtifactResponseObject, error)
+
 	// (POST /api/agents/{agentId}/chats/{chatId}/clear)
 	ClearContext(ctx context.Context, request ClearContextRequestObject) (ClearContextResponseObject, error)
 
@@ -8062,6 +8294,61 @@ func (sh *strictHandler) ArchiveChat(w http.ResponseWriter, r *http.Request, age
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ArchiveChatResponseObject); ok {
 		if err := validResponse.VisitArchiveChatResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListArtifacts operation middleware
+func (sh *strictHandler) ListArtifacts(w http.ResponseWriter, r *http.Request, agentId string, chatId int64) {
+	var request ListArtifactsRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListArtifacts(ctx, request.(ListArtifactsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListArtifacts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListArtifactsResponseObject); ok {
+		if err := validResponse.VisitListArtifactsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetArtifact operation middleware
+func (sh *strictHandler) GetArtifact(w http.ResponseWriter, r *http.Request, agentId string, chatId int64, artifactId string) {
+	var request GetArtifactRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+	request.ArtifactId = artifactId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetArtifact(ctx, request.(GetArtifactRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetArtifact")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetArtifactResponseObject); ok {
+		if err := validResponse.VisitGetArtifactResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -140,6 +140,14 @@ export type MessageInput = {
     attachments?: Array<string>;
 };
 
+export type Artifact = {
+    id: string;
+    name: string;
+    size: number;
+    conversationId: number;
+    displayConversationId: number;
+};
+
 export type Attachment = {
     id: string;
     name: string;
@@ -2231,6 +2239,73 @@ export type GetUploadResponses = {
 };
 
 export type GetUploadResponse = GetUploadResponses[keyof GetUploadResponses];
+
+export type ListArtifactsData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/artifacts';
+};
+
+export type ListArtifactsErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListArtifactsError = ListArtifactsErrors[keyof ListArtifactsErrors];
+
+export type ListArtifactsResponses = {
+    /**
+     * Delivered snapshots.
+     */
+    200: {
+        artifacts: Array<Artifact>;
+    };
+};
+
+export type ListArtifactsResponse = ListArtifactsResponses[keyof ListArtifactsResponses];
+
+export type GetArtifactData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+        artifactId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}';
+};
+
+export type GetArtifactErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetArtifactError = GetArtifactErrors[keyof GetArtifactErrors];
+
+export type GetArtifactResponses = {
+    /**
+     * Snapshot bytes.
+     */
+    200: Blob | File;
+};
+
+export type GetArtifactResponse = GetArtifactResponses[keyof GetArtifactResponses];
 
 export type GetExtensionsData = {
     body?: never;

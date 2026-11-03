@@ -22,6 +22,7 @@ import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
 import { activeSessionCount, markTaskSeen, sessionKind, taskTime } from "../lib/tasks";
 import { ChatProject } from "../components/chat-project";
+import { Artifacts, takeArtifactDraft } from "../components/agent/artifacts";
 import { Composer } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
 import { RetryNotice, Transcript } from "../components/agent/transcript";
@@ -140,6 +141,13 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const [localDraft, setLocalDraft] = useState("");
   const draft = main ? app.composer.text : localDraft;
   const setDraft = main ? app.setComposerText : setLocalDraft;
+
+  useEffect(() => {
+    const text = takeArtifactDraft(agentId, chatId);
+
+    if (text) setDraft((prior) => (prior ? `${prior}\n\n${text}` : text));
+  }, [agentId, chatId, setDraft]);
+
   const embedded = useContext(InPaneContext);
   const [jump, setJump] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -399,6 +407,12 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           retry={retryText}
           canRetry={!readOnly && !reason && !pending}
           memory={memory}
+        />
+        <Artifacts
+          chatId={chatId}
+          onContinue={
+            readOnly ? undefined : (text) => setDraft((prior) => (prior ? `${prior}\n\n${text}` : text))
+          }
         />
         {state.retry ? <RetryNotice retry={state.retry} /> : null}
         {running &&
