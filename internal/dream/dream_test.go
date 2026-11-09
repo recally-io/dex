@@ -9,6 +9,20 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
+func TestUserDreamCanIdentifyAClippedMessage(t *testing.T) {
+	// Given a message whose correction is hidden in the middle of the digest.
+	row := sqlc.ListDreamInputRow{ID: "message-123", ChatID: 1, Content: strings.Repeat("a", 3000) + "correction" + strings.Repeat("z", 1000), Status: "done"}
+	// When the dream receives its compact evidence.
+	text, _, err := digest("default", []sqlc.ListDreamInputRow{row})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Then it can identify the original message for a targeted read.
+	if !strings.Contains(text, `"message_id":"message-123"`) || !strings.Contains(text, `"user_cut":true`) {
+		t.Fatalf("digest does not identify clipped message: %s", text)
+	}
+}
+
 func TestCutKeepsStartAndEndOfLongText(t *testing.T) {
 	text := strings.Repeat("记", maxHead) + strings.Repeat("x", 10) + strings.Repeat("忆", maxTail)
 	got, ok := cut(text)

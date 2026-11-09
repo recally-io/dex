@@ -464,7 +464,7 @@ func TestDreamingReadsEachChatOnce(t *testing.T) {
 		}
 		return out
 	}
-	record := func(chat int64) string { return fmt.Sprintf(`+{"chat":"dex:default/chat/%d"`, chat) }
+	record := func(chat int64) string { return fmt.Sprintf(`"chat":"dex:default/chat/%d"`, chat) }
 
 	// When the user has a chat
 	first := d.newChat(t, "echo one")
