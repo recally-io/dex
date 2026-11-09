@@ -67,6 +67,9 @@ func New(cfg Config) http.Handler {
 	h := &handler{cfg}
 	strict := api.NewStrictHandlerWithOptions(h, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			if r.Context().Err() != nil {
+				return
+			}
 			// Decoder errors can quote a value with the wrong JSON type.
 			if strings.HasSuffix(r.URL.Path, "/extensions/env") {
 				writeError(w, http.StatusBadRequest, "the request is not valid")
@@ -74,7 +77,10 @@ func New(cfg Config) http.Handler {
 			}
 			writeError(w, http.StatusBadRequest, "the request is not valid: "+err.Error())
 		},
-		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
+		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			if r.Context().Err() != nil {
+				return
+			}
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
@@ -93,7 +99,10 @@ func New(cfg Config) http.Handler {
 			default:
 				slog.Error("api", "err", err)
 			}
-			writeError(w, status, err.Error())
+			// A stream or download can fail after its status and body have started.
+			if !w.(*responseWriter).started { //nolint:forcetypeassert // limited wraps every API response.
+				writeError(w, status, err.Error())
+			}
 		},
 	})
 	api.HandlerWithOptions(strict, api.StdHTTPServerOptions{BaseRouter: mux, Middlewares: []api.MiddlewareFunc{h.withAgent}})
@@ -105,6 +114,7 @@ func New(cfg Config) http.Handler {
 	// multipart headers.
 	small, uploads := http.MaxBytesHandler(mux, 256<<10), http.MaxBytesHandler(mux, upload.MaxSize+64<<10)
 	limited := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w = &responseWriter{ResponseWriter: w}
 		parts := strings.Split(r.URL.Path, "/")
 		if len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads" {
 			uploads.ServeHTTP(w, r)
@@ -113,6 +123,34 @@ func New(cfg Config) http.Handler {
 		}
 	})
 	return http.NewCrossOriginProtection().Handler(requireToken(cfg.Token, limited))
+}
+
+type responseWriter struct {
+	http.ResponseWriter
+	started bool
+}
+
+func (w *responseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *responseWriter) WriteHeader(status int) {
+	if status >= 200 || status == http.StatusSwitchingProtocols {
+		w.started = true
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *responseWriter) Write(body []byte) (int, error) {
+	if !w.started {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(body)
+}
+
+func (w *responseWriter) Flush() {
+	if !w.started {
+		w.WriteHeader(http.StatusOK)
+	}
+	_ = http.NewResponseController(w.ResponseWriter).Flush()
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
@@ -136,6 +174,9 @@ func (h *handler) withAgent(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if id := r.PathValue("agentId"); id != "" {
 			if _, err := h.Agents.Agent(r.Context(), id); err != nil {
+				if r.Context().Err() != nil {
+					return
+				}
 				status := http.StatusInternalServerError
 				if errors.Is(err, agent.ErrNotFound) {
 					status = http.StatusNotFound
