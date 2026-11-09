@@ -44,6 +44,11 @@ func (s *Service) CreateTelegramPairing(ctx context.Context, agentID string) (st
 
 func (s *Service) pairTelegram(agentID, token string) func(context.Context, string, int64) ([]int64, error) {
 	return func(ctx context.Context, code string, user int64) ([]int64, error) {
+		// Never wait: settings changes hold mu while joining this bot.
+		if !s.mu.TryLock() {
+			return nil, errors.New("channel settings are changing; retry pairing")
+		}
+		defer s.mu.Unlock()
 		if user <= 0 {
 			return nil, nil
 		}

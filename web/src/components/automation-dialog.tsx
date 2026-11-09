@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Automation, AutomationInput, Schedule, ScheduleInput } from "../api/generated/types.gen";
 import {
   createAutomationMutation,
+  getNotificationTargetsOptions,
   updateAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { previewSchedule } from "../api/generated/sdk.gen";
@@ -43,6 +44,14 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   const [timeZone, setTimeZone] = useState(existing?.timeZone ?? browserZone);
   const [session, setSession] = useState<AutomationInput["session"]>(existing?.session ?? "new");
   const [enabled, setEnabled] = useState(existing?.enabled ?? true);
+
+  const [notification, setNotification] = useState(
+    existing?.notification?.mode === "target"
+      ? `target:${existing.notification.targetId}`
+      : (existing?.notification?.mode ?? (existing ? "none" : "default")),
+  );
+
+  const targets = useQuery(getNotificationTargetsOptions({ path: { agentId } }));
 
   const schedule = useMemo<Schedule>(() => {
     switch (kind) {
@@ -148,6 +157,9 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             timeZone,
             session,
             enabled,
+            notification: notification.startsWith("target:")
+              ? { mode: "target" as const, targetId: notification.slice(7) }
+              : { mode: notification === "default" ? ("default" as const) : ("none" as const) },
           };
 
           if (existing) update.mutate({ path: { agentId, automationId: existing.id }, body });
@@ -183,6 +195,27 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
               value={cwd}
               onChange={(e) => setCwd(e.target.value)}
             />
+          )}
+        </Field>
+        <Field
+          label="Send result to"
+          hint="Notifications go only to an authorized recipient. The primary channel is configured on the Channels page."
+        >
+          {({ id, describedBy }) => (
+            <Select
+              id={id}
+              aria-describedby={describedBy}
+              value={notification}
+              onChange={(event) => setNotification(event.target.value)}
+            >
+              <option value="none">No notification</option>
+              <option value="default">Primary channel</option>
+              {targets.data?.targets.map((target) => (
+                <option key={target.id} value={`target:${target.id}`}>
+                  {target.platform}: {target.peer}
+                </option>
+              ))}
+            </Select>
           )}
         </Field>
         <div className="flex flex-col gap-1.5">

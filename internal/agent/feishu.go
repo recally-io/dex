@@ -84,10 +84,18 @@ func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, 
 		return FeishuSetup{}, fmt.Errorf("%w: enter an App ID and choose Feishu or Lark", ErrInvalid)
 	}
 	cfg := feishu.Config{AppID: appID, AppSecret: secret, Brand: brand, APIURL: s.feishuAPIURL}
+	// Pairing uses TryLock, so the snapshot remains valid while the old bot joins.
 	saved, err := s.FeishuConfig(ctx, agentID)
 	if err != nil {
 		return FeishuSetup{}, err
 	}
+	s.onFeishu(agentID, nil)
+	savedNew := false
+	defer func() {
+		if !savedNew && saved != nil {
+			s.onFeishu(agentID, saved)
+		}
+	}()
 	if saved != nil && saved.AppID == appID && saved.Brand == brand {
 		if cfg.AppSecret == "" {
 			cfg.AppSecret = saved.AppSecret
@@ -110,6 +118,7 @@ func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, 
 	if err := s.saveFeishu(ctx, agentID, cfg, pairing); err != nil {
 		return FeishuSetup{}, err
 	}
+	savedNew = true
 	s.channelSession(agentID).feishuSession = nil
 	s.channelSession(agentID).feishuSessionID = ""
 	return FeishuSetup{Status: "saved", PairingCode: pairing, ExpiresIn: 600}, nil
@@ -128,6 +137,11 @@ func (s *Service) saveFeishu(ctx context.Context, agentID string, cfg feishu.Con
 
 // PairFeishu consumes a one-time code only from a DM. The caller checks the DM boundary.
 func (s *Service) PairFeishu(ctx context.Context, agentID string, owner, code string) (bool, error) {
+	// Never wait: settings changes hold mu while joining this bot.
+	if !s.mu.TryLock() {
+		return false, errors.New("channel settings are changing; retry pairing")
+	}
+	defer s.mu.Unlock()
 	if owner == "" || code == "" {
 		return false, nil
 	}
@@ -140,12 +154,19 @@ func (s *Service) PairFeishu(ctx context.Context, agentID string, owner, code st
 func (s *Service) DeleteFeishu(ctx context.Context, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	saved, err := s.FeishuConfig(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	s.onFeishu(agentID, nil)
 	if err := s.q.DeleteFeishuSettings(ctx, agentID); err != nil {
+		if saved != nil {
+			s.onFeishu(agentID, saved)
+		}
 		return err
 	}
 	s.channelSession(agentID).feishuSession = nil
 	s.channelSession(agentID).feishuSessionID = ""
-	s.onFeishu(agentID, nil)
 	return nil
 }
 
@@ -206,7 +227,15 @@ func (s *Service) PollFeishu(ctx context.Context, agentID string, id string) (Fe
 		brand = "lark"
 	}
 	cfg := feishu.Config{AppID: data.AppID, AppSecret: data.AppSecret, OwnerID: data.UserInfo.OpenID, Brand: brand, APIURL: s.feishuAPIURL}
+	saved, err := s.FeishuConfig(ctx, agentID)
+	if err != nil {
+		return FeishuSetup{}, err
+	}
+	s.onFeishu(agentID, nil)
 	if err := s.saveFeishu(ctx, agentID, cfg, ""); err != nil {
+		if saved != nil {
+			s.onFeishu(agentID, saved)
+		}
 		return FeishuSetup{}, err
 	}
 	s.channelSession(agentID).feishuSession = nil

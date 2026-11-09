@@ -64,5 +64,8 @@ func (s *Service) settleInput(ctx context.Context, id string, event engine.Outco
 	if err = q.FinalizeAutomationRun(ctx, sqlc.FinalizeAutomationRunParams{ID: id, ExecutionStatus: event.Status, Failure: reason}); err != nil {
 		return 0, err
 	}
+	if err = q.QueueRoutineNotification(ctx, id); err != nil {
+		return 0, err
+	}
 	return changed, tx.Commit()
 }

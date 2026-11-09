@@ -332,5 +332,5 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 			return err
 		}
 	}
-	return nil
+	return m.flushNotifications(ctx, name, bot)
 }

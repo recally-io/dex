@@ -14,13 +14,14 @@ type AccessToken struct {
 }
 
 type Agent struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	ModelProvider string `json:"model_provider"`
-	ModelID       string `json:"model_id"`
-	Instructions  string `json:"instructions"`
-	CreatedAt     int64  `json:"created_at"`
-	ThinkingLevel string `json:"thinking_level"`
+	ID                          string         `json:"id"`
+	Name                        string         `json:"name"`
+	ModelProvider               string         `json:"model_provider"`
+	ModelID                     string         `json:"model_id"`
+	Instructions                string         `json:"instructions"`
+	CreatedAt                   int64          `json:"created_at"`
+	ThinkingLevel               string         `json:"thinking_level"`
+	PrimaryNotificationTargetID sql.NullString `json:"primary_notification_target_id"`
 }
 
 type Artifact struct {
@@ -35,18 +36,20 @@ type Artifact struct {
 }
 
 type Automation struct {
-	ID        string        `json:"id"`
-	AgentID   string        `json:"agent_id"`
-	Name      string        `json:"name"`
-	Prompt    string        `json:"prompt"`
-	Schedule  string        `json:"schedule"`
-	TimeZone  string        `json:"time_zone"`
-	Session   string        `json:"session"`
-	Enabled   int64         `json:"enabled"`
-	NextDueAt sql.NullInt64 `json:"next_due_at"`
-	CreatedAt int64         `json:"created_at"`
-	UpdatedAt int64         `json:"updated_at"`
-	Cwd       string        `json:"cwd"`
+	ID                   string         `json:"id"`
+	AgentID              string         `json:"agent_id"`
+	Name                 string         `json:"name"`
+	Prompt               string         `json:"prompt"`
+	Schedule             string         `json:"schedule"`
+	TimeZone             string         `json:"time_zone"`
+	Session              string         `json:"session"`
+	Enabled              int64          `json:"enabled"`
+	NextDueAt            sql.NullInt64  `json:"next_due_at"`
+	CreatedAt            int64          `json:"created_at"`
+	UpdatedAt            int64          `json:"updated_at"`
+	Cwd                  string         `json:"cwd"`
+	NotificationRoute    string         `json:"notification_route"`
+	NotificationTargetID sql.NullString `json:"notification_target_id"`
 }
 
 type AutomationRun struct {
@@ -121,6 +124,28 @@ type Provider struct {
 	ApiKey    string `json:"api_key"`
 	Models    string `json:"models"`
 	CreatedAt int64  `json:"created_at"`
+}
+
+type RoutineNotificationDelivery struct {
+	RunID         string `json:"run_id"`
+	AgentID       string `json:"agent_id"`
+	TargetID      string `json:"target_id"`
+	Platform      string `json:"platform"`
+	AccountID     string `json:"account_id"`
+	Peer          string `json:"peer"`
+	Body          string `json:"body"`
+	RenderedParts string `json:"rendered_parts"`
+	Parts         int64  `json:"parts"`
+	Status        string `json:"status"`
+	Reason        string `json:"reason"`
+}
+
+type RoutineNotificationTarget struct {
+	ID        string `json:"id"`
+	AgentID   string `json:"agent_id"`
+	Platform  string `json:"platform"`
+	AccountID string `json:"account_id"`
+	Peer      string `json:"peer"`
 }
 
 type RoutineToolOperation struct {

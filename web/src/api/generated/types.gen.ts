@@ -199,6 +199,15 @@ export type SchedulePreview = {
     nextRuns: Array<number>;
 };
 
+export type NotificationTargets = {
+    primaryId: string;
+    targets: Array<{
+        id: string;
+        platform: 'telegram' | 'feishu' | 'wechat';
+        peer: string;
+    }>;
+};
+
 export type AutomationInput = {
     name: string;
     prompt: string;
@@ -214,6 +223,16 @@ export type AutomationInput = {
      */
     session: 'new' | 'reuse';
     enabled: boolean;
+    /**
+     * Omit on update to retain the current route. New routines default to none.
+     */
+    notification?: {
+        mode: 'none' | 'default' | 'target';
+        /**
+         * An authorized target owned by this agent.
+         */
+        targetId?: string;
+    };
 };
 
 export type Automation = AutomationInput & {
@@ -1091,6 +1110,65 @@ export type GetChannelsResponses = {
 };
 
 export type GetChannelsResponse = GetChannelsResponses[keyof GetChannelsResponses];
+
+export type GetNotificationTargetsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/notification-targets';
+};
+
+export type GetNotificationTargetsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetNotificationTargetsError = GetNotificationTargetsErrors[keyof GetNotificationTargetsErrors];
+
+export type GetNotificationTargetsResponses = {
+    /**
+     * This agent's authorized notification destinations and default.
+     */
+    200: NotificationTargets;
+};
+
+export type GetNotificationTargetsResponse = GetNotificationTargetsResponses[keyof GetNotificationTargetsResponses];
+
+export type SetPrimaryNotificationTargetData = {
+    body: {
+        /**
+         * Empty clears the default.
+         */
+        targetId: string;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/notification-targets';
+};
+
+export type SetPrimaryNotificationTargetErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetPrimaryNotificationTargetError = SetPrimaryNotificationTargetErrors[keyof SetPrimaryNotificationTargetErrors];
+
+export type SetPrimaryNotificationTargetResponses = {
+    /**
+     * Default saved.
+     */
+    200: Ok;
+};
+
+export type SetPrimaryNotificationTargetResponse = SetPrimaryNotificationTargetResponses[keyof SetPrimaryNotificationTargetResponses];
 
 export type CreateTelegramPairingData = {
     body?: never;

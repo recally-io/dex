@@ -140,3 +140,73 @@ func TestUserWechatNewLoginAndDeleteInvalidateWaitingStart(t *testing.T) {
 		})
 	}
 }
+
+func TestUserWechatDeletionStopsBeforeForgettingCredentials(t *testing.T) {
+	// Given a connected account whose runtime is stopped at the platform boundary.
+	ctx := t.Context()
+	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	q := sqlc.New(conn)
+	if err := q.CreateAgentIfMissing(ctx, sqlc.CreateAgentIfMissingParams{ID: "default", Name: "Dex"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{AgentID: "default", Token: "old", BaseUrl: "https://example.com", BotID: "bot", Owner: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	s := agent.New(q, nil, "", nil)
+	var stoppedWithOwner string
+	s.ConfigureWechat(wechat.Options{}, conn, func(_ string, cfg *wechat.Config) {
+		if cfg == nil {
+			row, err := q.GetWechatSettings(ctx, "default")
+			if err == nil {
+				stoppedWithOwner = row.Owner
+			}
+		}
+	})
+	// When the owner disconnects, the runtime must have stopped while authorization existed.
+	if err := s.DeleteWechat(ctx, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if stoppedWithOwner != "owner" {
+		t.Fatalf("runtime stopped after authorization was removed: owner=%q", stoppedWithOwner)
+	}
+	if _, err := q.GetWechatSettings(ctx, "default"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("account still connected: %v", err)
+	}
+}
+
+func TestUserWechatDeleteFailureRestartsAccount(t *testing.T) {
+	// Given a connected account and a local storage failure when it is deleted.
+	ctx := t.Context()
+	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	q := sqlc.New(conn)
+	if err := q.CreateAgentIfMissing(ctx, sqlc.CreateAgentIfMissingParams{ID: "default", Name: "Dex"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{AgentID: "default", Token: "old", BaseUrl: "https://example.com", BotID: "bot", Owner: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, `CREATE TRIGGER fail_wechat_delete BEFORE DELETE ON wechat_settings BEGIN SELECT RAISE(ABORT, 'test failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	s := agent.New(q, nil, "", nil)
+	var running *wechat.Config
+	s.ConfigureWechat(wechat.Options{}, conn, func(_ string, cfg *wechat.Config) { running = cfg })
+	// When deletion fails, the previous account remains usable.
+	if err := s.DeleteWechat(ctx, "default"); err == nil {
+		t.Fatal("delete unexpectedly succeeded")
+	}
+	if running == nil || running.BotID != "bot" || running.Owner != "owner" {
+		t.Fatalf("account not restarted: %+v", running)
+	}
+	if _, err := q.GetWechatSettings(ctx, "default"); err != nil {
+		t.Fatalf("credentials lost: %v", err)
+	}
+}

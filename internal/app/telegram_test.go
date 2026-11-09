@@ -27,6 +27,9 @@ import (
 type fakeTelegram struct {
 	fileGate      <-chan struct{}
 	draftGate     <-chan struct{}
+	pollStarted   chan struct{}
+	pollCanceled  chan struct{}
+	pollRelease   <-chan struct{}
 	permanentChat atomic.Int64
 	failAfter     atomic.Int64
 	sendCount     atomic.Int64
@@ -138,6 +141,21 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			Offset int64 `json:"offset"`
 		}
 		_ = json.UnmarshalRead(r.Body, &params)
+		if f.pollStarted != nil {
+			select {
+			case f.pollStarted <- struct{}{}:
+			default:
+			}
+			select {
+			case <-r.Context().Done():
+				select {
+				case f.pollCanceled <- struct{}{}:
+				default:
+				}
+			case <-f.pollRelease:
+			}
+			return
+		}
 		f.mu.Lock()
 		var updates []map[string]any
 		for _, u := range f.updates {

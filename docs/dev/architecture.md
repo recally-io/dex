@@ -350,6 +350,26 @@ automations and their runs in `control.sqlite`. One scheduler job calls its
 `automation:<id>:<run id>` for a new chat each run), and moves `next_due_at`
 past now. The message uses the normal durable delivery.
 
+A user can select a primary notification target for each agent. Each routine can
+turn notifications off, follow the primary target, or select another authorized
+recipient of that agent. Existing routines keep notifications off. The API keeps
+an omitted notification field on update. New routines created in the dialog or
+by the routine tool follow the primary target. With no primary target, the run
+has no channel delivery.
+
+A settled routine with a resolved authorized target saves one delivery with the
+result in the same transaction as settlement. It freezes the target and message at that
+time. A skipped run has no delivery. Channel managers render and save message
+parts before sending. They retry pending parts after a failure or restart.
+Delivery is at least once: a platform can accept a part before the local receipt
+is stored. A permanent rejection is recorded separately from a delivery.
+Changing a routine route or the primary target affects future settlements, not
+already queued deliveries. Removing channel authorization rejects its pending
+deliveries. A target's deletion also clears routines that selected that target.
+Channel changes stop and join the old runtime before they change authorization.
+They cannot retract a message already accepted by a platform. WeChat delivery
+also needs a current owner context token and can wait for one.
+
 Run records and durable message intents commit in one control transaction.
 The run ID is the input request ID. A crash before commit leaves neither
 record. A crash after commit leaves an input that normal chat reconciliation

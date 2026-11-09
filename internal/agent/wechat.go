@@ -154,9 +154,14 @@ func (s *Service) DeleteWechat(ctx context.Context, agentID string) error {
 	defer s.mu.Unlock()
 	s.channelSession(agentID).login = nil
 	s.channelSession(agentID).loginID = ""
-	if err := s.q.DeleteWechatSettings(ctx, agentID); err != nil {
+	previous, err := s.WechatConfig(ctx, agentID)
+	if err != nil {
 		return err
 	}
 	s.onWechat(agentID, nil)
+	if err := s.q.DeleteWechatSettings(ctx, agentID); err != nil {
+		s.onWechat(agentID, previous)
+		return err
+	}
 	return nil
 }
