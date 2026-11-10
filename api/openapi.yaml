@@ -93,6 +93,22 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
+  /api/inbox/{runId}/restore:
+    parameters:
+      - in: path
+        name: runId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: restoreInboxItem
+      description: Undo dismissal without changing read state.
+      responses:
+        "200":
+          description: State saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        default: { $ref: "#/components/responses/Error" }
   /api/session:
     post:
       operationId: createSession
@@ -562,6 +578,26 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/tasks/{taskId}/restore:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - in: path
+        name: taskId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: restoreTask
+      description: Undo handling a finished task without changing its result.
+      responses:
+        "200":
+          description: The task was restored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        default: { $ref: "#/components/responses/Error" }
   /api/agents/{agentId}/tasks/{taskId}/cancel:
     parameters:
       - in: path

@@ -488,6 +488,25 @@ func (q *Queries) ResetTaskAdmission(ctx context.Context, id string) (int64, err
 	return result.RowsAffected()
 }
 
+const restoreTask = `-- name: RestoreTask :execrows
+UPDATE tasks SET handled_at = NULL
+WHERE tasks.id = ?1 AND tasks.status IN ('done', 'failed', 'cancelled', 'interrupted')
+    AND tasks.conversation_id IN (SELECT c.id FROM conversations c WHERE c.agent_id = ?2)
+`
+
+type RestoreTaskParams struct {
+	TaskID  string `json:"task_id"`
+	AgentID string `json:"agent_id"`
+}
+
+func (q *Queries) RestoreTask(ctx context.Context, arg RestoreTaskParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, restoreTask, arg.TaskID, arg.AgentID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const runTask = `-- name: RunTask :execrows
 UPDATE tasks SET status = 'running'
 WHERE id = ?1 AND status = 'admitting'

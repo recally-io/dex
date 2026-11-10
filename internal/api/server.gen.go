@@ -1959,6 +1959,9 @@ type ServerInterface interface {
 	// (POST /api/agents/{agentId}/tasks/{taskId}/cancel)
 	CancelTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
 
+	// (POST /api/agents/{agentId}/tasks/{taskId}/restore)
+	RestoreTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
+
 	// (POST /api/agents/{agentId}/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request, agentId string)
 
@@ -1982,6 +1985,9 @@ type ServerInterface interface {
 
 	// (POST /api/inbox/{runId}/read)
 	ReadInboxItem(w http.ResponseWriter, r *http.Request, runId string)
+
+	// (POST /api/inbox/{runId}/restore)
+	RestoreInboxItem(w http.ResponseWriter, r *http.Request, runId string)
 
 	// (DELETE /api/maintenance)
 	ReleaseMaintenance(w http.ResponseWriter, r *http.Request)
@@ -3497,6 +3503,41 @@ func (siw *ServerInterfaceWrapper) CancelTask(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// RestoreTask operation middleware
+func (siw *ServerInterfaceWrapper) RestoreTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreTask(w, r, agentId, taskId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateUpload operation middleware
 func (siw *ServerInterfaceWrapper) CreateUpload(w http.ResponseWriter, r *http.Request) {
 
@@ -3695,6 +3736,32 @@ func (siw *ServerInterfaceWrapper) ReadInboxItem(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReadInboxItem(w, r, runId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestoreInboxItem operation middleware
+func (siw *ServerInterfaceWrapper) RestoreInboxItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runId" -------------
+	var runId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runId", r.PathValue("runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreInboxItem(w, r, runId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3996,6 +4063,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox", wrapper.ListInbox)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/read", wrapper.ReadInboxItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/dismiss", wrapper.DismissInboxItem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/restore", wrapper.RestoreInboxItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/session", wrapper.CreateSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/maintenance", wrapper.ReleaseMaintenance)
@@ -4025,6 +4093,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}", wrapper.UpdateAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}", wrapper.GetTask)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}/acknowledge", wrapper.AcknowledgeTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}/restore", wrapper.RestoreTask)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}/cancel", wrapper.CancelTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/main", wrapper.GetMainChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.ListChats)
@@ -6806,6 +6875,46 @@ func (response CancelTaskdefaultJSONResponse) VisitCancelTaskResponse(w http.Res
 	return err
 }
 
+type RestoreTaskRequestObject struct {
+	AgentId string `json:"agentId"`
+	TaskId  string `json:"taskId"`
+}
+
+type RestoreTaskResponseObject interface {
+	VisitRestoreTaskResponse(w http.ResponseWriter) error
+}
+
+type RestoreTask200JSONResponse Task
+
+func (response RestoreTask200JSONResponse) VisitRestoreTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreTaskdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RestoreTaskdefaultJSONResponse) VisitRestoreTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateUploadRequestObject struct {
 	AgentId string `json:"agentId"`
 	Body    *multipart.Reader
@@ -7224,6 +7333,45 @@ type ReadInboxItemdefaultJSONResponse struct {
 }
 
 func (response ReadInboxItemdefaultJSONResponse) VisitReadInboxItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreInboxItemRequestObject struct {
+	RunId string `json:"runId"`
+}
+
+type RestoreInboxItemResponseObject interface {
+	VisitRestoreInboxItemResponse(w http.ResponseWriter) error
+}
+
+type RestoreInboxItem200JSONResponse Ok
+
+func (response RestoreInboxItem200JSONResponse) VisitRestoreInboxItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreInboxItemdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RestoreInboxItemdefaultJSONResponse) VisitRestoreInboxItemResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -7749,6 +7897,9 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/tasks/{taskId}/cancel)
 	CancelTask(ctx context.Context, request CancelTaskRequestObject) (CancelTaskResponseObject, error)
 
+	// (POST /api/agents/{agentId}/tasks/{taskId}/restore)
+	RestoreTask(ctx context.Context, request RestoreTaskRequestObject) (RestoreTaskResponseObject, error)
+
 	// (POST /api/agents/{agentId}/uploads)
 	CreateUpload(ctx context.Context, request CreateUploadRequestObject) (CreateUploadResponseObject, error)
 
@@ -7772,6 +7923,9 @@ type StrictServerInterface interface {
 
 	// (POST /api/inbox/{runId}/read)
 	ReadInboxItem(ctx context.Context, request ReadInboxItemRequestObject) (ReadInboxItemResponseObject, error)
+
+	// (POST /api/inbox/{runId}/restore)
+	RestoreInboxItem(ctx context.Context, request RestoreInboxItemRequestObject) (RestoreInboxItemResponseObject, error)
 
 	// (DELETE /api/maintenance)
 	ReleaseMaintenance(ctx context.Context, request ReleaseMaintenanceRequestObject) (ReleaseMaintenanceResponseObject, error)
@@ -9213,6 +9367,33 @@ func (sh *strictHandler) CancelTask(w http.ResponseWriter, r *http.Request, agen
 	}
 }
 
+// RestoreTask operation middleware
+func (sh *strictHandler) RestoreTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
+	var request RestoreTaskRequestObject
+
+	request.AgentId = agentId
+	request.TaskId = taskId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RestoreTask(ctx, request.(RestoreTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RestoreTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RestoreTaskResponseObject); ok {
+		if err := validResponse.VisitRestoreTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CreateUpload operation middleware
 func (sh *strictHandler) CreateUpload(w http.ResponseWriter, r *http.Request, agentId string) {
 	var request CreateUploadRequestObject
@@ -9425,6 +9606,32 @@ func (sh *strictHandler) ReadInboxItem(w http.ResponseWriter, r *http.Request, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ReadInboxItemResponseObject); ok {
 		if err := validResponse.VisitReadInboxItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RestoreInboxItem operation middleware
+func (sh *strictHandler) RestoreInboxItem(w http.ResponseWriter, r *http.Request, runId string) {
+	var request RestoreInboxItemRequestObject
+
+	request.RunId = runId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RestoreInboxItem(ctx, request.(RestoreInboxItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RestoreInboxItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RestoreInboxItemResponseObject); ok {
+		if err := validResponse.VisitRestoreInboxItemResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

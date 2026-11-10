@@ -22,6 +22,11 @@ UPDATE tasks SET handled_at = coalesce(handled_at, @handled_at)
 WHERE tasks.id = @task_id AND tasks.status IN ('done', 'failed', 'cancelled', 'interrupted')
 AND tasks.conversation_id IN (SELECT c.id FROM conversations c WHERE c.agent_id = @agent_id);
 
+-- name: RestoreTask :execrows
+UPDATE tasks SET handled_at = NULL
+WHERE tasks.id = @task_id AND tasks.status IN ('done', 'failed', 'cancelled', 'interrupted')
+    AND tasks.conversation_id IN (SELECT c.id FROM conversations c WHERE c.agent_id = @agent_id);
+
 -- name: GetAgentTask :one
 SELECT t.* FROM tasks t JOIN conversations c ON c.id = t.conversation_id
 WHERE t.id = ? AND c.agent_id = ?;

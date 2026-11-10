@@ -17,6 +17,11 @@ UPDATE automation_runs SET read_at = coalesce(read_at, sqlc.arg(now))
 WHERE automation_runs.id = sqlc.arg(id) AND outcome IN ('changed', 'failed') AND duplicate = 0
     AND EXISTS (SELECT 1 FROM submissions s WHERE s.id = automation_runs.id AND s.status <> 'pending');
 
+-- name: RestoreInboxItem :execrows
+UPDATE automation_runs SET dismissed_at = NULL
+WHERE automation_runs.id = sqlc.arg(id) AND outcome IN ('changed', 'failed') AND duplicate = 0
+    AND EXISTS (SELECT 1 FROM submissions s WHERE s.id = automation_runs.id AND s.status <> 'pending');
+
 -- name: DismissInboxItem :execrows
 UPDATE automation_runs SET dismissed_at = coalesce(dismissed_at, sqlc.arg(now))
 WHERE automation_runs.id = sqlc.arg(id) AND outcome IN ('changed', 'failed') AND duplicate = 0

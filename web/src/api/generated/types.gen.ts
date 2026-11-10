@@ -928,6 +928,33 @@ export type DismissInboxItemResponses = {
 
 export type DismissInboxItemResponse = DismissInboxItemResponses[keyof DismissInboxItemResponses];
 
+export type RestoreInboxItemData = {
+    body?: never;
+    path: {
+        runId: string;
+    };
+    query?: never;
+    url: '/api/inbox/{runId}/restore';
+};
+
+export type RestoreInboxItemErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type RestoreInboxItemError = RestoreInboxItemErrors[keyof RestoreInboxItemErrors];
+
+export type RestoreInboxItemResponses = {
+    /**
+     * State saved.
+     */
+    200: Ok;
+};
+
+export type RestoreInboxItemResponse = RestoreInboxItemResponses[keyof RestoreInboxItemResponses];
+
 export type CreateSessionData = {
     body: NewSession;
     path?: never;
@@ -1754,6 +1781,34 @@ export type AcknowledgeTaskResponses = {
 };
 
 export type AcknowledgeTaskResponse = AcknowledgeTaskResponses[keyof AcknowledgeTaskResponses];
+
+export type RestoreTaskData = {
+    body?: never;
+    path: {
+        agentId: string;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/tasks/{taskId}/restore';
+};
+
+export type RestoreTaskErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type RestoreTaskError = RestoreTaskErrors[keyof RestoreTaskErrors];
+
+export type RestoreTaskResponses = {
+    /**
+     * The task was restored.
+     */
+    200: Task;
+};
+
+export type RestoreTaskResponse = RestoreTaskResponses[keyof RestoreTaskResponses];
 
 export type CancelTaskData = {
     body?: never;

@@ -143,8 +143,19 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 			t.Fatalf("another result changed: %+v", r)
 		}
 	}
+	// When the owner undoes the dismissal, the result returns without becoming unread.
+	d.must(t, http.MethodPost, "/api/inbox/"+target.RunID+"/restore", nil, nil)
+	restored := inbox(t, d, "/api/inbox")
+	if len(restored) != 4 {
+		t.Fatalf("restored result missing: %+v", restored)
+	}
+	for _, item := range restored {
+		if item.RunID == target.RunID && (!item.Read || item.Dismissed) {
+			t.Fatalf("restore changed read state: %+v", item)
+		}
+	}
 	for _, id := range []string{"missing", "legacy"} {
-		for _, action := range []string{"read", "dismiss"} {
+		for _, action := range []string{"read", "dismiss", "restore"} {
 			status, body := d.call(t, http.MethodPost, "/api/inbox/"+id+"/"+action, nil)
 			if status != http.StatusNotFound {
 				t.Fatalf("%s %s: %d %s", id, action, status, body)

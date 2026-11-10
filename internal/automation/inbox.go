@@ -47,6 +47,18 @@ func (s *Service) ReadInboxItem(ctx context.Context, id string) error {
 	return nil
 }
 
+// RestoreInboxItem undoes dismissal and retains the read time.
+func (s *Service) RestoreInboxItem(ctx context.Context, id string) error {
+	n, err := s.q.RestoreInboxItem(ctx, id)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // DismissInboxItem keeps the first dismissal time on repeated requests.
 func (s *Service) DismissInboxItem(ctx context.Context, id string) error {
 	n, err := s.q.DismissInboxItem(ctx, sqlc.DismissInboxItemParams{ID: id, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
