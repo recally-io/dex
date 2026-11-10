@@ -302,6 +302,9 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := registry.Install(taskReportExtension(agentID, a.config.Tasks.ReportTask)); err != nil {
 		return nil, err
 	}
+	if err := registry.Install(dreamMessageExtension(agentID, a.config.Tasks.ReadDreamMessage)); err != nil {
+		return nil, err
+	}
 	store, err := storage.OpenNodeSqliteStorage(filepath.Join(dir, "state.sqlite"), storage.NodeSqliteStorageOptions{})
 	if err != nil {
 		return nil, err

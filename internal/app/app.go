@@ -106,6 +106,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	)
 	artifacts := artifact.New(conn, cfg.DataDir)
 	tools := engine.TaskTools{
+		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
+			return chats.ToolReadDreamMessage(ctx, c, request)
+		},
 		DeliverArtifact: artifacts.Deliver,
 		ReportTask: func(ctx context.Context, c engine.TaskContext, r engine.TaskReport) error {
 			return chats.ToolReportTask(ctx, c, r)

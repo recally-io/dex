@@ -39,6 +39,9 @@ func startNative(t *testing.T, model string) *nativeTest {
 	}
 	var service *Service
 	agents, err := engine.New(engine.Config{DataDir: dir, Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, Tasks: engine.TaskTools{
+		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
+			return service.ToolReadDreamMessage(ctx, c, request)
+		},
 		Spawn: func(ctx context.Context, c engine.TaskContext, a engine.SpawnTaskArgs) (engine.TaskInfo, error) {
 			t, err := service.SpawnTask(ctx, c, a)
 			return engine.TaskInfo(t), err

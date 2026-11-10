@@ -70,14 +70,15 @@ type ArtifactInfo struct {
 
 // TaskTools connects foreground tools to the application services.
 type TaskTools struct {
-	DeliverArtifact func(context.Context, TaskContext, string) (ArtifactInfo, error)
-	ReportTask      func(context.Context, TaskContext, TaskReport) error
-	ReportCheck     func(context.Context, TaskContext, CheckReport) error
-	SetProject      func(context.Context, TaskContext, string) (string, error)
-	Spawn           func(context.Context, TaskContext, SpawnTaskArgs) (TaskInfo, error)
-	List            func(context.Context, TaskContext) ([]TaskInfo, error)
-	Get             func(context.Context, TaskContext, string) (TaskInfo, error)
-	Cancel          func(context.Context, TaskContext, string) (TaskInfo, error)
+	ReadDreamMessage func(context.Context, TaskContext, DreamMessageRequest) (DreamMessagePage, error)
+	DeliverArtifact  func(context.Context, TaskContext, string) (ArtifactInfo, error)
+	ReportTask       func(context.Context, TaskContext, TaskReport) error
+	ReportCheck      func(context.Context, TaskContext, CheckReport) error
+	SetProject       func(context.Context, TaskContext, string) (string, error)
+	Spawn            func(context.Context, TaskContext, SpawnTaskArgs) (TaskInfo, error)
+	List             func(context.Context, TaskContext) ([]TaskInfo, error)
+	Get              func(context.Context, TaskContext, string) (TaskInfo, error)
+	Cancel           func(context.Context, TaskContext, string) (TaskInfo, error)
 }
 
 func codingSkill() *durable.Extension {
