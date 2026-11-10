@@ -176,6 +176,10 @@ func TestUserCompactionReportsNativeSummaryStates(t *testing.T) {
 			t.Fatal(err)
 		}
 		compactBoundaryReached(t, reached)
+		saved, found, err := a.LookupCompact(t.Context(), ref, "stale")
+		if err != nil || !found || saved != id {
+			t.Fatalf("running task admission=%d found=%v err=%v", saved, found, err)
+		}
 		got, err := a.CompactionStatus(t.Context(), ref, id)
 		if err != nil || got.Status != "generating" {
 			t.Fatalf("status=%+v err=%v", got, err)

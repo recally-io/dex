@@ -85,6 +85,26 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, operationID string) (int6
 	return int64(id), nil
 }
 
+// LookupCompact reads an admitted task ID without opening a cold Harness.
+func (a *Agents) LookupCompact(ctx context.Context, ref Ref, operationID string) (int64, bool, error) {
+	if operationID == "" {
+		return 0, false, ErrInvalidInput
+	}
+	raw, err := a.readOperationDocument(ctx, ref, compactOperationsDoc, "dex.compact_operations")
+	if err != nil {
+		return 0, false, err
+	}
+	if raw == nil {
+		return 0, false, nil
+	}
+	state, err := durable.FromJsonValue[compactOperations](raw)
+	if err != nil {
+		return 0, false, err
+	}
+	id, ok := state.Tasks[operationID]
+	return int64(id), ok, nil
+}
+
 // CompactionStatus reads a saved task and its summary write without waiting.
 func (a *Agents) CompactionStatus(ctx context.Context, ref Ref, taskID int64) (Compaction, error) {
 	if taskID <= 0 {

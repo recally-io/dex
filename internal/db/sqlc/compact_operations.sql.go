@@ -25,16 +25,17 @@ func (q *Queries) AdmitCompactOperation(ctx context.Context, arg AdmitCompactOpe
 }
 
 const createCompactOperation = `-- name: CreateCompactOperation :exec
-INSERT INTO compact_operations (operation_id, agent_id, conversation_id, status, created_at)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO compact_operations (operation_id, agent_id, conversation_id, status, created_at, tool_source_request_id)
+VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type CreateCompactOperationParams struct {
-	OperationID    string `json:"operation_id"`
-	AgentID        string `json:"agent_id"`
-	ConversationID int64  `json:"conversation_id"`
-	Status         string `json:"status"`
-	CreatedAt      int64  `json:"created_at"`
+	OperationID         string `json:"operation_id"`
+	AgentID             string `json:"agent_id"`
+	ConversationID      int64  `json:"conversation_id"`
+	Status              string `json:"status"`
+	CreatedAt           int64  `json:"created_at"`
+	ToolSourceRequestID string `json:"tool_source_request_id"`
 }
 
 func (q *Queries) CreateCompactOperation(ctx context.Context, arg CreateCompactOperationParams) error {
@@ -44,12 +45,13 @@ func (q *Queries) CreateCompactOperation(ctx context.Context, arg CreateCompactO
 		arg.ConversationID,
 		arg.Status,
 		arg.CreatedAt,
+		arg.ToolSourceRequestID,
 	)
 	return err
 }
 
 const getCompactOperation = `-- name: GetCompactOperation :one
-SELECT operation_id, agent_id, conversation_id, status, task_id, created_at FROM compact_operations WHERE operation_id = ?
+SELECT operation_id, agent_id, conversation_id, status, task_id, created_at, tool_source_request_id FROM compact_operations WHERE operation_id = ?
 `
 
 func (q *Queries) GetCompactOperation(ctx context.Context, operationID string) (CompactOperation, error) {
@@ -62,12 +64,13 @@ func (q *Queries) GetCompactOperation(ctx context.Context, operationID string) (
 		&i.Status,
 		&i.TaskID,
 		&i.CreatedAt,
+		&i.ToolSourceRequestID,
 	)
 	return i, err
 }
 
 const listPendingCompactOperations = `-- name: ListPendingCompactOperations :many
-SELECT operation_id, agent_id, conversation_id, status, task_id, created_at FROM compact_operations WHERE status = 'pending' ORDER BY rowid
+SELECT operation_id, agent_id, conversation_id, status, task_id, created_at, tool_source_request_id FROM compact_operations WHERE status = 'pending' ORDER BY rowid
 `
 
 func (q *Queries) ListPendingCompactOperations(ctx context.Context) ([]CompactOperation, error) {
@@ -86,6 +89,7 @@ func (q *Queries) ListPendingCompactOperations(ctx context.Context) ([]CompactOp
 			&i.Status,
 			&i.TaskID,
 			&i.CreatedAt,
+			&i.ToolSourceRequestID,
 		); err != nil {
 			return nil, err
 		}
@@ -98,4 +102,13 @@ func (q *Queries) ListPendingCompactOperations(ctx context.Context) ([]CompactOp
 		return nil, err
 	}
 	return items, nil
+}
+
+const rejectCompactOperation = `-- name: RejectCompactOperation :exec
+UPDATE compact_operations SET status = 'rejected' WHERE operation_id = ? AND status = 'pending'
+`
+
+func (q *Queries) RejectCompactOperation(ctx context.Context, operationID string) error {
+	_, err := q.db.ExecContext(ctx, rejectCompactOperation, operationID)
+	return err
 }

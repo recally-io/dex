@@ -50,8 +50,12 @@ func (s *Service) compact(ctx context.Context, agentID string, chatID int64, ope
 	if err := s.finishAgentAborts(ctx, agentID); err != nil {
 		return Compaction{}, err
 	}
+	toolSource := ""
+	if caller != nil {
+		toolSource = caller.SourceRequestID
+	}
 	s.admissionMu.RLock()
-	op, err := s.createCompactReceipt(ctx, agentID, chat, operationID)
+	op, err := s.createCompactReceipt(ctx, agentID, chat, operationID, toolSource)
 	s.admissionMu.RUnlock()
 	if err != nil {
 		return Compaction{}, err
@@ -64,7 +68,7 @@ func (s *Service) compact(ctx context.Context, agentID string, chatID int64, ope
 	return s.compactionStatus(ctx, agentID, chatID, operationID)
 }
 
-func (s *Service) createCompactReceipt(ctx context.Context, agentID string, chat Chat, operationID string) (sqlc.CompactOperation, error) {
+func (s *Service) createCompactReceipt(ctx context.Context, agentID string, chat Chat, operationID, toolSource string) (sqlc.CompactOperation, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return sqlc.CompactOperation{}, err
@@ -76,7 +80,7 @@ func (s *Service) createCompactReceipt(ctx context.Context, agentID string, chat
 	q := s.q.WithTx(tx)
 	prior, err := q.GetCompactOperation(ctx, operationID)
 	if err == nil {
-		if prior.AgentID != agentID || prior.ConversationID != chat.ID {
+		if prior.AgentID != agentID || prior.ConversationID != chat.ID || prior.ToolSourceRequestID != toolSource {
 			return sqlc.CompactOperation{}, engine.ErrOperationConflict
 		}
 		return prior, nil
@@ -91,7 +95,7 @@ func (s *Service) createCompactReceipt(ctx context.Context, agentID string, chat
 	if chat.ExecutionID == 0 {
 		state = "empty"
 	}
-	if err = q.CreateCompactOperation(ctx, sqlc.CreateCompactOperationParams{OperationID: operationID, AgentID: agentID, ConversationID: chat.ID, Status: state, CreatedAt: s.now().UnixMilli()}); err != nil {
+	if err = q.CreateCompactOperation(ctx, sqlc.CreateCompactOperationParams{OperationID: operationID, AgentID: agentID, ConversationID: chat.ID, Status: state, CreatedAt: s.now().UnixMilli(), ToolSourceRequestID: toolSource}); err != nil {
 		return sqlc.CompactOperation{}, err
 	}
 	op, err := q.GetCompactOperation(ctx, operationID)
@@ -108,7 +112,28 @@ func (s *Service) admitCompact(ctx context.Context, op sqlc.CompactOperation) er
 	if err != nil {
 		return err
 	}
-	id, err := s.engine.Compact(ctx, engine.Ref{AgentID: op.AgentID, ID: c.ExecutionID.Int64}, op.OperationID)
+	ref := engine.Ref{AgentID: op.AgentID, ID: c.ExecutionID.Int64}
+	var id int64
+	if op.ToolSourceRequestID != "" {
+		active, readErr := s.toolOperationSourceActive(ctx, op.ToolSourceRequestID, op.ConversationID)
+		if readErr != nil {
+			return readErr
+		}
+		if !active {
+			var found bool
+			id, found, err = s.engine.LookupCompact(ctx, ref, op.OperationID)
+			if err != nil {
+				return err
+			}
+			if !found {
+				return s.q.RejectCompactOperation(ctx, op.OperationID)
+			}
+		} else {
+			id, err = s.engine.Compact(ctx, ref, op.OperationID)
+		}
+	} else {
+		id, err = s.engine.Compact(ctx, ref, op.OperationID)
+	}
 	if err != nil {
 		return err
 	}
@@ -142,6 +167,11 @@ func (s *Service) compactionStatus(ctx context.Context, agentID string, chatID i
 	out := Compaction{ID: op.OperationID, Status: "pending"}
 	if op.Status == "empty" {
 		out.Status = "no_op"
+		return out, nil
+	}
+	if op.Status == "rejected" {
+		out.Status = "failed"
+		out.Reason = "source_closed"
 		return out, nil
 	}
 	if op.Status == "pending" {

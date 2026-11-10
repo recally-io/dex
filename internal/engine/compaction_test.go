@@ -85,10 +85,25 @@ func TestUserCompactionReusesOperationAndReportsNoOp(t *testing.T) {
 	if _, err := a.CompactionStatus(ctx, other, id); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("foreign task: %v", err)
 	}
+	beta := coreCreate(t, a, "beta", coreOptions("echo"))
 	if err := a.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
 	a = coreEngine(t, cfg)
+	if _, found, err := a.LookupCompact(ctx, ref, "absent"); err != nil || found || len(a.resources) != 0 {
+		t.Fatalf("cold absent found=%v err=%v", found, err)
+	}
+	cold, found, err := a.LookupCompact(ctx, ref, "same")
+	if err != nil || !found || cold != id || len(a.resources) != 0 {
+		t.Fatalf("cold lookup=%d found=%v err=%v", cold, found, err)
+	}
+	if _, err := a.conversation(ctx, beta); err != nil {
+		t.Fatal(err)
+	}
+	cold, found, err = a.LookupCompact(ctx, ref, "same")
+	if err != nil || !found || cold != id || a.resources[ref.AgentID] != nil {
+		t.Fatalf("cold lookup with another agent=%d found=%v err=%v", cold, found, err)
+	}
 	got, err := a.Compact(ctx, ref, "same")
 	if err != nil || got != id {
 		t.Fatalf("reopen id=%d err=%v", got, err)

@@ -84,12 +84,13 @@ type ChannelPeer struct {
 }
 
 type CompactOperation struct {
-	OperationID    string        `json:"operation_id"`
-	AgentID        string        `json:"agent_id"`
-	ConversationID int64         `json:"conversation_id"`
-	Status         string        `json:"status"`
-	TaskID         sql.NullInt64 `json:"task_id"`
-	CreatedAt      int64         `json:"created_at"`
+	OperationID         string        `json:"operation_id"`
+	AgentID             string        `json:"agent_id"`
+	ConversationID      int64         `json:"conversation_id"`
+	Status              string        `json:"status"`
+	TaskID              sql.NullInt64 `json:"task_id"`
+	CreatedAt           int64         `json:"created_at"`
+	ToolSourceRequestID string        `json:"tool_source_request_id"`
 }
 
 type Conversation struct {
