@@ -1,7 +1,10 @@
 package engine
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"sync"
 	"testing"
 
@@ -24,7 +27,7 @@ func TestUserForkIsIdempotentAndChecksEntry(t *testing.T) {
 			return nil, err
 		}
 		if id == nil {
-			t.Fatal("entry missing")
+			return nil, fmt.Errorf("entry missing")
 		}
 		entry = *id
 		return nil, nil
@@ -77,4 +80,117 @@ func TestUserForkIsIdempotentAndChecksEntry(t *testing.T) {
 	if err != nil || got != child {
 		t.Fatalf("restart got=%+v err=%v", got, err)
 	}
+}
+
+func TestUserForkUsesCurrentSettingsAndFreshRole(t *testing.T) {
+	reports := make(chan TaskContext, 1)
+	a := coreEngine(t, Config{Tasks: TaskTools{ReportTask: func(_ context.Context, source TaskContext, _ TaskReport) error { reports <- source; return nil }}})
+	ref := coreCreate(t, a, "alpha", coreOptions("echo"))
+	root, err := a.Submit(t.Context(), ref, Input{RequestID: "task-root", Content: "goal", Background: true, Options: coreOptions("echo")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	coreWait(t, root)
+	c, err := a.conversation(t.Context(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var at durable.EntryId
+	_, err = c.Commit(t.Context(), func(tx durable.Tx) (any, error) {
+		p, err := tx.LatestEntryId(c.Id())
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			return nil, fmt.Errorf("missing entry")
+		}
+		at = *p
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := coreOptions("shout")
+	current.Cwd = t.TempDir()
+	if err := c.Configure(t.Context(), agentChange(current)); err != nil {
+		t.Fatal(err)
+	}
+	childRef, err := a.Fork(t.Context(), ref, "fork", int64(at), current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := a.conversation(t.Context(), childRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = child.Commit(t.Context(), func(tx durable.Tx) (any, error) {
+		tasks, err := tx.ScanTasks(durable.TaskQuery{ConversationId: new(child.Id())}, 1, nil)
+		if err != nil {
+			return nil, err
+		}
+		if len(tasks.Items) != 0 {
+			return nil, fmt.Errorf("fork started execution")
+		}
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual, err := child.Agent(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actual.Model == nil || actual.Model.Provider != "faux" || actual.Model.ModelId != "shout" || actual.Cwd == nil || *actual.Cwd != current.Cwd || string(actual.ThinkingLevel) != current.ThinkingLevel {
+		t.Fatalf("current config not inherited: %+v", actual)
+	}
+	freshRef := coreCreate(t, a, "alpha", current)
+	fresh, err := a.conversation(t.Context(), freshRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	freshAgent, err := fresh.Agent(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := func(xs []*durable.Extension) []string {
+		out := make([]string, 0, len(xs))
+		for _, x := range xs {
+			out = append(out, x.Name)
+		}
+		return out
+	}
+	if !slices.Equal(names(actual.Extensions), names(freshAgent.Extensions)) {
+		t.Fatalf("fork extensions %v, fresh Chat %v", names(actual.Extensions), names(freshAgent.Extensions))
+	}
+	for _, list := range [][]*durable.ToolRegistration{actual.Tools, actual.Callable, actual.Deferred} {
+		for _, tool := range list {
+			if tool.Name == "report_task" {
+				t.Fatal("fork inherited report_task")
+			}
+		}
+	}
+	_, err = child.Commit(t.Context(), func(tx durable.Tx) (any, error) {
+		_, binding, err := bindingDraft(tx, child.Id())
+		if err != nil {
+			return nil, err
+		}
+		if binding.Root != "" || len(binding.Inputs) != 0 || binding.Sealed {
+			return nil, fmt.Errorf("inherited task authority: %+v", binding)
+		}
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub, err := a.Submit(t.Context(), childRef, Input{RequestID: "fork-input", Content: `report_task {"outcome":"done","summary":"wrong","cause":"","reproduction":[],"files":[],"openItems":[]}`, Options: coreOptions("tool")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	coreWait(t, sub)
+	select {
+	case report := <-reports:
+		t.Fatalf("fork invoked parent report authority: %+v", report)
+	default:
+	}
+	t.Log("fork uses current config, fresh Chat extensions, and no parent task binding or report_task")
 }

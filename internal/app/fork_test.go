@@ -51,10 +51,31 @@ func TestUserForksCommittedHistoryWithStableID(t *testing.T) {
 	if status != http.StatusConflict {
 		t.Fatalf("conflict=%d %s", status, raw)
 	}
-	status, raw = d.call(t, http.MethodPost, path+"/fork", map[string]any{"id": uuid.NewV7().String(), "entryId": entry + 999999})
+	assertHidden := func(id int64) {
+		t.Helper()
+		target := fmt.Sprintf("/api/agents/default/chats/%d", id)
+		status, raw := d.call(t, http.MethodGet, target, nil)
+		if status != http.StatusNotFound {
+			t.Fatalf("hidden fork GET=%d %s", status, raw)
+		}
+		status, raw = d.call(t, http.MethodPost, target+"/messages", map[string]string{"id": uuid.NewV7().String(), "text": "must not run"})
+		if status != http.StatusNotFound {
+			t.Fatalf("hidden fork message=%d %s", status, raw)
+		}
+		if empty := d.newSession(t); empty.ID == id {
+			t.Fatalf("empty Chat reused hidden fork %d", id)
+		}
+	}
+	rejectedID := uuid.NewV7().String()
+	status, raw = d.call(t, http.MethodPost, path+"/fork", map[string]any{"id": rejectedID, "entryId": entry + 999999})
 	if status != http.StatusNotFound {
 		t.Fatalf("unknown entry=%d %s", status, raw)
 	}
+	var rejectedTarget int64
+	if err := db.QueryRowContext(t.Context(), "SELECT target_conversation_id FROM fork_operations WHERE operation_id=? AND status='rejected'", rejectedID).Scan(&rejectedTarget); err != nil {
+		t.Fatal(err)
+	}
+	assertHidden(rejectedTarget)
 	var other struct {
 		ID string `json:"id"`
 	}
@@ -79,9 +100,11 @@ func TestUserForksCommittedHistoryWithStableID(t *testing.T) {
 		t.Fatalf("expected acknowledgement failure: %d %s", status, raw)
 	}
 	var pendingStatus string
-	if err := db.QueryRowContext(t.Context(), "SELECT status FROM fork_operations WHERE operation_id = ?", pendingID).Scan(&pendingStatus); err != nil || pendingStatus != "pending" {
+	var pendingTarget int64
+	if err := db.QueryRowContext(t.Context(), "SELECT status, target_conversation_id FROM fork_operations WHERE operation_id = ?", pendingID).Scan(&pendingStatus, &pendingTarget); err != nil || pendingStatus != "pending" {
 		t.Fatalf("pending receipt: %s %v", pendingStatus, err)
 	}
+	assertHidden(pendingTarget)
 	if _, err := rw.ExecContext(t.Context(), `DROP TRIGGER fork_ack_failure`); err != nil {
 		t.Fatal(err)
 	}
