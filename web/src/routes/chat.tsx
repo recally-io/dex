@@ -158,6 +158,18 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     return () => clearInterval(timer);
   }, [taskActive, refetchChat]);
 
+  // The live stream carries native events only. The question changes in the control store when its answer
+  // ends, so the page polls while an answer waits.
+  const answerWaiting = chat.data?.question?.status === "answered";
+
+  useEffect(() => {
+    if (!answerWaiting) return;
+
+    const timer = setInterval(() => void refetchChat(), 2000);
+
+    return () => clearInterval(timer);
+  }, [answerWaiting, refetchChat]);
+
   const sessions = useQuery({
     ...listChatsOptions({ path: { agentId } }),
     enabled: !readOnly,
