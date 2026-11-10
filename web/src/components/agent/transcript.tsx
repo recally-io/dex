@@ -447,6 +447,22 @@ function Files({ files }: { files: Attachment[] }) {
   );
 }
 
+const answerPrefix = "Answer to: ";
+
+/**
+ * The server wraps an ask_user answer as "Answer to: <question>\n<answer>". The question is one line,
+ * so the first line splits it from the answer. Other text returns null and shows as it is.
+ */
+export function splitAnswer(text: string): { question: string; answer: string } | null {
+  if (!text.startsWith(answerPrefix)) return null;
+
+  const end = text.indexOf("\n");
+
+  if (end < 0) return null;
+
+  return { question: text.slice(answerPrefix.length, end), answer: text.slice(end + 1) };
+}
+
 /** Edit and Remove for messages that wait in the native queue. */
 export type QueuedActions = {
   /** Item IDs that the live stream confirms as queued. A message that is only local cannot be withdrawn yet. */
@@ -455,6 +471,19 @@ export type QueuedActions = {
   edit: (id: string) => void;
   remove: (id: string) => void;
 };
+
+function UserText({ text }: { text: string }) {
+  const answer = splitAnswer(text);
+
+  if (!answer) return text;
+
+  return (
+    <>
+      <span className="block text-[12px] text-muted-foreground">{answer.question}</span>
+      {answer.answer}
+    </>
+  );
+}
 
 export function TranscriptItem({
   item,
@@ -504,7 +533,7 @@ export function TranscriptItem({
                 item.queued && "opacity-70",
               )}
             >
-              {item.text}
+              <UserText text={item.text} />
             </div>
           ) : null}
           {item.queued ? (
