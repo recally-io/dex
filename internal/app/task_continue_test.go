@@ -52,7 +52,7 @@ func TestUserContinuesFinishedTaskWithoutSecondReport(t *testing.T) {
 		}
 	}
 	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", conv), chatSettings{Provider: "faux", ModelID: "tool"}, nil)
-	for _, call := range []string{continueReport, `spawn_task {"title":"Nested","goal":"x"}`} {
+	for _, call := range []string{continueReport, `spawn_task {"title":"Nested","goal":"x"}`, `ask_user {"question":"Q?","options":["a","b"]}`} {
 		if got := taskTurn(t, d, conv, call); !strings.HasPrefix(got, "tool error: ") {
 			t.Fatalf("a continued session must refuse %q: %s", call, got)
 		}

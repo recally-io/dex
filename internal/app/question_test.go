@@ -214,8 +214,16 @@ func TestUserWithdrawsAnswerBeforeItRunsAndQuestionReopens(t *testing.T) {
 	if got := d.question(t, chatID); got == nil || got.ID != q.ID || got.Status != "open" {
 		t.Fatalf("reopened question: %+v", got)
 	}
+	// When the user answers again, then the new answer binds to the same question.
+	d.answer(t, chatID, q.ID, "Start a separate session", http.StatusAccepted)
+	if got := d.awaitQuestion(t, chatID, "answered"); got.ID != q.ID || got.Answer != "Start a separate session" {
+		t.Fatalf("second answer: %+v", got)
+	}
+	// And when the gated run ends, then the answer runs and the question is consumed.
+	// The queued answer keeps the model of its admission, so bash runs it as a command and fails; the question closes anyway.
 	run.open()
-	w.until(t, "gated run ends", answered("bash: finished"))
+	w.until(t, "answer runs", answeredWith("Answer: command not found"))
+	d.awaitNoQuestion(t, chatID)
 }
 
 func TestUserSeesQuestionInTelegram(t *testing.T) {

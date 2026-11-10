@@ -74,3 +74,48 @@ func TestUserQuestionIsRefusedWhenItCannotBeAnswered(t *testing.T) {
 		t.Fatal("a question was opened for a source that ended")
 	}
 }
+
+func TestUserAnswerThatNeverRanOpensItsQuestionAgain(t *testing.T) {
+	// Given a question whose answer waits as a pending input.
+	r := startNative(t, "echo")
+	chatID, source := taskParent(t, r)
+	question, err := r.service.ToolAskUser(t.Context(), source, askArgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "answer", ConversationID: chatID, Content: "Answer to: Which one?\nfirst", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.conn.ExecContext(t.Context(), "UPDATE questions SET status='answered', answer_submission_id='answer'"); err != nil {
+		t.Fatal(err)
+	}
+	status := func() string {
+		var s string
+		if err := r.conn.QueryRowContext(t.Context(), "SELECT status FROM questions WHERE id=?", question.ID).Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+
+	// When the input ends without a reply, then the question is open again.
+	if err := r.service.settle(t.Context(), "answer", engine.Outcome{Status: "unanswered", Reason: "no model"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := status(); got != "open" {
+		t.Fatalf("status after a failed answer: %s", got)
+	}
+
+	// When a later answer runs and ends with a reply, then the question is consumed.
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "answer-2", ConversationID: chatID, Content: "Answer to: Which one?\nsecond", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.conn.ExecContext(t.Context(), "UPDATE questions SET status='answered', answer_submission_id='answer-2'"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.service.settle(t.Context(), "answer-2", engine.Outcome{Status: "done", Answer: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := status(); got != "consumed" {
+		t.Fatalf("status after a finished answer: %s", got)
+	}
+}
