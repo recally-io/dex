@@ -172,7 +172,7 @@ func taskExtension(agentID string, handlers TaskTools) *durable.Extension {
 			return action.call(ctx, source, args.ID)
 		}))
 	}
-	tools = append(tools, makeTool("fork_chat", "Fork this conversation into a new Chat without starting it. Omit entryId to fork at the input that started this run.", map[string]any{"type": "object", "properties": map[string]any{"entryId": map[string]any{"type": "integer", "minimum": 1}}, "additionalProperties": false}, func(ctx context.Context, source TaskContext, raw any) (any, error) {
+	tools = append(tools, makeTool("fork_chat", "Fork this conversation into a new Chat without starting it. Omit entryId to fork at the input that authorized this call. Later work in this run is not included.", map[string]any{"type": "object", "properties": map[string]any{"entryId": map[string]any{"type": "integer", "minimum": 1}}, "additionalProperties": false}, func(ctx context.Context, source TaskContext, raw any) (any, error) {
 		if handlers.Fork == nil {
 			return nil, errors.New("fork service is unavailable")
 		}

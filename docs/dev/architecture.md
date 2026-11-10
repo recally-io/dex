@@ -150,8 +150,9 @@ start a run or copy task authority. The control receipt freezes the source,
 entry and settings. A native operation record commits with the new execution.
 Reconciliation uses the same operation ID if the control acknowledgement fails.
 The two Chats share the same files when their project directories are equal.
-The current-session `fork_chat` tool defaults to the input that started its run.
-A new tool operation requires that input to remain pending. On recovery, an
+The current-session `fork_chat` tool defaults to the input that authorized the
+call. The fork excludes later work in that run. A new tool operation requires
+that input to remain pending. On recovery, an
 ended input can replay an already committed native fork. It cannot create one
 from an uncommitted intent.
 

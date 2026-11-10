@@ -167,14 +167,11 @@ func (s *Service) completeFork(ctx context.Context, op sqlc.ForkOperation) error
 	ref := engine.Ref{AgentID: op.AgentID, ID: source.ExecutionID.Int64}
 	var target engine.Ref
 	if op.ToolSourceRequestID != "" {
-		input, readErr := s.q.GetSubmission(ctx, op.ToolSourceRequestID)
+		active, readErr := s.toolOperationSourceActive(ctx, op.ToolSourceRequestID, op.SourceConversationID)
 		if readErr != nil {
 			return readErr
 		}
-		if input.ConversationID != op.SourceConversationID {
-			return ErrTaskInvalid
-		}
-		if input.Status != "pending" {
+		if !active {
 			var found bool
 			target, found, err = s.engine.LookupFork(ctx, ref, op.OperationID, op.EntryID, options)
 			if err != nil {

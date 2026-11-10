@@ -155,12 +155,23 @@ func (s *Service) taskCaller(ctx context.Context, r engine.TaskContext) (sqlc.Co
 
 // requireActiveToolSource runs under the agent delivery gate before a new tool side effect.
 // Saved operation results can be replayed after their source settles.
+func (s *Service) toolOperationSourceActive(ctx context.Context, requestID string, conversationID int64) (bool, error) {
+	input, err := s.q.GetSubmission(ctx, requestID)
+	if err != nil {
+		return false, err
+	}
+	if input.ConversationID != conversationID {
+		return false, ErrTaskInvalid
+	}
+	return input.Status == "pending", nil
+}
+
 func (s *Service) requireActiveToolSource(ctx context.Context, source engine.TaskContext, conversationID int64) error {
-	input, err := s.q.GetSubmission(ctx, source.SourceRequestID)
+	active, err := s.toolOperationSourceActive(ctx, source.SourceRequestID, conversationID)
 	if err != nil {
 		return err
 	}
-	if input.ConversationID != conversationID || input.Status != "pending" {
+	if !active {
 		return ErrTaskInvalid
 	}
 	return nil

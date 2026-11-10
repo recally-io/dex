@@ -78,10 +78,28 @@ func TestUserForkIsIdempotentAndChecksEntry(t *testing.T) {
 	if _, err := a.Fork(t.Context(), other, "op", int64(entry), opts); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("foreign entry: %v", err)
 	}
+	beta := coreCreate(t, a, "beta", coreOptions("echo"))
 	if err := a.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	a = coreEngine(t, cfg)
+	cold, found, err := a.LookupFork(t.Context(), ref, "op", int64(entry), opts)
+	if err != nil || !found || cold != child {
+		t.Fatalf("cold lookup=%+v found=%v err=%v", cold, found, err)
+	}
+	if len(a.resources) != 0 {
+		t.Fatal("cold lookup opened a Harness")
+	}
+	if _, err := a.conversation(t.Context(), beta); err != nil {
+		t.Fatal(err)
+	}
+	cold, found, err = a.LookupFork(t.Context(), ref, "op", int64(entry), opts)
+	if err != nil || !found || cold != child {
+		t.Fatalf("lookup with other agent open=%+v found=%v err=%v", cold, found, err)
+	}
+	if a.resources[ref.AgentID] != nil {
+		t.Fatal("lookup opened the source Harness")
+	}
 	got, err := a.Fork(t.Context(), ref, "op", int64(entry), opts)
 	if err != nil || got != child {
 		t.Fatalf("restart got=%+v err=%v", got, err)
