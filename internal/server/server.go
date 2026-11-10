@@ -310,24 +310,28 @@ func (h *handler) UnarchiveChat(ctx context.Context, req api.UnarchiveChatReques
 }
 
 func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (api.ListChatsResponseObject, error) {
-	chats, err := h.Chats.List(ctx, agentID(ctx))
+	return h.listChats(ctx, agentID(ctx))
+}
+
+func (h *handler) listChats(ctx context.Context, agentID string) (api.ListChats200JSONResponse, error) {
+	chats, err := h.Chats.List(ctx, agentID)
 	if err != nil {
-		return nil, err
+		return api.ListChats200JSONResponse{}, err
 	}
-	tasks, err := h.Chats.TaskRecords(ctx, agentID(ctx))
+	tasks, err := h.Chats.TaskRecords(ctx, agentID)
 	if err != nil {
-		return nil, err
+		return api.ListChats200JSONResponse{}, err
 	}
 	byConversation := make(map[int64]api.TaskSummary, len(tasks))
 	refs := make([]engine.Ref, 0, len(tasks))
 	for _, t := range tasks {
 		if t.Status == "running" && t.ExecutionID.Valid {
-			refs = append(refs, engine.Ref{AgentID: agentID(ctx), ID: t.ExecutionID.Int64})
+			refs = append(refs, engine.Ref{AgentID: agentID, ID: t.ExecutionID.Int64})
 		}
 	}
 	activities := h.Engine.Activity(refs)
 	for _, t := range tasks {
-		activity := activities[engine.Ref{AgentID: agentID(ctx), ID: t.ExecutionID.Int64}]
+		activity := activities[engine.Ref{AgentID: agentID, ID: t.ExecutionID.Int64}]
 		byConversation[t.ConversationID] = taskSummary(t, activity)
 	}
 	out := api.ListChats200JSONResponse{Chats: make([]api.Chat, len(chats))}

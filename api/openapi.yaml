@@ -18,6 +18,26 @@ security:
   - bearer: []
   - session: []
 paths:
+  /api/work:
+    get:
+      operationId: getWork
+      description: Sessions and automation activity across bots for a time range.
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: to
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: Work across bots.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Work" }
+        default: { $ref: "#/components/responses/Error" }
   /api/inbox:
     get:
       operationId: listInbox
@@ -1637,6 +1657,41 @@ components:
             createdAt: { type: integer, format: int64 }
             updatedAt: { type: integer, format: int64 }
 
+    Work:
+      type: object
+      required: [agents, sessions, automations, inbox]
+      properties:
+        agents:
+          type: array
+          items: { $ref: "#/components/schemas/Agent" }
+        sessions:
+          type: array
+          items: { $ref: "#/components/schemas/WorkSession" }
+        automations:
+          type: array
+          items: { $ref: "#/components/schemas/WorkAutomation" }
+        inbox:
+          type: array
+          items: { $ref: "#/components/schemas/InboxItem" }
+    WorkSession:
+      type: object
+      required: [agentId, chat]
+      properties:
+        agentId: { type: string }
+        chat: { $ref: "#/components/schemas/Chat" }
+    WorkAutomation:
+      type: object
+      required: [agentId, automation, runs, scheduled, setup]
+      properties:
+        agentId: { type: string }
+        automation: { $ref: "#/components/schemas/Automation" }
+        runs:
+          type: array
+          items: { $ref: "#/components/schemas/AutomationRun" }
+        scheduled:
+          type: array
+          items: { type: integer, format: int64 }
+        setup: { type: boolean }
     AutomationList:
       type: object
       required: [automations]

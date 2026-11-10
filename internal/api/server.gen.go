@@ -1201,6 +1201,29 @@ type Wechat = agent.Wechat
 // WechatLogin defines model for WechatLogin.
 type WechatLogin = wechat.LoginView
 
+// Work defines model for Work.
+type Work struct {
+	Agents      []Agent          `json:"agents"`
+	Automations []WorkAutomation `json:"automations"`
+	Inbox       []InboxItem      `json:"inbox"`
+	Sessions    []WorkSession    `json:"sessions"`
+}
+
+// WorkAutomation defines model for WorkAutomation.
+type WorkAutomation struct {
+	AgentId    string          `json:"agentId"`
+	Automation Automation      `json:"automation"`
+	Runs       []AutomationRun `json:"runs"`
+	Scheduled  []int64         `json:"scheduled"`
+	Setup      bool            `json:"setup"`
+}
+
+// WorkSession defines model for WorkSession.
+type WorkSession struct {
+	AgentId string `json:"agentId"`
+	Chat    Chat   `json:"chat"`
+}
+
 // AgentId defines model for AgentId.
 type AgentId = string
 
@@ -1270,6 +1293,12 @@ type ListDirectoriesParams struct {
 // ListInboxParams defines parameters for ListInbox.
 type ListInboxParams struct {
 	IncludeDismissed *bool `form:"includeDismissed,omitempty" json:"includeDismissed,omitempty"`
+}
+
+// GetWorkParams defines parameters for GetWork.
+type GetWorkParams struct {
+	From int64 `form:"from" json:"from"`
+	To   int64 `form:"to" json:"to"`
 }
 
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
@@ -1974,6 +2003,9 @@ type ServerInterface interface {
 
 	// (PUT /api/settings/providers/{providerId})
 	SetProvider(w http.ResponseWriter, r *http.Request, providerId string)
+
+	// (GET /api/work)
+	GetWork(w http.ResponseWriter, r *http.Request, params GetWorkParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -3794,6 +3826,52 @@ func (siw *ServerInterfaceWrapper) SetProvider(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetWork operation middleware
+func (siw *ServerInterfaceWrapper) GetWork(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetWorkParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWork(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -3914,6 +3992,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work", wrapper.GetWork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox", wrapper.ListInbox)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/read", wrapper.ReadInboxItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/dismiss", wrapper.DismissInboxItem)
@@ -7484,6 +7563,45 @@ func (response SetProviderdefaultJSONResponse) VisitSetProviderResponse(w http.R
 	return err
 }
 
+type GetWorkRequestObject struct {
+	Params GetWorkParams
+}
+
+type GetWorkResponseObject interface {
+	VisitGetWorkResponse(w http.ResponseWriter) error
+}
+
+type GetWork200JSONResponse Work
+
+func (response GetWork200JSONResponse) VisitGetWorkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetWorkdefaultJSONResponse) VisitGetWorkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
@@ -7675,6 +7793,9 @@ type StrictServerInterface interface {
 
 	// (PUT /api/settings/providers/{providerId})
 	SetProvider(ctx context.Context, request SetProviderRequestObject) (SetProviderResponseObject, error)
+
+	// (GET /api/work)
+	GetWork(ctx context.Context, request GetWorkRequestObject) (GetWorkResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -9490,6 +9611,32 @@ func (sh *strictHandler) SetProvider(w http.ResponseWriter, r *http.Request, pro
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetProviderResponseObject); ok {
 		if err := validResponse.VisitSetProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWork operation middleware
+func (sh *strictHandler) GetWork(w http.ResponseWriter, r *http.Request, params GetWorkParams) {
+	var request GetWorkRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWork(ctx, request.(GetWorkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWork")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkResponseObject); ok {
+		if err := validResponse.VisitGetWorkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -173,6 +173,40 @@ func millis(times []time.Time) []int64 {
 	return out
 }
 
+// Scheduled returns future scheduled times in the half-open range [from, to).
+func (s *Service) Scheduled(a Automation, from, to int64) ([]int64, error) {
+	out := []int64{}
+	if !a.Enabled || len(a.NextRuns) == 0 {
+		return out, nil
+	}
+	loc, err := location(a.TimeZone)
+	if err != nil {
+		return nil, err
+	}
+	anchor := time.UnixMilli(a.NextRuns[0])
+	start := time.UnixMilli(from)
+	if now := s.now(); now.After(start) {
+		start = now.Add(time.Millisecond)
+	}
+	next := anchor
+	if next.Before(start) {
+		var ok bool
+		next, ok = a.Schedule.next(start.Add(-time.Millisecond), anchor, loc)
+		if !ok {
+			return out, nil
+		}
+	}
+	for next.UnixMilli() < to {
+		out = append(out, next.UnixMilli())
+		times := a.Schedule.upcoming(next, anchor, loc, 1)
+		if len(times) == 0 {
+			break
+		}
+		next = times[0]
+	}
+	return out, nil
+}
+
 // Create stores a new automation.
 func (s *Service) Create(ctx context.Context, agentID string, in Input) (Automation, error) {
 	in, loc, err := clean(in)

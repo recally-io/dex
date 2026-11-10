@@ -246,6 +246,26 @@ export type Automation = AutomationInput & {
     updatedAt: number;
 };
 
+export type Work = {
+    agents: Array<Agent>;
+    sessions: Array<WorkSession>;
+    automations: Array<WorkAutomation>;
+    inbox: Array<InboxItem>;
+};
+
+export type WorkSession = {
+    agentId: string;
+    chat: Chat;
+};
+
+export type WorkAutomation = {
+    agentId: string;
+    automation: Automation;
+    runs: Array<AutomationRun>;
+    scheduled: Array<number>;
+    setup: boolean;
+};
+
 export type AutomationList = {
     automations: Array<Automation>;
 };
@@ -762,6 +782,13 @@ export type FeishuPoll = {
     session: string;
 };
 
+export type WorkWritable = {
+    agents: Array<AgentWritable>;
+    sessions: Array<WorkSession>;
+    automations: Array<WorkAutomation>;
+    inbox: Array<InboxItem>;
+};
+
 export type AgentWritable = {
     /**
      * The bot name. Trim spaces before validation.
@@ -781,6 +808,34 @@ export type AgentId = string;
 export type AutomationId = string;
 
 export type ChatId = number;
+
+export type GetWorkData = {
+    body?: never;
+    path?: never;
+    query: {
+        from: number;
+        to: number;
+    };
+    url: '/api/work';
+};
+
+export type GetWorkErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetWorkError = GetWorkErrors[keyof GetWorkErrors];
+
+export type GetWorkResponses = {
+    /**
+     * Work across bots.
+     */
+    200: Work;
+};
+
+export type GetWorkResponse = GetWorkResponses[keyof GetWorkResponses];
 
 export type ListInboxData = {
     body?: never;
