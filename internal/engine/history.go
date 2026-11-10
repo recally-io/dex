@@ -6,7 +6,6 @@ import (
 
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/MichaelKinsy/PiG/durable"
-	"github.com/MichaelKinsy/PiG/durable/harness"
 )
 
 // History reads durable entries. A page extends through the oldest result's assistant call.
@@ -41,7 +40,7 @@ func (a *Agents) History(ctx context.Context, ref Ref, before int64, limit int) 
 	if cursor != nil && len(entries) > 0 {
 		out.NextBefore = int64(entries[len(entries)-1].Id)
 	}
-	out.Items = (projection{snapshot: harness.SnapshotEvent{Entries: entries}}).render()
+	out.Items = (projection{entries: entries}).render()
 	return out, nil
 }
 

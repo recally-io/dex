@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
+	"github.com/MichaelKinsy/PiG/chord"
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/harness"
 )
@@ -27,7 +29,7 @@ func (a *Agents) startActivityWatch(ctx context.Context, ref Ref, conversation h
 	a.activityWatches[ref]++
 	a.mu.Unlock()
 	watchCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	native, err := conversation.Watch(watchCtx)
+	native, err := conversation.Watch(watchCtx, nil)
 	if err != nil {
 		cancel()
 		a.mu.Lock()
@@ -35,35 +37,52 @@ func (a *Agents) startActivityWatch(ctx context.Context, ref Ref, conversation h
 		a.mu.Unlock()
 		return nil, err
 	}
-	update := func(view harness.ConversationView) {
-		event, err := projectView(view)
-		if err == nil {
-			a.updateActivity(ref, event, harness.ViewSnapshotEvent(view), activityNow())
+	var active activeContext
+	update := func(view harness.ConversationView) error {
+		event, err := active.project(watchCtx, conversation, view)
+		if err != nil {
+			return err
 		}
-	}
-	update(native.Value())
-	done := make(chan struct{})
-	native.Start(func(_ context.Context, view harness.ConversationView, _ []durable.Op) error {
-		update(view)
+		a.updateActivity(ref, event, view, activityNow())
 		return nil
+	}
+	if err := update(native.Value()); err != nil {
+		cancel()
+		_, _ = native.Stop()
+		a.mu.Lock()
+		a.releaseActivityWatch(ref)
+		a.mu.Unlock()
+		return nil, err
+	}
+	done := make(chan struct{})
+	var delivery sync.Mutex
+	closed := false
+	native.Start(func(_ context.Context, call chord.WatchCall[harness.ConversationView]) error {
+		if call.Kind != chord.WatchCallValue {
+			return call.Error
+		}
+		chord.DeliveryEntered()
+		delivery.Lock()
+		defer delivery.Unlock()
+		if closed {
+			return watchCtx.Err()
+		}
+		return update(call.Value)
 	})
 	go func() {
 		defer close(done)
-		defer func() {
-			a.mu.Lock()
-			a.releaseActivityWatch(ref)
-			a.mu.Unlock()
-		}()
 		<-watchCtx.Done()
 		_, _ = native.Stop()
-	}()
-	return func() {
-		cancel()
-		<-done
+		// Native Stop does not join a callback that has already started.
+		delivery.Lock()
+		defer delivery.Unlock()
+		closed = true
 		a.mu.Lock()
 		delete(a.activity, ref)
+		a.releaseActivityWatch(ref)
 		a.mu.Unlock()
-	}, nil
+	}()
+	return func() { cancel(); <-done }, nil
 }
 
 // releaseActivityWatch requires a.mu.
@@ -73,18 +92,26 @@ func (a *Agents) releaseActivityWatch(ref Ref) {
 	}
 }
 
-func (a *Agents) updateActivity(ref Ref, event Event, snapshot harness.SnapshotEvent, observedAt int64) {
+func (a *Agents) updateActivity(ref Ref, event Event, view harness.ConversationView, observedAt int64) {
 	if !event.Running {
 		a.mu.Lock()
 		delete(a.activity, ref)
 		a.mu.Unlock()
 		return
 	}
+	var live harness.LiveState
+	if doc, ok := view.Docs.Get("pi.live"); ok {
+		var err error
+		live, err = durable.FromJsonValue[harness.LiveState](doc)
+		if err != nil {
+			return
+		}
+	}
 	current := map[string]int64{}
 	a.mu.Lock()
 	prior := a.activity[ref]
 	if prior != nil {
-		for _, slot := range snapshot.Tools {
+		for _, slot := range live.Tools {
 			if slot.Status == harness.ToolSlotRunning {
 				if started, ok := prior.toolStarted[slot.CallId]; ok {
 					current[slot.CallId] = started
@@ -92,7 +119,7 @@ func (a *Agents) updateActivity(ref Ref, event Event, snapshot harness.SnapshotE
 			}
 		}
 	}
-	for _, slot := range snapshot.Tools {
+	for _, slot := range live.Tools {
 		if slot.Status == harness.ToolSlotRunning {
 			if _, ok := current[slot.CallId]; !ok {
 				current[slot.CallId] = observedAt

@@ -327,8 +327,8 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			}
 			return envnode.NewNodeExecutionEnv(envnode.NodeExecutionEnvOptions{Cwd: cwd, ShellEnv: loaded.Env}), nil
 		},
-		OnReport: func(err error, info durable.ReportInfo) {
-			slog.Error("agent execution", "agent", agentID, "type", info.Type, "error", err)
+		OnReport: func(report durable.Report) {
+			slog.Error("agent execution", "agent", agentID, "type", report.Kind, "error", report.Error)
 		},
 	})
 	if err != nil {
