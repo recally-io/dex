@@ -18,6 +18,10 @@ type Compaction struct {
 }
 
 func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, operationID string) (Compaction, error) {
+	return s.compact(ctx, agentID, chatID, operationID, nil)
+}
+
+func (s *Service) compact(ctx context.Context, agentID string, chatID int64, operationID string, caller *engine.TaskContext) (Compaction, error) {
 	if operationID == "" {
 		return Compaction{}, engine.ErrInvalidInput
 	}
@@ -32,6 +36,16 @@ func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, ope
 	}
 	if !chat.Writable {
 		return Compaction{}, ErrNotFound
+	}
+	if caller != nil {
+		_, err := s.q.GetCompactOperation(ctx, operationID)
+		if errors.Is(err, sql.ErrNoRows) {
+			if err := s.requireActiveToolSource(ctx, *caller, chatID); err != nil {
+				return Compaction{}, err
+			}
+		} else if err != nil {
+			return Compaction{}, err
+		}
 	}
 	if err := s.finishAgentAborts(ctx, agentID); err != nil {
 		return Compaction{}, err
@@ -150,5 +164,5 @@ func (s *Service) ToolCompact(ctx context.Context, source engine.TaskContext) (C
 	if err != nil {
 		return Compaction{}, err
 	}
-	return s.Compact(ctx, source.AgentID, c.ID, strings.ReplaceAll(source.Key, "/", ":"))
+	return s.compact(ctx, source.AgentID, c.ID, strings.ReplaceAll(source.Key, "/", ":"), &source)
 }
