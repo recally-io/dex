@@ -13,3 +13,6 @@ node_modules/
 
 # Design prototypes and tool output stay out of the repository.
 designs/
+
+# Cloudflare CLI cache
+.cloudflare/

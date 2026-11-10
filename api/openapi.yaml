@@ -1394,9 +1394,6 @@ components:
           type: string
           enum: [done, blocked, failed]
           description: The structured report outcome, when the task has a report.
-        waitReason:
-          type: string
-          description: Why a queued task is waiting. Values are bot limit, global limit, waiting for an earlier task, or cwd held by task <id>.
 
     Task:
       allOf:

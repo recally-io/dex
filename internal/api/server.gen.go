@@ -1055,9 +1055,6 @@ type Task struct {
 
 	// ToolStartedAt The earliest start of a currently running tool, when the task is running a tool.
 	ToolStartedAt *int64 `json:"toolStartedAt,omitempty"`
-
-	// WaitReason Why a queued task is waiting. Values are bot limit, global limit, waiting for an earlier task, or cwd held by task <id>.
-	WaitReason *string `json:"waitReason,omitempty"`
 }
 
 // TaskReportOutcome The structured report outcome, when the task has a report.
@@ -1108,9 +1105,6 @@ type TaskSummary struct {
 
 	// ToolStartedAt The earliest start of a currently running tool, when the task is running a tool.
 	ToolStartedAt *int64 `json:"toolStartedAt,omitempty"`
-
-	// WaitReason Why a queued task is waiting. Values are bot limit, global limit, waiting for an earlier task, or cwd held by task <id>.
-	WaitReason *string `json:"waitReason,omitempty"`
 }
 
 // TaskSummaryReportOutcome The structured report outcome, when the task has a report.

@@ -33,16 +33,6 @@ WHERE t.parent_conversation_id = @parent_id AND
 AND recent.ended_at IS NOT NULL ORDER BY recent.ended_at DESC, recent.id DESC LIMIT 10))
 ORDER BY t.created_at DESC, t.id DESC;
 
--- name: ListTaskAdmissions :many
-SELECT t.id, t.status, t.created_at, t.modifies_files, c.agent_id, c.cwd
-FROM tasks t JOIN conversations c ON c.id = t.conversation_id
-WHERE t.status IN ('queued', 'admitting', 'running')
-ORDER BY t.created_at, t.id;
-
--- name: CountTaskSlots :one
-SELECT count(*) FROM tasks t JOIN conversations c ON c.id = t.conversation_id
-WHERE c.agent_id = ? AND t.status IN ('queued', 'admitting', 'running');
-
 -- name: StartTask :execrows
 UPDATE tasks SET status = 'admitting', started_at = @now
 WHERE id = @id AND status = 'queued';

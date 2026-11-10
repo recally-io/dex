@@ -176,13 +176,7 @@ function TaskRow({
         type="button"
         className="flex w-full min-w-0 items-center gap-2 text-left"
         onClick={onToggle}
-        title={
-          task.status === "queued"
-            ? `Waiting: ${task.waitReason ?? "starting soon"}`
-            : task.status === "admitting"
-              ? "Starting"
-              : undefined
-        }
+        title={task.status === "queued" || task.status === "admitting" ? "Starting" : undefined}
       >
         {statusIcon(task, iconClass)}
         <span className="min-w-0 flex-1 truncate text-[12.5px]">{task.title}</span>

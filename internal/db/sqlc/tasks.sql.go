@@ -30,18 +30,6 @@ func (q *Queries) AcknowledgeTask(ctx context.Context, arg AcknowledgeTaskParams
 	return result.RowsAffected()
 }
 
-const countTaskSlots = `-- name: CountTaskSlots :one
-SELECT count(*) FROM tasks t JOIN conversations c ON c.id = t.conversation_id
-WHERE c.agent_id = ? AND t.status IN ('queued', 'admitting', 'running')
-`
-
-func (q *Queries) CountTaskSlots(ctx context.Context, agentID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countTaskSlots, agentID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createTask = `-- name: CreateTask :exec
 INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, constraints_json, done_criteria_json, modifies_files, status, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)
@@ -424,52 +412,6 @@ func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConvers
 			&i.ThinkingLevel,
 			&i.AbortPending,
 			&i.ArchivedAt,
-			&i.Cwd,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listTaskAdmissions = `-- name: ListTaskAdmissions :many
-SELECT t.id, t.status, t.created_at, t.modifies_files, c.agent_id, c.cwd
-FROM tasks t JOIN conversations c ON c.id = t.conversation_id
-WHERE t.status IN ('queued', 'admitting', 'running')
-ORDER BY t.created_at, t.id
-`
-
-type ListTaskAdmissionsRow struct {
-	ID            string `json:"id"`
-	Status        string `json:"status"`
-	CreatedAt     int64  `json:"created_at"`
-	ModifiesFiles int64  `json:"modifies_files"`
-	AgentID       string `json:"agent_id"`
-	Cwd           string `json:"cwd"`
-}
-
-func (q *Queries) ListTaskAdmissions(ctx context.Context) ([]ListTaskAdmissionsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listTaskAdmissions)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListTaskAdmissionsRow{}
-	for rows.Next() {
-		var i ListTaskAdmissionsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Status,
-			&i.CreatedAt,
-			&i.ModifiesFiles,
-			&i.AgentID,
 			&i.Cwd,
 		); err != nil {
 			return nil, err
