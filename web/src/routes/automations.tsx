@@ -306,13 +306,15 @@ function RunActions({
     },
   });
 
-  if (!run.chatId || run.status === "running") return null;
+  if (run.status === "running") return null;
 
   return (
     <div className="flex w-full flex-wrap gap-2">
-      <Button size="sm" variant="outline" disabled={reply.isPending} onClick={() => reply.mutate()}>
-        Reply in a new chat
-      </Button>
+      {run.chatId ? (
+        <Button size="sm" variant="outline" disabled={reply.isPending} onClick={() => reply.mutate()}>
+          Reply in a new chat
+        </Button>
+      ) : null}
       {(run.outcome === "failed" || run.status === "failed") && inInbox ? (
         <Button size="sm" variant="outline" disabled={handle.isPending} onClick={() => handle.mutate()}>
           Mark handled

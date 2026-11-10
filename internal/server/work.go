@@ -2,11 +2,14 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/automation"
+	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/settings"
 )
 
 // GetWork returns a read-only view of sessions and automation activity across bots.
@@ -45,6 +48,17 @@ func (h *handler) GetWork(ctx context.Context, req api.GetWorkRequestObject) (ap
 		if err != nil {
 			return nil, err
 		}
+		unusable := agent.ModelID == ""
+		if !unusable && len(list) > 0 {
+			modelErr := h.Settings.CheckModel(ctx, agent.Provider, agent.ModelID)
+			switch {
+			case modelErr == nil, errors.Is(modelErr, engine.ErrModelsPending):
+			case errors.Is(modelErr, settings.ErrInvalid):
+				unusable = true
+			default:
+				return nil, modelErr
+			}
+		}
 		for _, a := range list {
 			runs, err := h.Automations.Runs(ctx, agent.ID, a.ID, -1)
 			if err != nil {
@@ -64,7 +78,7 @@ func (h *handler) GetWork(ctx context.Context, req api.GetWorkRequestObject) (ap
 			if err != nil {
 				return nil, err
 			}
-			out.Automations = append(out.Automations, api.WorkAutomation{AgentId: agent.ID, Automation: a, Runs: filtered, Scheduled: scheduled, Setup: a.Enabled && agent.ModelID == ""})
+			out.Automations = append(out.Automations, api.WorkAutomation{AgentId: agent.ID, Automation: a, Runs: filtered, Scheduled: scheduled, Setup: a.Enabled && unusable})
 		}
 	}
 	return api.GetWork200JSONResponse(out), nil

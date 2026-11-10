@@ -7,7 +7,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-// InboxItem is a settled, non-duplicate result that needs the owner's attention.
+// InboxItem is a settled result that needs the owner's attention.
 type InboxItem struct {
 	RunID          string `json:"runId"`
 	AgentID        string `json:"agentId"`

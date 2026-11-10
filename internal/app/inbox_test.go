@@ -35,6 +35,41 @@ func inbox(t *testing.T, d *dex, path string) []inboxItem {
 	}
 	return list.Items
 }
+func TestUserCanHandleFailedRunWithoutTranscript(t *testing.T) {
+	dir := t.TempDir()
+	d := startDexWith(t, app.Config{DataDir: dir, AutomationCheck: time.Hour})
+	var a automationInfo
+	d.must(t, http.MethodPost, "/api/agents/default/automations", map[string]any{"name": "Failed run", "prompt": "Check", "schedule": map[string]string{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true}, &a, http.StatusCreated)
+	conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(t.Context(), `INSERT INTO automation_runs(id,automation_id,status,reason,created_at) VALUES ('failed-before-input',?,'failed','dex stopped',1)`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	// When the owner opens Needs you, a failed run without a transcript is visible.
+	items := inbox(t, d, "/api/inbox")
+	if len(items) != 1 || items[0].RunID != "failed-before-input" || items[0].Outcome != "failed" {
+		t.Fatalf("failed run missing: %+v", items)
+	}
+	var agents struct {
+		Agents []struct {
+			Activity struct {
+				Failed int `json:"inboxFailed"`
+			} `json:"activity"`
+		} `json:"agents"`
+	}
+	d.must(t, http.MethodGet, "/api/agents", nil, &agents)
+	if len(agents.Agents) == 0 || agents.Agents[0].Activity.Failed != 1 {
+		t.Fatalf("failed count: %+v", agents)
+	}
+	d.must(t, http.MethodPost, "/api/inbox/failed-before-input/dismiss", nil, nil)
+	if got := inbox(t, d, "/api/inbox"); len(got) != 0 {
+		t.Fatalf("handled run still visible: %+v", got)
+	}
+}
+
 func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 	// Given two bots with real tool routines and an old run without an outcome.
 	data := t.TempDir()
@@ -76,9 +111,9 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 	}
 	// When the owner opens the global Inbox.
 	rows := inbox(t, d, "/api/inbox")
-	// Then both bots have one changed and one failed result; duplicates and unknown outcomes stay out.
-	if len(rows) != 4 {
-		t.Fatalf("want 4 actionable results, got %+v", rows)
+	// Then both bots have one changed result and both failed results, including repeated failures.
+	if len(rows) != 6 {
+		t.Fatalf("want 6 actionable results, got %+v", rows)
 	}
 	counts := map[string]int{}
 	for _, r := range rows {
@@ -87,7 +122,7 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 			t.Fatalf("invalid inbox result: %+v", r)
 		}
 	}
-	if counts["default"] != 2 || counts[bot.ID] != 2 {
+	if counts["default"] != 3 || counts[bot.ID] != 3 {
 		t.Fatalf("bot counts: %v", counts)
 	}
 	checkCounts := func(want map[string][2]int64) {
@@ -109,7 +144,7 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 			}
 		}
 	}
-	checkCounts(map[string][2]int64{"default": {2, 1}, bot.ID: {2, 1}})
+	checkCounts(map[string][2]int64{"default": {3, 2}, bot.ID: {3, 2}})
 	// When the owner reads and dismisses one bot's results, repeated writes are safe.
 	target := rows[0]
 	for range 2 {
@@ -119,10 +154,10 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 	// Then read and dismissed state survive restart and other results stay unread.
 	d.stop()
 	d = startDexWith(t, app.Config{DataDir: data, AutomationCheck: time.Hour})
-	if got := inbox(t, d, "/api/inbox"); len(got) != 3 {
+	if got := inbox(t, d, "/api/inbox"); len(got) != 5 {
 		t.Fatalf("dismissed result visible: %+v", got)
 	}
-	wantCounts := map[string][2]int64{"default": {2, 1}, bot.ID: {2, 1}}
+	wantCounts := map[string][2]int64{"default": {3, 2}, bot.ID: {3, 2}}
 	want := wantCounts[target.AgentID]
 	want[0]--
 	if target.Outcome == "failed" {
@@ -131,7 +166,7 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 	wantCounts[target.AgentID] = want
 	checkCounts(wantCounts)
 	all := inbox(t, d, "/api/inbox?includeDismissed=true")
-	if len(all) != 4 {
+	if len(all) != 6 {
 		t.Fatalf("all results: %+v", all)
 	}
 	for _, r := range all {
@@ -146,7 +181,7 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 	// When the owner undoes the dismissal, the result returns without becoming unread.
 	d.must(t, http.MethodPost, "/api/inbox/"+target.RunID+"/restore", nil, nil)
 	restored := inbox(t, d, "/api/inbox")
-	if len(restored) != 4 {
+	if len(restored) != 6 {
 		t.Fatalf("restored result missing: %+v", restored)
 	}
 	for _, item := range restored {

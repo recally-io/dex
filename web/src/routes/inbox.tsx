@@ -236,18 +236,22 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
               >
                 Open routine
               </Link>
-              <Link
-                to="/a/$agentId/c/$chatId"
-                params={{ agentId: item.agentId, chatId: String(item.chatId) }}
-                className="underline"
-              >
-                Run transcript
-              </Link>
+              {item.chatId ? (
+                <Link
+                  to="/a/$agentId/c/$chatId"
+                  params={{ agentId: item.agentId, chatId: String(item.chatId) }}
+                  className="underline"
+                >
+                  Run transcript
+                </Link>
+              ) : null}
             </div>
             <div className="mt-6 flex flex-wrap gap-2">
-              <Button onClick={() => next.mutate(item)} disabled={next.isPending || done.isPending}>
-                Continue in chat
-              </Button>
+              {item.chatId ? (
+                <Button onClick={() => next.mutate(item)} disabled={next.isPending || done.isPending}>
+                  Continue in chat
+                </Button>
+              ) : null}
               <Button
                 variant="secondary"
                 onClick={() => done.mutate(item)}

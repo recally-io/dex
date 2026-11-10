@@ -68,13 +68,13 @@ WITH active AS (
 SELECT sqlc.embed(a), CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
     CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations,
     (SELECT count(*) FROM automation_runs r JOIN automations routine ON routine.id = r.automation_id
-     JOIN submissions s ON s.id = r.id
-     WHERE routine.agent_id = a.id AND r.outcome IN ('changed', 'failed') AND r.duplicate = 0
-       AND r.read_at IS NULL AND r.dismissed_at IS NULL AND s.status <> 'pending') AS inbox_unread,
+     LEFT JOIN submissions s ON s.id = r.id
+     WHERE routine.agent_id = a.id AND (r.outcome = 'failed' OR r.status = 'failed' OR s.status = 'unanswered' OR (r.outcome = 'changed' AND r.duplicate = 0))
+       AND r.read_at IS NULL AND r.dismissed_at IS NULL AND (s.status <> 'pending' OR (s.id IS NULL AND r.status = 'failed'))) AS inbox_unread,
     (SELECT count(*) FROM automation_runs r JOIN automations routine ON routine.id = r.automation_id
-     JOIN submissions s ON s.id = r.id
-     WHERE routine.agent_id = a.id AND r.outcome = 'failed' AND r.duplicate = 0
-       AND r.read_at IS NULL AND r.dismissed_at IS NULL AND s.status <> 'pending') AS inbox_failed,
+     LEFT JOIN submissions s ON s.id = r.id
+     WHERE routine.agent_id = a.id AND (r.outcome = 'failed' OR r.status = 'failed' OR s.status = 'unanswered')
+       AND r.read_at IS NULL AND r.dismissed_at IS NULL AND (s.status <> 'pending' OR (s.id IS NULL AND r.status = 'failed'))) AS inbox_failed,
     CAST(EXISTS (SELECT 1 FROM automations routine
         JOIN automation_runs r ON r.id = (SELECT latest.id FROM automation_runs latest
             WHERE latest.automation_id = routine.id ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1)

@@ -136,7 +136,7 @@ export function NeedsYouPage() {
           >
             <p className="text-xs text-muted-foreground">{names.get(agentId)} · Setup</p>
             <h2 className="font-semibold">{automation.name}</h2>
-            <p className="text-sm">This bot has no model. Choose one to run this automation.</p>
+            <p className="text-sm">This bot has no available model. Choose one to run this automation.</p>
             <Button render={<Link to="/a/$agentId/agent" params={{ agentId }} />}>Choose a model</Button>
             <p className="text-xs text-muted-foreground">Leaves when fixed.</p>
           </article>
