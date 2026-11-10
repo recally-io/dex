@@ -14,6 +14,7 @@ import { errorText, queryClient } from "./lib/queries";
 import { InboxResultPage } from "./routes/inbox";
 import { NeedsYouPage } from "./routes/needs-you";
 import { WorkPage } from "./routes/work";
+import { parseWorkSearch } from "./lib/work";
 import { AllAutomationsPage } from "./routes/all-automations";
 import { Shell } from "./components/shell";
 import { AgentLayout } from "./components/agent-layout";
@@ -79,8 +80,28 @@ const instructions = agentPage("/instructions", InstructionsPage);
 const channels = agentPage("/channels", ChannelsPage);
 const automations = agentPage("/automations", AutomationsPage);
 const needsYou = page("/needs-you", () => <NeedsYouPage />);
-const work = page("/work", () => <WorkPage calendar={false} />);
-const workCalendar = page("/work/calendar", () => <WorkPage calendar />);
+
+const work = createRoute({
+  getParentRoute: () => root,
+  path: "/work",
+  validateSearch: parseWorkSearch,
+  component: WorkRoute,
+});
+
+function WorkRoute() {
+  const search = work.useSearch();
+  const navigate = work.useNavigate();
+
+  return (
+    <WorkPage
+      search={search}
+      onSearch={(patch) =>
+        void navigate({ search: (previous) => ({ ...previous, ...patch }), replace: true })
+      }
+    />
+  );
+}
+
 const allAutomations = page("/automations", () => <AllAutomationsPage />);
 
 // The Inbox list moved to Needs you. A result keeps its own page.
@@ -232,7 +253,6 @@ const router = createRouter({
     inboxDetail,
     needsYou,
     work,
-    workCalendar,
     allAutomations,
     providers,
     secrets,
