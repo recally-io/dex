@@ -125,6 +125,7 @@ type ForkOperation struct {
 	OptionsJson          string `json:"options_json"`
 	Status               string `json:"status"`
 	CreatedAt            int64  `json:"created_at"`
+	ToolSourceRequestID  string `json:"tool_source_request_id"`
 }
 
 type Provider struct {

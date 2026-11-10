@@ -36,6 +36,9 @@ func TestUserForkIsIdempotentAndChecksEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts := coreOptions("shout")
+	if _, found, err := a.LookupFork(t.Context(), ref, "op", int64(entry), opts); err != nil || found {
+		t.Fatalf("absent operation: found=%v err=%v", found, err)
+	}
 	results := make(chan Ref, 12)
 	errs := make(chan error, 12)
 	var wg sync.WaitGroup
@@ -64,6 +67,9 @@ func TestUserForkIsIdempotentAndChecksEntry(t *testing.T) {
 	}
 	if child.ID == 0 {
 		t.Fatal("no child")
+	}
+	if saved, found, err := a.LookupFork(t.Context(), ref, "op", int64(entry), opts); err != nil || !found || saved != child {
+		t.Fatalf("saved result=%+v found=%v err=%v", saved, found, err)
 	}
 	if _, err := a.Fork(t.Context(), ref, "op", int64(entry), coreOptions("echo")); !errors.Is(err, ErrOperationConflict) {
 		t.Fatalf("different arguments: %v", err)

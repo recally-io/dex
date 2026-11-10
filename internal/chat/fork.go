@@ -74,8 +74,12 @@ func (s *Service) fork(ctx context.Context, agentID string, sourceID, entryID in
 	if s.leaseUntil.Load() != 0 {
 		return Chat{}, engine.ErrMaintenance
 	}
+	toolSource := ""
+	if caller != nil {
+		toolSource = caller.SourceRequestID
+	}
 	s.admissionMu.RLock()
-	op, err := s.createForkReceipt(ctx, agentID, source, entryID, operationID)
+	op, err := s.createForkReceipt(ctx, agentID, source, entryID, operationID, toolSource)
 	s.admissionMu.RUnlock()
 	if err != nil {
 		return Chat{}, err
@@ -91,7 +95,7 @@ func (s *Service) fork(ctx context.Context, agentID string, sourceID, entryID in
 	return s.Get(ctx, agentID, op.TargetConversationID)
 }
 
-func (s *Service) createForkReceipt(ctx context.Context, agentID string, source Chat, entryID int64, operationID string) (sqlc.ForkOperation, error) {
+func (s *Service) createForkReceipt(ctx context.Context, agentID string, source Chat, entryID int64, operationID, toolSource string) (sqlc.ForkOperation, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return sqlc.ForkOperation{}, err
@@ -103,7 +107,7 @@ func (s *Service) createForkReceipt(ctx context.Context, agentID string, source 
 	q := s.q.WithTx(tx)
 	prior, err := q.GetForkOperation(ctx, operationID)
 	if err == nil {
-		if prior.AgentID != agentID || prior.SourceConversationID != source.ID || prior.EntryID != entryID {
+		if prior.AgentID != agentID || prior.SourceConversationID != source.ID || prior.EntryID != entryID || prior.ToolSourceRequestID != toolSource {
 			return sqlc.ForkOperation{}, engine.ErrOperationConflict
 		}
 		return prior, nil
@@ -138,7 +142,7 @@ func (s *Service) createForkReceipt(ctx context.Context, agentID string, source 
 	if err = q.SetConversationCwd(ctx, sqlc.SetConversationCwdParams{ID: target.ID, AgentID: agentID, Cwd: options.Cwd}); err != nil {
 		return sqlc.ForkOperation{}, err
 	}
-	if err = q.CreateForkOperation(ctx, sqlc.CreateForkOperationParams{OperationID: operationID, AgentID: agentID, SourceConversationID: source.ID, TargetConversationID: target.ID, EntryID: entryID, OptionsJson: string(encoded), CreatedAt: now}); err != nil {
+	if err = q.CreateForkOperation(ctx, sqlc.CreateForkOperationParams{OperationID: operationID, AgentID: agentID, SourceConversationID: source.ID, TargetConversationID: target.ID, EntryID: entryID, OptionsJson: string(encoded), CreatedAt: now, ToolSourceRequestID: toolSource}); err != nil {
 		return sqlc.ForkOperation{}, err
 	}
 	op, err := q.GetForkOperation(ctx, operationID)
@@ -160,7 +164,34 @@ func (s *Service) completeFork(ctx context.Context, op sqlc.ForkOperation) error
 	if err = json.Unmarshal([]byte(op.OptionsJson), &options); err != nil {
 		return fmt.Errorf("decode fork options: %w", err)
 	}
-	target, err := s.engine.Fork(ctx, engine.Ref{AgentID: op.AgentID, ID: source.ExecutionID.Int64}, op.OperationID, op.EntryID, options)
+	ref := engine.Ref{AgentID: op.AgentID, ID: source.ExecutionID.Int64}
+	var target engine.Ref
+	if op.ToolSourceRequestID != "" {
+		input, readErr := s.q.GetSubmission(ctx, op.ToolSourceRequestID)
+		if readErr != nil {
+			return readErr
+		}
+		if input.ConversationID != op.SourceConversationID {
+			return ErrTaskInvalid
+		}
+		if input.Status != "pending" {
+			var found bool
+			target, found, err = s.engine.LookupFork(ctx, ref, op.OperationID, op.EntryID, options)
+			if err != nil {
+				return err
+			}
+			if !found {
+				if err := s.q.SetForkOperationStatus(ctx, sqlc.SetForkOperationStatusParams{OperationID: op.OperationID, Status: "rejected"}); err != nil {
+					return err
+				}
+				return engine.ErrNotFound
+			}
+		} else {
+			target, err = s.engine.Fork(ctx, ref, op.OperationID, op.EntryID, options)
+		}
+	} else {
+		target, err = s.engine.Fork(ctx, ref, op.OperationID, op.EntryID, options)
+	}
 	if err != nil {
 		if errors.Is(err, engine.ErrNotFound) || errors.Is(err, engine.ErrInvalidInput) || errors.Is(err, engine.ErrOperationConflict) {
 			if updateErr := s.q.SetForkOperationStatus(ctx, sqlc.SetForkOperationStatusParams{OperationID: op.OperationID, Status: "rejected"}); updateErr != nil {

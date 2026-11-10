@@ -10,8 +10,8 @@ import (
 )
 
 const createForkOperation = `-- name: CreateForkOperation :exec
-INSERT INTO fork_operations (operation_id, agent_id, source_conversation_id, target_conversation_id, entry_id, options_json, status, created_at)
-VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+INSERT INTO fork_operations (operation_id, agent_id, source_conversation_id, target_conversation_id, entry_id, options_json, status, created_at, tool_source_request_id)
+VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
 `
 
 type CreateForkOperationParams struct {
@@ -22,6 +22,7 @@ type CreateForkOperationParams struct {
 	EntryID              int64  `json:"entry_id"`
 	OptionsJson          string `json:"options_json"`
 	CreatedAt            int64  `json:"created_at"`
+	ToolSourceRequestID  string `json:"tool_source_request_id"`
 }
 
 func (q *Queries) CreateForkOperation(ctx context.Context, arg CreateForkOperationParams) error {
@@ -33,12 +34,13 @@ func (q *Queries) CreateForkOperation(ctx context.Context, arg CreateForkOperati
 		arg.EntryID,
 		arg.OptionsJson,
 		arg.CreatedAt,
+		arg.ToolSourceRequestID,
 	)
 	return err
 }
 
 const getForkOperation = `-- name: GetForkOperation :one
-SELECT operation_id, agent_id, source_conversation_id, target_conversation_id, entry_id, options_json, status, created_at FROM fork_operations WHERE operation_id = ?
+SELECT operation_id, agent_id, source_conversation_id, target_conversation_id, entry_id, options_json, status, created_at, tool_source_request_id FROM fork_operations WHERE operation_id = ?
 `
 
 func (q *Queries) GetForkOperation(ctx context.Context, operationID string) (ForkOperation, error) {
@@ -53,12 +55,13 @@ func (q *Queries) GetForkOperation(ctx context.Context, operationID string) (For
 		&i.OptionsJson,
 		&i.Status,
 		&i.CreatedAt,
+		&i.ToolSourceRequestID,
 	)
 	return i, err
 }
 
 const listPendingForkOperations = `-- name: ListPendingForkOperations :many
-SELECT operation_id, agent_id, source_conversation_id, target_conversation_id, entry_id, options_json, status, created_at FROM fork_operations WHERE status = 'pending' ORDER BY rowid
+SELECT operation_id, agent_id, source_conversation_id, target_conversation_id, entry_id, options_json, status, created_at, tool_source_request_id FROM fork_operations WHERE status = 'pending' ORDER BY rowid
 `
 
 func (q *Queries) ListPendingForkOperations(ctx context.Context) ([]ForkOperation, error) {
@@ -79,6 +82,7 @@ func (q *Queries) ListPendingForkOperations(ctx context.Context) ([]ForkOperatio
 			&i.OptionsJson,
 			&i.Status,
 			&i.CreatedAt,
+			&i.ToolSourceRequestID,
 		); err != nil {
 			return nil, err
 		}

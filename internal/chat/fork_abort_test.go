@@ -82,7 +82,7 @@ func TestUserForkWaitsForPendingNativeAbort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.createForkReceipt(t.Context(), "bot", source, entry, "pending-fork"); err != nil {
+	if _, err = service.createForkReceipt(t.Context(), "bot", source, entry, "pending-fork", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err = service.Stop(t.Context(), "bot", id); err != nil {

@@ -31,21 +31,31 @@ var forkOperationsDoc = durable.DefineDoc(durable.DocDefinition[forkOperations]{
 // Fork creates one independent Chat execution at a committed visible entry. A replay
 // must use the same operation ID and frozen options, including after a restart.
 func (a *Agents) Fork(ctx context.Context, ref Ref, operationID string, entryID int64, options Options) (Ref, error) {
+	result, _, err := a.forkOperation(ctx, ref, operationID, entryID, options, true)
+	return result, err
+}
+
+// LookupFork returns a saved native result without creating a new fork.
+func (a *Agents) LookupFork(ctx context.Context, ref Ref, operationID string, entryID int64, options Options) (Ref, bool, error) {
+	return a.forkOperation(ctx, ref, operationID, entryID, options, false)
+}
+
+func (a *Agents) forkOperation(ctx context.Context, ref Ref, operationID string, entryID int64, options Options, create bool) (Ref, bool, error) {
 	if operationID == "" || entryID <= 0 {
-		return Ref{}, fmt.Errorf("%w: fork operation or entry", ErrInvalidInput)
+		return Ref{}, false, fmt.Errorf("%w: fork operation or entry", ErrInvalidInput)
 	}
 	if err := a.begin(); err != nil {
-		return Ref{}, err
+		return Ref{}, false, err
 	}
 	defer a.end()
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
-		return Ref{}, err
+		return Ref{}, false, err
 	}
 	defer unlock()
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
-		return Ref{}, err
+		return Ref{}, false, err
 	}
 	result, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
 		doc, err := tx.Doc(forkOperationsDoc, conversation.Id())
@@ -62,6 +72,9 @@ func (a *Agents) Fork(ctx context.Context, ref Ref, operationID string, entryID 
 				return nil, ErrOperationConflict
 			}
 			return previous.Result, nil
+		}
+		if !create {
+			return nil, nil
 		}
 		page, err := tx.ScanEntries(durable.EntryQuery{ConversationId: conversation.Id(), MinEntryId: &entry, MaxEntryId: &entry}, 1, nil)
 		if err != nil {
@@ -93,11 +106,14 @@ func (a *Agents) Fork(ctx context.Context, ref Ref, operationID string, entryID 
 		return child.Id, nil
 	})
 	if err != nil {
-		return Ref{}, err
+		return Ref{}, false, err
+	}
+	if result == nil {
+		return Ref{}, false, nil
 	}
 	id, ok := result.(durable.ConversationId)
 	if !ok {
-		return Ref{}, fmt.Errorf("unexpected fork result %T", result)
+		return Ref{}, false, fmt.Errorf("unexpected fork result %T", result)
 	}
-	return Ref{AgentID: ref.AgentID, ID: int64(id)}, nil
+	return Ref{AgentID: ref.AgentID, ID: int64(id)}, true, nil
 }

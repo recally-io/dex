@@ -151,8 +151,9 @@ entry and settings. A native operation record commits with the new execution.
 Reconciliation uses the same operation ID if the control acknowledgement fails.
 The two Chats share the same files when their project directories are equal.
 The current-session `fork_chat` tool defaults to the input that started its run.
-A new tool operation requires that input to remain pending. A saved result can
-still be replayed after the input ends.
+A new tool operation requires that input to remain pending. On recovery, an
+ended input can replay an already committed native fork. It cannot create one
+from an uncommitted intent.
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
 each agent execution store. Run one dex process per data directory.
