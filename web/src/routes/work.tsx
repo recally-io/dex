@@ -5,6 +5,7 @@ import { addDays, format, isSameDay, startOfWeek } from "date-fns";
 import { getWorkOptions } from "../api/generated/@tanstack/react-query.gen";
 import {
   boardBucket,
+  openQuestion,
   resolveRange,
   runTone,
   toneClass,
@@ -286,6 +287,9 @@ export function WorkPage({
                         <span className="block text-xs text-muted-foreground">
                           {format(card.at, "d MMM HH:mm")}
                         </span>
+                        {card.chat && openQuestion(card.chat) ? (
+                          <span className="block text-xs text-orange">Waiting for your answer</span>
+                        ) : null}
                         {card.chat?.task?.status === "running" &&
                         Date.now() - (card.chat.task.lastActivityAt ?? card.chat.task.startedAt ?? now) >=
                           30 * 60000 ? (
@@ -313,9 +317,11 @@ export function WorkPage({
               <p className="text-xs text-muted-foreground">
                 {current.bucket !== "needs"
                   ? "Opening it marks it read."
-                  : current.setup && !openFailures.length
-                    ? "Leaves Needs you when fixed."
-                    : "Opening does not clear it. Mark handled when you are done."}
+                  : current.chat && openQuestion(current.chat)
+                    ? "Leaves Needs you when you answer or dismiss the question."
+                    : current.setup && !openFailures.length
+                      ? "Leaves Needs you when fixed."
+                      : "Opening does not clear it. Mark handled when you are done."}
               </p>
               <div className="flex flex-wrap gap-2">
                 {current.automation ? (

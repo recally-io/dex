@@ -12,8 +12,13 @@ export function automationNeedsYou(
   );
 }
 
-export function boardBucket(chat: Pick<Chat, "task" | "busy">): "needs" | "working" | "idle" {
-  if (chat.task && needsTask(chat.task)) return "needs";
+/** The question that waits for the user. An answered question is already on its way and does not count. */
+export function openQuestion(chat: Pick<Chat, "question">) {
+  return chat.question?.status === "open" ? chat.question : undefined;
+}
+
+export function boardBucket(chat: Pick<Chat, "task" | "busy" | "question">): "needs" | "working" | "idle" {
+  if (openQuestion(chat) || (chat.task && needsTask(chat.task))) return "needs";
 
   if (chat.task ? ["running", "admitting", "queued"].includes(chat.task.status) : chat.busy) return "working";
 

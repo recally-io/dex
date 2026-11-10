@@ -3,7 +3,7 @@ import { AgentAvatar } from "./agent-avatar";
 import { DexMark } from "./dex-mark";
 import { AgentCreateDialog } from "./agent-create-dialog";
 import type { Agent, WorkSession } from "../api/generated/types.gen";
-import { boardBucket, needsTask, automationNeedsYou } from "../lib/work";
+import { boardBucket, needsTask, automationNeedsYou, openQuestion } from "../lib/work";
 import { readSeen } from "../lib/tasks";
 import { useNewChat } from "./chat-list";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -160,6 +160,7 @@ function Sidebar({
 
   const needs =
     sessions.filter((item) => item.chat.task && needsTask(item.chat.task)).length +
+    sessions.filter((item) => openQuestion(item.chat)).length +
     inbox.filter((item) => item.outcome === "failed" && !item.dismissed).length +
     automations.filter((item) => item.setup).length;
 

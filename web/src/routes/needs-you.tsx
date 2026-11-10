@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getWorkOptions } from "../api/generated/@tanstack/react-query.gen";
 import { useHandled } from "../lib/handled";
-import { needsTask } from "../lib/work";
+import { needsTask, openQuestion } from "../lib/work";
 import { Empty, FramedPage } from "../components/page";
 import { Failure, Loading } from "../components/feedback";
 import { Button } from "../components/ui/button";
@@ -22,6 +22,7 @@ export function NeedsYouPage() {
     ({ chat }) => chat.task && needsTask({ ...chat.task, handledAt: undefined }),
   );
 
+  const questions = (work.data?.sessions ?? []).filter(({ chat }) => openQuestion(chat));
   const runs = (work.data?.inbox ?? []).filter((item) => item.outcome === "failed");
   const setup = (work.data?.automations ?? []).filter((item) => item.setup);
   const names = new Map(work.data?.agents.map((agent) => [agent.id ?? "default", agent.name]));
@@ -42,10 +43,38 @@ export function NeedsYouPage() {
         <Failure title="Could not load work" error={work.error} retry={() => void work.refetch()} />
       ) : null}
       {change.isError ? <Failure title="Could not change this item" error={change.error} /> : null}
-      {!work.isPending && !work.isError && !openTasks.length && !openRuns.length && !setup.length ? (
+      {!work.isPending &&
+      !work.isError &&
+      !questions.length &&
+      !openTasks.length &&
+      !openRuns.length &&
+      !setup.length ? (
         <Empty title="You're all caught up">No work needs your attention.</Empty>
       ) : null}
       <div className="space-y-4">
+        {questions.map(({ agentId, chat }) => (
+          <article
+            key={chat.question?.id}
+            className="space-y-2 border border-border border-l-4 border-l-orange p-4"
+          >
+            <p className="text-xs text-muted-foreground">
+              {names.get(agentId)} · Question · {chat.main ? "Main" : chat.title || "Chat"}
+            </p>
+            <h2 className="font-semibold">{chat.question?.text}</h2>
+            <Button
+              render={
+                chat.main ? (
+                  <Link to="/a/$agentId" params={{ agentId }} />
+                ) : (
+                  <Link to="/a/$agentId/c/$chatId" params={{ agentId, chatId: String(chat.id) }} />
+                )
+              }
+            >
+              Answer
+            </Button>
+            <p className="text-xs text-muted-foreground">Leaves when you answer or dismiss the question.</p>
+          </article>
+        ))}
         {openTasks.map(
           ({ agentId, chat }) =>
             chat.task && (

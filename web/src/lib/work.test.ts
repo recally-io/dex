@@ -1,6 +1,14 @@
 import { expect, test } from "vite-plus/test";
 import type { TaskSummary } from "../api/generated/types.gen";
-import { boardBucket, needsTask, automationNeedsYou, parseWorkSearch, resolveRange, runTone } from "./work";
+import {
+  boardBucket,
+  needsTask,
+  automationNeedsYou,
+  openQuestion,
+  parseWorkSearch,
+  resolveRange,
+  runTone,
+} from "./work";
 
 const task: TaskSummary = {
   id: "task",
@@ -73,4 +81,14 @@ test("calendar run tone follows the inbox state of the run", () => {
   expect(runTone(done, { outcome: "changed", read: false, dismissed: false })).toBe("result");
   expect(runTone(done, { outcome: "changed", read: true, dismissed: false })).toBe("quiet");
   expect(runTone({ status: "skipped", outcome: "" }, undefined)).toBe("quiet");
+});
+
+test("an open question needs the user until it is answered", () => {
+  const question = { id: "q", text: "Which one?", options: [], status: "open" as const };
+
+  expect(openQuestion({ question })).toEqual(question);
+  expect(boardBucket({ busy: false, question })).toBe("needs");
+  expect(openQuestion({ question: { ...question, status: "answered" } })).toBeUndefined();
+  expect(boardBucket({ busy: false, question: { ...question, status: "answered" } })).toBe("idle");
+  expect(boardBucket({ busy: false })).toBe("idle");
 });
