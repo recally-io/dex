@@ -41,8 +41,10 @@ type Input struct {
 	RequestID, Content, Kind, Origin, Source string
 	Attachments                              []Attachment
 	Options
-	Automation        bool
-	Background        bool
+	Automation bool
+	Background bool
+	// Main input comes from a person who waits for each reply.
+	Main              bool
 	TaskID, TaskTitle string
 }
 type InputMetadata struct {
