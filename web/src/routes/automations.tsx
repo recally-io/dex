@@ -1,5 +1,5 @@
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Automation, AutomationRun } from "../api/generated/types.gen";
@@ -11,12 +11,13 @@ import {
   deleteAutomationMutation,
   runAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { inboxOptions } from "../lib/inbox";
+import { inboxOptions, resultQuote } from "../lib/inbox";
+import { createChat, dismissInboxItem, sendMessage, setChatProject } from "../api/generated/sdk.gen";
+import { queryClient, refreshChats } from "../lib/queries";
 import { refreshAutomations } from "../lib/queries";
 import { useAgentModel } from "../lib/agent";
 import { ago, runTime, scheduleText } from "../lib/automations";
 import { Failure, Loading, Spinner } from "../components/feedback";
-import { Crumb } from "../components/crumb";
 import { Confirm } from "../components/confirm";
 import { AutomationDialog } from "../components/automation-dialog";
 import { Empty, Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
@@ -193,11 +194,13 @@ function RunRow({
   timeZone,
   now,
   inInbox,
+  automation,
 }: {
   run: AutomationRun;
   timeZone: string;
   now: number;
   inInbox: boolean;
+  automation: Automation;
 }) {
   const agentId = useAgentId();
 
@@ -218,7 +221,9 @@ function RunRow({
       <span className="font-mono text-[11.5px] text-muted-foreground tabular-nums">
         {runTime(run.dueAt ?? run.createdAt, timeZone)}
       </span>
-      <span className="text-[12px] text-muted-foreground">{run.dueAt ? "Scheduled" : "Started by you"}</span>
+      <span className="text-[12px] text-muted-foreground">
+        {run.dueAt ? `Planned · recorded ${runTime(run.createdAt, timeZone)}` : "Started by you"}
+      </span>
       <span className="ml-auto flex items-center gap-2">
         <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
           {ago(run.createdAt, now)} ago
@@ -238,7 +243,84 @@ function RunRow({
           {run.summary || run.reason}
         </p>
       ) : null}
+      <RunActions run={run} automation={automation} inInbox={inInbox} />
     </li>
+  );
+}
+
+function RunActions({
+  run,
+  automation,
+  inInbox,
+}: {
+  run: AutomationRun;
+  automation: Automation;
+  inInbox: boolean;
+}) {
+  const agentId = useAgentId();
+  const navigate = useNavigate();
+  const continuation = useRef<{ chatId: number; messageId: string } | null>(null);
+
+  const reply = useMutation({
+    mutationFn: async () => {
+      if (!run.chatId) return;
+
+      if (!continuation.current) {
+        const chat = await createChat({ path: { agentId }, throwOnError: true });
+        continuation.current = { chatId: chat.data.id, messageId: crypto.randomUUID() };
+      }
+
+      const { chatId, messageId } = continuation.current;
+      const path = { agentId, chatId };
+      const outcome = run.outcome || (run.status === "failed" ? "failed" : "unknown");
+
+      await setChatProject({ path, body: { cwd: automation.cwd ?? "" }, throwOnError: true });
+      await sendMessage({
+        path,
+        body: {
+          id: messageId,
+          text: resultQuote({
+            agentId,
+            automationName: automation.name,
+            runId: run.id,
+            chatId: run.chatId,
+            summary: run.summary || run.reason || "",
+            outcome,
+          }),
+        },
+        throwOnError: true,
+      });
+      await refreshChats(agentId);
+      await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chatId) } });
+    },
+  });
+
+  const handle = useMutation({
+    mutationFn: async () => {
+      await dismissInboxItem({ path: { runId: run.id }, throwOnError: true });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [{ _id: "listInbox" }] }),
+        queryClient.invalidateQueries({ queryKey: [{ _id: "getWork" }] }),
+        queryClient.invalidateQueries({ queryKey: [{ _id: "listAgents" }] }),
+      ]);
+    },
+  });
+
+  if (!run.chatId || run.status === "running") return null;
+
+  return (
+    <div className="flex w-full flex-wrap gap-2">
+      <Button size="sm" variant="outline" disabled={reply.isPending} onClick={() => reply.mutate()}>
+        Reply in a new chat
+      </Button>
+      {(run.outcome === "failed" || run.status === "failed") && inInbox ? (
+        <Button size="sm" variant="outline" disabled={handle.isPending} onClick={() => handle.mutate()}>
+          Mark handled
+        </Button>
+      ) : null}
+      {reply.isError ? <Failure title="Could not start chat" error={reply.error} /> : null}
+      {handle.isError ? <Failure title="Could not mark handled" error={handle.error} /> : null}
+    </div>
   );
 }
 
@@ -283,7 +365,11 @@ export function AutomationPage({ automationId }: { automationId: string }) {
   const busy = history.some((h) => h.status === "running");
   const blocked = model && !model.ok ? "Choose an available bot model first." : undefined;
 
-  const crumb = <Crumb to="/a/$agentId/automations">Routines</Crumb>;
+  const crumb = (
+    <Link to="/automations" className="hover:underline">
+      Automations
+    </Link>
+  );
 
   if (automation.isPending || automation.isError)
     return (
@@ -375,10 +461,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
             rows={[
               ["Repeats", scheduleText(data.schedule, data.timeZone)],
               ["Time zone", <Mono key="tz">{data.timeZone}</Mono>],
-              [
-                "Session for each run",
-                data.session === "reuse" ? "One session for this routine" : "New session each run",
-              ],
+              ["Session for each run", data.session === "reuse" ? "Continue from last run" : "Start fresh"],
               [
                 "Next runs",
                 data.nextRuns.length ? (
@@ -432,12 +515,21 @@ export function AutomationPage({ automationId }: { automationId: string }) {
           <Failure title="Could not load run history" error={runs.error} retry={() => void runs.refetch()} />
         ) : (
           <Panel>
-            {shown.length ? (
+            {shown.length || (filter === "All" && data.nextRuns.length) ? (
               <ul className="divide-y divide-border">
+                {(filter === "All" ? data.nextRuns : []).map((at) => (
+                  <li
+                    key={at}
+                    className="border-b border-dashed border-border px-4 py-3 text-sm text-muted-foreground"
+                  >
+                    Scheduled · {runTime(at, data.timeZone)}
+                  </li>
+                ))}
                 {shown.map((h) => (
                   <RunRow
                     key={h.id}
                     run={h}
+                    automation={data}
                     timeZone={data.timeZone}
                     now={runs.dataUpdatedAt}
                     inInbox={

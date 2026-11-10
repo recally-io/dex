@@ -60,6 +60,10 @@ test("rail counts sum the shared agent response, including zero activity", () =>
   expect(inboxCount([])).toEqual({ unread: 0, failed: 0 });
 });
 
+test("Continue can quote an unchanged run", () => {
+  expect(resultQuote({ ...result, outcome: "unchanged" })).toContain("Outcome: unchanged");
+});
+
 test("Continue quotes the stored result and identifies the exact run transcript", () => {
   expect(resultQuote(result)).toBe(
     "Follow up on the Release check result (changed).\n\n> Release check\n> \n> Outcome: changed\n> \n> Release available\n> Version 2\n> \n> Run transcript: /a/first/c/4 (run run)",

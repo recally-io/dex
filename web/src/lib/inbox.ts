@@ -31,7 +31,11 @@ export function inboxCount(agents: Agent[]) {
 }
 
 // The first line is plain text because the chat takes its title from the start of the message.
-export function resultQuote(item: InboxItem) {
+export function resultQuote(
+  item: Pick<InboxItem, "automationName" | "summary" | "agentId" | "chatId" | "runId"> & {
+    outcome: InboxItem["outcome"] | "unchanged" | "unknown";
+  },
+) {
   const quote = [
     item.automationName,
     `Outcome: ${item.outcome}`,
