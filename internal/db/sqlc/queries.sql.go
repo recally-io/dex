@@ -575,7 +575,8 @@ SELECT
         coalesce(t.started_at, c.created_at),
         coalesce(t.ended_at, c.created_at)
     ) AS INTEGER) AS updated_at,
-    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
+    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending,
+    t.status AS task_status
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN tasks t ON t.conversation_id = c.id
@@ -589,18 +590,19 @@ type GetChatParams struct {
 }
 
 type GetChatRow struct {
-	ID            int64         `json:"id"`
-	ChannelKey    string        `json:"channel_key"`
-	Title         string        `json:"title"`
-	ModelProvider string        `json:"model_provider"`
-	ModelID       string        `json:"model_id"`
-	ThinkingLevel string        `json:"thinking_level"`
-	Cwd           string        `json:"cwd"`
-	CreatedAt     int64         `json:"created_at"`
-	ArchivedAt    sql.NullInt64 `json:"archived_at"`
-	ExecutionID   sql.NullInt64 `json:"execution_id"`
-	UpdatedAt     int64         `json:"updated_at"`
-	Pending       int64         `json:"pending"`
+	ID            int64          `json:"id"`
+	ChannelKey    string         `json:"channel_key"`
+	Title         string         `json:"title"`
+	ModelProvider string         `json:"model_provider"`
+	ModelID       string         `json:"model_id"`
+	ThinkingLevel string         `json:"thinking_level"`
+	Cwd           string         `json:"cwd"`
+	CreatedAt     int64          `json:"created_at"`
+	ArchivedAt    sql.NullInt64  `json:"archived_at"`
+	ExecutionID   sql.NullInt64  `json:"execution_id"`
+	UpdatedAt     int64          `json:"updated_at"`
+	Pending       int64          `json:"pending"`
+	TaskStatus    sql.NullString `json:"task_status"`
 }
 
 func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, error) {
@@ -619,6 +621,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 		&i.ExecutionID,
 		&i.UpdatedAt,
 		&i.Pending,
+		&i.TaskStatus,
 	)
 	return i, err
 }
@@ -983,7 +986,8 @@ SELECT
         coalesce(t.started_at, c.created_at),
         coalesce(t.ended_at, c.created_at)
     ) AS INTEGER) AS updated_at,
-    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
+    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending,
+    t.status AS task_status
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN tasks t ON t.conversation_id = c.id
@@ -997,17 +1001,18 @@ ORDER BY updated_at DESC, c.id DESC
 `
 
 type ListChatsRow struct {
-	ID            int64         `json:"id"`
-	ChannelKey    string        `json:"channel_key"`
-	Title         string        `json:"title"`
-	ModelProvider string        `json:"model_provider"`
-	ModelID       string        `json:"model_id"`
-	ThinkingLevel string        `json:"thinking_level"`
-	Cwd           string        `json:"cwd"`
-	CreatedAt     int64         `json:"created_at"`
-	ArchivedAt    sql.NullInt64 `json:"archived_at"`
-	UpdatedAt     int64         `json:"updated_at"`
-	Pending       int64         `json:"pending"`
+	ID            int64          `json:"id"`
+	ChannelKey    string         `json:"channel_key"`
+	Title         string         `json:"title"`
+	ModelProvider string         `json:"model_provider"`
+	ModelID       string         `json:"model_id"`
+	ThinkingLevel string         `json:"thinking_level"`
+	Cwd           string         `json:"cwd"`
+	CreatedAt     int64          `json:"created_at"`
+	ArchivedAt    sql.NullInt64  `json:"archived_at"`
+	UpdatedAt     int64          `json:"updated_at"`
+	Pending       int64          `json:"pending"`
+	TaskStatus    sql.NullString `json:"task_status"`
 }
 
 func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow, error) {
@@ -1031,6 +1036,7 @@ func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow
 			&i.ArchivedAt,
 			&i.UpdatedAt,
 			&i.Pending,
+			&i.TaskStatus,
 		); err != nil {
 			return nil, err
 		}

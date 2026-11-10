@@ -74,14 +74,26 @@ func TestUserChatProjectRejectsInvalidPaths(t *testing.T) {
 	}
 }
 
-func TestUserMainRefusesProject(t *testing.T) {
+func TestUserMainProjectPersistsAndRunsNextInput(t *testing.T) {
 	t.Parallel()
-	// Given Main, even a valid path is forbidden.
-	d := startDex(t, t.TempDir(), "")
+	// Given Main and an existing project directory.
+	data := t.TempDir()
+	project, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := startDex(t, data, "")
+	d.setModel(t, "bash")
 	id := d.mainChat(t)
-	// When the user sets a project, the API returns 403.
-	d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": t.TempDir()}, nil, http.StatusForbidden)
-	assertProject(t, d, id, "")
+	// When the user sets the project and restarts dex, the setting persists.
+	d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": project}, nil)
+	d.stop()
+	d = startDex(t, data, "")
+	assertProject(t, d, id, project)
+	// Then the next input runs in that directory.
+	if got := taskTurn(t, d, id, "pwd"); got != "bash: "+project {
+		t.Fatal(got)
+	}
 }
 
 func TestUserChatProjectLoadsSkills(t *testing.T) {
@@ -129,17 +141,18 @@ func TestUserChatToolSetsProjectForLaterMessages(t *testing.T) {
 	assertProject(t, d, id, "")
 }
 
-func TestUserMainToolRefusesProject(t *testing.T) {
+func TestUserMainToolSetsProject(t *testing.T) {
 	t.Parallel()
 	// Given Main with a valid directory.
 	d := startDex(t, t.TempDir(), "")
 	id := d.mainChat(t)
-	// When set_project runs, it returns a tool error and preserves the workspace.
-	got := taskTool(t, d, id, "set_project", map[string]string{"path": t.TempDir()})
-	if !strings.Contains(got, "only Chat sessions") {
-		t.Fatalf("set_project error: %s", got)
+	project := t.TempDir()
+	// When set_project runs, it saves the project for subsequent input.
+	got := taskTool(t, d, id, "set_project", map[string]string{"path": project})
+	if !strings.Contains(got, project) {
+		t.Fatalf("set_project result: %s", got)
 	}
-	assertProject(t, d, id, "")
+	assertProject(t, d, id, project)
 }
 
 func TestUserChatTaskInheritsProject(t *testing.T) {

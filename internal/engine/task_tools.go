@@ -171,7 +171,7 @@ func taskExtension(agentID string, handlers TaskTools) *durable.Extension {
 		}))
 	}
 	tools = append(tools, &durable.ToolRegistration{
-		Name: "set_project", Description: "Set the project directory for this Chat session. Use an absolute path, or an empty path to restore the agent workspace. Only Chat sessions can change it.",
+		Name: "set_project", Description: "Set the project directory for this conversation. Use an absolute path, or an empty path to restore the agent workspace.",
 		Parameters: map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}}, "required": []string{"path"}, "additionalProperties": false},
 		Replay:     durable.ReplaySafe,
 		Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {

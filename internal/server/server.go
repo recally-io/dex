@@ -57,7 +57,7 @@ const (
 var errInvalid = errors.New("invalid request")
 
 // errReadOnly is a message to a chat that the web UI cannot write to.
-var errReadOnly = errors.New("this session is read-only; send messages in main or a Chat session")
+var errReadOnly = errors.New("this session is read-only; send messages in main, a Chat session, or a delegated session whose task ended")
 
 // New returns the handler for the API under /api/ and the web UI at /. The API requires
 // cfg.Token when it is set. It refuses cross-site writes, so a web page in the user's browser
@@ -90,7 +90,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, engine.ErrModelsPending):
 				status = http.StatusServiceUnavailable
-			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden):
+			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden), errors.Is(err, chat.ErrSettingsForbidden):
 				status = http.StatusForbidden
 			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
@@ -270,7 +270,7 @@ func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRe
 func chatView(c chat.Chat) api.Chat {
 	out := api.Chat{
 		Id: c.ID, Channel: api.ChatChannelWeb, Title: c.Title, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Busy: c.Busy,
-		Cwd: c.Cwd, Settings: c.Settings, Main: c.ChannelKey == chat.MainKey, ReadOnly: !chat.Writable(c.ChannelKey),
+		Cwd: c.Cwd, Settings: c.Settings, Main: c.ChannelKey == chat.MainKey, ReadOnly: !c.Writable,
 	}
 	if strings.HasPrefix(c.ChannelKey, "telegram:") {
 		out.Channel = api.ChatChannelTelegram
@@ -314,6 +314,22 @@ func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (
 	if err != nil {
 		return nil, err
 	}
+	byConversation, err := h.taskSummaries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := api.ListChats200JSONResponse{Chats: make([]api.Chat, len(chats))}
+	for i, c := range chats {
+		out.Chats[i] = chatView(c)
+		if t, ok := byConversation[c.ID]; ok {
+			out.Chats[i].Task = &t
+		}
+	}
+	return out, nil
+}
+
+// taskSummaries maps each delegated conversation of the agent to its task.
+func (h *handler) taskSummaries(ctx context.Context) (map[int64]api.TaskSummary, error) {
 	tasks, err := h.Chats.TaskRecords(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
@@ -330,14 +346,7 @@ func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (
 		activity := activities[engine.Ref{AgentID: agentID(ctx), ID: t.ExecutionID.Int64}]
 		byConversation[t.ConversationID] = taskSummary(t, activity)
 	}
-	out := api.ListChats200JSONResponse{Chats: make([]api.Chat, len(chats))}
-	for i, c := range chats {
-		out.Chats[i] = chatView(c)
-		if t, ok := byConversation[c.ID]; ok {
-			out.Chats[i].Task = &t
-		}
-	}
-	return out, nil
+	return byConversation, nil
 }
 
 func (h *handler) GetChat(ctx context.Context, req api.GetChatRequestObject) (api.GetChatResponseObject, error) {
@@ -345,7 +354,18 @@ func (h *handler) GetChat(ctx context.Context, req api.GetChatRequestObject) (ap
 	if err != nil {
 		return nil, err
 	}
-	return api.GetChat200JSONResponse(chatView(c)), nil
+	out := chatView(c)
+	// The page needs the task state to choose between the Stop bar and the Continue chat composer.
+	if strings.HasPrefix(c.ChannelKey, "task:") {
+		tasks, err := h.taskSummaries(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if t, ok := tasks[c.ID]; ok {
+			out.Task = &t
+		}
+	}
+	return api.GetChat200JSONResponse(out), nil
 }
 
 // message validates a message from the client. The text can be empty when the message has an
@@ -414,7 +434,7 @@ func (h *handler) writableChat(ctx context.Context, id int64) (chat.Chat, error)
 	if err != nil {
 		return chat.Chat{}, err
 	}
-	if !chat.Writable(c.ChannelKey) {
+	if !c.Writable {
 		return chat.Chat{}, errReadOnly
 	}
 	return c, nil
@@ -438,17 +458,10 @@ func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRe
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	c, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId)
-	if err != nil {
-		return nil, err
-	}
-	if !strings.HasPrefix(c.ChannelKey, "automation:") {
-		return nil, errReadOnly
-	}
 	if err := h.Chats.SetChat(ctx, agentID(ctx), req.ChatId, *req.Body, h.Settings.CheckChat); err != nil {
 		return nil, err
 	}
-	c, err = h.Chats.Get(ctx, agentID(ctx), req.ChatId)
+	c, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId)
 	if err != nil {
 		return nil, err
 	}

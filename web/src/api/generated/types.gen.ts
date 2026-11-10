@@ -81,7 +81,7 @@ export type Chat = {
      */
     main: boolean;
     /**
-     * The web cannot send messages to this chat.
+     * The web cannot send messages to this chat now. A delegated session is read-only while its task runs and writable after the task ends.
      */
     readOnly: boolean;
     /**

@@ -555,7 +555,7 @@ export const listRecentProjects = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * Sets the project directory of a Chat session from the next message. Other conversation kinds return 403. Empty cwd restores the agent workspace. The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
+ * Sets the project directory of a conversation from the next message. It applies to every conversation that accepts messages: Main, Chat sessions, and delegated sessions whose task ended. Read-only conversations return 403. Empty cwd restores the agent workspace. The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
  *
  */
 export const setChatProject = <ThrowOnError extends boolean = false>(options: Options<SetChatProjectData, ThrowOnError>): RequestResult<SetChatProjectResponses, SetChatProjectErrors, ThrowOnError> => (options.client ?? client).put<SetChatProjectResponses, SetChatProjectErrors, ThrowOnError>({
@@ -573,7 +573,7 @@ export const setChatProject = <ThrowOnError extends boolean = false>(options: Op
 });
 
 /**
- * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message. Only automation chats accept overrides. Main and Chat sessions use agent settings.
+ * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message, including channel input on Main. Conversations that accept messages (Main, Chat sessions, delegated sessions whose task ended) and automation chats accept overrides. Other read-only conversations return 403.
  *
  */
 export const setChatSettings = <ThrowOnError extends boolean = false>(options: Options<SetChatSettingsData, ThrowOnError>): RequestResult<SetChatSettingsResponses, SetChatSettingsErrors, ThrowOnError> => (options.client ?? client).put<SetChatSettingsResponses, SetChatSettingsErrors, ThrowOnError>({

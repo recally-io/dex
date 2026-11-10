@@ -48,7 +48,11 @@ func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path s
 		if task.ConversationID != conv.ID {
 			return engine.ArtifactInfo{}, errors.New("task conversation mismatch")
 		}
-		parent = task.ParentConversationID
+		// Only the delegated input delivers to the parent. A user message after the task ended
+		// delivers in this conversation, like any chat.
+		if caller.SourceRequestID == task.ID {
+			parent = task.ParentConversationID
+		}
 	default:
 		return engine.ArtifactInfo{}, errors.New("this conversation cannot deliver files")
 	}

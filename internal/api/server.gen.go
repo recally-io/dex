@@ -682,7 +682,7 @@ type Chat struct {
 	// Main This is the agent's main timeline.
 	Main bool `json:"main"`
 
-	// ReadOnly The web cannot send messages to this chat.
+	// ReadOnly The web cannot send messages to this chat now. A delegated session is read-only while its task runs and writable after the task ends.
 	ReadOnly bool `json:"readOnly"`
 
 	// Settings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.

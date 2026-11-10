@@ -39,6 +39,9 @@ type Chat struct {
 	Busy       bool  // a message has no answer yet
 	ArchivedAt int64 // zero when the Chat session is not archived
 	Settings   Settings
+	// Writable is true when the web UI can send input to the session now. Main and Chat sessions are
+	// always writable. A delegated session is writable after its task ends.
+	Writable bool
 	// ExecutionID is zero until native execution creates the conversation.
 	ExecutionID int64
 }
@@ -368,6 +371,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 		chats[i] = Chat{
 			Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 			Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
+			Writable: acceptsInput(r.ChannelKey, r.TaskStatus),
 		}
 	}
 	return chats, nil
@@ -385,7 +389,7 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	return Chat{
 		Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
-		ExecutionID: r.ExecutionID.Int64,
+		Writable: acceptsInput(r.ChannelKey, r.TaskStatus), ExecutionID: r.ExecutionID.Int64,
 	}, nil
 }
 
@@ -409,7 +413,10 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if strings.HasPrefix(p.ChannelKey, dream.Channel) {
 		options.Instructions = dream.Instructions(p.AgentID, options.Instructions)
 	}
-	background := strings.HasPrefix(p.ChannelKey, "task:")
+	background, continuation, err := s.taskRole(ctx, p)
+	if err != nil {
+		return err
+	}
 	var task sqlc.Task
 	resumed := false
 	if background {
@@ -483,7 +490,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if err = json.Unmarshal([]byte(p.Attachments), &attachments); err != nil {
 		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: err.Error()})
 	}
-	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Background: background, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey}
+	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Background: background, TaskContinuation: continuation, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey}
 	if p.Kind == "task_result" {
 		label, e := s.q.GetTaskResultLabel(ctx, sqlc.GetTaskResultLabelParams{ResultID: p.ID, ChatID: p.ConversationID})
 		if e != nil {

@@ -292,8 +292,7 @@ func TestUserGetsAnswerInTelegram(t *testing.T) {
 	if c := d.mainInfo(t); !c.Main || c.ReadOnly || len(d.chats(t)) != 0 {
 		t.Fatalf("main: %+v", c)
 	}
-	// Main follows the bot's settings and has no session override.
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", main), map[string]string{"thinkingLevel": "high"}, nil, http.StatusForbidden)
+	// Main takes a session override like a Chat session; its tests are in main_settings_test.go.
 
 }
 

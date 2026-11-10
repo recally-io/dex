@@ -165,10 +165,12 @@ func TestUserMainUsesAgentSettings(t *testing.T) {
 	d.send(t, id, "second")
 	w.until(t, "new agent settings", answered("think low: second"))
 
-	// Then main and Chat refuse per-session overrides.
+	// Then Main and Chat accept per-session overrides by the same rule, and a read-only session refuses them.
 	for _, chatID := range []int64{id, d.newSession(t).ID} {
-		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", chatID), chatSettings{Provider: "faux", ModelID: "echo"}, nil, http.StatusForbidden)
+		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", chatID), chatSettings{Provider: "faux", ModelID: "echo"}, nil)
 	}
+	d.send(t, id, "third")
+	w.until(t, "main override", answered("echo: third"))
 }
 
 func TestUserSendsFilesToTheAgent(t *testing.T) {

@@ -121,7 +121,8 @@ SELECT
         coalesce(t.started_at, c.created_at),
         coalesce(t.ended_at, c.created_at)
     ) AS INTEGER) AS updated_at,
-    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
+    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending,
+    t.status AS task_status
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN tasks t ON t.conversation_id = c.id
@@ -152,7 +153,8 @@ SELECT
         coalesce(t.started_at, c.created_at),
         coalesce(t.ended_at, c.created_at)
     ) AS INTEGER) AS updated_at,
-    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
+    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending,
+    t.status AS task_status
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN tasks t ON t.conversation_id = c.id

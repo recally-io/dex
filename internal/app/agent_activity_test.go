@@ -49,7 +49,20 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 	// A queued task counts even with no pending worker input. Two inputs in a Chat count once.
 	for _, stmt := range []string{
 		"UPDATE submissions SET status='done' WHERE conversation_id=103",
+		// A finished task has settled its own input. A pending input there would be a continuation.
+		"UPDATE submissions SET status='done' WHERE conversation_id IN (105,106,107,108)",
 		"INSERT INTO submissions (id,conversation_id,content,status,created_at) VALUES ('second-input',101,'second','pending',2)",
+	} {
+		if _, err := conn.ExecContext(t.Context(), stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A finished task whose session holds a pending user message is active again.
+	for _, stmt := range []string{
+		"INSERT INTO conversations (id,agent_id,channel_key,created_at) VALUES (300,'default','task:continued',1)",
+		"INSERT INTO submissions (id,conversation_id,content,status,created_at,kind) VALUES ('300',300,'goal','done',1,'message')",
+		"INSERT INTO tasks (id,parent_conversation_id,conversation_id,spawn_key,source_request_id,title,status,created_at) VALUES ('300',100,300,'task:continued','300','fixture','done',1)",
+		"INSERT INTO submissions (id,conversation_id,content,status,created_at,kind) VALUES ('continuation',300,'reply','pending',2,'message')",
 	} {
 		if _, err := conn.ExecContext(t.Context(), stmt); err != nil {
 			t.Fatal(err)
@@ -79,7 +92,7 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 	}
 	d.must(t, http.MethodGet, "/api/agents", nil, &listed)
 	want := map[string]agentActivity{
-		"default": {ActiveSessions: 4, RunningChannels: 1, EnabledAutomations: 2},
+		"default": {ActiveSessions: 5, RunningChannels: 1, EnabledAutomations: 2},
 		b.ID:      {ActiveSessions: 1, RunningChannels: 0, EnabledAutomations: 1},
 	}
 	if len(listed.Agents) != len(want) {
@@ -101,7 +114,7 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 		var active int64
 		for _, session := range sessions.Chats {
 			if session.Task != nil {
-				if session.Task.Status == "queued" || session.Task.Status == "running" {
+				if session.Task.Status == "queued" || session.Task.Status == "running" || session.Busy {
 					active++
 				}
 			} else if session.Busy {

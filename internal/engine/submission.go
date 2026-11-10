@@ -82,6 +82,9 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if input.Main {
 			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{workLoopExtension()}, Add: []*durable.Extension{frontDeskExtension()}}})
 		}
+		if input.TaskContinuation {
+			change.Extensions = continuationExtensions(ref.AgentID, a.config)
+		}
 		if input.Background {
 			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{taskExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{taskReportExtension(ref.AgentID, a.config.Tasks.ReportTask)}}})
 		} else if input.Origin == "dream" || strings.Contains(input.Source, "/dream/") {
