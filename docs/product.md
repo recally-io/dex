@@ -13,9 +13,8 @@ to read in an afternoon.
 
 ## Scope
 
-- One `dex` binary. The host needs no other runtime. The macOS desktop preview
-  is a Wails 3 window host over the same Dex HTTP service and is documented
-  separately from the cross-platform CLI binary.
+- One `dex` binary. The host needs no other runtime. Access dex through a
+  browser or a channel.
 - Runtime: foreground execution, or a per-user launchd/systemd service that
   starts at login. Optional daily updates wait until agent work is idle.
   Loopback access needs no token by default. Other listening addresses require
@@ -229,6 +228,7 @@ and task-specific automation result routing are later work. Other chat channels 
 
 ## Non-goals
 
+- Native desktop applications. Use a browser to access the web UI.
 - More than one host. One machine runs one dex process.
 - Sandboxes. Agent tools run on the host, inside the selected project directory or the agent workspace.
 - Shared object storage. Agent files are local directories.

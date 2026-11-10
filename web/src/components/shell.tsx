@@ -2,11 +2,10 @@ import { inboxCount } from "../lib/inbox";
 import { AgentContext, useAgentId } from "../lib/agent-scope";
 import { AgentAvatar } from "./agent-avatar";
 import { DexMark } from "./dex-mark";
-import { useNewChat } from "./chat-list";
 import { AgentCreateDialog } from "./agent-create-dialog";
 import type { Agent } from "../api/generated/types.gen";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogClose, DialogContent } from "./ui/dialog";
 import { Settings, X, Search, Plus, PanelLeft, Inbox } from "lucide-react";
@@ -34,28 +33,12 @@ function useSidebarOpen() {
   return [open, toggle] as const;
 }
 
-/** The desktop New Chat menu item starts a chat for the open bot, or the last one, from any page. */
-function NewChatShortcut() {
-  const agentId = useAgentId();
-  const { mutate } = useNewChat();
-
-  useEffect(() => {
-    const openNewChat = () => mutate({ path: { agentId } });
-    window.addEventListener("dex:new-chat", openNewChat);
-
-    return () => window.removeEventListener("dex:new-chat", openNewChat);
-  }, [agentId, mutate]);
-
-  return null;
-}
-
 export function Shell() {
   useQuery({ ...listAgentsOptions(), refetchInterval: 3000 });
   const [menu, setMenu] = useState(false);
   const [sidebarOpen, toggleSidebar] = useSidebarOpen();
   const location = useRouterState({ select: (s) => s.location });
   const path = location.pathname;
-  const navigate = useNavigate();
   const shown = useRef(path);
   // The drawer closes when the page changes.
   const [menuPath, setMenuPath] = useState(path);
@@ -63,13 +46,6 @@ export function Shell() {
   const routeAgent = path.match(/^\/a\/([^/]+)/)?.[1];
   const shell = useMemo(() => ({ openDrawer: () => setMenu(true) }), []);
   useSystemTheme();
-
-  useEffect(() => {
-    const openSettings = () => void navigate({ to: "/settings" });
-    window.addEventListener("dex:settings", openSettings);
-
-    return () => window.removeEventListener("dex:settings", openSettings);
-  }, [navigate]);
 
   if (routeAgent && routeAgent !== lastAgent) setLastAgent(routeAgent);
 
@@ -113,7 +89,6 @@ export function Shell() {
         />
         <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 outline-none">
           <AgentContext.Provider value={routeAgent ?? lastAgent}>
-            <NewChatShortcut />
             <Outlet />
           </AgentContext.Provider>
         </main>

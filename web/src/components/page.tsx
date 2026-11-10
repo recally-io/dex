@@ -20,7 +20,7 @@ export type PageHeaderProps = {
   className?: string;
 };
 
-/** The title bar of every page. One height at every width; `data-page-header` marks it. */
+/** The title bar of every page. One height at every width. */
 export function PageHeader({
   title,
   heading = false,
@@ -36,7 +36,6 @@ export function PageHeader({
 
   return (
     <header
-      data-page-header
       className={cn(
         "flex h-12 shrink-0 items-center gap-2 border-b border-border pr-2 pl-3 sm:pl-4",
         className,

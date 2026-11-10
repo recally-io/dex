@@ -56,8 +56,7 @@ primitive is missing.
 
 Every route renders one `PageHeader` from `src/components/page.tsx`. Bot pages
 put the bot identity, tabs, and chat actions in that header. Global settings
-pages use the `Settings` identity. The root has `data-page-header` so a future
-desktop host change can target all headers together.
+pages use the `Settings` identity.
 
 `src/components/dialog.tsx`, `confirm.tsx`, `shell.tsx`, and `icon-button.tsx`
 own the application overlays. They compose the stock Dialog, Tooltip, and
@@ -105,7 +104,7 @@ bunx --bun shadcn@latest add button badge switch toggle-group dialog popover com
 Review generated diffs before committing. Keep the compatibility aliases in
 `src/styles.css` until all existing callers move to semantic tokens. Fonts are
 bundled with `@fontsource-variable/jetbrains-mono` and
-`@fontsource-variable/merriweather`, so the desktop app does not need a CDN.
+`@fontsource-variable/merriweather`, so the web UI does not need a CDN.
 
 Run `mise run check:web` after every foundation update. The check includes a guard for retired imports and token aliases.
 

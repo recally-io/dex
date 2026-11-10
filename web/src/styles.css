@@ -121,7 +121,7 @@
   --shadow-card: 0 0 0 1px var(--border);
   --shadow-raised: 0 0 0 1px var(--ring), 0 12px 32px rgb(0 0 0 / 0.12);
 
-  /* type — the system face is the product's face on a desktop app that must work offline */
+  /* type — fonts are bundled for offline use */
   --font-sans: "JetBrains Mono Variable", ui-monospace, monospace;
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
 
