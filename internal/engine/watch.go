@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/MichaelKinsy/PiG/chord"
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/harness"
 )
@@ -39,12 +40,13 @@ func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
 		cancel()
 		return nil, err
 	}
-	native, err := conversation.Watch(context.WithoutCancel(ctx))
+	native, err := conversation.Watch(context.WithoutCancel(ctx), nil)
 	if err != nil {
 		cancel()
 		return nil, err
 	}
-	current, err := projectView(native.Value())
+	var active activeContext
+	current, err := active.project(ctx, conversation, native.Value())
 	if err != nil {
 		cancel()
 		_, _ = native.Stop()
@@ -55,13 +57,17 @@ func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
 	w := &Watch{Snapshot: current, Events: events, cancel: cancel, done: done}
 	var delivery sync.Mutex
 	closed := false
-	native.Start(func(_ context.Context, v harness.ConversationView, _ []durable.Op) error {
+	native.Start(func(_ context.Context, call chord.WatchCall[harness.ConversationView]) error {
+		if call.Kind != chord.WatchCallValue {
+			return call.Error
+		}
+		chord.DeliveryEntered()
 		delivery.Lock()
 		defer delivery.Unlock()
 		if closed {
 			return ctx.Err()
 		}
-		next, err := projectView(v)
+		next, err := active.project(ctx, conversation, call.Value)
 		if err != nil {
 			return err
 		}
@@ -99,8 +105,38 @@ func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
 	return w, nil
 }
 
+// activeContext keeps the full active context without retaining archived history.
+// Entries are immutable, so a read pinned to the view's tail matches that revision's docs.
+// Refresh on entry changes only; streamed tokens reuse the same entries.
+type activeContext struct {
+	tail    durable.EntryId
+	entries []durable.EntryRecord
+}
+
+func (active *activeContext) project(ctx context.Context, conversation harness.Conversation, view harness.ConversationView) (Event, error) {
+	if len(view.Entries) > 0 {
+		tail := view.Entries[len(view.Entries)-1].Id
+		if tail != active.tail {
+			context, err := conversation.Context(ctx, &durable.ContextOptions{At: &tail})
+			if err != nil {
+				return Event{}, err
+			}
+			active.tail, active.entries = tail, context.Entries
+		}
+	}
+	view.Entries = active.entries
+	return projectView(view)
+}
+
 func projectView(view harness.ConversationView) (Event, error) {
-	p := projection{snapshot: harness.ViewSnapshotEvent(view)}
+	p := projection{entries: view.Entries}
+	if doc, ok := view.Docs.Get("pi.live"); ok {
+		live, err := durable.FromJsonValue[harness.LiveState](doc)
+		if err != nil {
+			return Event{}, fmt.Errorf("native live state: %w", err)
+		}
+		p.live = live
+	}
 	if doc, ok := view.Docs.Get("pi.inbox"); ok {
 		inbox, err := durable.FromJsonValue[harness.InboxState](doc)
 		if err != nil {

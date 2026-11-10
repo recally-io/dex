@@ -27,10 +27,10 @@ func transcriptEntry(id int64, kind string, msg ai.Message, data any) durable.En
 func TestUserTranscriptStreamsTextAndCommitsStableItems(t *testing.T) {
 	// Given a partial answer, the projection exposes append events for text growth.
 	partial := transcriptAssistant("Hel")
-	p := projection{snapshot: harness.SnapshotEvent{Run: &harness.RunEvent{}, Generation: &harness.SnapshotGeneration{Message: &partial}}}
+	p := projection{live: harness.LiveState{Run: &harness.LiveRun{}, Generation: &harness.LiveGeneration{Message: &partial}}}
 	before := p.event()
 	partial = transcriptAssistant("Hello")
-	p.snapshot.Generation = &harness.SnapshotGeneration{Message: &partial}
+	p.live.Generation = &harness.LiveGeneration{Message: &partial}
 	next := p.event()
 	changes, ok := diff(before.Items, next.Items)
 	want := []Event{{Type: "append", ID: "partial:2:0", Text: "lo"}}
@@ -38,7 +38,7 @@ func TestUserTranscriptStreamsTextAndCommitsStableItems(t *testing.T) {
 		t.Fatalf("stream = %#v, %v", changes, ok)
 	}
 	// When the message is committed, the temporary ID is replaced by the entry ID.
-	p.snapshot = harness.SnapshotEvent{Entries: []durable.EntryRecord{transcriptEntry(20, "pi.assistant", partial, nil)}}
+	p = projection{entries: []durable.EntryRecord{transcriptEntry(20, "pi.assistant", partial, nil)}}
 	committed := p.event()
 	if _, ok := diff(next.Items, committed.Items); ok {
 		t.Fatal("commit must replace temporary IDs with a snapshot")
@@ -59,26 +59,26 @@ func TestUserTranscriptToolEndBeforeResult(t *testing.T) {
 	// Given a committed tool call in a live run.
 	call := transcriptAssistant("")
 	call.Content = []ai.AssistantContentBlock{ai.ToolCall{ID: "call", Name: "bash", Arguments: map[string]any{"command": "ls"}}}
-	p := projection{snapshot: harness.SnapshotEvent{Entries: []durable.EntryRecord{transcriptEntry(2, "pi.assistant", call, nil)}, Run: &harness.RunEvent{}}}
+	p := projection{entries: []durable.EntryRecord{transcriptEntry(2, "pi.assistant", call, nil)}, live: harness.LiveState{Run: &harness.LiveRun{}}}
 	if got := p.event().Items[0].Status; got != "running" {
 		t.Fatal(got)
 	}
 	// When the slot ends without an entry, the item displays the retained output as failed.
-	p.snapshot.Tools = []harness.ToolSlot{{CallId: "call", Status: harness.ToolSlotDone, Output: new("a.txt\n")}}
+	p.live.Tools = []harness.ToolSlot{{CallId: "call", Status: harness.ToolSlotDone, Output: new("a.txt\n")}}
 	ended := p.event()
 	if got := ended.Items[0]; got.Status != "error" || got.Output != "a.txt\n" {
 		t.Fatalf("ended = %#v", got)
 	}
 	// When the result arrives later, the same call ID gains the durable result.
 	result := ai.ToolResultMessage{ToolCallID: "call", Content: []ai.ToolResultMessageContent{ai.TextContent{Text: "a.txt\n"}}, DurationMs: new(int64(40))}
-	p.snapshot.Entries = append(p.snapshot.Entries, transcriptEntry(3, "pi.toolResult", result, nil))
+	p.entries = append(p.entries, transcriptEntry(3, "pi.toolResult", result, nil))
 	settled := p.event()
 	changes, ok := diff(ended.Items, settled.Items)
 	if !ok || len(changes) != 1 || changes[0].Item.ID != "call" || changes[0].Item.Status != "done" || *changes[0].Item.DurationMs != 40 {
 		t.Fatalf("result = %#v", changes)
 	}
-	p.snapshot.Run = nil
-	p.snapshot.Tools = nil
+	p.live.Run = nil
+	p.live.Tools = nil
 	if got := p.event().Items[0].Status; got != "done" {
 		t.Fatal(got)
 	}
@@ -90,7 +90,7 @@ func TestUserTranscriptResetHistoryAndTaskMarkers(t *testing.T) {
 	reset.Head = new(durable.EntryId(21))
 	task := transcriptEntry(22, "dex.task_result", ai.UserMessage{Content: ai.UserText("private report"), Timestamp: 8}, delta.JsonObjectOf("requestId", "result-1", "taskId", "task-1", "taskTitle", "Inspect"))
 	answer := transcriptEntry(23, "pi.assistant", transcriptAssistant("checked"), nil)
-	p := projection{snapshot: harness.SnapshotEvent{Entries: []durable.EntryRecord{task, answer, reset}}}
+	p := projection{entries: []durable.EntryRecord{task, answer, reset}}
 	snapshot := p.event()
 	if snapshot.HistoryBefore != 21 || len(snapshot.Items) != 3 {
 		t.Fatalf("snapshot = %#v", snapshot)
@@ -102,7 +102,7 @@ func TestUserTranscriptResetHistoryAndTaskMarkers(t *testing.T) {
 		t.Fatalf("task = %#v", got)
 	}
 	// An older page and an active snapshot assign the same committed ID.
-	history := (projection{snapshot: harness.SnapshotEvent{Entries: []durable.EntryRecord{answer}}}).event()
+	history := (projection{entries: []durable.EntryRecord{answer}}).event()
 	if history.Items[0].ID != snapshot.Items[2].ID {
 		t.Fatal("entry ID changed across history boundary")
 	}
@@ -122,13 +122,13 @@ func TestUserTranscriptQueuedAndWithdrawnInputs(t *testing.T) {
 	}
 	// Once placed, the durable input replaces the queued item without a duplicate.
 	entry := transcriptEntry(8, "dex.user", ai.UserMessage{Content: ai.UserText("look\n\nAttached files:\n- uploads/u1/a.png"), Timestamp: 9}, data)
-	p.snapshot.Entries = []durable.EntryRecord{entry}
+	p.entries = []durable.EntryRecord{entry}
 	got = p.event().Items
 	if len(got) != 1 || got[0].Queued || got[0].Text != "look" {
 		t.Fatalf("placed = %#v", got)
 	}
 	// After withdrawal, a fresh projection needs no control receipt to show the input and error.
-	p = projection{snapshot: harness.SnapshotEvent{Entries: []durable.EntryRecord{transcriptEntry(10, "dex.withdrawn", nil, data)}}}
+	p = projection{entries: []durable.EntryRecord{transcriptEntry(10, "dex.withdrawn", nil, data)}}
 	got = p.event().Items
 	if len(got) != 2 || got[0].ID != "r1" || got[0].Text != "look" || !got[1].Aborted || got[1].ID != "r1:error" {
 		t.Fatalf("withdrawn = %#v", got)
@@ -178,7 +178,7 @@ func TestUserTranscriptModelErrorsRetriesAndToolTaskLinks(t *testing.T) {
 	call := transcriptAssistant("")
 	call.Content = []ai.AssistantContentBlock{ai.ToolCall{ID: "spawn", Name: "spawn_task"}}
 	result := ai.ToolResultMessage{ToolCallID: "spawn", Content: []ai.ToolResultMessageContent{ai.TextContent{Text: `{"id":"task-2"}`}}}
-	p := projection{snapshot: harness.SnapshotEvent{Entries: []durable.EntryRecord{transcriptEntry(1, "pi.assistant", failed, nil), transcriptEntry(2, "pi.assistant", stopped, nil), transcriptEntry(3, "pi.assistant", call, nil), transcriptEntry(4, "pi.toolResult", result, nil)}, Generation: &harness.SnapshotGeneration{Attempt: 2, Retry: &harness.RetryStatus{At: 99, Error: "overloaded"}}}}
+	p := projection{entries: []durable.EntryRecord{transcriptEntry(1, "pi.assistant", failed, nil), transcriptEntry(2, "pi.assistant", stopped, nil), transcriptEntry(3, "pi.assistant", call, nil), transcriptEntry(4, "pi.toolResult", result, nil)}, live: harness.LiveState{Generation: &harness.LiveGeneration{Attempt: 2, Retry: &harness.RetryStatus{At: 99, Error: "overloaded"}}}}
 	e := p.event()
 	if e.Retry == nil || e.Retry.Attempt != 2 || e.Retry.At != 99 {
 		t.Fatalf("retry = %#v", e.Retry)

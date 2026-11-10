@@ -44,6 +44,22 @@ func TestUserCatalogDiscoversModelsAndReplacesCredentials(t *testing.T) {
 		t.Fatalf("stale models: %#v %v", available, err)
 	}
 }
+func TestUserBedrockModelsHaveARegisteredProvider(t *testing.T) {
+	catalog := NewCatalog(false)
+	defer catalog.Models.Close()
+	models := ai.GetBuiltinModels("amazon-bedrock")
+	if len(models) == 0 {
+		t.Fatal("Bedrock has no built-in models")
+	}
+	model := catalog.Models.GetModel("amazon-bedrock", models[0].ID)
+	if model == nil {
+		t.Fatal("Bedrock model is missing from the catalog")
+	}
+	if _, err := ai.NewOptionalAPIProvider(ai.APIBedrockConverseStream, *model); err != nil {
+		t.Fatalf("Bedrock provider is not registered: %v", err)
+	}
+}
+
 func TestUserFakeProviderStreamsWithoutCredentials(t *testing.T) {
 	catalog := NewCatalog(true)
 	defer catalog.Models.Close()

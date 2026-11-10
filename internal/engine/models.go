@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/MichaelKinsy/PiG/ai"
+	_ "github.com/MichaelKinsy/PiG/ai/providers/bedrock" // Register the built-in Bedrock API.
 )
 
 type ProviderSettings struct {

@@ -121,6 +121,63 @@ func TestUserNativeTranscriptSubscriptionsAndHistory(t *testing.T) {
 	t.Logf("received %d native transcript events", len(observed))
 }
 
+func TestUserWatchRetainsTimelineBeyondDefaultWindow(t *testing.T) {
+	ctx := t.Context()
+	dir := t.TempDir()
+	agents, err := New(Config{DataDir: filepath.Join(dir, "data"), Home: filepath.Join(dir, "home"), FakeModel: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agents.Close(context.Background()) })
+	ref, err := agents.Create(ctx, "test", Options{Model: ModelRef{Provider: "faux", ModelID: "echo"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := agents.conversation(ctx, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept durable.EntryId
+	_, err = conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+		for i := range 120 {
+			entry, err := tx.AppendEntry(conversation.Id(), durable.EntryDraft{Kind: "pi.user", Model: []ai.Message{ai.UserMessage{Content: ai.UserText("hello")}}})
+			if err != nil {
+				return nil, err
+			}
+			if i == 100 {
+				kept = entry.Id
+			}
+		}
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	watch, err := agents.Watch(ctx, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer watch.Close()
+	if len(watch.Snapshot.Items) != 120 {
+		t.Fatalf("timeline has %d items, want 120", len(watch.Snapshot.Items))
+	}
+	_, err = conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+		_, err := tx.AppendEntry(conversation.Id(), durable.EntryDraft{Kind: "pi.compaction", Head: &kept})
+		return nil, err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := agents.Watch(ctx, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fresh.Close()
+	if len(fresh.Snapshot.Items) != 21 || fresh.Snapshot.Items[20].Boundary != "compaction" {
+		t.Fatalf("compacted timeline = %#v", fresh.Snapshot.Items)
+	}
+}
+
 func TestUserNativeHistoryKeepsToolCallAndResultTogether(t *testing.T) {
 	// Given durable assistant calls and results in a real SQLite conversation.
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)

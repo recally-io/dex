@@ -188,6 +188,11 @@ recovery. Restore a compatible data backup and copy the previous executable
 back to its original path, then start the service. Keep the backup until you
 have checked the recovered version.
 
+PiG v0.7.0 upgrades the native execution format in each agent's `state.sqlite`.
+Before the first start with this version, stop dex and back up the complete
+data directory. A build that uses PiG v0.5.3 cannot read the upgraded format.
+To return to that build, restore the backup as well as the executable.
+
 ## Backup and uninstall
 
 Run `dex service stop` before you copy the complete data directory to a backup.

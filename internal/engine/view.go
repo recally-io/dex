@@ -112,16 +112,17 @@ type History struct {
 }
 
 type projection struct {
-	snapshot harness.SnapshotEvent
-	inbox    []harness.InboxItem
+	entries []durable.EntryRecord
+	live    harness.LiveState
+	inbox   []harness.InboxItem
 }
 
 func (p projection) event() Event {
-	e := Event{Type: "snapshot", Items: p.render(), Running: p.snapshot.Run != nil}
-	if g := p.snapshot.Generation; g != nil && g.Retry != nil {
+	e := Event{Type: "snapshot", Items: p.render(), Running: p.live.Run != nil}
+	if g := p.live.Generation; g != nil && g.Retry != nil {
 		e.Retry = &Retry{Attempt: g.Attempt, At: g.Retry.At, Reason: g.Retry.Error}
 	}
-	for _, entry := range p.snapshot.Entries {
+	for _, entry := range p.entries {
 		if entry.Head != nil {
 			e.HistoryBefore = max(e.HistoryBefore, int64(entry.Id))
 		}
@@ -200,7 +201,7 @@ func userText(content ai.UserContent) string {
 }
 
 func (p projection) render() []Item {
-	entries := slices.Clone(p.snapshot.Entries)
+	entries := slices.Clone(p.entries)
 	slices.SortFunc(entries, func(a, b durable.EntryRecord) int { return cmp.Compare(a.Id, b.Id) })
 	results := map[string]ai.ToolResultMessage{}
 	lastAssistant := -1
@@ -215,7 +216,7 @@ func (p projection) render() []Item {
 		}
 	}
 	tools := map[string]harness.ToolSlot{}
-	for _, t := range p.snapshot.Tools {
+	for _, t := range p.live.Tools {
 		tools[t.CallId] = t
 	}
 	items := []Item{}
@@ -253,7 +254,7 @@ func (p projection) render() []Item {
 					rendered = []Item{userItem(m, key, msg.Timestamp, userText(msg.Content))}
 				}
 			case ai.AssistantMessage:
-				rendered = assistantItems(msg, key, results, tools, p.snapshot.Run != nil && (p.snapshot.Generation == nil || p.snapshot.Generation.Message == nil) && index == lastAssistant, true)
+				rendered = assistantItems(msg, key, results, tools, p.live.Run != nil && (p.live.Generation == nil || p.live.Generation.Message == nil) && index == lastAssistant, true)
 			}
 		}
 		for _, item := range rendered {
@@ -262,7 +263,7 @@ func (p projection) render() []Item {
 			seen[item.ID] = true
 		}
 	}
-	if g := p.snapshot.Generation; g != nil && g.Message != nil {
+	if g := p.live.Generation; g != nil && g.Message != nil {
 		items = append(items, assistantItems(*g.Message, fmt.Sprintf("partial:%d", g.Message.Timestamp), results, tools, true, false)...)
 	}
 	for _, q := range p.inbox {
