@@ -76,6 +76,22 @@ func (s *Service) archive(ctx context.Context, agentID string, id int64) error {
 var ErrConversationBusy = errors.New("the timeline is busy; wait for its replies before clearing context")
 var ErrResetID = errors.New("the reset ID belongs to another input")
 
+// ExistingMain reads the main conversation without creating one.
+func (s *Service) ExistingMain(ctx context.Context, agentID string) (*Chat, error) {
+	row, err := s.q.GetConversationByKey(ctx, sqlc.GetConversationByKeyParams{AgentID: agentID, ChannelKey: MainKey})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	main, err := s.Get(ctx, agentID, row.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &main, nil
+}
+
 // Main creates only the control record. The execution conversation opens on first use.
 func (s *Service) Main(ctx context.Context, agentID string) (Chat, error) {
 	agent, err := s.q.GetAgent(ctx, agentID)

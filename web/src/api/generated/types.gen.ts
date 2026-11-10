@@ -277,6 +277,26 @@ export type Automation = AutomationInput & {
     updatedAt: number;
 };
 
+export type Work = {
+    agents: Array<Agent>;
+    sessions: Array<WorkSession>;
+    automations: Array<WorkAutomation>;
+    inbox: Array<InboxItem>;
+};
+
+export type WorkSession = {
+    agentId: string;
+    chat: Chat;
+};
+
+export type WorkAutomation = {
+    agentId: string;
+    automation: Automation;
+    runs: Array<AutomationRun>;
+    scheduled: Array<number>;
+    setup: boolean;
+};
+
 export type AutomationList = {
     automations: Array<Automation>;
 };
@@ -302,6 +322,11 @@ export type AutomationRun = {
      */
     dueAt?: number;
     createdAt: number;
+    /**
+     * Input admission time, not necessarily execution start.
+     */
+    admittedAt?: number;
+    settledAt?: number;
     status: 'running' | 'done' | 'failed' | 'skipped';
     /**
      * Empty before a report or for a skipped run. Terminal runs require a report or fail.
@@ -793,6 +818,13 @@ export type FeishuPoll = {
     session: string;
 };
 
+export type WorkWritable = {
+    agents: Array<AgentWritable>;
+    sessions: Array<WorkSession>;
+    automations: Array<WorkAutomation>;
+    inbox: Array<InboxItem>;
+};
+
 export type AgentWritable = {
     /**
      * The bot name. Trim spaces before validation.
@@ -812,6 +844,34 @@ export type AgentId = string;
 export type AutomationId = string;
 
 export type ChatId = number;
+
+export type GetWorkData = {
+    body?: never;
+    path?: never;
+    query: {
+        from: number;
+        to: number;
+    };
+    url: '/api/work';
+};
+
+export type GetWorkErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetWorkError = GetWorkErrors[keyof GetWorkErrors];
+
+export type GetWorkResponses = {
+    /**
+     * Work across bots.
+     */
+    200: Work;
+};
+
+export type GetWorkResponse = GetWorkResponses[keyof GetWorkResponses];
 
 export type ListInboxData = {
     body?: never;
@@ -903,6 +963,33 @@ export type DismissInboxItemResponses = {
 };
 
 export type DismissInboxItemResponse = DismissInboxItemResponses[keyof DismissInboxItemResponses];
+
+export type RestoreInboxItemData = {
+    body?: never;
+    path: {
+        runId: string;
+    };
+    query?: never;
+    url: '/api/inbox/{runId}/restore';
+};
+
+export type RestoreInboxItemErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type RestoreInboxItemError = RestoreInboxItemErrors[keyof RestoreInboxItemErrors];
+
+export type RestoreInboxItemResponses = {
+    /**
+     * State saved.
+     */
+    200: Ok;
+};
+
+export type RestoreInboxItemResponse = RestoreInboxItemResponses[keyof RestoreInboxItemResponses];
 
 export type CreateSessionData = {
     body: NewSession;
@@ -1730,6 +1817,34 @@ export type AcknowledgeTaskResponses = {
 };
 
 export type AcknowledgeTaskResponse = AcknowledgeTaskResponses[keyof AcknowledgeTaskResponses];
+
+export type RestoreTaskData = {
+    body?: never;
+    path: {
+        agentId: string;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/tasks/{taskId}/restore';
+};
+
+export type RestoreTaskErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type RestoreTaskError = RestoreTaskErrors[keyof RestoreTaskErrors];
+
+export type RestoreTaskResponses = {
+    /**
+     * The task was restored.
+     */
+    200: Task;
+};
+
+export type RestoreTaskResponse = RestoreTaskResponses[keyof RestoreTaskResponses];
 
 export type CancelTaskData = {
     body?: never;

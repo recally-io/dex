@@ -20,6 +20,12 @@ func (h *handler) ReadInboxItem(ctx context.Context, req api.ReadInboxItemReques
 	}
 	return api.ReadInboxItem200JSONResponse(ok), nil
 }
+func (h *handler) RestoreInboxItem(ctx context.Context, req api.RestoreInboxItemRequestObject) (api.RestoreInboxItemResponseObject, error) {
+	if err := h.Automations.RestoreInboxItem(ctx, req.RunId); err != nil {
+		return nil, err
+	}
+	return api.RestoreInboxItem200JSONResponse(ok), nil
+}
 func (h *handler) DismissInboxItem(ctx context.Context, req api.DismissInboxItemRequestObject) (api.DismissInboxItemResponseObject, error) {
 	if err := h.Automations.DismissInboxItem(ctx, req.RunId); err != nil {
 		return nil, err

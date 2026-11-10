@@ -17,10 +17,12 @@ import (
 
 type routineRun struct {
 	runInfo
-	Outcome   string `json:"outcome"`
-	Summary   string `json:"summary"`
-	ChangeKey string `json:"changeKey"`
-	Duplicate bool   `json:"duplicate"`
+	Outcome    string `json:"outcome"`
+	Summary    string `json:"summary"`
+	ChangeKey  string `json:"changeKey"`
+	Duplicate  bool   `json:"duplicate"`
+	AdmittedAt *int64 `json:"admittedAt"`
+	SettledAt  *int64 `json:"settledAt"`
 }
 
 func routineRuns(t *testing.T, d *dex, id string) []routineRun {
@@ -111,6 +113,9 @@ func TestUserAutomationReportsStructuredOutcomesAndDuplicates(t *testing.T) {
 			}
 			if r.Outcome != outcome || r.Summary != "fixture check completed" || r.Status != wantStatus || r.Duplicate {
 				t.Fatalf("structured result = %+v", r)
+			}
+			if r.AdmittedAt == nil || r.SettledAt == nil || *r.SettledAt < *r.AdmittedAt {
+				t.Fatalf("missing admission or settlement time: %+v", r)
 			}
 			// When a later run reports the same change key, it remains a separate run.
 			second := d.runNow(t, a.ID)

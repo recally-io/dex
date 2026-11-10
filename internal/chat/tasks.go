@@ -188,6 +188,22 @@ func (s *Service) AcknowledgeTask(ctx context.Context, agentID, id string) (sqlc
 	return s.TaskRecord(ctx, agentID, id)
 }
 
+// RestoreTask undoes handling without changing the task result.
+func (s *Service) RestoreTask(ctx context.Context, agentID, id string) (sqlc.Task, error) {
+	row, err := s.TaskRecord(ctx, agentID, id)
+	if err != nil {
+		return row, err
+	}
+	n, err := s.q.RestoreTask(ctx, sqlc.RestoreTaskParams{TaskID: id, AgentID: agentID})
+	if err != nil {
+		return row, err
+	}
+	if n == 0 {
+		return row, ErrTaskConflict
+	}
+	return s.TaskRecord(ctx, agentID, id)
+}
+
 func (s *Service) ToolAcknowledgeTask(ctx context.Context, r engine.TaskContext, id string) (Task, error) {
 	c, err := s.taskCaller(ctx, r)
 	if err != nil {

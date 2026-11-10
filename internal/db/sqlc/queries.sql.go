@@ -861,17 +861,22 @@ SELECT
     r.created_at, r.outcome, r.summary, r.change_key, r.duplicate,
     s.status AS message_status,
     s.reason AS message_reason,
-    s.conversation_id AS chat_id
+    s.conversation_id AS chat_id,
+    s.admitted_at, s.settled_at
 FROM automation_runs r
 LEFT JOIN submissions s ON s.id = r.id
-WHERE r.automation_id = ?
+WHERE r.automation_id = ?1
+    AND coalesce(r.due_at, r.created_at) >= ?2
+    AND coalesce(r.due_at, r.created_at) < ?3
 ORDER BY r.created_at DESC, r.id DESC
-LIMIT ?
+LIMIT ?4
 `
 
 type ListAutomationRunsParams struct {
-	AutomationID string `json:"automation_id"`
-	Limit        int64  `json:"limit"`
+	AutomationID string        `json:"automation_id"`
+	RangeStart   sql.NullInt64 `json:"range_start"`
+	RangeEnd     sql.NullInt64 `json:"range_end"`
+	RowLimit     int64         `json:"row_limit"`
 }
 
 type ListAutomationRunsRow struct {
@@ -887,11 +892,18 @@ type ListAutomationRunsRow struct {
 	MessageStatus sql.NullString `json:"message_status"`
 	MessageReason sql.NullString `json:"message_reason"`
 	ChatID        sql.NullInt64  `json:"chat_id"`
+	AdmittedAt    sql.NullInt64  `json:"admitted_at"`
+	SettledAt     sql.NullInt64  `json:"settled_at"`
 }
 
 // The newest runs of an automation, with the message of each started run.
 func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRunsParams) ([]ListAutomationRunsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listAutomationRuns, arg.AutomationID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listAutomationRuns,
+		arg.AutomationID,
+		arg.RangeStart,
+		arg.RangeEnd,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -912,6 +924,8 @@ func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRuns
 			&i.MessageStatus,
 			&i.MessageReason,
 			&i.ChatID,
+			&i.AdmittedAt,
+			&i.SettledAt,
 		); err != nil {
 			return nil, err
 		}

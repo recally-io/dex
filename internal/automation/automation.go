@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -69,16 +70,18 @@ type Automation struct {
 
 // Run is one run of an automation.
 type Run struct {
-	Outcome   string `json:"outcome"`
-	Summary   string `json:"summary"`
-	ChangeKey string `json:"changeKey,omitempty"`
-	Duplicate bool   `json:"duplicate"`
-	ID        string `json:"id"`
-	DueAt     int64  `json:"dueAt,omitzero"` // 0 for a run that the user started
-	CreatedAt int64  `json:"createdAt"`
-	Status    string `json:"status"` // running, done, failed, or skipped
-	Reason    string `json:"reason,omitempty"`
-	ChatID    int64  `json:"chatId,omitzero"` // 0 when the run has no message
+	AdmittedAt *int64 `json:"admittedAt,omitzero"`
+	SettledAt  *int64 `json:"settledAt,omitzero"`
+	Outcome    string `json:"outcome"`
+	Summary    string `json:"summary"`
+	ChangeKey  string `json:"changeKey,omitempty"`
+	Duplicate  bool   `json:"duplicate"`
+	ID         string `json:"id"`
+	DueAt      int64  `json:"dueAt,omitzero"` // 0 for a run that the user started
+	CreatedAt  int64  `json:"createdAt"`
+	Status     string `json:"status"` // running, done, failed, or skipped
+	Reason     string `json:"reason,omitempty"`
+	ChatID     int64  `json:"chatId,omitzero"` // 0 when the run has no message
 }
 
 // Service manages automations for all agents.
@@ -171,6 +174,40 @@ func millis(times []time.Time) []int64 {
 		out[i] = t.UnixMilli()
 	}
 	return out
+}
+
+// Scheduled returns future scheduled times in the half-open range [from, to).
+func (s *Service) Scheduled(a Automation, from, to int64) ([]int64, error) {
+	out := []int64{}
+	if !a.Enabled || len(a.NextRuns) == 0 {
+		return out, nil
+	}
+	loc, err := location(a.TimeZone)
+	if err != nil {
+		return nil, err
+	}
+	anchor := time.UnixMilli(a.NextRuns[0])
+	start := time.UnixMilli(from)
+	if now := s.now(); now.After(start) {
+		start = now.Add(time.Millisecond)
+	}
+	next := anchor
+	if next.Before(start) {
+		var ok bool
+		next, ok = a.Schedule.next(start.Add(-time.Millisecond), anchor, loc)
+		if !ok {
+			return out, nil
+		}
+	}
+	for next.UnixMilli() < to {
+		out = append(out, next.UnixMilli())
+		times := a.Schedule.upcoming(next, anchor, loc, 1)
+		if len(times) == 0 {
+			break
+		}
+		next = times[0]
+	}
+	return out, nil
 }
 
 // Create stores a new automation.
@@ -336,16 +373,27 @@ func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, er
 
 // Runs returns the newest runs of an automation, at most limit.
 func (s *Service) Runs(ctx context.Context, agentID string, id string, limit int64) ([]Run, error) {
+	return s.RunsInRange(ctx, agentID, id, 0, math.MaxInt64, limit)
+}
+
+// RunsInRange returns runs whose planned or creation time is in [from, to).
+func (s *Service) RunsInRange(ctx context.Context, agentID, id string, from, to, limit int64) ([]Run, error) {
 	if _, err := s.get(ctx, agentID, id); err != nil {
 		return nil, err
 	}
-	rows, err := s.q.ListAutomationRuns(ctx, sqlc.ListAutomationRunsParams{AutomationID: id, Limit: limit})
+	rows, err := s.q.ListAutomationRuns(ctx, sqlc.ListAutomationRunsParams{AutomationID: id, RangeStart: sql.NullInt64{Int64: from, Valid: true}, RangeEnd: sql.NullInt64{Int64: to, Valid: true}, RowLimit: limit})
 	if err != nil {
 		return nil, err
 	}
 	out := make([]Run, len(rows))
 	for i, r := range rows {
 		out[i] = Run{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate == 1, ID: r.ID, DueAt: r.DueAt.Int64, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason.String, ChatID: r.ChatID.Int64}
+		if r.AdmittedAt.Valid {
+			out[i].AdmittedAt = new(r.AdmittedAt.Int64)
+		}
+		if r.SettledAt.Valid {
+			out[i].SettledAt = new(r.SettledAt.Int64)
+		}
 		if r.Status != "started" {
 			continue
 		}
