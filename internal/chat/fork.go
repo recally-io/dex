@@ -44,6 +44,9 @@ func (s *Service) Fork(ctx context.Context, agentID string, sourceID, entryID in
 	if source.ExecutionID == 0 {
 		return Chat{}, ErrNotFound
 	}
+	if err := s.finishAgentAborts(ctx, agentID); err != nil {
+		return Chat{}, err
+	}
 	if s.leaseUntil.Load() != 0 {
 		return Chat{}, engine.ErrMaintenance
 	}

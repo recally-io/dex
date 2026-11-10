@@ -181,25 +181,27 @@ func (s *Service) reconcileAgent(ctx context.Context, agentID string) error {
 	}
 	blocked := make(map[int64]bool)
 	var errs []error
-	forks, err := s.q.ListPendingForkOperations(ctx)
-	if err != nil {
-		return err
-	}
-	for _, fork := range forks {
-		if fork.AgentID == agentID {
-			if err := s.completeFork(ctx, fork); err != nil && !errors.Is(err, engine.ErrNotFound) && !errors.Is(err, engine.ErrInvalidInput) && !errors.Is(err, engine.ErrOperationConflict) {
-				errs = append(errs, err)
-			}
-		}
-	}
+	agentBlocked := false
 	for _, c := range aborts {
 		if c.AgentID != agentID {
 			continue
 		}
 		completed, err := s.abort(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64})
 		blocked[c.ID] = !completed
+		agentBlocked = agentBlocked || !completed
 		if err != nil {
 			errs = append(errs, err)
+		}
+	}
+	forks, err := s.q.ListPendingForkOperations(ctx)
+	if err != nil {
+		return errors.Join(append(errs, err)...)
+	}
+	for _, fork := range forks {
+		if fork.AgentID == agentID && !agentBlocked {
+			if err := s.completeFork(ctx, fork); err != nil && !errors.Is(err, engine.ErrNotFound) && !errors.Is(err, engine.ErrInvalidInput) && !errors.Is(err, engine.ErrOperationConflict) {
+				errs = append(errs, err)
+			}
 		}
 	}
 	pending, err := s.q.ListPendingSubmissions(ctx)

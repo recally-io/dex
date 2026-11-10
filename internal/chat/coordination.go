@@ -3,6 +3,8 @@ package chat
 import (
 	"context"
 	"log/slog"
+
+	"github.com/recally-io/dex/internal/engine"
 )
 
 // Each agent has one delivery owner. Receipts stay in SQLite while callers wait.
@@ -30,6 +32,28 @@ func (s *Service) lockAgent(ctx context.Context, id string) (func(), error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// finishAgentAborts completes cancellation before a context operation can open the agent.
+// The caller holds the agent delivery gate.
+func (s *Service) finishAgentAborts(ctx context.Context, agentID string) error {
+	aborts, err := s.q.ListPendingExecutionAborts(ctx)
+	if err != nil {
+		return err
+	}
+	for _, c := range aborts {
+		if c.AgentID != agentID {
+			continue
+		}
+		completed, err := s.abort(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID.Int64})
+		if err != nil {
+			return err
+		}
+		if !completed {
+			return engine.ErrModelsPending
+		}
+	}
+	return nil
 }
 
 // Registration and cancellation share a boundary so Wait cannot miss a worker.
