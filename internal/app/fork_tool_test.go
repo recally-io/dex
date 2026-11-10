@@ -40,5 +40,26 @@ func TestUserAgentCanForkItsCurrentConversation(t *testing.T) {
 	if err := db.QueryRowContext(t.Context(), "SELECT target_conversation_id,status FROM fork_operations WHERE source_conversation_id=?", source).Scan(&target, &status); err != nil || status != "done" || target == 0 {
 		t.Fatalf("fork receipt target=%d status=%s err=%v", target, status, err)
 	}
-	t.Logf("tool created idle fork %d", target)
+	second := d.send(t, source, `fork_chat {}`)
+	waitResultSubmission(t, db, second, "done")
+	if err := db.QueryRowContext(t.Context(), "SELECT target_conversation_id,status FROM fork_operations WHERE source_conversation_id=? ORDER BY rowid DESC LIMIT 1", source).Scan(&target, &status); err != nil || status != "done" || target == 0 {
+		t.Fatalf("default fork target=%d status=%s err=%v", target, status, err)
+	}
+	var forkHistory struct {
+		Items []struct {
+			Kind string `json:"kind"`
+			Text string `json:"text"`
+		} `json:"items"`
+	}
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9007199254740991", target), nil, &forkHistory)
+	found := false
+	for _, item := range forkHistory.Items {
+		if item.Kind == "user" && item.Text == `fork_chat {}` {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("default fork did not include calling input: %+v", forkHistory)
+	}
+	t.Logf("tool created idle fork %d at the calling input", target)
 }

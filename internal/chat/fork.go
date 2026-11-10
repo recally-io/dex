@@ -19,7 +19,17 @@ func (s *Service) ToolFork(ctx context.Context, source engine.TaskContext, entry
 	if err != nil {
 		return 0, err
 	}
-	fork, err := s.Fork(ctx, source.AgentID, conv.ID, entryID, source.Key)
+	if entryID == 0 {
+		input, err := s.engine.LookupSubmission(ctx, engine.Ref{AgentID: source.AgentID, ID: source.ConversationID}, source.SourceRequestID)
+		if err != nil {
+			return 0, err
+		}
+		if input.Entry == nil {
+			return 0, ErrTaskInvalid
+		}
+		entryID = input.Entry.ID
+	}
+	fork, err := s.fork(ctx, source.AgentID, conv.ID, entryID, source.Key, &source)
 	if err != nil {
 		return 0, err
 	}
@@ -29,6 +39,10 @@ func (s *Service) ToolFork(ctx context.Context, source engine.TaskContext, entry
 // Fork creates a Chat with the source's effective settings and the selected committed history.
 // A saved operation is reconciled with the same native operation ID after a restart.
 func (s *Service) Fork(ctx context.Context, agentID string, sourceID, entryID int64, operationID string) (Chat, error) {
+	return s.fork(ctx, agentID, sourceID, entryID, operationID, nil)
+}
+
+func (s *Service) fork(ctx context.Context, agentID string, sourceID, entryID int64, operationID string, caller *engine.TaskContext) (Chat, error) {
 	if operationID == "" || entryID <= 0 {
 		return Chat{}, engine.ErrInvalidInput
 	}
@@ -43,6 +57,20 @@ func (s *Service) Fork(ctx context.Context, agentID string, sourceID, entryID in
 	}
 	if source.ExecutionID == 0 {
 		return Chat{}, ErrNotFound
+	}
+	if caller != nil {
+		_, err := s.q.GetForkOperation(ctx, operationID)
+		if errors.Is(err, sql.ErrNoRows) {
+			input, err := s.q.GetSubmission(ctx, caller.SourceRequestID)
+			if err != nil {
+				return Chat{}, err
+			}
+			if input.ConversationID != sourceID || input.Status != "pending" {
+				return Chat{}, ErrTaskInvalid
+			}
+		} else if err != nil {
+			return Chat{}, err
+		}
 	}
 	if err := s.finishAgentAborts(ctx, agentID); err != nil {
 		return Chat{}, err
