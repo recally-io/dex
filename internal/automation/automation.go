@@ -21,6 +21,7 @@ import (
 
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/engine"
 )
 
 // Channel starts the channel key of an automation's chats: automation:<id> for an automation
@@ -46,13 +47,14 @@ type Poster interface {
 
 // Input is what the user sets.
 type Input struct {
-	Cwd      string   `json:"cwd"`
-	Name     string   `json:"name"`
-	Prompt   string   `json:"prompt"`
-	Schedule Schedule `json:"schedule"`
-	TimeZone string   `json:"timeZone"`
-	Session  string   `json:"session"` // new or reuse
-	Enabled  bool     `json:"enabled"`
+	Notification *engine.RoutineNotification `json:"notification,omitempty"`
+	Cwd          string                      `json:"cwd"`
+	Name         string                      `json:"name"`
+	Prompt       string                      `json:"prompt"`
+	Schedule     Schedule                    `json:"schedule"`
+	TimeZone     string                      `json:"timeZone"`
+	Session      string                      `json:"session"` // new or reuse
+	Enabled      bool                        `json:"enabled"`
 }
 
 // Automation is an automation with its next times and its last run.
@@ -110,6 +112,11 @@ func clean(in Input) (Input, *time.Location, error) {
 		return in, nil, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	in.Cwd = cwd
+	if n := in.Notification; n != nil {
+		if (n.Mode != "none" && n.Mode != "default" && n.Mode != "target") || (n.Mode == "target") != (n.TargetID != "") {
+			return in, nil, invalid("invalid notification route")
+		}
+	}
 	in.Name = strings.TrimSpace(in.Name)
 	in.Prompt = strings.TrimSpace(in.Prompt)
 	if in.Name == "" || utf8.RuneCountInString(in.Name) > 100 {
@@ -174,7 +181,10 @@ func (s *Service) Create(ctx context.Context, agentID string, in Input) (Automat
 	}
 	now := s.now()
 	row := sqlc.Automation{
-		ID: uuid.NewV7().String(), AgentID: agentID, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli(),
+		ID: uuid.NewV7().String(), AgentID: agentID, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli(), NotificationRoute: "none",
+	}
+	if err := s.applyNotification(ctx, &row, in.Notification); err != nil {
+		return Automation{}, err
 	}
 	if err := fill(&row, in, loc, now); err != nil {
 		return Automation{}, err
@@ -196,6 +206,9 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 	if err != nil {
 		return Automation{}, err
 	}
+	if err := s.applyNotification(ctx, &row, in.Notification); err != nil {
+		return Automation{}, err
+	}
 	now := s.now()
 	row.UpdatedAt = now.UnixMilli()
 	if err := fill(&row, in, loc, now); err != nil {
@@ -203,13 +216,30 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 	}
 	_, err = s.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{
 		Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone,
-		Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, UpdatedAt: row.UpdatedAt,
+		Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID, UpdatedAt: row.UpdatedAt,
 		ID: row.ID, AgentID: agentID,
 	})
 	if err != nil {
 		return Automation{}, err
 	}
 	return s.view(ctx, row)
+}
+
+func (s *Service) applyNotification(ctx context.Context, row *sqlc.Automation, n *engine.RoutineNotification) error {
+	if n == nil {
+		return nil
+	}
+	if n.Mode == "target" {
+		if _, err := s.q.GetRoutineNotificationTarget(ctx, sqlc.GetRoutineNotificationTargetParams{ID: n.TargetID, AgentID: row.AgentID}); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return invalid("notification target not found")
+			}
+			return err
+		}
+	}
+	row.NotificationRoute = n.Mode
+	row.NotificationTargetID = sql.NullString{String: n.TargetID, Valid: n.TargetID != ""}
+	return nil
 }
 
 // fill sets the fields of row from in, and the next time after now. An interval counts from now.
@@ -278,7 +308,8 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Automation, error
 
 func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, error) {
 	a := Automation{
-		Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1,
+		Notification: &engine.RoutineNotification{Mode: row.NotificationRoute, TargetID: row.NotificationTargetID.String},
+		Cwd:          row.Cwd, Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1,
 		ID: row.ID, NextRuns: []int64{}, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if err := json.Unmarshal([]byte(row.Schedule), &a.Schedule); err != nil {

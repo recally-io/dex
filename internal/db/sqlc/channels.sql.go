@@ -135,7 +135,7 @@ WITH active AS (
 ), enabled AS (
     SELECT agent_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY agent_id
 )
-SELECT a.id, a.name, a.model_provider, a.model_id, a.instructions, a.created_at, a.thinking_level, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
+SELECT a.id, a.name, a.model_provider, a.model_id, a.instructions, a.created_at, a.thinking_level, a.primary_notification_target_id, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
     CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations,
     (SELECT count(*) FROM automation_runs r JOIN automations routine ON routine.id = r.automation_id
      JOIN submissions s ON s.id = r.id
@@ -179,6 +179,7 @@ func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow
 			&i.Agent.Instructions,
 			&i.Agent.CreatedAt,
 			&i.Agent.ThinkingLevel,
+			&i.Agent.PrimaryNotificationTargetID,
 			&i.ActiveSessions,
 			&i.EnabledAutomations,
 			&i.InboxUnread,

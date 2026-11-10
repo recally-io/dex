@@ -9,6 +9,8 @@ import {
   createTelegramPairingMutation,
   deleteTelegramMutation,
   getChannelsOptions,
+  getNotificationTargetsOptions,
+  setPrimaryNotificationTargetMutation,
   setTelegramMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { errorText, refreshSettings } from "../lib/queries";
@@ -17,7 +19,7 @@ import { WechatChannel } from "../components/wechat-channel";
 import { Confirm } from "../components/confirm";
 import { Modal } from "../components/dialog";
 import { Failure, Loading, Spinner } from "../components/feedback";
-import { Field, Input, SavedSecret, Textarea } from "../components/form";
+import { Field, Input, SavedSecret, Select, Textarea } from "../components/form";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { BotSettingsSwitcher } from "../components/settings-switcher";
 import { Button } from "../components/ui/button";
@@ -75,6 +77,16 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
   const saved = useQuery({ ...getChannelsOptions({ path: { agentId } }), refetchInterval: 3000 });
   const current = saved.data ?? settings;
 
+  const targets = useQuery({
+    ...getNotificationTargetsOptions({ path: { agentId } }),
+    refetchInterval: 3000,
+  });
+
+  const primary = useMutation({
+    ...setPrimaryNotificationTargetMutation(),
+    onSuccess: () => targets.refetch(),
+  });
+
   const status = (state: string) => (
     <Badge
       variant={state === "running" ? "secondary" : "outline"}
@@ -106,6 +118,34 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
             text="Private messages from the paired owner."
             status={status(current.feishu.status)}
           />
+        </div>
+        <div className="border-t border-border p-4">
+          <Field
+            label="Primary notification channel"
+            hint="Routines can follow this default or choose another authorized recipient."
+          >
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                disabled={!targets.data || primary.isPending}
+                value={targets.data?.primaryId ?? ""}
+                onChange={(event) =>
+                  primary.mutate({ path: { agentId }, body: { targetId: event.target.value } })
+                }
+              >
+                <option value="">None</option>
+                {targets.data?.targets.map((target) => (
+                  <option key={target.id} value={target.id}>
+                    {target.platform}: {target.peer}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          {targets.isError || primary.isError ? (
+            <p className="text-red">Could not update notification targets.</p>
+          ) : null}
         </div>
       </Panel>
     </Section>

@@ -890,6 +890,9 @@ type NewSession struct {
 	Token string `json:"token"`
 }
 
+// NotificationTargets defines model for NotificationTargets.
+type NotificationTargets = agent.NotificationTargets
+
 // Ok defines model for Ok.
 type Ok struct {
 	Status OkStatus `json:"status"`
@@ -1248,6 +1251,12 @@ type PutExtensionEnvJSONBody struct {
 // PutExtensionEnvJSONBodyScope defines parameters for PutExtensionEnv.
 type PutExtensionEnvJSONBodyScope string
 
+// SetPrimaryNotificationTargetJSONBody defines parameters for SetPrimaryNotificationTarget.
+type SetPrimaryNotificationTargetJSONBody struct {
+	// TargetId Empty clears the default.
+	TargetId string `json:"targetId"`
+}
+
 // CreateUploadMultipartBody defines parameters for CreateUpload.
 type CreateUploadMultipartBody struct {
 	File openapi_types.File `json:"file"`
@@ -1304,6 +1313,9 @@ type SetChatSettingsJSONRequestBody = ChatSettings
 
 // PutExtensionEnvJSONRequestBody defines body for PutExtensionEnv for application/json ContentType.
 type PutExtensionEnvJSONRequestBody PutExtensionEnvJSONBody
+
+// SetPrimaryNotificationTargetJSONRequestBody defines body for SetPrimaryNotificationTarget for application/json ContentType.
+type SetPrimaryNotificationTargetJSONRequestBody SetPrimaryNotificationTargetJSONBody
 
 // CreateUploadMultipartRequestBody defines body for CreateUpload for multipart/form-data ContentType.
 type CreateUploadMultipartRequestBody CreateUploadMultipartBody
@@ -1899,6 +1911,12 @@ type ServerInterface interface {
 
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(w http.ResponseWriter, r *http.Request, agentId string)
+
+	// (GET /api/agents/{agentId}/notification-targets)
+	GetNotificationTargets(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (PUT /api/agents/{agentId}/notification-targets)
+	SetPrimaryNotificationTarget(w http.ResponseWriter, r *http.Request, agentId AgentId)
 
 	// (GET /api/agents/{agentId}/projects)
 	ListRecentProjects(w http.ResponseWriter, r *http.Request, agentId string)
@@ -3261,6 +3279,58 @@ func (siw *ServerInterfaceWrapper) ReloadExtensions(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetNotificationTargets operation middleware
+func (siw *ServerInterfaceWrapper) GetNotificationTargets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNotificationTargets(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPrimaryNotificationTarget operation middleware
+func (siw *ServerInterfaceWrapper) SetPrimaryNotificationTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPrimaryNotificationTarget(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListRecentProjects operation middleware
 func (siw *ServerInterfaceWrapper) ListRecentProjects(w http.ResponseWriter, r *http.Request) {
 
@@ -3818,6 +3888,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.DeleteProvider)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.SetProvider)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/channels", wrapper.GetChannels)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/notification-targets", wrapper.GetNotificationTargets)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/notification-targets", wrapper.SetPrimaryNotificationTarget)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/telegram/pairing", wrapper.CreateTelegramPairing)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/wechat/login", wrapper.BeginWechatLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/wechat/login/{loginId}/poll", wrapper.PollWechatLogin)
@@ -6306,6 +6378,85 @@ func (response ReloadExtensionsdefaultJSONResponse) VisitReloadExtensionsRespons
 	return err
 }
 
+type GetNotificationTargetsRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+}
+
+type GetNotificationTargetsResponseObject interface {
+	VisitGetNotificationTargetsResponse(w http.ResponseWriter) error
+}
+
+type GetNotificationTargets200JSONResponse NotificationTargets
+
+func (response GetNotificationTargets200JSONResponse) VisitGetNotificationTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationTargetsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetNotificationTargetsdefaultJSONResponse) VisitGetNotificationTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPrimaryNotificationTargetRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+	Body    *SetPrimaryNotificationTargetJSONRequestBody
+}
+
+type SetPrimaryNotificationTargetResponseObject interface {
+	VisitSetPrimaryNotificationTargetResponse(w http.ResponseWriter) error
+}
+
+type SetPrimaryNotificationTarget200JSONResponse Ok
+
+func (response SetPrimaryNotificationTarget200JSONResponse) VisitSetPrimaryNotificationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPrimaryNotificationTargetdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetPrimaryNotificationTargetdefaultJSONResponse) VisitSetPrimaryNotificationTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListRecentProjectsRequestObject struct {
 	AgentId string `json:"agentId"`
 }
@@ -7354,6 +7505,12 @@ type StrictServerInterface interface {
 
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(ctx context.Context, request ReloadExtensionsRequestObject) (ReloadExtensionsResponseObject, error)
+
+	// (GET /api/agents/{agentId}/notification-targets)
+	GetNotificationTargets(ctx context.Context, request GetNotificationTargetsRequestObject) (GetNotificationTargetsResponseObject, error)
+
+	// (PUT /api/agents/{agentId}/notification-targets)
+	SetPrimaryNotificationTarget(ctx context.Context, request SetPrimaryNotificationTargetRequestObject) (SetPrimaryNotificationTargetResponseObject, error)
 
 	// (GET /api/agents/{agentId}/projects)
 	ListRecentProjects(ctx context.Context, request ListRecentProjectsRequestObject) (ListRecentProjectsResponseObject, error)
@@ -8652,6 +8809,65 @@ func (sh *strictHandler) ReloadExtensions(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ReloadExtensionsResponseObject); ok {
 		if err := validResponse.VisitReloadExtensionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetNotificationTargets operation middleware
+func (sh *strictHandler) GetNotificationTargets(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request GetNotificationTargetsRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNotificationTargets(ctx, request.(GetNotificationTargetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNotificationTargets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetNotificationTargetsResponseObject); ok {
+		if err := validResponse.VisitGetNotificationTargetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetPrimaryNotificationTarget operation middleware
+func (sh *strictHandler) SetPrimaryNotificationTarget(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request SetPrimaryNotificationTargetRequestObject
+
+	request.AgentId = agentId
+
+	var body SetPrimaryNotificationTargetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetPrimaryNotificationTarget(ctx, request.(SetPrimaryNotificationTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetPrimaryNotificationTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetPrimaryNotificationTargetResponseObject); ok {
+		if err := validResponse.VisitSetPrimaryNotificationTargetResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

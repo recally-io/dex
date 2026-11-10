@@ -189,11 +189,19 @@ func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram
 func (s *Service) SetTelegram(ctx context.Context, agentID string, token string, allowedUsers []int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if token == "" {
-		saved, err := s.TelegramConfig(ctx, agentID)
-		if err != nil {
-			return err
+	// Pairing uses TryLock, so this snapshot cannot change before the old bot joins.
+	saved, err := s.TelegramConfig(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	s.onTelegram(agentID, nil)
+	committed := false
+	defer func() {
+		if !committed && saved != nil {
+			s.onTelegram(agentID, saved)
 		}
+	}()
+	if token == "" {
 		if saved != nil {
 			token = saved.Token
 		}
@@ -210,12 +218,13 @@ func (s *Service) SetTelegram(ctx context.Context, agentID string, token string,
 	for i, id := range allowedUsers {
 		users[i] = strconv.FormatInt(id, 10)
 	}
-	err := s.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: agentID,
+	err = s.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: agentID,
 		Token: cfg.Token, AllowedUsers: strings.Join(users, ","),
 	})
 	if err != nil {
 		return err
 	}
+	committed = true
 	s.onTelegram(agentID, &cfg)
 	return nil
 }
@@ -224,10 +233,17 @@ func (s *Service) SetTelegram(ctx context.Context, agentID string, token string,
 func (s *Service) DeleteTelegram(ctx context.Context, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.q.DeleteTelegramSettings(ctx, agentID); err != nil {
+	saved, err := s.TelegramConfig(ctx, agentID)
+	if err != nil {
 		return err
 	}
 	s.onTelegram(agentID, nil)
+	if err := s.q.DeleteTelegramSettings(ctx, agentID); err != nil {
+		if saved != nil {
+			s.onTelegram(agentID, saved)
+		}
+		return err
+	}
 	return nil
 }
 
