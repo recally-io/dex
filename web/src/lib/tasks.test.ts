@@ -62,6 +62,9 @@ test("user sees task exceptions before active and completed work", () => {
   expect(isStalled(make("idle", "running", { lastActivityAt: now - 6 * 60_000 }), now)).toBe(true);
   expect(taskBucket(make("blocked", "done", { reportOutcome: "blocked" }), now)).toBe("needs-you");
   expect(
+    taskBucket(make("handled", "done", { reportOutcome: "blocked", endedAt: now - 1, handledAt: now }), now),
+  ).toBe("done");
+  expect(
     orderTasks(
       [make("done", "done"), make("queued", "queued"), make("need", "failed"), make("running", "running")],
       now,

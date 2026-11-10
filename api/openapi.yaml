@@ -519,6 +519,29 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/tasks/{taskId}/acknowledge:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - in: path
+        name: taskId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: acknowledgeTask
+      description: Mark a finished task as handled without changing its result.
+      responses:
+        "200":
+          description: The task was acknowledged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/tasks/{taskId}/cancel:
     parameters:
       - in: path
@@ -1363,6 +1386,10 @@ components:
           type: integer
           format: int64
           description: The earliest start of a currently running tool, when the task is running a tool.
+        handledAt:
+          type: integer
+          format: int64
+          description: When the finished task was acknowledged, without changing its result.
         reportOutcome:
           type: string
           enum: [done, blocked, failed]

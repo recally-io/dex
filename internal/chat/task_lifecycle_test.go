@@ -79,6 +79,28 @@ func TestUserTaskReplayKeepsIdentityAndQueuesBeyondRunningLimit(t *testing.T) {
 	}
 }
 
+func TestUserStoppedTurnCannotAcknowledgeTask(t *testing.T) {
+	r := startNative(t, "echo")
+	parent, source := taskParent(t, r)
+	task, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "Work", Goal: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.service.CancelTask(t.Context(), "bot", parent, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.conn.ExecContext(t.Context(), `UPDATE submissions SET status='unanswered', reason='stopped' WHERE id='source'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.service.ToolAcknowledgeTask(t.Context(), source, task.ID); !errors.Is(err, ErrTaskConflict) {
+		t.Fatalf("stopped turn acknowledged task: %v", err)
+	}
+	saved, err := r.service.GetTask(t.Context(), "bot", parent, task.ID)
+	if err != nil || saved.HandledAt != nil {
+		t.Fatalf("stopped turn changed task: %+v %v", saved, err)
+	}
+}
+
 func TestUserTwentyFirstTaskIsRejectedAfterTwentyQueuedSlots(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)

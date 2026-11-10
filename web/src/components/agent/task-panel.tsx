@@ -13,7 +13,11 @@ import {
   XCircle,
 } from "lucide-react";
 import type { Chat, Item, TaskSummary } from "../../api/generated/types.gen";
-import { cancelTaskMutation, listChatsQueryKey } from "../../api/generated/@tanstack/react-query.gen";
+import {
+  acknowledgeTaskMutation,
+  cancelTaskMutation,
+  listChatsQueryKey,
+} from "../../api/generated/@tanstack/react-query.gen";
 import { useChatStream } from "../../lib/chat-stream";
 import { useAgentId } from "../../lib/agent-scope";
 import {
@@ -75,6 +79,11 @@ function ExpandedTask({ task, onSeen }: { task: TaskSummary; onSeen: (id: string
     onSuccess: () => queryClient.invalidateQueries({ queryKey: listChatsQueryKey({ path: { agentId } }) }),
   });
 
+  const acknowledge = useMutation({
+    ...acknowledgeTaskMutation(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: listChatsQueryKey({ path: { agentId } }) }),
+  });
+
   const stoppable = ["queued", "admitting", "running"].includes(task.status);
   const { state, connection, streamError, reconnect } = useChatStream(task.conversationId);
 
@@ -103,6 +112,16 @@ function ExpandedTask({ task, onSeen }: { task: TaskSummary; onSeen: (id: string
         </div>
       ) : null}
       <div className="flex items-center gap-3">
+        {!stoppable && task.handledAt === undefined ? (
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={acknowledge.isPending}
+            onClick={() => acknowledge.mutate({ path: { agentId, taskId: task.id } })}
+          >
+            Mark handled
+          </Button>
+        ) : null}
         {stoppable ? (
           <Button
             size="xs"
@@ -123,6 +142,7 @@ function ExpandedTask({ task, onSeen }: { task: TaskSummary; onSeen: (id: string
         </Link>
       </div>
       {stop.error ? <div className="text-destructive">Could not stop the task.</div> : null}
+      {acknowledge.error ? <div className="text-destructive">Could not mark the task handled.</div> : null}
     </div>
   );
 }
@@ -189,7 +209,10 @@ export function TaskSummaryButton({
 }) {
   const agentId = useAgentId();
   const seen = readSeen(agentId);
-  const visibleTasks = tasks.filter((task) => taskBucket(task) !== "done" || !seen[task.id]);
+
+  const visibleTasks = tasks.filter(
+    (task) => task.handledAt === undefined && (taskBucket(task) !== "done" || !seen[task.id]),
+  );
 
   const counts = visibleTasks.reduce(
     (result, task) => {
@@ -247,7 +270,12 @@ export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => 
   const [doneOpen, setDoneOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [, setSeenVersion] = useState(0);
-  const tasks = useMemo(() => chats.flatMap((chat) => (chat.task ? [chat.task] : [])), [chats]);
+
+  const tasks = useMemo(
+    () => chats.flatMap((chat) => (chat.task && chat.task.handledAt === undefined ? [chat.task] : [])),
+    [chats],
+  );
+
   const seen = readSeen(agentId);
   const ordered = orderTasks(tasks, now);
   const active = ordered.filter((task) => taskBucket(task, now) !== "done");

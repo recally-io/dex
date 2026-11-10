@@ -46,6 +46,7 @@ type TaskInfo struct {
 	CreatedAt           int64       `json:"createdAt"`
 	StartedAt           *int64      `json:"startedAt,omitempty"`
 	EndedAt             *int64      `json:"endedAt,omitempty"`
+	HandledAt           *int64      `json:"handledAt,omitempty"`
 	Report              string      `json:"report"`
 	Goal                string      `json:"goal"`
 	Constraints         []string    `json:"constraints"`
@@ -79,6 +80,7 @@ type TaskTools struct {
 	List             func(context.Context, TaskContext) ([]TaskInfo, error)
 	Get              func(context.Context, TaskContext, string) (TaskInfo, error)
 	Cancel           func(context.Context, TaskContext, string) (TaskInfo, error)
+	Acknowledge      func(context.Context, TaskContext, string) (TaskInfo, error)
 }
 
 func codingSkill() *durable.Extension {
@@ -154,6 +156,7 @@ func taskExtension(agentID string, handlers TaskTools) *durable.Extension {
 	}{
 		{"get_task", "Read a background task and its saved report.", handlers.Get},
 		{"cancel_task", "Request cancellation of a background task.", handlers.Cancel},
+		{"acknowledge_task", "Mark a finished task from this chat as handled without changing its report. Use when the user explicitly confirms it has been handled.", handlers.Acknowledge},
 	} {
 		tools = append(tools, makeTool(action.name, action.description, idSchema, func(ctx context.Context, source TaskContext, raw any) (any, error) {
 			if action.call == nil {

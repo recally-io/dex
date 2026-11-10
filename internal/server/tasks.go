@@ -43,14 +43,14 @@ func applyActivity(summary *api.TaskSummary, status string, executionID sql.Null
 func taskView(t sqlc.Task, executionID int64, activity engine.Activity, waitReason string) api.Task {
 	summary := api.TaskSummary{
 		Id: t.ID, Title: t.Title, Status: api.TaskSummaryStatus(t.Status),
-		CreatedAt: t.CreatedAt, StartedAt: taskTime(t.StartedAt), EndedAt: taskTime(t.EndedAt),
+		CreatedAt: t.CreatedAt, StartedAt: taskTime(t.StartedAt), EndedAt: taskTime(t.EndedAt), HandledAt: taskTime(t.HandledAt),
 		ConversationId: t.ConversationID, ParentConversationId: t.ParentConversationID,
 		ReportOutcome: reportOutcome(t.StructuredReport), WaitReason: optional(waitReason),
 	}
 	applyActivity(&summary, t.Status, sql.NullInt64{Int64: executionID, Valid: executionID > 0}, activity)
 	return api.Task{
 		Id: summary.Id, Title: summary.Title, Status: api.TaskStatus(summary.Status),
-		CreatedAt: summary.CreatedAt, StartedAt: summary.StartedAt, EndedAt: summary.EndedAt,
+		CreatedAt: summary.CreatedAt, StartedAt: summary.StartedAt, EndedAt: summary.EndedAt, HandledAt: summary.HandledAt,
 		ConversationId: summary.ConversationId, ParentConversationId: summary.ParentConversationId,
 		LastAction: summary.LastAction, LastActivityAt: summary.LastActivityAt, ToolStartedAt: summary.ToolStartedAt,
 		ReportOutcome: taskReportOutcome(summary.ReportOutcome), WaitReason: summary.WaitReason, Report: t.Report,
@@ -68,12 +68,24 @@ func taskReportOutcome(outcome *api.TaskSummaryReportOutcome) *api.TaskReportOut
 func taskSummary(t sqlc.ListAgentTasksRow, activity engine.Activity, waitReason string) api.TaskSummary {
 	summary := api.TaskSummary{
 		Id: t.ID, Title: t.Title, Status: api.TaskSummaryStatus(t.Status),
-		CreatedAt: t.CreatedAt, StartedAt: taskTime(t.StartedAt), EndedAt: taskTime(t.EndedAt),
+		CreatedAt: t.CreatedAt, StartedAt: taskTime(t.StartedAt), EndedAt: taskTime(t.EndedAt), HandledAt: taskTime(t.HandledAt),
 		ConversationId: t.ConversationID, ParentConversationId: t.ParentConversationID,
 		ReportOutcome: reportOutcome(t.StructuredReport), WaitReason: optional(waitReason),
 	}
 	applyActivity(&summary, t.Status, t.ExecutionID, activity)
 	return summary
+}
+
+func (h *handler) AcknowledgeTask(ctx context.Context, req api.AcknowledgeTaskRequestObject) (api.AcknowledgeTaskResponseObject, error) {
+	t, err := h.Chats.AcknowledgeTask(ctx, agentID(ctx), req.TaskId)
+	if err != nil {
+		return nil, err
+	}
+	executionID, err := h.Chats.TaskExecution(ctx, agentID(ctx), req.TaskId)
+	if err != nil {
+		return nil, err
+	}
+	return api.AcknowledgeTask200JSONResponse(taskView(t, executionID, engine.Activity{}, "")), nil
 }
 
 func (h *handler) CancelTask(ctx context.Context, req api.CancelTaskRequestObject) (api.CancelTaskResponseObject, error) {

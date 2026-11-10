@@ -23,6 +23,7 @@ type taskInfo struct {
 	CreatedAt            int64   `json:"createdAt"`
 	StartedAt            *int64  `json:"startedAt"`
 	EndedAt              *int64  `json:"endedAt"`
+	HandledAt            *int64  `json:"handledAt"`
 	ConversationID       int64   `json:"conversationId"`
 	ParentConversationID int64   `json:"parentConversationId"`
 	LastAction           *string `json:"lastAction"`
@@ -122,6 +123,50 @@ func TestUserReadsTaskReportsAndWork(t *testing.T) {
 	t.Logf("artifact: main task=%s channel task=%s work=%d", first.ID, second.ID, detail.ConversationID)
 }
 
+func TestUserAcknowledgesFinishedTaskWithoutChangingItsReport(t *testing.T) {
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	parent := d.mainChat(t)
+	d.setModel(t, "spawn")
+	taskTurn(t, d, parent, taskJSON(t, map[string]any{"title": "Finished work", "goal": `report_task {"outcome":"blocked","summary":"original result","cause":"needs attention","reproduction":[],"files":[],"openItems":[]}`, "provider": "faux", "modelId": "tool"}))
+	finished := waitExecution(t, conn, parent, "Finished work", "done")
+
+	// The agent acknowledges the finished task through its native tool.
+	answer := taskTool(t, d, parent, "acknowledge_task", map[string]string{"id": finished.ID})
+	var toolResult taskInfo
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(answer, "tool: ")), &toolResult); err != nil || toolResult.HandledAt == nil || !strings.Contains(toolResult.Report, "original result") {
+		t.Fatalf("tool result=%s err=%v", answer, err)
+	}
+	var detail taskInfo
+	d.must(t, http.MethodPost, "/api/agents/default/tasks/"+finished.ID+"/acknowledge", nil, &detail)
+	if detail.HandledAt == nil || *detail.HandledAt != *toolResult.HandledAt || detail.Status != "done" || detail.ReportOutcome != "blocked" || detail.Report != toolResult.Report {
+		t.Fatalf("idempotent acknowledgement changed the result: %+v", detail)
+	}
+	var list struct {
+		Chats []sessionInfo `json:"chats"`
+	}
+	d.must(t, http.MethodGet, "/api/agents/default/chats", nil, &list)
+	found := false
+	for _, c := range list.Chats {
+		if c.Task != nil && c.Task.ID == finished.ID {
+			found = c.Task.HandledAt != nil && *c.Task.HandledAt == *detail.HandledAt
+		}
+	}
+	if !found {
+		t.Fatal("acknowledgement not returned in task list")
+	}
+
+	// Running tasks cannot be acknowledged and missing tasks stay inaccessible.
+	d.setModel(t, "spawn")
+	taskTurn(t, d, parent, taskJSON(t, map[string]any{"title": "Running work", "goal": taskGate(t, dir, "ack-running"), "provider": "faux", "modelId": "bash"}))
+	waitTaskFile(t, filepath.Join(dir, "ack-running.pid"))
+	running := waitExecution(t, conn, parent, "Running work", "running")
+	d.must(t, http.MethodPost, "/api/agents/default/tasks/"+running.ID+"/acknowledge", nil, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, "/api/agents/default/tasks/missing/acknowledge", nil, nil, http.StatusNotFound)
+	releaseResultGate(t, dir, "ack-running")
+}
+
 func TestUserTasksStayWithinBot(t *testing.T) {
 	t.Parallel()
 	// Given a saved task owned by another bot in the same control database.
@@ -159,6 +204,7 @@ func TestUserTasksStayWithinBot(t *testing.T) {
 		t.Fatalf("foreign task in list: %d %s", status, raw)
 	}
 	d.must(t, http.MethodGet, "/api/agents/default/tasks/"+fmt.Sprint(work.ID), nil, nil, http.StatusNotFound)
+	d.must(t, http.MethodPost, "/api/agents/default/tasks/"+fmt.Sprint(work.ID)+"/acknowledge", nil, nil, http.StatusNotFound)
 	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", work.ID), nil, nil, http.StatusNotFound)
 }
 

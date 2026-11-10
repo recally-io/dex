@@ -10,6 +10,26 @@ import (
 	"database/sql"
 )
 
+const acknowledgeTask = `-- name: AcknowledgeTask :execrows
+UPDATE tasks SET handled_at = coalesce(handled_at, ?1)
+WHERE tasks.id = ?2 AND tasks.status IN ('done', 'failed', 'cancelled', 'interrupted')
+AND tasks.conversation_id IN (SELECT c.id FROM conversations c WHERE c.agent_id = ?3)
+`
+
+type AcknowledgeTaskParams struct {
+	HandledAt sql.NullInt64 `json:"handled_at"`
+	TaskID    string        `json:"task_id"`
+	AgentID   string        `json:"agent_id"`
+}
+
+func (q *Queries) AcknowledgeTask(ctx context.Context, arg AcknowledgeTaskParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, acknowledgeTask, arg.HandledAt, arg.TaskID, arg.AgentID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const countTaskSlots = `-- name: CountTaskSlots :one
 SELECT count(*) FROM tasks t JOIN conversations c ON c.id = t.conversation_id
 WHERE c.agent_id = ? AND t.status IN ('queued', 'admitting', 'running')
@@ -86,7 +106,7 @@ func (q *Queries) CreateTaskResult(ctx context.Context, arg CreateTaskResultPara
 }
 
 const getAgentTask = `-- name: GetAgentTask :one
-SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.created_at, t.started_at, t.ended_at, t.constraints_json, t.done_criteria_json, t.structured_report, t.modifies_files FROM tasks t JOIN conversations c ON c.id = t.conversation_id
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.created_at, t.started_at, t.ended_at, t.constraints_json, t.done_criteria_json, t.structured_report, t.modifies_files, t.handled_at FROM tasks t JOIN conversations c ON c.id = t.conversation_id
 WHERE t.id = ? AND c.agent_id = ?
 `
 
@@ -114,6 +134,7 @@ func (q *Queries) GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (Tas
 		&i.DoneCriteriaJson,
 		&i.StructuredReport,
 		&i.ModifiesFiles,
+		&i.HandledAt,
 	)
 	return i, err
 }
@@ -148,7 +169,7 @@ func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConvers
 }
 
 const getTask = `-- name: GetTask :one
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files FROM tasks WHERE id = ?
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files, handled_at FROM tasks WHERE id = ?
 `
 
 func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
@@ -170,12 +191,13 @@ func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
 		&i.DoneCriteriaJson,
 		&i.StructuredReport,
 		&i.ModifiesFiles,
+		&i.HandledAt,
 	)
 	return i, err
 }
 
 const getTaskByKey = `-- name: GetTaskByKey :one
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files FROM tasks WHERE spawn_key = ?
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files, handled_at FROM tasks WHERE spawn_key = ?
 `
 
 func (q *Queries) GetTaskByKey(ctx context.Context, spawnKey string) (Task, error) {
@@ -197,6 +219,7 @@ func (q *Queries) GetTaskByKey(ctx context.Context, spawnKey string) (Task, erro
 		&i.DoneCriteriaJson,
 		&i.StructuredReport,
 		&i.ModifiesFiles,
+		&i.HandledAt,
 	)
 	return i, err
 }
@@ -226,7 +249,7 @@ func (q *Queries) GetTaskResultLabel(ctx context.Context, arg GetTaskResultLabel
 }
 
 const listActiveTasks = `-- name: ListActiveTasks :many
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files FROM tasks WHERE parent_conversation_id = ? AND status IN ('queued', 'admitting', 'running')
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files, handled_at FROM tasks WHERE parent_conversation_id = ? AND status IN ('queued', 'admitting', 'running')
 `
 
 func (q *Queries) ListActiveTasks(ctx context.Context, parentConversationID int64) ([]Task, error) {
@@ -254,6 +277,7 @@ func (q *Queries) ListActiveTasks(ctx context.Context, parentConversationID int6
 			&i.DoneCriteriaJson,
 			&i.StructuredReport,
 			&i.ModifiesFiles,
+			&i.HandledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -270,7 +294,7 @@ func (q *Queries) ListActiveTasks(ctx context.Context, parentConversationID int6
 
 const listAgentTasks = `-- name: ListAgentTasks :many
 SELECT t.id, t.parent_conversation_id, t.conversation_id, c.execution_id, t.title, t.status,
-    t.created_at, t.started_at, t.ended_at, t.structured_report
+    t.created_at, t.started_at, t.ended_at, t.handled_at, t.structured_report
 FROM tasks t JOIN conversations c ON c.id = t.conversation_id
 WHERE c.agent_id = ? ORDER BY t.created_at DESC, t.id DESC
 `
@@ -285,6 +309,7 @@ type ListAgentTasksRow struct {
 	CreatedAt            int64         `json:"created_at"`
 	StartedAt            sql.NullInt64 `json:"started_at"`
 	EndedAt              sql.NullInt64 `json:"ended_at"`
+	HandledAt            sql.NullInt64 `json:"handled_at"`
 	StructuredReport     string        `json:"structured_report"`
 }
 
@@ -307,6 +332,7 @@ func (q *Queries) ListAgentTasks(ctx context.Context, agentID string) ([]ListAge
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.EndedAt,
+			&i.HandledAt,
 			&i.StructuredReport,
 		); err != nil {
 			return nil, err
@@ -323,7 +349,7 @@ func (q *Queries) ListAgentTasks(ctx context.Context, agentID string) ([]ListAge
 }
 
 const listLiveTasks = `-- name: ListLiveTasks :many
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files FROM tasks WHERE status IN ('admitting', 'running')
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files, handled_at FROM tasks WHERE status IN ('admitting', 'running')
 `
 
 func (q *Queries) ListLiveTasks(ctx context.Context) ([]Task, error) {
@@ -351,6 +377,7 @@ func (q *Queries) ListLiveTasks(ctx context.Context) ([]Task, error) {
 			&i.DoneCriteriaJson,
 			&i.StructuredReport,
 			&i.ModifiesFiles,
+			&i.HandledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -459,7 +486,7 @@ func (q *Queries) ListTaskAdmissions(ctx context.Context) ([]ListTaskAdmissionsR
 }
 
 const listTasks = `-- name: ListTasks :many
-SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.created_at, t.started_at, t.ended_at, t.constraints_json, t.done_criteria_json, t.structured_report, t.modifies_files FROM tasks t
+SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.created_at, t.started_at, t.ended_at, t.constraints_json, t.done_criteria_json, t.structured_report, t.modifies_files, t.handled_at FROM tasks t
 WHERE t.parent_conversation_id = ?1 AND
 (t.ended_at IS NULL OR t.id IN (SELECT recent.id FROM tasks recent WHERE recent.parent_conversation_id = ?1
 AND recent.ended_at IS NOT NULL ORDER BY recent.ended_at DESC, recent.id DESC LIMIT 10))
@@ -491,6 +518,7 @@ func (q *Queries) ListTasks(ctx context.Context, parentID int64) ([]Task, error)
 			&i.DoneCriteriaJson,
 			&i.StructuredReport,
 			&i.ModifiesFiles,
+			&i.HandledAt,
 		); err != nil {
 			return nil, err
 		}

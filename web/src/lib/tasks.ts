@@ -66,6 +66,8 @@ export function isStalled(task: TaskSummary, now = Date.now()) {
 }
 
 export function taskBucket(task: TaskSummary, now = Date.now()): TaskBucket {
+  if (task.handledAt !== undefined && task.endedAt !== undefined) return "done";
+
   if (
     task.reportOutcome === "blocked" ||
     task.status === "failed" ||

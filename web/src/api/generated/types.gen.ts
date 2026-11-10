@@ -54,6 +54,10 @@ export type TaskSummary = {
      */
     toolStartedAt?: number;
     /**
+     * When the finished task was acknowledged, without changing its result.
+     */
+    handledAt?: number;
+    /**
      * The structured report outcome, when the task has a report.
      */
     reportOutcome?: 'done' | 'blocked' | 'failed';
@@ -1663,6 +1667,42 @@ export type GetTaskResponses = {
 };
 
 export type GetTaskResponse = GetTaskResponses[keyof GetTaskResponses];
+
+export type AcknowledgeTaskData = {
+    body?: never;
+    path: {
+        agentId: string;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/tasks/{taskId}/acknowledge';
+};
+
+export type AcknowledgeTaskErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AcknowledgeTaskError = AcknowledgeTaskErrors[keyof AcknowledgeTaskErrors];
+
+export type AcknowledgeTaskResponses = {
+    /**
+     * The task was acknowledged.
+     */
+    200: Task;
+};
+
+export type AcknowledgeTaskResponse = AcknowledgeTaskResponses[keyof AcknowledgeTaskResponses];
 
 export type CancelTaskData = {
     body?: never;
