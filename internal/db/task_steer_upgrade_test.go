@@ -13,7 +13,7 @@ import (
 )
 
 func TestUserUpgradesQuestionDatabaseWithTaskSteer(t *testing.T) {
-	// Given a database with all migrations from main, but no draft steer migration.
+	// Given the question schema before task steering. Later migrations must not enter this fixture.
 	entries, err := os.ReadDir("migrations")
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +21,7 @@ func TestUserUpgradesQuestionDatabaseWithTaskSteer(t *testing.T) {
 	mainSchema := fstest.MapFS{}
 	for _, entry := range entries {
 		name := entry.Name()
-		if !strings.HasSuffix(name, ".sql") || strings.HasSuffix(name, "_task_steer_receipts.sql") {
+		if !strings.HasSuffix(name, ".sql") || name >= "20261110140000_" || strings.HasSuffix(name, "_task_steer_receipts.sql") {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join("migrations", name))

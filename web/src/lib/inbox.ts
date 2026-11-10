@@ -1,17 +1,7 @@
 import { listInboxOptions } from "../api/generated/@tanstack/react-query.gen";
-import type { Agent, InboxItem } from "../api/generated/types.gen";
+import type { InboxItem } from "../api/generated/types.gen";
 
 export const inboxOptions = () => listInboxOptions({ query: { includeDismissed: true } });
-
-export function inboxCount(agents: Agent[]) {
-  return agents.reduce(
-    (count, agent) => ({
-      unread: count.unread + (agent.activity?.inboxUnread ?? 0),
-      failed: count.failed + (agent.activity?.inboxFailed ?? 0),
-    }),
-    { unread: 0, failed: 0 },
-  );
-}
 
 // The first line is plain text because the chat takes its title from the start of the message.
 export function resultQuote(

@@ -29,20 +29,23 @@ state live in `control.sqlite`, not browser storage. The unsaved agent instructi
 memory (`src/lib/app-state.tsx`), so a draft stays when the user opens another page, and a reload discards it.
 `src/lib/agent.ts` runs agent saves one at a time. Each save reads the saved
 agent first, so a model change does not overwrite the instructions.
-Main and ordinary Chat sessions use the agent's model and thinking level.
+Main and ordinary Chat sessions default to the agent's model and thinking level.
+Saved session overrides apply from the next input, including channel input on Main.
+Ended task conversations can also use model and project overrides.
 New chat sends `POST /api/agents/{agentId}/chats` with no request body.
 See the [API contract](../api/openapi.yaml) for request and response schemas.
 `src/lib/attachments.ts` uploads each file of the composer when the user adds
 it; a message sends only upload IDs.
 
 The bot workspace has exactly four tabs: Chat, Routines, Extensions, Settings.
-Bot links open Main. The right Chats sidebar starts closed. The global Inbox
-sits above the bots and filters settled routine results by bot and read state.
-Rail counts use the existing three-second agent poll. An open Inbox refreshes
-its shared list every ten seconds. Result details can create a writable Chat
-with the routine project and a quoted result through existing APIs.
-Routine history links to run transcripts and Inbox results. Successful
-`spawn_task` steps and task result marks link to read-only task detail pages.
+Bot links open Main. The right Chats sidebar starts closed. Global navigation
+links to Needs you, Work, and the automation list. Needs you shows open questions,
+unhandled failed or blocked tasks, failed routine runs, and routines that need
+a model. Work shows sessions and routine runs across bots. Result details can
+create a writable Chat with the routine project and a quoted result through
+existing APIs. Routine history links to run transcripts and saved results.
+Successful `spawn_task` steps and task result marks link to task pages. Task
+conversations are read-only while queued or running and writable after they end.
 There is no Sessions tab. Legacy Sessions and transcript URLs remain readable.
 
 The old `/settings/<section>` addresses redirect to the new pages.

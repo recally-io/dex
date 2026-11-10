@@ -190,8 +190,22 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if m.ReplyTo != nil {
 		incoming.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
 	}
-	if err = b.chats.Receive(ctx, peer, source, incoming); err != nil {
-		return err
+	receiveErr := b.chats.Receive(ctx, peer, source, incoming)
+	if len(attachments) > 0 {
+		// A committed receipt can own the files even when admission returns an error.
+		receipt, lookupErr := b.chats.Source(context.WithoutCancel(ctx), source)
+		if lookupErr == nil && receipt.ID == "" {
+			for _, attachment := range attachments {
+				if err := b.cfg.Uploads.Remove(attachment.ID); err != nil {
+					slog.Warn("telegram: upload cleanup failed", "err", err)
+				}
+			}
+		}
+		if err := errors.Join(receiveErr, lookupErr); err != nil {
+			return err
+		}
+	} else if receiveErr != nil {
+		return receiveErr
 	}
 	if content != "/new" && content != "/stop" && content != "/help" {
 		b.startPreview(ctx, source, m.Chat.ID)

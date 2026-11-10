@@ -103,7 +103,8 @@ dex reads skills and MCP servers from files, for all agents and for one agent:
 | Project | `<cwd>/.agents/skills/<name>/SKILL.md`              | none                                  |
 
 A narrower entry replaces the wider entry with the same name; Project is the
-narrowest. Chat sessions can select a project directory in the chat header.
+narrowest. Main and Chat sessions can select a project directory in the chat header.
+A task conversation can also select one after the task ends.
 The picker browses folders on the dex host and lists recent projects for the
 current agent. Use Up or Home to navigate, or enter a path and press Enter.
 Select **Use this folder** to save the current folder. The `set_project` tool

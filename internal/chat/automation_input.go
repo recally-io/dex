@@ -2,13 +2,18 @@ package chat
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
+// ErrAutomationChanged means a scheduled snapshot is no longer current.
+var ErrAutomationChanged = errors.New("automation changed before scheduled input")
+
 // AutomationInput binds one run record to its durable message intent.
 type AutomationInput struct {
+	Expected                                 *sqlc.Automation
 	Run                                      sqlc.CreateAutomationRunParams
 	AgentID, ChannelKey, Title, Content, Cwd string
 }
@@ -43,6 +48,19 @@ func (s *Service) AutomationCommitted(chatID int64) {
 // StoreAutomationInput stores a run and input in the caller's control transaction.
 // The caller must wake delivery after commit.
 func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInput) (int64, bool, error) {
+	if in.Expected != nil {
+		// Take the SQLite writer before reading, so an edit cannot pass this check before the insert.
+		if err := q.LockRoutineTools(ctx); err != nil {
+			return 0, false, err
+		}
+		current, err := q.GetAutomation(ctx, sqlc.GetAutomationParams{ID: in.Expected.ID, AgentID: in.Expected.AgentID})
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && current != *in.Expected) {
+			return 0, false, ErrAutomationChanged
+		}
+		if err != nil {
+			return 0, false, err
+		}
+	}
 	created, err := q.CreateAutomationRun(ctx, in.Run)
 	if err != nil || created == 0 {
 		return 0, false, err

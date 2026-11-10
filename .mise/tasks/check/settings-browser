@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Test settings saves in an isolated browser"
+#MISE depends=["build:web"]
+set -euo pipefail
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+go build -tags dex_e2e -o "$tmp/dex" ./cmd/dex
+node web/tools/settings-browser.mjs "$tmp/dex" "$@"

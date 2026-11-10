@@ -141,6 +141,7 @@ type Question struct {
 }
 
 type QuestionMessage struct {
+	AgentID    string `json:"agent_id"`
 	Peer       string `json:"peer"`
 	RemoteID   string `json:"remote_id"`
 	QuestionID string `json:"question_id"`

@@ -1,4 +1,5 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
+import { useAgentId } from "../lib/agent-scope";
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Provider } from "../api/generated/types.gen";
@@ -278,6 +279,7 @@ function RemoveProvider({
   onClose: () => void;
 }) {
   const { notify } = useApp();
+  const agentId = useAgentId();
   const models = useQuery(listModelsOptions());
   const current = settings.agent.provider === provider.id && !!settings.agent.modelId;
   const others = models.data?.models.filter((m) => m.provider !== provider.id) ?? [];
@@ -292,7 +294,7 @@ function RemoveProvider({
   const replace = useMutation({
     mutationFn: async () => {
       const model = others.find((m) => `${m.provider}/${m.id}` === next);
-      await saveAgent("default", (agent) => ({
+      await saveAgent(agentId, (agent) => ({
         ...agent,
         provider: model?.provider ?? "",
         modelId: model?.id ?? "",

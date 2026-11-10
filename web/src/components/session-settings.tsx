@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { useAgentId } from "../lib/agent-scope";
@@ -40,13 +41,24 @@ export function SessionSettings({ chat, settings }: { chat: Chat; settings: Sett
   const agentId = useAgentId();
   const models = useQuery(listModelsOptions());
   const save = useMutation(setChatSettingsMutation());
+  const saving = useRef(false);
+  const [pending, setPending] = useState(false);
   const own = chat.settings;
   const bot = findModel(settings.agent.provider, settings.agent.modelId, models.data?.models);
   const effective = own.modelId ? findModel(own.provider ?? "", own.modelId, models.data?.models) : bot;
 
   async function change(next: ChatSettings) {
-    await save.mutateAsync({ path: { agentId, chatId: chat.id }, body: next });
-    await refreshChats(agentId);
+    if (saving.current) throw new Error("Session settings are saving. Try again.");
+    saving.current = true;
+    setPending(true);
+
+    try {
+      await save.mutateAsync({ path: { agentId, chatId: chat.id }, body: next });
+      await refreshChats(agentId);
+    } finally {
+      saving.current = false;
+      setPending(false);
+    }
   }
 
   return (
@@ -64,6 +76,7 @@ export function SessionSettings({ chat, settings }: { chat: Chat; settings: Sett
             size="sm"
             className="max-w-48"
             aria-label="Set model"
+            disabled={pending}
             title={effective.label}
           >
             <span className="truncate">{effective.label}</span>
@@ -78,7 +91,7 @@ export function SessionSettings({ chat, settings }: { chat: Chat; settings: Sett
           levels={effective.model.thinkingLevels}
           save={(thinking) => change(changed(own, { thinking }))}
           trigger={
-            <Button variant="ghost" size="sm" aria-label="Set thinking level">
+            <Button variant="ghost" size="sm" aria-label="Set thinking level" disabled={pending}>
               {thinkingNames[own.thinkingLevel ?? settings.agent.thinkingLevel]}
               <ChevronDown aria-hidden="true" />
             </Button>

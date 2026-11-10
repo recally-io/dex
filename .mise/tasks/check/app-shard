@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#MISE description="Run one partition of the app race tests and record test timings"
+#MISE depends=["build:web"]
+set -euo pipefail
+
+index="${1:?Pass a zero-based shard index}"
+count="${2:?Pass the shard count}"
+if [[ ! "$index" =~ ^(0|[1-9][0-9]*)$ || ! "$count" =~ ^[1-9][0-9]*$ ]] || (( index >= count )); then
+  echo "Expected 0 <= index < count." >&2
+  exit 2
+fi
+
+# Discover every top-level test, example, and fuzz seed. New tests need no manual assignment.
+listing="$(go test -race -list . ./internal/app)"
+tests="$(printf '%s\n' "$listing" | grep -E '^(Test|Example|Fuzz)[^[:space:]]*$' | LC_ALL=C sort)"
+selected="$(printf '%s\n' "$tests" | awk -v shard="$index" -v count="$count" '(NR - 1) % count == shard')"
+if [[ -z "$selected" ]]; then
+  echo "Shard $index has no tests." >&2
+  exit 1
+fi
+
+mkdir -p .local/ci
+printf '%s\n' "$tests" > ".local/ci/app-$index-all.txt"
+printf '%s\n' "$selected" > ".local/ci/app-$index-selected.txt"
+pattern="$(printf '%s\n' "$selected" | paste -sd '|' -)"
+printf 'App shard %s/%s: %s tests\n' "$index" "$count" "$(printf '%s\n' "$selected" | wc -l | tr -d ' ')"
+go test -race -json -run "^($pattern)$" ./internal/app | tee ".local/ci/app-$index.jsonl"

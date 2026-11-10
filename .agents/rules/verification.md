@@ -18,6 +18,14 @@ Run `mise run check:native` for runtime or dependency changes. It checks that
 removed backend paths stay absent, rejects PiG TUI and extension-host imports,
 and builds darwin/linux on amd64/arm64 with `CGO_ENABLED=0`.
 
+For web navigation, timeline interaction, or session permission changes, also
+run `mise run check:timeline-web`. For artifact preview or continuation changes,
+also run `mise run check:artifact-browser`. Update browser assertions with the
+contract change. `check:web` does not run these browser scripts. Run
+`mise run check:settings-browser` after provider removal or session model and
+thinking-control changes. Report a failed browser task as a verification gap
+even when the aggregate check passes.
+
 A change to a provider or to model handling also needs a manual run against a
 real provider (`mise run dev:server`, with a key in Settings), because the tests use the
 faux provider. Report that run, or report that you did not do it.

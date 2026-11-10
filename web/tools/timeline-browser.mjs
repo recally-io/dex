@@ -153,15 +153,12 @@ try {
   await visit("/a/default");
   await ui("empty timeline", "document.body.innerText.includes('What should Dex do?')");
   await check(
-    "shell lists the agent and the global settings, with no chat list",
+    "shell lists the bot, work and global settings",
     `(() => {
-    const nav = document.querySelector('aside[aria-label="Navigation"]');
-    const links = [...nav.querySelectorAll('a')];
-    return links.some(a => a.getAttribute('href') === '/a/default' && a.querySelector('span span').textContent === 'Dex' && a.getAttribute('aria-current') === 'page') &&
-      nav.innerText.includes('Agents') && nav.innerText.includes('Global settings') &&
-      links.map(a => a.getAttribute('href')).slice(1).join(',') === '/providers,/secrets,/about' &&
-      !/New chat|Search chats|Timeline|Configure/.test(nav.innerText) &&
-      !links.some(a => /^\\/c\\//.test(a.getAttribute('href')));
+    const nav = document.querySelector('aside[aria-label="Bots"]');
+    return !!nav.querySelector('a[href="/a/default"][aria-current="page"]') &&
+      !!nav.querySelector('a[href="/work"]') && !!nav.querySelector('a[href="/providers"]') &&
+      !!nav.querySelector('input[aria-label="Search sessions"]');
   })()`,
   );
   await check(
@@ -170,8 +167,8 @@ try {
   );
   await shot("01-empty");
   await check(
-    "main opens Sessions without a New session action",
-    "!!document.querySelector('a[href=\"/a/default/sessions\"]') && ![...document.querySelectorAll('button:not([inert] *)')].some(b => b.textContent.trim() === 'New session')",
+    "main has no Sessions tab and offers a new session",
+    "!document.querySelector('header nav a[data-tab=\"Sessions\"]') && !!document.querySelector('aside button[aria-label=\"New session\"]')",
   );
   const main = await api("/api/agents/default/chats/main");
   await visit("/a/default/sessions");
@@ -188,12 +185,9 @@ try {
   const emptySession = Number((await evaluate("location.pathname")).split("/").at(-1));
   assert.notEqual(emptySession, main.id);
   await check(
-    "new Chat has its crumb, title, kind and composer before choosing a model",
-    `(() => {
-      const header = [...document.querySelectorAll('header')].at(-1);
-      return !!header.querySelector('a[href="/a/default/sessions"]') && document.querySelector('#page-title').textContent === 'New session' &&
-        header.innerText.includes('Chat') && document.querySelector('nav a[aria-current="page"]').dataset.tab === 'Sessions';
-    })()`,
+    "new Chat has its title and composer before choosing a model",
+    `document.querySelector('#page-title').textContent === 'New chat' &&
+      !!document.querySelector('textarea:not([inert] *)') && document.querySelector('header nav a[aria-current="page"]').dataset.tab === 'Chat'`,
   );
   await visit("/a/default/sessions");
   await ui("abandoned empty Chat stays hidden", "document.body.innerText.includes('No sessions yet')");
@@ -206,11 +200,7 @@ try {
   await ui("composer ready", "!!document.querySelector('textarea:not(:disabled):not([inert] *)')");
 
   // Maintenance refuses input before admission. Release must not create a ghost turn.
-  await poll("maintenance holds admission", async () => {
-    const response = await fetch(`${base}/api/maintenance`, { method: "POST" });
-
-    return response.ok;
-  });
+  await holdMaintenance();
   await sendFromComposer("refused during maintenance");
   await poll("maintenance refuses with HTTP 409", () =>
     messages.some((entry) => entry.request.text === "refused during maintenance" && entry.status === 409),
@@ -239,11 +229,7 @@ try {
   );
 
   // Reload during maintenance closes the stream. Release permits a fresh native subscription.
-  await poll("maintenance before reconnect", async () => {
-    const response = await fetch(`${base}/api/maintenance`, { method: "POST" });
-
-    return response.ok;
-  });
+  await holdMaintenance();
   await reload();
   await ui("composer awaits stream", "!!document.querySelector('textarea:disabled')");
   await check(
@@ -409,13 +395,19 @@ try {
   );
 
   assert.notEqual(done.id, running.id);
-  await ui("active task badge", "!!document.querySelector('[aria-label=\"1 active\"]')");
+  await ui(
+    "active task status",
+    "document.querySelector('aside a[href=\"/a/default\"]')?.textContent.includes('1 active')",
+  );
   await check(
     "main Stop remains available after dispatch reply",
     "!!document.querySelector('button[title=\"Stop this run and its background work\"]:not([inert] *)')",
   );
   await visit("/tasks");
-  await ui("tasks list", `!!document.querySelector('a[href="/a/default/tasks/${running.id}"]')`);
+  await ui(
+    "both task rows loaded",
+    `document.querySelectorAll('main a[href^="/a/default/tasks/"]:not([inert] *)').length === 2`,
+  );
   await check(
     "session rows keep newest activity first for same-title tasks",
     `(() => { const links = [...document.querySelectorAll('main a[href^="/a/default/tasks/"]:not([inert] *)')]; return links.length === 2 && links[0].getAttribute('href') === '/a/default/tasks/${running.id}' && links[1].getAttribute('href') === '/a/default/tasks/${done.id}'; })()`,
@@ -424,16 +416,12 @@ try {
   await visit(`/a/default/tasks/${running.id}`);
   await ui(
     "live task work",
-    "document.body.innerText.includes('No report yet.') && document.body.innerText.includes('Running bash')",
+    `location.pathname === '/a/default/c/${running.conversationId}' && document.body.innerText.includes('You can chat here after the task ends.')`,
   );
   await check(
     "task work is read-only",
     "!document.querySelector('textarea:not([inert] *)') && ![...document.querySelectorAll('button:not([inert] *)')].some(b => /^(Cancel|Retry|Send)$/.test(b.textContent.trim()))",
   );
-  const runningURL = `${base}/api/agents/default/tasks/${running.id}`;
-  const beforePoll = taskReads.get(runningURL) ?? 0;
-  await poll("running task detail polls", () => (taskReads.get(runningURL) ?? 0) > beforePoll);
-  results.push("running task detail keeps polling");
   await shot("05-task-work");
   await visit("/a/default");
   await ui(
@@ -446,33 +434,20 @@ try {
     async () => (await api(`/api/agents/default/tasks/${running.id}`)).status === "cancelled",
   );
   await visit(`/a/default/tasks/${done.id}`);
-  await ui("saved report", "document.body.innerText.includes('echo: saved report')");
-  const doneURL = `${base}/api/agents/default/tasks/${done.id}`;
-  const terminalReads = taskReads.get(doneURL);
-  const observedUntil = Date.now() + 6500;
-  await poll(
-    "terminal task stops polling",
-    () => {
-      assert.equal(taskReads.get(doneURL), terminalReads, "terminal detail sent another request");
-
-      return Date.now() >= observedUntil;
-    },
-    10_000,
+  await ui(
+    "saved report",
+    `location.pathname === '/a/default/c/${done.conversationId}' && document.body.innerText.includes('echo: saved report')`,
   );
-  results.push("terminal task detail sends no requests over two polling periods");
   await visit(`/a/default/c/${done.conversationId}`);
   await ui(
-    "read-only conversation",
-    "document.body.innerText.includes('You can read this conversation here.') && document.body.innerText.includes('echo: saved report')",
+    "terminal task conversation is writable",
+    "document.body.innerText.includes('echo: saved report') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')",
   );
-  await check(
-    "read-only chat has no composer",
-    "!document.querySelector('textarea:not([inert] *)') && !document.querySelector('button[aria-label=\"Send message\"]:not([inert] *)')",
-  );
+  assert.equal((await api(`/api/agents/default/chats/${done.conversationId}`)).readOnly, false);
   await shot("06-read-only");
 
   // Release reconciles a saved channel input through the real native admission path.
-  await api("/api/maintenance", undefined, "POST");
+  await holdMaintenance();
   const channelGate = join(isolated, "channel.gate");
   const channelDB = new DatabaseSync(join(data, "control.sqlite"));
   channelDB.exec("PRAGMA busy_timeout = 5000");
@@ -507,7 +482,10 @@ try {
   );
 
   await visit("/a/default");
-  await ui("channel work in bot badge", "!!document.querySelector('[aria-label=\"1 active\"]')");
+  await ui(
+    "channel work in bot status",
+    "document.querySelector('aside a[href=\"/a/default\"]')?.textContent.includes('1 active')",
+  );
   await ui("main stream ready", "!!document.querySelector('textarea:not(:disabled):not([inert] *)')");
   await check(
     "channel work counts in Sessions but cannot enable main Stop",
@@ -557,9 +535,9 @@ try {
     "document.querySelector('#page-title').textContent === 'Plan a separate session'",
   );
   await check(
-    "a Chat session belongs to the agent and its Sessions tab",
+    "a Chat session belongs to the agent and its Chat tab",
     `!!document.querySelector('aside a[href="/a/default"][aria-current="page"]') &&
-      document.querySelector('header nav a[aria-current="page"]').dataset.tab === 'Sessions'`,
+      document.querySelector('header nav a[aria-current="page"]').dataset.tab === 'Chat'`,
   );
   await click("Clear context");
   await ui("Chat reset divider", "!!document.querySelector('[role=separator]')");
@@ -582,7 +560,7 @@ try {
   );
   await check(
     "Chat input and reset do not enter main",
-    "!document.body.innerText.includes('Plan a separate session') && !document.body.innerText.includes('Fresh Chat context') && document.body.innerText.includes('after clear')",
+    "!document.querySelector('main').innerText.includes('Plan a separate session') && !document.querySelector('main').innerText.includes('Fresh Chat context') && document.querySelector('main').innerText.includes('after clear')",
   );
 
   await model("spawn");
@@ -607,7 +585,10 @@ try {
     async () => !(await api(`/api/agents/default/chats/${emptySession}`)).busy,
   );
   await visit("/a/default");
-  await ui("Chat task in main badge", "!!document.querySelector('[aria-label=\"1 active\"]')");
+  await ui(
+    "Chat task in bot status",
+    "document.querySelector('aside a[href=\"/a/default\"]')?.textContent.includes('1 active')",
+  );
   await ui("main composer ready", "!!document.querySelector('textarea:not(:disabled):not([inert] *)')");
   await check(
     "Chat background work cannot enable main Stop",
@@ -686,7 +667,7 @@ try {
       [
         "task",
         `/a/default/tasks/${sessionTask.id}`,
-        "document.body.innerText.includes('Running bash') && !!document.querySelector('a[href=\"/a/default/sessions\"]')",
+        "document.body.innerText.includes('You can chat here after the task ends.')",
       ],
       [
         "new-session",
@@ -731,7 +712,7 @@ try {
   );
   await check(
     "Chat report does not enter main",
-    "!document.body.innerText.includes('Session audit') && !document.body.innerText.includes('session-report')",
+    "!document.querySelector('main').innerText.includes('Session audit') && !document.querySelector('main').innerText.includes('session-report')",
   );
 
   await visit(`/a/default/c/${emptySession}`);
@@ -768,7 +749,7 @@ try {
 
   // Saved channel inputs use real reconciliation. Go tests cover each platform boundary.
   await model("echo");
-  await api("/api/maintenance", undefined, "POST");
+  await holdMaintenance();
   const entries = ["telegram:7", "wechat:owner", "feishu:owner"];
   const entryDB = new DatabaseSync(join(data, "control.sqlite"));
   entryDB.exec("PRAGMA busy_timeout = 5000");
@@ -833,7 +814,7 @@ try {
   }
 
   // Everything of the agent is a tab of its page; the sidebar keeps one row for the agent.
-  const tabs = "Chat,Instructions,Channels,Automations,Sessions,Extensions,Settings";
+  const tabs = "Chat,Routines,Extensions,Settings";
   const tab = (label) => `nav a[data-tab="${label}"]`;
   // The channel widths above leave a phone viewport behind; all tabs fit on a desktop one.
   await viewport(1280, 900);
@@ -850,8 +831,8 @@ try {
 
   await ui(
     "the Automations tab counts the automations that are on, and the agent row shows its status",
-    `document.querySelector('${tab("Automations")}').textContent === 'Automations${automationsOn || ""}' &&
-      /^(\\d+ active|\\d+ channels? on|Idle)$/.test(document.querySelector('aside[aria-label="Navigation"] a[href="/a/default"] span span:last-child').textContent)`,
+    `document.querySelector('${tab("Routines")}').textContent === 'Routines${automationsOn || ""}' &&
+      [...document.querySelectorAll('aside[aria-label="Bots"] a[href="/a/default"] span')].some(span => /^(\\d+ active|\\d+ channels? on|Idle)$/.test(span.textContent))`,
   );
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').dataset.probe = 'kept'");
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').focus()");
@@ -860,20 +841,9 @@ try {
   // Each tab opens its page, and the agent row in the sidebar stays current.
   for (const [label, path, ready] of [
     [
-      "Channels",
-      "/a/default/channels",
-      "document.querySelector('#page-title')?.textContent === 'Channels' && document.body.innerText.includes('All channels')",
-    ],
-    [
-      "Automations",
+      "Routines",
       "/a/default/automations",
-      "document.querySelector('#page-title')?.textContent === 'Automations' && document.body.innerText.includes('All automations')",
-    ],
-    ["Sessions", "/a/default/sessions", "!!document.querySelector('select[aria-label=\"Kind\"]')"],
-    [
-      "Instructions",
-      "/a/default/instructions",
-      "!!document.querySelector('textarea[aria-label=\"Agent instructions\"]')",
+      "document.querySelector('#page-title')?.textContent === 'Routines'",
     ],
     ["Settings", "/a/default/agent", "!!document.querySelector('#bot-name')"],
   ]) {
@@ -882,7 +852,7 @@ try {
     await check(
       `the ${label} tab is current, and so is the agent row`,
       `document.querySelector('header nav a[aria-current="page"]').dataset.tab === '${label}' &&
-        document.querySelector('aside[aria-label="Navigation"] a[href="/a/default"]').getAttribute('aria-current') === 'page'`,
+        document.querySelector('aside[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-current') === 'page'`,
     );
   }
 
@@ -904,7 +874,7 @@ try {
   await visit("/providers");
   await check(
     "a global settings page is not part of the agent",
-    "!document.querySelector('header nav a[data-tab]') && document.querySelector('aside[aria-label=\"Navigation\"] a[href=\"/a/default\"]').getAttribute('aria-current') === null",
+    "!document.querySelector('header nav a[data-tab]') && document.querySelector('aside[aria-label=\"Bots\"] a[href=\"/a/default\"]').getAttribute('aria-current') === null",
   );
 
   // The Settings tab renames the agent; the header, the sidebar and the composer follow.
@@ -917,7 +887,7 @@ try {
   await ui(
     "the header and the sidebar follow the new name",
     `!!document.querySelector('header nav[aria-label="Browser Bot sections"]') &&
-      document.querySelector('aside[aria-label="Navigation"] a[href="/a/default"]').textContent.includes('Browser Bot')`,
+      document.querySelector('aside[aria-label="Bots"] a[href="/a/default"]').textContent.includes('Browser Bot')`,
   );
   await check(
     "channel settings have no links to old peer contexts",
@@ -929,42 +899,44 @@ try {
   await visit("/a/default");
   await ui("renamed composer", "!!document.querySelector('textarea[aria-label=\"Message Browser Bot\"]')");
 
-  // The header of every tab carries the model and the thinking level.
+  // Session controls follow the bot model when there is no session override.
   const chosen = (await api("/api/agents/default")).modelId;
-  await check(
-    "the agent header shows the model",
-    `document.querySelector('header button[aria-label="Change model"]').innerText.includes(${JSON.stringify(chosen)})`,
+  await ui(
+    "the session header shows the model",
+    `document.querySelector('header button[aria-label="Set model"]:not([inert] *)')?.innerText.includes(${JSON.stringify(chosen)})`,
   );
   await model("think");
-  await visit("/a/default/channels");
+  await visit("/a/default");
   await ui(
-    "a reasoning model adds the thinking level to the header of every tab",
-    `document.querySelector('header [aria-label="Change thinking level"]')?.innerText.trim().length > 0`,
+    "a reasoning model adds the session thinking control",
+    `document.querySelector('header [aria-label="Set thinking level"]:not([inert] *)')?.innerText.trim().length > 0`,
   );
   await model(chosen);
   await visit("/a/default");
   await ui(
     "a model without reasoning leaves the thinking level out",
-    `!document.querySelector('header [aria-label="Change thinking level"]')`,
+    `!document.querySelector('header [aria-label="Set thinking level"]:not([inert] *)')`,
   );
 
-  // The Instructions tab holds the draft; the tab and the sidebar mark it until it is saved.
-  await tap(tab("Instructions"));
-  await ui("instructions tab", "!!document.querySelector('textarea[aria-label=\"Agent instructions\"]')");
-  await evaluate("document.querySelector('textarea[aria-label=\"Agent instructions\"]').focus()");
+  // Instructions is a Settings page; client-side navigation keeps drafts alive.
+  await tap(tab("Settings"));
+  await tap('nav[aria-label="Settings pages"] a[href="/a/default/instructions"]');
+  await ui("instructions tab", "!!document.querySelector('textarea[aria-label=\"Bot instructions\"]')");
+  await evaluate("document.querySelector('textarea[aria-label=\"Bot instructions\"]').focus()");
   await call("Input.insertText", { text: "Answer in the language I write in." });
   await ui(
     "the draft marks the tab, the name and the sidebar",
-    `!!document.querySelector('${tab("Instructions")} [aria-label="Unsaved draft"]') &&
+    `!!document.querySelector('${tab("Settings")} [aria-label="Unsaved instructions draft"]') &&
       [...document.querySelector('header').querySelectorAll('span')].some(n => n.textContent === 'Instructions draft') &&
-      document.querySelector('aside[aria-label="Navigation"]').innerText.includes('Draft')`,
+      document.querySelector('aside[aria-label="Bots"]').innerText.includes('Draft')`,
   );
   await shot("07a-instructions");
   await tap(tab("Chat"));
-  await tap(tab("Instructions"));
+  await tap(tab("Settings"));
+  await tap('nav[aria-label="Settings pages"] a[href="/a/default/instructions"]');
   await ui(
     "the draft survives a tab change",
-    "document.querySelector('textarea[aria-label=\"Agent instructions\"]').value === 'Answer in the language I write in.'",
+    "document.querySelector('textarea[aria-label=\"Bot instructions\"]').value === 'Answer in the language I write in.'",
   );
   await tap('button[aria-label="Save instructions"]');
   await poll(
@@ -973,16 +945,16 @@ try {
   );
   await ui(
     "saving clears the draft marks",
-    `!document.querySelector('${tab("Instructions")} [aria-label="Unsaved draft"]') &&
-      !document.querySelector('aside[aria-label="Navigation"]').innerText.includes('Draft')`,
+    `!document.querySelector('${tab("Settings")} [aria-label="Unsaved instructions draft"]') &&
+      !document.querySelector('aside[aria-label="Bots"]').innerText.includes('Draft')`,
   );
   await evaluate(
-    "(() => { const t = document.querySelector('textarea[aria-label=\"Agent instructions\"]'); t.focus(); t.select(); document.execCommand('delete'); })()",
+    "(() => { const t = document.querySelector('textarea[aria-label=\"Bot instructions\"]'); t.focus(); t.select(); document.execCommand('delete'); })()",
   );
   await tap('button[aria-label="Save instructions"]');
   await poll("instructions restored", async () => (await api("/api/agents/default")).instructions === "");
 
-  // A phone keeps the tabs in one row that scrolls to the current tab.
+  // A phone keeps the current tab visible, whether or not the row overflows.
   await viewport(390, 844);
   await visit("/a/default/agent");
   await ui(
@@ -990,7 +962,7 @@ try {
     `(() => {
       const nav = document.querySelector('header nav').getBoundingClientRect();
       const current = document.querySelector('header nav a[aria-current="page"]').getBoundingClientRect();
-      return document.querySelector('header nav').scrollWidth > nav.width && current.left >= nav.left - 1 && current.right <= nav.right + 1 &&
+      return current.left >= nav.left - 1 && current.right <= nav.right + 1 &&
         document.documentElement.scrollWidth <= innerWidth + 1;
     })()`,
   );
@@ -1011,8 +983,15 @@ try {
   await model("echo");
   await visit("/a/default");
   const visibleComposer = 'textarea[aria-label^="Message"]:not([inert] *)';
-  const visibleInstructions = 'textarea[aria-label="Agent instructions"]:not([inert] *)';
+  const visibleInstructions = 'textarea[aria-label="Bot instructions"]:not([inert] *)';
   const agentTab = (name) => `nav a[data-tab="${name}"]:not([inert] *)`;
+
+  async function botSettingsPage(name) {
+    await tap(agentTab("Settings"));
+    await ui("settings switcher ready", "!!document.querySelector('nav[aria-label=\"Settings pages\"]')");
+    await tap(`nav[aria-label="Settings pages"] a[href$="/${name}"]`);
+  }
+
   await ui("default composer ready", `!!document.querySelector('${visibleComposer}:not(:disabled)')`);
   await evaluate(`document.querySelector('${visibleComposer}').focus()`);
   await call("Input.insertText", { text: "default unsent text" });
@@ -1027,21 +1006,21 @@ try {
     "default draft upload ready",
     "document.body.innerText.includes('default-draft.txt') && !document.body.innerText.includes('Uploading')",
   );
-  await tap(agentTab("Instructions"));
+  await botSettingsPage("instructions");
   await ui("default instructions ready", `!!document.querySelector('${visibleInstructions}')`);
   await evaluate(`document.querySelector('${visibleInstructions}').focus()`);
   await call("Input.insertText", { text: "Default instructions draft" });
-  await tap('aside button[aria-label="Create agent"]');
-  await ui("create agent dialog", "!!document.querySelector('form#create-agent input')");
-  await evaluate("document.querySelector('form#create-agent input').focus()");
+  await tap('aside button[aria-label="Create bot"]');
+  await ui("create agent dialog", "!!document.querySelector('form#create-bot input')");
+  await evaluate("document.querySelector('form#create-bot input').focus()");
   await call("Input.insertText", { text: "  Second Bot  " });
-  await tap("form#create-agent button");
+  await tap("form#create-bot button");
   await ui("create dialog model picker", "!!document.querySelector('[cmdk-input]')");
   await evaluate("document.querySelector('[cmdk-input]').focus()");
   await call("Input.insertText", { text: "echo" });
   await tap('[cmdk-item][data-value="faux/echo"]');
   await ui("create picker closed", "!document.querySelector('[cmdk-input]')");
-  await tap('button[form="create-agent"]');
+  await tap('button[form="create-bot"]');
 
   const second = await poll("second agent created", async () =>
     (await api("/api/agents")).agents.find((agent) => agent.name === "Second Bot"),
@@ -1061,7 +1040,7 @@ try {
   );
   await evaluate(`document.querySelector('${visibleComposer}').focus()`);
   await call("Input.insertText", { text: "second unsent text" });
-  await tap(agentTab("Instructions"));
+  await botSettingsPage("instructions");
   await ui("second instructions ready", `!!document.querySelector('${visibleInstructions}')`);
   await check(
     "new agent does not inherit the instructions draft",
@@ -1078,7 +1057,7 @@ try {
     "default timeline excludes second agent messages and keeps its upload",
     "!document.body.innerText.includes('echo: only the second agent sees this') && document.body.innerText.includes('default-draft.txt')",
   );
-  await tap(agentTab("Instructions"));
+  await botSettingsPage("instructions");
   await ui(
     "default instructions draft restored",
     `document.querySelector('${visibleInstructions}')?.value === 'Default instructions draft'`,
@@ -1097,7 +1076,7 @@ try {
     "second composer excludes default attachments",
     "!document.body.innerText.includes('default-draft.txt')",
   );
-  await tap(agentTab("Instructions"));
+  await botSettingsPage("instructions");
   await ui(
     "second instructions draft restored",
     `document.querySelector('${visibleInstructions}')?.value === 'Second instructions draft'`,
@@ -1146,8 +1125,11 @@ try {
     "second draft after late upload",
     `document.querySelector('${visibleComposer}')?.value === 'second unsent text'`,
   );
-  await tap(agentTab("Channels"));
-  await ui("second agent channel controls", "document.body.innerText.includes('All channels')");
+  await botSettingsPage("channels");
+  await ui(
+    "second agent channel controls",
+    "document.body.innerText.includes('Connections') && !!document.querySelector('main a[href$=\"/channels/telegram\"]')",
+  );
   await check(
     "second agent channel links",
     `['telegram', 'wechat', 'feishu'].every(name => !!document.querySelector('main a[href="/a/${second.id}/channels/' + name + '"]:not([inert] *)'))`,
@@ -1170,7 +1152,7 @@ try {
   );
   await check(
     "extensions belong to the selected agent",
-    `!document.querySelector('aside a[href="/extensions"]') && document.body.innerText.includes('Reload selected agent')`,
+    `!document.querySelector('aside a[href="/extensions"]') && document.body.innerText.includes('Reload selected bot')`,
   );
   await check(
     "extension levels and secrecy",
@@ -1186,7 +1168,7 @@ try {
   await shot("13c-extension-servers-phone");
   await viewport(1440, 1000);
   await shot("13d-extension-servers-desktop");
-  await tap('aside a[href="/secrets"]');
+  await tap('main a[href="/secrets"]');
   await ui(
     "secrets uses current agent",
     `!!document.querySelector('main a[href="/a/${second.id}/extensions"]') && !document.body.innerText.includes('Not yet available')`,
@@ -1197,7 +1179,7 @@ try {
   );
   await check(
     "home secrets are read-only",
-    `!document.querySelector('[data-env-scope="home"] button') && document.body.innerText.includes('Home · Read-only') && document.body.innerText.includes('All agents (dex)') && document.body.innerText.includes('Shadowed')`,
+    `!document.querySelector('[data-env-scope="home"] button') && document.body.innerText.includes('Home · Read-only') && document.body.innerText.includes('All bots (dex)') && document.body.innerText.includes('Shadowed')`,
   );
   const secretKey = "BROWSER_WRITE_ONLY_KEY";
   const secretValue = "browser-private-value-do-not-show";
@@ -1313,7 +1295,7 @@ try {
   await visit("/a/nope");
   await ui(
     "unknown agent page",
-    `document.body.innerText.includes('Agent not found') && !!document.querySelector('main a[href="/"]')`,
+    `document.body.innerText.includes('Bot not found') && !!document.querySelector('main a[href="/"]')`,
   );
   results.push(
     "create second agent, echo isolation, separate composer/instructions/upload drafts, channels boundary, legacy redirect and unknown agent",
@@ -1346,12 +1328,15 @@ try {
     );
   }
 
-  await tap('nav a[data-tab="Sessions"]');
+  const lastAgentPath = `/a/${connectionAgents.at(-1).id}`;
+
+  // A full page navigation would close the streams and hide a connection leak.
+  await tap(`aside a[href="${lastAgentPath}"] + button[aria-label="New session"]`);
   await ui(
-    "Sessions loads after seven agent switches",
-    "document.body.innerText.includes('No sessions yet')",
+    "New session works after seven agent switches",
+    `location.pathname.startsWith('${lastAgentPath}/c/') && document.querySelector('#page-title')?.textContent === 'New chat'`,
   );
-  results.push("seven agent Chat visits leave ordinary Sessions requests working");
+  results.push("seven agent Chat visits leave ordinary New session requests working");
   await shot("16-seven-agents");
 
   await visit("/providers");
@@ -1370,7 +1355,7 @@ try {
     [],
     "sidebar activity polls only the shared agent list",
   );
-  results.push("two agents share one activity list poll with no per-agent channel, automation or chat reads");
+  results.push("all agents share one activity list poll with no per-agent channel, automation or chat reads");
   assert.deepEqual(exceptions, [], "no browser exceptions");
   assert.equal((await api("/api/agents/default/chats/main")).id, main.id);
   results.push(
@@ -1525,6 +1510,15 @@ async function api(path, body, method = body ? "POST" : "GET") {
   assert.ok(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(value)}`);
 
   return value;
+}
+
+async function holdMaintenance() {
+  // A cancelled task record does not prove that native execution has stopped.
+  await poll("maintenance admission", async () => {
+    await api("/api/maintenance", undefined, "POST");
+
+    return true;
+  });
 }
 
 async function model(modelId) {

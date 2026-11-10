@@ -180,11 +180,17 @@ try {
   await evaluate(`document.querySelector('a[href="/a/default/tasks/${task.id}"]:not([inert] *)').click()`);
   await preview("task.md", taskArtifact.id);
   await click("Continue editing");
-  await poll("task returns to main", async () => (await evaluate("location.pathname")) === "/a/default");
+  await poll(
+    "terminal task opens its writable conversation",
+    async () => (await evaluate("location.pathname")) === `/a/default/c/${task.conversationId}`,
+  );
   await hasDraft(taskArtifact.id);
-  await hasDraft(mainArtifact.id);
+  assert.equal((await api(`/api/agents/default/chats/${task.conversationId}`)).readOnly, false);
   await shot("task");
-  results.push("background task returns to canonical main and preserves its draft");
+  await evaluate(`document.querySelector('aside a[href="/a/default"]').click()`);
+  await poll("main restored", async () => (await evaluate("location.pathname")) === "/a/default");
+  await hasDraft(mainArtifact.id);
+  results.push("terminal task continues in its writable conversation and preserves the main draft");
   await visit(`/a/default/c/${run.chatId}`);
   await preview("routine.md", routineArtifact.id);
   await click("Continue editing");

@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
-import type { Agent, InboxItem } from "../api/generated/types.gen";
-import { inboxCount, resultQuote } from "./inbox";
+import type { InboxItem } from "../api/generated/types.gen";
+import { resultQuote } from "./inbox";
 
 const result: InboxItem = {
   runId: "run",
@@ -15,41 +15,6 @@ const result: InboxItem = {
   read: false,
   dismissed: false,
 };
-
-test("rail counts sum the shared agent response, including zero activity", () => {
-  const base = { provider: "faux", modelId: "echo", thinkingLevel: "off" as const, instructions: "" };
-
-  const agents: Agent[] = [
-    {
-      ...base,
-      name: "First",
-      activity: {
-        activeSessions: 0,
-        enabledAutomations: 1,
-        runningChannels: 0,
-        inboxUnread: 2,
-        inboxFailed: 0,
-        routineFailed: false,
-      },
-    },
-    {
-      ...base,
-      name: "Second",
-      activity: {
-        activeSessions: 0,
-        enabledAutomations: 1,
-        runningChannels: 0,
-        inboxUnread: 1,
-        inboxFailed: 1,
-        routineFailed: true,
-      },
-    },
-    { ...base, name: "New bot" },
-  ];
-
-  expect(inboxCount(agents)).toEqual({ unread: 3, failed: 1 });
-  expect(inboxCount([])).toEqual({ unread: 0, failed: 0 });
-});
 
 test("Continue can quote an unchanged run", () => {
   expect(resultQuote({ ...result, outcome: "unchanged" })).toContain("Outcome: unchanged");

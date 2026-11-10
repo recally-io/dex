@@ -33,7 +33,7 @@ To try the UI without a provider, start the server with `DEX_FAKE_MODEL=1`
 and choose `faux/echo`, or `faux/bash` to see tool calls.
 
 For channel setup, see the [product scope](../product.md#scope) and the
-selected agent's Channels tab.
+selected agent's Channels page under Settings.
 
 The optional environment variables are `DEX_DATA_DIR` (default `~/.dex`) and
 `DEX_ADDR` (default `127.0.0.1:8787`). Use a separate `DEX_DATA_DIR` to try
@@ -96,7 +96,15 @@ and its PNG in the same change.
 
 [Check](../../.github/workflows/check.yml) runs on each push to `main` and
 each pull request. Its jobs run the steps of `mise run check` in parallel:
-lint and drift, web, and Go lint and tests. When you add a step to
+lint and drift, web, Go lint and tests, and native checks and cross-builds.
+Three app-test jobs partition all discovered top-level tests. Each job runs
+its partition with the race detector. The Go job uses `check:go without-app`
+for all other packages; local `check:go` still runs every package.
+Run `mise run check:app-shard 0 3` to repeat the first partition locally.
+Each app job saves its test list and JSON timings as a seven-day artifact.
+The jobs share the main Go cache without saving duplicate archives.
+The native job builds darwin and linux for amd64 and arm64 without cgo.
+When you add a step to
 `check` in `mise.toml`, add it to the workflow too.
 
 To release:
@@ -135,7 +143,7 @@ from a browser download; run `xattr -d com.apple.quarantine dex` first.
 
 ## Real-provider agent evals
 
-Run the thirteen versioned tasks through the real HTTP API:
+Run the fifteen versioned tasks through the real HTTP API:
 
 ```sh
 mise run eval:agents --providers-from /path/to/control.sqlite --model provider/model-id
@@ -168,7 +176,7 @@ wall time, model turns, tool calls, spawn counts and reported tokens. Model
 turns count distinct assistant entries, including entries with tool calls only.
 The HTTP transcript reports tokens only for turns with text, so token totals
 can be lower than provider billing totals. The API does not expose cost.
-The command makes real, billable requests. The default run starts 26 tasks;
+The command makes real, billable requests. The default run starts 30 tasks;
 delegation and review add requests. Use a single-task run to check credentials
 before a full run. Provider prices, task retries and model behavior set the cost.
 

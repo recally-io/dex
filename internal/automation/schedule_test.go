@@ -55,6 +55,15 @@ func TestNextTimes(t *testing.T) {
 	}
 }
 
+func BenchmarkLatestInterval(b *testing.B) {
+	due := time.Date(2016, 1, 1, 0, 0, 0, 0, time.UTC)
+	now := due.Add(10 * 365 * 24 * time.Hour)
+	s := Schedule{Kind: "every", Minutes: 5}
+	for b.Loop() {
+		_ = s.latest(due, now, due, time.UTC)
+	}
+}
+
 func TestLatestSkipsOlderMissedTimes(t *testing.T) {
 	start := time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
 	sched := Schedule{Kind: "every", Minutes: 30}
