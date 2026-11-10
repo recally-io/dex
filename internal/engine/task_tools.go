@@ -76,12 +76,18 @@ type TaskTools struct {
 	ReportCheck      func(context.Context, TaskContext, CheckReport) error
 	SetProject       func(context.Context, TaskContext, string) (string, error)
 	Fork             func(context.Context, TaskContext, int64) (int64, error)
+	Compact          func(context.Context, TaskContext) (CompactReceipt, error)
 	Spawn            func(context.Context, TaskContext, SpawnTaskArgs) (TaskInfo, error)
 	List             func(context.Context, TaskContext) ([]TaskInfo, error)
 	Get              func(context.Context, TaskContext, string) (TaskInfo, error)
 	Cancel           func(context.Context, TaskContext, string) (TaskInfo, error)
 	Acknowledge      func(context.Context, TaskContext, string) (TaskInfo, error)
 	AskUser          func(context.Context, TaskContext, AskUserArgs) (QuestionInfo, error)
+}
+
+type CompactReceipt struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
 }
 
 func codingSkill() *durable.Extension {
@@ -189,6 +195,12 @@ func taskExtension(agentID string, handlers TaskTools) *durable.Extension {
 		return struct {
 			ChatID int64 `json:"chatId"`
 		}{ChatID: id}, nil
+	}))
+	tools = append(tools, makeTool("compact_context", "Request context compaction. The receipt does not mean the summary has been applied.", map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}, func(ctx context.Context, source TaskContext, _ any) (any, error) {
+		if handlers.Compact == nil {
+			return nil, errors.New("compaction service is unavailable")
+		}
+		return handlers.Compact(ctx, source)
 	}))
 	tools = append(tools, &durable.ToolRegistration{
 		Name: "set_project", Description: "Set the project directory for this conversation. Use an absolute path, or an empty path to restore the agent workspace.",

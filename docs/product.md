@@ -39,7 +39,8 @@ to read in an afternoon.
   Clear context starts a new model context when the timeline
   is idle. Earlier messages stay readable with Show earlier messages. A clear
   can keep handoff text in the new context without starting a reply. A clear
-  keeps long-term memory. After a summary, Show earlier messages can load
+  keeps long-term memory. Compact requests a summary without clearing history.
+  The UI shows when the summary is applied, stale, not needed, or failed. After a summary, Show earlier messages can load
   the earlier transcript. Only a clear shows a divider. The bot is one page
   with exactly four tabs: Chat, Routines, Extensions, and Settings. Its
   Settings tab holds General, Instructions, and Channels. Its header shows the

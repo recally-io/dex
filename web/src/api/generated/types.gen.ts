@@ -4,6 +4,12 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type Compaction = {
+    id: string;
+    status: 'pending' | 'generating' | 'pending_write' | 'applied' | 'no_op' | 'stale' | 'failed';
+    reason?: string;
+};
+
 export type Error = {
     /**
      * A message for the user.
@@ -2354,6 +2360,77 @@ export type WithdrawMessageResponses = {
 };
 
 export type WithdrawMessageResponse = WithdrawMessageResponses[keyof WithdrawMessageResponses];
+
+export type CompactChatData = {
+    body: {
+        id: string;
+    };
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/compactions';
+};
+
+export type CompactChatErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CompactChatError = CompactChatErrors[keyof CompactChatErrors];
+
+export type CompactChatResponses = {
+    /**
+     * The compaction receipt.
+     */
+    202: Compaction;
+};
+
+export type CompactChatResponse = CompactChatResponses[keyof CompactChatResponses];
+
+export type GetChatCompactionData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+        operationId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/compactions/{operationId}';
+};
+
+export type GetChatCompactionErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetChatCompactionError = GetChatCompactionErrors[keyof GetChatCompactionErrors];
+
+export type GetChatCompactionResponses = {
+    /**
+     * The compaction state.
+     */
+    200: Compaction;
+};
+
+export type GetChatCompactionResponse = GetChatCompactionResponses[keyof GetChatCompactionResponses];
 
 export type ClearContextData = {
     body: {

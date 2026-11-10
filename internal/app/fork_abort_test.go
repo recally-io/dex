@@ -57,6 +57,14 @@ func TestUserCannotForkBeforePendingAbortAcknowledgement(t *testing.T) {
 	if err = rw.QueryRowContext(t.Context(), "SELECT count(*) FROM fork_operations WHERE operation_id=?", key).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("saved premature fork %d %v", n, err)
 	}
+	compactKey := uuid.NewV7().String()
+	status, raw = d.call(t, http.MethodPost, path+"/compactions", map[string]string{"id": compactKey})
+	if status < 500 {
+		t.Fatalf("compact passed abort failure: %d %s", status, raw)
+	}
+	if err = rw.QueryRowContext(t.Context(), "SELECT count(*) FROM compact_operations WHERE operation_id=?", compactKey).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("saved premature compact %d %v", n, err)
+	}
 	if _, err = rw.ExecContext(t.Context(), `DROP TRIGGER hold_abort_ack`); err != nil {
 		t.Fatal(err)
 	}

@@ -85,6 +85,9 @@ func TestUserForkWaitsForPendingNativeAbort(t *testing.T) {
 	if _, err = service.createForkReceipt(t.Context(), "bot", source, entry, "pending-fork", ""); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = service.createCompactReceipt(t.Context(), "bot", source, "pending-compact"); err != nil {
+		t.Fatal(err)
+	}
 	if err = service.Stop(t.Context(), "bot", id); err != nil {
 		t.Fatal(err)
 	}
@@ -111,12 +114,32 @@ func TestUserForkWaitsForPendingNativeAbort(t *testing.T) {
 	if _, err = r.q.GetForkOperation(t.Context(), "tool-fork"); err == nil {
 		t.Fatal("tool saved intent before abort")
 	}
+	if _, err = service.Compact(t.Context(), "bot", id, "direct-compact"); err == nil {
+		t.Fatal("compact passed failed abort")
+	}
+	toolSource.Key = "tool-compact"
+	if _, err = service.ToolCompact(t.Context(), toolSource); err == nil {
+		t.Fatal("tool compact passed failed abort")
+	}
+	if _, err = r.q.GetCompactOperation(t.Context(), "direct-compact"); err == nil {
+		t.Fatal("compact saved intent before abort")
+	}
+	if _, err = r.q.GetCompactOperation(t.Context(), "tool-compact"); err == nil {
+		t.Fatal("tool compact saved intent before abort")
+	}
+	if _, err = service.CompactionStatus(t.Context(), "bot", id, "pending-compact"); err == nil {
+		t.Fatal("compact status passed failed abort")
+	}
 	if err = service.reconcileAgent(t.Context(), "bot"); err == nil {
 		t.Fatal("reconciliation hid abort failure")
 	}
 	op, err := r.q.GetForkOperation(t.Context(), "pending-fork")
 	if err != nil || op.Status != "pending" {
 		t.Fatalf("fork passed abort gate: %+v %v", op, err)
+	}
+	compact, err := r.q.GetCompactOperation(t.Context(), "pending-compact")
+	if err != nil || compact.Status != "pending" {
+		t.Fatalf("compact passed abort gate: %+v %v", compact, err)
 	}
 	if _, err = r.conn.ExecContext(t.Context(), `DROP TRIGGER hold_abort_ack`); err != nil {
 		t.Fatal(err)
@@ -131,6 +154,10 @@ func TestUserForkWaitsForPendingNativeAbort(t *testing.T) {
 	op, err = r.q.GetForkOperation(t.Context(), "pending-fork")
 	if err != nil || op.Status != "done" {
 		t.Fatalf("fork did not recover: %+v %v", op, err)
+	}
+	compact, err = r.q.GetCompactOperation(t.Context(), "pending-compact")
+	if err != nil || compact.Status != "admitted" {
+		t.Fatalf("compact did not recover: %+v %v", compact, err)
 	}
 	if err = next.CheckIdle(t.Context(), engine.Ref{AgentID: "bot", ID: child.ExecutionID}); err != nil {
 		t.Fatalf("fork started work: %v", err)

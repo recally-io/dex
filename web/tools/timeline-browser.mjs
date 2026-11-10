@@ -1397,6 +1397,25 @@ try {
   results.push("clear with passive handoff and use it on the next input");
   await shot("18-handoff");
 
+  await poll(
+    "handoff continuation settled",
+    async () => !(await api(`/api/agents/default/chats/${forkID}`)).busy,
+  );
+  await click("Compact context");
+  await ui("compaction no-op displayed", `document.body.innerText.includes('Nothing to compact')`);
+  const compactID = await evaluate(`localStorage.getItem('dex-compact:default:${forkID}')`);
+  assert.ok(compactID, "compaction keeps its operation ID");
+  await visit(`/a/default/c/${forkID}`);
+  await ui("compaction state survives reload", `document.body.innerText.includes('Nothing to compact')`);
+  assert.equal((await api(`/api/agents/default/chats/${forkID}/compactions/${compactID}`)).status, "no_op");
+  await click("Clear context");
+  await ui(
+    "compaction state remains after clear",
+    `!!document.querySelector('[role="separator"]') && document.body.innerText.includes('Nothing to compact')`,
+  );
+  results.push("compact short context and restore the no-op receipt after reload and clear");
+  await shot("19-compact");
+
   await visit("/providers");
   await ui(
     "global provider page ready",

@@ -122,6 +122,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Fork: func(ctx context.Context, c engine.TaskContext, entryID int64) (int64, error) {
 			return chats.ToolFork(ctx, c, entryID)
 		},
+		Compact: func(ctx context.Context, c engine.TaskContext) (engine.CompactReceipt, error) {
+			result, err := chats.ToolCompact(ctx, c)
+			return engine.CompactReceipt{ID: result.ID, Status: result.Status}, err
+		},
 		Spawn: func(ctx context.Context, c engine.TaskContext, args engine.SpawnTaskArgs) (engine.TaskInfo, error) {
 			t, err := chats.SpawnTask(ctx, c, args)
 			return engine.TaskInfo(t), err

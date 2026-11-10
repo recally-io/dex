@@ -156,6 +156,12 @@ that input to remain pending. On recovery, an
 ended input can replay an already committed native fork. It cannot create one
 from an uncommitted intent.
 
+Manual Compact saves an operation receipt and creates one PiG compaction task
+with the same operation ID. A tool returns the receipt without waiting for a
+run boundary. The task can finish before its summary write is applied. The
+status reads that write and distinguishes queued, applied, stale, no-op, and
+failed outcomes. A restart reconciles a receipt that lacks the native task ID.
+
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
 each agent execution store. Run one dex process per data directory.
 

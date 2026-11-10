@@ -776,6 +776,36 @@ func (h *handler) ForkChat(ctx context.Context, req api.ForkChatRequestObject) (
 	return api.ForkChat201JSONResponse(chatView(result)), nil
 }
 
+func compactionView(c chat.Compaction) api.Compaction {
+	out := api.Compaction{Id: c.ID, Status: api.CompactionStatus(c.Status)}
+	if c.Reason != "" {
+		out.Reason = new(c.Reason)
+	}
+	return out
+}
+
+func (h *handler) CompactChat(ctx context.Context, req api.CompactChatRequestObject) (api.CompactChatResponseObject, error) {
+	if req.Body == nil {
+		return nil, errInvalid
+	}
+	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+		return nil, err
+	}
+	result, err := h.Chats.Compact(ctx, agentID(ctx), req.ChatId, req.Body.Id.String())
+	if err != nil {
+		return nil, err
+	}
+	return api.CompactChat202JSONResponse(compactionView(result)), nil
+}
+
+func (h *handler) GetChatCompaction(ctx context.Context, req api.GetChatCompactionRequestObject) (api.GetChatCompactionResponseObject, error) {
+	result, err := h.Chats.CompactionStatus(ctx, agentID(ctx), req.ChatId, req.OperationId)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetChatCompaction200JSONResponse(compactionView(result)), nil
+}
+
 func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestObject) (api.ClearContextResponseObject, error) {
 	if req.Body == nil {
 		return nil, errInvalid

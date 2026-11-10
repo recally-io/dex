@@ -87,7 +87,14 @@ func (s *Service) dispatch(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	compactions, err := s.q.ListPendingCompactOperations(ctx)
+	if err != nil {
+		return err
+	}
 	agents := make(map[string]struct{})
+	for _, compact := range compactions {
+		agents[compact.AgentID] = struct{}{}
+	}
 	for _, fork := range forks {
 		agents[fork.AgentID] = struct{}{}
 	}

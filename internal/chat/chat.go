@@ -204,6 +204,17 @@ func (s *Service) reconcileAgent(ctx context.Context, agentID string) error {
 			}
 		}
 	}
+	compactions, err := s.q.ListPendingCompactOperations(ctx)
+	if err != nil {
+		return errors.Join(append(errs, err)...)
+	}
+	for _, compact := range compactions {
+		if compact.AgentID == agentID && !agentBlocked {
+			if err := s.admitCompact(ctx, compact); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
 	pending, err := s.q.ListPendingSubmissions(ctx)
 	if err != nil {
 		return errors.Join(append(errs, err)...)

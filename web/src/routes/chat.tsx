@@ -27,7 +27,12 @@ import { SessionSettings } from "../components/session-settings";
 import { TaskSessionBar } from "../components/agent/task-session-bar";
 import { Artifacts, takeArtifactDraft } from "../components/agent/artifacts";
 import { Composer } from "../components/composer";
-import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
+import {
+  hasContext,
+  useClearContext,
+  LoadEarlierButton,
+  CompactContext,
+} from "../components/timeline-actions";
 import { QuestionCard } from "../components/agent/question-card";
 import { RetryNotice, Transcript, type QueuedActions } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
@@ -462,27 +467,30 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       ) : null}
       <Composer
         controls={
-          hasContext(items) ? (
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                title="Start a new context. Earlier messages stay."
-                disabled={clear.pending}
-                onClick={() => clear.submit()}
-                className="flex h-7 items-center rounded-md px-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
-              >
-                Clear context
-              </button>
-              <button
-                type="button"
-                disabled={clear.pending}
-                onClick={() => setHandoffOpen(true)}
-                className="flex h-7 items-center rounded-md px-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
-              >
-                Clear with handoff
-              </button>
-            </div>
-          ) : null
+          <div className="flex flex-wrap items-center gap-1">
+            {hasContext(items) ? (
+              <>
+                <button
+                  type="button"
+                  title="Start a new context. Earlier messages stay."
+                  disabled={clear.pending}
+                  onClick={() => clear.submit()}
+                  className="flex h-7 items-center rounded-md px-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+                >
+                  Clear context
+                </button>
+                <button
+                  type="button"
+                  disabled={clear.pending}
+                  onClick={() => setHandoffOpen(true)}
+                  className="flex h-7 items-center rounded-md px-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+                >
+                  Clear with handoff
+                </button>
+              </>
+            ) : null}
+            <CompactContext chatId={chatId} />
+          </div>
         }
         fix={
           model.ok ? null : settings.providers.length ? (

@@ -950,6 +950,58 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/chats/{chatId}/compactions:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    post:
+      operationId: compactChat
+      description: Requests manual compaction without waiting for the summary to apply.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, format: uuid }
+      responses:
+        "202":
+          description: The compaction receipt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Compaction" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/compactions/{operationId}:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+      - in: path
+        name: operationId
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getChatCompaction
+      description: Reads the task and summary write state without waiting.
+      responses:
+        "200":
+          description: The compaction state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Compaction" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/chats/{chatId}/clear:
     parameters:
       - in: path
@@ -1441,6 +1493,24 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
+    Compaction:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string }
+        status:
+          type: string
+          enum: [
+            pending,
+            generating,
+            pending_write,
+            applied,
+            no_op,
+            stale,
+            failed,
+          ]
+        reason: { type: string }
+
     Error:
       type: object
       required: [error]
