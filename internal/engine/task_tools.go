@@ -290,7 +290,10 @@ func taskSource(ctx context.Context, api durable.ToolExecutionApi) (string, erro
 					}
 				}
 			}
-			return nil, errors.New("task tool source run is not bound")
+		}
+		// A continuation uses its own input, even when the conversation has a task binding.
+		if len(live.Run.Inputs) != 1 {
+			return nil, errors.New("task tool has no single source input")
 		}
 		var cursor durable.Cursor
 		for {

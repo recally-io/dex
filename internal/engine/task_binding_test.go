@@ -79,14 +79,16 @@ func TestUserTaskBindingRejectsConflictsWithoutReceipt(t *testing.T) {
 	ref := coreCreate(t, a, "alpha", opts)
 	old := coreSubmit(t, a, ref, "taken", "old", "echo")
 	coreWait(t, old)
-	if _, err := a.Submit(t.Context(), ref, Input{RequestID: "taken", Background: true, Options: opts}); err == nil {
-		t.Fatal("existing ordinary input became a root")
-	}
+	// Before a root exists, the engine cannot tell an ordinary input from a task admitted before
+	// bindings existed, so the guard starts with the root.
 	root, err := a.Submit(t.Context(), ref, Input{RequestID: "root", Content: "goal", Background: true, Options: opts})
 	if err != nil {
 		t.Fatal(err)
 	}
 	coreWait(t, root)
+	if _, err := a.Submit(t.Context(), ref, Input{RequestID: "taken", Background: true, Options: opts}); err == nil {
+		t.Fatal("existing ordinary input became a root")
+	}
 	if _, err := a.Submit(t.Context(), ref, Input{RequestID: "root", Kind: "task_result", Background: true}); err == nil {
 		t.Fatal("root replay changed input kind")
 	}

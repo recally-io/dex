@@ -75,7 +75,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			if err != nil {
 				return nil, err
 			}
-			if binding.Sealed {
+			if binding.Sealed && (input.Background || !input.TaskContinuation) {
 				return nil, fmt.Errorf("%w: task sealed", ErrNotFound)
 			}
 			if input.Background && binding.Root != "" {
@@ -95,7 +95,8 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 				return nil, err
 			}
 			mapped, bound := b.Inputs[input.RequestID]
-			if input.Background && (b.Root != input.RequestID || !bound || (mapped.ID != record.Id || mapped.Kind != inputEntryKind(input)) || record.Type != durable.SubmissionTypeInput) {
+			// Legacy inputs have no binding. Control's task record supplies their background role.
+			if input.Background && (record.Type != durable.SubmissionTypeInput || (b.Root != "" && (b.Root != input.RequestID || !bound || mapped.ID != record.Id || mapped.Kind != inputEntryKind(input)))) {
 				return nil, fmt.Errorf("%w: request is not task root", ErrInvalidInput)
 			}
 			if !input.Background && bound {
