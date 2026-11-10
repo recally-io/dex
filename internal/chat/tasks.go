@@ -34,7 +34,7 @@ func taskTime(n sql.NullInt64) *int64 {
 	return nil
 }
 
-func (s *Service) taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task, waitReason string) (Task, error) {
+func (s *Service) taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task) (Task, error) {
 	c, err := q.GetConversation(ctx, row.ConversationID)
 	if err != nil {
 		return Task{}, err
@@ -59,7 +59,7 @@ func (s *Service) taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task, 
 	}
 	view := Task{ID: row.ID, Title: row.Title, Status: row.Status,
 		Goal: goal.Content, Constraints: constraints, DoneCriteria: criteria, StructuredReport: report, HasStructuredReport: report != nil,
-		GoalMet: row.Status == "done" && report != nil && report.Outcome == "done", WaitReason: waitReason,
+		GoalMet:  row.Status == "done" && report != nil && report.Outcome == "done",
 		Provider: c.ModelProvider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel,
 		CreatedAt: row.CreatedAt, StartedAt: taskTime(row.StartedAt), EndedAt: taskTime(row.EndedAt), HandledAt: taskTime(row.HandledAt),
 		Report: row.Report}
@@ -80,17 +80,8 @@ func (s *Service) ListTasks(ctx context.Context, agentID string, parentID int64)
 		return nil, err
 	}
 	tasks := make([]Task, 0, len(rows))
-	admissions, err := s.q.ListTaskAdmissions(ctx)
-	if err != nil {
-		return nil, err
-	}
 	for _, row := range rows {
-		conv, err := s.q.GetConversation(ctx, row.ConversationID)
-		if err != nil {
-			return nil, err
-		}
-		waitReason := taskWaitReasonFrom(admissions, row, conv)
-		t, err := s.taskView(ctx, s.q, row, waitReason)
+		t, err := s.taskView(ctx, s.q, row)
 		if err != nil {
 			return nil, err
 		}
@@ -122,14 +113,10 @@ func (s *Service) GetTask(ctx context.Context, agentID string, parentID int64, i
 	if err != nil {
 		return Task{}, err
 	}
-	waitReason, err := s.taskWaitReason(ctx, row)
-	if err != nil && row.Status == "queued" {
-		waitReason = "unknown"
-	}
-	return s.taskView(ctx, s.q, row, waitReason)
+	return s.taskView(ctx, s.q, row)
 }
 
-// Acquire SQLite's writer before checking the source and capacity.
+// Acquire SQLite's writer before checking the source.
 func (s *Service) taskTransaction(ctx context.Context) (*sql.Tx, *sqlc.Queries, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -321,16 +308,6 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r eng
 	if err != nil {
 		return "", err
 	}
-	// A bot may retain at most 20 queued or running tasks. Increase this only after
-	// measuring control-store and scheduler latency under larger queues.
-	const maxTaskSlots = 20
-	count, err := q.CountTaskSlots(ctx, r.AgentID)
-	if err != nil {
-		return "", err
-	}
-	if count >= maxTaskSlots {
-		return "", fmt.Errorf("%w: this bot already has %d queued or running tasks", ErrTaskConflict, maxTaskSlots)
-	}
 	now, id := s.now().UnixMilli(), uuid.NewV7().String()
 	conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: r.AgentID, ChannelKey: "task:" + id, Title: a.Title, ModelProvider: settings.Provider, ModelID: settings.ModelID, ThinkingLevel: settings.ThinkingLevel, CreatedAt: now})
 	if err != nil {
@@ -360,70 +337,6 @@ func (s *Service) spawnTask(ctx context.Context, parent sqlc.Conversation, r eng
 
 func occupied(status string) bool {
 	return status == "queued" || status == "admitting" || status == "running"
-}
-
-const (
-	waitReasonBotLimit    = "bot limit"
-	waitReasonGlobalLimit = "global limit"
-	waitReasonEarlier     = "waiting for an earlier task"
-)
-
-func admissionCwd(agentID, cwd string) string {
-	if cwd == "" {
-		return "agent:" + agentID
-	}
-	return "cwd:" + cwd
-}
-
-func (s *Service) taskWaitReason(ctx context.Context, task sqlc.Task) (string, error) {
-	if task.Status != "queued" {
-		return "", nil
-	}
-	admissions, err := s.q.ListTaskAdmissions(ctx)
-	if err != nil {
-		return "", err
-	}
-	conv, err := s.q.GetConversation(ctx, task.ConversationID)
-	if err != nil {
-		return "", err
-	}
-	return taskWaitReasonFrom(admissions, task, conv), nil
-}
-
-func taskWaitReasonFrom(admissions []sqlc.ListTaskAdmissionsRow, task sqlc.Task, conv sqlc.Conversation) string {
-	if task.Status != "queued" {
-		return ""
-	}
-	for _, candidate := range admissions {
-		if candidate.ID == task.ID {
-			break
-		}
-		if candidate.AgentID == conv.AgentID && candidate.Status == "queued" {
-			return waitReasonEarlier
-		}
-	}
-	botRunning, globalRunning := int64(0), int64(0)
-	for _, candidate := range admissions {
-		if candidate.Status != "admitting" && candidate.Status != "running" {
-			continue
-		}
-		globalRunning++
-		if candidate.AgentID == conv.AgentID {
-			botRunning++
-		}
-		if admissionCwd(candidate.AgentID, candidate.Cwd) == admissionCwd(conv.AgentID, conv.Cwd) && (task.ModifiesFiles != 0 || candidate.ModifiesFiles != 0) {
-			return fmt.Sprintf("cwd held by task %s", candidate.ID)
-		}
-	}
-	// A bot may run at most four tasks. Raise this after measuring provider fairness.
-	if botRunning >= 4 {
-		return waitReasonBotLimit
-	}
-	// The process may run at most eight tasks across all bots. Raise this after measuring host load.
-	if globalRunning >= 8 {
-		return waitReasonGlobalLimit
-	}
-	return ""
 }
 
 func (s *Service) CancelTask(ctx context.Context, agentID string, parentID int64, id string) (Task, error) {
@@ -485,7 +398,7 @@ func (s *Service) withdrawTask(ctx context.Context, agentID string, parentID int
 		row.Status, row.EndedAt = "cancelled", now
 
 	}
-	t, err := s.taskView(ctx, q, row, "")
+	t, err := s.taskView(ctx, q, row)
 	if err != nil {
 		return Task{}, target, err
 	}

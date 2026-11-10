@@ -62,84 +62,6 @@ func (b botTasks) idle(t *testing.T) {
 	})
 }
 
-// waitQueued waits until the scheduler has evaluated a queued task and returns its reason.
-func (b botTasks) waitQueued(t *testing.T, id, want string) {
-	t.Helper()
-	eventually(t, "wait reason "+want, func() (bool, any) {
-		var task struct {
-			Status     string `json:"status"`
-			WaitReason string `json:"waitReason"`
-		}
-		b.d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/%s/tasks/%s", b.agent, id), nil, &task)
-		return task.Status == "queued" && task.WaitReason == want, task
-	})
-}
-
-func TestUserBotsShareOneProjectLockForModifyingTasks(t *testing.T) {
-	t.Parallel()
-	// Given two bots whose Chats use the same project.
-	dir, project := t.TempDir(), t.TempDir()
-	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	a := newBotTasks(t, d, "default", project)
-	b := newBotTasks(t, d, "Other", project)
-	// When both delegate a task that modifies files.
-	a.spawn(t, dir, "a-writes", true)
-	waitTaskFile(t, filepath.Join(dir, "a-writes.pid"))
-	holder := waitExecution(t, conn, a.chat, "a-writes", "running")
-	b.spawn(t, dir, "b-writes", true)
-	queued := waitExecution(t, conn, b.chat, "b-writes", "queued")
-	// Then the second bot waits for the holder, and starts after it finishes.
-	b.waitQueued(t, queued.ID, "cwd held by task "+holder.ID)
-	if _, err := os.Stat(filepath.Join(dir, "b-writes.pid")); !os.IsNotExist(err) {
-		t.Fatalf("second writer started while the project was held: %v", err)
-	}
-	releaseResultGate(t, dir, "a-writes")
-	waitTaskFile(t, filepath.Join(dir, "b-writes.pid"))
-	releaseResultGate(t, dir, "b-writes")
-	waitExecution(t, conn, b.chat, "b-writes", "done")
-	t.Logf("artifact: holder=%s queued=%s", holder.ID, queued.ID)
-}
-
-func TestUserGlobalTaskLimitQueuesAnIdleBot(t *testing.T) {
-	t.Parallel()
-	// Given two bots that each run four read-only tasks.
-	dir := t.TempDir()
-	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	bots := []botTasks{newBotTasks(t, d, "default", ""), newBotTasks(t, d, "Second", "")}
-	for i, b := range bots {
-		for j := range 4 {
-			b.spawn(t, dir, fmt.Sprintf("bot%d-%d", i, j), false)
-		}
-	}
-	for i, b := range bots {
-		for j := range 4 {
-			name := fmt.Sprintf("bot%d-%d", i, j)
-			waitTaskFile(t, filepath.Join(dir, name+".pid"))
-			waitExecution(t, conn, b.chat, name, "running")
-		}
-	}
-	// When an idle third bot delegates a task.
-	idle := newBotTasks(t, d, "Idle", "")
-	idle.spawn(t, dir, "idle-task", false)
-	queued := waitExecution(t, conn, idle.chat, "idle-task", "queued")
-	// Then it waits for the global limit and starts when any running task ends.
-	idle.waitQueued(t, queued.ID, "global limit")
-	if _, err := os.Stat(filepath.Join(dir, "idle-task.pid")); !os.IsNotExist(err) {
-		t.Fatalf("idle bot exceeded the global limit: %v", err)
-	}
-	releaseResultGate(t, dir, "bot0-0")
-	waitTaskFile(t, filepath.Join(dir, "idle-task.pid"))
-	for i := range 2 {
-		for j := range 4 {
-			releaseResultGate(t, dir, fmt.Sprintf("bot%d-%d", i, j))
-		}
-	}
-	releaseResultGate(t, dir, "idle-task")
-	waitExecution(t, conn, idle.chat, "idle-task", "done")
-}
-
 // promptCancel cancels a task and fails if the request waits for another admission.
 func promptCancel(t *testing.T, d *dex, path, what string) {
 	t.Helper()
@@ -202,21 +124,18 @@ func heldMCP(t *testing.T) (map[string]any, <-chan struct{}, func()) {
 
 func TestUserCancelDuringSlowAdmissionDoesNotBlockOtherBots(t *testing.T) {
 	t.Parallel()
-	// Given bot B has a writer queued behind bot A's writer in one project.
-	dir, project := t.TempDir(), t.TempDir()
+	// Given bot B has a writer that is still queued when dex stops.
+	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
-	holderBot := newBotTasks(t, d, "default", project)
-	b := newBotTasks(t, d, "Slow", project)
-	holderBot.spawn(t, dir, "a-holder", true)
-	waitTaskFile(t, filepath.Join(dir, "a-holder.pid"))
+	b := newBotTasks(t, d, "Slow", "")
+	hold := holdAdmission(t, dir, "b-target")
 	b.spawn(t, dir, "b-target", true)
 	target := waitExecution(t, conn, b.chat, "b-target", "queued")
-	b.waitQueued(t, target.ID, "cwd held by task "+waitExecution(t, conn, holderBot.chat, "a-holder", "running").ID)
 	b.idle(t)
-	holderBot.idle(t)
-	// When restart interrupts A's holder and B's agent opens through a held MCP server.
+	// When dex restarts and B's agent opens through a held MCP server.
 	d.stop()
+	hold()
 	server, entered, release := heldMCP(t)
 	writeMCP(t, filepath.Join(dir, "agents", b.agent, ".agents", "mcp.json"), map[string]any{"held": server})
 	d = startDex(t, dir, "")
@@ -252,8 +171,8 @@ func TestUserCancelDuringSlowAdmissionDoesNotBlockOtherBots(t *testing.T) {
 
 func TestUserTaskFinishesAfterItsAdmissionReceiptFailsOnce(t *testing.T) {
 	t.Parallel()
-	// Given a queued writer whose admission receipt write will fail once.
-	dir, project := t.TempDir(), t.TempDir()
+	// Given a writer whose admission receipt write will fail once.
+	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
 	rw, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
@@ -261,18 +180,14 @@ func TestUserTaskFinishesAfterItsAdmissionReceiptFailsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = rw.Close() })
-	a := newBotTasks(t, d, "default", project)
-	a.spawn(t, dir, "holder", true)
-	waitTaskFile(t, filepath.Join(dir, "holder.pid"))
-	a.spawn(t, dir, "receipt", true)
-	target := waitExecution(t, conn, a.chat, "receipt", "queued")
-	if _, err = rw.ExecContext(t.Context(), fmt.Sprintf(`CREATE TRIGGER fail_receipt BEFORE UPDATE OF admitted_at ON submissions WHEN NEW.id = '%s' BEGIN SELECT RAISE(FAIL, 'receipt write failed'); END`, target.ID)); err != nil {
+	if _, err = rw.ExecContext(t.Context(), `CREATE TRIGGER fail_receipt BEFORE UPDATE OF admitted_at ON submissions WHEN NEW.id IN (SELECT id FROM tasks WHERE title = 'receipt') BEGIN SELECT RAISE(FAIL, 'receipt write failed'); END`); err != nil {
 		t.Fatal(err)
 	}
+	a := newBotTasks(t, d, "default", "")
 	// When the task starts natively but its receipt is not saved.
-	releaseResultGate(t, dir, "holder")
+	a.spawn(t, dir, "receipt", true)
 	waitTaskFile(t, filepath.Join(dir, "receipt.pid"))
-	waitExecution(t, conn, a.chat, "receipt", "running")
+	target := waitExecution(t, conn, a.chat, "receipt", "running")
 	if _, err = rw.ExecContext(t.Context(), "DROP TRIGGER fail_receipt"); err != nil {
 		t.Fatal(err)
 	}

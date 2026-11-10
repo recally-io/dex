@@ -40,12 +40,12 @@ func applyActivity(summary *api.TaskSummary, status string, executionID sql.Null
 	summary.ToolStartedAt = activity.ToolStartedAt
 }
 
-func taskView(t sqlc.Task, executionID int64, activity engine.Activity, waitReason string) api.Task {
+func taskView(t sqlc.Task, executionID int64, activity engine.Activity) api.Task {
 	summary := api.TaskSummary{
 		Id: t.ID, Title: t.Title, Status: api.TaskSummaryStatus(t.Status),
 		CreatedAt: t.CreatedAt, StartedAt: taskTime(t.StartedAt), EndedAt: taskTime(t.EndedAt), HandledAt: taskTime(t.HandledAt),
 		ConversationId: t.ConversationID, ParentConversationId: t.ParentConversationID,
-		ReportOutcome: reportOutcome(t.StructuredReport), WaitReason: optional(waitReason),
+		ReportOutcome: reportOutcome(t.StructuredReport),
 	}
 	applyActivity(&summary, t.Status, sql.NullInt64{Int64: executionID, Valid: executionID > 0}, activity)
 	return api.Task{
@@ -53,7 +53,7 @@ func taskView(t sqlc.Task, executionID int64, activity engine.Activity, waitReas
 		CreatedAt: summary.CreatedAt, StartedAt: summary.StartedAt, EndedAt: summary.EndedAt, HandledAt: summary.HandledAt,
 		ConversationId: summary.ConversationId, ParentConversationId: summary.ParentConversationId,
 		LastAction: summary.LastAction, LastActivityAt: summary.LastActivityAt, ToolStartedAt: summary.ToolStartedAt,
-		ReportOutcome: taskReportOutcome(summary.ReportOutcome), WaitReason: summary.WaitReason, Report: t.Report,
+		ReportOutcome: taskReportOutcome(summary.ReportOutcome), Report: t.Report,
 	}
 }
 
@@ -65,12 +65,12 @@ func taskReportOutcome(outcome *api.TaskSummaryReportOutcome) *api.TaskReportOut
 	return &value
 }
 
-func taskSummary(t sqlc.ListAgentTasksRow, activity engine.Activity, waitReason string) api.TaskSummary {
+func taskSummary(t sqlc.ListAgentTasksRow, activity engine.Activity) api.TaskSummary {
 	summary := api.TaskSummary{
 		Id: t.ID, Title: t.Title, Status: api.TaskSummaryStatus(t.Status),
 		CreatedAt: t.CreatedAt, StartedAt: taskTime(t.StartedAt), EndedAt: taskTime(t.EndedAt), HandledAt: taskTime(t.HandledAt),
 		ConversationId: t.ConversationID, ParentConversationId: t.ParentConversationID,
-		ReportOutcome: reportOutcome(t.StructuredReport), WaitReason: optional(waitReason),
+		ReportOutcome: reportOutcome(t.StructuredReport),
 	}
 	applyActivity(&summary, t.Status, t.ExecutionID, activity)
 	return summary
@@ -85,7 +85,7 @@ func (h *handler) AcknowledgeTask(ctx context.Context, req api.AcknowledgeTaskRe
 	if err != nil {
 		return nil, err
 	}
-	return api.AcknowledgeTask200JSONResponse(taskView(t, executionID, engine.Activity{}, "")), nil
+	return api.AcknowledgeTask200JSONResponse(taskView(t, executionID, engine.Activity{})), nil
 }
 
 func (h *handler) CancelTask(ctx context.Context, req api.CancelTaskRequestObject) (api.CancelTaskResponseObject, error) {
@@ -108,11 +108,7 @@ func (h *handler) CancelTask(ctx context.Context, req api.CancelTaskRequestObjec
 	if t.Status == "running" {
 		activity = h.Engine.Activity([]engine.Ref{{AgentID: agentID(ctx), ID: executionID}})[engine.Ref{AgentID: agentID(ctx), ID: executionID}]
 	}
-	waitReason, err := h.Chats.TaskWaitReason(ctx, agentID(ctx), req.TaskId)
-	if err != nil {
-		return nil, err
-	}
-	return api.CancelTask200JSONResponse(taskView(t, executionID, activity, waitReason)), nil
+	return api.CancelTask200JSONResponse(taskView(t, executionID, activity)), nil
 }
 func (h *handler) GetTask(ctx context.Context, req api.GetTaskRequestObject) (api.GetTaskResponseObject, error) {
 	t, err := h.Chats.TaskRecord(ctx, agentID(ctx), req.TaskId)
@@ -127,9 +123,5 @@ func (h *handler) GetTask(ctx context.Context, req api.GetTaskRequestObject) (ap
 	if t.Status == "running" {
 		activity = h.Engine.Activity([]engine.Ref{{AgentID: agentID(ctx), ID: executionID}})[engine.Ref{AgentID: agentID(ctx), ID: executionID}]
 	}
-	waitReason, err := h.Chats.TaskWaitReason(ctx, agentID(ctx), req.TaskId)
-	if err != nil {
-		return nil, err
-	}
-	return api.GetTask200JSONResponse(taskView(t, executionID, activity, waitReason)), nil
+	return api.GetTask200JSONResponse(taskView(t, executionID, activity)), nil
 }

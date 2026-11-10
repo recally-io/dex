@@ -428,18 +428,6 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 			s.taskMu.Unlock()
 			return nil
 		}
-		waitReason, waitErr := "", error(nil)
-		if !resumed {
-			waitReason, waitErr = s.taskWaitReason(ctx, task)
-		}
-		if waitErr != nil {
-			s.taskMu.Unlock()
-			return waitErr
-		}
-		if waitReason != "" {
-			s.taskMu.Unlock()
-			return nil
-		}
 		if !resumed {
 			started, err := s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
 			if err != nil || started == 0 {

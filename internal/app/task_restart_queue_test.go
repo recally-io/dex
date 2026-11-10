@@ -5,22 +5,24 @@ import (
 	"testing"
 )
 
-func TestUserQueuedTaskOrderSurvivesRestart(t *testing.T) {
+func TestUserQueuedTaskStartsAfterRestart(t *testing.T) {
+	t.Parallel()
+	// Given a task that is still queued when dex stops.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
 	parent := d.mainChat(t)
 	d.setModel(t, "spawn")
-	taskTurn(t, d, parent, taskJSON(t, map[string]any{"title": "restart-holder", "goal": taskGate(t, dir, "restart-holder"), "provider": "faux", "modelId": "bash"}))
-	waitTaskFile(t, filepath.Join(dir, "restart-holder.pid"))
+	release := holdAdmission(t, dir, "restart-queued")
 	taskTurn(t, d, parent, taskJSON(t, map[string]any{"title": "restart-queued", "goal": taskGate(t, dir, "restart-queued"), "provider": "faux", "modelId": "bash"}))
 	waitExecution(t, conn, parent, "restart-queued", "queued")
 	d.stop()
-	next := startDex(t, dir, "")
-	waitExecution(t, conn, parent, "restart-holder", "interrupted")
+	release()
+	// When dex starts again.
+	startDex(t, dir, "")
+	// Then the queued task starts and finishes.
 	waitTaskFile(t, filepath.Join(dir, "restart-queued.pid"))
 	waitExecution(t, conn, parent, "restart-queued", "running")
 	releaseResultGate(t, dir, "restart-queued")
 	waitExecution(t, conn, parent, "restart-queued", "done")
-	_ = next
 }

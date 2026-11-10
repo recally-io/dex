@@ -61,10 +61,6 @@ export type TaskSummary = {
      * The structured report outcome, when the task has a report.
      */
     reportOutcome?: 'done' | 'blocked' | 'failed';
-    /**
-     * Why a queued task is waiting. Values are bot limit, global limit, waiting for an earlier task, or cwd held by task <id>.
-     */
-    waitReason?: string;
 };
 
 export type Task = TaskSummary & {

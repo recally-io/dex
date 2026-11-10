@@ -46,7 +46,7 @@ func taskInput(t *testing.T, r *nativeTest, id string) sqlc.ListPendingSubmissio
 	return sqlc.ListPendingSubmissionsRow{}
 }
 
-func TestUserTaskReplayKeepsIdentityAndQueuesBeyondRunningLimit(t *testing.T) {
+func TestUserTaskReplayKeepsIdentity(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
 	first, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "One", Goal: "one", Constraints: []string{"Do not change code"}, DoneCriteria: []string{"Explain the cause"}})
@@ -64,8 +64,8 @@ func TestUserTaskReplayKeepsIdentityAndQueuesBeyondRunningLimit(t *testing.T) {
 	}
 	source.Key = "bot/spawn-3"
 	third, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "Three", Goal: "three"})
-	if err != nil || third.Status != "queued" {
-		t.Fatalf("queued third task: %+v %v", third, err)
+	if err != nil || third.ID == second.ID {
+		t.Fatalf("third task: %+v %v", third, err)
 	}
 	cancelled, err := r.service.CancelTask(t.Context(), "bot", parent, first.ID)
 	if err != nil || cancelled.Status != "cancelled" {
@@ -101,25 +101,21 @@ func TestUserStoppedTurnCannotAcknowledgeTask(t *testing.T) {
 	}
 }
 
-func TestUserTwentyFirstTaskIsRejectedAfterTwentyQueuedSlots(t *testing.T) {
+func TestUserBotAcceptsMoreThanTwentyOpenTasks(t *testing.T) {
 	r := startNative(t, "echo")
-	parent, source := taskParent(t, r)
-	for i := range 20 {
-		source.Key = fmt.Sprintf("bot/queue-%d", i)
-		if _, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: fmt.Sprintf("Queue %d", i), Goal: "queued"}); err != nil {
+	_, source := taskParent(t, r)
+	// Given and when one bot spawns 25 tasks that stay open, then every spawn succeeds.
+	for i := range 25 {
+		source.Key = fmt.Sprintf("bot/open-%d", i)
+		if _, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: fmt.Sprintf("Open %d", i), Goal: "open"}); err != nil {
 			t.Fatalf("spawn %d: %v", i, err)
 		}
 	}
-	source.Key = "bot/queue-20"
-	if _, err := r.service.SpawnTask(t.Context(), source, engine.SpawnTaskArgs{Title: "Queue 20", Goal: "rejected"}); !errors.Is(err, ErrTaskConflict) {
-		t.Fatalf("21st spawn error: %v", err)
-	}
-	_ = parent
 }
 
 func TestUserReadOnlyTaskPromptDeclaresFileBoundary(t *testing.T) {
 	prompt := taskInstructions("base", "inspect", sqlc.Task{ModifiesFiles: 0})
-	if !strings.Contains(prompt, "do not create, edit, or delete files") || !strings.Contains(prompt, "Other read-only tasks may share this directory") {
+	if !strings.Contains(prompt, "do not create, edit, or delete files") || !strings.Contains(prompt, "Other tasks may run in this directory at the same time") {
 		t.Fatalf("read-only prompt: %s", prompt)
 	}
 }
