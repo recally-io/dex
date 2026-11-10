@@ -61,12 +61,8 @@ func (s *Service) fork(ctx context.Context, agentID string, sourceID, entryID in
 	if caller != nil {
 		_, err := s.q.GetForkOperation(ctx, operationID)
 		if errors.Is(err, sql.ErrNoRows) {
-			input, err := s.q.GetSubmission(ctx, caller.SourceRequestID)
-			if err != nil {
+			if err := s.requireActiveToolSource(ctx, *caller, sourceID); err != nil {
 				return Chat{}, err
-			}
-			if input.ConversationID != sourceID || input.Status != "pending" {
-				return Chat{}, ErrTaskInvalid
 			}
 		} else if err != nil {
 			return Chat{}, err
