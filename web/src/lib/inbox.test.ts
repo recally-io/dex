@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import type { Agent, InboxItem } from "../api/generated/types.gen";
-import { inboxCount, inboxGroups, resultQuote } from "./inbox";
+import { inboxCount, resultQuote } from "./inbox";
 
 const result: InboxItem = {
   runId: "run",
@@ -15,15 +15,6 @@ const result: InboxItem = {
   read: false,
   dismissed: false,
 };
-
-test("Inbox filters and groups keep bot and read state independent", () => {
-  const failed: InboxItem = { ...result, runId: "failure", agentId: "second", outcome: "failed", read: true };
-  const items = [result, failed, { ...result, runId: "dismissed", dismissed: true }];
-  expect(inboxGroups(items, "", "All")).toEqual({ needsYou: [failed], results: [result] });
-  expect(inboxGroups(items, "", "Unread")).toEqual({ needsYou: [], results: [result] });
-  expect(inboxGroups(items, "first", "Needs you")).toEqual({ needsYou: [], results: [] });
-  expect(inboxGroups(items, "second", "Needs you")).toEqual({ needsYou: [failed], results: [] });
-});
 
 test("rail counts sum the shared agent response, including zero activity", () => {
   const base = { provider: "faux", modelId: "echo", thinkingLevel: "off" as const, instructions: "" };
@@ -58,6 +49,10 @@ test("rail counts sum the shared agent response, including zero activity", () =>
 
   expect(inboxCount(agents)).toEqual({ unread: 3, failed: 1 });
   expect(inboxCount([])).toEqual({ unread: 0, failed: 0 });
+});
+
+test("Continue can quote an unchanged run", () => {
+  expect(resultQuote({ ...result, outcome: "unchanged" })).toContain("Outcome: unchanged");
 });
 
 test("Continue quotes the stored result and identifies the exact run transcript", () => {

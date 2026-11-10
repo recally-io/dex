@@ -1,16 +1,22 @@
-import { inboxCount } from "../lib/inbox";
 import { AgentContext, useAgentId } from "../lib/agent-scope";
 import { AgentAvatar } from "./agent-avatar";
 import { DexMark } from "./dex-mark";
 import { AgentCreateDialog } from "./agent-create-dialog";
-import type { Agent } from "../api/generated/types.gen";
+import type { Agent, WorkSession } from "../api/generated/types.gen";
+import { boardBucket, needsTask, automationNeedsYou, openQuestion } from "../lib/work";
+import { readSeen } from "../lib/tasks";
+import { useNewChat } from "./chat-list";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogClose, DialogContent } from "./ui/dialog";
-import { Settings, X, Search, Plus, PanelLeft, Inbox } from "lucide-react";
+import { Settings, X, Search, Plus, PanelLeft, Inbox, Columns3, Repeat } from "lucide-react";
 
-import { getSettingsOptions, listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
+import {
+  getSettingsOptions,
+  getWorkOptions,
+  listAgentsOptions,
+} from "../api/generated/@tanstack/react-query.gen";
 import { Badge } from "./ui/badge";
 import { ShellContext } from "./page";
 import { globalPages } from "./settings-switcher";
@@ -21,9 +27,9 @@ import { cn } from "../lib/utils";
 
 const sidebarKey = "dex-sidebar";
 
-/** The sidebar starts collapsed to the bot icons. The choice stays in this browser. */
+/** The sidebar starts expanded. The choice stays in this browser. */
 function useSidebarOpen() {
-  const [open, setOpen] = useState(() => localStorage.getItem(sidebarKey) === "open");
+  const [open, setOpen] = useState(() => localStorage.getItem(sidebarKey) !== "collapsed");
 
   function toggle() {
     localStorage.setItem(sidebarKey, open ? "collapsed" : "open");
@@ -113,9 +119,8 @@ export function Shell() {
 }
 
 /**
- * The list of bots. Each one is a long-lived role the user talks to, so the list holds the
- * bots themselves, not their sessions or settings. The global settings page sits in the footer.
- * Collapsed, the sidebar keeps one icon per bot; the drawer below lg is always expanded.
+ * The sidebar groups sessions by bot. Global settings stay in the footer.
+ * Collapsed, it keeps one icon per bot; the drawer below lg is always expanded.
  */
 function Sidebar({
   path,
@@ -132,17 +137,44 @@ function Sidebar({
   const agents = useQuery(listAgentsOptions());
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
+  const [now] = useState(() => Date.now());
+
+  const work = useQuery({
+    ...getWorkOptions({ query: { from: now, to: now + 7 * 86400000 } }),
+    refetchInterval: 10000,
+  });
+
   const [a, selected] = path.split("/").filter(Boolean);
   const agentId = a === "a" ? selected : "default";
   const providerErrors = settings.data?.providers.filter((p) => p.error).length ?? 0;
   const onSettings = globalPages.some((page) => page.to === path);
 
   const list = agents.data?.agents ?? [];
-  const unread = inboxCount(list);
+  const sessions = work.data?.sessions ?? [];
+  const automations = work.data?.automations ?? [];
+  const inbox = work.data?.inbox ?? [];
+
+  const needsAutomations = automations.filter((item) =>
+    automationNeedsYou(item.automation.id, item.setup, inbox),
+  ).length;
+
+  const needs =
+    sessions.filter((item) => item.chat.task && needsTask(item.chat.task)).length +
+    sessions.filter((item) => openQuestion(item.chat)).length +
+    inbox.filter((item) => item.outcome === "failed" && !item.dismissed).length +
+    automations.filter((item) => item.setup).length;
+
+  const search = query.trim().toLowerCase();
 
   const shown =
-    query && !collapsed
-      ? list.filter((agent) => agent.name.toLowerCase().includes(query.trim().toLowerCase()))
+    search && !collapsed
+      ? list.filter(
+          (agent) =>
+            agent.name.toLowerCase().includes(search) ||
+            sessions.some(
+              (item) => item.agentId === agent.id && item.chat.title.toLowerCase().includes(search),
+            ),
+        )
       : list;
 
   const iconButton =
@@ -169,17 +201,60 @@ function Sidebar({
         )}
       </div>
       <Link
-        to="/inbox"
-        aria-label={`Inbox, ${unread.unread} unread${unread.failed ? ", needs you" : ""}`}
-        aria-current={path.startsWith("/inbox") ? "page" : undefined}
+        to="/needs-you"
+        aria-label={`Needs you, ${needs} items`}
+        aria-current={path.startsWith("/needs-you") ? "page" : undefined}
         className={cn(
           "relative mx-2 mt-2 flex h-9 items-center gap-2 rounded-md px-2 hover:bg-accent aria-[current=page]:bg-accent",
           collapsed && "mx-0 size-9 justify-center px-0",
         )}
       >
         <Inbox size={18} />
-        {collapsed ? null : <span className="flex-1 text-sm">Inbox</span>}
-        <UnreadBadge unread={unread.unread} failed={unread.failed} floating={collapsed} />
+        {collapsed ? null : <span className="flex-1 text-sm">Needs you</span>}
+        {needs ? (
+          <Badge
+            variant="destructive"
+            aria-label={`${needs} need attention`}
+            className={cn(
+              "h-4 min-w-4 px-1 text-[10px] tabular-nums",
+              collapsed && "absolute -top-1 -right-1",
+            )}
+          >
+            {needs}
+          </Badge>
+        ) : null}
+      </Link>
+      <Link
+        to="/work"
+        aria-label="Work"
+        aria-current={path.startsWith("/work") ? "page" : undefined}
+        className={cn(
+          "relative mx-2 flex h-9 items-center gap-2 rounded-md px-2 hover:bg-accent aria-[current=page]:bg-accent",
+          collapsed && "mx-0 size-9 justify-center px-0",
+        )}
+      >
+        <Columns3 size={18} />
+        {collapsed ? null : <span className="flex-1 text-sm">Work</span>}
+      </Link>
+      <Link
+        to="/automations"
+        aria-label={`Automations, ${automations.length}, ${needsAutomations} need you`}
+        aria-current={path === "/automations" ? "page" : undefined}
+        className={cn(
+          "relative mx-2 flex h-9 items-center gap-2 rounded-md px-2 hover:bg-accent aria-[current=page]:bg-accent",
+          collapsed && "mx-0 size-9 justify-center px-0",
+        )}
+      >
+        <Repeat size={16} />
+        {collapsed ? null : (
+          <>
+            <span className="flex-1 text-sm">Automations</span>
+            {needsAutomations ? (
+              <span className="text-xs text-orange">{needsAutomations} need you</span>
+            ) : null}
+            <span className="text-xs text-muted-foreground">{automations.length}</span>
+          </>
+        )}
       </Link>
       {collapsed ? (
         <span aria-hidden className="my-2 h-px w-6 shrink-0 bg-border" />
@@ -196,14 +271,14 @@ function Sidebar({
           </button>
         </div>
       )}
-      {list.length > 4 && !collapsed ? (
+      {!collapsed ? (
         <div className="mx-2 mb-1.5 flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-card px-2 text-muted-foreground">
           <Search size={13} />
           <input
             type="search"
             value={query}
-            aria-label="Search bots"
-            placeholder="Search bots"
+            aria-label="Search sessions"
+            placeholder="Search sessions"
             onChange={(event) => setQuery(event.target.value)}
             className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground"
           />
@@ -214,7 +289,13 @@ function Sidebar({
       >
         {shown.map((agent) => (
           <AgentContext.Provider key={agent.id} value={agent.id!}>
-            <AgentRow agent={agent} current={a === "a" && agent.id === selected} collapsed={collapsed} />
+            <AgentRow
+              agent={agent}
+              current={a === "a" && agent.id === selected}
+              collapsed={collapsed}
+              sessions={sessions.filter((item) => item.agentId === agent.id)}
+              search={search}
+            />
           </AgentContext.Provider>
         ))}
         {collapsed ? (
@@ -292,7 +373,19 @@ function Sidebar({
   );
 }
 
-function AgentRow({ agent, current, collapsed }: { agent: Agent; current: boolean; collapsed: boolean }) {
+function AgentRow({
+  agent,
+  current,
+  collapsed,
+  sessions,
+  search,
+}: {
+  agent: Agent;
+  current: boolean;
+  collapsed: boolean;
+  sessions: WorkSession[];
+  search: string;
+}) {
   const agentId = useAgentId();
   const { draft } = useApp();
   const dirty = instructionsDirty(draft, agent.instructions);
@@ -333,33 +426,117 @@ function AgentRow({ agent, current, collapsed }: { agent: Agent; current: boolea
     );
 
   return (
-    <div className="mx-2 mb-1 flex shrink-0 items-center">
+    <div>
+      <div className="mx-2 mb-1 flex shrink-0 items-center">
+        <Link
+          to="/a/$agentId"
+          params={{ agentId }}
+          aria-current={current ? "page" : undefined}
+          className={cn(
+            "flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 hover:bg-accent",
+            current && "bg-accent",
+          )}
+        >
+          <AgentAvatar agent={agent} />
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-[14px] leading-tight font-semibold text-foreground">
+              {agent.name}
+            </span>
+            <span className="truncate text-[11.5px] leading-tight text-muted-foreground">{status}</span>
+          </span>
+          <UnreadBadge unread={unread} failed={failed} />
+          {dirty ? (
+            <Badge
+              variant="outline"
+              className="h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-foreground"
+            >
+              Draft
+            </Badge>
+          ) : null}
+        </Link>
+        <NewSessionButton agentId={agentId} />
+      </div>
+      <AgentSessions agentId={agentId} sessions={sessions} search={search} />
+    </div>
+  );
+}
+
+function NewSessionButton({ agentId }: { agentId: string }) {
+  const create = useNewChat();
+
+  return (
+    <button
+      type="button"
+      aria-label="New session"
+      disabled={create.isPending}
+      onClick={() => create.mutate({ path: { agentId } })}
+      className="flex size-7 items-center justify-center text-muted-foreground hover:text-foreground"
+    >
+      <Plus size={14} />
+    </button>
+  );
+}
+
+function AgentSessions({
+  agentId,
+  sessions,
+  search,
+}: {
+  agentId: string;
+  sessions: WorkSession[];
+  search: string;
+}) {
+  const [now] = useState(() => Date.now());
+  const seen = readSeen(agentId);
+
+  const chats = sessions
+    .map((item) => item.chat)
+    .filter(
+      (chat) =>
+        !chat.main &&
+        !chat.archivedAt &&
+        (!search || chat.title.toLowerCase().includes(search)) &&
+        (boardBucket(chat) !== "idle" ||
+          now - chat.updatedAt < 86400000 ||
+          (!!chat.task?.endedAt && (seen[chat.task.id] ?? 0) < chat.task.endedAt)),
+    );
+
+  return (
+    <div className="mx-3 mb-2 space-y-1 pl-3">
       <Link
         to="/a/$agentId"
         params={{ agentId }}
-        aria-current={current ? "page" : undefined}
-        className={cn(
-          "flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 hover:bg-accent",
-          current && "bg-accent",
-        )}
+        className="block truncate rounded-md px-2 py-1 text-xs font-semibold hover:bg-accent"
       >
-        <AgentAvatar agent={agent} />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-[14px] leading-tight font-semibold text-foreground">
-            {agent.name}
-          </span>
-          <span className="truncate text-[11.5px] leading-tight text-muted-foreground">{status}</span>
-        </span>
-        <UnreadBadge unread={unread} failed={failed} />
-        {dirty ? (
-          <Badge
-            variant="outline"
-            className="h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-foreground"
-          >
-            Draft
-          </Badge>
-        ) : null}
+        Main
       </Link>
+      {chats.map((chat) =>
+        chat.task ? (
+          <Link
+            key={chat.id}
+            to="/a/$agentId/tasks/$taskId"
+            params={{ agentId, taskId: chat.task.id }}
+            className="block truncate rounded-md px-2 py-1 text-xs hover:bg-accent"
+          >
+            {chat.task.title}{" "}
+            {boardBucket(chat) === "needs"
+              ? "· Needs you"
+              : boardBucket(chat) === "working"
+                ? "· Working"
+                : ""}
+          </Link>
+        ) : (
+          <Link
+            key={chat.id}
+            to="/a/$agentId/c/$chatId"
+            params={{ agentId, chatId: String(chat.id) }}
+            className="block truncate rounded-md px-2 py-1 text-xs hover:bg-accent"
+          >
+            {chat.title || "Chat"}
+            {chat.busy ? " · Working" : ""}
+          </Link>
+        ),
+      )}
     </div>
   );
 }

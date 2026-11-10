@@ -7,7 +7,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-// InboxItem is a settled, non-duplicate result that needs the owner's attention.
+// InboxItem is a settled result that needs the owner's attention.
 type InboxItem struct {
 	RunID          string `json:"runId"`
 	AgentID        string `json:"agentId"`
@@ -38,6 +38,18 @@ func (s *Service) Inbox(ctx context.Context, includeDismissed bool) ([]InboxItem
 // ReadInboxItem keeps the first read time on repeated requests.
 func (s *Service) ReadInboxItem(ctx context.Context, id string) error {
 	n, err := s.q.ReadInboxItem(ctx, sqlc.ReadInboxItemParams{ID: id, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// RestoreInboxItem undoes dismissal and retains the read time.
+func (s *Service) RestoreInboxItem(ctx context.Context, id string) error {
+	n, err := s.q.RestoreInboxItem(ctx, id)
 	if err != nil {
 		return err
 	}

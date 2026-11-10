@@ -11,7 +11,11 @@ import {
   Link,
 } from "@tanstack/react-router";
 import { errorText, queryClient } from "./lib/queries";
-import { InboxPage } from "./routes/inbox";
+import { InboxResultPage } from "./routes/inbox";
+import { NeedsYouPage } from "./routes/needs-you";
+import { WorkPage } from "./routes/work";
+import { parseWorkSearch } from "./lib/work";
+import { AllAutomationsPage } from "./routes/all-automations";
 import { Shell } from "./components/shell";
 import { AgentLayout } from "./components/agent-layout";
 import { ChatPage } from "./routes/chat";
@@ -75,12 +79,44 @@ const agent = agentPage("/agent", AgentPage);
 const instructions = agentPage("/instructions", InstructionsPage);
 const channels = agentPage("/channels", ChannelsPage);
 const automations = agentPage("/automations", AutomationsPage);
-const inbox = page("/inbox", () => <InboxPage />);
+const needsYou = page("/needs-you", () => <NeedsYouPage />);
+
+const work = createRoute({
+  getParentRoute: () => root,
+  path: "/work",
+  validateSearch: parseWorkSearch,
+  component: WorkRoute,
+});
+
+function WorkRoute() {
+  const search = work.useSearch();
+  const navigate = work.useNavigate();
+
+  return (
+    <WorkPage
+      search={search}
+      onSearch={(patch) =>
+        void navigate({ search: (previous) => ({ ...previous, ...patch }), replace: true })
+      }
+    />
+  );
+}
+
+const allAutomations = page("/automations", () => <AllAutomationsPage />);
+
+// The Inbox list moved to Needs you. A result keeps its own page.
+const inbox = createRoute({
+  getParentRoute: () => root,
+  path: "/inbox",
+  beforeLoad: () => {
+    throw redirect({ href: "/needs-you", replace: true });
+  },
+});
 
 const inboxDetail = page("/inbox/$runId", () => {
   const { runId } = inboxDetail.useParams();
 
-  return <InboxPage runId={runId} />;
+  return <InboxResultPage runId={runId} />;
 });
 
 const providers = page("/providers", ProvidersPage);
@@ -187,7 +223,6 @@ const oldAgentRoutes = [
   oldAgentPage("/instructions"),
   oldAgentPage("/channels"),
   oldAgentPage("/channels/$channelId"),
-  oldAgentPage("/automations"),
   oldAgentPage("/automations/$automationId"),
   oldAgentPage("/sessions"),
   oldAgentPage("/c/$chatId"),
@@ -216,6 +251,9 @@ const router = createRouter({
     tasks,
     inbox,
     inboxDetail,
+    needsYou,
+    work,
+    allAutomations,
     providers,
     secrets,
     about,

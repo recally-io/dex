@@ -1,8 +1,8 @@
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Automation, AutomationRun } from "../api/generated/types.gen";
+import type { Automation, AutomationRun, InboxItem } from "../api/generated/types.gen";
 import {
   listAutomationsOptions,
   getAutomationOptions,
@@ -11,19 +11,21 @@ import {
   deleteAutomationMutation,
   runAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { inboxOptions } from "../lib/inbox";
-import { refreshAutomations } from "../lib/queries";
+import { inboxOptions, resultQuote } from "../lib/inbox";
+import { createChat, readInboxItem, sendMessage, setChatProject } from "../api/generated/sdk.gen";
+import { refreshAutomations, refreshChats, refreshWork } from "../lib/queries";
+import { useHandled } from "../lib/handled";
 import { useAgentModel } from "../lib/agent";
 import { ago, runTime, scheduleText } from "../lib/automations";
+import { taskDuration } from "../lib/tasks";
 import { Failure, Loading, Spinner } from "../components/feedback";
-import { Crumb } from "../components/crumb";
 import { Confirm } from "../components/confirm";
 import { AutomationDialog } from "../components/automation-dialog";
-import { Empty, Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
+import { Empty, FramedPage, Note, Panel, Section } from "../components/page";
 import { Button } from "../components/ui/button";
-import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { Badge } from "../components/ui/badge";
 import { Switch } from "../components/ui/switch";
+import { Textarea } from "../components/ui/textarea";
 
 const runLabel = { done: "Done", failed: "Failed", skipped: "Skipped", running: "Running" } as const;
 
@@ -45,7 +47,7 @@ function RunPill({ run, className = "" }: { run: AutomationRun; className?: stri
   const failed = run.status === "failed" || outcome === "failed";
 
   const label =
-    outcome === "unchanged" ? "No change" : changed ? "Changed" : failed ? "Failed" : runLabel[run.status];
+    outcome === "unchanged" ? "Unchanged" : changed ? "Changed" : failed ? "Failed" : runLabel[run.status];
 
   return (
     <Badge
@@ -57,13 +59,36 @@ function RunPill({ run, className = "" }: { run: AutomationRun; className?: stri
   );
 }
 
-function EnabledSwitch({ automation }: { automation: Automation }) {
+// The update endpoint takes the whole automation, so a change to one field resends the others.
+function useAutomationUpdate(automation: Automation) {
   const agentId = useAgentId();
 
   const update = useMutation({
     ...updateAutomationMutation(),
     onSuccess: () => refreshAutomations(agentId),
   });
+
+  return {
+    ...update,
+    change: (patch: Partial<Pick<Automation, "enabled" | "session">>) =>
+      update.mutate({
+        path: { agentId, automationId: automation.id },
+        body: {
+          name: automation.name,
+          prompt: automation.prompt,
+          schedule: automation.schedule,
+          timeZone: automation.timeZone,
+          session: automation.session,
+          enabled: automation.enabled,
+          cwd: automation.cwd,
+          ...patch,
+        },
+      }),
+  };
+}
+
+function EnabledSwitch({ automation }: { automation: Automation }) {
+  const update = useAutomationUpdate(automation);
 
   return (
     <span className="flex flex-col items-end gap-2">
@@ -73,20 +98,7 @@ function EnabledSwitch({ automation }: { automation: Automation }) {
           checked={automation.enabled}
           disabled={update.isPending}
           aria-label={`Enable ${automation.name}`}
-          onCheckedChange={() =>
-            update.mutate({
-              path: { agentId, automationId: automation.id },
-              body: {
-                name: automation.name,
-                prompt: automation.prompt,
-                schedule: automation.schedule,
-                timeZone: automation.timeZone,
-                session: automation.session,
-                enabled: !automation.enabled,
-                cwd: automation.cwd,
-              },
-            })
-          }
+          onCheckedChange={() => update.change({ enabled: !automation.enabled })}
         />
       </span>
       {update.isError ? <Failure title="Could not change routine" error={update.error} /> : null}
@@ -188,61 +200,262 @@ function AutomationsSection() {
   );
 }
 
-function RunRow({
+function ReplyComposer({
   run,
-  timeZone,
-  now,
-  inInbox,
+  automation,
+  botName,
+  onCancel,
 }: {
   run: AutomationRun;
-  timeZone: string;
-  now: number;
-  inInbox: boolean;
+  automation: Automation;
+  botName: string;
+  onCancel: () => void;
 }) {
   const agentId = useAgentId();
+  const navigate = useNavigate();
+  const [text, setText] = useState("");
+  // A retry after a partial failure reuses the chat and the message ID, so the quote is sent once.
+  const continuation = useRef<{ chatId: number; messageId: string } | null>(null);
+  const outcome = run.outcome || (run.status === "failed" ? "failed" : "unknown");
+  const summary = run.summary || run.reason || "";
+
+  const start = useMutation({
+    mutationFn: async () => {
+      if (!continuation.current) {
+        const chat = await createChat({ path: { agentId }, throwOnError: true });
+        continuation.current = { chatId: chat.data.id, messageId: crypto.randomUUID() };
+      }
+
+      const { chatId, messageId } = continuation.current;
+      const path = { agentId, chatId };
+
+      // The quote comes first: the chat takes its title from the start of the message.
+      const quote = resultQuote({
+        agentId,
+        automationName: automation.name,
+        runId: run.id,
+        chatId: run.chatId!,
+        summary,
+        outcome,
+      });
+
+      await setChatProject({ path, body: { cwd: automation.cwd ?? "" }, throwOnError: true });
+
+      await sendMessage({
+        path,
+        body: { id: messageId, text: text.trim() ? `${quote}\n\n${text.trim()}` : quote },
+        throwOnError: true,
+      });
+
+      await refreshChats(agentId);
+      await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chatId) } });
+    },
+  });
 
   return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
-      <span
-        role="img"
-        aria-label={run.outcome || "Unknown outcome"}
-        className={`size-2 shrink-0 rounded-full ${run.outcome === "failed" ? "bg-red" : run.outcome === "changed" ? "bg-green" : "bg-muted-foreground"}`}
-      />
-      <RunPill run={run} className="w-[84px] justify-start" />
-      {run.duplicate ? <Badge variant="outline">duplicate</Badge> : null}
-      {inInbox ? (
-        <Link to="/inbox/$runId" params={{ runId: run.id }} className="text-xs underline">
-          In Inbox
-        </Link>
-      ) : null}
-      <span className="font-mono text-[11.5px] text-muted-foreground tabular-nums">
-        {runTime(run.dueAt ?? run.createdAt, timeZone)}
-      </span>
-      <span className="text-[12px] text-muted-foreground">{run.dueAt ? "Scheduled" : "Started by you"}</span>
-      <span className="ml-auto flex items-center gap-2">
-        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
-          {ago(run.createdAt, now)} ago
+    <section aria-label="New chat" className="flex flex-col gap-2.5 border-2 border-foreground p-3.5">
+      <div className="flex items-center gap-2">
+        <span className="flex-1 text-[11px] font-bold tracking-wide uppercase">
+          New chat with {botName}
+          {automation.cwd ? ` · ${automation.cwd}` : ""}
         </span>
-        {run.chatId ? (
-          <Link
-            to="/a/$agentId/c/$chatId"
-            params={{ agentId, chatId: String(run.chatId) }}
-            className="text-[12px] font-medium text-primary hover:underline"
-          >
-            Run transcript
-          </Link>
-        ) : null}
-      </span>
-      {run.summary || run.reason ? (
-        <p className="w-full pl-[96px] text-[12px] text-muted-foreground [overflow-wrap:anywhere] max-sm:pl-0">
-          {run.summary || run.reason}
-        </p>
-      ) : null}
-    </li>
+        <Button size="xs" variant="outline" onClick={onCancel} disabled={start.isPending}>
+          Cancel
+        </Button>
+      </div>
+      <blockquote className="border-l-2 border-border py-1 pl-2.5 text-[12px] leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
+        Follow up on the {automation.name} result ({outcome}) ·{" "}
+        {runTime(run.dueAt ?? run.createdAt, automation.timeZone)}
+        {summary ? <span className="block">{summary}</span> : null}
+      </blockquote>
+      <Textarea
+        aria-label="Your message"
+        rows={2}
+        placeholder={`What should ${botName} do about it?`}
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex-1 text-[11px] text-muted-foreground">
+          Opens a normal chat. The automation and its instructions do not change.
+        </span>
+        <Button size="sm" disabled={start.isPending} onClick={() => start.mutate()}>
+          {start.isPending ? "Starting…" : "Start chat"}
+        </Button>
+      </div>
+      {start.isError ? <Failure title="Could not start chat" error={start.error} /> : null}
+    </section>
   );
 }
 
-type Filter = "All" | "Problems";
+function RunBlock({
+  run,
+  automation,
+  botName,
+  now,
+  item,
+}: {
+  run: AutomationRun;
+  automation: Automation;
+  botName: string;
+  now: number;
+  item?: InboxItem;
+}) {
+  const agentId = useAgentId();
+  const handle = useHandled();
+  const [replying, setReplying] = useState(false);
+  const timeZone = automation.timeZone;
+  const failed = run.status === "failed" || run.outcome === "failed";
+  const canHandle = failed && item !== undefined && !item.dismissed;
+  const handled = failed && item?.dismissed === true;
+
+  return (
+    <article
+      className={`flex flex-col gap-2.5 p-3.5 ${replying ? "border-2 border-foreground" : run.status === "skipped" ? "border border-dashed border-border" : "border border-border"}`}
+    >
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="font-semibold">{runTime(run.dueAt ?? run.createdAt, timeZone)}</span>
+        <span className="text-[11.5px] text-muted-foreground">
+          {run.dueAt ? `Planned · recorded ${runTime(run.createdAt, timeZone)}` : "Started by you"}
+        </span>
+        {run.duplicate ? <Badge variant="outline">duplicate</Badge> : null}
+        <span className="flex-1" />
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+          {ago(run.createdAt, now)} ago
+        </span>
+        <RunPill run={run} />
+        {handled ? <span className="text-[11.5px] text-muted-foreground">Handled</span> : null}
+      </div>
+      {run.admittedAt !== undefined ? (
+        <p className="text-xs text-muted-foreground">
+          Received {runTime(run.admittedAt, timeZone)}
+          {run.settledAt !== undefined && run.settledAt >= run.admittedAt
+            ? ` · ${taskDuration(run.settledAt - run.admittedAt)} until settled`
+            : ""}
+        </p>
+      ) : null}
+      {run.summary || run.reason ? (
+        <p className="text-[13px] leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
+          {run.summary || run.reason}
+        </p>
+      ) : null}
+      {run.status !== "running" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {run.chatId ? (
+            <Button size="sm" variant="outline" disabled={replying} onClick={() => setReplying(true)}>
+              Reply in a new chat
+            </Button>
+          ) : null}
+          {canHandle ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={handle.isPending}
+              onClick={() => handle.mutate({ kind: "run", id: run.id, undo: false })}
+            >
+              Mark handled
+            </Button>
+          ) : null}
+          {run.chatId ? (
+            <Link
+              to="/a/$agentId/c/$chatId"
+              params={{ agentId, chatId: String(run.chatId) }}
+              className="ml-auto text-[12px] font-medium text-primary hover:underline"
+            >
+              Run transcript
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+      {handle.isError ? <Failure title="Could not mark handled" error={handle.error} /> : null}
+      {replying ? (
+        <ReplyComposer
+          key={run.id}
+          run={run}
+          automation={automation}
+          botName={botName}
+          onCancel={() => setReplying(false)}
+        />
+      ) : null}
+    </article>
+  );
+}
+
+const eachRun = [
+  {
+    value: "new",
+    label: "Start fresh",
+    hint: "Each run starts with no earlier conversation. Bot memory still loads.",
+  },
+  {
+    value: "reuse",
+    label: "Continue from last run",
+    hint: "The bot sees earlier runs. The context grows. A busy session skips the run.",
+  },
+] as const;
+
+function Rail({ automation, onEdit }: { automation: Automation; onEdit: () => void }) {
+  const update = useAutomationUpdate(automation);
+
+  return (
+    <aside
+      aria-label="Automation settings"
+      className="flex w-full flex-col gap-3 lg:w-72 lg:shrink-0 lg:border-l lg:border-border lg:pl-5"
+    >
+      <h2 className="text-[11px] tracking-wide text-muted-foreground uppercase">Instructions</h2>
+      <p className="text-[13px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
+        {automation.prompt}
+      </p>
+      <Button size="sm" variant="outline" className="self-start" onClick={onEdit}>
+        Edit instructions
+      </Button>
+      <h2 className="mt-2 border-t border-border pt-3 text-[11px] tracking-wide text-muted-foreground uppercase">
+        Each run
+      </h2>
+      <div role="group" aria-label="Each run" className="flex flex-col gap-1.5">
+        {eachRun.map((mode) => {
+          const on = automation.session === mode.value;
+
+          return (
+            <button
+              key={mode.value}
+              type="button"
+              aria-pressed={on}
+              disabled={update.isPending}
+              onClick={() => (on ? undefined : update.change({ session: mode.value }))}
+              className={`flex w-full flex-col items-start gap-0.5 p-2.5 text-left disabled:opacity-60 ${on ? "border-2 border-foreground bg-muted" : "border border-border hover:bg-muted"}`}
+            >
+              <span className="font-semibold">{mode.label}</span>
+              <span className="text-[11px] leading-snug text-muted-foreground">{mode.hint}</span>
+            </button>
+          );
+        })}
+      </div>
+      {update.isError ? <Failure title="Could not change the setting" error={update.error} /> : null}
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        Each run is still its own run record. This page lists them in one place.
+      </p>
+    </aside>
+  );
+}
+
+function PauseButton({ automation }: { automation: Automation }) {
+  const update = useAutomationUpdate(automation);
+
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={update.isPending}
+        onClick={() => update.change({ enabled: !automation.enabled })}
+      >
+        {automation.enabled ? "Pause" : "Resume"}
+      </Button>
+      {update.isError ? <Failure title="Could not change automation" error={update.error} /> : null}
+    </>
+  );
+}
 
 export function AutomationPage({ automationId }: { automationId: string }) {
   const inbox = useQuery({ ...inboxOptions(), refetchInterval: 10_000 });
@@ -263,37 +476,52 @@ export function AutomationPage({ automationId }: { automationId: string }) {
   const model = useAgentModel(settings.data);
   const [edit, setEdit] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const [filter, setFilter] = useState<Filter>("All");
   const run = useMutation({ ...runAutomationMutation(), onSuccess: () => refreshAutomations(agentId) });
 
   const remove = useMutation({
     ...deleteAutomationMutation(),
     onSuccess: async () => {
       await refreshAutomations(agentId);
-      await navigate({ to: "/a/$agentId/automations", params: { agentId } });
+      await navigate({ to: "/automations" });
     },
   });
 
+  // Opening the page reads every result of this automation once. A failed request is not retried;
+  // the result stays unread and the next visit asks again.
+  const asked = useRef(new Set<string>());
+  const items = inbox.data?.items;
+
+  useEffect(() => {
+    const unread = (items ?? []).filter(
+      (item) => item.automationId === automationId && !item.read && !asked.current.has(item.runId),
+    );
+
+    if (!unread.length) return;
+
+    for (const item of unread) asked.current.add(item.runId);
+    void Promise.all(unread.map((item) => readInboxItem({ path: { runId: item.runId } }))).then(refreshWork);
+  }, [items, automationId]);
+
   const history = runs.data?.runs ?? [];
   const latestRun = history.find((h) => h.id === run.data?.id) ?? run.data;
-
-  const shown =
-    filter === "All" ? history : history.filter((h) => h.status === "failed" || h.status === "skipped");
-
   const busy = history.some((h) => h.status === "running");
   const blocked = model && !model.ok ? "Choose an available bot model first." : undefined;
 
-  const crumb = <Crumb to="/a/$agentId/automations">Routines</Crumb>;
+  const crumb = (
+    <Link to="/automations" className="hover:underline">
+      Automations
+    </Link>
+  );
 
   if (automation.isPending || automation.isError)
     return (
-      <FramedPage eyebrow={crumb} title={automation.isError ? "Could not load routine" : "Routine"}>
+      <FramedPage eyebrow={crumb} title={automation.isError ? "Could not load automation" : "Automation"}>
         <div className="px-5 py-8 sm:px-8">
           {automation.isPending ? (
             <Loading />
           ) : (
             <Failure
-              title="Could not load routine"
+              title="Could not load automation"
               error={automation.error}
               retry={() => void automation.refetch()}
             />
@@ -303,6 +531,8 @@ export function AutomationPage({ automationId }: { automationId: string }) {
     );
 
   const data = automation.data;
+  const botName = settings.data?.agent.name ?? "the bot";
+  const byRun = new Map((items ?? []).map((item) => [item.runId, item]));
 
   return (
     <FramedPage
@@ -316,12 +546,11 @@ export function AutomationPage({ automationId }: { automationId: string }) {
           {data.enabled ? "On" : "Paused"}
         </Badge>
       }
-      description={`${scheduleText(data.schedule, data.timeZone)} · ${data.timeZone}`}
+      description={[botName, scheduleText(data.schedule, data.timeZone), nextText(data), data.cwd]
+        .filter(Boolean)
+        .join(" · ")}
       actions={
         <>
-          <Button size="sm" variant="secondary" onClick={() => setEdit(true)}>
-            Edit
-          </Button>
           <Button
             size="sm"
             variant="default"
@@ -332,13 +561,28 @@ export function AutomationPage({ automationId }: { automationId: string }) {
             {run.isPending ? <Spinner className="border-background/40 border-t-canvas" /> : null}
             {run.isPending ? "Starting…" : "Run now"}
           </Button>
+          <PauseButton automation={data} />
+          <Button size="sm" variant="secondary" onClick={() => setEdit(true)}>
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="text-red"
+            onClick={() => {
+              remove.reset();
+              setConfirm(true);
+            }}
+          >
+            Delete
+          </Button>
         </>
       }
     >
       {blocked || run.isError || latestRun ? (
-        <div className="flex flex-col gap-3 border-b border-dashed border-ring px-5 py-4 sm:px-8">
+        <div className="mb-6 flex flex-col gap-3 border-b border-dashed border-ring pb-4">
           {blocked ? <Note tone="warn">Run now is off. {blocked}</Note> : null}
-          {run.isError ? <Failure title="Could not run routine" error={run.error} /> : null}
+          {run.isError ? <Failure title="Could not run automation" error={run.error} /> : null}
           {latestRun ? (
             <div
               role="status"
@@ -362,119 +606,54 @@ export function AutomationPage({ automationId }: { automationId: string }) {
           ) : null}
         </div>
       ) : null}
-      <Section n={1} title="Prompt" caption="Sent to the bot as a user message on each run.">
-        <Panel className="px-4 py-3.5">
-          <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]">
-            {data.prompt}
-          </p>
-        </Panel>
-      </Section>
-      <Section n={2} title="Schedule" action={<EnabledSwitch automation={data} />}>
-        <Panel>
-          <Facts
-            rows={[
-              ["Repeats", scheduleText(data.schedule, data.timeZone)],
-              ["Time zone", <Mono key="tz">{data.timeZone}</Mono>],
-              [
-                "Session for each run",
-                data.session === "reuse" ? "One session for this routine" : "New session each run",
-              ],
-              [
-                "Next runs",
-                data.nextRuns.length ? (
-                  <span
-                    key="next"
-                    className="flex flex-col items-end gap-0.5 font-mono text-[12px] text-muted-foreground tabular-nums"
-                  >
-                    {data.nextRuns.map((t) => (
-                      <span key={t}>{runTime(t, data.timeZone)}</span>
-                    ))}
-                  </span>
-                ) : (
-                  <span key="none" className="text-muted-foreground">
-                    {data.enabled ? "No future run" : "Paused"}
-                  </span>
-                ),
-              ],
-            ]}
-          />
-        </Panel>
-      </Section>
-      <Section
-        n={3}
-        title="Check history"
-        caption={
-          runs.data
-            ? `${history.length} ${history.length === 1 ? "run" : "runs"} · ${data.timeZone}`
-            : undefined
-        }
-        action={
-          history.length ? (
-            <ToggleGroup
-              value={[filter]}
-              onValueChange={(value) => {
-                if (!value[0]) return;
-                // SAFETY: ToggleGroup values come only from the two Filter items below.
-                setFilter(value[0] as Filter);
-              }}
-              variant="outline"
-              size="sm"
-            >
-              <ToggleGroupItem value="All">All</ToggleGroupItem>
-              <ToggleGroupItem value="Problems">Problems</ToggleGroupItem>
-            </ToggleGroup>
-          ) : null
-        }
-      >
-        {runs.isPending ? (
-          <Loading />
-        ) : runs.isError ? (
-          <Failure title="Could not load run history" error={runs.error} retry={() => void runs.refetch()} />
-        ) : (
-          <Panel>
-            {shown.length ? (
-              <ul className="divide-y divide-border">
-                {shown.map((h) => (
-                  <RunRow
-                    key={h.id}
-                    run={h}
-                    timeZone={data.timeZone}
-                    now={runs.dataUpdatedAt}
-                    inInbox={
-                      inbox.data?.items.some((item) => item.runId === h.id && !item.dismissed) ?? false
-                    }
-                  />
-                ))}
-              </ul>
-            ) : (
-              <p className="px-4 py-6 text-center text-[12.5px] text-muted-foreground">
-                {history.length
-                  ? "No failed or skipped runs."
-                  : "No runs yet. Use Run now to try the prompt."}
-              </p>
-            )}
-          </Panel>
-        )}
-      </Section>
-      <Section n={4} title="Delete" caption="The sessions of past runs stay.">
-        <Button
-          size="sm"
-          variant="secondary"
-          className="text-red"
-          onClick={() => {
-            remove.reset();
-            setConfirm(true);
-          }}
-        >
-          Delete routine
-        </Button>
-      </Section>
+      <div className="flex flex-wrap gap-6">
+        <div className="flex min-w-0 flex-1 basis-96 flex-col gap-4">
+          {runs.isPending ? (
+            <Loading />
+          ) : runs.isError ? (
+            <Failure
+              title="Could not load run history"
+              error={runs.error}
+              retry={() => void runs.refetch()}
+            />
+          ) : (
+            <>
+              {data.nextRuns.map((at) => (
+                <article
+                  key={at}
+                  className="flex items-baseline gap-3 border border-dashed border-border p-3.5 text-muted-foreground"
+                >
+                  <span className="font-semibold">{runTime(at, data.timeZone)}</span>
+                  <span className="flex-1" />
+                  <span className="text-[11.5px] font-bold">Scheduled</span>
+                </article>
+              ))}
+              {history.map((h) => (
+                <RunBlock
+                  key={h.id}
+                  run={h}
+                  automation={data}
+                  botName={botName}
+                  now={runs.dataUpdatedAt}
+                  item={byRun.get(h.id)}
+                />
+              ))}
+              {!history.length ? (
+                <p className="py-6 text-center text-[12.5px] text-muted-foreground">
+                  No runs yet. Use Run now to try the prompt.
+                </p>
+              ) : null}
+            </>
+          )}
+        </div>
+        <Rail automation={data} onEdit={() => setEdit(true)} />
+      </div>
       {edit ? <AutomationDialog existing={data} onClose={() => setEdit(false)} /> : null}
       {confirm ? (
         <Confirm
-          title="Delete routine?"
+          title="Delete automation?"
           confirmLabel="Delete"
-          description="This deletes the routine and its run history. Its sessions stay available."
+          description="This deletes the automation and its run history. Its sessions stay available."
           pending={remove.isPending}
           error={remove.error}
           onCancel={() => setConfirm(false)}

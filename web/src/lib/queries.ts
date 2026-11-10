@@ -33,6 +33,16 @@ export async function refreshAutomations(agentId: string) {
   ]);
 }
 
+// Handled and read state feed Needs you, Work, the sidebar counts and the automation pages.
+export async function refreshWork() {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getWork" }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listInbox" }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listChats" }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listAgents" }] }),
+  ]);
+}
+
 export function errorText(cause: unknown): string {
   if (cause instanceof Error) return cause.message;
 

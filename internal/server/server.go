@@ -316,13 +316,17 @@ func (h *handler) UnarchiveChat(ctx context.Context, req api.UnarchiveChatReques
 }
 
 func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (api.ListChatsResponseObject, error) {
-	chats, err := h.Chats.List(ctx, agentID(ctx))
+	return h.listChats(ctx, agentID(ctx))
+}
+
+func (h *handler) listChats(ctx context.Context, agentID string) (api.ListChats200JSONResponse, error) {
+	chats, err := h.Chats.List(ctx, agentID)
 	if err != nil {
-		return nil, err
+		return api.ListChats200JSONResponse{}, err
 	}
-	byConversation, err := h.taskSummaries(ctx)
+	byConversation, err := h.taskSummaries(ctx, agentID)
 	if err != nil {
-		return nil, err
+		return api.ListChats200JSONResponse{}, err
 	}
 	out := api.ListChats200JSONResponse{Chats: make([]api.Chat, len(chats))}
 	for i, c := range chats {
@@ -335,8 +339,8 @@ func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (
 }
 
 // taskSummaries maps each delegated conversation of the agent to its task.
-func (h *handler) taskSummaries(ctx context.Context) (map[int64]api.TaskSummary, error) {
-	tasks, err := h.Chats.TaskRecords(ctx, agentID(ctx))
+func (h *handler) taskSummaries(ctx context.Context, agentID string) (map[int64]api.TaskSummary, error) {
+	tasks, err := h.Chats.TaskRecords(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -344,12 +348,12 @@ func (h *handler) taskSummaries(ctx context.Context) (map[int64]api.TaskSummary,
 	refs := make([]engine.Ref, 0, len(tasks))
 	for _, t := range tasks {
 		if t.Status == "running" && t.ExecutionID.Valid {
-			refs = append(refs, engine.Ref{AgentID: agentID(ctx), ID: t.ExecutionID.Int64})
+			refs = append(refs, engine.Ref{AgentID: agentID, ID: t.ExecutionID.Int64})
 		}
 	}
 	activities := h.Engine.Activity(refs)
 	for _, t := range tasks {
-		activity := activities[engine.Ref{AgentID: agentID(ctx), ID: t.ExecutionID.Int64}]
+		activity := activities[engine.Ref{AgentID: agentID, ID: t.ExecutionID.Int64}]
 		byConversation[t.ConversationID] = taskSummary(t, activity)
 	}
 	return byConversation, nil
@@ -363,7 +367,7 @@ func (h *handler) GetChat(ctx context.Context, req api.GetChatRequestObject) (ap
 	out := chatView(c)
 	// The page needs the task state to choose between the Stop bar and the Continue chat composer.
 	if strings.HasPrefix(c.ChannelKey, "task:") {
-		tasks, err := h.taskSummaries(ctx)
+		tasks, err := h.taskSummaries(ctx, agentID(ctx))
 		if err != nil {
 			return nil, err
 		}

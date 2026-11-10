@@ -157,6 +157,13 @@ func TestUserAcknowledgesFinishedTaskWithoutChangingItsReport(t *testing.T) {
 		t.Fatal("acknowledgement not returned in task list")
 	}
 
+	// Undo makes the task need attention again without changing its report.
+	detail = taskInfo{}
+	d.must(t, http.MethodPost, "/api/agents/default/tasks/"+finished.ID+"/restore", nil, &detail)
+	if detail.HandledAt != nil || detail.Report != toolResult.Report {
+		t.Fatalf("restore changed task result: %+v", detail)
+	}
+
 	// Running tasks cannot be acknowledged and missing tasks stay inaccessible.
 	d.setModel(t, "spawn")
 	taskTurn(t, d, parent, taskJSON(t, map[string]any{"title": "Running work", "goal": taskGate(t, dir, "ack-running"), "provider": "faux", "modelId": "bash"}))

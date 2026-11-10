@@ -88,6 +88,18 @@ func (h *handler) AcknowledgeTask(ctx context.Context, req api.AcknowledgeTaskRe
 	return api.AcknowledgeTask200JSONResponse(taskView(t, executionID, engine.Activity{})), nil
 }
 
+func (h *handler) RestoreTask(ctx context.Context, req api.RestoreTaskRequestObject) (api.RestoreTaskResponseObject, error) {
+	t, err := h.Chats.RestoreTask(ctx, agentID(ctx), req.TaskId)
+	if err != nil {
+		return nil, err
+	}
+	executionID, err := h.Chats.TaskExecution(ctx, agentID(ctx), req.TaskId)
+	if err != nil {
+		return nil, err
+	}
+	return api.RestoreTask200JSONResponse(taskView(t, executionID, engine.Activity{})), nil
+}
+
 func (h *handler) CancelTask(ctx context.Context, req api.CancelTaskRequestObject) (api.CancelTaskResponseObject, error) {
 	t, err := h.Chats.TaskRecord(ctx, agentID(ctx), req.TaskId)
 	if err != nil {
