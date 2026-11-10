@@ -118,6 +118,24 @@ func (e ChatChannel) Valid() bool {
 	}
 }
 
+// Defines values for ChatQuestionStatus.
+const (
+	Answered ChatQuestionStatus = "answered"
+	Open     ChatQuestionStatus = "open"
+)
+
+// Valid indicates whether the value is a known member of the ChatQuestionStatus enum.
+func (e ChatQuestionStatus) Valid() bool {
+	switch e {
+	case Answered:
+		return true
+	case Open:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorItemKind.
 const (
 	ErrorItemKindError ErrorItemKind = "error"
@@ -682,6 +700,9 @@ type Chat struct {
 	// Main This is the agent's main timeline.
 	Main bool `json:"main"`
 
+	// Question The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
+	Question *ChatQuestion `json:"question,omitempty"`
+
 	// ReadOnly The web cannot send messages to this chat now. A delegated session is read-only while its task runs and writable after the task ends.
 	ReadOnly bool `json:"readOnly"`
 
@@ -706,6 +727,21 @@ type ChatEvent struct {
 type ChatList struct {
 	Chats []Chat `json:"chats"`
 }
+
+// ChatQuestion The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
+type ChatQuestion struct {
+	// Answer The text of the answer. Present when the status is answered.
+	Answer  *string  `json:"answer,omitempty"`
+	Id      string   `json:"id"`
+	Options []string `json:"options"`
+
+	// Status open waits for an answer. answered means the answer is saved and runs after the current reply.
+	Status ChatQuestionStatus `json:"status"`
+	Text   string             `json:"text"`
+}
+
+// ChatQuestionStatus open waits for an answer. answered means the answer is saved and runs after the current reply.
+type ChatQuestionStatus string
 
 // ChatSettings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
 type ChatSettings = chat.Settings
@@ -850,6 +886,9 @@ type McpServerTransport string
 
 // MessageInput defines model for MessageInput.
 type MessageInput struct {
+	// AnswersQuestionId The ID of the open question that this message answers. dex answers 409 when the question is closed. A message without this field never closes a question.
+	AnswersQuestionId *string `json:"answersQuestionId,omitempty"`
+
 	// Attachments Upload IDs from POST /api/agents/{agentId}/uploads, at most 10.
 	Attachments *[]string `json:"attachments,omitempty"`
 
@@ -1200,6 +1239,13 @@ type Wechat = agent.Wechat
 
 // WechatLogin defines model for WechatLogin.
 type WechatLogin = wechat.LoginView
+
+// WithdrawnMessage defines model for WithdrawnMessage.
+type WithdrawnMessage struct {
+	Attachments []Attachment `json:"attachments"`
+	Id          string       `json:"id"`
+	Text        string       `json:"text"`
+}
 
 // AgentId defines model for AgentId.
 type AgentId = string
@@ -1893,6 +1939,9 @@ type ServerInterface interface {
 
 	// (POST /api/agents/{agentId}/chats/{chatId}/messages)
 	SendMessage(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
+	// (POST /api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw)
+	WithdrawMessage(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, messageId string)
 
 	// (PUT /api/agents/{agentId}/chats/{chatId}/project)
 	SetChatProject(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
@@ -3079,6 +3128,50 @@ func (siw *ServerInterfaceWrapper) SendMessage(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// WithdrawMessage operation middleware
+func (siw *ServerInterfaceWrapper) WithdrawMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "messageId" -------------
+	var messageId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "messageId", r.PathValue("messageId"), &messageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "messageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.WithdrawMessage(w, r, agentId, chatId, messageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetChatProject operation middleware
 func (siw *ServerInterfaceWrapper) SetChatProject(w http.ResponseWriter, r *http.Request) {
 
@@ -3958,6 +4051,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/project", wrapper.SetChatProject)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/settings", wrapper.SetChatSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/messages", wrapper.SendMessage)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw", wrapper.WithdrawMessage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/clear", wrapper.ClearContext)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/history", wrapper.GetChatHistory)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/abort", wrapper.AbortChat)
@@ -5981,6 +6075,89 @@ func (response SendMessagedefaultJSONResponse) VisitSendMessageResponse(w http.R
 	return err
 }
 
+type WithdrawMessageRequestObject struct {
+	AgentId   string `json:"agentId"`
+	ChatId    ChatId `json:"chatId"`
+	MessageId string `json:"messageId"`
+}
+
+type WithdrawMessageResponseObject interface {
+	VisitWithdrawMessageResponse(w http.ResponseWriter) error
+}
+
+type WithdrawMessage200JSONResponse WithdrawnMessage
+
+func (response WithdrawMessage200JSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawMessage403JSONResponse struct{ ErrorJSONResponse }
+
+func (response WithdrawMessage403JSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawMessage404JSONResponse Error
+
+func (response WithdrawMessage404JSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawMessage409JSONResponse Error
+
+func (response WithdrawMessage409JSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawMessagedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response WithdrawMessagedefaultJSONResponse) VisitWithdrawMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SetChatProjectRequestObject struct {
 	AgentId string `json:"agentId"`
 	ChatId  ChatId `json:"chatId"`
@@ -7595,6 +7772,9 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/chats/{chatId}/messages)
 	SendMessage(ctx context.Context, request SendMessageRequestObject) (SendMessageResponseObject, error)
 
+	// (POST /api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw)
+	WithdrawMessage(ctx context.Context, request WithdrawMessageRequestObject) (WithdrawMessageResponseObject, error)
+
 	// (PUT /api/agents/{agentId}/chats/{chatId}/project)
 	SetChatProject(ctx context.Context, request SetChatProjectRequestObject) (SetChatProjectResponseObject, error)
 
@@ -8739,6 +8919,34 @@ func (sh *strictHandler) SendMessage(w http.ResponseWriter, r *http.Request, age
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SendMessageResponseObject); ok {
 		if err := validResponse.VisitSendMessageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// WithdrawMessage operation middleware
+func (sh *strictHandler) WithdrawMessage(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, messageId string) {
+	var request WithdrawMessageRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+	request.MessageId = messageId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.WithdrawMessage(ctx, request.(WithdrawMessageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "WithdrawMessage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(WithdrawMessageResponseObject); ok {
+		if err := validResponse.VisitWithdrawMessageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

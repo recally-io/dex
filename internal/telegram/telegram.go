@@ -186,7 +186,11 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		content = m.Caption
 	}
 	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
-	if err = b.chats.Receive(ctx, peer, source, chat.Message{Content: content, Attachments: attachments}); err != nil {
+	incoming := chat.Message{Content: content, Attachments: attachments}
+	if m.ReplyTo != nil {
+		incoming.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
+	}
+	if err = b.chats.Receive(ctx, peer, source, incoming); err != nil {
 		return err
 	}
 	if content != "/new" && content != "/stop" && content != "/help" {
@@ -283,6 +287,10 @@ type message struct {
 		ID   int64  `json:"id"`
 		Type string `json:"type"`
 	} `json:"chat"`
+	// ReplyTo is the message that this message quotes.
+	ReplyTo *struct {
+		ID int64 `json:"message_id"`
+	} `json:"reply_to_message"`
 	Text     string  `json:"text"`
 	Caption  string  `json:"caption"`
 	Photo    []media `json:"photo"`

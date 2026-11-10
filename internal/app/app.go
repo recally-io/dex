@@ -138,6 +138,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			t, err := chats.ToolGetTask(ctx, c, id)
 			return engine.TaskInfo(t), err
 		},
+		AskUser: func(ctx context.Context, c engine.TaskContext, a engine.AskUserArgs) (engine.QuestionInfo, error) {
+			return chats.ToolAskUser(ctx, c, a)
+		},
 		Acknowledge: func(ctx context.Context, c engine.TaskContext, id string) (engine.TaskInfo, error) {
 			t, err := chats.ToolAcknowledgeTask(ctx, c, id)
 			return engine.TaskInfo(t), err

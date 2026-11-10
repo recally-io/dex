@@ -126,6 +126,26 @@ type Provider struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
+type Question struct {
+	ID                 string         `json:"id"`
+	AgentID            string         `json:"agent_id"`
+	ConversationID     int64          `json:"conversation_id"`
+	SourceSubmissionID string         `json:"source_submission_id"`
+	ToolOperationKey   string         `json:"tool_operation_key"`
+	Text               string         `json:"text"`
+	OptionsJson        string         `json:"options_json"`
+	Status             string         `json:"status"`
+	AnswerSubmissionID sql.NullString `json:"answer_submission_id"`
+	CreatedAt          int64          `json:"created_at"`
+	SettledAt          sql.NullInt64  `json:"settled_at"`
+}
+
+type QuestionMessage struct {
+	Peer       string `json:"peer"`
+	RemoteID   string `json:"remote_id"`
+	QuestionID string `json:"question_id"`
+}
+
 type RoutineNotificationDelivery struct {
 	RunID         string `json:"run_id"`
 	AgentID       string `json:"agent_id"`

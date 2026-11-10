@@ -1735,3 +1735,26 @@ func (q *Queries) UpsertProvider(ctx context.Context, arg UpsertProviderParams) 
 	)
 	return err
 }
+
+const withdrawSubmission = `-- name: WithdrawSubmission :execrows
+UPDATE submissions SET status = 'unanswered', answer = NULL, reason = 'withdrawn',
+    settled_at = coalesce(settled_at, ?1), delivered_at = coalesce(delivered_at, ?1)
+WHERE id = ?2 AND kind = 'message'
+AND (status = 'pending' OR (status = 'unanswered' AND reason = 'aborted'))
+`
+
+type WithdrawSubmissionParams struct {
+	Now sql.NullInt64 `json:"now"`
+	ID  string        `json:"id"`
+}
+
+// A user withdraws one queued input. The settle worker can record the native abort first, so
+// that reason also qualifies. The receipt and its source key stay, so a redelivery does not run
+// the input. A withdrawn input has no reply to deliver to a channel.
+func (q *Queries) WithdrawSubmission(ctx context.Context, arg WithdrawSubmissionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, withdrawSubmission, arg.Now, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

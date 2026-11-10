@@ -73,6 +73,9 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		if err := q.RequestExecutionAbort(ctx, c.ID); err != nil {
 			return nil, nil, err
 		}
+		if err := q.DismissQuestions(ctx, sqlc.DismissQuestionsParams{ConversationID: c.ID, Now: now}); err != nil {
+			return nil, nil, err
+		}
 		if c.ExecutionID.Valid {
 			targets = append(targets, engine.Ref{AgentID: agentID, ID: c.ExecutionID.Int64})
 		}

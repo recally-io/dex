@@ -302,6 +302,9 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := registry.Install(frontDeskExtension()); err != nil {
 		return nil, err
 	}
+	if err := registry.Install(askUserExtension(agentID, a.config.Tasks.AskUser)); err != nil {
+		return nil, err
+	}
 	if err := registry.Install(taskReportExtension(agentID, a.config.Tasks.ReportTask)); err != nil {
 		return nil, err
 	}

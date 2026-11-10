@@ -78,6 +78,15 @@ SELECT * FROM submissions WHERE id = ?;
 UPDATE submissions SET status = ?, answer = ?, reason = ?, settled_at = ?
 WHERE id = ? AND status = 'pending';
 
+-- name: WithdrawSubmission :execrows
+-- A user withdraws one queued input. The settle worker can record the native abort first, so
+-- that reason also qualifies. The receipt and its source key stay, so a redelivery does not run
+-- the input. A withdrawn input has no reply to deliver to a channel.
+UPDATE submissions SET status = 'unanswered', answer = NULL, reason = 'withdrawn',
+    settled_at = coalesce(settled_at, @now), delivered_at = coalesce(delivered_at, @now)
+WHERE id = @id AND kind = 'message'
+AND (status = 'pending' OR (status = 'unanswered' AND reason = 'aborted'));
+
 -- name: GetSubmissionReply :one
 SELECT
     s.origin,

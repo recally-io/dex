@@ -84,7 +84,7 @@ func New(cfg Config) http.Handler {
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
-				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrResetID), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid):
+				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
@@ -94,7 +94,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, chat.ErrTaskConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
+			case errors.Is(err, chat.ErrTaskConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -290,6 +290,12 @@ func chatView(c chat.Chat) api.Chat {
 	if c.ArchivedAt != 0 {
 		out.ArchivedAt = &c.ArchivedAt
 	}
+	if q := c.Question; q != nil {
+		out.Question = &api.ChatQuestion{Id: q.ID, Text: q.Text, Options: q.Options, Status: api.ChatQuestionStatus(q.Status)}
+		if q.Answer != "" {
+			out.Question.Answer = &q.Answer
+		}
+	}
 	return out
 }
 
@@ -383,6 +389,9 @@ func (h *handler) message(ctx context.Context, in api.MessageInput) (chat.Messag
 		return chat.Message{}, errors.Join(errInvalid, errors.New("a message can have at most 10 attachments"))
 	}
 	m := chat.Message{ID: id.String(), Content: strings.TrimSpace(in.Text)}
+	if in.AnswersQuestionId != nil {
+		m.AnswersQuestion = *in.AnswersQuestionId
+	}
 	if (m.Content == "" && len(ids) == 0) || utf8.RuneCountInString(m.Content) > maxMessage {
 		return chat.Message{}, errors.Join(errInvalid, errors.New("the message must have 1 to 32000 characters"))
 	}
@@ -426,6 +435,21 @@ func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObj
 		return nil, err
 	}
 	return api.SendMessage202JSONResponse{SubmissionId: m.ID}, nil
+}
+
+func (h *handler) WithdrawMessage(ctx context.Context, req api.WithdrawMessageRequestObject) (api.WithdrawMessageResponseObject, error) {
+	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+		return nil, err
+	}
+	m, err := h.Chats.Withdraw(ctx, agentID(ctx), req.ChatId, req.MessageId)
+	if err != nil {
+		return nil, err
+	}
+	out := api.WithdrawMessage200JSONResponse{Id: m.ID, Text: m.Content, Attachments: m.Attachments}
+	if out.Attachments == nil {
+		out.Attachments = []api.Attachment{}
+	}
+	return out, nil
 }
 
 // writableChat returns chat id, or errReadOnly for a chat that the web UI cannot write to.

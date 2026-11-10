@@ -11,7 +11,7 @@ import (
 
 func fakeProvider() *ai.ModelsProvider {
 	defs := []ai.FauxModelDefinition{}
-	for _, id := range []string{"echo", "context", "shout", "bash", "memory", "section", "tool", "spawn", "think"} {
+	for _, id := range []string{"echo", "context", "shout", "bash", "memory", "section", "tool", "spawn", "think", "mixed"} {
 		defs = append(defs, ai.FauxModelDefinition{ID: id, Reasoning: id == "think"})
 	}
 	faux := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "faux", Models: defs, TokensPerSecond: 200})
@@ -68,6 +68,19 @@ func fakeProvider() *ai.ModelsProvider {
 				}
 			}
 			return fakeCall(name, args), nil
+		case "mixed":
+			// One message with two tool calls: ask_user from the JSON in the message, and bash.
+			for _, message := range t.Messages() {
+				if result, ok := message.(ai.ToolResultMessage); ok && result.ToolName == "ask_user" {
+					return fakeText("mixed: " + strings.TrimSpace(ai.ContentText(result.Content, ""))), nil
+				}
+			}
+			_, argsText, _ := strings.Cut(text, " ")
+			args := map[string]any{}
+			if err := json.Unmarshal([]byte(argsText), &args); err != nil {
+				return ai.AssistantMessage{}, fmt.Errorf("faux/mixed requires ask_user JSON arguments")
+			}
+			return ai.FauxAssistantMessage(ai.FauxContentBlocks{ai.FauxToolCall("ask_user", args, nil), ai.FauxToolCall("bash", map[string]any{"command": "echo mixed"}, nil)}, ai.FauxAssistantMessageOptions{StopReason: "toolUse"}), nil
 		case "spawn":
 			if result, ok := last.(ai.ToolResultMessage); ok {
 				prefix := "spawn: "

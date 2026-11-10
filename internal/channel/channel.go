@@ -46,8 +46,8 @@ type Bot interface {
 	Run(context.Context) error
 	Parts(chat.Reply) []string
 	// Replies use the submission ID; commands use the source key.
-	// Part is zero-based.
-	Send(ctx context.Context, peer, deliveryID string, part int, text string) error
+	// Part is zero-based. Send returns the remote message ID, or "" when the platform has none.
+	Send(ctx context.Context, peer, deliveryID string, part int, text string) (string, error)
 }
 
 type runtime struct {
@@ -274,13 +274,13 @@ func (m *Manager) deliver(ctx context.Context, name string, r *runtime) {
 	}
 }
 
-func sendPart(ctx context.Context, bot Bot, peer, id string, part int, text string) error {
-	err := bot.Send(ctx, peer, id, part, text)
+func sendPart(ctx context.Context, bot Bot, peer, id string, part int, text string) (string, error) {
+	remote, err := bot.Send(ctx, peer, id, part, text)
 	if errors.Is(err, ErrPermanent) {
 		slog.Warn("channel: skipped a rejected reply part", "delivery", id, "part", part, "err", err)
-		return nil
+		return "", nil
 	}
-	return err
+	return remote, err
 }
 
 func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
@@ -306,7 +306,12 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 	for _, r := range replies {
 		parts := bot.Parts(chat.Reply{Status: r.Status, Answer: r.Answer.String, Reason: r.Reason.String})
 		for i := int(r.DeliveredParts); i < len(parts); i++ {
-			if err = sendPart(ctx, bot, r.Origin, r.ID, i, parts[i]); err != nil {
+			remote, err := sendPart(ctx, bot, r.Origin, r.ID, i, parts[i])
+			if err != nil {
+				return err
+			}
+			// A quoted reply to any part of a reply that asks a question answers it.
+			if err = m.rememberQuestionMessage(ctx, r.ID, r.Origin, remote); err != nil {
 				return err
 			}
 			if err = m.q.AdvanceChannelReply(ctx, r.ID); err != nil {
@@ -324,7 +329,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 	for _, r := range acks {
 		parts := bot.Parts(chat.Reply{Status: "done", Answer: r.Answer})
 		for i, part := range parts {
-			if err = sendPart(ctx, bot, r.Peer, r.SourceKey, i, part); err != nil {
+			if _, err = sendPart(ctx, bot, r.Peer, r.SourceKey, i, part); err != nil {
 				return fmt.Errorf("send command reply: %w", err)
 			}
 		}
@@ -333,4 +338,19 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 		}
 	}
 	return m.flushNotifications(ctx, name, bot)
+}
+
+// rememberQuestionMessage links a sent message to the question that its input asked.
+func (m *Manager) rememberQuestionMessage(ctx context.Context, submissionID, peer, remoteID string) error {
+	if remoteID == "" {
+		return nil
+	}
+	question, err := m.q.GetQuestionBySource(ctx, submissionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return m.q.AddQuestionMessage(ctx, sqlc.AddQuestionMessageParams{Peer: peer, RemoteID: remoteID, QuestionID: question.ID})
 }

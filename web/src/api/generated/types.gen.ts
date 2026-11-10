@@ -108,6 +108,7 @@ export type Chat = {
     archivedAt?: number;
     settings: ChatSettings;
     task?: TaskSummary;
+    question?: ChatQuestion;
 };
 
 /**
@@ -138,6 +139,36 @@ export type MessageInput = {
      * Upload IDs from POST /api/agents/{agentId}/uploads, at most 10.
      */
     attachments?: Array<string>;
+    /**
+     * The ID of the open question that this message answers. dex answers 409 when the question is closed. A message without this field never closes a question.
+     *
+     */
+    answersQuestionId?: string;
+};
+
+/**
+ * The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
+ *
+ */
+export type ChatQuestion = {
+    id: string;
+    text: string;
+    options: Array<string>;
+    /**
+     * open waits for an answer. answered means the answer is saved and runs after the current reply.
+     *
+     */
+    status: 'open' | 'answered';
+    /**
+     * The text of the answer. Present when the status is answered.
+     */
+    answer?: string;
+};
+
+export type WithdrawnMessage = {
+    id: string;
+    text: string;
+    attachments: Array<Attachment>;
 };
 
 export type Artifact = {
@@ -2128,6 +2159,47 @@ export type SendMessageResponses = {
 };
 
 export type SendMessageResponse = SendMessageResponses[keyof SendMessageResponses];
+
+export type WithdrawMessageData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+        messageId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw';
+};
+
+export type WithdrawMessageErrors = {
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type WithdrawMessageError = WithdrawMessageErrors[keyof WithdrawMessageErrors];
+
+export type WithdrawMessageResponses = {
+    /**
+     * The message is withdrawn.
+     */
+    200: WithdrawnMessage;
+};
+
+export type WithdrawMessageResponse = WithdrawMessageResponses[keyof WithdrawMessageResponses];
 
 export type ClearContextData = {
     body: {

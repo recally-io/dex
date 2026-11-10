@@ -830,6 +830,38 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+      - in: path
+        name: messageId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: withdrawMessage
+      description: >
+        Withdraws one message that waits in the queue and returns its text and
+        attachments. The native queue decides whether the message is still
+        queued. The receipt and the source key stay, so a channel redelivery
+        does not run the message. A repeated request returns the same result.
+        409 when the message has started or finished. A withdrawn answer to a
+        question opens the question again. Main and Chat sessions take this
+        request. Task, automation and channel sessions return 403.
+      responses:
+        "200":
+          description: The message is withdrawn.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WithdrawnMessage" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/chats/{chatId}/clear:
     parameters:
       - in: path
@@ -1459,6 +1491,7 @@ components:
         task:
           $ref: "#/components/schemas/TaskSummary"
           description: The saved task summary on a task session. It has no report.
+        question: { $ref: "#/components/schemas/ChatQuestion" }
 
     ChatSettings:
       x-go-type: chat.Settings
@@ -1499,6 +1532,44 @@ components:
           maxItems: 10
           description: Upload IDs from POST /api/agents/{agentId}/uploads, at most 10.
           items: { type: string }
+        answersQuestionId:
+          type: string
+          description: >
+            The ID of the open question that this message answers. dex answers
+            409 when the question is closed. A message without this field
+            never closes a question.
+
+    ChatQuestion:
+      type: object
+      required: [id, text, options, status]
+      description: >
+        The question that the agent asked with ask_user. It waits for the user,
+        or its answer waits in the queue.
+      properties:
+        id: { type: string }
+        text: { type: string }
+        options:
+          type: array
+          items: { type: string }
+        status:
+          type: string
+          enum: [open, answered]
+          description: >
+            open waits for an answer. answered means the answer is saved and
+            runs after the current reply.
+        answer:
+          type: string
+          description: The text of the answer. Present when the status is answered.
+
+    WithdrawnMessage:
+      type: object
+      required: [id, text, attachments]
+      properties:
+        id: { type: string }
+        text: { type: string }
+        attachments:
+          type: array
+          items: { $ref: "#/components/schemas/Attachment" }
 
     Artifact:
       type: object

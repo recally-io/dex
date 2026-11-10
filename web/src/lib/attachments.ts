@@ -110,6 +110,18 @@ export function useAttachments(persist = false) {
     setFiles((previous) => previous.filter((f) => f.key !== key));
   }
 
+  // Puts the uploads of a withdrawn message back in the composer.
+  function restore(returned: Attachment[]) {
+    setFiles((previous) => [
+      ...previous,
+      ...returned.flatMap((upload): DraftFile[] =>
+        previous.some((f) => f.upload?.id === upload.id)
+          ? []
+          : [{ key: newId(), name: upload.name, size: upload.size, upload }],
+      ),
+    ]);
+  }
+
   // Removes the files of a sent message; files added during the send stay.
   function sent(ids: string[]) {
     const gone = files.filter((f) => f.upload && ids.includes(f.upload.id));
@@ -123,6 +135,7 @@ export function useAttachments(persist = false) {
     notice,
     add,
     remove,
+    restore,
     sent,
     ready: files.flatMap((f) => (f.upload ? [f.upload] : [])),
     uploading: files.some((f) => !f.upload && !f.error),

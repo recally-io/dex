@@ -4,7 +4,7 @@ import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } fr
 import { expect, test } from "vite-plus/test";
 import type { Item, ToolItem } from "../../api/generated/types.gen";
 import { blocks } from "../../lib/tools";
-import { ToolStep, Transcript } from "./transcript";
+import { splitAnswer, ToolStep, Transcript } from "./transcript";
 
 const tool = (id: string, status: ToolItem["status"], output: string): ToolItem => ({
   kind: "tool",
@@ -186,4 +186,30 @@ test("user sees reset dividers while compaction stays a history boundary", async
   expect(html.match(/role="separator"/g)).toHaveLength(1);
   expect(html).toContain("Context cleared");
   expect(html).not.toContain("compacted");
+});
+
+test("user sees an ask_user answer as the muted question above the answer", async () => {
+  // Given the wrapper that the server stores for an answer.
+  const text = "Answer to: Which branch?\nUse main\nand rebase";
+
+  // When the transcript splits it, then the first line is the question.
+  expect(splitAnswer(text)).toEqual({ question: "Which branch?", answer: "Use main\nand rebase" });
+
+  // And other text, even one that starts alike without a line break, stays as typed.
+  expect(splitAnswer("Answer to: nothing")).toBeNull();
+  expect(splitAnswer("hello")).toBeNull();
+
+  // And the bubble does not show the wrapper.
+  const html = await render(
+    createElement(Transcript, {
+      items: [{ kind: "user", id: "u", text }],
+      running: false,
+      retry: () => {},
+      canRetry: false,
+    }),
+  );
+
+  expect(html).toContain(">Which branch?</span>");
+  expect(html).toContain("Use main");
+  expect(html).not.toContain("Answer to:");
 });

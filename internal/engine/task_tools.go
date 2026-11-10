@@ -80,6 +80,7 @@ type TaskTools struct {
 	Get              func(context.Context, TaskContext, string) (TaskInfo, error)
 	Cancel           func(context.Context, TaskContext, string) (TaskInfo, error)
 	Acknowledge      func(context.Context, TaskContext, string) (TaskInfo, error)
+	AskUser          func(context.Context, TaskContext, AskUserArgs) (QuestionInfo, error)
 }
 
 func codingSkill() *durable.Extension {
