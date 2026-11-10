@@ -113,6 +113,16 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 		return nil
 	}
 	msg := chat.Message{Content: m.Text, ReplyTo: m.ReplyTo}
+	stored := false
+	defer func() {
+		if !stored {
+			for _, attachment := range msg.Attachments {
+				if err := b.uploads.Remove(attachment.ID); err != nil {
+					slog.Warn("feishu: upload cleanup failed", "err", err)
+				}
+			}
+		}
+	}()
 	for _, resource := range m.Resources {
 		reader, err := b.client.Download(sessionCtx, m.ID, resource.Key, resource.Type)
 		if err != nil {
@@ -122,6 +132,9 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 			return err
 		}
 		attachment, saveErr := b.uploads.Save(resource.Name, reader)
+		if saveErr == nil {
+			msg.Attachments = append(msg.Attachments, attachment)
+		}
 		closeErr := reader.Close()
 		if err := errors.Join(saveErr, closeErr); err != nil {
 			if errors.Is(err, upload.ErrTooLarge) || errors.Is(err, upload.ErrInvalidName) {
@@ -130,14 +143,13 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 			}
 			return err
 		}
-		msg.Attachments = append(msg.Attachments, attachment)
 	}
 	peer := "feishu:" + m.Sender
-	if err := b.manager.Receive(botCtx, peer, source, msg); err != nil {
-		return err
-	}
-	receipt, err := b.manager.Source(sessionCtx, source)
-	if err != nil {
+	receiveErr := b.manager.Receive(botCtx, peer, source, msg)
+	// Preserve files when the receipt query fails or the receipt committed before admission.
+	receipt, err := b.manager.Source(context.WithoutCancel(sessionCtx), source)
+	stored = err != nil || receipt.ID != ""
+	if err := errors.Join(receiveErr, err); err != nil {
 		return err
 	}
 	if !receipt.Pending {

@@ -437,7 +437,7 @@ export const updateAgent = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Read one task and the ID of its read-only work conversation.
+ * Read one task and its conversation ID. The conversation accepts user input after the task ends.
  */
 export const getTask = <ThrowOnError extends boolean = false>(options: Options<GetTaskData, ThrowOnError>): RequestResult<GetTaskResponses, GetTaskErrors, ThrowOnError> => (options.client ?? client).get<GetTaskResponses, GetTaskErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {

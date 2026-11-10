@@ -251,7 +251,7 @@ func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey st
 	m.ID = uuid.NewV7().String()
 	m.Settings = Settings{}
 	if m.ReplyTo != "" {
-		switch id, err := s.q.GetQuestionByMessage(ctx, sqlc.GetQuestionByMessageParams{Peer: peer, RemoteID: m.ReplyTo}); {
+		switch id, err := s.q.GetQuestionByMessage(ctx, sqlc.GetQuestionByMessageParams{AgentID: agentID, Peer: peer, RemoteID: m.ReplyTo}); {
 		case err == nil:
 			m.AnswersQuestion = id
 		case !errors.Is(err, sql.ErrNoRows):

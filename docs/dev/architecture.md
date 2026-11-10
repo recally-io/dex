@@ -78,8 +78,10 @@ backend readiness and maintenance lifecycle.
 | Skills and MCP servers               | the user's files  | `$HOME/.agents/`, `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/` |
 
 Control also owns internal delegation records (`tasks`). Each record
-has one task conversation that is read-only on the web and one input. Background
-execution keeps bash and all coding tools. The engine
+has one task conversation and one delegated input. The conversation is read-only
+while the task is queued or running. After the task ends, the user can continue
+it and change its model and project. The original task record, report, and parent
+result stay unchanged. Background execution keeps bash and all coding tools. The engine
 owns its transcript and execution records. Business services do not query execution SQLite.
 The records retain the source submission, status, and report. A cancelled
 status records a cancellation request. It does not prove process exit. There
@@ -96,7 +98,8 @@ with no ordinary message, or creates one. Concurrent opens reuse the same row.
 The first message and its title commit together. The title has at most
 60 characters. Longer text uses its first 59 characters and an ellipsis. A file-only
 message uses the first file's name. Each Chat has its own execution conversation.
-It uses the bot's settings, instructions and shared memory. It does not read
+It defaults to the bot's model settings and uses its instructions and shared memory.
+It does not read
 main's model context or send its answers to main.
 
 `GET /api/agents/{agentId}/chats` lists session summaries
@@ -154,8 +157,7 @@ running; other visible sessions count when they have pending input. Each session
 counts once. Channel counts come from the app registry. The web polls this
 list every three seconds and shares its cache across agent pages. The same
 response includes per-agent `inboxUnread`, `inboxFailed`, and `routineFailed`.
-These fields come from the activity SQL query. The rail sums the unread counts
-for the global Inbox. No extra fast poll is needed. `POST /api/agents` accepts a name,
+These fields come from the activity SQL query. `POST /api/agents` accepts a name,
 provider, model ID, thinking level, and optional instructions. It returns the
 agent with a UUID v7 ID (`201`). The ID is read-only. `GET` and `PUT` on
 `/api/agents/{agentId}` read and save one agent. Names and models use the same
@@ -254,13 +256,14 @@ It checks each path and returns up to eight existing directories.
 The Chat picker uses these routes because a remote browser cannot select host paths.
 
 `PUT /api/agents/{agentId}/chats/{chatId}/project` changes the cwd for the
-next message. Only `chat:` conversations can set it. The API and `set_project`
+next message. Main, Chat, and ended task conversations can set it. The API and `set_project`
 tool share one path validator: trim, expand `~` or `~/`, require an existing
 absolute directory, and clean the path. Empty clears the override.
 The foreground tool writes control state before it commits native
 `harness.Configure`, so later tools in the same run use the new directory.
-Replay writes the same value. Main and automation have the `set_project` tool but return
-an error. Tasks and dreams do not have it. The Chat header refetches on tool
+Replay writes the same value. Main and Chat can use the tool; automation calls
+return an error. Delegated task inputs and dreams do not have it. Channel input
+uses Main's saved project. The Chat header refetches on tool
 completion and run completion. For a project cwd, native input uses absolute
 upload paths. The transcript keeps workspace-relative upload paths.
 
@@ -371,7 +374,9 @@ They cannot retract a message already accepted by a platform. WeChat delivery
 also needs a current owner context token and can wait for one.
 
 Run records and durable message intents commit in one control transaction.
-The run ID is the input request ID. A crash before commit leaves neither
+Before it stores scheduled input, that transaction takes the SQLite writer and
+checks that the routine still matches the scheduler's snapshot. A saved edit,
+pause, or deletion invalidates the old snapshot. The run ID is the input request ID. A crash before commit leaves neither
 record. A crash after commit leaves an input that normal chat reconciliation
 can admit. If the schedule cursor did not advance, the unique automation/due
 key prevents another input for that scheduled time.
@@ -429,9 +434,10 @@ chat settings with an injected validator. Each change stays in `control.sqlite`:
 The API trims spaces, then accepts 1 to 40 Unicode characters. The web uses the saved name in
 the sidebar, the timeline header, and the composer.
 
-Main and Chat sessions use the agent's model and thinking level. They have no
-session override. `chat.Service` resolves settings at each `submit`. Channel chats cannot
-change their settings (403). An automation chat can; an automation that
+Main and Chat sessions default to the agent's model and thinking level. Saved
+session overrides apply from the next input, including channel input on Main.
+Ended task conversations also accept overrides. `chat.Service` resolves settings
+at each `submit`. Old channel chats cannot change their settings (403). An automation chat can; an automation that
 reuses its chat then runs with the chat's settings. The thinking levels and
 the `reasoning` and `input` of a model come from PiG AI model definitions; the model adapter sends the nearest level that the model
 supports, and `off` to a model without reasoning.
@@ -542,7 +548,9 @@ settlement consumes it. Stop, Clear and archive dismiss open and answered
 questions in their own writer transaction. Settlement of the asking input adds
 the question to the reply, so a channel receives it through the reply outbox.
 `Bot.Send` returns the remote message ID. After each confirmed part, the sender
-stores the ID in `question_messages` for the question. Telegram reads
+stores the ID in `question_messages` for the question. Its key contains the
+agent ID, peer, and remote message ID, because different bots can return equal
+message IDs for the same peer. Telegram reads
 `reply_to_message.message_id` and Feishu reads `parent_id` as `Message.ReplyTo`.
 `SubmitMessage` maps a quoted ID to `answersQuestionId`. A quote of any part
 answers the question. A quote of a closed question, an unknown ID or a platform
@@ -618,20 +626,24 @@ A failed result reply cannot retry the user message before the mark.
 Neither layer uses message text or an ID pattern to hide results. Ordinary
 user JSON still appears and can use the normal Retry action. Task conversations
 stay absent from dream inputs. The bot has no Sessions tab. The human can read their chat,
-history, and normal SSE stream. Web input, settings, clear, and abort are refused.
+history, and normal SSE stream. While the task is queued or running, web input
+and settings changes are refused. After it ends, the conversation accepts input
+and model and project overrides without changing the original task or result.
 Dream input selects only ordinary messages, so internal results in a source session
 cannot enter memory as user text.
 `GET /api/agents/{agentId}/tasks/{id}` returns one record with its report, times, and conversation
 ID. The task and session reads check the agent. Model task tools keep their
-parent conversation scope. There is no `GET /api/agents/{agentId}/tasks` list, HTTP task control,
-or separate task stream. Each writable session polls session summaries every 3 s. The legacy Sessions
+parent conversation scope. HTTP endpoints request task cancellation and mark a
+finished task handled or restore it. There is no `GET /api/agents/{agentId}/tasks`
+list or separate task stream. Each writable session polls session summaries every 3 s. The legacy Sessions
 route remains available for saved links.
-Task details poll every 3 s while queued or running. Terminal details stop polling.
-Task details use the normal read-only chat, history, and SSE paths for Work.
+A task URL fetches the task record and redirects to its conversation. That
+conversation uses the normal chat, history, and SSE paths.
 Successful `spawn_task` items carry the ID from the saved tool result. Result
 marks carry the ID and title saved in the native input metadata. The web links
-both labels by ID to `/a/{agentId}/tasks/{taskId}`, a read-only task page.
-It never matches tasks by title. The four bot tabs are Chat, Routines,
+both labels by ID to `/a/{agentId}/tasks/{taskId}`. The web never matches tasks
+by title. The task URL redirects to the conversation, which is writable after
+the task ends. The four bot tabs are Chat, Routines,
 Extensions, and Settings. Task records need no list tab.
 The source session's normal SSE stream carries result marks and replies.
 A task started in Chat keeps that Chat as its parent. Its result returns to
@@ -645,9 +657,9 @@ withdraws queued native results. The transcript shows their withdrawn state,
 and the saved report stays readable. A later greeting cannot revive those results.
 A new execution must check prior artifacts and side effects.
 
-Web Stop covers only the selected writable session, main or Chat. Task,
-old channel and automation sessions are read-only on the web. Messages, Clear
-and Stop return 403 for those kinds.
+Web Stop covers only the selected writable session. Queued and running task
+conversations, old channel sessions, and automation sessions are read-only on
+the web. Ended task conversations accept user input.
 Channel `/stop` calls main Stop. It covers main input from every entry and
 tasks started in main. Chat, automation and other agents stay outside that scope.
 Channel `/new` calls main Clear with the same busy check and reset ordering.
@@ -829,6 +841,8 @@ so dex needs no public URL.
   bot settings. Tokens do not appear in status reasons.
 - Pairing and attachment-rejection replies skip permanent 400/403 failures
   so later updates can proceed. Transient failures leave the update for retry.
+  A failed input attempt removes its new uploads when no stored receipt owns
+  them. An uncertain receipt lookup keeps the files.
 
 ## Shared channels
 
@@ -930,6 +944,9 @@ The shared channel manager handles `/new`, `/stop`, and `/help`. A source key co
 input after durable admission succeeds. Invalid content, rejected resource access,
 and files with invalid names or excessive size are acknowledged and ignored.
 Storage and temporary platform failures get a 500 acknowledgement for retry.
+A rejected resource removes uploads already saved by that attempt. After input
+admission, cleanup removes files only when no stored receipt owns them. An
+uncertain receipt lookup keeps the files.
 
 A preview card reads the chat's native watch events. It merges text updates
 at 250 ms intervals and omits thinking and tool data. The shared durable

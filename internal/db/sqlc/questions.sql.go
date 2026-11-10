@@ -11,17 +11,23 @@ import (
 )
 
 const addQuestionMessage = `-- name: AddQuestionMessage :exec
-INSERT OR IGNORE INTO question_messages (peer, remote_id, question_id) VALUES (?, ?, ?)
+INSERT OR IGNORE INTO question_messages (agent_id, peer, remote_id, question_id) VALUES (?, ?, ?, ?)
 `
 
 type AddQuestionMessageParams struct {
+	AgentID    string `json:"agent_id"`
 	Peer       string `json:"peer"`
 	RemoteID   string `json:"remote_id"`
 	QuestionID string `json:"question_id"`
 }
 
 func (q *Queries) AddQuestionMessage(ctx context.Context, arg AddQuestionMessageParams) error {
-	_, err := q.db.ExecContext(ctx, addQuestionMessage, arg.Peer, arg.RemoteID, arg.QuestionID)
+	_, err := q.db.ExecContext(ctx, addQuestionMessage,
+		arg.AgentID,
+		arg.Peer,
+		arg.RemoteID,
+		arg.QuestionID,
+	)
 	return err
 }
 
@@ -184,16 +190,17 @@ func (q *Queries) GetQuestionByAnswer(ctx context.Context, answerSubmissionID sq
 }
 
 const getQuestionByMessage = `-- name: GetQuestionByMessage :one
-SELECT question_id FROM question_messages WHERE peer = ? AND remote_id = ?
+SELECT question_id FROM question_messages WHERE agent_id = ? AND peer = ? AND remote_id = ?
 `
 
 type GetQuestionByMessageParams struct {
+	AgentID  string `json:"agent_id"`
 	Peer     string `json:"peer"`
 	RemoteID string `json:"remote_id"`
 }
 
 func (q *Queries) GetQuestionByMessage(ctx context.Context, arg GetQuestionByMessageParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, getQuestionByMessage, arg.Peer, arg.RemoteID)
+	row := q.db.QueryRowContext(ctx, getQuestionByMessage, arg.AgentID, arg.Peer, arg.RemoteID)
 	var question_id string
 	err := row.Scan(&question_id)
 	return question_id, err

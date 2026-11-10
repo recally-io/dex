@@ -35,7 +35,8 @@ to read in an afternoon.
   messages, reports, and execution records survive a restart. A restart does
   not attach an old CLI process or prove that its actions occurred once.
 - One main timeline per agent. The web opens it at `/a/{agentId}` and uses the agent's
-  model settings. Clear context starts a new model context when the timeline
+  model settings by default. A saved Main override also applies to channel input.
+  Clear context starts a new model context when the timeline
   is idle. Earlier messages stay readable with Show earlier messages. A clear
   keeps long-term memory. After a summary, Show earlier messages can load
   the earlier transcript. Only a clear shows a divider. The bot is one page
@@ -51,9 +52,9 @@ to read in an afternoon.
   messages, records and files; a task result still returns to the chat.
   New chat does not reuse an archived
   empty chat. The sidebar starts closed, and the browser keeps the user's choice.
-  The left sidebar puts the global Inbox above the agents. It opens the global settings page: Providers,
-  Secrets, and About. It starts collapsed to one icon per agent, and the browser
-  keeps the user's choice. It has no chat list. Each agent keeps its unsent main message, uploaded
+  The left sidebar links to Needs you, Work, and the global automation list above
+  the agents. It also links to global settings: Providers, Secrets, and About.
+  The browser keeps the sidebar's open or collapsed state. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
   URLs open the default agent. An unknown agent shows a not-found page.
   Every agent has channel setup controls.
@@ -100,7 +101,8 @@ to read in an afternoon.
   A new delivery is required to publish later changes.
 - In main and Chat sessions, the user can attach files and images (at most 10 per
   message, 20 MB each). The agent reads them with its tools. Telegram
-  chats and automations use the agent's settings. Telegram accepts photos and
+  input uses Main's saved settings. Automations default to the agent's settings.
+  Telegram accepts photos and
   documents up to 20 MB, with caption text. Telegram replies show progress,
   code blocks, and basic text formatting. Final-send failures, including flood
   limits, use durable retries with a delay from 5 to 60 seconds. Polling can
@@ -156,31 +158,35 @@ Old channel transcript URLs remain readable. The legacy Sessions URL remains
 available for saved links.
 Named dispatch and result labels open the task by its ID.
 Done means that the task returned a report. It does not prove goal completion.
-There are no task controls or progress percentages.
+The user can request cancellation and mark a finished task handled. The UI does
+not show progress percentages.
 
 `New chat` on the Chat tab opens a writable Chat
 with its own model context. It reuses the
 newest empty Chat, so an abandoned click leaves no list row. The first message
-sets the title. Chat uses the bot's settings, instructions and shared memory.
+sets the title. Chat defaults to the bot's model settings and uses its instructions and shared memory.
+A saved session model or thinking level override applies from the next input.
 Chat does not read the main timeline's context. A task started in Chat returns
 its result to that Chat. Clear context, Stop and earlier messages work within
-the selected session. Other sessions cannot enable its Stop. Task and Automation
-sessions stay read-only. Main stays the default view. A Chat session opens
+the selected session. Other sessions cannot enable its Stop. Task conversations are
+read-only while queued or running. After the task ends, the user can send messages
+and change the conversation's model and project. The original task record, report,
+and parent result stay unchanged. Automation transcripts stay read-only.
+Main stays the default view. A Chat session opens
 under the Chat tab. Task pages open under Chat. Automation transcripts open under Routines.
 
-The global Inbox answers what needs the owner now. It contains only settled
-routine runs with `changed` or `failed` outcomes and no duplicate mark.
-Unknown and `unchanged` outcomes stay in run history. Needs you contains failed
-runs. Results contains changed runs. The owner can filter by bot, All, Unread,
-or Needs you. Opening a result marks it read. Done dismisses it. Both states
-survive restart. Global and per-bot unread counts appear in the left rail;
-a count is red when it includes an unread failure.
+Needs you shows open questions, unhandled failed or blocked tasks, failed
+routine runs, and routines that need a model. Work shows sessions and routine
+runs across bots. The global automation list shows routines across bots.
+Routine result records include settled `changed` or `failed` outcomes without a
+duplicate mark. Unknown and `unchanged` outcomes stay in run history. Opening
+a result marks it read. Marking it handled dismisses it. Both states survive restart.
 
 Result details show the outcome, routine, bot, time, summary, and run transcript.
 Continue in chat opens a writable Chat for that bot, sets the routine's current
 project directory, and sends a first message that quotes the stored result
 and exact run reference. Routine history shows outcome dots, summaries,
-duplicate marks, and links to results that remain in the Inbox. The Routines
+duplicate marks, and links to saved results. The Routines
 tab shows a red dot when an enabled routine's latest run failed.
 
 When the main agent starts background work, it continues independent local
@@ -211,14 +217,16 @@ cannot ask. The web shows an answer as the question in muted text above the answ
 
 Web Stop stays in the composer for queued input, an active answer, and active
 background work. Stop covers the selected writable session and its background
-work. Task and Automation sessions stay read-only. Stop needs no model.
+work. Queued and running task conversations and Automation transcripts are
+read-only. Stop needs no model.
 Stop withdraws pending input and results, records cancellation, and requests
 SDK cancellation once. The reply confirms the request. It does not confirm
 process exit. Processes and remote work can continue. Prior actions are not
 undone.
 
 Normal completion and execution failure return a report to the main agent.
-Stop, cancellation, and interrupted execution do not start a result turn.
+Stop and cancellation do not create a result turn. A restart interruption
+creates one durable result that warns that side effects may exist.
 A saved report stays unchanged after cancellation or a late execution event.
 The system does not retry failed execution or result delivery. The main agent
 reads saved records and artifacts, then decides whether to retry or continue
@@ -255,15 +263,17 @@ and task-specific automation result routing are later work. Other chat channels 
 Each agent reads skills, `mcp.json`, and `.env` from three `.agents/`
 directories: the user home, the resolved dex data directory, and the agent
 home (`<data dir>/agents/<id>`). The narrower level wins. Tools start
-in the agent workspace by default. A Chat session can select an existing
-project directory in its header or with `set_project`. The header picker
+in the agent workspace by default. Main and Chat sessions can select an existing
+project directory in the header or with `set_project`. An ended task conversation
+can also change its project through the API. The header picker
 browses directories on the dex host and offers up to eight recent projects
 for the current agent. The directory applies
 from the next message after an API change. A tool change also applies to
 later tools in the same run. Clear the project to return to the agent
 workspace. An automation can set its project directory in its dialog. The
-directory applies on every run, including a reused session. Main, channels,
-tasks, and dreams cannot set a project. Tasks inherit the parent Chat's directory. Project skills come from
+directory applies on every run, including a reused session. Channel input uses
+Main's project. Tasks inherit their parent session's directory. A running task
+and a dream cannot set a project. Project skills come from
 `<cwd>/.agents/skills/`. Memory stays in `<data dir>/memory`.
 
 The system prompt always includes a guide to these files, even with no

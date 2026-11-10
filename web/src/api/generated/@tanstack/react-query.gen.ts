@@ -559,7 +559,7 @@ export const updateAgentMutation = (options?: Partial<Options<UpdateAgentData>>)
 export const getTaskQueryKey = (options: Options<GetTaskData>) => createQueryKey('getTask', options);
 
 /**
- * Read one task and the ID of its read-only work conversation.
+ * Read one task and its conversation ID. The conversation accepts user input after the task ends.
  */
 export const getTaskOptions = (options: Options<GetTaskData>) => queryOptions<GetTaskResponse, GetTaskError, GetTaskResponse, ReturnType<typeof getTaskQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {

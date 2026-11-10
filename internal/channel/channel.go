@@ -352,5 +352,5 @@ func (m *Manager) rememberQuestionMessage(ctx context.Context, submissionID, pee
 	if err != nil {
 		return err
 	}
-	return m.q.AddQuestionMessage(ctx, sqlc.AddQuestionMessageParams{Peer: peer, RemoteID: remoteID, QuestionID: question.ID})
+	return m.q.AddQuestionMessage(ctx, sqlc.AddQuestionMessageParams{AgentID: m.agentID, Peer: peer, RemoteID: remoteID, QuestionID: question.ID})
 }

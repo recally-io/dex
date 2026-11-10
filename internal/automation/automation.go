@@ -459,6 +459,9 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 	// The run comes before the next time: a crash between them repeats the check, which finds the
 	// run and does not store it again.
 	_, err = s.admit(ctx, row, sql.NullInt64{Int64: latest.UnixMilli(), Valid: true}, skip)
+	if errors.Is(err, chat.ErrAutomationChanged) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -510,7 +513,11 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 	if row.Session == "new" {
 		key += ":" + run.ID
 	}
-	chatID, created, err := s.chats.EnqueueAutomation(ctx, chat.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd})
+	input := chat.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd}
+	if due.Valid {
+		input.Expected = &row
+	}
+	chatID, created, err := s.chats.EnqueueAutomation(ctx, input)
 	if created {
 		run.Status, run.ChatID = "running", chatID
 	}

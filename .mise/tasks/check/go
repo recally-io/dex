@@ -3,7 +3,23 @@
 #MISE depends=["build:web"]
 set -euo pipefail
 
+packages=(./...)
+case "${1:-all}" in
+  all) ;;
+  without-app)
+    # CI runs the app tests in separate jobs. The default still runs every package.
+    all_packages="$(go list ./...)"
+    packages=()
+    while IFS= read -r package; do
+      if [[ "$package" != github.com/recally-io/dex/internal/app ]]; then
+        packages+=("$package")
+      fi
+    done <<< "$all_packages"
+    ;;
+  *) echo "Usage: mise run check:go [all|without-app]" >&2; exit 2 ;;
+esac
+
 golangci-lint fmt --diff
 golangci-lint run
 go build ./...
-go test -race ./...
+go test -race "${packages[@]}"

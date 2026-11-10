@@ -101,6 +101,10 @@ func isoWeekday(t time.Time) int {
 
 // latest returns the newest time of s from due to now; due is a time of s that has come.
 func (s Schedule) latest(due, now, anchor time.Time, loc *time.Location) time.Time {
+	if s.Kind == "every" {
+		period := time.Duration(s.Minutes) * time.Minute
+		return due.Add(now.Sub(due) / period * period)
+	}
 	for {
 		next, ok := s.next(due, anchor, loc)
 		if !ok || next.After(now) {
