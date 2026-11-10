@@ -79,10 +79,13 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if input.Automation {
 			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck)}}})
 		}
+		if input.Main {
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{workLoopExtension()}, Add: []*durable.Extension{frontDeskExtension()}}})
+		}
 		if input.Background {
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{taskExtension(ref.AgentID, a.config.Tasks), routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{taskReportExtension(ref.AgentID, a.config.Tasks.ReportTask)}}})
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{taskExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{taskReportExtension(ref.AgentID, a.config.Tasks.ReportTask)}}})
 		} else if input.Origin == "dream" || strings.Contains(input.Source, "/dream/") {
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{taskExtension(ref.AgentID, a.config.Tasks), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"), a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{taskExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"), a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
 		}
 		if err := conversation.Configure(ctx, change); err != nil {
 			return nil, err

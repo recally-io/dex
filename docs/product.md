@@ -61,7 +61,10 @@ to read in an afternoon.
   Each run requires an explicit changed, unchanged or failed report. Missing
   reports and execution errors fail the run. Run records include a summary
   and an optional change key; repeated keys mark duplicate reports.
-- Each conversation runs one main agent loop that does the work itself.
+- Main answers short requests directly. It sends longer work to background
+  execution and replies at once, so the user can keep writing while the work
+  runs.
+- Each Chat and automation session runs one main agent loop that does the work itself.
   Skills, tools and the project directory provide capabilities.
   Internal background execution is limited to independent parallel work,
   long commands whose output would flood the context, and independent review.

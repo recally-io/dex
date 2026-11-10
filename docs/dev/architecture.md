@@ -306,7 +306,9 @@ change and [ADR 0011](decisions/0011-native-pig-runtime.md) for native execution
 
 The task extension adds delegation tools and a `task-rules` section to
 foreground conversations, including main, Chat and automation sessions.
-Background executions and dreams have no delegation tools. A separate
+Main input replaces the `work-loop` section with the `front-desk` section.
+Chat and automation sessions keep `work-loop`.
+Background executions and dreams have no delegation tools and neither section. A separate
 extension gives foreground conversations and background executions the `coding-skill`
 section. Go embeds the full
 [built-in coding skill](../../internal/engine/skills/coding/SKILL.md) in the engine.
@@ -524,8 +526,15 @@ reconciliation cover the gap between their commits.
 
 ## Internal delegation
 
-Each conversation runs one main agent loop. Main and each Chat have separate
-contexts. Skills, tools and the project directory provide capabilities. The main agent does ordinary work
+Main is a front desk. A person waits for each main reply. A channel receives
+the reply only when the turn ends, and later input waits for that turn. So main
+answers short requests directly. It sends work that needs many tool calls, long
+commands, code changes or research to `spawn_task`. It then ends the turn with
+a short reply. When the user writes while tasks run, main answers first and
+cancels and replaces a task whose goal changed.
+
+Each Chat and automation session runs one main agent loop. Main and each Chat have separate
+contexts. Skills, tools and the project directory provide capabilities. The main agent loop does ordinary work
 itself. It uses `spawn_task` only for independent parallel work, long commands
 whose output would flood its context, and independent review. It uses
 `list_tasks`, `get_task`, and `cancel_task` to manage that work.
