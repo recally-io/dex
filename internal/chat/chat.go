@@ -346,7 +346,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 }
 
 func receiptError(sub sqlc.Submission) error {
-	if !sub.AdmittedAt.Valid && sub.Status == "unanswered" && sub.Reason.String != "stopped" && sub.Reason.String != "interrupted" {
+	if !sub.AdmittedAt.Valid && sub.Status == "unanswered" && sub.Reason.String != "stopped" && sub.Reason.String != "interrupted" && sub.Reason.String != "withdrawn" {
 		return fmt.Errorf("%w: %s", ErrRejected, sub.Reason.String)
 	}
 	return nil

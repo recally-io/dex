@@ -140,6 +140,12 @@ export type MessageInput = {
     attachments?: Array<string>;
 };
 
+export type WithdrawnMessage = {
+    id: string;
+    text: string;
+    attachments: Array<Attachment>;
+};
+
 export type Artifact = {
     id: string;
     name: string;
@@ -2128,6 +2134,47 @@ export type SendMessageResponses = {
 };
 
 export type SendMessageResponse = SendMessageResponses[keyof SendMessageResponses];
+
+export type WithdrawMessageData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+        messageId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw';
+};
+
+export type WithdrawMessageErrors = {
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type WithdrawMessageError = WithdrawMessageErrors[keyof WithdrawMessageErrors];
+
+export type WithdrawMessageResponses = {
+    /**
+     * The message is withdrawn.
+     */
+    200: WithdrawnMessage;
+};
+
+export type WithdrawMessageResponse = WithdrawMessageResponses[keyof WithdrawMessageResponses];
 
 export type ClearContextData = {
     body: {

@@ -94,7 +94,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, chat.ErrTaskConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
+			case errors.Is(err, chat.ErrTaskConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -426,6 +426,21 @@ func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObj
 		return nil, err
 	}
 	return api.SendMessage202JSONResponse{SubmissionId: m.ID}, nil
+}
+
+func (h *handler) WithdrawMessage(ctx context.Context, req api.WithdrawMessageRequestObject) (api.WithdrawMessageResponseObject, error) {
+	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+		return nil, err
+	}
+	m, err := h.Chats.Withdraw(ctx, agentID(ctx), req.ChatId, req.MessageId)
+	if err != nil {
+		return nil, err
+	}
+	out := api.WithdrawMessage200JSONResponse{Id: m.ID, Text: m.Content, Attachments: m.Attachments}
+	if out.Attachments == nil {
+		out.Attachments = []api.Attachment{}
+	}
+	return out, nil
 }
 
 // writableChat returns chat id, or errReadOnly for a chat that the web UI cannot write to.
