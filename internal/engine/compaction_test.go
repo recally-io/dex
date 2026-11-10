@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/MichaelKinsy/PiG/durable"
+	"github.com/MichaelKinsy/PiG/durable/harness"
 )
 
 func TestUserCompactionReusesOperationAndReportsNoOp(t *testing.T) {
@@ -161,6 +163,26 @@ func TestUserCompactionStatusDoesNotResumeColdAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	a = coreEngine(t, cfg)
+	readTasks := func() []durable.TaskRecord[durable.JsonValue, durable.JsonValue, durable.JsonValue] {
+		t.Helper()
+		var tasks []durable.TaskRecord[durable.JsonValue, durable.JsonValue, durable.JsonValue]
+		err := a.readAgentStorage(t.Context(), running, func(context.Context, harness.Harness) error { return fmt.Errorf("source Harness opened") }, func(ctx context.Context, store durable.Storage) error {
+			page, err := store.ScanTasks(ctx, durable.TaskQuery{ConversationId: new(durable.ConversationId(running.ID))}, 100, nil)
+			if err != nil {
+				return err
+			}
+			if page.Next != nil {
+				return fmt.Errorf("too many tasks for test")
+			}
+			tasks = page.Items
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tasks
+	}
+	tasksBefore := readTasks()
 	outcome, err := a.RecoveryOutcome(t.Context(), running, "running")
 	if err != nil || outcome != nil {
 		t.Fatalf("unfinished before read=%+v err=%v", outcome, err)
@@ -168,6 +190,9 @@ func TestUserCompactionStatusDoesNotResumeColdAgent(t *testing.T) {
 	waitForNoOp(a)
 	if len(a.resources) != 0 {
 		t.Fatal("cold status opened a Harness")
+	}
+	if tasksAfter := readTasks(); !reflect.DeepEqual(tasksBefore, tasksAfter) {
+		t.Fatalf("status changed unfinished tasks: before=%+v after=%+v", tasksBefore, tasksAfter)
 	}
 	after, err := a.RecoveryOutcome(t.Context(), running, "running")
 	if err != nil || after != nil {
