@@ -115,7 +115,7 @@ func (a *Agents) CompactionStatus(ctx context.Context, ref Ref, taskID int64) (C
 		var err error
 		result, err = readCompactionState(ctx, ref, taskID, h.GetTask, func(ctx context.Context, id durable.SubmissionId) (*durable.SubmissionRecord, error) {
 			sub, err := h.Submission(ctx, id)
-			if err != nil {
+			if err != nil || sub == nil {
 				return nil, err
 			}
 			record, err := sub.Status(ctx)
