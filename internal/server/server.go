@@ -787,7 +787,14 @@ func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestO
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Clear(ctx, agentID(ctx), req.ChatId, id.String(), "web"); err != nil {
+	handoff := ""
+	if req.Body.Handoff != nil {
+		handoff = *req.Body.Handoff
+	}
+	if utf8.RuneCountInString(handoff) > 32000 {
+		return nil, errInvalid
+	}
+	if err := h.Chats.ClearWithHandoff(ctx, agentID(ctx), req.ChatId, id.String(), "web", handoff); err != nil {
 		return nil, err
 	}
 	return api.ClearContext202JSONResponse{SubmissionId: id.String()}, nil

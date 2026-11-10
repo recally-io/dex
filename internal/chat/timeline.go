@@ -109,6 +109,11 @@ func (s *Service) Main(ctx context.Context, agentID string) (Chat, error) {
 
 // Clear stores a reset only when both owners are idle. Delivery cannot pass this check.
 func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, requestID, origin string) error {
+	return s.ClearWithHandoff(ctx, agentID, chatID, requestID, origin, "")
+}
+
+// ClearWithHandoff saves handoff text in the new context without starting a run.
+func (s *Service) ClearWithHandoff(ctx context.Context, agentID string, chatID int64, requestID, origin, handoff string) error {
 	unlock, err := s.lockAgent(ctx, agentID)
 	if err != nil {
 		return err
@@ -122,8 +127,11 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 		return ErrNotFound
 	}
 	if sub, err := s.q.GetSubmission(ctx, requestID); err == nil {
-		if sub.ConversationID != chatID || sub.Kind != "context_reset" {
+		if sub.Kind != "context_reset" {
 			return ErrResetID
+		}
+		if sub.ConversationID != chatID || sub.Content != handoff {
+			return engine.ErrOperationConflict
 		}
 		return nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
@@ -165,12 +173,19 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 			return ErrConversationBusy
 		}
 		created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
-			ID: requestID, ConversationID: chatID, Attachments: "null", Origin: origin, Kind: "context_reset", CreatedAt: s.now().UnixMilli(),
+			ID: requestID, ConversationID: chatID, Content: handoff, Attachments: "null", Origin: origin, Kind: "context_reset", CreatedAt: s.now().UnixMilli(),
 		})
 		if err != nil {
 			return err
 		}
 		if created == 0 {
+			prior, err := q.GetSubmission(ctx, requestID)
+			if err != nil {
+				return err
+			}
+			if prior.Kind == "context_reset" {
+				return engine.ErrOperationConflict
+			}
 			return ErrResetID
 		}
 		if err := q.DismissQuestions(ctx, sqlc.DismissQuestionsParams{ConversationID: chatID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {

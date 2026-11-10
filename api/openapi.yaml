@@ -961,8 +961,9 @@ paths:
       operationId: clearContext
       description: >
         Stores a context reset in this writable session's delivery queue.
-        A repeated UUID does not reset again. Refuses a busy session without a
-        change. Task, automation and channel sessions return 403.
+        A repeated UUID with the same handoff does not reset again. The optional
+        handoff enters the new context without starting a run. Refuses a busy
+        session without a change. Task, automation and channel sessions return 403.
       requestBody:
         required: true
         content:
@@ -975,6 +976,10 @@ paths:
                   type: string,
                   description: A stable client UUID for this reset.,
                 }
+                handoff:
+                  type: string
+                  maxLength: 32000
+                  description: Text to keep in the new context. Empty is equivalent to omitted.
       responses:
         "202":
           description: The reset is stored.

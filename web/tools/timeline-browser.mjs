@@ -1360,6 +1360,43 @@ try {
   results.push("fork a committed message into an idle Chat");
   await shot("17-fork");
 
+  await api(
+    `/api/agents/default/chats/${forkID}/settings`,
+    { provider: "faux", modelId: "context", thinkingLevel: "off" },
+    "PUT",
+  );
+  await sendFromComposer("before handoff");
+  await ui(
+    "fork input answered",
+    `document.body.innerText.includes('before handoff') && document.body.innerText.includes('context:')`,
+  );
+  await poll("fork input settled", async () => !(await api(`/api/agents/default/chats/${forkID}`)).busy);
+  await click("Clear with handoff");
+  await ui("handoff dialog", `!!document.querySelector('textarea[aria-label="Handoff text"]')`);
+  await evaluate(`document.querySelector('textarea[aria-label="Handoff text"]').focus()`);
+  await call("Input.insertText", { text: "remember this" });
+  const countBeforeHandoff = messages.length;
+  await evaluate(
+    `[...document.querySelectorAll('[role="dialog"] button')].find(node => node.textContent.trim() === 'Clear context').click()`,
+  );
+  await ui(
+    "handoff cleared",
+    `!document.querySelector('textarea[aria-label="Handoff text"]') && !!document.querySelector('[role="separator"]')`,
+  );
+  assert.equal(messages.length, countBeforeHandoff, "handoff must not send a message");
+  assert.equal(
+    (await api(`/api/agents/default/chats/${forkID}`)).busy,
+    false,
+    "handoff must not start a run",
+  );
+  await sendFromComposer("continue handoff");
+  await ui(
+    "handoff reaches next input",
+    `document.body.innerText.includes('context: ["remember this","continue handoff"]')`,
+  );
+  results.push("clear with passive handoff and use it on the next input");
+  await shot("18-handoff");
+
   await visit("/providers");
   await ui(
     "global provider page ready",

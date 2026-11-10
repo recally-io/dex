@@ -32,6 +32,7 @@ import { QuestionCard } from "../components/agent/question-card";
 import { RetryNotice, Transcript, type QueuedActions } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
+import { Modal } from "../components/dialog";
 import { InPaneContext, MainPane, Note, PageHeader } from "../components/page";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -210,7 +211,15 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const embedded = useContext(InPaneContext);
   const [jump, setJump] = useState(false);
   const [announcement, setAnnouncement] = useState("");
-  const clear = useClearContext(chatId, state.running, () => setAnnouncement("Context cleared."));
+  const [handoffOpen, setHandoffOpen] = useState(false);
+  const [handoff, setHandoff] = useState("");
+
+  const clear = useClearContext(chatId, state.running, () => {
+    setAnnouncement("Context cleared.");
+    setHandoffOpen(false);
+    setHandoff("");
+  });
+
   const wasRunning = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -416,18 +425,63 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           <Failure title="Could not clear context" error={clear.error} />
         </div>
       ) : null}
+      {handoffOpen ? (
+        <Modal
+          title="Clear with handoff"
+          description="Keep this text in the new context. It will not start a reply."
+          pending={clear.pending}
+          onClose={() => setHandoffOpen(false)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setHandoffOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={clear.pending || Array.from(handoff).length > 32000}
+                onClick={() => clear.submit(handoff)}
+              >
+                Clear context
+              </Button>
+            </>
+          }
+        >
+          <label className="flex flex-col gap-2 text-sm">
+            Handoff text
+            <textarea
+              aria-label="Handoff text"
+              value={handoff}
+              onChange={(event) => setHandoff(event.target.value)}
+              className="min-h-32 w-full rounded-md border bg-background p-2"
+            />
+          </label>
+          {clear.refused ? (
+            <p role="alert">Context not cleared. Wait for the reply or stop it, then try again.</p>
+          ) : null}
+          {clear.error ? <Failure title="Could not clear context" error={clear.error} /> : null}
+        </Modal>
+      ) : null}
       <Composer
         controls={
           hasContext(items) ? (
-            <button
-              type="button"
-              title="Start a new context. Earlier messages stay."
-              disabled={clear.pending}
-              onClick={clear.submit}
-              className="flex h-7 items-center rounded-md px-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
-            >
-              Clear context
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                title="Start a new context. Earlier messages stay."
+                disabled={clear.pending}
+                onClick={() => clear.submit()}
+                className="flex h-7 items-center rounded-md px-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+              >
+                Clear context
+              </button>
+              <button
+                type="button"
+                disabled={clear.pending}
+                onClick={() => setHandoffOpen(true)}
+                className="flex h-7 items-center rounded-md px-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+              >
+                Clear with handoff
+              </button>
+            </div>
           ) : null
         }
         fix={

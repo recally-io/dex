@@ -2361,6 +2361,10 @@ export type ClearContextData = {
          * A stable client UUID for this reset.
          */
         id: string;
+        /**
+         * Text to keep in the new context. Empty is equivalent to omitted.
+         */
+        handoff?: string;
     };
     path: {
         agentId: string;

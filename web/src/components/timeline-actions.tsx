@@ -18,6 +18,7 @@ export function hasContext(items: Item[]) {
 export function useClearContext(chatId: number, running: boolean, onCleared: () => void) {
   const agentId = useAgentId();
   const request = useRef(newId());
+  const lastHandoff = useRef("");
   const [refused, setRefused] = useState(false);
   const wasRunning = useRef(running);
 
@@ -27,8 +28,16 @@ export function useClearContext(chatId: number, running: boolean, onCleared: () 
   }, [running]);
 
   const clear = useMutation({
-    mutationFn: async () => {
-      const result = await clearContext({ path: { agentId, chatId }, body: { id: request.current } });
+    mutationFn: async (handoff: string) => {
+      if (lastHandoff.current !== handoff) {
+        request.current = newId();
+        lastHandoff.current = handoff;
+      }
+
+      const result = await clearContext({
+        path: { agentId, chatId },
+        body: { id: request.current, handoff },
+      });
 
       if (result.response?.status === 409) return false;
 
@@ -49,7 +58,12 @@ export function useClearContext(chatId: number, running: boolean, onCleared: () 
     },
   });
 
-  return { submit: () => clear.mutate(), pending: clear.isPending, error: clear.error, refused };
+  return {
+    submit: (handoff = "") => clear.mutate(handoff),
+    pending: clear.isPending,
+    error: clear.error,
+    refused,
+  };
 }
 
 export function LoadEarlierButton({

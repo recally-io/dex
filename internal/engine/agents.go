@@ -452,6 +452,11 @@ func (a *Agents) CheckIdle(ctx context.Context, ref Ref) error {
 }
 
 func (a *Agents) Reset(ctx context.Context, ref Ref, requestID string) error {
+	return a.ResetWithHandoff(ctx, ref, requestID, "")
+}
+
+// ResetWithHandoff adds an optional user message to the reset entry without starting a run.
+func (a *Agents) ResetWithHandoff(ctx context.Context, ref Ref, requestID, handoff string) error {
 	if requestID == "" {
 		return fmt.Errorf("%w: reset request ID", ErrInvalidInput)
 	}
@@ -481,12 +486,44 @@ func (a *Agents) Reset(ctx context.Context, ref Ref, requestID string) error {
 		if err := a.checkIdle(ctx, conversation); err != nil {
 			return err
 		}
+	} else if existing.Type != durable.SubmissionTypeWrite {
+		return ErrOperationConflict
 	}
-	submission, err := conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeWrite, RequestId: &requestID, Entry: &durable.EntryDraft{Kind: durable.ResetEntry.Kind, HeadSelf: true}})
+	entry := durable.EntryDraft{Kind: durable.ResetEntry.Kind, HeadSelf: true}
+	if handoff != "" {
+		entry.Model = []ai.Message{ai.UserMessage{Content: ai.UserText(handoff)}}
+	}
+	submission, err := conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeWrite, RequestId: &requestID, Entry: &entry})
 	if err != nil {
 		return err
 	}
-	_, err = submission.Wait(ctx)
+	settled, err := submission.Wait(ctx)
+	if err != nil {
+		return err
+	}
+	if settled.Status != durable.SubmissionDone || settled.Entry == nil {
+		return fmt.Errorf("reset did not settle: %s", settled.Status)
+	}
+	_, err = conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+		stored, err := tx.Entry(*settled.Entry)
+		if err != nil {
+			return nil, err
+		}
+		if stored == nil || stored.Kind != durable.ResetEntry.Kind {
+			return nil, ErrOperationConflict
+		}
+		if handoff == "" && len(stored.Model) == 0 {
+			return nil, nil
+		}
+		if len(stored.Model) == 1 {
+			if user, ok := stored.Model[0].(ai.UserMessage); ok {
+				if text, ok := user.Content.(ai.UserText); ok && string(text) == handoff {
+					return nil, nil
+				}
+			}
+		}
+		return nil, ErrOperationConflict
+	})
 	return err
 }
 

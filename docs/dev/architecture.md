@@ -675,7 +675,8 @@ the web. Ended task conversations accept user input.
 Channel `/stop` calls main Stop. It covers main input from every entry and
 tasks started in main. Chat, automation and other agents stay outside that scope.
 Channel `/new` calls main Clear with the same busy check and reset ordering.
-It does not cancel background work. The result keeps the work's original peer.
+Clear can save handoff text in the new native context. It does not start a run.
+A repeated request ID must use the same handoff text. It does not cancel background work. The result keeps the work's original peer.
 Stop withdraws pending ordinary input and results. The same transaction sets
 active background executions to `cancelled` and withdraws their own input.
 Stop and spawn acquire the SQLite writer before they read: spawn either commits

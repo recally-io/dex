@@ -1286,6 +1286,9 @@ type PollWechatLoginJSONBody struct {
 
 // ClearContextJSONBody defines parameters for ClearContext.
 type ClearContextJSONBody struct {
+	// Handoff Text to keep in the new context. Empty is equivalent to omitted.
+	Handoff *string `json:"handoff,omitempty"`
+
 	// Id A stable client UUID for this reset.
 	Id string `json:"id"`
 }

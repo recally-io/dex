@@ -680,7 +680,7 @@ export const withdrawMessage = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again. Refuses a busy session without a change. Task, automation and channel sessions return 403.
+ * Stores a context reset in this writable session's delivery queue. A repeated UUID with the same handoff does not reset again. The optional handoff enters the new context without starting a run. Refuses a busy session without a change. Task, automation and channel sessions return 403.
  *
  */
 export const clearContext = <ThrowOnError extends boolean = false>(options: Options<ClearContextData, ThrowOnError>): RequestResult<ClearContextResponses, ClearContextErrors, ThrowOnError> => (options.client ?? client).post<ClearContextResponses, ClearContextErrors, ThrowOnError>({

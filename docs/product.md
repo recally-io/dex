@@ -38,6 +38,7 @@ to read in an afternoon.
   model settings by default. A saved Main override also applies to channel input.
   Clear context starts a new model context when the timeline
   is idle. Earlier messages stay readable with Show earlier messages. A clear
+  can keep handoff text in the new context without starting a reply. A clear
   keeps long-term memory. After a summary, Show earlier messages can load
   the earlier transcript. Only a clear shows a divider. The bot is one page
   with exactly four tabs: Chat, Routines, Extensions, and Settings. Its
