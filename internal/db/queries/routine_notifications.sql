@@ -11,9 +11,6 @@ SELECT * FROM routine_notification_targets WHERE id = ? AND agent_id = ?;
 -- name: SetPrimaryNotificationTarget :execrows
 UPDATE agents SET primary_notification_target_id = ? WHERE id = ?;
 
--- name: SetRoutineNotificationRoute :execrows
-UPDATE automations SET notification_route = ?, notification_target_id = ? WHERE id = ? AND agent_id = ?;
-
 -- name: QueueRoutineNotification :exec
 INSERT INTO routine_notification_deliveries (run_id, agent_id, target_id, platform, account_id, peer, body)
 SELECT r.id, a.agent_id, t.id, t.platform, t.account_id, t.peer,

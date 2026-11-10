@@ -215,30 +215,6 @@ func (q *Queries) SetRoutineNotificationParts(ctx context.Context, arg SetRoutin
 	return err
 }
 
-const setRoutineNotificationRoute = `-- name: SetRoutineNotificationRoute :execrows
-UPDATE automations SET notification_route = ?, notification_target_id = ? WHERE id = ? AND agent_id = ?
-`
-
-type SetRoutineNotificationRouteParams struct {
-	NotificationRoute    string         `json:"notification_route"`
-	NotificationTargetID sql.NullString `json:"notification_target_id"`
-	ID                   string         `json:"id"`
-	AgentID              string         `json:"agent_id"`
-}
-
-func (q *Queries) SetRoutineNotificationRoute(ctx context.Context, arg SetRoutineNotificationRouteParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, setRoutineNotificationRoute,
-		arg.NotificationRoute,
-		arg.NotificationTargetID,
-		arg.ID,
-		arg.AgentID,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const setRoutineNotificationStatus = `-- name: SetRoutineNotificationStatus :exec
 UPDATE routine_notification_deliveries SET status = ?, reason = ? WHERE run_id = ? AND status = 'pending'
 `

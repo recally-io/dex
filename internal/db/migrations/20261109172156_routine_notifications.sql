@@ -5,7 +5,6 @@ CREATE TABLE routine_notification_targets (
     platform TEXT NOT NULL CHECK (platform IN ('telegram', 'feishu', 'wechat')),
     account_id TEXT NOT NULL,
     peer TEXT NOT NULL,
-    UNIQUE (id, agent_id),
     UNIQUE (agent_id, platform, account_id, peer)
 ) STRICT;
 
