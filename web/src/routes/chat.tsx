@@ -28,6 +28,7 @@ import { TaskSessionBar } from "../components/agent/task-session-bar";
 import { Artifacts, takeArtifactDraft } from "../components/agent/artifacts";
 import { Composer } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
+import { QuestionCard } from "../components/agent/question-card";
 import { RetryNotice, Transcript, type QueuedActions } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
@@ -212,7 +213,8 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     ? findModel(own.provider ?? "", own.modelId, models.data?.models)
     : agentModel(settings.agent, models.data?.models);
 
-  const withdraw = useMutation(withdrawMessageMutation());
+  // Withdrawing an answer opens its question again.
+  const withdraw = useMutation({ ...withdrawMessageMutation(), onSuccess: () => void refetchChat() });
 
   // The native queue is the source of the list: only messages that the stream shows as queued can be withdrawn.
   const queuedActions: QueuedActions = {
@@ -236,7 +238,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     ...abortChatMutation(),
     onSuccess: async () => {
       setQueued([]);
-      await refreshChats(agentId);
+      await Promise.all([refreshChats(agentId), refetchChat()]);
     },
   });
 
@@ -244,10 +246,14 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   useEffect(() => {
     if (state.running && !wasRunning.current) setAnnouncement("The bot is working.");
 
-    if (!state.running && wasRunning.current) setAnnouncement("The bot finished.");
+    if (!state.running && wasRunning.current) {
+      setAnnouncement("The bot finished.");
+      // A finished run may have asked a question, or consumed the answer to one.
+      void refetchChat();
+    }
 
     wasRunning.current = state.running;
-  }, [state.running]);
+  }, [state.running, refetchChat]);
 
   const items = [
     ...state.items,
@@ -291,7 +297,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const pending = send.isPending || abort.isPending;
   const error = send.error ?? abort.error;
 
-  async function sendText(text: string, attachments: Attachment[]) {
+  async function sendText(text: string, attachments: Attachment[], answersQuestionId?: string) {
     abort.reset();
     const ids = attachments.map((a) => a.id);
     const failed = failedMessage.current?.body;
@@ -300,7 +306,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     const body: MessageInput =
       failed?.text === text && failed.attachments?.join() === ids.join()
         ? failed
-        : { id: newId(), text, attachments: ids };
+        : { id: newId(), text, attachments: ids, answersQuestionId };
 
     failedMessage.current = { body, attachments };
     const local: UserItem = { kind: "user", id: body.id, text, attachments, queued: true };
@@ -313,8 +319,15 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       setDraft((current) => (current.trim() === text ? "" : current));
       files.sent(ids);
       await refreshChats(agentId);
+
+      // The question card shows the saved answer. A plain message leaves the question as it was.
+      if (answersQuestionId) await refetchChat();
     } catch (cause) {
       setQueued((previous) => previous.filter((item) => item.id !== body.id));
+
+      // A refused answer means the question closed meanwhile.
+      if (answersQuestionId) void refetchChat();
+
       throw cause;
     }
   }
@@ -349,6 +362,14 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
               : "Could not withdraw the message."}
           </Note>
         </div>
+      ) : null}
+      {chat.data?.question ? (
+        <QuestionCard
+          key={chat.data.question.id}
+          question={chat.data.question}
+          pending={send.isPending}
+          answer={(text) => void sendText(text, [], chat.data?.question?.id).catch(() => {})}
+        />
       ) : null}
       {abort.isSuccess ? (
         <div role="status" className="mb-3">
