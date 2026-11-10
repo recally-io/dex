@@ -6,6 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowDown, Clock, Lock, Send } from "lucide-react";
 import type { Attachment, UserItem, MessageInput, Chat as ChatInfo } from "../api/generated/types.gen";
 import {
+  getChatOptions,
   getHealthOptions,
   getMainChatOptions,
   sendMessageMutation,
@@ -17,11 +18,12 @@ import {
 import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
 import { refreshChats } from "../lib/queries";
-import { agentModel } from "../lib/agent";
+import { agentModel, findModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
 import { activeSessionCount, markTaskSeen, sessionKind, taskTime } from "../lib/tasks";
-import { ChatProject } from "../components/chat-project";
+import { SessionSettings } from "../components/session-settings";
+import { TaskSessionBar } from "../components/agent/task-session-bar";
 import { Artifacts, takeArtifactDraft } from "../components/agent/artifacts";
 import { Composer } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
@@ -75,8 +77,31 @@ export function MainTimeline({ settings }: { settings: Settings }) {
   );
 }
 
+// A delegated session names the conversation that started it. The parent is Main or a Chat session.
+function TaskOrigin({ parentId }: { parentId: number }) {
+  const agentId = useAgentId();
+  const parent = useQuery(getChatOptions({ path: { agentId, chatId: parentId } }));
+
+  return (
+    <Link
+      to="/a/$agentId/c/$chatId"
+      params={{ agentId, chatId: String(parentId) }}
+      className="shrink-0 rounded-full hover:opacity-80"
+    >
+      <Badge variant="secondary" className="h-5 max-w-40 shrink-0 gap-1 px-2 text-[11.5px]">
+        <span className="truncate">
+          Started by {parent.data ? (parent.data.main ? "Main" : parent.data.title || "a chat") : "…"}
+        </span>
+      </Badge>
+    </Link>
+  );
+}
+
 function OriginPill({ chat }: { chat: ChatInfo }) {
   const agentId = useAgentId();
+
+  if (chat.channel === "task")
+    return chat.task ? <TaskOrigin parentId={chat.task.parentConversationId} /> : null;
 
   if (!["web", "automation"].includes(chat.channel))
     return (
@@ -117,6 +142,19 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const readOnly = chat.data?.readOnly ?? true;
   const kind = chat.data ? sessionKind(chat.data) : undefined;
   const switchable = kind === "Main" || kind === "Chat";
+
+  const task = chat.data?.task;
+  const taskActive = task ? ["queued", "admitting", "running"].includes(task.status) : false;
+  const refetchChat = chat.refetch;
+
+  // The session becomes writable when its task ends, so the page follows the task while it is active.
+  useEffect(() => {
+    if (!taskActive) return;
+
+    const timer = setInterval(() => void refetchChat(), 3000);
+
+    return () => clearInterval(timer);
+  }, [taskActive, refetchChat]);
 
   const sessions = useQuery({
     ...listChatsOptions({ path: { agentId } }),
@@ -166,7 +204,12 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const send = useMutation(sendMessageMutation());
   const models = useQuery(listModelsOptions());
   const files = useAttachments(main);
-  const model = agentModel(settings.agent, models.data?.models);
+  // A session with its own model sends with that model, not the bot's.
+  const own = chat.data?.settings;
+
+  const model = own?.modelId
+    ? findModel(own.provider ?? "", own.modelId, models.data?.models)
+    : agentModel(settings.agent, models.data?.models);
 
   const abort = useMutation({
     ...abortChatMutation(),
@@ -266,8 +309,17 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
 
   const running = state.running;
 
+  const continuing = Boolean(task) && !readOnly;
+
   const composer = readOnly ? null : (
     <>
+      {continuing ? (
+        <p className="mb-3 text-center text-[12px] leading-relaxed text-muted-foreground">
+          The task is finished. You can keep chatting here.
+          <br />
+          Replies stay in this session. {settings.agent.name} does not report them to Main again.
+        </p>
+      ) : null}
       {abort.isSuccess ? (
         <div role="status" className="mb-3">
           <Note>Stop requested. Earlier actions are not undone. Processes and remote work may continue.</Note>
@@ -340,7 +392,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         }
         pending={pending}
         disabledReason={reason}
-        placeholder={`Message ${settings.agent.name}`}
+        placeholder={continuing ? "Continue chat" : `Message ${settings.agent.name}`}
         autoFocus
         onSend={(text) => sendText(text, files.ready)}
         onStop={() => {
@@ -451,16 +503,25 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           embedded ? "min-h-0" : "lg:border-l lg:border-border",
         )}
       >
-        {/* Writable chats switch in the Chats sidebar. The bot pane names Main; a Chat keeps a
-            title for focus and screen readers. */}
+        {/* The bot pane names Main. A Chat keeps a title for focus and screen readers. Both show
+            their project and model; a Chat switches in the Chats sidebar. */}
         {chat.data && switchable ? (
-          chat.data.main ? null : (
+          chat.data.main ? (
+            <header className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-4 py-2">
+              <p className="min-w-0 basis-56 flex-1 text-[12px] text-muted-foreground">
+                Changes apply from the next message, including channel messages.
+              </p>
+              <div className="min-w-0 max-w-full">
+                <SessionSettings chat={chat.data} settings={settings} />
+              </div>
+            </header>
+          ) : (
             <header className="flex min-w-0 items-center justify-between gap-3 border-b border-border px-4 py-2">
               <h1 id="page-title" tabIndex={-1} className="truncate text-sm font-medium">
                 {chat.data.title || "New chat"}
               </h1>
-              <div className="min-w-0 max-w-1/2">
-                <ChatProject chatId={chatId} cwd={chat.data.cwd} />
+              <div className="min-w-0 max-w-3/4">
+                <SessionSettings chat={chat.data} settings={settings} />
               </div>
             </header>
           )
@@ -470,7 +531,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
             menu={!embedded}
             title={chat.data?.title || "New session"}
             crumb={
-              chat.data ? (
+              chat.data && !task ? (
                 <Link
                   to="/a/$agentId/automations"
                   params={{ agentId }}
@@ -481,6 +542,9 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
               ) : null
             }
             badge={chat.data ? <OriginPill chat={chat.data} /> : null}
+            actions={
+              continuing && chat.data ? <SessionSettings chat={chat.data} settings={settings} /> : undefined
+            }
           />
         )}
         <div className="flex min-h-0 flex-1">
@@ -501,6 +565,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                 {transcript}
               </div>
             </div>
+            {readOnly && task && taskActive ? <TaskSessionBar task={task} /> : null}
             {readOnly ? null : (
               <div
                 className={cn(
@@ -608,6 +673,9 @@ function readOnlyCopy(channel?: ChatInfo["channel"]) {
 
   if (channel === "telegram" || channel === "wechat" || channel === "feishu")
     return `You can read this conversation here. Reply in ${names[channel]}.`;
+
+  if (channel === "task")
+    return "You can read this session while the task runs. You can chat here after it ends.";
 
   return channel === "automation" ? "You can read this run here." : "You can read this conversation here.";
 }
