@@ -88,7 +88,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusBadRequest
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
-			case errors.Is(err, engine.ErrModelsPending):
+			case errors.Is(err, engine.ErrModelsPending), errors.Is(err, chat.ErrCancellationPending):
 				status = http.StatusServiceUnavailable
 			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden), errors.Is(err, chat.ErrSettingsForbidden):
 				status = http.StatusForbidden

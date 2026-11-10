@@ -88,7 +88,7 @@ func TestUserForkWaitsForPendingNativeAbort(t *testing.T) {
 	if err = service.Stop(t.Context(), "bot", id); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.Fork(t.Context(), "bot", id, entry, "direct-fork"); !errors.Is(err, engine.ErrModelsPending) {
+	if _, err = service.Fork(t.Context(), "bot", id, entry, "direct-fork"); !errors.Is(err, ErrCancellationPending) {
 		t.Fatalf("fork passed deferred abort: %v", err)
 	}
 	if _, err = r.q.GetForkOperation(t.Context(), "direct-fork"); err == nil {

@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/recally-io/dex/internal/engine"
@@ -34,6 +35,9 @@ func (s *Service) lockAgent(ctx context.Context, id string) (func(), error) {
 	}
 }
 
+// ErrCancellationPending means a native cancellation still needs reconciliation.
+var ErrCancellationPending = errors.New("native cancellation is pending")
+
 // finishAgentAborts completes cancellation before a context operation can open the agent.
 // The caller holds the agent delivery gate.
 func (s *Service) finishAgentAborts(ctx context.Context, agentID string) error {
@@ -50,7 +54,7 @@ func (s *Service) finishAgentAborts(ctx context.Context, agentID string) error {
 			return err
 		}
 		if !completed {
-			return engine.ErrModelsPending
+			return ErrCancellationPending
 		}
 	}
 	return nil
