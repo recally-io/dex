@@ -40,3 +40,9 @@ WHERE answer_submission_id = @submission_id AND status = 'answered';
 -- Stop, Clear and archive close the question and an answer that never ran.
 UPDATE questions SET status = 'dismissed', settled_at = @now
 WHERE conversation_id = @conversation_id AND status IN ('open', 'answered');
+
+-- name: AddQuestionMessage :exec
+INSERT OR IGNORE INTO question_messages (peer, remote_id, question_id) VALUES (?, ?, ?);
+
+-- name: GetQuestionByMessage :one
+SELECT question_id FROM question_messages WHERE peer = ? AND remote_id = ?;

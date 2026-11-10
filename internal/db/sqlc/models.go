@@ -140,6 +140,12 @@ type Question struct {
 	SettledAt          sql.NullInt64  `json:"settled_at"`
 }
 
+type QuestionMessage struct {
+	Peer       string `json:"peer"`
+	RemoteID   string `json:"remote_id"`
+	QuestionID string `json:"question_id"`
+}
+
 type RoutineNotificationDelivery struct {
 	RunID         string `json:"run_id"`
 	AgentID       string `json:"agent_id"`

@@ -10,6 +10,21 @@ import (
 	"database/sql"
 )
 
+const addQuestionMessage = `-- name: AddQuestionMessage :exec
+INSERT OR IGNORE INTO question_messages (peer, remote_id, question_id) VALUES (?, ?, ?)
+`
+
+type AddQuestionMessageParams struct {
+	Peer       string `json:"peer"`
+	RemoteID   string `json:"remote_id"`
+	QuestionID string `json:"question_id"`
+}
+
+func (q *Queries) AddQuestionMessage(ctx context.Context, arg AddQuestionMessageParams) error {
+	_, err := q.db.ExecContext(ctx, addQuestionMessage, arg.Peer, arg.RemoteID, arg.QuestionID)
+	return err
+}
+
 const answerQuestion = `-- name: AnswerQuestion :execrows
 UPDATE questions SET status = 'answered', answer_submission_id = ?1
 WHERE id = ?2 AND agent_id = ?3 AND conversation_id = ?4 AND status = 'open'
@@ -166,6 +181,22 @@ func (q *Queries) GetQuestionByAnswer(ctx context.Context, answerSubmissionID sq
 		&i.SettledAt,
 	)
 	return i, err
+}
+
+const getQuestionByMessage = `-- name: GetQuestionByMessage :one
+SELECT question_id FROM question_messages WHERE peer = ? AND remote_id = ?
+`
+
+type GetQuestionByMessageParams struct {
+	Peer     string `json:"peer"`
+	RemoteID string `json:"remote_id"`
+}
+
+func (q *Queries) GetQuestionByMessage(ctx context.Context, arg GetQuestionByMessageParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getQuestionByMessage, arg.Peer, arg.RemoteID)
+	var question_id string
+	err := row.Scan(&question_id)
+	return question_id, err
 }
 
 const getQuestionByOperation = `-- name: GetQuestionByOperation :one
