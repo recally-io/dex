@@ -252,15 +252,19 @@ func taskSource(ctx context.Context, api durable.ToolExecutionApi) (string, erro
 		}
 		return "", errors.New("task source memo is invalid")
 	}
-	live, err := durable.Snapshot[harness.LiveState](ctx, api, harness.LiveDoc, api.ConversationId())
-	if err != nil {
-		return "", err
-	}
-	if live == nil || live.Run == nil || len(live.Run.Inputs) != 1 {
-		return "", errors.New("task tool has no source run")
-	}
-	original := live.Run.Inputs[0]
 	value, err := api.Commit(ctx, func(tx durable.Tx) (any, error) {
+		liveDoc, err := tx.Doc(harness.LiveDoc, api.ConversationId())
+		if err != nil {
+			return nil, err
+		}
+		live, err := durable.FromJsonValue[harness.LiveState](liveDoc.Snapshot())
+		if err != nil {
+			return nil, err
+		}
+		if live.Run == nil || len(live.Run.Inputs) == 0 {
+			return nil, errors.New("task tool has no source run")
+		}
+		original := live.Run.Inputs[0]
 		task, err := tx.Task(api.TaskId())
 		if err != nil {
 			return nil, err
@@ -273,6 +277,20 @@ func taskSource(ctx context.Context, api durable.ToolExecutionApi) (string, erro
 		}
 		if task == nil || task.Id != live.Run.TaskId {
 			return nil, errors.New("task tool does not belong to the source run")
+		}
+		_, binding, err := bindingDraft(tx, api.ConversationId())
+		if err != nil {
+			return nil, err
+		}
+		if binding.Root != "" {
+			for _, input := range live.Run.Inputs {
+				for _, bound := range binding.Inputs {
+					if input == bound.ID {
+						return binding.Root, nil
+					}
+				}
+			}
+			return nil, errors.New("task tool source run is not bound")
 		}
 		var cursor durable.Cursor
 		for {

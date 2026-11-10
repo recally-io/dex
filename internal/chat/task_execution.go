@@ -75,6 +75,13 @@ func (s *Service) settleTaskOutcome(ctx context.Context, id string, event engine
 	} else if t.StructuredReport != "" && event.Status != "done" {
 		report += "\nExecution failure: " + event.Reason
 	}
+	if err = q.FinishUnsentTaskSteers(ctx, sqlc.FinishUnsentTaskSteersParams{TaskID: t.ID, Reason: "task ended before admission"}); err != nil {
+		return true, err
+	}
+	report, err = taskReportWithUndeliveredSteers(ctx, q, t.ID, report)
+	if err != nil {
+		return true, err
+	}
 	changed, err := q.SettleTask(ctx, sqlc.SettleTaskParams{ID: t.ID, Status: status, Report: report, EndedAt: sql.NullInt64{Int64: now, Valid: true}})
 	if err != nil || changed == 0 {
 		return true, err
@@ -88,7 +95,13 @@ func (s *Service) settleTaskOutcome(ctx context.Context, id string, event engine
 			return true, err
 		}
 	}
-	goalMet := status == "done" && structured != nil && structured.Outcome == "done"
+	hasSteer, err := q.HasTaskSteer(ctx, t.ID)
+	if err != nil {
+		return true, err
+	}
+	// A staged report has no producer watermark yet; do not claim it covers
+	// any accepted steer. Keep this in sync with taskView.
+	goalMet := status == "done" && structured != nil && structured.Outcome == "done" && !hasSteer
 	payload := struct {
 		Result any `json:"task-result"`
 	}{struct {
@@ -113,6 +126,18 @@ func (s *Service) settleTaskOutcome(ctx context.Context, id string, event engine
 	s.signal(t.ParentConversationID)
 	s.Wake()
 	return true, nil
+}
+
+func taskReportWithUndeliveredSteers(ctx context.Context, q *sqlc.Queries, taskID, report string) (string, error) {
+	reasons, err := q.ListUndeliveredTaskSteerReasons(ctx, taskID)
+	if err != nil {
+		return "", err
+	}
+	if len(reasons) == 0 {
+		return report, nil
+	}
+	// Put the control fact before the worker report so parent truncation keeps it.
+	return "Control notice: accepted task steer was undelivered and was not seen by the worker. Reasons: " + strings.Join(reasons, "; ") + ". The worker report does not cover the undelivered steer.\n\n" + report, nil
 }
 
 func truncateTaskReport(report string) string {

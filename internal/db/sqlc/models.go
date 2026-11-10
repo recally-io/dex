@@ -214,6 +214,19 @@ type Task struct {
 	HandledAt            sql.NullInt64 `json:"handled_at"`
 }
 
+type TaskSteerReceipt struct {
+	Sequence             int64  `json:"sequence"`
+	AgentID              string `json:"agent_id"`
+	ParentConversationID int64  `json:"parent_conversation_id"`
+	TaskID               string `json:"task_id"`
+	RequestID            string `json:"request_id"`
+	NativeRequestID      string `json:"native_request_id"`
+	Content              string `json:"content"`
+	State                string `json:"state"`
+	Reason               string `json:"reason"`
+	CreatedAt            int64  `json:"created_at"`
+}
+
 type TelegramSetting struct {
 	AgentID        string `json:"agent_id"`
 	Token          string `json:"token"`

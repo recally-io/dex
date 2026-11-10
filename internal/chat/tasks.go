@@ -57,9 +57,15 @@ func (s *Service) taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task) 
 			return Task{}, err
 		}
 	}
+	// Until producer identity and report watermarks are persisted, no report can
+	// establish that it covers an accepted steer, even if the worker says done.
+	hasSteer, err := q.HasTaskSteer(ctx, row.ID)
+	if err != nil {
+		return Task{}, err
+	}
 	view := Task{ID: row.ID, Title: row.Title, Status: row.Status,
 		Goal: goal.Content, Constraints: constraints, DoneCriteria: criteria, StructuredReport: report, HasStructuredReport: report != nil,
-		GoalMet:  row.Status == "done" && report != nil && report.Outcome == "done",
+		GoalMet:  row.Status == "done" && report != nil && report.Outcome == "done" && !hasSteer,
 		Provider: c.ModelProvider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel,
 		CreatedAt: row.CreatedAt, StartedAt: taskTime(row.StartedAt), EndedAt: taskTime(row.EndedAt), HandledAt: taskTime(row.HandledAt),
 		Report: row.Report}
@@ -411,8 +417,10 @@ func (s *Service) withdrawTask(ctx context.Context, agentID string, parentID int
 		if err != nil {
 			return Task{}, target, err
 		}
-		row.Status, row.EndedAt = "cancelled", now
-
+		row, err = q.GetTask(ctx, row.ID)
+		if err != nil {
+			return Task{}, target, err
+		}
 	}
 	t, err := s.taskView(ctx, q, row)
 	if err != nil {
