@@ -17,10 +17,12 @@ func (s *Service) ToolReportTask(ctx context.Context, caller engine.TaskContext,
 	if err != nil {
 		return err
 	}
-	if !strings.HasPrefix(conv.ChannelKey, "task:") {
+	// The report belongs to the delegated execution: the task whose own input started this run.
+	// A user message in the conversation after the task ended is not that input.
+	task, err := s.q.GetTask(ctx, caller.SourceRequestID)
+	if errors.Is(err, sql.ErrNoRows) {
 		return errors.New("report_task is only available in background task executions")
 	}
-	task, err := s.q.GetTask(ctx, caller.SourceRequestID)
 	if err != nil {
 		return err
 	}

@@ -184,6 +184,34 @@ func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
 	return i, err
 }
 
+const getTaskByConversation = `-- name: GetTaskByConversation :one
+SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files, handled_at FROM tasks WHERE conversation_id = ?
+`
+
+func (q *Queries) GetTaskByConversation(ctx context.Context, conversationID int64) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getTaskByConversation, conversationID)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.ParentConversationID,
+		&i.ConversationID,
+		&i.SpawnKey,
+		&i.SourceRequestID,
+		&i.Title,
+		&i.Status,
+		&i.Report,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.EndedAt,
+		&i.ConstraintsJson,
+		&i.DoneCriteriaJson,
+		&i.StructuredReport,
+		&i.ModifiesFiles,
+		&i.HandledAt,
+	)
+	return i, err
+}
+
 const getTaskByKey = `-- name: GetTaskByKey :one
 SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files, handled_at FROM tasks WHERE spawn_key = ?
 `

@@ -82,7 +82,7 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 	if err != nil {
 		return err
 	}
-	if !Writable(c.ChannelKey) {
+	if !c.Writable {
 		return ErrNotFound
 	}
 	if sub, err := s.q.GetSubmission(ctx, requestID); err == nil {
@@ -160,7 +160,9 @@ func inputOrigin(key string) string {
 	case strings.HasPrefix(key, "automation:"):
 		return "automation"
 	case strings.HasPrefix(key, "task:"):
-		return "task"
+		// Send reaches a task conversation only when a person continues it after the task ended.
+		// The task's own input comes from spawnTask, which stores its own origin.
+		return "web"
 	case strings.HasPrefix(key, "dream:"):
 		return "dream"
 	default:

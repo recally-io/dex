@@ -59,8 +59,8 @@ WITH active AS (
       AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
           SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
       ))
-      AND CASE WHEN t.id IS NOT NULL THEN t.status IN ('queued', 'admitting', 'running')
-          ELSE EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') END
+      AND (t.status IN ('queued', 'admitting', 'running')
+          OR EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending'))
     GROUP BY c.agent_id
 ), enabled AS (
     SELECT agent_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY agent_id

@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	ErrProjectForbidden = errors.New("only Chat sessions can set a project directory")
+	ErrProjectForbidden = errors.New("only writable sessions can set a project directory")
 	ErrProjectInvalid   = errors.New("invalid project directory")
 )
 
@@ -54,7 +54,11 @@ func (s *Service) SetProject(ctx context.Context, agentID string, id int64, path
 	if err != nil {
 		return "", err
 	}
-	if !strings.HasPrefix(conv.ChannelKey, "chat:") {
+	writable, err := s.writable(ctx, conv)
+	if err != nil {
+		return "", err
+	}
+	if !writable {
 		return "", ErrProjectForbidden
 	}
 	path, err = ProjectPath(path)

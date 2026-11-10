@@ -46,6 +46,9 @@ type Input struct {
 	// Main input comes from a person who waits for each reply.
 	Main              bool
 	TaskID, TaskTitle string
+	// TaskContinuation is a user message in the conversation of a task that has ended.
+	// It is a normal chat input: no task tools and no report_task duty.
+	TaskContinuation bool
 }
 type InputMetadata struct {
 	RequestID   string       `json:"requestId"`

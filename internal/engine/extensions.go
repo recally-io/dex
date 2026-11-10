@@ -407,7 +407,7 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 		if input.Env != nil {
 			cwd = input.Env.Cwd()
 		}
-		return new(fmt.Sprintf("Current project directory: %q. Only Chat sessions can call set_project to change or clear the project directory.", cwd)), nil
+		return new(fmt.Sprintf("Current project directory: %q. Main and Chat sessions can call set_project to change or clear the project directory.", cwd)), nil
 	}})
 	names := map[string]bool{}
 	for index, entry := range s.servers {
