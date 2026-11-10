@@ -61,7 +61,7 @@ func (s *Service) taskView(ctx context.Context, q *sqlc.Queries, row sqlc.Task, 
 		Goal: goal.Content, Constraints: constraints, DoneCriteria: criteria, StructuredReport: report, HasStructuredReport: report != nil,
 		GoalMet: row.Status == "done" && report != nil && report.Outcome == "done", WaitReason: waitReason,
 		Provider: c.ModelProvider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel,
-		CreatedAt: row.CreatedAt, StartedAt: taskTime(row.StartedAt), EndedAt: taskTime(row.EndedAt),
+		CreatedAt: row.CreatedAt, StartedAt: taskTime(row.StartedAt), EndedAt: taskTime(row.EndedAt), HandledAt: taskTime(row.HandledAt),
 		Report: row.Report}
 	if row.Status == "running" && c.ExecutionID.Valid {
 		ref := engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}
@@ -184,6 +184,55 @@ func (s *Service) ToolGetTask(ctx context.Context, r engine.TaskContext, id stri
 	}
 	return s.GetTask(ctx, r.AgentID, c.ID, id)
 }
+
+// AcknowledgeTask records that a terminal task has been handled, without changing its result.
+func (s *Service) AcknowledgeTask(ctx context.Context, agentID, id string) (sqlc.Task, error) {
+	row, err := s.TaskRecord(ctx, agentID, id)
+	if err != nil {
+		return row, err
+	}
+	n, err := s.q.AcknowledgeTask(ctx, sqlc.AcknowledgeTaskParams{TaskID: id, AgentID: agentID, HandledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+	if err != nil {
+		return row, err
+	}
+	if n == 0 {
+		return row, ErrTaskConflict
+	}
+	return s.TaskRecord(ctx, agentID, id)
+}
+
+func (s *Service) ToolAcknowledgeTask(ctx context.Context, r engine.TaskContext, id string) (Task, error) {
+	c, err := s.taskCaller(ctx, r)
+	if err != nil {
+		return Task{}, err
+	}
+	tx, q, err := s.taskTransaction(ctx)
+	if err != nil {
+		return Task{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	row, err := ownedTask(ctx, q, r.AgentID, c.ID, id)
+	if err != nil {
+		return Task{}, err
+	}
+	if !row.HandledAt.Valid {
+		if _, err := taskSource(ctx, q, r); err != nil {
+			return Task{}, err
+		}
+		n, err := q.AcknowledgeTask(ctx, sqlc.AcknowledgeTaskParams{TaskID: id, AgentID: r.AgentID, HandledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+		if err != nil {
+			return Task{}, err
+		}
+		if n == 0 {
+			return Task{}, ErrTaskConflict
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Task{}, err
+	}
+	return s.GetTask(ctx, r.AgentID, c.ID, id)
+}
+
 func (s *Service) ToolCancelTask(ctx context.Context, r engine.TaskContext, id string) (Task, error) {
 	c, err := s.taskCaller(ctx, r)
 	if err != nil {

@@ -138,6 +138,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			t, err := chats.ToolGetTask(ctx, c, id)
 			return engine.TaskInfo(t), err
 		},
+		Acknowledge: func(ctx context.Context, c engine.TaskContext, id string) (engine.TaskInfo, error) {
+			t, err := chats.ToolAcknowledgeTask(ctx, c, id)
+			return engine.TaskInfo(t), err
+		},
 		Cancel: func(ctx context.Context, c engine.TaskContext, id string) (engine.TaskInfo, error) {
 			t, err := chats.ToolCancelTask(ctx, c, id)
 			return engine.TaskInfo(t), err

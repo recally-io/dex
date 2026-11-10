@@ -191,6 +191,7 @@ type Task struct {
 	DoneCriteriaJson     string        `json:"done_criteria_json"`
 	StructuredReport     string        `json:"structured_report"`
 	ModifiesFiles        int64         `json:"modifies_files"`
+	HandledAt            sql.NullInt64 `json:"handled_at"`
 }
 
 type TelegramSetting struct {
