@@ -3,23 +3,6 @@ import type { Agent, InboxItem } from "../api/generated/types.gen";
 
 export const inboxOptions = () => listInboxOptions({ query: { includeDismissed: true } });
 
-export type InboxFilter = "All" | "Unread" | "Needs you";
-
-export function inboxGroups(items: InboxItem[], agentId: string, filter: InboxFilter) {
-  const visible = items.filter(
-    (item) =>
-      !item.dismissed &&
-      (!agentId || item.agentId === agentId) &&
-      (filter !== "Unread" || !item.read) &&
-      (filter !== "Needs you" || item.outcome === "failed"),
-  );
-
-  return {
-    needsYou: visible.filter((item) => item.outcome === "failed"),
-    results: visible.filter((item) => item.outcome === "changed"),
-  };
-}
-
 export function inboxCount(agents: Agent[]) {
   return agents.reduce(
     (count, agent) => ({

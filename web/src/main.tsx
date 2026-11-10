@@ -11,7 +11,7 @@ import {
   Link,
 } from "@tanstack/react-router";
 import { errorText, queryClient } from "./lib/queries";
-import { InboxPage } from "./routes/inbox";
+import { InboxResultPage } from "./routes/inbox";
 import { NeedsYouPage } from "./routes/needs-you";
 import { WorkPage } from "./routes/work";
 import { AllAutomationsPage } from "./routes/all-automations";
@@ -82,12 +82,20 @@ const needsYou = page("/needs-you", () => <NeedsYouPage />);
 const work = page("/work", () => <WorkPage calendar={false} />);
 const workCalendar = page("/work/calendar", () => <WorkPage calendar />);
 const allAutomations = page("/automations", () => <AllAutomationsPage />);
-const inbox = page("/inbox", () => <InboxPage />);
+
+// The Inbox list moved to Needs you. A result keeps its own page.
+const inbox = createRoute({
+  getParentRoute: () => root,
+  path: "/inbox",
+  beforeLoad: () => {
+    throw redirect({ href: "/needs-you", replace: true });
+  },
+});
 
 const inboxDetail = page("/inbox/$runId", () => {
   const { runId } = inboxDetail.useParams();
 
-  return <InboxPage runId={runId} />;
+  return <InboxResultPage runId={runId} />;
 });
 
 const providers = page("/providers", ProvidersPage);
