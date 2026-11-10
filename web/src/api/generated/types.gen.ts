@@ -291,6 +291,11 @@ export type AutomationRun = {
      */
     dueAt?: number;
     createdAt: number;
+    /**
+     * Input admission time, not necessarily execution start.
+     */
+    admittedAt?: number;
+    settledAt?: number;
     status: 'running' | 'done' | 'failed' | 'skipped';
     /**
      * Empty before a report or for a skipped run. Terminal runs require a report or fail.

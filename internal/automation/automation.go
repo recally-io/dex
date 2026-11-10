@@ -70,16 +70,18 @@ type Automation struct {
 
 // Run is one run of an automation.
 type Run struct {
-	Outcome   string `json:"outcome"`
-	Summary   string `json:"summary"`
-	ChangeKey string `json:"changeKey,omitempty"`
-	Duplicate bool   `json:"duplicate"`
-	ID        string `json:"id"`
-	DueAt     int64  `json:"dueAt,omitzero"` // 0 for a run that the user started
-	CreatedAt int64  `json:"createdAt"`
-	Status    string `json:"status"` // running, done, failed, or skipped
-	Reason    string `json:"reason,omitempty"`
-	ChatID    int64  `json:"chatId,omitzero"` // 0 when the run has no message
+	AdmittedAt *int64 `json:"admittedAt,omitzero"`
+	SettledAt  *int64 `json:"settledAt,omitzero"`
+	Outcome    string `json:"outcome"`
+	Summary    string `json:"summary"`
+	ChangeKey  string `json:"changeKey,omitempty"`
+	Duplicate  bool   `json:"duplicate"`
+	ID         string `json:"id"`
+	DueAt      int64  `json:"dueAt,omitzero"` // 0 for a run that the user started
+	CreatedAt  int64  `json:"createdAt"`
+	Status     string `json:"status"` // running, done, failed, or skipped
+	Reason     string `json:"reason,omitempty"`
+	ChatID     int64  `json:"chatId,omitzero"` // 0 when the run has no message
 }
 
 // Service manages automations for all agents.
@@ -386,6 +388,12 @@ func (s *Service) RunsInRange(ctx context.Context, agentID, id string, from, to,
 	out := make([]Run, len(rows))
 	for i, r := range rows {
 		out[i] = Run{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate == 1, ID: r.ID, DueAt: r.DueAt.Int64, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason.String, ChatID: r.ChatID.Int64}
+		if r.AdmittedAt.Valid {
+			out[i].AdmittedAt = new(r.AdmittedAt.Int64)
+		}
+		if r.SettledAt.Valid {
+			out[i].SettledAt = new(r.SettledAt.Int64)
+		}
 		if r.Status != "started" {
 			continue
 		}

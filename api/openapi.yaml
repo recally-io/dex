@@ -1780,6 +1780,11 @@ components:
           format: int64
           description: The scheduled time; absent for a run that the user started.
         createdAt: { type: integer, format: int64 }
+        admittedAt:
+          type: integer
+          format: int64
+          description: Input admission time, not necessarily execution start.
+        settledAt: { type: integer, format: int64 }
         status: { type: string, enum: [running, done, failed, skipped] }
         outcome:
           type: string

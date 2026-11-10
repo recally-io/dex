@@ -17,6 +17,7 @@ import { queryClient, refreshChats } from "../lib/queries";
 import { refreshAutomations } from "../lib/queries";
 import { useAgentModel } from "../lib/agent";
 import { ago, runTime, scheduleText } from "../lib/automations";
+import { taskDuration } from "../lib/tasks";
 import { Failure, Loading, Spinner } from "../components/feedback";
 import { Confirm } from "../components/confirm";
 import { AutomationDialog } from "../components/automation-dialog";
@@ -238,6 +239,14 @@ function RunRow({
           </Link>
         ) : null}
       </span>
+      {run.admittedAt !== undefined ? (
+        <p className="w-full text-xs text-muted-foreground">
+          Admitted {runTime(run.admittedAt, timeZone)}
+          {run.settledAt !== undefined && run.settledAt >= run.admittedAt
+            ? ` · ${taskDuration(run.settledAt - run.admittedAt)} until settled`
+            : ""}
+        </p>
+      ) : null}
       {run.summary || run.reason ? (
         <p className="w-full pl-[96px] text-[12px] text-muted-foreground [overflow-wrap:anywhere] max-sm:pl-0">
           {run.summary || run.reason}

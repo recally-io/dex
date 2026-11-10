@@ -42,10 +42,14 @@ func routineCaller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (
 	return conv, source, nil
 }
 
+func toolRun(r Run) engine.RoutineRun {
+	return engine.RoutineRun{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate, ID: r.ID, DueAt: r.DueAt, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason, ChatID: r.ChatID}
+}
+
 func routineView(a Automation) engine.RoutineInfo {
 	out := engine.RoutineInfo{Notification: a.Notification, ID: a.ID, Name: a.Name, Prompt: a.Prompt, Schedule: engine.RoutineSchedule(a.Schedule), TimeZone: a.TimeZone, Session: a.Session, Enabled: a.Enabled, Cwd: a.Cwd, NextRuns: a.NextRuns, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
 	if a.LastRun != nil {
-		out.LastRun = new(engine.RoutineRun(*a.LastRun))
+		out.LastRun = new(toolRun(*a.LastRun))
 	}
 	return out
 }
@@ -81,7 +85,7 @@ func (s *ToolService) Get(ctx context.Context, c engine.TaskContext, id string) 
 	out := routineView(a)
 	out.Runs = make([]engine.RoutineRun, len(runs))
 	for i, r := range runs {
-		out.Runs[i] = engine.RoutineRun(r)
+		out.Runs[i] = toolRun(r)
 	}
 	return out, nil
 }
@@ -240,7 +244,7 @@ func (s *ToolService) Run(ctx context.Context, c engine.TaskContext, id string) 
 	var out engine.RoutineRun
 	err := s.mutate(ctx, c, "run", func(local *Service, _ sqlc.Conversation) (any, error) {
 		r, err := local.RunNow(ctx, c.AgentID, id)
-		return engine.RoutineRun(r), err
+		return toolRun(r), err
 	}, &out)
 	return out, err
 }

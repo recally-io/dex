@@ -301,7 +301,8 @@ SELECT
     r.created_at, r.outcome, r.summary, r.change_key, r.duplicate,
     s.status AS message_status,
     s.reason AS message_reason,
-    s.conversation_id AS chat_id
+    s.conversation_id AS chat_id,
+    s.admitted_at, s.settled_at
 FROM automation_runs r
 LEFT JOIN submissions s ON s.id = r.id
 WHERE r.automation_id = sqlc.arg(automation_id)

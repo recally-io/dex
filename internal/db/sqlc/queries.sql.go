@@ -858,7 +858,8 @@ SELECT
     r.created_at, r.outcome, r.summary, r.change_key, r.duplicate,
     s.status AS message_status,
     s.reason AS message_reason,
-    s.conversation_id AS chat_id
+    s.conversation_id AS chat_id,
+    s.admitted_at, s.settled_at
 FROM automation_runs r
 LEFT JOIN submissions s ON s.id = r.id
 WHERE r.automation_id = ?1
@@ -888,6 +889,8 @@ type ListAutomationRunsRow struct {
 	MessageStatus sql.NullString `json:"message_status"`
 	MessageReason sql.NullString `json:"message_reason"`
 	ChatID        sql.NullInt64  `json:"chat_id"`
+	AdmittedAt    sql.NullInt64  `json:"admitted_at"`
+	SettledAt     sql.NullInt64  `json:"settled_at"`
 }
 
 // The newest runs of an automation, with the message of each started run.
@@ -918,6 +921,8 @@ func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRuns
 			&i.MessageStatus,
 			&i.MessageReason,
 			&i.ChatID,
+			&i.AdmittedAt,
+			&i.SettledAt,
 		); err != nil {
 			return nil, err
 		}
