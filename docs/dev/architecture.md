@@ -541,7 +541,16 @@ a question. Withdrawing the answer reopens the question. The answered input's
 settlement consumes it. Stop, Clear and archive dismiss open and answered
 questions in their own writer transaction. Settlement of the asking input adds
 the question to the reply, so a channel receives it through the reply outbox.
-No adapter parses a quoted reply, so a channel user answers in the web.
+`Bot.Send` returns the remote message ID. After each confirmed part, the sender
+stores the ID in `question_messages` for the question. Telegram reads
+`reply_to_message.message_id` and Feishu reads `parent_id` as `Message.ReplyTo`.
+`SubmitMessage` maps a quoted ID to `answersQuestionId`. A quote of any part
+answers the question. A quote of a closed question, an unknown ID or a platform
+without quoting (WeChat) is a plain message. A crash between the remote send and
+the mapping write loses the mapping of that part, so its quote is a plain message.
+The settle worker takes the agent delivery lock before it settles an aborted
+input. A withdraw holds the same lock, so a withdrawn channel message never gets
+a "no answer" reply.
 
 Main is a front desk. A person waits for each main reply. A channel receives
 the reply only when the turn ends, and later input waits for that turn. So main

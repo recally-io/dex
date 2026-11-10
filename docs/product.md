@@ -204,8 +204,10 @@ Main and Chat sessions have the `ask_user` tool. The agent asks one question
 with 2 to 4 options and the turn ends. The web shows a question card above the
 composer. The user picks an option or writes another answer. A plain message
 does not answer the question, and the question stays open. Stop, Clear and
-archive dismiss it. A channel user sees the question as a message and answers it
-in the web. Tasks, automations and dreams cannot ask.
+archive dismiss it. A Telegram or Feishu user sees the question as a message and
+answers it by quoting that message. A plain message does not answer it. WeChat
+cannot quote, so a WeChat user answers in the web. Tasks, automations and dreams
+cannot ask. The web shows an answer as the question in muted text above the answer.
 
 Web Stop stays in the composer for queued input, an active answer, and active
 background work. Stop covers the selected writable session and its background

@@ -14,7 +14,9 @@ type Resource struct{ Key, Name, Type string }
 // Message is an inbound private message before owner authorization.
 type Message struct {
 	ID, Sender, ChatType, Text string
-	Resources                  []Resource
+	// ReplyTo is the ID of the message that this message quotes. It is empty for a plain message.
+	ReplyTo   string
+	Resources []Resource
 }
 
 // ParseMessage extracts the supported content without retaining platform data.
@@ -32,6 +34,7 @@ func ParseMessage(data []byte) (Message, error) {
 			} `json:"sender"`
 			Message struct {
 				ID       string `json:"message_id"`
+				ParentID string `json:"parent_id"`
 				ChatType string `json:"chat_type"`
 				Type     string `json:"message_type"`
 				Content  string `json:"content"`
@@ -48,7 +51,7 @@ func ParseMessage(data []byte) (Message, error) {
 		return Message{}, nil
 	}
 	raw := event.Event.Message
-	m := Message{ID: raw.ID, Sender: event.Event.Sender.ID.OpenID, ChatType: raw.ChatType}
+	m := Message{ID: raw.ID, Sender: event.Event.Sender.ID.OpenID, ChatType: raw.ChatType, ReplyTo: raw.ParentID}
 	if m.ID == "" || m.Sender == "" {
 		return Message{}, errors.New("feishu message has no ID or sender")
 	}

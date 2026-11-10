@@ -111,7 +111,7 @@ func (m *Manager) flushNotifications(ctx context.Context, platform string, bot B
 				}
 				break
 			}
-			err = bot.Send(ctx, d.Peer, "routine:"+d.RunID, i, parts[i])
+			_, err = bot.Send(ctx, d.Peer, "routine:"+d.RunID, i, parts[i])
 			if errors.Is(err, ErrPermanent) {
 				if err := m.q.SetRoutineNotificationStatus(ctx, sqlc.SetRoutineNotificationStatusParams{RunID: d.RunID, Status: "rejected", Reason: "platform rejected delivery"}); err != nil {
 					return err

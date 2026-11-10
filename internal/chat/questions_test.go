@@ -2,7 +2,11 @@ package chat
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -117,5 +121,61 @@ func TestUserAnswerThatNeverRanOpensItsQuestionAgain(t *testing.T) {
 	}
 	if got := status(); got != "consumed" {
 		t.Fatalf("status after a finished answer: %s", got)
+	}
+}
+
+// The settle worker must wait for an in-flight withdrawal. Withdraw holds the agent delivery lock from
+// the native abort to the receipt write, so the test holds the lock as Withdraw does.
+func TestUserWithdrawnMessageIsNotSettledByTheWorkerBeforeTheWithdrawal(t *testing.T) {
+	// Given a running gated command and a second message that waits in the native queue.
+	r := startNative(t, "bash")
+	release := filepath.Join(t.TempDir(), "release")
+	started := filepath.Join(t.TempDir(), "started")
+	main, err := r.service.Main(t.Context(), "bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := fmt.Sprintf("touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo done", started, release)
+	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o600) })
+	if _, err := r.service.Send(t.Context(), "bot", MainKey, Message{ID: "first", Content: command}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { _, err := os.Stat(started); return err == nil })
+	if _, err := r.service.Send(t.Context(), "bot", MainKey, Message{ID: "second", Content: "echo second"}); err != nil {
+		t.Fatal(err)
+	}
+	chat, err := r.service.Get(t.Context(), "bot", main.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// When the native abort has happened but the receipt write has not, then the receipt stays pending.
+	unlock, err := r.service.lockAgent(t.Context(), "bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := r.agents.Withdraw(t.Context(), engine.Ref{AgentID: "bot", ID: chat.ExecutionID}, "second")
+	if err != nil || outcome != engine.Withdrawn {
+		unlock()
+		t.Fatalf("native withdraw: %v %v", outcome, err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		sub, err := r.q.GetSubmission(t.Context(), "second")
+		if err != nil || sub.Status != "pending" {
+			unlock()
+			t.Fatalf("the worker settled a withdrawn message before the withdrawal ended: %+v %v", sub, err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	unlock()
+
+	// Then the withdrawal finishes, the receipt is withdrawn, and no reply is left to send.
+	if _, err := r.service.Withdraw(t.Context(), "bot", main.ID, "second"); err != nil {
+		t.Fatal(err)
+	}
+	sub, err := r.q.GetSubmission(t.Context(), "second")
+	if err != nil || sub.Status != "unanswered" || sub.Reason.String != "withdrawn" || !sub.DeliveredAt.Valid {
+		t.Fatalf("receipt: %+v %v", sub, err)
 	}
 }

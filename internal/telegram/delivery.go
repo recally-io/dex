@@ -29,15 +29,15 @@ func (b *Bot) Parts(reply chat.Reply) []string {
 }
 
 // Send replaces its preview and confirms one final part. The caller stores progress.
-func (b *Bot) Send(ctx context.Context, key, deliveryID string, index int, part string) error {
+func (b *Bot) Send(ctx context.Context, key, deliveryID string, index int, part string) (string, error) {
 	id, ok := strings.CutPrefix(key, channelPrefix)
 	if !ok {
-		return errors.New("telegram destination is invalid")
+		return "", errors.New("telegram destination is invalid")
 	}
 	id, _, _ = strings.Cut(id, "/")
 	chatID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
-		return errors.New("telegram destination is invalid")
+		return "", errors.New("telegram destination is invalid")
 	}
 	var previewID int64
 	if index == 0 {
@@ -49,31 +49,43 @@ func (b *Bot) Send(ctx context.Context, key, deliveryID string, index int, part 
 		method = "editMessageText"
 		params["message_id"] = previewID
 	}
-	err = b.sendFormatted(ctx, method, params, part)
+	var sent struct {
+		ID int64 `json:"message_id"`
+	}
+	err = b.sendFormatted(ctx, method, params, part, &sent)
 	if e, ok := errors.AsType[*apiError](err); ok && e.Code == 400 && previewID != 0 {
 		// The owner can delete the preview while the agent runs.
 		delete(params, "message_id")
-		err = b.sendFormatted(ctx, "sendMessage", params, part)
+		previewID = 0
+		err = b.sendFormatted(ctx, "sendMessage", params, part, &sent)
+	}
+	// An edit keeps the message ID of the preview. The fallback text gets the ID that it returns.
+	if previewID != 0 {
+		sent.ID = previewID
 	}
 	if e, ok := errors.AsType[*apiError](err); ok && (e.Code == 400 || e.Code == 403) {
 		b.forgetPreview(deliveryID)
-		return fmt.Errorf("%w: %w", channel.ErrPermanent, err)
+		return "", fmt.Errorf("%w: %w", channel.ErrPermanent, err)
 	}
-	if err == nil {
-		b.forgetPreview(deliveryID)
+	if err != nil {
+		return "", err
 	}
-	return err
+	b.forgetPreview(deliveryID)
+	if sent.ID == 0 {
+		return "", nil
+	}
+	return strconv.FormatInt(sent.ID, 10), nil
 }
 
-func (b *Bot) sendFormatted(ctx context.Context, method string, params map[string]any, text string) error {
-	err := b.call(ctx, method, params, nil)
+func (b *Bot) sendFormatted(ctx context.Context, method string, params map[string]any, text string, result any) error {
+	err := b.call(ctx, method, params, result)
 	if e, ok := errors.AsType[*apiError](err); ok && e.Code == 400 {
 		if method == "editMessageText" && strings.Contains(e.Description, "message is not modified") {
 			return nil
 		}
 		delete(params, "parse_mode")
 		params["text"] = html.UnescapeString(htmlTags.ReplaceAllString(text, ""))
-		err = b.call(ctx, method, params, nil)
+		err = b.call(ctx, method, params, result)
 		if e, ok := errors.AsType[*apiError](err); ok && e.Code == 400 && method == "editMessageText" && strings.Contains(e.Description, "message is not modified") {
 			return nil
 		}

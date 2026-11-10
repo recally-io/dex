@@ -112,7 +112,7 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 	} else if received {
 		return nil
 	}
-	msg := chat.Message{Content: m.Text}
+	msg := chat.Message{Content: m.Text, ReplyTo: m.ReplyTo}
 	for _, resource := range m.Resources {
 		reader, err := b.client.Download(sessionCtx, m.ID, resource.Key, resource.Type)
 		if err != nil {
@@ -166,12 +166,12 @@ func (b *Bot) Parts(reply chat.Reply) []string {
 }
 
 // Send patches the preview for part zero. Other parts use a stable create ID.
-func (b *Bot) Send(ctx context.Context, peer, id string, part int, text string) error {
+func (b *Bot) Send(ctx context.Context, peer, id string, part int, text string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	owner, ok := strings.CutPrefix(peer, "feishu:")
 	if !ok || owner == "" || owner != b.cfg.OwnerID {
-		return fmt.Errorf("%w: feishu destination is not the paired owner", channel.ErrPermanent)
+		return "", fmt.Errorf("%w: feishu destination is not the paired owner", channel.ErrPermanent)
 	}
 	card := CardContent(text, strings.HasPrefix(text, "No answer: "))
 	p := b.previews[id]
@@ -182,30 +182,30 @@ func (b *Bot) Send(ctx context.Context, peer, id string, part int, text string) 
 			if err == nil {
 				delete(b.previews, id)
 				b.manager.Report("feishu", channel.Status{State: "running"})
-				return nil
+				return p.messageID, nil
 			}
 			if !permanentAPIError(err) {
 				b.manager.Report("feishu", channel.Status{State: "error", Reason: err.Error()})
-				return err
+				return "", err
 			}
 		}
 	}
 	uuid := deliveryUUID(id, part)
-	_, err := b.client.Send(ctx, owner, "interactive", card, uuid)
+	remote, err := b.client.Send(ctx, owner, "interactive", card, uuid)
 	if e, ok := errors.AsType[*APIError](err); ok && e.Code == 230001 && (e.Status == http.StatusBadRequest || e.Status >= 200 && e.Status < 300) {
-		_, err = b.client.Send(ctx, owner, "text", TextContent(text), deliveryUUID(id+":text", part))
+		remote, err = b.client.Send(ctx, owner, "text", TextContent(text), deliveryUUID(id+":text", part))
 	}
 	if err != nil {
 		b.manager.Report("feishu", channel.Status{State: "error", Reason: err.Error()})
 		if permanentAPIError(err) {
 			delete(b.previews, id)
-			return fmt.Errorf("%w: %w", channel.ErrPermanent, err)
+			return "", fmt.Errorf("%w: %w", channel.ErrPermanent, err)
 		}
-	} else {
-		delete(b.previews, id)
-		b.manager.Report("feishu", channel.Status{State: "running"})
+		return "", err
 	}
-	return err
+	delete(b.previews, id)
+	b.manager.Report("feishu", channel.Status{State: "running"})
+	return remote, nil
 }
 
 func deliveryUUID(id string, part int) string {

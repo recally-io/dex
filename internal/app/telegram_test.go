@@ -60,6 +60,8 @@ type sentMessage struct {
 	ChatID    int64  `json:"chat_id"`
 	Text      string `json:"text"`
 	ParseMode string `json:"parse_mode"`
+	// ID is the message ID that the fake returned for this message.
+	ID int64 `json:"-"`
 }
 
 const fakeToken = "123:secret"
@@ -82,6 +84,19 @@ func (f *fakeTelegram) message(updateID, user, chat int64, text string) {
 		"message": map[string]any{
 			"message_id": updateID, "from": map[string]any{"id": user}, "chat": map[string]any{"id": chat, "type": "private"},
 			"text": text,
+		},
+	})
+}
+
+// reply queues a message that quotes the bot's message replyTo.
+func (f *fakeTelegram) reply(updateID, user, chat int64, text string, replyTo int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.updates = append(f.updates, map[string]any{
+		"update_id": updateID,
+		"message": map[string]any{
+			"message_id": updateID, "from": map[string]any{"id": user}, "chat": map[string]any{"id": chat, "type": "private"},
+			"text": text, "reply_to_message": map[string]any{"message_id": replyTo},
 		},
 	})
 }
@@ -213,7 +228,9 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			f.mu.Lock()
 			f.deliveries = append(f.deliveries, channelSend{Peer: fmt.Sprint("telegram:", m.ChatID), Text: html.UnescapeString(m.Text)})
 			f.mu.Unlock()
-			f.sent <- m.sentMessage
+			sent := m.sentMessage
+			sent.ID = id
+			f.sent <- sent
 		}
 		select {
 		case f.events <- platformEvent{Method: method, Text: m.Text, MessageID: func() int64 {
@@ -280,7 +297,9 @@ func TestUserGetsAnswerInTelegram(t *testing.T) {
 	f.message(1, 42, 7, "hi")
 
 	// Then the bot sends the agent's answer to chat 7
-	if got := f.next(t); got != (sentMessage{ChatID: 7, Text: "echo: hi", ParseMode: "HTML"}) {
+	got := f.next(t)
+	got.ID = 0 // the fake assigns IDs; only the quote-reply test reads them
+	if got != (sentMessage{ChatID: 7, Text: "echo: hi", ParseMode: "HTML"}) {
 		t.Fatalf("sent = %+v", got)
 	}
 
@@ -314,7 +333,9 @@ func TestTelegramIgnoresUsersWhoAreNotAllowed(t *testing.T) {
 
 	// Then only user 42 gets an answer, and dex stores nothing for chat 8. The bot handles updates
 	// in order, so it handled the first one before the answer to the second.
-	if got := f.next(t); got != (sentMessage{ChatID: 7, Text: "echo: ok", ParseMode: "HTML"}) {
+	got := f.next(t)
+	got.ID = 0 // the fake assigns IDs; only the quote-reply test reads them
+	if got != (sentMessage{ChatID: 7, Text: "echo: ok", ParseMode: "HTML"}) {
 		t.Fatalf("sent = %+v", got)
 	}
 	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "control.sqlite")+"?_pragma=busy_timeout(5000)")

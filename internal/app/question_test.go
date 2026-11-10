@@ -236,7 +236,7 @@ func TestUserSeesQuestionInTelegram(t *testing.T) {
 	// When the model asks a question, then the peer receives the question with lettered options.
 	f.message(1, 42, 7, askJSON)
 	text := f.next(t).Text
-	for _, want := range []string{"How should I handle the banner flicker?", "A. Add it to the running SSE session", "C. Investigate only", "/a/default"} {
+	for _, want := range []string{"How should I handle the banner flicker?", "A. Add it to the running SSE session", "C. Investigate only", "Reply to this message to answer", "/a/default"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("telegram text lacks %q: %q", want, text)
 		}
@@ -264,5 +264,54 @@ func TestUserQuestionToolIsUnavailableInAutomationAndBackground(t *testing.T) {
 	}
 	if q := d.question(t, run.ChatID); q != nil {
 		t.Fatalf("automation question: %+v", q)
+	}
+}
+
+func TestUserAnswersQuestionByQuotingItInTelegram(t *testing.T) {
+	t.Parallel()
+	// Given a Telegram peer who got a question from Main.
+	dir := t.TempDir()
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, dir, 42)
+	d.setModel(t, "tool")
+	conn := taskResultDB(t, dir)
+	f.message(1, 42, 7, askJSON)
+	asked := f.next(t)
+	mainID := d.mainChat(t)
+	q := d.awaitQuestion(t, mainID, "open")
+
+	// When the peer sends a plain message, then the question stays open.
+	d.setModel(t, "echo")
+	f.message(2, 42, 7, "unrelated")
+	if got := f.next(t).Text; got != "echo: unrelated" {
+		t.Fatalf("plain message reply: %q", got)
+	}
+	if got := d.question(t, mainID); got == nil || got.ID != q.ID || got.Status != "open" {
+		t.Fatalf("a plain message changed the question: %+v", got)
+	}
+
+	// When the peer quotes a message of an unrelated chat position, then it is a plain message too.
+	f.reply(3, 42, 7, "stray", asked.ID+1000)
+	if got := f.next(t).Text; got != "echo: stray" {
+		t.Fatalf("stray quote reply: %q", got)
+	}
+	if got := d.question(t, mainID); got == nil || got.Status != "open" {
+		t.Fatalf("a quote of another message closed the question: %+v", got)
+	}
+
+	// When the peer quotes the question message, then the reply answers it.
+	f.reply(4, 42, 7, "Start a separate session", asked.ID)
+	if got := f.next(t).Text; !strings.Contains(got, "Answer to: How should I handle the banner flicker?") || !strings.Contains(got, "Start a separate session") {
+		t.Fatalf("answer reply: %q", got)
+	}
+	d.awaitNoQuestion(t, mainID)
+	if status := questionStatus(t, conn, q.ID); status != "consumed" {
+		t.Fatalf("status: %s", status)
+	}
+
+	// And a second quote of the same message is a plain message, because the question is closed.
+	f.reply(5, 42, 7, "again", asked.ID)
+	if got := f.next(t).Text; got != "echo: again" {
+		t.Fatalf("quote of a closed question: %q", got)
 	}
 }

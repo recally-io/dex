@@ -67,6 +67,9 @@ type Message struct {
 	// AnswersQuestion is the ID of the open question that this message answers. A message with
 	// this ID is an answer to that question; any other message leaves a question open.
 	AnswersQuestion string
+	// ReplyTo is the remote ID of the channel message that this message quotes. A quote of a message
+	// that carries an open question answers it.
+	ReplyTo string
 }
 
 // ErrNoModel means that the bot has no model yet; the user chooses one in the settings.
@@ -247,7 +250,20 @@ func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey st
 	}
 	m.ID = uuid.NewV7().String()
 	m.Settings = Settings{}
+	if m.ReplyTo != "" {
+		switch id, err := s.q.GetQuestionByMessage(ctx, sqlc.GetQuestionByMessageParams{Peer: peer, RemoteID: m.ReplyTo}); {
+		case err == nil:
+			m.AnswersQuestion = id
+		case !errors.Is(err, sql.ErrNoRows):
+			return err
+		}
+	}
 	_, err := s.enqueue(ctx, agentID, MainKey, sourceKey, peer, m)
+	if errors.Is(err, ErrQuestionClosed) && m.AnswersQuestion != "" {
+		// The question closed while the user wrote. The words still reach the agent as a plain message.
+		m.AnswersQuestion = ""
+		_, err = s.enqueue(ctx, agentID, MainKey, sourceKey, peer, m)
+	}
 	return err
 }
 
@@ -564,7 +580,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	started := s.startWorker(func() {
 		outcome, err := sub.Wait(s.ctx)
 		if err == nil {
-			err = s.settle(s.ctx, p.ID, outcome)
+			err = s.settleNative(p.AgentID, p.ID, outcome)
 		}
 		s.waiting.Delete(p.ID)
 		if err != nil && s.ctx.Err() == nil {
@@ -610,6 +626,21 @@ func source(p sqlc.ListPendingSubmissionsRow) string {
 		return "dex:" + p.AgentID + "/dream/" + id
 	}
 	return fmt.Sprintf("dex:%s/chat/%d", p.AgentID, p.ConversationID)
+}
+
+// settleNative records a native outcome. A native abort comes from Withdraw (Stop settles the receipt
+// first). Withdraw holds the agent delivery lock from the abort to the receipt write, so waiting for
+// the lock lets it finish first. The settlement then finds a withdrawn receipt and changes nothing,
+// so no "No answer" reply goes to the channel.
+func (s *Service) settleNative(agentID, id string, event engine.Outcome) error {
+	if event.Status == "unanswered" && event.Reason == "aborted" {
+		unlock, err := s.lockAgent(s.ctx, agentID)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+	}
+	return s.settle(s.ctx, id, event)
 }
 
 func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) error {

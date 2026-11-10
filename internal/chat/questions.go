@@ -77,7 +77,8 @@ func (s *Service) questionView(ctx context.Context, row sqlc.Question) (*Questio
 // question. The source input must still run, the chat must not be archived, and the chat must
 // have no other question that waits.
 func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a engine.AskUserArgs) (engine.QuestionInfo, error) {
-	text := strings.TrimSpace(a.Question)
+	// One line, so the answer wrapper "Answer to: <question>" has an unambiguous first line.
+	text := strings.Join(strings.Fields(a.Question), " ")
 	if text == "" || utf8.RuneCountInString(text) > maxQuestion || len(a.Options) < 2 || len(a.Options) > 4 {
 		return engine.QuestionInfo{}, fmt.Errorf("%w: a question of 1 to %d characters and 2 to 4 options", ErrQuestionInvalid, maxQuestion)
 	}
@@ -168,9 +169,9 @@ func reopenQuestion(ctx context.Context, q *sqlc.Queries, submissionID string) e
 	return err
 }
 
-// renderQuestion is the channel text of a question. Quoted replies are not an answer path yet:
-// the platform adapters do not keep the remote message ID, so the text points to the web.
-func renderQuestion(q sqlc.Question, options []string, agentID string, main bool) string {
+// renderQuestion is the channel text of a question. A platform that quotes (Telegram and Feishu)
+// tells the user to reply to the message; the others point to the web.
+func renderQuestion(q sqlc.Question, options []string, agentID string, main, quotable bool) string {
 	var b strings.Builder
 	b.WriteString(q.Text)
 	b.WriteString("\n")
@@ -181,7 +182,11 @@ func renderQuestion(q sqlc.Question, options []string, agentID string, main bool
 	if main {
 		path = "/a/" + agentID
 	}
-	b.WriteString("\n\nThis question is open. Answer it in the dex web app: " + path)
+	if quotable {
+		b.WriteString("\n\nReply to this message to answer, or answer in the dex web app: " + path)
+	} else {
+		b.WriteString("\n\nThis question is open. Answer it in the dex web app: " + path)
+	}
 	return b.String()
 }
 
@@ -203,10 +208,19 @@ func (s *Service) withQuestion(ctx context.Context, id string, event engine.Outc
 	if err != nil {
 		return event, err
 	}
-	rendered := renderQuestion(row, q.Options, row.AgentID, conv.ChannelKey == MainKey)
+	reply, err := s.q.GetSubmissionReply(ctx, id)
+	if err != nil {
+		return event, err
+	}
+	rendered := renderQuestion(row, q.Options, row.AgentID, conv.ChannelKey == MainKey, quotes(reply.Origin))
 	if event.Answer != "" {
 		rendered = event.Answer + "\n\n" + rendered
 	}
 	event.Answer = rendered
 	return event, nil
+}
+
+// quotes reports whether the platform of a channel peer returns the ID of a quoted message.
+func quotes(origin string) bool {
+	return strings.HasPrefix(origin, "telegram:") || strings.HasPrefix(origin, "feishu:")
 }

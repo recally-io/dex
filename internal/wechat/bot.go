@@ -214,9 +214,10 @@ func (b *Bot) Parts(reply chat.Reply) []string {
 }
 
 // Send keeps the same client ID across retries of a durable reply part.
-func (b *Bot) Send(ctx context.Context, peer, id string, part int, text string) error {
+// WeChat has no message ID to quote, so it returns "".
+func (b *Bot) Send(ctx context.Context, peer, id string, part int, text string) (string, error) {
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", id, part)))
-	return b.send(ctx, peer, fmt.Sprintf("dex:%x", sum[:16]), text)
+	return "", b.send(ctx, peer, fmt.Sprintf("dex:%x", sum[:16]), text)
 }
 
 func (b *Bot) send(ctx context.Context, peer, clientID, text string) error {
