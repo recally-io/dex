@@ -1491,6 +1491,7 @@ components:
         task:
           $ref: "#/components/schemas/TaskSummary"
           description: The saved task summary on a task session. It has no report.
+        question: { $ref: "#/components/schemas/ChatQuestion" }
 
     ChatSettings:
       x-go-type: chat.Settings
@@ -1531,6 +1532,34 @@ components:
           maxItems: 10
           description: Upload IDs from POST /api/agents/{agentId}/uploads, at most 10.
           items: { type: string }
+        answersQuestionId:
+          type: string
+          description: >
+            The ID of the open question that this message answers. dex answers
+            409 when the question is closed. A message without this field
+            never closes a question.
+
+    ChatQuestion:
+      type: object
+      required: [id, text, options, status]
+      description: >
+        The question that the agent asked with ask_user. It waits for the user,
+        or its answer waits in the queue.
+      properties:
+        id: { type: string }
+        text: { type: string }
+        options:
+          type: array
+          items: { type: string }
+        status:
+          type: string
+          enum: [open, answered]
+          description: >
+            open waits for an answer. answered means the answer is saved and
+            runs after the current reply.
+        answer:
+          type: string
+          description: The text of the answer. Present when the status is answered.
 
     WithdrawnMessage:
       type: object

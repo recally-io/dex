@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json/v2"
 	"errors"
+	"strings"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -81,6 +82,9 @@ func (s *Service) Withdraw(ctx context.Context, agentID string, chatID int64, id
 		// A settlement that raced with the withdrawal ran the input.
 		return WithdrawnMessage{}, ErrAlreadyStarted
 	}
+	if err := reopenQuestion(ctx, q, id); err != nil {
+		return WithdrawnMessage{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return WithdrawnMessage{}, err
 	}
@@ -88,8 +92,16 @@ func (s *Service) Withdraw(ctx context.Context, agentID string, chatID int64, id
 	return s.withdrawnMessage(ctx, sub)
 }
 
-func (s *Service) withdrawnMessage(_ context.Context, sub sqlc.Submission) (WithdrawnMessage, error) {
+// withdrawnMessage returns what the user typed. An answer drops the question wrapper that the
+// model reads.
+func (s *Service) withdrawnMessage(ctx context.Context, sub sqlc.Submission) (WithdrawnMessage, error) {
 	out := WithdrawnMessage{ID: sub.ID, Content: sub.Content}
+	switch question, err := s.q.GetQuestionByAnswer(ctx, sql.NullString{String: sub.ID, Valid: true}); {
+	case err == nil:
+		out.Content = strings.TrimPrefix(sub.Content, answerPrefix+question.Text+"\n")
+	case !errors.Is(err, sql.ErrNoRows):
+		return WithdrawnMessage{}, err
+	}
 	if err := json.Unmarshal([]byte(sub.Attachments), &out.Attachments); err != nil {
 		return WithdrawnMessage{}, err
 	}

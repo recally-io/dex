@@ -43,7 +43,7 @@ func (s *Service) SetArchived(ctx context.Context, agentID string, id int64, arc
 		return Chat{}, ErrNotArchivable
 	}
 	if archived {
-		err = s.q.ArchiveChat(ctx, sqlc.ArchiveChatParams{ArchivedAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}, ID: id, AgentID: agentID})
+		err = s.archive(ctx, agentID, id)
 	} else {
 		err = s.q.UnarchiveChat(ctx, sqlc.UnarchiveChatParams{ID: id, AgentID: agentID})
 	}
@@ -51,6 +51,26 @@ func (s *Service) SetArchived(ctx context.Context, agentID string, id int64, arc
 		return Chat{}, err
 	}
 	return s.Get(ctx, agentID, id)
+}
+
+// archive also dismisses the chat's question: nobody sees it any more. It takes the same writer
+// as ask_user, so a question cannot open after the archive commits.
+func (s *Service) archive(ctx context.Context, agentID string, id int64) error {
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	tx, q, err := s.taskTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	now := s.now().UnixMilli()
+	if err := q.ArchiveChat(ctx, sqlc.ArchiveChatParams{ArchivedAt: sql.NullInt64{Int64: now, Valid: true}, ID: id, AgentID: agentID}); err != nil {
+		return err
+	}
+	if err := q.DismissQuestions(ctx, sqlc.DismissQuestionsParams{ConversationID: id, Now: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 var ErrConversationBusy = errors.New("the timeline is busy; wait for its replies before clearing context")
@@ -136,6 +156,9 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 		}
 		if created == 0 {
 			return ErrResetID
+		}
+		if err := q.DismissQuestions(ctx, sqlc.DismissQuestionsParams{ConversationID: chatID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
+			return err
 		}
 		if err := tx.Commit(); err != nil {
 			return err

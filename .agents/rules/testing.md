@@ -28,7 +28,8 @@ Read this before you write or change a test.
   `memory: <MEMORY.md section of the system prompt>`; `faux/section` answers
   `section: <the system prompt section that the message names>`; `faux/tool`
   takes `<tool name> <JSON arguments>`, loads the tool with `tool_search`,
-  calls it, and answers `tool: <output>`; `faux/think` is a
+  calls it, and answers `tool: <output>`; `faux/mixed` takes `ask_user <JSON arguments>`
+  and calls `ask_user` and `bash` in one message, to test a mixed tool batch; `faux/think` is a
   reasoning model and answers `think <thinking level>: <message>`). A test with the faux provider does not prove that a real
   provider works; say so when you report.
 - **Controlled time.** Do not use fixed sleeps. Poll the observable condition

@@ -57,6 +57,9 @@ func (s *Service) settleInput(ctx context.Context, id string, event engine.Outco
 	if err != nil || changed == 0 {
 		return changed, err
 	}
+	if err = q.ConsumeQuestion(ctx, sqlc.ConsumeQuestionParams{SubmissionID: sql.NullString{String: id, Valid: true}, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
+		return 0, err
+	}
 	reason := event.Reason
 	if event.Status != "done" && reason == "" {
 		reason = "automation execution failed"

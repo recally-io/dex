@@ -32,7 +32,8 @@ UPDATE questions SET status = 'consumed', settled_at = @now
 WHERE answer_submission_id = @submission_id AND status = 'answered';
 
 -- name: ReopenQuestion :execrows
-UPDATE questions SET status = 'open', answer_submission_id = NULL
+-- The withdrawn answer ID stays, so the withdrawn text can drop the question wrapper again.
+UPDATE questions SET status = 'open'
 WHERE answer_submission_id = @submission_id AND status = 'answered';
 
 -- name: DismissQuestions :exec

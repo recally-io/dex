@@ -254,10 +254,11 @@ func (q *Queries) ListCurrentQuestions(ctx context.Context, agentID string) ([]Q
 }
 
 const reopenQuestion = `-- name: ReopenQuestion :execrows
-UPDATE questions SET status = 'open', answer_submission_id = NULL
+UPDATE questions SET status = 'open'
 WHERE answer_submission_id = ?1 AND status = 'answered'
 `
 
+// The withdrawn answer ID stays, so the withdrawn text can drop the question wrapper again.
 func (q *Queries) ReopenQuestion(ctx context.Context, submissionID sql.NullString) (int64, error) {
 	result, err := q.db.ExecContext(ctx, reopenQuestion, submissionID)
 	if err != nil {

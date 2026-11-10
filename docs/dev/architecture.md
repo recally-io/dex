@@ -526,6 +526,23 @@ reconciliation cover the gap between their commits.
 
 ## Internal delegation
 
+`ask_user` is installed only on Main and Chat conversations. Extension edits
+persist per conversation, so tasks, automations and dreams never get it. A
+`questions` row holds the text, the options and one of `open`, `answered`,
+`consumed` and `dismissed`. A partial unique index allows one open question per
+conversation. The tool key is the agent ID plus PiG's tool task ID, so a replay
+returns the saved question. The tool reads `harness.LiveState` and returns
+`ToolControl{Terminate: true}` only when it is the only call in the round.
+PiG ends the turn only when every call terminates, so a mixed round gets a tool
+error and no question. The answer is a normal message with `answersQuestionId`.
+The receipt, the new `answered` status and the content wrapper `Answer to:
+<question>` commit in one transaction. A message without that field never closes
+a question. Withdrawing the answer reopens the question. The answered input's
+settlement consumes it. Stop, Clear and archive dismiss open and answered
+questions in their own writer transaction. Settlement of the asking input adds
+the question to the reply, so a channel receives it through the reply outbox.
+No adapter parses a quoted reply, so a channel user answers in the web.
+
 Main is a front desk. A person waits for each main reply. A channel receives
 the reply only when the turn ends, and later input waits for that turn. So main
 answers short requests directly. It sends work that needs many tool calls, long
@@ -726,6 +743,15 @@ updates the backend implementation of ADR 0003.
 - `live.Hub.Changed` only helps a stream attach when an empty business chat
   receives its first execution reference. The hub encodes typed engine events
   as JSON at the SSE boundary.
+
+`POST /api/agents/{agentId}/chats/{id}/messages/{messageId}/withdraw` removes one
+queued input. Under the agent delivery lock, `Agents.Withdraw` calls PiG's
+`Submission.Abort`. PiG decides: `aborted` means the input never runs, and
+`already_placed` means it runs, so dex answers 409. The control receipt settles
+as `unanswered` with reason `withdrawn` and keeps its request ID and source
+key, so a channel redelivery does not run it. It sets `delivered_at`, so the
+reply outbox sends nothing. A repeated call returns the same message. The
+withdrawal writes no `dex.withdrawn` entry, so Edit leaves no stale bubble.
 
 `POST /api/agents/{agentId}/chats/{id}/clear` uses the agent delivery lock and a SQLite writer
 transaction to check pending input and insert `context_reset` together. The

@@ -118,6 +118,24 @@ func (e ChatChannel) Valid() bool {
 	}
 }
 
+// Defines values for ChatQuestionStatus.
+const (
+	Answered ChatQuestionStatus = "answered"
+	Open     ChatQuestionStatus = "open"
+)
+
+// Valid indicates whether the value is a known member of the ChatQuestionStatus enum.
+func (e ChatQuestionStatus) Valid() bool {
+	switch e {
+	case Answered:
+		return true
+	case Open:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorItemKind.
 const (
 	ErrorItemKindError ErrorItemKind = "error"
@@ -682,6 +700,9 @@ type Chat struct {
 	// Main This is the agent's main timeline.
 	Main bool `json:"main"`
 
+	// Question The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
+	Question *ChatQuestion `json:"question,omitempty"`
+
 	// ReadOnly The web cannot send messages to this chat now. A delegated session is read-only while its task runs and writable after the task ends.
 	ReadOnly bool `json:"readOnly"`
 
@@ -706,6 +727,21 @@ type ChatEvent struct {
 type ChatList struct {
 	Chats []Chat `json:"chats"`
 }
+
+// ChatQuestion The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
+type ChatQuestion struct {
+	// Answer The text of the answer. Present when the status is answered.
+	Answer  *string  `json:"answer,omitempty"`
+	Id      string   `json:"id"`
+	Options []string `json:"options"`
+
+	// Status open waits for an answer. answered means the answer is saved and runs after the current reply.
+	Status ChatQuestionStatus `json:"status"`
+	Text   string             `json:"text"`
+}
+
+// ChatQuestionStatus open waits for an answer. answered means the answer is saved and runs after the current reply.
+type ChatQuestionStatus string
 
 // ChatSettings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
 type ChatSettings = chat.Settings
@@ -850,6 +886,9 @@ type McpServerTransport string
 
 // MessageInput defines model for MessageInput.
 type MessageInput struct {
+	// AnswersQuestionId The ID of the open question that this message answers. dex answers 409 when the question is closed. A message without this field never closes a question.
+	AnswersQuestionId *string `json:"answersQuestionId,omitempty"`
+
 	// Attachments Upload IDs from POST /api/agents/{agentId}/uploads, at most 10.
 	Attachments *[]string `json:"attachments,omitempty"`
 

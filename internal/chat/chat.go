@@ -44,6 +44,8 @@ type Chat struct {
 	Writable bool
 	// ExecutionID is zero until native execution creates the conversation.
 	ExecutionID int64
+	// Question is the question that waits for the user, or whose answer waits in the queue.
+	Question *Question
 }
 
 // Settings are the settings that one chat overrides. An empty field follows the agent's setting.
@@ -62,6 +64,9 @@ type Message struct {
 	Content     string
 	Attachments []engine.Attachment
 	Settings    Settings
+	// AnswersQuestion is the ID of the open question that this message answers. A message with
+	// this ID is an answer to that question; any other message leaves a question open.
+	AnswersQuestion string
 }
 
 // ErrNoModel means that the bot has no model yet; the user chooses one in the settings.
@@ -279,10 +284,23 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		if err != nil {
 			return 0, err
 		}
+		content, answers := m.Content, false
+		if m.AnswersQuestion != "" {
+			// A retry of an answer that is stored already must not bind or wrap it again.
+			switch _, err := q.GetSubmission(ctx, m.ID); {
+			case errors.Is(err, sql.ErrNoRows):
+				if content, err = answerContent(ctx, q, agentID, conv.ID, m.AnswersQuestion, m.Content); err != nil {
+					return 0, err
+				}
+				answers = true
+			case err != nil:
+				return 0, err
+			}
+		}
 		created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 			ID:             m.ID,
 			ConversationID: conv.ID,
-			Content:        m.Content,
+			Content:        content,
 			Attachments:    string(attachments),
 			SourceKey:      sql.NullString{String: sourceKey, Valid: sourceKey != ""},
 			Origin:         origin,
@@ -291,6 +309,15 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		})
 		if err != nil {
 			return 0, err
+		}
+		if answers && created > 0 {
+			bound, err := q.AnswerQuestion(ctx, sqlc.AnswerQuestionParams{ID: m.AnswersQuestion, AgentID: agentID, ConversationID: conv.ID, SubmissionID: sql.NullString{String: m.ID, Valid: true}})
+			if err != nil {
+				return 0, err
+			}
+			if bound == 0 {
+				return 0, ErrQuestionClosed
+			}
 		}
 		if created > 0 && strings.HasPrefix(channelKey, ChatPrefix) {
 			if err := q.SetFirstChatTitle(ctx, sqlc.SetFirstChatTitleParams{ID: conv.ID, Title: chatTitle}); err != nil {
@@ -366,6 +393,16 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 	if err != nil {
 		return nil, err
 	}
+	questions, err := s.q.ListCurrentQuestions(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	byChat := make(map[int64]*Question, len(questions))
+	for _, row := range questions {
+		if byChat[row.ConversationID], err = s.questionView(ctx, row); err != nil {
+			return nil, err
+		}
+	}
 	chats := make([]Chat, len(rows))
 	for i, r := range rows {
 		chats[i] = Chat{
@@ -386,10 +423,14 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	if err != nil {
 		return Chat{}, err
 	}
+	question, err := s.currentQuestion(ctx, id)
+	if err != nil {
+		return Chat{}, err
+	}
 	return Chat{
 		Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
-		Writable: acceptsInput(r.ChannelKey, r.TaskStatus), ExecutionID: r.ExecutionID.Int64,
+		Writable: acceptsInput(r.ChannelKey, r.TaskStatus), ExecutionID: r.ExecutionID.Int64, Question: question,
 	}, nil
 }
 
@@ -578,6 +619,9 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 	}
 	if handled {
 		return nil
+	}
+	if event, err = s.withQuestion(ctx, id, event); err != nil {
+		return err
 	}
 	changed, err := s.settleInput(ctx, id, event)
 	if err != nil || changed == 0 {
