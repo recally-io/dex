@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { getWorkOptions } from "../api/generated/@tanstack/react-query.gen";
-import { acknowledgeTask, dismissInboxItem, restoreInboxItem, restoreTask } from "../api/generated/sdk.gen";
-import { queryClient } from "../lib/queries";
+import { useHandled } from "../lib/handled";
 import { needsTask } from "../lib/work";
 import { Empty, FramedPage } from "../components/page";
 import { Failure, Loading } from "../components/feedback";
@@ -17,34 +16,7 @@ export function NeedsYouPage() {
     refetchInterval: 10000,
   });
 
-  const change = useMutation({
-    mutationFn: async ({
-      kind,
-      agentId,
-      id,
-      undo,
-    }: {
-      kind: "task" | "run";
-      agentId: string;
-      id: string;
-      undo: boolean;
-    }) => {
-      if (kind === "task") {
-        const path = { agentId, taskId: id };
-
-        if (undo) await restoreTask({ path, throwOnError: true });
-        else await acknowledgeTask({ path, throwOnError: true });
-      } else if (undo) await restoreInboxItem({ path: { runId: id }, throwOnError: true });
-      else await dismissInboxItem({ path: { runId: id }, throwOnError: true });
-
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [{ _id: "getWork" }] }),
-        queryClient.invalidateQueries({ queryKey: [{ _id: "listInbox" }] }),
-        queryClient.invalidateQueries({ queryKey: [{ _id: "listChats" }] }),
-        queryClient.invalidateQueries({ queryKey: [{ _id: "listAgents" }] }),
-      ]);
-    },
-  });
+  const change = useHandled();
 
   const tasks = (work.data?.sessions ?? []).filter(
     ({ chat }) => chat.task && needsTask({ ...chat.task, handledAt: undefined }),
@@ -120,9 +92,7 @@ export function NeedsYouPage() {
               <Button
                 variant="outline"
                 disabled={change.isPending}
-                onClick={() =>
-                  change.mutate({ kind: "run", agentId: run.agentId, id: run.runId, undo: false })
-                }
+                onClick={() => change.mutate({ kind: "run", id: run.runId, undo: false })}
               >
                 Mark handled
               </Button>
@@ -167,7 +137,7 @@ export function NeedsYouPage() {
               size="sm"
               variant="outline"
               disabled={change.isPending}
-              onClick={() => change.mutate({ kind: "run", agentId: run.agentId, id: run.runId, undo: true })}
+              onClick={() => change.mutate({ kind: "run", id: run.runId, undo: true })}
             >
               Undo
             </Button>
