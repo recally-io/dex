@@ -105,7 +105,14 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 }
 
 func cancelTaskInput(ctx context.Context, q *sqlc.Queries, task sqlc.Task, now sql.NullInt64) (engine.Ref, error) {
-	if _, err := q.SettleTask(ctx, sqlc.SettleTaskParams{ID: task.ID, Status: "cancelled", Report: task.Report, EndedAt: now}); err != nil {
+	if err := q.FinishUnsentTaskSteers(ctx, sqlc.FinishUnsentTaskSteersParams{TaskID: task.ID, Reason: "task cancelled before admission"}); err != nil {
+		return engine.Ref{}, err
+	}
+	report, err := taskReportWithUndeliveredSteers(ctx, q, task.ID, task.Report)
+	if err != nil {
+		return engine.Ref{}, err
+	}
+	if _, err := q.SettleTask(ctx, sqlc.SettleTaskParams{ID: task.ID, Status: "cancelled", Report: report, EndedAt: now}); err != nil {
 		return engine.Ref{}, err
 	}
 	if _, err := q.SettleSubmission(ctx, sqlc.SettleSubmissionParams{ID: task.ID, Status: "unanswered", Reason: sql.NullString{String: "stopped", Valid: true}, SettledAt: now}); err != nil {

@@ -37,12 +37,23 @@ type Attachment struct {
 	MimeType string `json:"mimeType"`
 	Path     string `json:"path"`
 }
+
+// TrustedTaskSteer is only for the task control receipt path. The caller must
+// guarantee that each native request ID is uniquely bound to the same task and
+// content, including retries. Engine cannot recover withdrawn input content.
+// The task binding remains valid across successor runs until sealed.
+type TrustedTaskSteer struct {
+	OriginalRequestID string
+}
+
 type Input struct {
 	RequestID, Content, Kind, Origin, Source string
 	Attachments                              []Attachment
 	Options
 	Automation bool
 	Background bool
+	// Steer admits a trusted task control receipt without changing configuration.
+	Steer *TrustedTaskSteer
 	// Main input comes from a person who waits for each reply.
 	Main              bool
 	TaskID, TaskTitle string
