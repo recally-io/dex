@@ -14,6 +14,7 @@ import { errorText, queryClient } from "./lib/queries";
 import { InboxPage } from "./routes/inbox";
 import { NeedsYouPage } from "./routes/needs-you";
 import { WorkPage } from "./routes/work";
+import { AllAutomationsPage } from "./routes/all-automations";
 import { Shell } from "./components/shell";
 import { AgentLayout } from "./components/agent-layout";
 import { ChatPage } from "./routes/chat";
@@ -80,6 +81,7 @@ const automations = agentPage("/automations", AutomationsPage);
 const needsYou = page("/needs-you", () => <NeedsYouPage />);
 const work = page("/work", () => <WorkPage calendar={false} />);
 const workCalendar = page("/work/calendar", () => <WorkPage calendar />);
+const allAutomations = page("/automations", () => <AllAutomationsPage />);
 const inbox = page("/inbox", () => <InboxPage />);
 
 const inboxDetail = page("/inbox/$runId", () => {
@@ -224,6 +226,7 @@ const router = createRouter({
     needsYou,
     work,
     workCalendar,
+    allAutomations,
     providers,
     secrets,
     about,

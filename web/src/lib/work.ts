@@ -1,5 +1,15 @@
-import type { Chat, TaskSummary } from "../api/generated/types.gen";
+import type { Chat, InboxItem, TaskSummary } from "../api/generated/types.gen";
 import { taskBucket } from "./tasks";
+
+export function automationNeedsYou(
+  id: string,
+  setup: boolean,
+  items: Pick<InboxItem, "automationId" | "outcome" | "dismissed">[],
+) {
+  return (
+    setup || items.some((item) => item.automationId === id && item.outcome === "failed" && !item.dismissed)
+  );
+}
 
 export function boardBucket(chat: Pick<Chat, "task" | "busy">): "needs" | "working" | "idle" {
   if (chat.task && needsTask(chat.task)) return "needs";

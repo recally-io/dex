@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import type { TaskSummary } from "../api/generated/types.gen";
-import { boardBucket, needsTask } from "./work";
+import { boardBucket, needsTask, automationNeedsYou } from "./work";
 
 const task: TaskSummary = {
   id: "task",
@@ -18,6 +18,16 @@ test("blocked and failed tasks need action until handled", () => {
   expect(needsTask({ ...task, handledAt: 3 })).toBe(false);
   expect(needsTask({ ...task, status: "interrupted", reportOutcome: undefined })).toBe(true);
   expect(needsTask({ ...task, status: "running", endedAt: undefined })).toBe(false);
+});
+
+test("setup and any unhandled failed run keep an automation in Needs you", () => {
+  expect(automationNeedsYou("a", true, [])).toBe(true);
+  expect(automationNeedsYou("a", false, [{ automationId: "a", outcome: "failed", dismissed: false }])).toBe(
+    true,
+  );
+  expect(automationNeedsYou("a", false, [{ automationId: "a", outcome: "failed", dismissed: true }])).toBe(
+    false,
+  );
 });
 
 test("running tasks stay in Working even when activity is old", () => {
