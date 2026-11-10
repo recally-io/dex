@@ -1,6 +1,6 @@
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ChevronRight, MessageCircle, ListTodo, Clock3, Plus } from "lucide-react";
 import type { Chat, TaskSummary } from "../api/generated/types.gen";
@@ -11,13 +11,8 @@ import {
 } from "../api/generated/@tanstack/react-query.gen";
 import { activeSessionCount, markTaskSeen, sessionKind, taskTime, taskTimes } from "../lib/tasks";
 import { refreshChats } from "../lib/queries";
-import { useChatStream } from "../lib/chat-stream";
-import { mergeHistory } from "../lib/chat-state";
-import { Markdown, Transcript, RetryNotice } from "../components/agent/transcript";
-import { Artifacts } from "../components/agent/artifacts";
 import { Empty, FramedPage, Panel, Section } from "../components/page";
 import { Failure, Loading } from "../components/feedback";
-import { LoadEarlierButton } from "../components/timeline-actions";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Select } from "../components/form";
@@ -188,79 +183,31 @@ function SessionRow({ chat }: { chat: Chat }) {
   );
 }
 
+/** Old task links open the task's session, which shows the report, Stop while it runs and Continue chat after it ends. */
 export function TaskPage({ taskId }: { taskId: string }) {
   const agentId = useAgentId();
-
-  const task = useQuery({
-    ...getTaskOptions({ path: { agentId, taskId } }),
-    refetchInterval: ({ state }) =>
-      state.data?.status === "queued" || state.data?.status === "running" ? 3000 : false,
-  });
+  const task = useQuery(getTaskOptions({ path: { agentId, taskId } }));
 
   useEffect(() => {
     if (task.data) markTaskSeen(agentId, task.data.id);
   }, [agentId, task.data]);
 
+  if (task.data)
+    return (
+      <Navigate
+        to="/a/$agentId/c/$chatId"
+        params={{ agentId, chatId: String(task.data.conversationId) }}
+        replace
+      />
+    );
+
   return (
-    <FramedPage
-      eyebrow={
-        <Link to="/a/$agentId" params={{ agentId }} className="hover:text-foreground hover:underline">
-          Chat
-        </Link>
-      }
-      title={task.data?.title ?? "Task"}
-      badge={task.data ? <TaskPill task={task.data} /> : null}
-      description={task.data ? taskTimes(task.data, true) : undefined}
-    >
-      {task.isPending ? (
-        <Loading />
-      ) : task.isError ? (
+    <FramedPage title="Task">
+      {task.isError ? (
         <Failure title="Could not load task" error={task.error} retry={() => void task.refetch()} />
       ) : (
-        <>
-          <Section n={1} title="Report" caption="Saved when the task ended.">
-            <Panel className="px-4 py-3.5">
-              <Markdown text={task.data.report || "No report yet."} />
-            </Panel>
-            <Artifacts chatId={task.data.conversationId} />
-          </Section>
-          <Section n={2} title="Work" caption="What the task did. Read-only.">
-            <TaskWork key={task.data.conversationId} chatId={task.data.conversationId} />
-          </Section>
-        </>
+        <Loading />
       )}
     </FramedPage>
-  );
-}
-
-function TaskWork({ chatId }: { chatId: number }) {
-  const { chat, state, setState, connection, streamError, reconnect } = useChatStream(chatId);
-
-  return chat.isPending ? (
-    <Loading />
-  ) : chat.isError ? (
-    <Failure title="Could not load work" error={chat.error} retry={() => void chat.refetch()} />
-  ) : (
-    <div className="flex min-w-0 flex-col gap-5">
-      {connection !== "ready" ? (
-        <div role="status" className="text-[12px] text-muted-foreground">
-          {streamError ||
-            (connection === "error" ? "Connection lost. Reconnecting…" : "Connecting to the bot…")}
-          <Button size="xs" variant="secondary" onClick={() => reconnect.current?.()}>
-            Reconnect
-          </Button>
-        </div>
-      ) : null}
-      <LoadEarlierButton
-        chatId={chatId}
-        before={state.historyBefore}
-        onPage={(page) => setState((previous) => mergeHistory(previous, page))}
-      />
-      <Transcript items={state.items} running={state.running} retry={() => {}} canRetry={false} />
-      {state.retry ? <RetryNotice retry={state.retry} /> : null}
-      {!state.items.length && connection === "ready" ? (
-        <p className="text-[13px] text-muted-foreground">No messages yet.</p>
-      ) : null}
-    </div>
   );
 }
