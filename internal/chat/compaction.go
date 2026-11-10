@@ -148,9 +148,6 @@ func (s *Service) CompactionStatus(ctx context.Context, agentID string, chatID i
 	if _, err := s.Get(ctx, agentID, chatID); err != nil {
 		return Compaction{}, err
 	}
-	if err := s.finishAgentAborts(ctx, agentID); err != nil {
-		return Compaction{}, err
-	}
 	return s.compactionStatus(ctx, agentID, chatID, operationID)
 }
 func (s *Service) compactionStatus(ctx context.Context, agentID string, chatID int64, operationID string) (Compaction, error) {

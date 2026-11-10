@@ -127,8 +127,9 @@ func TestUserForkWaitsForPendingNativeAbort(t *testing.T) {
 	if _, err = r.q.GetCompactOperation(t.Context(), "tool-compact"); err == nil {
 		t.Fatal("tool compact saved intent before abort")
 	}
-	if _, err = service.CompactionStatus(t.Context(), "bot", id, "pending-compact"); err == nil {
-		t.Fatal("compact status passed failed abort")
+	status, err := service.CompactionStatus(t.Context(), "bot", id, "pending-compact")
+	if err != nil || status.Status != "pending" {
+		t.Fatalf("read-only compact status=%+v err=%v", status, err)
 	}
 	if err = service.reconcileAgent(t.Context(), "bot"); err == nil {
 		t.Fatal("reconciliation hid abort failure")

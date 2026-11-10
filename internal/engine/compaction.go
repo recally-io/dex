@@ -110,23 +110,32 @@ func (a *Agents) CompactionStatus(ctx context.Context, ref Ref, taskID int64) (C
 	if taskID <= 0 {
 		return Compaction{}, ErrInvalidInput
 	}
-	if err := a.begin(); err != nil {
-		return Compaction{}, err
-	}
-	defer a.end()
-	conv, err := a.conversation(ctx, ref)
+	var result Compaction
+	err := a.readAgentStorage(ctx, ref, func(ctx context.Context, h harness.Harness) error {
+		var err error
+		result, err = readCompactionState(ctx, ref, taskID, h.GetTask, func(ctx context.Context, id durable.SubmissionId) (*durable.SubmissionRecord, error) {
+			sub, err := h.Submission(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			record, err := sub.Status(ctx)
+			return &record, err
+		})
+		return err
+	}, func(ctx context.Context, store durable.Storage) error {
+		var err error
+		result, err = readCompactionState(ctx, ref, taskID, store.Task, store.Submission)
+		return err
+	})
+	return result, err
+}
+
+func readCompactionState(ctx context.Context, ref Ref, taskID int64, taskRead func(context.Context, durable.TaskId) (*durable.TaskRecord[durable.JsonValue, durable.JsonValue, durable.JsonValue], error), submissionRead func(context.Context, durable.SubmissionId) (*durable.SubmissionRecord, error)) (Compaction, error) {
+	task, err := taskRead(ctx, durable.TaskId(taskID))
 	if err != nil {
 		return Compaction{}, err
 	}
-	h, err := a.harness(ctx, ref.AgentID)
-	if err != nil {
-		return Compaction{}, err
-	}
-	task, err := h.GetTask(ctx, durable.TaskId(taskID))
-	if err != nil {
-		return Compaction{}, err
-	}
-	if task == nil || task.ConversationId != conv.Id() || task.Kind != "pi.compaction" {
+	if task == nil || int64(task.ConversationId) != ref.ID || task.Kind != "pi.compaction" {
 		return Compaction{}, ErrNotFound
 	}
 	result := Compaction{TaskID: taskID, Status: "generating"}
@@ -156,13 +165,12 @@ func (a *Agents) CompactionStatus(ctx context.Context, ref Ref, taskID int64) (C
 		result.Status = "no_op"
 		return result, nil
 	}
-	sub, err := h.Submission(ctx, *summary.SubmissionId)
+	record, err := submissionRead(ctx, *summary.SubmissionId)
 	if err != nil {
 		return Compaction{}, err
 	}
-	record, err := sub.Status(ctx)
-	if err != nil {
-		return Compaction{}, err
+	if record == nil {
+		return Compaction{}, fmt.Errorf("compaction %d summary submission missing", taskID)
 	}
 	switch record.Status {
 	case durable.SubmissionDone:

@@ -1,8 +1,11 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -109,4 +112,77 @@ func TestUserCompactionReusesOperationAndReportsNoOp(t *testing.T) {
 		t.Fatalf("reopen id=%d err=%v", got, err)
 	}
 	t.Logf("compaction %d returned no_op and survived replay", id)
+}
+
+func TestUserCompactionStatusDoesNotResumeColdAgent(t *testing.T) {
+	cfg := Config{DataDir: t.TempDir(), Home: t.TempDir()}
+	a := coreEngine(t, cfg)
+	ref := coreCreate(t, a, "alpha", coreOptions("echo"))
+	coreWait(t, coreSubmit(t, a, ref, "first", "short", "echo"))
+	id, err := a.Compact(t.Context(), ref, "compact")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForNoOp := func(a *Agents) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		tick := time.NewTicker(10 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			state, err := a.CompactionStatus(ctx, ref, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if state.Status == "no_op" {
+				return
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatalf("last compaction status: %+v", state)
+			case <-tick.C:
+			}
+		}
+	}
+	waitForNoOp(a)
+	running := coreCreate(t, a, "alpha", coreOptions("bash"))
+	workspace := filepath.Join(cfg.DataDir, "agents", "alpha", "workspace")
+	starts := filepath.Join(workspace, "status-starts")
+	marker := filepath.Join(workspace, "status-started")
+	coreSubmit(t, a, running, "running", "echo start >> status-starts; touch status-started; while :; do sleep 1; done", "bash")
+	coreFile(t, marker)
+	beta := coreCreate(t, a, "beta", coreOptions("echo"))
+	waitForNoOp(a)
+	before, err := a.LookupSubmission(t.Context(), running, "running")
+	if err != nil || before.State != SubmissionPlaced {
+		t.Fatalf("hot task=%+v err=%v", before, err)
+	}
+	if err = a.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	a = coreEngine(t, cfg)
+	outcome, err := a.RecoveryOutcome(t.Context(), running, "running")
+	if err != nil || outcome != nil {
+		t.Fatalf("unfinished before read=%+v err=%v", outcome, err)
+	}
+	waitForNoOp(a)
+	if len(a.resources) != 0 {
+		t.Fatal("cold status opened a Harness")
+	}
+	after, err := a.RecoveryOutcome(t.Context(), running, "running")
+	if err != nil || after != nil {
+		t.Fatalf("unfinished after read=%+v err=%v", after, err)
+	}
+	if _, err = a.conversation(t.Context(), beta); err != nil {
+		t.Fatal(err)
+	}
+	waitForNoOp(a)
+	if a.resources[ref.AgentID] != nil {
+		t.Fatal("status opened source Harness with another agent open")
+	}
+	data, err := os.ReadFile(starts)
+	if err != nil || string(data) != "start\n" {
+		t.Fatalf("status resumed tool: %q err=%v", data, err)
+	}
+	t.Logf("cold status preserved unfinished work and one tool start; artifact=%s", starts)
 }
