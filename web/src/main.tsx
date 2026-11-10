@@ -13,6 +13,7 @@ import {
 import { errorText, queryClient } from "./lib/queries";
 import { InboxPage } from "./routes/inbox";
 import { NeedsYouPage } from "./routes/needs-you";
+import { WorkPage } from "./routes/work";
 import { Shell } from "./components/shell";
 import { AgentLayout } from "./components/agent-layout";
 import { ChatPage } from "./routes/chat";
@@ -77,6 +78,8 @@ const instructions = agentPage("/instructions", InstructionsPage);
 const channels = agentPage("/channels", ChannelsPage);
 const automations = agentPage("/automations", AutomationsPage);
 const needsYou = page("/needs-you", () => <NeedsYouPage />);
+const work = page("/work", () => <WorkPage calendar={false} />);
+const workCalendar = page("/work/calendar", () => <WorkPage calendar />);
 const inbox = page("/inbox", () => <InboxPage />);
 
 const inboxDetail = page("/inbox/$runId", () => {
@@ -219,6 +222,8 @@ const router = createRouter({
     inbox,
     inboxDetail,
     needsYou,
+    work,
+    workCalendar,
     providers,
     secrets,
     about,
