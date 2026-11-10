@@ -447,16 +447,27 @@ function Files({ files }: { files: Attachment[] }) {
   );
 }
 
+/** Edit and Remove for messages that wait in the native queue. */
+export type QueuedActions = {
+  /** Item IDs that the live stream confirms as queued. A message that is only local cannot be withdrawn yet. */
+  ids: ReadonlySet<string>;
+  pending: boolean;
+  edit: (id: string) => void;
+  remove: (id: string) => void;
+};
+
 export function TranscriptItem({
   item,
   live,
   retry,
   canRetry,
+  queuedActions,
 }: {
   item: Exclude<Item, { kind: "tool" }>;
   live: boolean;
   retry: () => void;
   canRetry: boolean;
+  queuedActions?: QueuedActions;
 }) {
   const agentId = useAgentId();
 
@@ -497,8 +508,31 @@ export function TranscriptItem({
             </div>
           ) : null}
           {item.queued ? (
-            <span className="flex items-center gap-1 text-[11.5px] text-muted-foreground">
-              <Clock3 size={12} /> Queued · runs after the current reply
+            <span className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Clock3 size={12} /> Queued · runs after the current reply
+              </span>
+              {queuedActions?.ids.has(item.id) ? (
+                <>
+                  <Button
+                    size="xs"
+                    variant="secondary"
+                    disabled={queuedActions.pending}
+                    title="Edit moves it back to the box"
+                    onClick={() => queuedActions.edit(item.id)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="secondary"
+                    disabled={queuedActions.pending}
+                    onClick={() => queuedActions.remove(item.id)}
+                  >
+                    Remove
+                  </Button>
+                </>
+              ) : null}
             </span>
           ) : null}
         </div>
@@ -587,12 +621,14 @@ export function Transcript({
   retry,
   canRetry,
   memory,
+  queuedActions,
 }: {
   items: Item[];
   running: boolean;
   retry: (index: number) => void;
   canRetry: boolean;
   memory?: string;
+  queuedActions?: QueuedActions;
 }) {
   function content(block: ContentBlock) {
     return block.kind === "tools" ? (
@@ -604,6 +640,7 @@ export function Transcript({
         live={running && block.index === items.length - 1}
         retry={() => retry(block.index)}
         canRetry={canRetry && retryMessage(items, block.index) !== undefined}
+        queuedActions={queuedActions}
       />
     );
   }

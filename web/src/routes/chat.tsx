@@ -11,13 +11,14 @@ import {
   getMainChatOptions,
   sendMessageMutation,
   abortChatMutation,
+  withdrawMessageMutation,
   listModelsOptions,
   listChatsOptions,
   listAgentsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
-import { refreshChats } from "../lib/queries";
+import { errorText, refreshChats } from "../lib/queries";
 import { agentModel, findModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
@@ -27,7 +28,7 @@ import { TaskSessionBar } from "../components/agent/task-session-bar";
 import { Artifacts, takeArtifactDraft } from "../components/agent/artifacts";
 import { Composer } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
-import { RetryNotice, Transcript } from "../components/agent/transcript";
+import { RetryNotice, Transcript, type QueuedActions } from "../components/agent/transcript";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
 import { InPaneContext, MainPane, Note, PageHeader } from "../components/page";
@@ -211,6 +212,26 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     ? findModel(own.provider ?? "", own.modelId, models.data?.models)
     : agentModel(settings.agent, models.data?.models);
 
+  const withdraw = useMutation(withdrawMessageMutation());
+
+  // The native queue is the source of the list: only messages that the stream shows as queued can be withdrawn.
+  const queuedActions: QueuedActions = {
+    ids: new Set(state.items.flatMap((item) => (item.kind === "user" && item.queued ? [item.id] : []))),
+    pending: withdraw.isPending,
+    // Edit does not keep the queue position. The text returns to the box and sends again as a new message.
+    edit: (id) =>
+      withdraw.mutate(
+        { path: { agentId, chatId, messageId: id } },
+        {
+          onSuccess: (message) => {
+            setDraft((prior) => (prior.trim() ? `${message.text}\n\n${prior}` : message.text));
+            files.restore(message.attachments);
+          },
+        },
+      ),
+    remove: (id) => withdraw.mutate({ path: { agentId, chatId, messageId: id } }),
+  };
+
   const abort = useMutation({
     ...abortChatMutation(),
     onSuccess: async () => {
@@ -319,6 +340,15 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           <br />
           Replies stay in this session. {settings.agent.name} does not report them to Main again.
         </p>
+      ) : null}
+      {withdraw.error ? (
+        <div role="alert" className="mb-3">
+          <Note tone="warn">
+            {/already started/.test(errorText(withdraw.error))
+              ? "It already started, so it can no longer be changed."
+              : "Could not withdraw the message."}
+          </Note>
+        </div>
       ) : null}
       {abort.isSuccess ? (
         <div role="status" className="mb-3">
@@ -466,6 +496,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           retry={retryText}
           canRetry={!readOnly && !reason && !pending}
           memory={memory}
+          queuedActions={readOnly ? undefined : queuedActions}
         />
         <Artifacts
           chatId={chatId}
