@@ -861,14 +861,18 @@ SELECT
     s.conversation_id AS chat_id
 FROM automation_runs r
 LEFT JOIN submissions s ON s.id = r.id
-WHERE r.automation_id = ?
+WHERE r.automation_id = ?1
+    AND coalesce(r.due_at, r.created_at) >= ?2
+    AND coalesce(r.due_at, r.created_at) < ?3
 ORDER BY r.created_at DESC, r.id DESC
-LIMIT ?
+LIMIT ?4
 `
 
 type ListAutomationRunsParams struct {
-	AutomationID string `json:"automation_id"`
-	Limit        int64  `json:"limit"`
+	AutomationID string        `json:"automation_id"`
+	RangeStart   sql.NullInt64 `json:"range_start"`
+	RangeEnd     sql.NullInt64 `json:"range_end"`
+	RowLimit     int64         `json:"row_limit"`
 }
 
 type ListAutomationRunsRow struct {
@@ -888,7 +892,12 @@ type ListAutomationRunsRow struct {
 
 // The newest runs of an automation, with the message of each started run.
 func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRunsParams) ([]ListAutomationRunsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listAutomationRuns, arg.AutomationID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listAutomationRuns,
+		arg.AutomationID,
+		arg.RangeStart,
+		arg.RangeEnd,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}

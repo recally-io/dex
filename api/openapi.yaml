@@ -21,7 +21,7 @@ paths:
   /api/work:
     get:
       operationId: getWork
-      description: Sessions and automation activity across bots for a time range.
+      description: Sessions and automation activity across bots for a half-open range of at most 31 days.
       parameters:
         - in: query
           name: from

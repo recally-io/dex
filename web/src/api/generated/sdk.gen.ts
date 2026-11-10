@@ -19,7 +19,7 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 };
 
 /**
- * Sessions and automation activity across bots for a time range.
+ * Sessions and automation activity across bots for a half-open range of at most 31 days.
  */
 export const getWork = <ThrowOnError extends boolean = false>(options: Options<GetWorkData, ThrowOnError>): RequestResult<GetWorkResponses, GetWorkErrors, ThrowOnError> => (options.client ?? client).get<GetWorkResponses, GetWorkErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {

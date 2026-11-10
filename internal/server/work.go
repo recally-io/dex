@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/api"
-	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/settings"
 )
@@ -60,25 +59,15 @@ func (h *handler) GetWork(ctx context.Context, req api.GetWorkRequestObject) (ap
 			}
 		}
 		for _, a := range list {
-			runs, err := h.Automations.Runs(ctx, agent.ID, a.ID, -1)
+			runs, err := h.Automations.RunsInRange(ctx, agent.ID, a.ID, from, to, -1)
 			if err != nil {
 				return nil, err
-			}
-			filtered := make([]automation.Run, 0)
-			for _, run := range runs {
-				at := run.CreatedAt
-				if run.DueAt != 0 {
-					at = run.DueAt
-				}
-				if at >= from && at < to {
-					filtered = append(filtered, run)
-				}
 			}
 			scheduled, err := h.Automations.Scheduled(a, from, to)
 			if err != nil {
 				return nil, err
 			}
-			out.Automations = append(out.Automations, api.WorkAutomation{AgentId: agent.ID, Automation: a, Runs: filtered, Scheduled: scheduled, Setup: a.Enabled && unusable})
+			out.Automations = append(out.Automations, api.WorkAutomation{AgentId: agent.ID, Automation: a, Runs: runs, Scheduled: scheduled, Setup: a.Enabled && unusable})
 		}
 	}
 	return api.GetWork200JSONResponse(out), nil

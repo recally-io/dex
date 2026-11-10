@@ -42,7 +42,7 @@ const createQueryKey = <TOptions extends Options>(id: string, options?: TOptions
 export const getWorkQueryKey = (options: Options<GetWorkData>) => createQueryKey('getWork', options);
 
 /**
- * Sessions and automation activity across bots for a time range.
+ * Sessions and automation activity across bots for a half-open range of at most 31 days.
  */
 export const getWorkOptions = (options: Options<GetWorkData>) => queryOptions<GetWorkResponse, GetWorkError, GetWorkResponse, ReturnType<typeof getWorkQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {

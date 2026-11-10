@@ -304,9 +304,11 @@ SELECT
     s.conversation_id AS chat_id
 FROM automation_runs r
 LEFT JOIN submissions s ON s.id = r.id
-WHERE r.automation_id = ?
+WHERE r.automation_id = sqlc.arg(automation_id)
+    AND coalesce(r.due_at, r.created_at) >= sqlc.arg(range_start)
+    AND coalesce(r.due_at, r.created_at) < sqlc.arg(range_end)
 ORDER BY r.created_at DESC, r.id DESC
-LIMIT ?;
+LIMIT sqlc.arg(row_limit);
 
 -- name: CountAutomationPending :one
 -- The messages without an answer in the chats of an automation: automation:<id> and

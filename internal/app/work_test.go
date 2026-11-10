@@ -20,11 +20,14 @@ func TestUserWorkCollectsAutomationsAcrossBots(t *testing.T) {
 		ID string `json:"id"`
 	}
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other bot", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &bot, http.StatusCreated)
+	ids := map[string]string{}
 	for _, id := range []string{"default", bot.ID} {
+		var created automationInfo
 		d.must(t, http.MethodPost, "/api/agents/"+id+"/automations", map[string]any{
 			"name": "Daily check", "prompt": "Check", "schedule": map[string]string{"kind": "daily", "time": "09:00"},
 			"timeZone": "UTC", "session": "new", "enabled": true,
-		}, nil, http.StatusCreated)
+		}, &created, http.StatusCreated)
+		ids[id] = created.ID
 	}
 
 	// When the owner requests Work for the next seven days.
@@ -36,7 +39,10 @@ func TestUserWorkCollectsAutomationsAcrossBots(t *testing.T) {
 				Name string `json:"name"`
 			} `json:"automation"`
 			Scheduled []int64 `json:"scheduled"`
-			Setup     bool    `json:"setup"`
+			Runs      []struct {
+				ID string `json:"id"`
+			} `json:"runs"`
+			Setup bool `json:"setup"`
 		} `json:"automations"`
 	}
 	d.must(t, http.MethodGet, fmt.Sprintf("/api/work?from=%d&to=%d", now.UnixMilli(), now.Add(7*24*time.Hour).UnixMilli()), nil, &result)
@@ -85,6 +91,23 @@ func TestUserWorkCollectsAutomationsAcrossBots(t *testing.T) {
 	for _, a := range result.Automations {
 		if a.Setup {
 			t.Fatalf("setup remained after fixing the model: %+v", a)
+		}
+	}
+
+	// Only runs in the requested interval appear in Work.
+	for _, r := range []struct {
+		id string
+		at int64
+	}{{"inside", now.Add(-time.Hour).UnixMilli()}, {"outside", now.Add(-48 * time.Hour).UnixMilli()}} {
+		if _, err := conn.ExecContext(t.Context(), `INSERT INTO automation_runs(id,automation_id,status,created_at) VALUES (?,?,'skipped',?)`, r.id, ids["default"], r.at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result.Automations = nil
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/work?from=%d&to=%d", now.Add(-24*time.Hour).UnixMilli(), now.Add(time.Hour).UnixMilli()), nil, &result)
+	for _, a := range result.Automations {
+		if a.AgentID == "default" && (len(a.Runs) != 1 || a.Runs[0].ID != "inside") {
+			t.Fatalf("work range: %+v", a.Runs)
 		}
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -370,10 +371,15 @@ func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, er
 
 // Runs returns the newest runs of an automation, at most limit.
 func (s *Service) Runs(ctx context.Context, agentID string, id string, limit int64) ([]Run, error) {
+	return s.RunsInRange(ctx, agentID, id, 0, math.MaxInt64, limit)
+}
+
+// RunsInRange returns runs whose planned or creation time is in [from, to).
+func (s *Service) RunsInRange(ctx context.Context, agentID, id string, from, to, limit int64) ([]Run, error) {
 	if _, err := s.get(ctx, agentID, id); err != nil {
 		return nil, err
 	}
-	rows, err := s.q.ListAutomationRuns(ctx, sqlc.ListAutomationRunsParams{AutomationID: id, Limit: limit})
+	rows, err := s.q.ListAutomationRuns(ctx, sqlc.ListAutomationRunsParams{AutomationID: id, RangeStart: sql.NullInt64{Int64: from, Valid: true}, RangeEnd: sql.NullInt64{Int64: to, Valid: true}, RowLimit: limit})
 	if err != nil {
 		return nil, err
 	}
