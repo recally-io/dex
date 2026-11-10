@@ -424,7 +424,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 		chats[i] = Chat{
 			Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 			Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
-			Writable: acceptsInput(r.ChannelKey, r.TaskStatus),
+			Writable: acceptsInput(r.ChannelKey, r.TaskStatus), Question: byChat[r.ID],
 		}
 	}
 	return chats, nil
