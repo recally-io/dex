@@ -194,7 +194,6 @@ const oldAgentRoutes = [
   oldAgentPage("/instructions"),
   oldAgentPage("/channels"),
   oldAgentPage("/channels/$channelId"),
-  oldAgentPage("/automations"),
   oldAgentPage("/automations/$automationId"),
   oldAgentPage("/sessions"),
   oldAgentPage("/c/$chatId"),
