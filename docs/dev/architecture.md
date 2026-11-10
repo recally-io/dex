@@ -94,7 +94,7 @@ It creates the control record on demand. Messages use
 `POST /api/agents/{agentId}/chats` takes no body and returns a writable
 Chat session (`201`).
 Its channel key starts with `chat:`. One SQLite write reuses the newest Chat
-with no ordinary message, or creates one. Concurrent opens reuse the same row.
+with no ordinary message or execution, or creates one. Concurrent opens reuse the same row.
 The first message and its title commit together. The title has at most
 60 characters. Longer text uses its first 59 characters and an ellipsis. A file-only
 message uses the first file's name. Each Chat has its own execution conversation.
@@ -107,7 +107,7 @@ by `updatedAt` descending, then ID descending. `updatedAt` is the latest
 conversation creation, input creation or settlement, or task start or end time.
 Task times apply only to the task's own conversation. List and detail use the
 same rule. The list excludes main, old channel conversations, dreams and
-Chat sessions with no message. Task rows add `task: TaskSummary`, without report bodies. Running task rows also include the latest observed tool action, activity time, and earliest currently running tool start time when the task conversation view is already open in the engine. These three fields are in-memory only and disappear when the task settles; a restart interrupts running tasks and does not restore them. A structured report adds `reportOutcome` (`done`, `blocked`, or `failed`) regardless of task status. The activity tracker reads existing native views and never opens a Harness or `state.sqlite` while serving this list. The tracker observes activity only while a conversation view is open, so a cold agent has no activity data. A running task is considered potentially stalled by the client after five minutes without a tool or thirty minutes in a tool; these thresholds should change only when measured false positives or user needs justify it. The query does not read reports or transcripts. The active count includes tasks with status queued or running, and other busy sessions. Each row counts once. The legacy Sessions route remains readable for saved links.
+Chat sessions with no message or completed fork. Task rows add `task: TaskSummary`, without report bodies. Running task rows also include the latest observed tool action, activity time, and earliest currently running tool start time when the task conversation view is already open in the engine. These three fields are in-memory only and disappear when the task settles; a restart interrupts running tasks and does not restore them. A structured report adds `reportOutcome` (`done`, `blocked`, or `failed`) regardless of task status. The activity tracker reads existing native views and never opens a Harness or `state.sqlite` while serving this list. The tracker observes activity only while a conversation view is open, so a cold agent has no activity data. A running task is considered potentially stalled by the client after five minutes without a tool or thirty minutes in a tool; these thresholds should change only when measured false positives or user needs justify it. The query does not read reports or transcripts. The active count includes tasks with status queued or running, and other busy sessions. Each row counts once. The legacy Sessions route remains readable for saved links.
 
 Channel input enters the agent's main conversation. Chat and automation
 contexts stay separate. See [Product](../product.md#scope) for session behavior,
@@ -143,6 +143,13 @@ Markdown is rendered as text by the client. HTML and SVG never run inline.
 Continue editing references the snapshot ID, name, and source. Main and Chat
 reuse the writable conversation. A read-only source opens a new writable Chat
 with the source project directory. A new delivery creates a new snapshot.
+
+Fork creates an independent Chat at a committed entry. It copies the source's
+current effective model, thinking level and project directory. It does not
+start a run or copy task authority. The control receipt freezes the source,
+entry and settings. A native operation record commits with the new execution.
+Reconciliation uses the same operation ID if the control acknowledgement fails.
+The two Chats share the same files when their project directories are equal.
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
 each agent execution store. Run one dex process per data directory.

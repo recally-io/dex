@@ -55,7 +55,14 @@ func (s *Service) dispatch(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	forks, err := s.q.ListPendingForkOperations(ctx)
+	if err != nil {
+		return err
+	}
 	agents := make(map[string]struct{})
+	for _, fork := range forks {
+		agents[fork.AgentID] = struct{}{}
+	}
 	for _, c := range aborts {
 		agents[c.AgentID] = struct{}{}
 	}

@@ -2003,6 +2003,45 @@ export type GetChatResponses = {
 
 export type GetChatResponse = GetChatResponses[keyof GetChatResponses];
 
+export type ForkChatData = {
+    body: {
+        id: string;
+        entryId: number;
+    };
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/fork';
+};
+
+export type ForkChatErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ForkChatError = ForkChatErrors[keyof ForkChatErrors];
+
+export type ForkChatResponses = {
+    /**
+     * The forked Chat.
+     */
+    201: Chat;
+};
+
+export type ForkChatResponse = ForkChatResponses[keyof ForkChatResponses];
+
 export type UnarchiveChatData = {
     body?: never;
     path: {

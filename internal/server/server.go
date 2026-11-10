@@ -92,9 +92,9 @@ func New(cfg Config) http.Handler {
 				status = http.StatusServiceUnavailable
 			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden), errors.Is(err, chat.ErrSettingsForbidden):
 				status = http.StatusForbidden
-			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
+			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, engine.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, chat.ErrTaskConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
+			case errors.Is(err, chat.ErrTaskConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrOperationConflict):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -763,6 +763,17 @@ func (h *handler) GetMainChat(ctx context.Context, _ api.GetMainChatRequestObjec
 		return nil, err
 	}
 	return api.GetMainChat200JSONResponse(chatView(c)), nil
+}
+
+func (h *handler) ForkChat(ctx context.Context, req api.ForkChatRequestObject) (api.ForkChatResponseObject, error) {
+	if req.Body == nil || req.Body.EntryId <= 0 {
+		return nil, errInvalid
+	}
+	result, err := h.Chats.Fork(ctx, agentID(ctx), req.ChatId, req.Body.EntryId, req.Body.Id.String())
+	if err != nil {
+		return nil, err
+	}
+	return api.ForkChat201JSONResponse(chatView(result)), nil
 }
 
 func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestObject) (api.ClearContextResponseObject, error) {

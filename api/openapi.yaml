@@ -648,8 +648,8 @@ paths:
       operationId: listChats
       description: >
         Session summaries of the requested agent, newest activity first, then
-        highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no
-        message. Task summaries have no reports. Transcripts are not included.
+        highest ID first. Excludes main, channel conversations, dreams and empty Chat sessions
+        without a fork. Task summaries have no reports. Transcripts are not included.
       responses:
         "200":
           description: The sessions.
@@ -662,7 +662,7 @@ paths:
       operationId: createChat
       description: >
         Opens a separate writable Chat session. Reuses the newest Chat session
-        with no message that is not archived, or creates one. No request body or model is needed.
+        with no message or execution that is not archived, or creates one. No request body or model is needed.
         The first message sets its title. The session uses the bot's settings.
       responses:
         "201":
@@ -689,6 +689,38 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Chat" }
         "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/fork:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    post:
+      operationId: forkChat
+      description: >
+        Forks a committed entry into a new Chat without starting execution.
+        Reuse the operation ID for retries with the same source and entry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, entryId]
+              properties:
+                id: { type: string, format: uuid }
+                entryId: { type: integer, format: int64, minimum: 1 }
+      responses:
+        "201":
+          description: The forked Chat.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chat" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
   /api/agents/{agentId}/chats/{chatId}/archive:

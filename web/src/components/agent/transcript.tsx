@@ -1,7 +1,26 @@
-import { ArrowUpRight, Check, Clock3, CodeXml, Copy, CornerDownRight, FileText } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  Clock3,
+  CodeXml,
+  Copy,
+  CornerDownRight,
+  FileText,
+  MoreHorizontal,
+} from "lucide-react";
 import { useAgentId } from "../../lib/agent-scope";
-import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useMutation } from "@tanstack/react-query";
+import { forkChat } from "../../api/generated/sdk.gen";
+import { newId } from "../../lib/utils";
+import { refreshChats } from "../../lib/queries";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
@@ -485,13 +504,44 @@ function UserText({ text }: { text: string }) {
   );
 }
 
+function ForkAction({ chatId, entryId }: { chatId: number; entryId: number }) {
+  const agentId = useAgentId();
+  const navigate = useNavigate();
+  const request = useRef(newId());
+
+  const fork = useMutation({
+    mutationFn: () =>
+      forkChat({ path: { agentId, chatId }, body: { id: request.current, entryId }, throwOnError: true }),
+    onSuccess: async (result) => {
+      await refreshChats(agentId);
+      await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(result.data.id) } });
+    },
+  });
+
+  return (
+    <div>
+      <DropdownMenu>
+        <DropdownMenuTrigger aria-label="Message actions" disabled={fork.isPending}>
+          <MoreHorizontal size={16} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={() => fork.mutate()}>Fork from here</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {fork.isError ? <span role="alert">Could not fork. Try again.</span> : null}
+    </div>
+  );
+}
+
 export function TranscriptItem({
   item,
   live,
   retry,
   canRetry,
   queuedActions,
+  chatId,
 }: {
+  chatId?: number;
   item: Exclude<Item, { kind: "tool" }>;
   live: boolean;
   retry: () => void;
@@ -513,7 +563,7 @@ export function TranscriptItem({
       );
     case "user":
       return (
-        <div className="flex animate-[fade-up_300ms_var(--ease-out-strong)_both] flex-col items-end gap-1 pl-10 sm:pl-24">
+        <div className="relative flex animate-[fade-up_300ms_var(--ease-out-strong)_both] flex-col items-end gap-1 pl-10 sm:pl-24">
           {entryName(item.origin) ? (
             <span data-origin={item.origin}>
               <Badge variant="secondary" className="h-5 px-2 text-[11.5px]">
@@ -534,6 +584,11 @@ export function TranscriptItem({
               )}
             >
               <UserText text={item.text} />
+            </div>
+          ) : null}
+          {chatId && item.entryId && !item.queued ? (
+            <div className="absolute top-0 left-2">
+              <ForkAction chatId={chatId} entryId={item.entryId} />
             </div>
           ) : null}
           {item.queued ? (
@@ -607,6 +662,7 @@ export function TranscriptItem({
               </span>
             ) : null}
             <CopyText text={item.text} />
+            {chatId && item.entryId ? <ForkAction chatId={chatId} entryId={item.entryId} /> : null}
           </footer>
         </article>
       );
@@ -645,6 +701,7 @@ export function TranscriptItem({
 }
 
 export function Transcript({
+  chatId,
   items,
   running,
   retry,
@@ -652,6 +709,7 @@ export function Transcript({
   memory,
   queuedActions,
 }: {
+  chatId?: number;
   items: Item[];
   running: boolean;
   retry: (index: number) => void;
@@ -665,6 +723,7 @@ export function Transcript({
     ) : (
       <TranscriptItem
         key={block.item.id}
+        chatId={chatId}
         item={block.item}
         live={running && block.index === items.length - 1}
         retry={() => retry(block.index)}

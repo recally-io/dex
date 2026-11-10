@@ -75,6 +75,7 @@ type TaskTools struct {
 	ReportTask       func(context.Context, TaskContext, TaskReport) error
 	ReportCheck      func(context.Context, TaskContext, CheckReport) error
 	SetProject       func(context.Context, TaskContext, string) (string, error)
+	Fork             func(context.Context, TaskContext, int64) (int64, error)
 	Spawn            func(context.Context, TaskContext, SpawnTaskArgs) (TaskInfo, error)
 	List             func(context.Context, TaskContext) ([]TaskInfo, error)
 	Get              func(context.Context, TaskContext, string) (TaskInfo, error)
@@ -171,6 +172,24 @@ func taskExtension(agentID string, handlers TaskTools) *durable.Extension {
 			return action.call(ctx, source, args.ID)
 		}))
 	}
+	tools = append(tools, makeTool("fork_chat", "Fork a committed entry of this conversation into a new Chat without starting it.", map[string]any{"type": "object", "properties": map[string]any{"entryId": map[string]any{"type": "integer", "minimum": 1}}, "required": []string{"entryId"}, "additionalProperties": false}, func(ctx context.Context, source TaskContext, raw any) (any, error) {
+		if handlers.Fork == nil {
+			return nil, errors.New("fork service is unavailable")
+		}
+		args, err := durable.FromJsonValue[struct {
+			EntryID int64 `json:"entryId"`
+		}](raw)
+		if err != nil {
+			return nil, err
+		}
+		id, err := handlers.Fork(ctx, source, args.EntryID)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			ChatID int64 `json:"chatId"`
+		}{ChatID: id}, nil
+	}))
 	tools = append(tools, &durable.ToolRegistration{
 		Name: "set_project", Description: "Set the project directory for this conversation. Use an absolute path, or an empty path to restore the agent workspace.",
 		Parameters: map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}}, "required": []string{"path"}, "additionalProperties": false},

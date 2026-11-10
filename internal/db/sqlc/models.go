@@ -116,6 +116,17 @@ type FeishuSetting struct {
 	PairingExpiresAt int64  `json:"pairing_expires_at"`
 }
 
+type ForkOperation struct {
+	OperationID          string `json:"operation_id"`
+	AgentID              string `json:"agent_id"`
+	SourceConversationID int64  `json:"source_conversation_id"`
+	TargetConversationID int64  `json:"target_conversation_id"`
+	EntryID              int64  `json:"entry_id"`
+	OptionsJson          string `json:"options_json"`
+	Status               string `json:"status"`
+	CreatedAt            int64  `json:"created_at"`
+}
+
 type Provider struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`

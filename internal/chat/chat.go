@@ -181,6 +181,17 @@ func (s *Service) reconcileAgent(ctx context.Context, agentID string) error {
 	}
 	blocked := make(map[int64]bool)
 	var errs []error
+	forks, err := s.q.ListPendingForkOperations(ctx)
+	if err != nil {
+		return err
+	}
+	for _, fork := range forks {
+		if fork.AgentID == agentID {
+			if err := s.completeFork(ctx, fork); err != nil && !errors.Is(err, engine.ErrNotFound) && !errors.Is(err, engine.ErrInvalidInput) && !errors.Is(err, engine.ErrOperationConflict) {
+				errs = append(errs, err)
+			}
+		}
+	}
 	for _, c := range aborts {
 		if c.AgentID != agentID {
 			continue

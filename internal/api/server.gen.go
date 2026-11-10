@@ -1290,6 +1290,12 @@ type ClearContextJSONBody struct {
 	Id string `json:"id"`
 }
 
+// ForkChatJSONBody defines parameters for ForkChat.
+type ForkChatJSONBody struct {
+	EntryId int64              `json:"entryId"`
+	Id      openapi_types.UUID `json:"id"`
+}
+
 // GetChatHistoryParams defines parameters for GetChatHistory.
 type GetChatHistoryParams struct {
 	Before int64 `form:"before" json:"before"`
@@ -1376,6 +1382,9 @@ type PollWechatLoginJSONRequestBody PollWechatLoginJSONBody
 
 // ClearContextJSONRequestBody defines body for ClearContext for application/json ContentType.
 type ClearContextJSONRequestBody ClearContextJSONBody
+
+// ForkChatJSONRequestBody defines body for ForkChat for application/json ContentType.
+type ForkChatJSONRequestBody ForkChatJSONBody
 
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = MessageInput
@@ -1962,6 +1971,9 @@ type ServerInterface interface {
 
 	// (GET /api/agents/{agentId}/chats/{chatId}/events)
 	WatchChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
+	// (POST /api/agents/{agentId}/chats/{chatId}/fork)
+	ForkChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
 	// (GET /api/agents/{agentId}/chats/{chatId}/history)
 	GetChatHistory(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, params GetChatHistoryParams)
@@ -3058,6 +3070,41 @@ func (siw *ServerInterfaceWrapper) WatchChat(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.WatchChat(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ForkChat operation middleware
+func (siw *ServerInterfaceWrapper) ForkChat(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ForkChat(w, r, agentId, chatId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4192,6 +4239,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.ListChats)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.CreateChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}", wrapper.GetChat)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/fork", wrapper.ForkChat)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/archive", wrapper.UnarchiveChat)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/archive", wrapper.ArchiveChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
@@ -6053,6 +6101,75 @@ func (response WatchChat404JSONResponse) VisitWatchChatResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkChatRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  ChatId `json:"chatId"`
+	Body    *ForkChatJSONRequestBody
+}
+
+type ForkChatResponseObject interface {
+	VisitForkChatResponse(w http.ResponseWriter) error
+}
+
+type ForkChat201JSONResponse Chat
+
+func (response ForkChat201JSONResponse) VisitForkChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkChat404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ForkChat404JSONResponse) VisitForkChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkChat409JSONResponse Error
+
+func (response ForkChat409JSONResponse) VisitForkChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkChatdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ForkChatdefaultJSONResponse) VisitForkChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -8032,6 +8149,9 @@ type StrictServerInterface interface {
 	// (GET /api/agents/{agentId}/chats/{chatId}/events)
 	WatchChat(ctx context.Context, request WatchChatRequestObject) (WatchChatResponseObject, error)
 
+	// (POST /api/agents/{agentId}/chats/{chatId}/fork)
+	ForkChat(ctx context.Context, request ForkChatRequestObject) (ForkChatResponseObject, error)
+
 	// (GET /api/agents/{agentId}/chats/{chatId}/history)
 	GetChatHistory(ctx context.Context, request GetChatHistoryRequestObject) (GetChatHistoryResponseObject, error)
 
@@ -9132,6 +9252,40 @@ func (sh *strictHandler) WatchChat(w http.ResponseWriter, r *http.Request, agent
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(WatchChatResponseObject); ok {
 		if err := validResponse.VisitWatchChatResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ForkChat operation middleware
+func (sh *strictHandler) ForkChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
+	var request ForkChatRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+
+	var body ForkChatJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ForkChat(ctx, request.(ForkChatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ForkChat")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ForkChatResponseObject); ok {
+		if err := validResponse.VisitForkChatResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

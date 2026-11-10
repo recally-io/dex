@@ -524,6 +524,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           }}
         />
         <Transcript
+          chatId={chatId}
           items={items}
           running={running}
           retry={retryText}

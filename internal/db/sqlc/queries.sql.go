@@ -387,6 +387,8 @@ VALUES (
     coalesce((
         SELECT c.channel_key FROM conversations c
         WHERE c.agent_id = ?1 AND c.channel_key LIKE 'chat:%' AND c.archived_at IS NULL
+            AND c.execution_id IS NULL
+            AND NOT EXISTS (SELECT 1 FROM fork_operations f WHERE f.target_conversation_id = c.id)
             AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message')
         ORDER BY c.created_at DESC, c.id DESC LIMIT 1
     ), ?2),
@@ -581,6 +583,7 @@ FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN tasks t ON t.conversation_id = c.id
 WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
+AND NOT EXISTS (SELECT 1 FROM fork_operations f WHERE f.target_conversation_id = c.id AND f.status != 'done')
 GROUP BY c.id
 `
 
@@ -1009,7 +1012,7 @@ WHERE c.agent_id = ?
     AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
     AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
-    ))
+    ) OR EXISTS (SELECT 1 FROM fork_operations f WHERE f.target_conversation_id = c.id AND f.status = 'done'))
 GROUP BY c.id
 ORDER BY updated_at DESC, c.id DESC
 `

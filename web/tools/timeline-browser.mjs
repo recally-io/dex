@@ -1339,6 +1339,27 @@ try {
   results.push("seven agent Chat visits leave ordinary New session requests working");
   await shot("16-seven-agents");
 
+  // A committed message can open a fork without running a new message.
+  await visit("/a/default");
+  await ui(
+    "fork action available",
+    `!!document.querySelector('button[aria-label="Message actions"]:not([inert] *)')`,
+  );
+  await tap('button[aria-label="Message actions"]:not([inert] *)');
+  await ui(
+    "fork menu open",
+    `[...document.querySelectorAll('[role="menuitem"]')].some(node => node.textContent.trim() === 'Fork from here')`,
+  );
+  await evaluate(
+    `[...document.querySelectorAll('[role="menuitem"]')].find(node => node.textContent.trim() === 'Fork from here').click()`,
+  );
+  await ui("fork opened", `location.pathname.startsWith('/a/default/c/')`);
+  const forkID = Number((await evaluate("location.pathname")).split("/").at(-1));
+  const fork = await api(`/api/agents/default/chats/${forkID}`);
+  assert.equal(fork.busy, false, "fork creation must not start a run");
+  results.push("fork a committed message into an idle Chat");
+  await shot("17-fork");
+
   await visit("/providers");
   await ui(
     "global provider page ready",
