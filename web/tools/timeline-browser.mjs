@@ -494,6 +494,13 @@ try {
     `location.pathname === '/a/default/c/${old.conversationId}' && document.body.innerText.includes('Started by Main') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
   );
   await shot("06a-old-task-link");
+
+  // The same link without the bot prefix goes through the redirect of the old address.
+  await visit(`/tasks/${old.taskId}`);
+  await ui(
+    "the old address of a task link opens the child session",
+    `location.pathname === '/a/default/c/${old.conversationId}' && document.body.innerText.includes('Started by Main')`,
+  );
   assert.equal((await api(`/api/agents/default/chats/${old.conversationId}`)).readOnly, false);
   // The user can archive it, so it leaves the lists below.
   await api(`/api/agents/default/chats/${old.conversationId}/archive`, undefined, "PUT");
@@ -580,7 +587,8 @@ try {
     "!!document.querySelector('button[aria-label=\"Steer this run\"]:not([inert] *)')",
   );
   await shot("05-child-steer-draft");
-  // The redirect from a turn link moves focus to the page title after the first paint.
+  // Without this line, Enter fails in headless Chrome: the shell moves focus to the page title in an
+  // animation frame after the redirect, and the screenshot above produces that frame late.
   await evaluate("document.querySelector('textarea:not([inert] *)').focus()");
   await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter" });
   await call("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter" });
