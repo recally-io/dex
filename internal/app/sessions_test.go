@@ -17,10 +17,10 @@ import (
 
 type sessionInfo struct {
 	chatInfo
-	Main      bool      `json:"main"`
-	ReadOnly  bool      `json:"readOnly"`
-	UpdatedAt int64     `json:"updatedAt"`
-	ParentID  *int64    `json:"parentId"`
+	Main      bool   `json:"main"`
+	ReadOnly  bool   `json:"readOnly"`
+	UpdatedAt int64  `json:"updatedAt"`
+	ParentID  *int64 `json:"parentId"`
 }
 
 func (d *dex) newSession(t *testing.T) sessionInfo {
