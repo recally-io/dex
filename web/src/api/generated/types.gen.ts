@@ -477,6 +477,11 @@ export type ErrorItem = {
      * True when the user stopped the run.
      */
     aborted?: boolean;
+    /**
+     * The reason of the newest failed run, on the error item that ends it, such as aborted, model_error, no_model or nothing_to_answer. POST .../continue runs such a run again, except for nothing_to_answer.
+     *
+     */
+    failure?: string;
 };
 
 export type Usage = {
@@ -2374,6 +2379,55 @@ export type ClearContextResponses = {
 };
 
 export type ClearContextResponse = ClearContextResponses[keyof ClearContextResponses];
+
+export type ContinueChatData = {
+    body: {
+        /**
+         * A stable client UUID for this continue.
+         */
+        id: string;
+    };
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/continue';
+};
+
+export type ContinueChatErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ContinueChatError = ContinueChatErrors[keyof ContinueChatErrors];
+
+export type ContinueChatResponses = {
+    /**
+     * The run started.
+     */
+    202: SentMessage;
+};
+
+export type ContinueChatResponse = ContinueChatResponses[keyof ContinueChatResponses];
 
 export type GetChatHistoryData = {
     body?: never;

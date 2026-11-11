@@ -776,8 +776,11 @@ type Error struct {
 // ErrorItem defines model for ErrorItem.
 type ErrorItem struct {
 	// Aborted True when the user stopped the run.
-	Aborted *bool         `json:"aborted,omitempty"`
-	EntryId *int64        `json:"entryId,omitempty"`
+	Aborted *bool  `json:"aborted,omitempty"`
+	EntryId *int64 `json:"entryId,omitempty"`
+
+	// Failure The reason of the newest failed run, on the error item that ends it, such as aborted, model_error, no_model or nothing_to_answer. POST .../continue runs such a run again, except for nothing_to_answer.
+	Failure *string       `json:"failure,omitempty"`
 	Id      string        `json:"id"`
 	Kind    ErrorItemKind `json:"kind"`
 	Reason  string        `json:"reason"`
@@ -1320,6 +1323,12 @@ type ClearContextJSONBody struct {
 	Id string `json:"id"`
 }
 
+// ContinueChatJSONBody defines parameters for ContinueChat.
+type ContinueChatJSONBody struct {
+	// Id A stable client UUID for this continue.
+	Id string `json:"id"`
+}
+
 // GetChatHistoryParams defines parameters for GetChatHistory.
 type GetChatHistoryParams struct {
 	Before int64 `form:"before" json:"before"`
@@ -1406,6 +1415,9 @@ type PollWechatLoginJSONRequestBody PollWechatLoginJSONBody
 
 // ClearContextJSONRequestBody defines body for ClearContext for application/json ContentType.
 type ClearContextJSONRequestBody ClearContextJSONBody
+
+// ContinueChatJSONRequestBody defines body for ContinueChat for application/json ContentType.
+type ContinueChatJSONRequestBody ContinueChatJSONBody
 
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = MessageInput
@@ -1989,6 +2001,9 @@ type ServerInterface interface {
 
 	// (POST /api/agents/{agentId}/chats/{chatId}/clear)
 	ClearContext(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
+	// (POST /api/agents/{agentId}/chats/{chatId}/continue)
+	ContinueChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
 	// (GET /api/agents/{agentId}/chats/{chatId}/events)
 	WatchChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
@@ -3053,6 +3068,41 @@ func (siw *ServerInterfaceWrapper) ClearContext(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ClearContext(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ContinueChat operation middleware
+func (siw *ServerInterfaceWrapper) ContinueChat(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ContinueChat(w, r, agentId, chatId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4231,6 +4281,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/messages", wrapper.SendMessage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw", wrapper.WithdrawMessage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/clear", wrapper.ClearContext)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/continue", wrapper.ContinueChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/history", wrapper.GetChatHistory)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/abort", wrapper.AbortChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/events", wrapper.WatchChat)
@@ -6010,6 +6061,103 @@ type ClearContextdefaultJSONResponse struct {
 }
 
 func (response ClearContextdefaultJSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueChatRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  ChatId `json:"chatId"`
+	Body    *ContinueChatJSONRequestBody
+}
+
+type ContinueChatResponseObject interface {
+	VisitContinueChatResponse(w http.ResponseWriter) error
+}
+
+type ContinueChat202JSONResponse SentMessage
+
+func (response ContinueChat202JSONResponse) VisitContinueChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueChat400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ContinueChat400JSONResponse) VisitContinueChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueChat403JSONResponse Error
+
+func (response ContinueChat403JSONResponse) VisitContinueChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueChat404JSONResponse Error
+
+func (response ContinueChat404JSONResponse) VisitContinueChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueChat409JSONResponse Error
+
+func (response ContinueChat409JSONResponse) VisitContinueChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueChatdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ContinueChatdefaultJSONResponse) VisitContinueChatResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -8059,6 +8207,9 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/chats/{chatId}/clear)
 	ClearContext(ctx context.Context, request ClearContextRequestObject) (ClearContextResponseObject, error)
 
+	// (POST /api/agents/{agentId}/chats/{chatId}/continue)
+	ContinueChat(ctx context.Context, request ContinueChatRequestObject) (ContinueChatResponseObject, error)
+
 	// (GET /api/agents/{agentId}/chats/{chatId}/events)
 	WatchChat(ctx context.Context, request WatchChatRequestObject) (WatchChatResponseObject, error)
 
@@ -9135,6 +9286,40 @@ func (sh *strictHandler) ClearContext(w http.ResponseWriter, r *http.Request, ag
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ClearContextResponseObject); ok {
 		if err := validResponse.VisitClearContextResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ContinueChat operation middleware
+func (sh *strictHandler) ContinueChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
+	var request ContinueChatRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+
+	var body ContinueChatJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ContinueChat(ctx, request.(ContinueChatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ContinueChat")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ContinueChatResponseObject); ok {
+		if err := validResponse.VisitContinueChatResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

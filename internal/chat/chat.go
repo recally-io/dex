@@ -472,10 +472,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if err != nil {
 		return err
 	}
-	options := engine.Options{Cwd: conv.Cwd, Model: engine.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel), Instructions: agent.Instructions}
-	if conv.ModelID != "" {
-		options.Model = engine.ModelRef{Provider: conv.ModelProvider, ModelID: conv.ModelID}
-	}
+	options := chatOptions(agent, conv)
 	if strings.HasPrefix(p.ChannelKey, dream.Channel) {
 		options.Instructions = dream.Instructions(p.AgentID, options.Instructions)
 	}
@@ -606,6 +603,15 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		s.waiting.Delete(p.ID)
 	}
 	return nil
+}
+
+// chatOptions are the run settings of a chat: its own model and thinking level, else the agent's.
+func chatOptions(agent sqlc.Agent, conv sqlc.Conversation) engine.Options {
+	options := engine.Options{Cwd: conv.Cwd, Model: engine.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel), Instructions: agent.Instructions}
+	if conv.ModelID != "" {
+		options.Model = engine.ModelRef{Provider: conv.ModelProvider, ModelID: conv.ModelID}
+	}
+	return options
 }
 
 func admissionPermanent(err error) bool {

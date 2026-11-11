@@ -11,6 +11,7 @@ import {
   getMainChatOptions,
   sendMessageMutation,
   abortChatMutation,
+  continueChatMutation,
   withdrawMessageMutation,
   listModelsOptions,
   listChatsOptions,
@@ -306,8 +307,9 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       ? "dex is reconnecting to the bot…"
       : undefined;
 
-  const pending = send.isPending || abort.isPending;
-  const error = send.error ?? abort.error;
+  const continueRun = useMutation({ ...continueChatMutation(), onSuccess: () => void refreshChats(agentId) });
+  const pending = send.isPending || abort.isPending || continueRun.isPending;
+  const error = send.error ?? abort.error ?? continueRun.error;
 
   async function sendText(
     text: string,
@@ -316,6 +318,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     mode: SendMode = "followUp",
   ) {
     abort.reset();
+    continueRun.reset();
     const ids = attachments.map((a) => a.id);
     const failed = failedMessage.current?.body;
 
@@ -358,6 +361,16 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   }
 
   function retryText(index: number) {
+    const item = state.items[index];
+
+    // The run already holds the message, so native continue answers it without a second copy.
+    if (item?.kind === "error" && item.failure) {
+      abort.reset();
+      continueRun.mutate({ path: { agentId, chatId }, body: { id: newId() } });
+
+      return;
+    }
+
     const previous = retryMessage(state.items, index);
 
     if (previous?.kind === "user") {

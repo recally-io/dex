@@ -628,6 +628,14 @@ export function TranscriptItem({
         </article>
       );
     case "error":
+      // Native continue found nothing to answer: this is a note, not a failure.
+      if (item.failure === "nothing_to_answer")
+        return (
+          <p role="status" className="text-[12.5px] text-muted-foreground">
+            {item.reason}
+          </p>
+        );
+
       return (
         <div
           role={item.aborted ? "status" : "alert"}
@@ -661,6 +669,15 @@ export function TranscriptItem({
   }
 }
 
+// A card for the last native run failure retries with native continue. Other error cards send the message again.
+function retryable(items: Item[], index: number) {
+  const item = items[index];
+
+  if (item?.kind === "error" && item.failure) return item.failure !== "nothing_to_answer";
+
+  return retryMessage(items, index) !== undefined;
+}
+
 export function Transcript({
   items,
   running,
@@ -685,7 +702,7 @@ export function Transcript({
         item={block.item}
         live={running && block.index === items.length - 1}
         retry={() => retry(block.index)}
-        canRetry={canRetry && retryMessage(items, block.index) !== undefined}
+        canRetry={canRetry && retryable(items, block.index)}
         queuedActions={queuedActions}
       />
     );
