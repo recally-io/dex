@@ -182,6 +182,15 @@ export type ChatQuestion = {
      * The text of the answer. Present when the status is answered.
      */
     answer?: string;
+    /**
+     * Present when control acts on the answer. The question asks the owner to approve this action, and only the first option approves.
+     *
+     */
+    action?: 'archive';
+    /**
+     * What control decided for the answer. Present for an answered action question.
+     */
+    outcome?: string;
 };
 
 export type WithdrawnMessage = {
@@ -642,6 +651,10 @@ export type Agent = {
     modelId: string;
     thinkingLevel: ThinkingLevel;
     instructions: string;
+    /**
+     * Archive time in Unix milliseconds. Absent for an active agent.
+     */
+    readonly archivedAt?: number;
 };
 
 export type AgentInput = {
@@ -1876,6 +1889,103 @@ export type UpdateAgentResponses = {
 };
 
 export type UpdateAgentResponse = UpdateAgentResponses[keyof UpdateAgentResponses];
+
+export type ListArchivedAgentsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/archived-agents';
+};
+
+export type ListArchivedAgentsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListArchivedAgentsError = ListArchivedAgentsErrors[keyof ListArchivedAgentsErrors];
+
+export type ListArchivedAgentsResponses = {
+    /**
+     * The archived agents.
+     */
+    200: {
+        agents: Array<Agent>;
+    };
+};
+
+export type ListArchivedAgentsResponse = ListArchivedAgentsResponses[keyof ListArchivedAgentsResponses];
+
+export type RestoreAgentData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/archive';
+};
+
+export type RestoreAgentErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type RestoreAgentError = RestoreAgentErrors[keyof RestoreAgentErrors];
+
+export type RestoreAgentResponses = {
+    /**
+     * The restored agent.
+     */
+    200: Agent;
+};
+
+export type RestoreAgentResponse = RestoreAgentResponses[keyof RestoreAgentResponses];
+
+export type ArchiveAgentData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/archive';
+};
+
+export type ArchiveAgentErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ArchiveAgentError = ArchiveAgentErrors[keyof ArchiveAgentErrors];
+
+export type ArchiveAgentResponses = {
+    /**
+     * The archived agent.
+     */
+    200: Agent;
+};
+
+export type ArchiveAgentResponse = ArchiveAgentResponses[keyof ArchiveAgentResponses];
 
 export type GetTaskData = {
     body?: never;

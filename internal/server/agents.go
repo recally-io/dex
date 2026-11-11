@@ -54,3 +54,33 @@ func (h *handler) GetChannels(ctx context.Context, _ api.GetChannelsRequestObjec
 	}
 	return api.GetChannels200JSONResponse(channels), nil
 }
+
+func (h *handler) ListArchivedAgents(ctx context.Context, _ api.ListArchivedAgentsRequestObject) (api.ListArchivedAgentsResponseObject, error) {
+	agents, err := h.Agents.ListArchivedAgents(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return api.ListArchivedAgents200JSONResponse{Agents: agents}, nil
+}
+
+func (h *handler) ArchiveAgent(ctx context.Context, req api.ArchiveAgentRequestObject) (api.ArchiveAgentResponseObject, error) {
+	if err := h.Agents.ArchiveAgent(ctx, req.AgentId); err != nil {
+		return nil, err
+	}
+	agent, err := h.Agents.Agent(ctx, req.AgentId)
+	if err != nil {
+		return nil, err
+	}
+	return api.ArchiveAgent200JSONResponse(agent), nil
+}
+
+func (h *handler) RestoreAgent(ctx context.Context, req api.RestoreAgentRequestObject) (api.RestoreAgentResponseObject, error) {
+	if err := h.Agents.RestoreAgent(ctx, req.AgentId); err != nil {
+		return nil, err
+	}
+	agent, err := h.Agents.Agent(ctx, req.AgentId)
+	if err != nil {
+		return nil, err
+	}
+	return api.RestoreAgent200JSONResponse(agent), nil
+}

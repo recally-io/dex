@@ -72,6 +72,8 @@ type Agent struct {
 	ModelID       string    `json:"modelId"`
 	ThinkingLevel string    `json:"thinkingLevel"`
 	Instructions  string    `json:"instructions"`
+	// ArchivedAt is the archive time in Unix milliseconds; zero for an active bot.
+	ArchivedAt int64 `json:"archivedAt,omitzero"`
 }
 
 // Telegram describes the bot without its token.
@@ -93,7 +95,7 @@ func (s *Service) Agent(ctx context.Context, id string) (Agent, error) {
 
 func agentView(row sqlc.Agent) Agent {
 	return Agent{ID: row.ID, Name: row.Name, Provider: row.ModelProvider, ModelID: row.ModelID,
-		ThinkingLevel: row.ThinkingLevel, Instructions: row.Instructions}
+		ThinkingLevel: row.ThinkingLevel, Instructions: row.Instructions, ArchivedAt: row.ArchivedAt.Int64}
 }
 
 // ListAgents returns agents and their activity in creation order.

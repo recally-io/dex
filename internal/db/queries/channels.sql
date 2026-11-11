@@ -80,4 +80,5 @@ SELECT sqlc.embed(a), CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_se
             WHERE latest.automation_id = routine.id ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1)
         WHERE routine.agent_id = a.id AND routine.enabled = 1 AND r.outcome = 'failed' AND r.status = 'failed') AS INTEGER) AS routine_failed
 FROM agents a LEFT JOIN active ON active.agent_id = a.id LEFT JOIN enabled ON enabled.agent_id = a.id
+WHERE a.archived_at IS NULL
 ORDER BY a.created_at, a.id;

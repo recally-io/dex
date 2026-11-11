@@ -24,6 +24,53 @@ func (q *Queries) AdmitSubmission(ctx context.Context, arg AdmitSubmissionParams
 	return err
 }
 
+const agentArchiveBlocker = `-- name: AgentArchiveBlocker :one
+SELECT CAST(CASE
+    WHEN NOT EXISTS (SELECT 1 FROM agents WHERE agents.id = ?1) THEN 'missing'
+    WHEN ?1 = 'default' THEN 'default'
+    WHEN EXISTS (SELECT 1 FROM agents WHERE agents.id = ?1 AND archived_at IS NOT NULL) THEN 'archived'
+    WHEN EXISTS (
+        SELECT 1 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+        WHERE c.agent_id = ?1 AND s.status = 'pending'
+    ) THEN 'busy'
+    ELSE ''
+END AS TEXT)
+`
+
+// Why a bot cannot be archived now, or an empty string. Busy means any pending input in any
+// conversation of the bot, including automation runs and dreams. A queued task has a pending
+// input too, so the check needs no task table.
+func (q *Queries) AgentArchiveBlocker(ctx context.Context, agentID string) (string, error) {
+	row := q.db.QueryRowContext(ctx, agentArchiveBlocker, agentID)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const archiveAgent = `-- name: ArchiveAgent :execrows
+UPDATE agents SET archived_at = ?1
+WHERE agents.id = ?2 AND archived_at IS NULL AND agents.id <> 'default'
+    AND NOT EXISTS (
+        SELECT 1 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+        WHERE c.agent_id = agents.id AND s.status = 'pending'
+    )
+`
+
+type ArchiveAgentParams struct {
+	Now     sql.NullInt64 `json:"now"`
+	AgentID string        `json:"agent_id"`
+}
+
+// One statement holds the rules of AgentArchiveBlocker, so a caller outside a transaction cannot
+// archive a bot that has just become busy.
+func (q *Queries) ArchiveAgent(ctx context.Context, arg ArchiveAgentParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, archiveAgent, arg.Now, arg.AgentID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const archiveChat = `-- name: ArchiveChat :exec
 UPDATE conversations SET archived_at = coalesce(archived_at, ?1)
 WHERE id = ?2 AND agent_id = ?3 AND channel_key LIKE 'chat:%'
@@ -82,7 +129,7 @@ func (q *Queries) CreateAccessTokenIfMissing(ctx context.Context, token string) 
 const createAgent = `-- name: CreateAgent :one
 INSERT INTO agents (id, name, model_provider, model_id, thinking_level, instructions, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id
+RETURNING id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at
 `
 
 type CreateAgentParams struct {
@@ -115,6 +162,7 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent
 		&i.CreatedAt,
 		&i.ThinkingLevel,
 		&i.PrimaryNotificationTargetID,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -546,7 +594,7 @@ func (q *Queries) GetAccessToken(ctx context.Context) (string, error) {
 }
 
 const getAgent = `-- name: GetAgent :one
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id FROM agents WHERE id = ?
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at FROM agents WHERE id = ?
 `
 
 func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
@@ -561,6 +609,7 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
 		&i.CreatedAt,
 		&i.ThinkingLevel,
 		&i.PrimaryNotificationTargetID,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -890,7 +939,7 @@ func (q *Queries) LatestDream(ctx context.Context, agentID string) (LatestDreamR
 }
 
 const listAgentIDs = `-- name: ListAgentIDs :many
-SELECT id FROM agents ORDER BY id
+SELECT id FROM agents WHERE archived_at IS NULL ORDER BY id
 `
 
 func (q *Queries) ListAgentIDs(ctx context.Context) ([]string, error) {
@@ -917,9 +966,10 @@ func (q *Queries) ListAgentIDs(ctx context.Context) ([]string, error) {
 }
 
 const listAgents = `-- name: ListAgents :many
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id FROM agents ORDER BY created_at, id
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at FROM agents WHERE archived_at IS NULL ORDER BY created_at, id
 `
 
+// Active bots only. Startup starts channels for these bots.
 func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
 	rows, err := q.db.QueryContext(ctx, listAgents)
 	if err != nil {
@@ -938,6 +988,44 @@ func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
 			&i.CreatedAt,
 			&i.ThinkingLevel,
 			&i.PrimaryNotificationTargetID,
+			&i.ArchivedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listArchivedAgents = `-- name: ListArchivedAgents :many
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at FROM agents WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id
+`
+
+func (q *Queries) ListArchivedAgents(ctx context.Context) ([]Agent, error) {
+	rows, err := q.db.QueryContext(ctx, listArchivedAgents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Agent{}
+	for rows.Next() {
+		var i Agent
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ModelProvider,
+			&i.ModelID,
+			&i.Instructions,
+			&i.CreatedAt,
+			&i.ThinkingLevel,
+			&i.PrimaryNotificationTargetID,
+			&i.ArchivedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1244,7 +1332,8 @@ func (q *Queries) ListDreamInput(ctx context.Context, arg ListDreamInputParams) 
 }
 
 const listDueAutomations = `-- name: ListDueAutomations :many
-SELECT id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id FROM automations WHERE enabled = 1 AND next_due_at <= ? ORDER BY next_due_at
+SELECT a.id, a.agent_id, a.name, a.prompt, a.schedule, a.time_zone, a.session, a.enabled, a.next_due_at, a.created_at, a.updated_at, a.cwd, a.notification_route, a.notification_target_id FROM automations a JOIN agents b ON b.id = a.agent_id
+WHERE a.enabled = 1 AND a.next_due_at <= ? AND b.archived_at IS NULL ORDER BY a.next_due_at
 `
 
 func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt64) ([]Automation, error) {
@@ -1570,6 +1659,18 @@ UPDATE conversations SET abort_pending = 1 WHERE id = ? AND execution_id IS NOT 
 func (q *Queries) RequestExecutionAbort(ctx context.Context, id int64) error {
 	_, err := q.db.ExecContext(ctx, requestExecutionAbort, id)
 	return err
+}
+
+const restoreAgent = `-- name: RestoreAgent :execrows
+UPDATE agents SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL
+`
+
+func (q *Queries) RestoreAgent(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, restoreAgent, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const setAutomationNextDue = `-- name: SetAutomationNextDue :execrows

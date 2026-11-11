@@ -97,6 +97,8 @@ type Service struct {
 	now     func() time.Time
 	notify  func(origin string)
 	changed func(chatID int64)
+	// OnBotArchived runs after a transaction that archived a bot has committed. Optional.
+	OnBotArchived func(agentID string)
 
 	// The database holds work. A wake can coalesce without losing a submission.
 	wake          chan struct{}
@@ -274,7 +276,7 @@ func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey st
 }
 
 func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, origin string, m Message) (int64, error) {
-	complete := false
+	complete, archived := false, ""
 	chatID, err := func() (int64, error) {
 		s.admissionMu.RLock()
 		defer s.admissionMu.RUnlock()
@@ -307,13 +309,15 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			return 0, err
 		}
 		content, answers := m.Content, false
+		var decision answerDecision
 		if m.AnswersQuestion != "" {
 			// A retry of an answer that is stored already must not bind or wrap it again.
 			switch _, err := q.GetSubmission(ctx, m.ID); {
 			case errors.Is(err, sql.ErrNoRows):
-				if content, err = answerContent(ctx, q, agentID, conv.ID, m.AnswersQuestion, m.Content); err != nil {
+				if decision, err = answerContent(ctx, q, agentID, conv.ID, m.AnswersQuestion, m.Content, origin); err != nil {
 					return 0, err
 				}
+				content = decision.Content
 				answers = true
 			case err != nil:
 				return 0, err
@@ -334,12 +338,15 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			return 0, err
 		}
 		if answers && created > 0 {
-			bound, err := q.AnswerQuestion(ctx, sqlc.AnswerQuestionParams{ID: m.AnswersQuestion, AgentID: agentID, ConversationID: conv.ID, SubmissionID: sql.NullString{String: m.ID, Valid: true}})
+			bound, err := q.AnswerQuestion(ctx, sqlc.AnswerQuestionParams{ID: m.AnswersQuestion, AgentID: agentID, ConversationID: conv.ID, SubmissionID: sql.NullString{String: m.ID, Valid: true}, Outcome: decision.Outcome})
 			if err != nil {
 				return 0, err
 			}
 			if bound == 0 {
 				return 0, ErrQuestionClosed
+			}
+			if err := decision.apply(ctx, q, s.now()); err != nil {
+				return 0, err
 			}
 		}
 		if created > 0 && strings.HasPrefix(channelKey, ChatPrefix) {
@@ -349,6 +356,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		}
 		if err := tx.Commit(); err != nil {
 			return 0, err
+		}
+		if created > 0 {
+			archived = decision.archive
 		}
 		if created == 0 {
 			id := m.ID
@@ -371,6 +381,8 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		}
 		return conv.ID, nil
 	}()
+	// Channel runtime changes run outside the receipt gate, so a busy bot cannot block the gate.
+	s.botArchived(archived)
 	if err != nil || complete {
 		return chatID, err
 	}

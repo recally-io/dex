@@ -32,21 +32,24 @@ func (q *Queries) AddQuestionMessage(ctx context.Context, arg AddQuestionMessage
 }
 
 const answerQuestion = `-- name: AnswerQuestion :execrows
-UPDATE questions SET status = 'answered', answer_submission_id = ?1
-WHERE id = ?2 AND agent_id = ?3 AND conversation_id = ?4 AND status = 'open'
+UPDATE questions SET status = 'answered', answer_submission_id = ?1, outcome = ?2
+WHERE id = ?3 AND agent_id = ?4 AND conversation_id = ?5 AND status = 'open'
 `
 
 type AnswerQuestionParams struct {
 	SubmissionID   sql.NullString `json:"submission_id"`
+	Outcome        sql.NullString `json:"outcome"`
 	ID             string         `json:"id"`
 	AgentID        string         `json:"agent_id"`
 	ConversationID int64          `json:"conversation_id"`
 }
 
-// Only an open question of this agent and conversation accepts an answer.
+// Only an open question of this agent and conversation accepts an answer. The outcome is the
+// decision of an action question; control decides it in the same transaction.
 func (q *Queries) AnswerQuestion(ctx context.Context, arg AnswerQuestionParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, answerQuestion,
 		arg.SubmissionID,
+		arg.Outcome,
 		arg.ID,
 		arg.AgentID,
 		arg.ConversationID,
@@ -73,19 +76,24 @@ func (q *Queries) ConsumeQuestion(ctx context.Context, arg ConsumeQuestionParams
 }
 
 const createQuestion = `-- name: CreateQuestion :exec
-INSERT INTO questions (id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?)
+INSERT INTO questions (id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, created_at,
+    action, action_agent_id, approve_text)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'open', ?8,
+    ?9, ?10, ?11)
 `
 
 type CreateQuestionParams struct {
-	ID                 string `json:"id"`
-	AgentID            string `json:"agent_id"`
-	ConversationID     int64  `json:"conversation_id"`
-	SourceSubmissionID string `json:"source_submission_id"`
-	ToolOperationKey   string `json:"tool_operation_key"`
-	Text               string `json:"text"`
-	OptionsJson        string `json:"options_json"`
-	CreatedAt          int64  `json:"created_at"`
+	ID                 string         `json:"id"`
+	AgentID            string         `json:"agent_id"`
+	ConversationID     int64          `json:"conversation_id"`
+	SourceSubmissionID string         `json:"source_submission_id"`
+	ToolOperationKey   string         `json:"tool_operation_key"`
+	Text               string         `json:"text"`
+	OptionsJson        string         `json:"options_json"`
+	CreatedAt          int64          `json:"created_at"`
+	Action             sql.NullString `json:"action"`
+	ActionAgentID      sql.NullString `json:"action_agent_id"`
+	ApproveText        sql.NullString `json:"approve_text"`
 }
 
 func (q *Queries) CreateQuestion(ctx context.Context, arg CreateQuestionParams) error {
@@ -98,6 +106,9 @@ func (q *Queries) CreateQuestion(ctx context.Context, arg CreateQuestionParams) 
 		arg.Text,
 		arg.OptionsJson,
 		arg.CreatedAt,
+		arg.Action,
+		arg.ActionAgentID,
+		arg.ApproveText,
 	)
 	return err
 }
@@ -119,7 +130,7 @@ func (q *Queries) DismissQuestions(ctx context.Context, arg DismissQuestionsPara
 }
 
 const getCurrentQuestion = `-- name: GetCurrentQuestion :one
-SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at FROM questions WHERE conversation_id = ? AND status IN ('open', 'answered')
+SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome FROM questions WHERE conversation_id = ? AND status IN ('open', 'answered')
 ORDER BY rowid DESC LIMIT 1
 `
 
@@ -139,12 +150,16 @@ func (q *Queries) GetCurrentQuestion(ctx context.Context, conversationID int64) 
 		&i.AnswerSubmissionID,
 		&i.CreatedAt,
 		&i.SettledAt,
+		&i.Action,
+		&i.ActionAgentID,
+		&i.ApproveText,
+		&i.Outcome,
 	)
 	return i, err
 }
 
 const getQuestion = `-- name: GetQuestion :one
-SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at FROM questions WHERE id = ?
+SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome FROM questions WHERE id = ?
 `
 
 func (q *Queries) GetQuestion(ctx context.Context, id string) (Question, error) {
@@ -162,12 +177,16 @@ func (q *Queries) GetQuestion(ctx context.Context, id string) (Question, error) 
 		&i.AnswerSubmissionID,
 		&i.CreatedAt,
 		&i.SettledAt,
+		&i.Action,
+		&i.ActionAgentID,
+		&i.ApproveText,
+		&i.Outcome,
 	)
 	return i, err
 }
 
 const getQuestionByAnswer = `-- name: GetQuestionByAnswer :one
-SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at FROM questions WHERE answer_submission_id = ?
+SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome FROM questions WHERE answer_submission_id = ?
 `
 
 func (q *Queries) GetQuestionByAnswer(ctx context.Context, answerSubmissionID sql.NullString) (Question, error) {
@@ -185,6 +204,10 @@ func (q *Queries) GetQuestionByAnswer(ctx context.Context, answerSubmissionID sq
 		&i.AnswerSubmissionID,
 		&i.CreatedAt,
 		&i.SettledAt,
+		&i.Action,
+		&i.ActionAgentID,
+		&i.ApproveText,
+		&i.Outcome,
 	)
 	return i, err
 }
@@ -207,7 +230,7 @@ func (q *Queries) GetQuestionByMessage(ctx context.Context, arg GetQuestionByMes
 }
 
 const getQuestionByOperation = `-- name: GetQuestionByOperation :one
-SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at FROM questions WHERE tool_operation_key = ?
+SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome FROM questions WHERE tool_operation_key = ?
 `
 
 func (q *Queries) GetQuestionByOperation(ctx context.Context, toolOperationKey string) (Question, error) {
@@ -225,12 +248,16 @@ func (q *Queries) GetQuestionByOperation(ctx context.Context, toolOperationKey s
 		&i.AnswerSubmissionID,
 		&i.CreatedAt,
 		&i.SettledAt,
+		&i.Action,
+		&i.ActionAgentID,
+		&i.ApproveText,
+		&i.Outcome,
 	)
 	return i, err
 }
 
 const getQuestionBySource = `-- name: GetQuestionBySource :one
-SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at FROM questions WHERE source_submission_id = ? ORDER BY rowid LIMIT 1
+SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome FROM questions WHERE source_submission_id = ? ORDER BY rowid LIMIT 1
 `
 
 func (q *Queries) GetQuestionBySource(ctx context.Context, sourceSubmissionID string) (Question, error) {
@@ -248,12 +275,16 @@ func (q *Queries) GetQuestionBySource(ctx context.Context, sourceSubmissionID st
 		&i.AnswerSubmissionID,
 		&i.CreatedAt,
 		&i.SettledAt,
+		&i.Action,
+		&i.ActionAgentID,
+		&i.ApproveText,
+		&i.Outcome,
 	)
 	return i, err
 }
 
 const listCurrentQuestions = `-- name: ListCurrentQuestions :many
-SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at FROM questions WHERE agent_id = ? AND status IN ('open', 'answered')
+SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome FROM questions WHERE agent_id = ? AND status IN ('open', 'answered')
 `
 
 func (q *Queries) ListCurrentQuestions(ctx context.Context, agentID string) ([]Question, error) {
@@ -277,6 +308,10 @@ func (q *Queries) ListCurrentQuestions(ctx context.Context, agentID string) ([]Q
 			&i.AnswerSubmissionID,
 			&i.CreatedAt,
 			&i.SettledAt,
+			&i.Action,
+			&i.ActionAgentID,
+			&i.ApproveText,
+			&i.Outcome,
 		); err != nil {
 			return nil, err
 		}
@@ -292,11 +327,15 @@ func (q *Queries) ListCurrentQuestions(ctx context.Context, agentID string) ([]Q
 }
 
 const reopenQuestion = `-- name: ReopenQuestion :execrows
-UPDATE questions SET status = 'open'
+UPDATE questions SET
+    status = CASE WHEN outcome IS NULL THEN 'open' ELSE 'consumed' END,
+    settled_at = CASE WHEN outcome IS NULL THEN settled_at ELSE CAST(unixepoch('subsec') * 1000 AS INTEGER) END
 WHERE answer_submission_id = ?1 AND status = 'answered'
 `
 
 // The withdrawn answer ID stays, so the withdrawn text can drop the question wrapper again.
+// A decided action question never opens again: its action ran or was refused for good, so it
+// closes instead.
 func (q *Queries) ReopenQuestion(ctx context.Context, submissionID sql.NullString) (int64, error) {
 	result, err := q.db.ExecContext(ctx, reopenQuestion, submissionID)
 	if err != nil {

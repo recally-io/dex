@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -163,7 +164,26 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return routineTools.Run(ctx, c, id)
 		},
 	}
-	native, err := engine.New(engine.Config{DataDir: cfg.DataDir, Home: cfg.Home, BaseEnv: cfg.ToolEnv, LoginEnv: cfg.LoginEnv, FakeModel: cfg.FakeModel, Tasks: tools, Routines: routines})
+	// Bot tools need the services that exist only after the engine, so these closures bind late.
+	var botTools agent.BotTools
+	botHandlers := engine.BotTools{
+		List: func(ctx context.Context, c engine.TaskContext) ([]engine.BotInfo, error) {
+			return botTools.Handlers().List(ctx, c)
+		},
+		Get: func(ctx context.Context, c engine.TaskContext, ref string) (engine.BotInfo, error) {
+			return botTools.Handlers().Get(ctx, c, ref)
+		},
+		Create: func(ctx context.Context, c engine.TaskContext, p engine.BotPatch) (engine.BotInfo, error) {
+			return botTools.Handlers().Create(ctx, c, p)
+		},
+		Update: func(ctx context.Context, c engine.TaskContext, p engine.BotPatch) (engine.BotInfo, error) {
+			return botTools.Handlers().Update(ctx, c, p)
+		},
+		Archive: func(ctx context.Context, c engine.TaskContext, a engine.BotDeleteArgs) (engine.QuestionInfo, error) {
+			return botTools.Handlers().Archive(ctx, c, a)
+		},
+	}
+	native, err := engine.New(engine.Config{DataDir: cfg.DataDir, Home: cfg.Home, BaseEnv: cfg.ToolEnv, LoginEnv: cfg.LoginEnv, FakeModel: cfg.FakeModel, Tasks: tools, Routines: routines, Bots: botHandlers})
 	if err != nil {
 		cancel()
 		return nil, errors.Join(err, jobs.Close(), conn.Close())
@@ -203,6 +223,13 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
+	botTools = agent.BotTools{Agents: agentsService, Chats: chats, Extensions: native.Extensions}
+	// An approved archive commits in a chat receipt; the channels stop right after it.
+	chats.OnBotArchived = func(id string) {
+		if err := agentsService.StopChannels(runCtx, id); err != nil {
+			slog.Error("stop channels of an archived bot", "agent", id, "err", err)
+		}
+	}
 	chats.ConfigureSessions(prefs.CheckChat)
 	setFeishu := func(agentID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
 		manager := bots.Agent(agentID)

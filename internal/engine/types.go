@@ -84,4 +84,5 @@ type Config struct {
 	FakeModel bool
 	Tasks     TaskTools
 	Routines  RoutineTools
+	Bots      BotTools
 }

@@ -22,6 +22,7 @@ type Agent struct {
 	CreatedAt                   int64          `json:"created_at"`
 	ThinkingLevel               string         `json:"thinking_level"`
 	PrimaryNotificationTargetID sql.NullString `json:"primary_notification_target_id"`
+	ArchivedAt                  sql.NullInt64  `json:"archived_at"`
 }
 
 type Artifact struct {
@@ -148,6 +149,10 @@ type Question struct {
 	AnswerSubmissionID sql.NullString `json:"answer_submission_id"`
 	CreatedAt          int64          `json:"created_at"`
 	SettledAt          sql.NullInt64  `json:"settled_at"`
+	Action             sql.NullString `json:"action"`
+	ActionAgentID      sql.NullString `json:"action_agent_id"`
+	ApproveText        sql.NullString `json:"approve_text"`
+	Outcome            sql.NullString `json:"outcome"`
 }
 
 type QuestionMessage struct {

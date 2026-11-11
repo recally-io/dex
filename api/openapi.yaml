@@ -561,6 +561,60 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/archived-agents:
+    get:
+      operationId: listArchivedAgents
+      description: List the archived agents, newest archive first. GET /api/agents omits them.
+      responses:
+        "200":
+          description: The archived agents.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [agents]
+                properties:
+                  agents:
+                    type: array
+                    items: { $ref: "#/components/schemas/Agent" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/archive:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    put:
+      operationId: archiveAgent
+      description: >
+        Archives an agent. It leaves the agent list, its channels stop, and its
+        automations do not run. Its sessions, memory, files, and channel
+        settings stay. The default agent cannot be archived (400). An agent
+        with a running session cannot be archived (409). Every other agent
+        route answers 404 for an archived agent.
+      responses:
+        "200":
+          description: The archived agent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: restoreAgent
+      description: Restores an archived agent and starts its saved channels. An agent that is not archived answers 404.
+      responses:
+        "200":
+          description: The restored agent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/tasks/{taskId}:
     parameters:
       - in: path
@@ -1799,6 +1853,15 @@ components:
         answer:
           type: string
           description: The text of the answer. Present when the status is answered.
+        action:
+          type: string
+          enum: [archive]
+          description: >
+            Present when control acts on the answer. The question asks the owner
+            to approve this action, and only the first option approves.
+        outcome:
+          type: string
+          description: What control decided for the answer. Present for an answered action question.
 
     WithdrawnMessage:
       type: object
@@ -2405,6 +2468,11 @@ components:
         modelId: { type: string, description: Empty when no model is chosen. }
         thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
         instructions: { type: string }
+        archivedAt:
+          type: integer
+          format: int64
+          readOnly: true
+          description: Archive time in Unix milliseconds. Absent for an active agent.
 
     AgentInput:
       x-go-type: agent.Agent

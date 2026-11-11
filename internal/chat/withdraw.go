@@ -56,6 +56,13 @@ func (s *Service) Withdraw(ctx context.Context, agentID string, chatID int64, id
 	case sub.Status != "pending" && (sub.Status != "unanswered" || sub.Reason.String != "aborted"):
 		return WithdrawnMessage{}, ErrAlreadyStarted
 	}
+	// A decided action question already ran its action or refused it. Withdrawal cannot undo that.
+	switch decided, err := s.q.GetQuestionByAnswer(ctx, sql.NullString{String: id, Valid: true}); {
+	case err == nil && decided.Outcome.Valid:
+		return WithdrawnMessage{}, ErrAlreadyStarted
+	case err != nil && !errors.Is(err, sql.ErrNoRows):
+		return WithdrawnMessage{}, err
+	}
 	// Without a native conversation the input cannot have been admitted. The delivery lock keeps
 	// admission from starting meanwhile.
 	if c.ExecutionID != 0 {
