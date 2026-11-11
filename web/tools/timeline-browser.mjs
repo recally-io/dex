@@ -598,16 +598,27 @@ try {
     "a running child is a normal chat with Stop",
     `location.pathname === '/a/default/c/${steered.id}' && document.body.innerText.includes('Started by Main') && !!document.querySelector('textarea:not(:disabled):not([inert] *)') && !!document.querySelector('button[aria-label="Stop run"]:not([inert] *)')`,
   );
-  await evaluate("document.querySelector('textarea:not([inert] *)').focus()");
+  // After a redirect, the shell moves focus to the page title in an animation frame. A headless page
+  // draws that frame late, so draw one with a screenshot and wait for the title to take focus.
+  await shot("05-child-opened");
+  await ui("the page title takes focus after the redirect", "document.activeElement?.id === 'page-title'");
+  // Then the user clicks the composer and types. The focus must stay there, also across a screenshot.
+  await tap("textarea:not([inert] *)");
+  await check("a click puts the focus in the composer", "document.activeElement?.tagName === 'TEXTAREA'");
   await call("Input.insertText", { text: "echo steered-child" });
   await ui(
     "the draft shows the steer button",
     "!!document.querySelector('button[aria-label=\"Steer this run\"]:not([inert] *)')",
   );
+  await check(
+    "the composer keeps the focus before the screenshot",
+    "document.activeElement?.tagName === 'TEXTAREA'",
+  );
   await shot("05-child-steer-draft");
-  // Without this line, Enter fails in headless Chrome: the shell moves focus to the page title in an
-  // animation frame after the redirect, and the screenshot above produces that frame late.
-  await evaluate("document.querySelector('textarea:not([inert] *)').focus()");
+  await check(
+    "the composer keeps the focus after the screenshot",
+    "document.activeElement?.tagName === 'TEXTAREA'",
+  );
   await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter" });
   await call("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter" });
   await ui(
@@ -620,6 +631,20 @@ try {
     "document.body.innerText.includes('bash: steered-child') && !document.body.innerText.includes('bash: child-gate')",
   );
   await poll("steered child idle", async () => !(await api(`/api/agents/default/chats/${steered.id}`)).busy);
+  // One Enter sends one input: one stored row, and one answer on the page.
+  assert.equal(
+    withControlDB(
+      (db) =>
+        db
+          .prepare("SELECT count(*) AS n FROM submissions WHERE conversation_id = ? AND content = ?")
+          .get(steered.id, "echo steered-child").n,
+    ),
+    1,
+  );
+  await check(
+    "the steer was sent once and answered once",
+    "document.body.innerText.split('bash: steered-child').length === 2",
+  );
   await shot("06b-child-steered");
   results.push("a running child takes a steer from its composer");
 
