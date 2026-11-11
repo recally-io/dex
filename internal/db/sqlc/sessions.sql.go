@@ -300,6 +300,8 @@ func (q *Queries) ListRecoveryChildren(ctx context.Context) ([]ListRecoveryChild
 const listSessions = `-- name: ListSessions :many
 SELECT
     c.id,
+    c.agent_id,
+    a.name AS agent_name,
     c.title,
     c.model_provider,
     c.model_id,
@@ -311,13 +313,16 @@ SELECT
     ) AS INTEGER) AS updated_at,
     CAST((SELECT count(*) FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
 FROM conversations c
-WHERE c.agent_id = ?1 AND c.channel_key NOT LIKE 'dream:%'
-    AND (CAST(?2 AS INTEGER) = 1 OR c.parent_id = ?3)
+JOIN agents a ON a.id = c.agent_id
+WHERE c.channel_key NOT LIKE 'dream:%'
+    AND (CAST(?1 AS INTEGER) = 1 OR c.agent_id = ?2)
+    AND (CAST(?3 AS INTEGER) = 1 OR c.parent_id = ?4)
 ORDER BY updated_at DESC, c.id DESC
-LIMIT ?4
+LIMIT ?5
 `
 
 type ListSessionsParams struct {
+	AllBots     int64         `json:"all_bots"`
 	AgentID     string        `json:"agent_id"`
 	AllSessions int64         `json:"all_sessions"`
 	ParentID    sql.NullInt64 `json:"parent_id"`
@@ -326,6 +331,8 @@ type ListSessionsParams struct {
 
 type ListSessionsRow struct {
 	ID            int64         `json:"id"`
+	AgentID       string        `json:"agent_id"`
+	AgentName     string        `json:"agent_name"`
 	Title         string        `json:"title"`
 	ModelProvider string        `json:"model_provider"`
 	ModelID       string        `json:"model_id"`
@@ -334,10 +341,11 @@ type ListSessionsRow struct {
 	Pending       int64         `json:"pending"`
 }
 
-// Sessions of one bot, newest activity first. A child list names the parent. The list of all
-// sessions leaves out dreams.
+// Sessions of one bot or of every bot, newest activity first. A child list names the parent. The
+// list of all sessions leaves out dreams.
 func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]ListSessionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listSessions,
+		arg.AllBots,
 		arg.AgentID,
 		arg.AllSessions,
 		arg.ParentID,
@@ -352,6 +360,8 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]L
 		var i ListSessionsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.AgentID,
+			&i.AgentName,
 			&i.Title,
 			&i.ModelProvider,
 			&i.ModelID,
@@ -443,23 +453,26 @@ func (q *Queries) PendingCount(ctx context.Context, conversationID int64) (int64
 }
 
 const searchTurns = `-- name: SearchTurns :many
-SELECT s.id, s.conversation_id, c.title, s.content, s.answer, s.created_at
+SELECT s.id, s.conversation_id, c.agent_id, a.name AS agent_name, c.title, s.content, s.answer, s.created_at
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
-WHERE s.kind = 'message' AND c.agent_id = ?1 AND c.channel_key NOT LIKE 'dream:%'
-    AND (CAST(?2 AS INTEGER) = 0 OR c.id = ?2)
-    AND s.created_at >= ?3
-    AND (CAST(?4 AS TEXT) = '' OR instr(lower(s.content), CAST(?4 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?4 AS TEXT)) > 0)
+JOIN agents a ON a.id = c.agent_id
+WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%'
+    AND (CAST(?1 AS INTEGER) = 1 OR c.agent_id = ?2)
+    AND (CAST(?3 AS INTEGER) = 0 OR c.id = ?3)
+    AND s.created_at >= ?4
     AND (CAST(?5 AS TEXT) = '' OR instr(lower(s.content), CAST(?5 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?5 AS TEXT)) > 0)
     AND (CAST(?6 AS TEXT) = '' OR instr(lower(s.content), CAST(?6 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?6 AS TEXT)) > 0)
     AND (CAST(?7 AS TEXT) = '' OR instr(lower(s.content), CAST(?7 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?7 AS TEXT)) > 0)
     AND (CAST(?8 AS TEXT) = '' OR instr(lower(s.content), CAST(?8 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?8 AS TEXT)) > 0)
     AND (CAST(?9 AS TEXT) = '' OR instr(lower(s.content), CAST(?9 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?9 AS TEXT)) > 0)
+    AND (CAST(?10 AS TEXT) = '' OR instr(lower(s.content), CAST(?10 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?10 AS TEXT)) > 0)
 ORDER BY s.rowid DESC
-LIMIT ?10
+LIMIT ?11
 `
 
 type SearchTurnsParams struct {
+	AllBots   int64  `json:"all_bots"`
 	AgentID   string `json:"agent_id"`
 	SessionID int64  `json:"session_id"`
 	Since     int64  `json:"since"`
@@ -475,6 +488,8 @@ type SearchTurnsParams struct {
 type SearchTurnsRow struct {
 	ID             string         `json:"id"`
 	ConversationID int64          `json:"conversation_id"`
+	AgentID        string         `json:"agent_id"`
+	AgentName      string         `json:"agent_name"`
 	Title          string         `json:"title"`
 	Content        string         `json:"content"`
 	Answer         sql.NullString `json:"answer"`
@@ -485,6 +500,7 @@ type SearchTurnsRow struct {
 // lowercases ASCII letters of the words, and lower() does the same for the text.
 func (q *Queries) SearchTurns(ctx context.Context, arg SearchTurnsParams) ([]SearchTurnsRow, error) {
 	rows, err := q.db.QueryContext(ctx, searchTurns,
+		arg.AllBots,
 		arg.AgentID,
 		arg.SessionID,
 		arg.Since,
@@ -506,6 +522,8 @@ func (q *Queries) SearchTurns(ctx context.Context, arg SearchTurnsParams) ([]Sea
 		if err := rows.Scan(
 			&i.ID,
 			&i.ConversationID,
+			&i.AgentID,
+			&i.AgentName,
 			&i.Title,
 			&i.Content,
 			&i.Answer,
