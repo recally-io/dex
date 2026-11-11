@@ -687,16 +687,18 @@ export function TranscriptItem({
               ) : null}
             </span>
           ) : null}
-          {actions && item.entryId && !item.queued ? (
+          {item.entryId && !item.queued && (item.text || actions) ? (
             <footer className="flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
               {item.text ? <CopyText text={item.text} label="Copy message" /> : null}
-              <MessageAction
-                label="Edit in new chat"
-                disabled={actions.pending}
-                onClick={() => actions.fork(item.entryId!, true, item.text)}
-              >
-                <SquarePen size={14} aria-hidden />
-              </MessageAction>
+              {actions ? (
+                <MessageAction
+                  label="Edit in new chat"
+                  disabled={actions.pending}
+                  onClick={() => actions.fork(item.entryId!, true, item.text)}
+                >
+                  <SquarePen size={14} aria-hidden />
+                </MessageAction>
+              ) : null}
             </footer>
           ) : null}
         </div>

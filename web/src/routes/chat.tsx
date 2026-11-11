@@ -408,6 +408,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     abort.reset();
     continueRun.reset();
     compact.reset();
+    fork.reset();
     const ids = attachments.map((a) => a.id);
     const failed = failedMessage.current?.body;
 

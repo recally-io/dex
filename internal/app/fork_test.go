@@ -137,6 +137,12 @@ func TestUserForksRunningChat(t *testing.T) {
 		return tr.running && i >= 0
 	})
 
+	// Given a message that waits behind the run.
+	d.send(t, src, "waiting in line")
+	w.until(t, "queued message", func(tr *transcript) bool {
+		return slices.ContainsFunc(tr.items, func(it item) bool { return it.Queued && it.Text == "waiting in line" })
+	})
+
 	// When the user forks during the run, then the fork has only the committed answer and does not run.
 	fork := d.fork(t, src, answer.EntryID, false)
 	fw := d.watch(t, fork.ID)
@@ -146,6 +152,13 @@ func TestUserForksRunningChat(t *testing.T) {
 	})
 	if fork.Busy {
 		t.Fatalf("the fork is busy: %+v", fork)
+	}
+	// The queued message stays with the source, so the fork answers only its own message.
+	d.setModel(t, "echo")
+	d.send(t, fork.ID, "in the fork")
+	fw.until(t, "fork answer", answered("echo: in the fork"))
+	if slices.ContainsFunc(fw.tr.items, func(it item) bool { return it.Text == "waiting in line" }) {
+		t.Fatalf("the fork took the queued message: %+v", fw.tr.items)
 	}
 	// A call that waits for its result cannot start a fork.
 	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"entryId": call.EntryID}, nil, http.StatusBadRequest)
@@ -160,4 +173,28 @@ func TestUserForksRunningChat(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "fork-busy.gate"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestUserForksMain(t *testing.T) {
+	t.Parallel()
+	// Given an answer in Main.
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "context")
+	var main sessionInfo
+	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
+	w := d.watch(t, main.ID)
+	d.send(t, main.ID, "from main")
+	w.until(t, "main answer", answered(`context: ["from main"]`))
+	d.waitSettled(t, main.ID)
+
+	// When the user forks from it, then the fork is a writable, listed Chat that names Main.
+	fork := d.fork(t, main.ID, findItem(t, &w.tr, "assistant", `context: ["from main"]`).EntryID, false)
+	if fork.Main || fork.ReadOnly || fork.ForkedFrom == nil || !fork.ForkedFrom.Main || fork.ForkedFrom.ID != main.ID || fork.Title != "Main (fork)" {
+		t.Fatalf("fork = %+v", fork)
+	}
+	if !slices.ContainsFunc(d.chats(t), func(c chatInfo) bool { return c.ID == fork.ID }) {
+		t.Fatal("the fork of Main is not in the chat list")
+	}
+	d.send(t, fork.ID, "in the fork")
+	d.watch(t, fork.ID).until(t, "fork answer", answered(`context: ["from main","in the fork"]`))
 }
