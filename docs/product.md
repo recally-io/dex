@@ -47,15 +47,19 @@ to read in an afternoon.
   with exactly three tabs: Chat, Routines, and Settings. Its
   Settings tab holds General, Instructions, Channels, and Extensions. Its header shows the
   name and the tabs. The model and the thinking level change in Settings. On the
-  Chat tab, the header has New chat and a Chats button. Chats opens a right
-  sidebar. Main comes first and cannot be archived. Chat sessions follow in
+  Chat tab, the header has Chat settings and a Sessions button. Chat settings
+  shows a row with the project, model and thinking level of the open chat; a dot
+  on the button tells that the chat has its own values. The Sessions button
+  shows how many items need the user and how many tasks run. It opens the
+  Sessions panel: Needs you, Running, Chats, and Completed. The Chats section
+  has New chat. Main comes first and cannot be archived. Chat sessions follow in
   date groups by latest activity: Today, Yesterday, Previous 7 days, Previous
   30 days, then one group per month. Archived chats come last. Only Today
   starts open, and each group shows five chats until the user asks for more.
   The row menu and a right-click archive or restore a Chat. Archiving keeps the
   messages, records and files; a task result still returns to the chat.
   New chat does not reuse an archived
-  empty chat. The sidebar starts closed, and the browser keeps the user's choice.
+  empty chat. The Sessions panel starts closed, and the browser keeps the user's choice.
   The left sidebar lists only the bots. The user talks to a bot, and the bot
   manages its sessions. Each bot row shows at most one status dot: orange for
   Needs you, blue for Working. Needs you wins. The sidebar also links to global
@@ -160,9 +164,9 @@ a named label and a thin line that groups its replies and tool calls. The mark
 shows where the report belongs; it does not confirm that the work reached its goal.
 The chat does not show the internal report as input. Read-only task records
 give the human the saved report, status, times, and work transcript.
-The bot has no Sessions tab. The Chats sidebar lists writable Chats.
-The task panel links to All sessions, the full session list of the bot.
-On a phone, the task panel and the Chats sidebar open as full-screen sheets.
+The bot has no Sessions tab. The Sessions panel lists writable Chats and
+links to All sessions, the full session list of the bot. On a phone, the
+Sessions panel opens as a full-screen sheet.
 Routine run history links to read-only automation transcripts.
 Old channel transcript URLs remain readable. The legacy Sessions URL remains
 available for saved links.
@@ -171,7 +175,7 @@ Done means that the task returned a report. It does not prove goal completion.
 The user can request cancellation and mark a finished task handled. The UI does
 not show progress percentages.
 
-`New chat` on the Chat tab opens a writable Chat
+`New chat` in the Sessions panel opens a writable Chat
 with its own model context. It reuses the
 newest empty Chat, so an abandoned click leaves no list row. The first message
 sets the title. Chat defaults to the bot's model settings and uses its instructions and shared memory.
@@ -193,8 +197,8 @@ under the Chat tab. Task pages open under Chat. Automation transcripts open unde
 
 A bot needs the user when it has an open question, an unhandled failed or
 blocked task, a failed routine run that is not handled, or a routine that needs
-a model. The task panel of that bot lists each item and opens the place to act on
-it. The task button shows the count of these items. Mark all handled in the task panel marks every
+a model. The Needs you section of the Sessions panel lists each item and opens
+the place to act on it. Mark all handled in that section marks every
 finished task that needs the user as handled. There is no cross-bot list.
 Routine result records include settled `changed` or `failed` outcomes without a
 duplicate mark. Unknown and `unchanged` outcomes stay in run history. Opening

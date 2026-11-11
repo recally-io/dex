@@ -162,6 +162,11 @@ try {
     await api("/api/agents/default", { ...agent, provider: "faux", modelId: "think" }, "PUT");
     const chat = await api("/api/agents/default/chats", {}, "POST");
     await visit(`/a/default/c/${chat.id}`);
+    // The session controls show after the header's Chat settings button opens their row.
+    await poll("chat settings button", () =>
+      evaluate("!!document.querySelector('header button[aria-label^=\"Chat settings\"]')"),
+    );
+    await tap('header button[aria-label^="Chat settings"]');
     await poll("session controls", () =>
       evaluate("!!document.querySelector('button[aria-label=\"Set thinking level\"]:not([inert] *)')"),
     );

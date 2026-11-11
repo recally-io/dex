@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { format, isToday, startOfDay, subDays } from "date-fns";
-import { Archive, ChevronRight, MoreHorizontal, X } from "lucide-react";
+import { Archive, ChevronRight, MoreHorizontal, Plus } from "lucide-react";
 import type { Chat } from "../api/generated/types.gen";
 import {
   archiveChatMutation,
@@ -17,7 +17,6 @@ import { errorText, refreshChats } from "../lib/queries";
 import { sessionKind } from "../lib/tasks";
 import { cn } from "../lib/utils";
 import { Button, buttonVariants } from "./ui/button";
-import { sidePanel } from "./page";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
@@ -83,15 +82,16 @@ const menuPopup =
   "w-[180px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-[10px] bg-card p-1 shadow-raised outline-none";
 
 /**
- * The right sidebar of the Chat tab. Main is the bot's one timeline: it comes first and has no
- * menu. Chat sessions follow in date groups, newest first, and archived ones go last. Today
+ * The Chats section of the Sessions panel. Main is the bot's one timeline: it comes first and has
+ * no menu. Chat sessions follow in date groups, newest first, and archived ones go last. Today
  * starts open; each group shows five chats until the user asks for more.
  */
-export function ChatList({ chatId, onClose }: { chatId: number; onClose: () => void }) {
+export function ChatSection({ chatId }: { chatId: number }) {
   const agentId = useAgentId();
   const main = useQuery(getMainChatOptions({ path: { agentId } }));
   const sessions = useQuery({ ...listChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
   const toggleArchive = useArchive(chatId);
+  const newChat = useNewChat();
   const onMain = !chatId || chatId === main.data?.id;
   const [now] = useState(() => Date.now());
 
@@ -111,14 +111,22 @@ export function ChatList({ chatId, onClose }: { chatId: number; onClose: () => v
   );
 
   return (
-    <aside aria-label="Chats" className={cn(sidePanel, "md:w-[256px]")}>
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3 md:hidden">
-        <span className="flex-1 text-[14px] font-medium">Chats</span>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Close chats" onClick={onClose}>
-          <X />
+    <section aria-label="Chats" className="flex flex-col px-2 pt-3 pb-1">
+      <div className="flex h-7 items-center px-2">
+        <h2 className="min-w-0 flex-1 text-[11.5px] font-medium text-muted-foreground">Chats</h2>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          disabled={newChat.isPending}
+          onClick={() => newChat.mutate({ path: { agentId } })}
+          className="-mr-1 gap-1 text-[12px]"
+        >
+          <Plus className="size-3.5" />
+          New chat
         </Button>
-      </header>
-      <nav aria-label="Chats" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 py-2">
+      </div>
+      <nav aria-label="Chats" className="flex flex-col">
         <Link
           to="/a/$agentId"
           params={{ agentId }}
@@ -130,7 +138,7 @@ export function ChatList({ chatId, onClose }: { chatId: number; onClose: () => v
           <span className="shrink-0 text-[11.5px] text-muted-foreground">Every channel</span>
         </Link>
         {pending ? (
-          <span aria-current="page" className={cn(row, "mt-0.5")}>
+          <span aria-current="page" className={cn(row, "mt-0.5 flex items-center")}>
             <span className="min-w-0 flex-1 truncate">New chat</span>
           </span>
         ) : null}
@@ -150,7 +158,7 @@ export function ChatList({ chatId, onClose }: { chatId: number; onClose: () => v
           </p>
         ) : null}
       </nav>
-    </aside>
+    </section>
   );
 }
 
@@ -169,7 +177,7 @@ function Group({
   const [limit, setLimit] = useState(pageSize);
 
   return (
-    <section className="mt-3">
+    <section className="mt-1">
       <Button
         type="button"
         variant="ghost"
