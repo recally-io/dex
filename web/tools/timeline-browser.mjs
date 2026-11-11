@@ -551,10 +551,7 @@ try {
     "!!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *):not(:disabled)')",
   );
   await tap('button[aria-label="Stop run"]');
-  await poll(
-    "child stop",
-    async () => !(await api(`/api/agents/default/chats/${running.id}`)).busy,
-  );
+  await poll("child stop", async () => !(await api(`/api/agents/default/chats/${running.id}`)).busy);
 
   // A running child takes a steer from its own composer, and its run answers once.
   const childGate = join(isolated, "child-steer.gate");
@@ -850,7 +847,9 @@ try {
       [
         "child",
         `/a/default/tasks/${childTurn(sessionChild.id)}`,
-        "location.pathname === '/a/default/c/" + sessionChild.id + "' && document.body.innerText.includes('Started by') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')",
+        "location.pathname === '/a/default/c/" +
+          sessionChild.id +
+          "' && document.body.innerText.includes('Started by') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')",
       ],
       [
         "new-session",
@@ -1870,7 +1869,9 @@ function childTurn(conversationId) {
 function seedOldTask(parentId) {
   return withControlDB((db) => {
     const now = Date.now();
-    const source = db.prepare("SELECT id FROM submissions WHERE conversation_id = ? LIMIT 1").get(parentId).id;
+    const source = db
+      .prepare("SELECT id FROM submissions WHERE conversation_id = ? LIMIT 1")
+      .get(parentId).id;
     const taskId = `old-task-${randomUUID()}`;
 
     const { id } = db
