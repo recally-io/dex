@@ -1,8 +1,17 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, FileText, Plus, X } from "lucide-react";
+import { ArrowUp, ChevronDown, CornerDownLeft, FileText, ListEnd, Plus, X } from "lucide-react";
 import { formatSize, type Attachments, type DraftFile } from "../lib/attachments";
 import { Spinner } from "./feedback";
 import { Button } from "./ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { Textarea } from "./ui/textarea";
 import { cn } from "../lib/utils";
 
@@ -53,6 +62,24 @@ function FileChip({ file, onRemove }: { file: DraftFile; onRemove: () => void })
   );
 }
 
+/** What a message does while the bot runs: join the run after the current tool step, or wait. */
+export type SendMode = "steer" | "followUp";
+
+const menuPopup =
+  "w-[260px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-[10px] bg-card p-1 shadow-raised outline-none";
+
+const menuItem =
+  "flex w-full items-start gap-2.5 rounded-[7px] px-2 py-1.5 text-left text-foreground data-highlighted:bg-accent data-disabled:opacity-40";
+
+function MenuText({ title, help }: { title: string; help: string }) {
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span className="text-[12.5px] font-medium">{title}</span>
+      <span className="text-[11.5px] text-muted-foreground">{help}</span>
+    </span>
+  );
+}
+
 // Look from upstream IceCreamHarness.tsx: a floating card with a model button and round actions.
 export function Composer({
   controls,
@@ -79,7 +106,8 @@ export function Composer({
   stoppable: boolean;
   disabledReason?: string;
   pending: boolean;
-  onSend: (text: string) => Promise<void>;
+  /** The mode is steer only while the bot runs. */
+  onSend: (text: string, mode: SendMode) => Promise<void>;
   onStop: () => void;
   text: string;
   onTextChange: (text: string) => void;
@@ -91,6 +119,16 @@ export function Composer({
   const composing = useRef(false);
   const descriptionId = useId();
   const [dropping, setDropping] = useState(false);
+  // The send button keeps the chosen mode until the run ends.
+  const [mode, setMode] = useState<SendMode>("steer");
+  const [wasRunning, setWasRunning] = useState(running);
+
+  if (running !== wasRunning) {
+    setWasRunning(running);
+
+    if (!running) setMode("steer");
+  }
+
   const canAttach = !!files && !disabledReason;
 
   const blocked = files?.uploading
@@ -101,6 +139,10 @@ export function Composer({
 
   const canSend = (!!text.trim() || !!files?.ready.length) && !blocked && !disabledReason && !pending;
 
+  const hasDraft = !!text.trim() || !!files?.files.length;
+  const sendMode: SendMode = running ? mode : "followUp";
+  const sendLabel = !running ? "Send message" : mode === "steer" ? "Steer this run" : "Queue message";
+
   useEffect(() => {
     if (autoFocus) area.current?.focus();
   }, [autoFocus]);
@@ -108,8 +150,16 @@ export function Composer({
   async function send() {
     if (!canSend) return;
     const value = text;
-    await onSend(value.trim());
+    await onSend(value.trim(), sendMode);
   }
+
+  const sendIcon = !running ? (
+    <ArrowUp className="size-4" />
+  ) : mode === "steer" ? (
+    <CornerDownLeft className="size-4" />
+  ) : (
+    <ListEnd className="size-4" />
+  );
 
   return (
     <div className="w-full">
@@ -167,8 +217,8 @@ export function Composer({
           rows={1}
           className="min-h-[44px] w-full min-w-0 resize-none rounded-none border-0 bg-transparent px-1 py-1.5 text-[14px] leading-5 text-foreground shadow-none outline-none [overflow-wrap:anywhere] dark:bg-transparent placeholder:text-muted-foreground focus-visible:border-0 focus-visible:ring-0 disabled:cursor-not-allowed"
           maxLength={32000}
-          placeholder={running ? "Queue a follow-up…" : placeholder}
-          aria-label={running ? "Queue a follow-up…" : placeholder}
+          placeholder={running ? "Add to this run…" : placeholder}
+          aria-label={running ? "Add to this run…" : placeholder}
           aria-describedby={descriptionId}
           value={text}
           disabled={!!disabledReason}
@@ -237,7 +287,7 @@ export function Composer({
           ) : null}
           {controls}
           <span className="min-w-2 flex-1" />
-          {stoppable ? (
+          {stoppable && !hasDraft ? (
             <Button
               type="button"
               variant="default"
@@ -251,14 +301,59 @@ export function Composer({
             >
               <span aria-hidden className="size-2.5 rounded-[2px] bg-current" />
             </Button>
-          ) : null}
-          {!stoppable || text.trim() || files?.files.length ? (
+          ) : stoppable ? (
+            // While anything can be stopped, a draft gets a split button: the main part sends,
+            // the menu picks the mode and keeps Stop in reach.
+            <div className="flex h-8 shrink-0 items-stretch overflow-hidden rounded-md bg-foreground text-card">
+              <button
+                type="submit"
+                aria-label={sendLabel}
+                title={blocked || `${sendLabel} (Enter)`}
+                disabled={!canSend}
+                className="flex w-9 items-center justify-center disabled:opacity-40"
+              >
+                {sendIcon}
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label="Choose when to send"
+                  className="flex w-6 items-center justify-center border-l border-card/20 text-card/70 hover:text-card"
+                >
+                  <ChevronDown className="size-3.5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="top" sideOffset={6} className={menuPopup}>
+                  {running ? (
+                    <>
+                      <DropdownMenuRadioGroup
+                        value={mode}
+                        onValueChange={(value) => setMode(value === "followUp" ? "followUp" : "steer")}
+                      >
+                        <DropdownMenuRadioItem value="steer" className={cn(menuItem, "pr-8")}>
+                          <CornerDownLeft className="mt-0.5 size-4 shrink-0" />
+                          <MenuText title="Steer" help="Joins this run after the current tool step" />
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="followUp" className={cn(menuItem, "pr-8")}>
+                          <ListEnd className="mt-0.5 size-4 shrink-0" />
+                          <MenuText title="Queue" help="Runs after this reply ends" />
+                        </DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                      <DropdownMenuSeparator className="mx-1.5 my-1 h-px bg-border" />
+                    </>
+                  ) : null}
+                  <DropdownMenuItem disabled={pending} onClick={onStop} className={menuItem}>
+                    <span aria-hidden className="mt-1 ml-[3px] size-2.5 shrink-0 rounded-[2px] bg-current" />
+                    <MenuText title="Stop" help="Stop this run. Your draft stays." />
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ) : (
             <Button
               type="submit"
               variant="default"
               size="icon-sm"
-              aria-label={running ? "Queue message" : "Send message"}
-              title={blocked || (running ? "Queue message" : "Send message")}
+              aria-label="Send message"
+              title={blocked || "Send message"}
               disabled={!canSend}
               className={cn(
                 "shrink-0 rounded-md transition-[background-color,color,transform] duration-200",
@@ -269,7 +364,7 @@ export function Composer({
             >
               <ArrowUp className="size-4" />
             </Button>
-          ) : null}
+          )}
         </div>
       </form>
       <p id={descriptionId} className="mt-2 px-2 text-center text-[11.5px] text-muted-foreground">

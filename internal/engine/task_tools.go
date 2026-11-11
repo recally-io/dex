@@ -292,9 +292,7 @@ func taskSource(ctx context.Context, api durable.ToolExecutionApi) (string, erro
 			}
 		}
 		// A continuation uses its own input, even when the conversation has a task binding.
-		if len(live.Run.Inputs) != 1 {
-			return nil, errors.New("task tool has no single source input")
-		}
+		// Steered inputs join the run after its first input, so the first input is the source.
 		var cursor durable.Cursor
 		for {
 			page, err := tx.ScanEntries(durable.EntryQuery{ConversationId: api.ConversationId(), Order: new(durable.ScanDescending)}, 100, cursor)

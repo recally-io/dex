@@ -630,7 +630,7 @@ export const setChatSettings = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model. Main and Chat sessions take web messages. Task, automation and channel sessions return 403.
+ * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model, or when the mode is reject and the agent is working in the chat. Main and Chat sessions take web messages. Task, automation and channel sessions return 403.
  *
  */
 export const sendMessage = <ThrowOnError extends boolean = false>(options: Options<SendMessageData, ThrowOnError>): RequestResult<SendMessageResponses, SendMessageErrors, ThrowOnError> => (options.client ?? client).post<SendMessageResponses, SendMessageErrors, ThrowOnError>({

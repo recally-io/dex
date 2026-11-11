@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -154,7 +155,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if err != nil {
 			return nil, err
 		}
-		draft := durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"))), WhenBusy: durable.WhenBusyFollowUp, InputEntry: &durable.InputEntry{Kind: kind, Data: data}}
+		draft := durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"))), WhenBusy: durable.WhenBusy(cmp.Or(input.WhenBusy, string(durable.WhenBusyFollowUp))), InputEntry: &durable.InputEntry{Kind: kind, Data: data}}
 		if input.Background {
 			var id durable.SubmissionId
 			_, err = conversation.Commit(ctx, func(tx durable.Tx) (any, error) {

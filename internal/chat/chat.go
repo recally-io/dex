@@ -70,6 +70,8 @@ type Message struct {
 	// ReplyTo is the remote ID of the channel message that this message quotes. A quote of a message
 	// that carries an open question answers it.
 	ReplyTo string
+	// WhenBusy is engine.Input.WhenBusy. Empty means followUp.
+	WhenBusy string
 }
 
 // ErrNoModel means that the bot has no model yet; the user chooses one in the settings.
@@ -321,6 +323,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			SourceKey:      sql.NullString{String: sourceKey, Valid: sourceKey != ""},
 			Origin:         origin,
 			Kind:           "message",
+			WhenBusy:       m.WhenBusy,
 			CreatedAt:      submittedAt,
 		})
 		if err != nil {
@@ -388,7 +391,13 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 	return chatID, receiptError(sub)
 }
 
+// rejectedBusy is the receipt reason of a reject input that arrived while the chat was busy.
+const rejectedBusy = "busy"
+
 func receiptError(sub sqlc.Submission) error {
+	if !sub.AdmittedAt.Valid && sub.Status == "unanswered" && sub.Reason.String == rejectedBusy {
+		return fmt.Errorf("%w: the message was not run", engine.ErrBusy)
+	}
 	if !sub.AdmittedAt.Valid && sub.Status == "unanswered" && sub.Reason.String != "stopped" && sub.Reason.String != "interrupted" && sub.Reason.String != "withdrawn" {
 		return fmt.Errorf("%w: %s", ErrRejected, sub.Reason.String)
 	}
@@ -547,7 +556,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if err = json.Unmarshal([]byte(p.Attachments), &attachments); err != nil {
 		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: err.Error()})
 	}
-	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Background: background, TaskContinuation: continuation, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey}
+	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Background: background, TaskContinuation: continuation, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
 	if p.Kind == "task_result" {
 		label, e := s.q.GetTaskResultLabel(ctx, sqlc.GetTaskResultLabelParams{ResultID: p.ID, ChatID: p.ConversationID})
 		if e != nil {
@@ -559,6 +568,10 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if err != nil {
 		if background {
 			return s.finishAdmissionError(ctx, p.ID, err)
+		}
+		if p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
+			// A rejected input is final. Retrying it would run it after the current run.
+			return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: rejectedBusy})
 		}
 		return s.admissionError(ctx, p.ID, err)
 	}

@@ -235,8 +235,8 @@ func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error 
 }
 
 const createSubmission = `-- name: CreateSubmission :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, coalesce(nullif(CAST(?8 AS TEXT), ''), 'followUp'), 'pending', ?9)
 ON CONFLICT DO NOTHING
 `
 
@@ -248,10 +248,12 @@ type CreateSubmissionParams struct {
 	SourceKey      sql.NullString `json:"source_key"`
 	Origin         string         `json:"origin"`
 	Kind           string         `json:"kind"`
+	WhenBusy       string         `json:"when_busy"`
 	CreatedAt      int64          `json:"created_at"`
 }
 
-// A message whose ID or source key exists already is not stored again.
+// A message whose ID or source key exists already is not stored again. An empty when_busy
+// keeps the column default, so only callers that choose a mode name one.
 func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, createSubmission,
 		arg.ID,
@@ -261,6 +263,7 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 		arg.SourceKey,
 		arg.Origin,
 		arg.Kind,
+		arg.WhenBusy,
 		arg.CreatedAt,
 	)
 	if err != nil {
@@ -699,7 +702,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -721,6 +724,7 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.Origin,
 		&i.Kind,
 		&i.AdmittedAt,
+		&i.WhenBusy,
 	)
 	return i, err
 }
@@ -1277,6 +1281,7 @@ SELECT
     s.kind,
     s.origin,
     s.admitted_at,
+    s.when_busy,
     s.conversation_id,
     c.agent_id,
     c.channel_key
@@ -1293,6 +1298,7 @@ type ListPendingSubmissionsRow struct {
 	Kind           string        `json:"kind"`
 	Origin         string        `json:"origin"`
 	AdmittedAt     sql.NullInt64 `json:"admitted_at"`
+	WhenBusy       string        `json:"when_busy"`
 	ConversationID int64         `json:"conversation_id"`
 	AgentID        string        `json:"agent_id"`
 	ChannelKey     string        `json:"channel_key"`
@@ -1315,6 +1321,7 @@ func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubm
 			&i.Kind,
 			&i.Origin,
 			&i.AdmittedAt,
+			&i.WhenBusy,
 			&i.ConversationID,
 			&i.AgentID,
 			&i.ChannelKey,

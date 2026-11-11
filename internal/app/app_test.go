@@ -186,6 +186,7 @@ type item struct {
 	ID     string `json:"id"`
 	Text   string `json:"text"`
 	Queued bool   `json:"queued"`
+	Steer  bool   `json:"steer"`
 	Name   string `json:"name"`
 	Status string `json:"status"`
 	Output string `json:"output"`

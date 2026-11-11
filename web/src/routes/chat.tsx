@@ -26,7 +26,7 @@ import { activeSessionCount, markTaskSeen, sessionKind, taskTime } from "../lib/
 import { SessionSettings } from "../components/session-settings";
 import { TaskSessionBar } from "../components/agent/task-session-bar";
 import { Artifacts, takeArtifactDraft } from "../components/agent/artifacts";
-import { Composer } from "../components/composer";
+import { Composer, type SendMode } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
 import { QuestionCard } from "../components/agent/question-card";
 import { RetryNotice, Transcript, type QueuedActions } from "../components/agent/transcript";
@@ -309,7 +309,12 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const pending = send.isPending || abort.isPending;
   const error = send.error ?? abort.error;
 
-  async function sendText(text: string, attachments: Attachment[], answersQuestionId?: string) {
+  async function sendText(
+    text: string,
+    attachments: Attachment[],
+    answersQuestionId?: string,
+    mode: SendMode = "followUp",
+  ) {
     abort.reset();
     const ids = attachments.map((a) => a.id);
     const failed = failedMessage.current?.body;
@@ -318,10 +323,18 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     const body: MessageInput =
       failed?.text === text && failed.attachments?.join() === ids.join()
         ? failed
-        : { id: newId(), text, attachments: ids, answersQuestionId };
+        : { id: newId(), text, attachments: ids, answersQuestionId, mode };
 
     failedMessage.current = { body, attachments };
-    const local: UserItem = { kind: "user", id: body.id, text, attachments, queued: true };
+
+    const local: UserItem = {
+      kind: "user",
+      id: body.id,
+      text,
+      attachments,
+      queued: true,
+      steer: body.mode === "steer",
+    };
 
     setQueued((previous) => [...previous, local]);
 
@@ -457,7 +470,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         disabledReason={reason}
         placeholder={continuing ? "Continue chat" : `Message ${settings.agent.name}`}
         autoFocus
-        onSend={(text) => sendText(text, files.ready)}
+        onSend={(text, mode) => sendText(text, files.ready, undefined, mode)}
         onStop={() => {
           if (chatId) abort.mutate({ path: { agentId, chatId } });
         }}

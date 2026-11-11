@@ -23,6 +23,7 @@ type Item struct {
 	Attachments []Attachment   `json:"attachments,omitempty"`
 	Origin      string         `json:"origin,omitempty"`
 	Queued      bool           `json:"queued,omitzero"`
+	Steer       bool           `json:"steer,omitzero"`
 	TaskID      string         `json:"taskId,omitempty"`
 	Title       string         `json:"title,omitempty"`
 	Name        string         `json:"name,omitempty"`
@@ -279,6 +280,7 @@ func (p projection) render() []Item {
 		m.Kind, _ = kind.(string)
 		item := userItem(m, fmt.Sprint(q.Id), 0, m.Content)
 		item.Queued = true
+		item.Steer = q.Mode == harness.InboxSteer
 		items = append(items, item)
 	}
 	return items

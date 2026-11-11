@@ -1,4 +1,13 @@
-import { ArrowUpRight, Check, Clock3, CodeXml, Copy, CornerDownRight, FileText } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  Clock3,
+  CodeXml,
+  Copy,
+  CornerDownLeft,
+  CornerDownRight,
+  FileText,
+} from "lucide-react";
 import { useAgentId } from "../../lib/agent-scope";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
@@ -539,7 +548,15 @@ export function TranscriptItem({
           {item.queued ? (
             <span className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
               <span className="flex items-center gap-1">
-                <Clock3 size={12} /> Queued · runs after the current reply
+                {item.steer ? (
+                  <>
+                    <CornerDownLeft size={12} /> Steer · joins after the current tool step
+                  </>
+                ) : (
+                  <>
+                    <Clock3 size={12} /> Queued · runs after the current reply
+                  </>
+                )}
               </span>
               {queuedActions?.ids.has(item.id) ? (
                 <>
