@@ -1869,9 +1869,11 @@ function childTurn(conversationId) {
 function seedOldTask(parentId) {
   return withControlDB((db) => {
     const now = Date.now();
+
     const source = db
       .prepare("SELECT id FROM submissions WHERE conversation_id = ? LIMIT 1")
       .get(parentId).id;
+
     const taskId = `old-task-${randomUUID()}`;
 
     const { id } = db
