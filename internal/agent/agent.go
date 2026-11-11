@@ -15,6 +15,7 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/feishu"
 	"github.com/recally-io/dex/internal/telegram"
@@ -191,6 +192,9 @@ func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram
 func (s *Service) SetTelegram(ctx context.Context, agentID string, token string, allowedUsers []int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := db.RequireActive(ctx, s.q, agentID); err != nil {
+		return err
+	}
 	// Pairing uses TryLock, so this snapshot cannot change before the old bot joins.
 	saved, err := s.TelegramConfig(ctx, agentID)
 	if err != nil {

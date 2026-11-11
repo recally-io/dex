@@ -22,10 +22,13 @@ func (s *Service) ListArchivedAgents(ctx context.Context) ([]Agent, error) {
 	return agents, nil
 }
 
-// StopChannels stops the channels of a bot that another path archived. Settings stay.
+// StopChannels stops the channels of a bot that another path archived, and drops its unfinished
+// WeChat login and Feishu registration, so a poll that is already running cannot save credentials
+// or start a channel after the archive. Settings stay.
 func (s *Service) StopChannels(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	*s.channelSession(id) = channelSession{}
 	return s.syncChannelsLocked(ctx, id, false)
 }
 

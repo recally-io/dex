@@ -184,7 +184,10 @@ writer, in the transaction that stores the input. Input first makes the archive
 fail as busy. Archive first makes the input fail with `ErrAgentArchived`, so an
 archived bot never has a runnable input. After the commit,
 `agent.Service.StopChannels` stops the Telegram, Feishu and WeChat clients under
-its lock.
+its lock, and drops the unfinished WeChat login and Feishu registration. Every
+channel activation (WeChat login, Feishu save, Telegram save) calls
+`db.RequireActive` under the same lock before it saves credentials or starts a
+client, so a poll that was already running cannot restart a channel.
 Session, health, maintenance, models, provider settings, and
 `/api/automations/preview` stay global. Separate services own global settings
 and agent state. The settings lock orders provider saves and local engine

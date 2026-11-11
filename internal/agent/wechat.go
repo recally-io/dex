@@ -9,6 +9,7 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/wechat"
 )
@@ -110,6 +111,10 @@ func (s *Service) PollWechatLogin(ctx context.Context, agentID string, id, code 
 }
 
 func (s *Service) activateWechat(ctx context.Context, agentID string, cfg *wechat.Config) error {
+	// The login poll started before an archive can reach here; an archived bot starts no channel.
+	if err := db.RequireActive(ctx, s.q, agentID); err != nil {
+		return err
+	}
 	if err := s.checkCredential(ctx, agentID, "wechat", cfg.BotID); err != nil {
 		return err
 	}
