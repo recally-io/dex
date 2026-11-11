@@ -368,6 +368,34 @@ try {
   );
   await shot("03-earlier");
 
+  // While a real tool runs, a draft turns Stop into a split button and Enter steers the run.
+  await model("bash");
+  const steerGate = join(isolated, "steer.gate");
+  await send(`while ! test -f '${steerGate}'; do sleep 0.05; done; echo steer-gate`);
+  await ui(
+    "steer run is active",
+    "!!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
+  );
+  await evaluate("document.querySelector('textarea:not([inert] *)').focus()");
+  await call("Input.insertText", { text: "echo steered-in" });
+  await ui(
+    "draft shows the steer split button",
+    "!!document.querySelector('button[aria-label=\"Steer this run\"]:not([inert] *)') && !!document.querySelector('[aria-label=\"Choose when to send\"]:not([inert] *)') && !document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
+  );
+  await shot("03b-steer-draft");
+  await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter" });
+  await call("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter" });
+  await ui(
+    "steer item queued",
+    "document.body.innerText.includes('Steer · joins after the current tool step')",
+  );
+  await writeFile(steerGate, "release");
+  await ui(
+    "steered run answers once",
+    "document.body.innerText.includes('bash: steered-in') && !document.body.innerText.includes('bash: steer-gate')",
+  );
+  results.push("Enter steers a running chat and the run answers once");
+
   // Given two same-title tasks, dispatch and result links use their saved IDs.
   await model("spawn");
   await send(JSON.stringify({ title: "Check", goal: "saved report", provider: "faux", modelId: "echo" }));

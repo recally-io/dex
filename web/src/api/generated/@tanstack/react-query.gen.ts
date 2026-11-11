@@ -804,7 +804,7 @@ export const setChatSettingsMutation = (options?: Partial<Options<SetChatSetting
 };
 
 /**
- * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model. Main and Chat sessions take web messages. Task, automation and channel sessions return 403.
+ * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model, or when the mode is reject and the agent is working in the chat. Main and Chat sessions take web messages. Task, automation and channel sessions return 403.
  *
  */
 export const sendMessageMutation = (options?: Partial<Options<SendMessageData>>): UseMutationOptions<SendMessageResponse, SendMessageError, Options<SendMessageData>> => {

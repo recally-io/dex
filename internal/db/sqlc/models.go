@@ -194,6 +194,7 @@ type Submission struct {
 	Origin         string         `json:"origin"`
 	Kind           string         `json:"kind"`
 	AdmittedAt     sql.NullInt64  `json:"admitted_at"`
+	WhenBusy       string         `json:"when_busy"`
 }
 
 type Task struct {

@@ -60,6 +60,10 @@ type Input struct {
 	// TaskContinuation is a user message in the conversation of a task that has ended.
 	// It is a normal chat input: no task tools and no report_task duty.
 	TaskContinuation bool
+	// WhenBusy says what admission does while the conversation runs: "followUp" (the default)
+	// waits for the run to end, "steer" joins the run after its current tool step, and "reject"
+	// returns ErrBusy.
+	WhenBusy string
 }
 type InputMetadata struct {
 	RequestID   string       `json:"requestId"`

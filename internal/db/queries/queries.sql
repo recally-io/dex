@@ -66,9 +66,10 @@ WHERE id = ? AND agent_id = ?;
 UPDATE conversations SET execution_id = ? WHERE id = ?;
 
 -- name: CreateSubmission :execrows
--- A message whose ID or source key exists already is not stored again.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+-- A message whose ID or source key exists already is not stored again. An empty when_busy
+-- keeps the column default, so only callers that choose a mode name one.
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at)
+VALUES (@id, @conversation_id, @content, @attachments, @source_key, @origin, @kind, coalesce(nullif(CAST(@when_busy AS TEXT), ''), 'followUp'), 'pending', @created_at)
 ON CONFLICT DO NOTHING;
 
 -- name: GetSubmission :one
@@ -104,6 +105,7 @@ SELECT
     s.kind,
     s.origin,
     s.admitted_at,
+    s.when_busy,
     s.conversation_id,
     c.agent_id,
     c.channel_key

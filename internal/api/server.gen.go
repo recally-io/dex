@@ -244,6 +244,27 @@ func (e McpServerTransport) Valid() bool {
 	}
 }
 
+// Defines values for MessageInputMode.
+const (
+	FollowUp MessageInputMode = "followUp"
+	Reject   MessageInputMode = "reject"
+	Steer    MessageInputMode = "steer"
+)
+
+// Valid indicates whether the value is a known member of the MessageInputMode enum.
+func (e MessageInputMode) Valid() bool {
+	switch e {
+	case FollowUp:
+		return true
+	case Reject:
+		return true
+	case Steer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ModelInput.
 const (
 	Image ModelInput = "image"
@@ -895,9 +916,15 @@ type MessageInput struct {
 	// Id A new UUID from the client. A retried request uses the same ID.
 	Id string `json:"id"`
 
+	// Mode What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retried request keeps the mode of the first one. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
+	Mode *MessageInputMode `json:"mode,omitempty"`
+
 	// Text 1 to 32000 characters. It can be empty when the message has an attachment.
 	Text string `json:"text"`
 }
+
+// MessageInputMode What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retried request keeps the mode of the first one. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
+type MessageInputMode string
 
 // Model defines model for Model.
 type Model struct {
@@ -1227,8 +1254,11 @@ type UserItem struct {
 	Origin *string `json:"origin,omitempty"`
 
 	// Queued True while the message waits for the agent.
-	Queued *bool  `json:"queued,omitempty"`
-	Text   string `json:"text"`
+	Queued *bool `json:"queued,omitempty"`
+
+	// Steer True for a queued message that joins the current run after its current tool step. Other queued messages wait until the run ends.
+	Steer *bool  `json:"steer,omitempty"`
+	Text  string `json:"text"`
 }
 
 // UserItemKind defines model for UserItem.Kind.

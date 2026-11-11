@@ -144,6 +144,11 @@ export type MessageInput = {
      *
      */
     answersQuestionId?: string;
+    /**
+     * What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retried request keeps the mode of the first one. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
+     *
+     */
+    mode?: 'followUp' | 'steer' | 'reject';
 };
 
 /**
@@ -392,6 +397,11 @@ export type UserItem = {
      * True while the message waits for the agent.
      */
     queued?: boolean;
+    /**
+     * True for a queued message that joins the current run after its current tool step. Other queued messages wait until the run ends.
+     *
+     */
+    steer?: boolean;
     attachments?: Array<Attachment>;
 };
 

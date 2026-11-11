@@ -396,6 +396,12 @@ func (h *handler) message(ctx context.Context, in api.MessageInput) (chat.Messag
 	if in.AnswersQuestionId != nil {
 		m.AnswersQuestion = *in.AnswersQuestionId
 	}
+	if in.Mode != nil {
+		if !in.Mode.Valid() {
+			return chat.Message{}, errors.Join(errInvalid, errors.New("the mode must be followUp, steer or reject"))
+		}
+		m.WhenBusy = string(*in.Mode)
+	}
 	if (m.Content == "" && len(ids) == 0) || utf8.RuneCountInString(m.Content) > maxMessage {
 		return chat.Message{}, errors.Join(errInvalid, errors.New("the message must have 1 to 32000 characters"))
 	}
