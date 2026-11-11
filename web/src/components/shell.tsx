@@ -54,7 +54,7 @@ export function Shell() {
   const [lastAgent, setLastAgent] = useState("default");
   const routeAgent = path.match(/^\/a\/([^/]+)/)?.[1];
   const current = routeAgent ?? lastAgent;
-  // The drawer button shows when another bot needs you. The current bot shows its own in the task panel.
+  // The drawer button shows when another bot needs you. The current bot shows its own in the Sessions panel.
   const attention = [...statuses].some(([id, status]) => id !== current && status === "needs");
   const shell = useMemo(() => ({ openDrawer: () => setMenu(true), attention }), [attention]);
   useSystemTheme();
@@ -127,7 +127,7 @@ export function Shell() {
 
 /**
  * The sidebar lists the bots and the global settings. Work happens inside a bot: its Main, its
- * task panel and its Routines. Each row shows one status, so a bot that needs you stands out.
+ * Sessions panel and its Routines. Each row shows one status, so a bot that needs you stands out.
  * One list of bots fits while there are few; a global inbox comes back if bots outgrow it (~6).
  */
 function Sidebar({

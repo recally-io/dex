@@ -54,19 +54,6 @@ test("thoughts and tool calls between two answers make one collapsed row", async
   expect(thinking).toContain(">Thinking<");
 });
 
-test("a dispatch to the background stays a row of its own", () => {
-  const dispatch: ToolItem = { ...tool("d1", "done", ""), name: "spawn_task", args: { title: "Logs" } };
-
-  expect(
-    ids([
-      { kind: "thinking", id: "k1", text: "" },
-      dispatch,
-      tool("t1", "done", "one"),
-      { kind: "thinking", id: "k2", text: "" },
-    ]),
-  ).toEqual([["k1"], ["d1"], ["t1", "k2"]]);
-});
-
 test("user sees the failed call of a step, with its command, time and output", async () => {
   const html = await render(
     createElement(Steps, { steps: [tool("t1", "done", "one"), tool("t2", "error", "boom")] }),
@@ -80,7 +67,7 @@ test("user sees the failed call of a step, with its command, time and output", a
   expect(html).not.toContain(">one</pre>");
 });
 
-test("user sees which background work returned after a topic change", async () => {
+test("user sees which child session returned after a topic change", async () => {
   // Given a result after an unrelated answer, followed by another user message.
   const items: Item[] = [
     { kind: "user", id: "u1", text: "Check the logs in the background" },
@@ -113,7 +100,7 @@ test("user sees which background work returned after a topic change", async () =
     createElement(Transcript, { items, running: false, retry: () => {}, canRetry: true }),
   );
 
-  expect(html).toContain("Background result");
+  expect(html).toContain("Session result");
   expect(html).toContain("检查日志写入");
   expect(html).not.toContain("result-1");
   expect(html).not.toContain("Completed");
@@ -135,49 +122,23 @@ test("user sees two returned results as separate groups", async () => {
   ]);
 });
 
-test("user sees a delegation by its name without internal arguments", async () => {
-  // Given a successful background dispatch.
-  const dispatch: ToolItem = {
-    ...tool("dispatch-1", "done", '{"id":"internal-id"}'),
-    name: "spawn_task",
-    taskId: "internal-id",
-    args: { title: "检查日志写入", goal: "private execution instructions" },
-  };
-
-  // When the call is shown, then the user sees the work name and dispatch outcome.
-  const html = await render(createElement(Steps, { steps: [dispatch] }));
-  expect(html).toContain("Sent to background");
-  expect(html).toContain("检查日志写入");
-  expect(html).toContain('href="/a/default/tasks/internal-id"');
-  expect(html).not.toContain("private execution instructions");
-  expect(html).not.toContain("spawn_task");
-
-  // A failed dispatch still exposes its cause through the existing tool trace.
-  const failed = await render(
-    createElement(Steps, { steps: [{ ...dispatch, status: "error", output: "No capacity" }] }),
-  );
-
-  expect(failed).toContain("No capacity");
-  expect(failed).not.toContain("Sent to background");
-});
-
 test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", async (text) => {
-  // Given a tool-only reply before a background dispatch.
+  // Given a tool-only reply before a session tool call.
   const items: Item[] = [
     { kind: "assistant", id: "empty", text },
     {
       ...tool("dispatch-1", "done", '{"id":"internal-id"}'),
-      name: "spawn_task",
-      args: { title: "Check logs", goal: "Check the saved logs" },
+      name: "session_new",
+      args: { title: "Check logs", message: "Check the saved logs" },
     },
   ];
 
-  // When the finished reply is shown, then only the named dispatch has visible content.
+  // When the finished reply is shown, then only the tool row has visible content.
   const html = await render(
     createElement(Transcript, { items, running: false, retry: () => {}, canRetry: true }),
   );
 
-  expect(html).toContain("Check logs");
+  expect(html).toContain("Used session_new");
   expect(html).not.toContain('aria-label="Copy answer"');
 });
 

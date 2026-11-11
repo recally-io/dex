@@ -11,7 +11,7 @@ import {
   listChatsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { instructionsDirty } from "../lib/instructions";
-import { sessionKind } from "../lib/tasks";
+import { sessionKind } from "../lib/sessions";
 import { useApp } from "../lib/app-state";
 import { MainTimeline } from "../routes/chat";
 import { SlidersHorizontal } from "lucide-react";
@@ -281,7 +281,7 @@ function AgentPane({ settings }: { settings: Settings }) {
                   </IconButton>
                 )}
                 <SessionsButton
-                  tasks={(chats.data?.chats ?? []).flatMap((item) => (item.task ? [item.task] : []))}
+                  chats={chats.data?.chats ?? []}
                   open={sessionsOpen}
                   onClick={() => setSessionsOpen(!sessionsOpen)}
                 />
@@ -299,12 +299,7 @@ function AgentPane({ settings }: { settings: Settings }) {
             </ChatSettingsContext.Provider>
           </div>
           {onChatTab ? (
-            <SessionsPanel
-              chats={chats.data?.chats ?? []}
-              chatId={openChat}
-              open={sessionsOpen}
-              onClose={() => setSessionsOpen(false)}
-            />
+            <SessionsPanel chatId={openChat} open={sessionsOpen} onClose={() => setSessionsOpen(false)} />
           ) : null}
         </div>
       </section>
