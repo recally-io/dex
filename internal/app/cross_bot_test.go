@@ -59,15 +59,15 @@ func (s *bots) chat(agent string) botChat {
 	return botChat{bots: s, agent: agent, id: c.ID}
 }
 
-// chatOn opens a chat of the bot on a model that the test names.
-func (s *bots) chatOn(agent, model, text string) botChat {
+// echoChat opens a chat of the bot on the model "echo" and waits for its first answer.
+func (s *bots) echoChat(agent, text string) botChat {
 	s.t.Helper()
 	var c sessionInfo
 	s.d.must(s.t, http.MethodPost, "/api/agents/"+agent+"/chats", nil, &c, http.StatusCreated)
-	s.d.must(s.t, http.MethodPut, fmt.Sprintf("/api/agents/%s/chats/%d/settings", agent, c.ID), map[string]string{"provider": "faux", "modelId": model, "thinkingLevel": "off"}, nil)
+	s.d.must(s.t, http.MethodPut, fmt.Sprintf("/api/agents/%s/chats/%d/settings", agent, c.ID), map[string]string{"provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
 	chat := botChat{bots: s, agent: agent, id: c.ID}
 	chat.send(text)
-	chat.watch().until(s.t, "answer to "+text, answeredWith(model+": "+text))
+	chat.watch().until(s.t, "answer to "+text, answeredWith("echo: "+text))
 	return chat
 }
 
@@ -116,7 +116,7 @@ func (c botChat) newChild(args map[string]any) childRef {
 	return ref
 }
 
-func (c botChat) send2(tool string, args map[string]any) childRef {
+func (c botChat) operate(tool string, args map[string]any) childRef {
 	c.bots.t.Helper()
 	var ref childRef
 	toolJSON(c.bots.t, c.call(tool, args), &ref)
@@ -203,13 +203,13 @@ func TestUserParentOperatesItsChildInAnotherBot(t *testing.T) {
 	id := child.conversation(t)
 	waitTaskFile(t, filepath.Join(s.dir, "first.pid"))
 	// When the parent steers a message into the running turn.
-	parent.send2("session_send", map[string]any{"id": child.ID, "message": "echo steered", "mode": "steer"})
+	parent.operate("session_send", map[string]any{"id": child.ID, "message": "echo steered", "mode": "steer"})
 	releaseResultGate(t, s.dir, "first")
 	// Then the shared run sends one result, and the child stays in B.
 	waitDoneChildTurns(t, s.conn, id, 2)
 	waitResults(t, s.conn, parent.id, 1)
 	// And a follow-up to the idle child starts a run and sends a second result.
-	if ref := parent.send2("session_send", map[string]any{"id": child.ID, "message": "echo again"}); ref.Bot != "Coder" {
+	if ref := parent.operate("session_send", map[string]any{"id": child.ID, "message": "echo again"}); ref.Bot != "Coder" {
 		t.Fatalf("session_send named another bot: %+v", ref)
 	}
 	rows := waitResults(t, s.conn, parent.id, 2)
@@ -217,10 +217,10 @@ func TestUserParentOperatesItsChildInAnotherBot(t *testing.T) {
 		t.Fatalf("follow-up answer: %v", got)
 	}
 	// And Stop stops the run and the queued input, sends no result, and leaves the child usable.
-	parent.send2("session_send", map[string]any{"id": child.ID, "message": taskGate(t, s.dir, "second")})
+	parent.operate("session_send", map[string]any{"id": child.ID, "message": taskGate(t, s.dir, "second")})
 	waitTaskFile(t, filepath.Join(s.dir, "second.pid"))
-	parent.send2("session_send", map[string]any{"id": child.ID, "message": "echo never"})
-	parent.send2("session_stop", map[string]any{"id": child.ID})
+	parent.operate("session_send", map[string]any{"id": child.ID, "message": "echo never"})
+	parent.operate("session_stop", map[string]any{"id": child.ID})
 	waitTaskPIDGone(t, filepath.Join(s.dir, "second.pid"))
 	eventually(t, "stopped turns", func() (bool, any) {
 		turns := childTurns(t, s.conn, id)
@@ -230,10 +230,10 @@ func TestUserParentOperatesItsChildInAnotherBot(t *testing.T) {
 	if rows := resultRows(t, s.conn, parent.id); len(rows) != 2 {
 		t.Fatalf("a stopped child sent a result: %+v", rows)
 	}
-	parent.send2("session_send", map[string]any{"id": child.ID, "message": "echo after stop"})
+	parent.operate("session_send", map[string]any{"id": child.ID, "message": "echo after stop"})
 	waitResults(t, s.conn, parent.id, 3)
 	// And a fork of the child belongs to B and to the same parent.
-	fork := parent.send2("session_fork", map[string]any{"id": child.ID, "message": "echo forked"})
+	fork := parent.operate("session_fork", map[string]any{"id": child.ID, "message": "echo forked"})
 	if conv := s.conversation(fork.conversation(t)); conv.agent != s.b.ID || conv.parent.Int64 != parent.id || fork.Bot != "Coder" {
 		t.Fatalf("fork: %+v %+v", fork, conv)
 	}
@@ -396,8 +396,8 @@ func TestUserSessionSearchCoversOneBotOrAllBots(t *testing.T) {
 	t.Parallel()
 	// Given a session with the word "zebra" in each bot, and a dream of bot A with the same word.
 	s := startBots(t)
-	inA := s.chatOn("default", "echo", "zebra in bot a")
-	inB := s.chatOn(s.b.ID, "echo", "zebra in bot b")
+	inA := s.echoChat("default", "zebra in bot a")
+	inB := s.echoChat(s.b.ID, "zebra in bot b")
 	dream := sessionFixture(t, s.d, "dream:private", 1)
 	if _, err := sessionDB(t, s.d).ExecContext(t.Context(), "INSERT INTO submissions (id, conversation_id, content, attachments, kind, status, created_at) VALUES ('dream-zebra', ?, 'dream zebra', 'null', 'message', 'done', 2)", dream); err != nil {
 		t.Fatal(err)
@@ -454,7 +454,7 @@ func TestUserSessionListCoversOneBotOrAllBots(t *testing.T) {
 	inA := parent.newChild(map[string]any{"title": "Child in A", "message": "hello a", "provider": "faux", "modelId": "echo"})
 	inB := parent.newChild(map[string]any{"bot": "Coder", "title": "Child in B", "message": "hello b", "provider": "faux", "modelId": "echo"})
 	waitResults(t, s.conn, parent.id, 2)
-	other := s.chatOn(s.b.ID, "echo", "chat of b")
+	other := s.echoChat(s.b.ID, "chat of b")
 	list := func(args map[string]any) map[string]string {
 		t.Helper()
 		var out struct {
@@ -496,7 +496,7 @@ func TestUserSessionReadCoversAnotherBotButNotDreams(t *testing.T) {
 	t.Parallel()
 	// Given a chat in B with a turn, and a dream in bot A.
 	s := startBots(t)
-	inB := s.chatOn(s.b.ID, "echo", "private of bot b")
+	inB := s.echoChat(s.b.ID, "private of bot b")
 	dream := sessionFixture(t, s.d, "dream:private", 1)
 	reader := s.chat("default")
 	// When a chat in A reads the chat in B, it gets the turns and the bot.

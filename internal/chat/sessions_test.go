@@ -124,7 +124,7 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// When another bot writes to the child, the child is not found.
+	// When another bot writes to the child, the child is not found. It can read the child.
 	otherRef, err := r.service.execution(t.Context(), other.ID, "other", engine.Options{Model: engine.ModelRef{Provider: "faux", ModelID: "echo"}, ThinkingLevel: "off"})
 	if err != nil {
 		t.Fatal(err)
@@ -136,8 +136,9 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 	if _, err := r.service.ToolSessionSend(t.Context(), foreign, engine.SessionSendArgs{ID: child.ID, Message: "hi"}); !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("foreign send: %v", err)
 	}
-	if _, err := r.service.ToolSessionRead(t.Context(), foreign, engine.SessionReadArgs{ID: child.ID}); !errors.Is(err, ErrSessionNotFound) {
-		t.Fatalf("foreign read: %v", err)
+	// Reading is open to any bot (ADR 0016).
+	if page, err := r.service.ToolSessionRead(t.Context(), foreign, engine.SessionReadArgs{ID: child.ID}); err != nil || page.BotID != "bot" {
+		t.Fatalf("foreign read: %+v, %v", page, err)
 	}
 	// When the child calls a management tool, the handler rejects it, whatever tools the child has.
 	childID, err := strconv.ParseInt(child.ID, 10, 64)
