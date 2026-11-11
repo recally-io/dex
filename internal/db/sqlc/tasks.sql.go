@@ -20,8 +20,8 @@ type GetConversationByExecutionParams struct {
 	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
-// Child sessions replace tasks (ADR 0015). Nothing reads or writes the tasks table now. The
-// cleanup removes it.
+// Stop of a conversation and of its child sessions (ADR 0015). The file keeps its name from the
+// task layer that child sessions replaced.
 func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConversationByExecutionParams) (Conversation, error) {
 	row := q.db.QueryRowContext(ctx, getConversationByExecution, arg.AgentID, arg.ExecutionID)
 	var i Conversation

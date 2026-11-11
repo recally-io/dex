@@ -45,12 +45,6 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 		if _, err := conn.ExecContext(t.Context(), "INSERT INTO submissions (id,conversation_id,content,status,created_at,kind) VALUES (?,?,'fixture','pending',1,?)", fmt.Sprint(id), id, kind); err != nil {
 			t.Fatal(err)
 		}
-		if i >= 3 && i <= 8 {
-			status := key[len("task:"):]
-			if _, err := conn.ExecContext(t.Context(), "INSERT INTO tasks (id,parent_conversation_id,conversation_id,spawn_key,source_request_id,title,status,created_at) VALUES (?,100,?,?,?,'fixture',?,1)", fmt.Sprint(id), id, key, fmt.Sprint(id), status); err != nil {
-				t.Fatal(err)
-			}
-		}
 	}
 	// A session with a pending input counts, and so does a child session. Two inputs in a Chat count once.
 	for _, stmt := range []string{

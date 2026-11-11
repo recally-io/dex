@@ -74,29 +74,8 @@ func TestUserOpensAnOldTaskLinkAndArchivesItsSession(t *testing.T) {
 	t.Parallel()
 	// Given the data of a dex version with background tasks.
 	dir := legacyData(t)
+	tasks := legacyTasks(t, dir)
 	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	rows, err := conn.QueryContext(t.Context(), "SELECT id, conversation_id, title FROM tasks ORDER BY rowid")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-
-	type task struct {
-		id, title    string
-		conversation int64
-	}
-	var tasks []task
-	for rows.Next() {
-		var k task
-		if err := rows.Scan(&k.id, &k.conversation, &k.title); err != nil {
-			t.Fatal(err)
-		}
-		tasks = append(tasks, k)
-	}
-	if err := rows.Err(); err != nil || len(tasks) != 3 {
-		t.Fatalf("tasks %+v, %v", tasks, err)
-	}
 
 	for _, k := range tasks {
 		// When the web opens the old link /tasks/<task id>.
