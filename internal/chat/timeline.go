@@ -1,9 +1,11 @@
 package chat
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/recally-io/dex/internal/db"
 	"strings"
 	"uuid"
 
@@ -158,6 +160,9 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 			return err
 		}
 		q := s.q.WithTx(tx)
+		if archived, err := q.ConversationAgentArchived(ctx, chatID); err != nil || archived != 0 {
+			return cmp.Or(err, db.ErrAgentArchived)
+		}
 		pending, err := q.CountPendingChat(ctx, chatID)
 		if err != nil {
 			return err

@@ -31,6 +31,14 @@ SELECT CAST(CASE
     ELSE ''
 END AS TEXT);
 
+-- name: AgentArchived :one
+-- Input writers call this after they hold the SQLite writer, so an input and an archive are ordered.
+SELECT CAST(EXISTS (SELECT 1 FROM agents WHERE agents.id = @agent_id AND archived_at IS NOT NULL) AS INTEGER);
+
+-- name: ConversationAgentArchived :one
+SELECT CAST(EXISTS (SELECT 1 FROM conversations c JOIN agents a ON a.id = c.agent_id
+    WHERE c.id = @conversation_id AND a.archived_at IS NOT NULL) AS INTEGER);
+
 -- name: ArchiveAgent :execrows
 -- One statement holds the rules of AgentArchiveBlocker, so a caller outside a transaction cannot
 -- archive a bot that has just become busy.

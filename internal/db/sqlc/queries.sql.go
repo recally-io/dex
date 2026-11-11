@@ -47,6 +47,18 @@ func (q *Queries) AgentArchiveBlocker(ctx context.Context, agentID string) (stri
 	return column_1, err
 }
 
+const agentArchived = `-- name: AgentArchived :one
+SELECT CAST(EXISTS (SELECT 1 FROM agents WHERE agents.id = ?1 AND archived_at IS NOT NULL) AS INTEGER)
+`
+
+// Input writers call this after they hold the SQLite writer, so an input and an archive are ordered.
+func (q *Queries) AgentArchived(ctx context.Context, agentID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, agentArchived, agentID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const archiveAgent = `-- name: ArchiveAgent :execrows
 UPDATE agents SET archived_at = ?1
 WHERE agents.id = ?2 AND archived_at IS NULL AND agents.id <> 'default'
@@ -86,6 +98,18 @@ type ArchiveChatParams struct {
 func (q *Queries) ArchiveChat(ctx context.Context, arg ArchiveChatParams) error {
 	_, err := q.db.ExecContext(ctx, archiveChat, arg.ArchivedAt, arg.ID, arg.AgentID)
 	return err
+}
+
+const conversationAgentArchived = `-- name: ConversationAgentArchived :one
+SELECT CAST(EXISTS (SELECT 1 FROM conversations c JOIN agents a ON a.id = c.agent_id
+    WHERE c.id = ?1 AND a.archived_at IS NOT NULL) AS INTEGER)
+`
+
+func (q *Queries) ConversationAgentArchived(ctx context.Context, conversationID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, conversationAgentArchived, conversationID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const countAutomationPending = `-- name: CountAutomationPending :one

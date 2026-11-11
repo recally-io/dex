@@ -13,6 +13,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"github.com/recally-io/dex/internal/db"
 	"log/slog"
 	"math"
 	"strings"
@@ -459,7 +460,8 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 	// The run comes before the next time: a crash between them repeats the check, which finds the
 	// run and does not store it again.
 	_, err = s.admit(ctx, row, sql.NullInt64{Int64: latest.UnixMilli(), Valid: true}, skip)
-	if errors.Is(err, chat.ErrAutomationChanged) {
+	// An archived bot keeps the due time; restore runs it if the grace period allows.
+	if errors.Is(err, chat.ErrAutomationChanged) || errors.Is(err, db.ErrAgentArchived) {
 		return nil
 	}
 	if err != nil {

@@ -51,3 +51,17 @@ func ArchiveAgent(ctx context.Context, q *sqlc.Queries, id string, now time.Time
 	}
 	return ErrAgentBusy
 }
+
+// RequireActive fails with ErrAgentArchived when the bot is archived. An input writer calls it
+// after it took the SQLite writer: input first makes ArchiveAgent refuse the bot as busy, and
+// archive first makes the input fail, so no runnable input exists for an archived bot.
+func RequireActive(ctx context.Context, q *sqlc.Queries, id string) error {
+	archived, err := q.AgentArchived(ctx, id)
+	if err != nil {
+		return err
+	}
+	if archived != 0 {
+		return ErrAgentArchived
+	}
+	return nil
+}

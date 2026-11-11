@@ -8,6 +8,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"github.com/recally-io/dex/internal/db"
 	"log/slog"
 	"strings"
 	"sync"
@@ -302,6 +303,10 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			CreatedAt: createdAt,
 		})
 		if err != nil {
+			return 0, err
+		}
+		// The writer is held now. Input first makes an archive fail as busy; archive first ends here.
+		if err := db.RequireActive(ctx, q, agentID); err != nil {
 			return 0, err
 		}
 		attachments, err := json.Marshal(m.Attachments)
