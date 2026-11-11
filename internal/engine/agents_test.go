@@ -196,10 +196,10 @@ func TestUserStopWithdrawsQueuedInputWithoutModelContext(t *testing.T) {
 	if outcome := coreWait(t, coreSubmit(t, a, ref, "after", "after stop", "context")); strings.Contains(outcome.Answer, "withdraw this input") {
 		t.Fatalf("withdrawn input reached next model: %s", outcome.Answer)
 	}
-	if err := a.Reset(t.Context(), ref, "reset-1"); err != nil {
+	if err := a.Reset(t.Context(), ref, "reset-1", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Reset(t.Context(), ref, "reset-1"); err != nil {
+	if err := a.Reset(t.Context(), ref, "reset-1", ""); err != nil {
 		t.Fatal(err)
 	}
 	if outcome := coreWait(t, coreSubmit(t, a, ref, "clean", "clean", "context")); strings.Contains(outcome.Answer, "after stop") {

@@ -930,8 +930,9 @@ paths:
       operationId: clearContext
       description: >
         Stores a context reset in this writable session's delivery queue.
-        A repeated UUID does not reset again. Refuses a busy session without a
-        change. Task, automation and channel sessions return 403.
+        A repeated UUID does not reset again; the same UUID with another
+        handoff returns 400. Refuses a busy session without a change. Task,
+        automation and channel sessions return 403.
       requestBody:
         required: true
         content:
@@ -944,6 +945,12 @@ paths:
                   type: string,
                   description: A stable client UUID for this reset.,
                 }
+                handoff:
+                  type: string
+                  maxLength: 32000
+                  description: >
+                    Text that starts the new context as its first user
+                    message. It does not start a run; the next run reads it.
       responses:
         "202":
           description: The reset is stored.
@@ -990,6 +997,41 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SentMessage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/compact:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    post:
+      operationId: compactChat
+      description: >
+        Summarizes the older context of this writable session. It also works
+        while the session runs; the summary joins the context at the next
+        boundary. The timeline shows a pending compaction boundary, then the
+        summary, "nothing to compact", or the failure. Each call starts a new
+        compaction. 409 when the session never ran. Task, automation and
+        channel sessions return 403.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                instructions:
+                  type: string
+                  maxLength: 32000
+                  description: What the summary must keep.
+      responses:
+        "202": { description: The compaction started. }
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
@@ -1956,6 +1998,19 @@ components:
           format: int64,
           description: The boundary time in milliseconds.,
         }
+        text:
+          type: string
+          description: >
+            The handoff of a reset, or the summary of a compaction. Absent
+            when there is none.
+        status:
+          type: string
+          enum: [pending, nothing, failed]
+          description: >
+            Only on compaction. pending while the summary is made or waits for
+            the next boundary; nothing when there was nothing to compact;
+            failed with a reason. Absent on a placed summary.
+        reason: { type: string, description: Why the compaction failed. }
 
     Item:
       oneOf:

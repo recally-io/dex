@@ -49,7 +49,7 @@ func TestUserKeepsToolResultsAcrossNativeHistoryWindow(t *testing.T) {
 		t.Fatalf("tool result was split by the window: %+v", watch.Snapshot)
 	}
 	for _, id := range []string{"reset-1", "reset-2", "reset-3"} {
-		if err := a.Reset(ctx, ref, id); err != nil {
+		if err := a.Reset(ctx, ref, id, ""); err != nil {
 			t.Fatal(err)
 		}
 	}

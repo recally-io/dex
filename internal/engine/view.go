@@ -239,12 +239,23 @@ func (p projection) render() []Item {
 					at = int64(n)
 				}
 			}
+			text := ""
 			if len(e.Model) > 0 {
 				if user, ok := e.Model[0].(ai.UserMessage); ok {
 					at = user.Timestamp
+					text = userText(user.Content)
 				}
 			}
-			rendered = []Item{{Kind: "boundary", ID: key, Boundary: strings.TrimPrefix(e.Kind, "pi."), At: at}}
+			if e.Kind == "pi.compaction" {
+				text = strings.TrimSuffix(strings.TrimPrefix(text, summaryPrefix), summarySuffix)
+			}
+			rendered = []Item{{Kind: "boundary", ID: key, Boundary: strings.TrimPrefix(e.Kind, "pi."), At: at, Text: text}}
+		case CompactionNoteKind:
+			note, err := durable.FromJsonValue[compactionNote](e.Data)
+			if err != nil {
+				break
+			}
+			rendered = []Item{{Kind: "boundary", ID: key, Boundary: "compaction", Status: note.Outcome, Reason: note.Error}}
 		case "dex.withdrawn":
 			item := userItem(m, key, 0, m.Content)
 			rendered = []Item{item, {Kind: "error", ID: item.ID + ":error", Reason: "Stopped before the bot read it.", Aborted: true}}
@@ -281,8 +292,18 @@ func (p projection) render() []Item {
 	if g := p.live.Generation; g != nil && g.Message != nil {
 		items = append(items, assistantItems(*g.Message, fmt.Sprintf("partial:%d", g.Message.Timestamp), results, tools, true, false)...)
 	}
+	for _, c := range p.live.Compactions {
+		items = append(items, Item{Kind: "boundary", ID: fmt.Sprintf("compaction:%d", c.TaskId), Boundary: "compaction", Status: "pending"})
+	}
 	for _, q := range p.inbox {
-		if q.Mode == harness.InboxWrite || q.Entry == nil {
+		if q.Entry == nil {
+			continue
+		}
+		if q.Mode == harness.InboxWrite {
+			// A summary made during a run waits here for the run's next boundary.
+			if kind, _ := q.Entry.Get("kind"); kind == durable.CompactionEntry.Kind {
+				items = append(items, Item{Kind: "boundary", ID: fmt.Sprintf("compaction-write:%d", q.Id), Boundary: "compaction", Status: "pending"})
+			}
 			continue
 		}
 		data, _ := q.Entry.Get("data")
@@ -299,6 +320,12 @@ func (p projection) render() []Item {
 	}
 	return items
 }
+
+// The wrapper PiG puts around a compaction summary in the model context.
+const (
+	summaryPrefix = "The conversation history before this point was compacted into the following summary:\n\n<summary>\n"
+	summarySuffix = "\n</summary>"
+)
 
 // failureCurrent reports whether the newest run failure still ends the transcript: no later run
 // answered and no reset followed it.

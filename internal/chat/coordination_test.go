@@ -208,7 +208,7 @@ func TestUserCancelledSameAgentWaitKeepsOrderedDurableInputs(t *testing.T) {
 	// Non-durable operations also stop waiting when their request is cancelled.
 	for _, operation := range []func(context.Context) error{
 		func(ctx context.Context) error { return r.service.Stop(ctx, "bot", c.ID) },
-		func(ctx context.Context) error { return r.service.Clear(ctx, "bot", c.ID, "reset", "web") },
+		func(ctx context.Context) error { return r.service.Clear(ctx, "bot", c.ID, "reset", "web", "") },
 		func(ctx context.Context) error { return r.service.ReloadExtensions(ctx, "bot") },
 	} {
 		callCtx, stop := context.WithTimeout(t.Context(), 100*time.Millisecond)

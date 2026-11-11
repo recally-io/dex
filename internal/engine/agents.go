@@ -451,7 +451,9 @@ func (a *Agents) CheckIdle(ctx context.Context, ref Ref) error {
 	return a.checkIdle(ctx, conversation)
 }
 
-func (a *Agents) Reset(ctx context.Context, ref Ref, requestID string) error {
+// Reset starts a new context. A handoff becomes the first user message of that context; it does
+// not start a run, and the next run reads it.
+func (a *Agents) Reset(ctx context.Context, ref Ref, requestID, handoff string) error {
 	if requestID == "" {
 		return fmt.Errorf("%w: reset request ID", ErrInvalidInput)
 	}
@@ -482,7 +484,11 @@ func (a *Agents) Reset(ctx context.Context, ref Ref, requestID string) error {
 			return err
 		}
 	}
-	submission, err := conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeWrite, RequestId: &requestID, Entry: &durable.EntryDraft{Kind: durable.ResetEntry.Kind, HeadSelf: true}})
+	entry := durable.EntryDraft{Kind: durable.ResetEntry.Kind, HeadSelf: true}
+	if handoff != "" {
+		entry.Model = []ai.Message{ai.UserMessage{Content: ai.UserText(handoff), Timestamp: time.Now().UnixMilli()}}
+	}
+	submission, err := conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeWrite, RequestId: &requestID, Entry: &entry})
 	if err != nil {
 		return err
 	}
@@ -521,6 +527,107 @@ func (a *Agents) Continue(ctx context.Context, ref Ref, requestID string, option
 	if _, ok := errors.AsType[*durable.ConversationBusy](err); ok {
 		return errors.Join(ErrBusy, err)
 	}
+	return err
+}
+
+// Compact starts a manual compaction and returns its native task ID. It runs beside an active run;
+// a summary made during a run joins the context at the run's next boundary. Instructions tell the
+// summary what to keep.
+func (a *Agents) Compact(ctx context.Context, ref Ref, instructions string, options Options) (int64, error) {
+	if options.Model.ModelID == "" {
+		return 0, ErrNoModel
+	}
+	if err := a.begin(); err != nil {
+		return 0, err
+	}
+	defer a.end()
+	unlock, err := a.lock(ctx, ref)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+	conversation, err := a.conversation(ctx, ref)
+	if err != nil {
+		return 0, err
+	}
+	// The summary uses the conversation model, so it must be the chat's current choice.
+	if err := conversation.Configure(ctx, agentChange(options)); err != nil {
+		return 0, err
+	}
+	h, err := a.harness(ctx, ref.AgentID)
+	if err != nil {
+		return 0, err
+	}
+	var keep *string
+	if instructions != "" {
+		keep = &instructions
+	}
+	id, err := conversation.Compact(ctx, keep)
+	if err != nil {
+		return 0, err
+	}
+	a.mu.Lock()
+	a.settling++
+	a.mu.Unlock()
+	a.settlements.Go(func() {
+		defer func() { a.mu.Lock(); a.settling--; a.mu.Unlock() }()
+		if err := noteCompaction(context.WithoutCancel(ctx), h, conversation, id); err != nil {
+			slog.Error("note compaction outcome", "agent", ref.AgentID, "conversation", ref.ID, "task", id, "error", err)
+		}
+	})
+	return int64(id), nil
+}
+
+// CompactionNoteKind is the transcript entry for a manual compaction that made no summary. A
+// summary is its own pi.compaction entry, so a note is only written for the other outcomes.
+const CompactionNoteKind = "dex.compaction"
+
+type compactionNote struct {
+	// Outcome is "nothing" when the context had nothing to compact, otherwise "failed".
+	Outcome string `json:"outcome"`
+	Error   string `json:"error,omitempty"`
+}
+
+// noteCompaction waits for a manual compaction and records an outcome that leaves no summary.
+// The note is a write submission, so during a run it joins at the next boundary. A process
+// restart before the task ends loses the note; the compaction itself still completes.
+func noteCompaction(ctx context.Context, h harness.Harness, conversation harness.Conversation, id durable.TaskId) error {
+	settled, err := h.WaitForTask(ctx, id)
+	if err != nil {
+		return err
+	}
+	outcome := settled.State.Outcome
+	if outcome == nil {
+		return fmt.Errorf("compaction task %d settled without an outcome", id)
+	}
+	note := compactionNote{Outcome: "failed"}
+	switch outcome.Status {
+	case durable.OutcomeCompleted:
+		if outcome.Result == nil {
+			return fmt.Errorf("compaction task %d completed without a result", id)
+		}
+		result, err := durable.FromJsonValue[harness.CompactionResult](*outcome.Result)
+		if err != nil {
+			return err
+		}
+		if result.EntryId != nil || result.SubmissionId != nil {
+			return nil
+		}
+		note.Outcome = "nothing"
+	case durable.OutcomeAborted:
+		note.Error = "Stopped."
+	case durable.OutcomeFailed, durable.OutcomeFaulted, durable.OutcomeOrphaned:
+		note.Error = string(outcome.Status)
+		if outcome.Error != nil {
+			note.Error = outcome.Error.Message
+		}
+	}
+	data, err := durable.ToJsonValue(note)
+	if err != nil {
+		return err
+	}
+	requestID := fmt.Sprintf("dex.compaction:%d", id)
+	_, err = conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeWrite, RequestId: &requestID, Entry: &durable.EntryDraft{Kind: CompactionNoteKind, Data: data}})
 	return err
 }
 

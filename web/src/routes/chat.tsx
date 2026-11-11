@@ -12,6 +12,7 @@ import {
   sendMessageMutation,
   abortChatMutation,
   continueChatMutation,
+  compactChatMutation,
   withdrawMessageMutation,
   listModelsOptions,
   listChatsOptions,
@@ -31,6 +32,7 @@ import { Composer, type SendMode } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
 import { QuestionCard } from "../components/agent/question-card";
 import { RetryNotice, Transcript, type QueuedActions } from "../components/agent/transcript";
+import type { SlashCommand } from "../components/slash-commands";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
 import { InPaneContext, MainPane, Note, PageHeader } from "../components/page";
@@ -308,8 +310,39 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       : undefined;
 
   const continueRun = useMutation({ ...continueChatMutation(), onSuccess: () => void refreshChats(agentId) });
-  const pending = send.isPending || abort.isPending || continueRun.isPending;
-  const error = send.error ?? abort.error ?? continueRun.error;
+  const compact = useMutation(compactChatMutation());
+  const pending = send.isPending || abort.isPending || continueRun.isPending || compact.isPending;
+  const error = send.error ?? abort.error ?? continueRun.error ?? compact.error;
+  const empty = !hasContext(items);
+
+  const commands: SlashCommand[] = [
+    {
+      name: "clear",
+      aliases: ["new"],
+      args: "[handoff]",
+      help: "Start a new context. Text after the command is carried into it.",
+      unavailable: empty ? "The context is already empty." : undefined,
+      run: (handoff) => clear.submit(handoff),
+    },
+    {
+      name: "compact",
+      args: "[what to keep]",
+      help: "Summarize older messages to free context. Text after the command says what to keep.",
+      unavailable: empty
+        ? "There is nothing to compact yet."
+        : !model.ok
+          ? "Choose an available model first."
+          : undefined,
+      run: async (instructions) => {
+        await compact.mutateAsync({
+          path: { agentId, chatId },
+          body: instructions ? { instructions } : {},
+        });
+
+        return true;
+      },
+    },
+  ];
 
   async function sendText(
     text: string,
@@ -319,6 +352,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   ) {
     abort.reset();
     continueRun.reset();
+    compact.reset();
     const ids = attachments.map((a) => a.id);
     const failed = failedMessage.current?.body;
 
@@ -443,19 +477,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         </div>
       ) : null}
       <Composer
-        controls={
-          hasContext(items) ? (
-            <button
-              type="button"
-              title="Start a new context. Earlier messages stay."
-              disabled={clear.pending}
-              onClick={clear.submit}
-              className="flex h-7 items-center rounded-md px-1.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
-            >
-              Clear context
-            </button>
-          ) : null
-        }
+        commands={commands}
         fix={
           model.ok ? null : settings.providers.length ? (
             <ModelPicker

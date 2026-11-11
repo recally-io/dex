@@ -541,7 +541,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		}
 	}
 	if p.Kind == "context_reset" {
-		if err = s.engine.Reset(ctx, ref, p.ID); err != nil {
+		if err = s.engine.Reset(ctx, ref, p.ID, p.Content); err != nil {
 			return s.admissionError(ctx, p.ID, err)
 		}
 		if err = s.markAdmitted(ctx, p.ID); err != nil {

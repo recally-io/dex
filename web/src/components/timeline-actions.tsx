@@ -9,10 +9,11 @@ import { newId } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Failure } from "./feedback";
 
+// A reset with a handoff starts the new context with that text, so it counts as context.
 export function hasContext(items: Item[]) {
   const last = items.findLast((item) => item.kind !== "boundary" || item.boundary !== "compaction");
 
-  return last !== undefined && !(last.kind === "boundary" && last.boundary === "reset");
+  return last !== undefined && !(last.kind === "boundary" && last.boundary === "reset" && !last.text);
 }
 
 export function useClearContext(chatId: number, running: boolean, onCleared: () => void) {
@@ -26,9 +27,20 @@ export function useClearContext(chatId: number, running: boolean, onCleared: () 
     wasRunning.current = running;
   }, [running]);
 
+  // A transport retry of the same handoff keeps the reset ID; another handoff is another reset.
+  const handoff = useRef("");
+
   const clear = useMutation({
-    mutationFn: async () => {
-      const result = await clearContext({ path: { agentId, chatId }, body: { id: request.current } });
+    mutationFn: async (text: string) => {
+      if (text !== handoff.current) {
+        request.current = newId();
+        handoff.current = text;
+      }
+
+      const result = await clearContext({
+        path: { agentId, chatId },
+        body: { id: request.current, handoff: text || undefined },
+      });
 
       if (result.response?.status === 409) return false;
 
@@ -44,12 +56,18 @@ export function useClearContext(chatId: number, running: boolean, onCleared: () 
 
       if (accepted) {
         request.current = newId();
+        handoff.current = "";
         onCleared();
       }
     },
   });
 
-  return { submit: () => clear.mutate(), pending: clear.isPending, error: clear.error, refused };
+  return {
+    submit: (text = "") => clear.mutateAsync(text),
+    pending: clear.isPending,
+    error: clear.error,
+    refused,
+  };
 }
 
 export function LoadEarlierButton({

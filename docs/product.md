@@ -36,10 +36,12 @@ to read in an afternoon.
   not attach an old CLI process or prove that its actions occurred once.
 - One main timeline per agent. The web opens it at `/a/{agentId}` and uses the agent's
   model settings by default. A saved Main override also applies to channel input.
-  Clear context starts a new model context when the timeline
-  is idle. Earlier messages stay readable with Show earlier messages. A clear
-  keeps long-term memory. After a summary, Show earlier messages can load
-  the earlier transcript. Only a clear shows a divider. The bot is one page
+  `/clear` starts a new model context when the timeline is idle. Text after
+  the command is carried into the new context. Earlier messages stay readable
+  with Show earlier messages. A clear keeps long-term memory. `/compact`
+  summarizes older messages, also during a run. After a summary, Show earlier
+  messages can load the earlier transcript. A clear and a summary show a
+  divider. The bot is one page
   with exactly four tabs: Chat, Routines, Extensions, and Settings. Its
   Settings tab holds General, Instructions, and Channels. Its header shows the
   name and the tabs. The model and the thinking level change in Settings. On the
@@ -167,7 +169,7 @@ newest empty Chat, so an abandoned click leaves no list row. The first message
 sets the title. Chat defaults to the bot's model settings and uses its instructions and shared memory.
 A saved session model or thinking level override applies from the next input.
 Chat does not read the main timeline's context. A task started in Chat returns
-its result to that Chat. Clear context, Stop and earlier messages work within
+its result to that Chat. `/clear`, `/compact`, Stop and earlier messages work within
 the selected session. Other sessions cannot enable its Stop. Task conversations are
 read-only while queued or running. After the task ends, the user can send messages
 and change the conversation's model and project. The original task record, report,

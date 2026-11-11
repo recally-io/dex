@@ -46,7 +46,7 @@ func (a *Agents) History(ctx context.Context, ref Ref, before int64, limit int) 
 
 func historyBoundary(e durable.EntryRecord) bool {
 	switch e.Kind {
-	case "dex.user", "dex.task_result", "dex.withdrawn", "pi.user", "pi.reset", "pi.compaction":
+	case "dex.user", "dex.task_result", "dex.withdrawn", "pi.user", "pi.reset", "pi.compaction", CompactionNoteKind:
 		return true
 	}
 	if len(e.Model) > 0 {

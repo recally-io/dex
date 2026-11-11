@@ -778,16 +778,28 @@ withdrawal writes no `dex.withdrawn` entry, so Edit leaves no stale bubble.
 transaction to check pending input and insert `context_reset` together. The
 engine also checks its active run and Inbox. A refused request stores no reset.
 `Agents.Reset` submits a passive `pi.reset` entry with a stable request ID and
-`head: self`. A retry adds no second reset. Reset entries keep their time in
+`head: self`. A retry adds no second reset. A handoff is stored in the receipt
+content and becomes the reset entry's user message. It does not start a run;
+the next run reads it. Reset entries keep their time in
 data. Memory files remain available. Follow-ups keep one input per answer;
 they do not merge all queued input or steer the current turn.
 
-The Clear context action is in the composer. The server alone decides whether
-work is active. A 409 shows a warning and keeps the same request ID for a retry.
-The action is hidden when the last non-compaction item is a reset or is absent.
+The composer runs `/clear [handoff]` (alias `/new`) and `/compact [what to keep]`.
+A draft that starts with `/` is never sent as a message. The server alone
+decides whether work is active. A refused `/clear` shows a warning and keeps the
+same request ID for a retry with the same handoff. The menu greys out `/clear`
+and `/compact` when the last non-compaction item is a plain reset or is absent.
 
-A snapshot contains only the active native context. Reset entries show dividers.
-Compaction entries stay in the data but have no divider. `historyBefore` points
+`Agents.Compact` starts a native manual compaction. It also runs during a run;
+the summary then waits in the inbox for the run's next boundary. The view shows
+a pending compaction boundary for each live compaction and each queued summary.
+A goroutine waits for the task. When it ends without a summary, it writes a
+`dex.compaction` note entry with the outcome `nothing` or `failed`. A restart
+before the task ends loses the note, not the compaction.
+
+A snapshot contains only the active native context. Reset and summary entries
+show dividers. A reset divider shows its handoff; a summary divider can expand
+the summary. `historyBefore` points
 to the head entry. The browser requests
 `GET /api/agents/{agentId}/chats/{id}/history?before=<entry ID>&limit=100` on demand. The engine
 reads `Conversation.Entries` before that exclusive cursor and returns items
