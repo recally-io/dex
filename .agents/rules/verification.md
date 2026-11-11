@@ -23,7 +23,8 @@ run `mise run check:timeline-web`. For artifact preview or continuation changes,
 also run `mise run check:artifact-browser`. Update browser assertions with the
 contract change. `check:web` does not run these browser scripts. Run
 `mise run check:settings-browser` after provider removal or session model and
-thinking-control changes. Report a failed browser task as a verification gap
+thinking-control changes. Run `mise run check:archive-browser` after a change
+to the bot archive card, the archived bots page or restore. Report a failed browser task as a verification gap
 even when the aggregate check passes.
 
 A change to a provider or to model handling also needs a manual run against a

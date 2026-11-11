@@ -549,9 +549,12 @@ reconciliation cover the gap between their commits.
 
 ## Bot tools
 
-Main and Chat conversations have `bot_list` and `bot_get`. A user-input turn in
-Main or a Chat also has `bot_create`, `bot_update` and `bot_delete`. The
-automation conversation has only the read tools. The engine installs the read
+Main and Chat conversations have `bot_list` and `bot_get`, and the three change
+tools `bot_create`, `bot_update` and `bot_delete`. The automation conversation
+has only the read tools. Extension edits persist on the conversation, and each
+user-input `Submit` adds them again, so a conversation that existed before the
+tools gets them on its next user input. The persisted tools do not authorize a
+call: `ToolBotCaller` checks the source input of every call. The engine installs the read
 extension (`bots`) and the change extension (`bot-manage`) through the same `Add`
 lists as `ask_user`, so a task, a dream and a child session never get the change
 tools. `internal/agent.BotTools` maps each call to the same service methods as the
