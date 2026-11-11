@@ -605,6 +605,38 @@ try {
   await shot("06b-child-steered");
   results.push("a running child takes a steer from its composer");
 
+  // A run that the user started in a child is not work of the parent. Stop on the parent leaves it,
+  // so the parent page offers no Stop for it.
+  const ownGate = join(isolated, "child-own.gate");
+  await api(`/api/agents/default/chats/${steered.id}/messages`, {
+    id: randomUUID(),
+    text: `while ! test -f '${ownGate}'; do sleep 0.05; done; echo own-run`,
+  });
+  await poll(
+    "the child runs the user turn",
+    async () => (await api(`/api/agents/default/chats/${steered.id}`)).busy,
+  );
+  await visit("/a/default");
+
+  const listedOwn = await poll("the list shows the child busy", async () =>
+    (await childSessions()).find((child) => child.id === steered.id && child.busy),
+  );
+
+  assert.equal(listedOwn.stoppedWithParent, undefined);
+  // The panel has the running dot, so the list has loaded and the parent page had time to read it.
+  await tap('header button[aria-label^="Sessions"]');
+  await ui(
+    "the panel shows the child of the user turn as running",
+    `!!document.querySelector('aside[aria-label="Sessions"] a[href="/a/default/c/${steered.id}"] [role="img"][aria-label="Running"]')`,
+  );
+  await check(
+    "the parent page has no Stop for a child run that the user started",
+    "!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
+  );
+  await tap('button[aria-label="Close sessions"]');
+  await writeFile(ownGate, "release");
+  await poll("the user turn ends", async () => !(await api(`/api/agents/default/chats/${steered.id}`)).busy);
+
   // Release reconciles a saved channel input through the real native admission path.
   await holdMaintenance();
   const channelGate = join(isolated, "channel.gate");
