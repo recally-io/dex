@@ -371,10 +371,10 @@ export type BoundaryItem = {
      */
     text?: string;
     /**
-     * Only on compaction. pending while the summary is made or waits for the next boundary; nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+     * Only on compaction. pending while the summary is made; queued when the summary waits for the next boundary, which after Stop is the next message; nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
      *
      */
-    status?: 'pending' | 'nothing' | 'failed';
+    status?: 'pending' | 'queued' | 'nothing' | 'failed';
     /**
      * Why the compaction failed.
      */

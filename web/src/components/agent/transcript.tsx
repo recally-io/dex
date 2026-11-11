@@ -529,6 +529,12 @@ function BoundaryItem({ item }: { item: Extract<Item, { kind: "boundary" }> }) {
           Compacting context…
         </p>
       );
+    case "queued":
+      return (
+        <p role="status" className="py-2 text-center text-[12.5px] text-muted-foreground">
+          Summary ready. It replaces the older context before the next model call.
+        </p>
+      );
     case "nothing":
       return (
         <p role="status" className="py-2 text-center text-[12.5px] text-muted-foreground">

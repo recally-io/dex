@@ -328,11 +328,8 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       name: "compact",
       args: "[what to keep]",
       help: "Summarize older messages to free context. Text after the command says what to keep.",
-      unavailable: empty
-        ? "There is nothing to compact yet."
-        : !model.ok
-          ? "Choose an available model first."
-          : undefined,
+      // The composer is disabled without an available model, so that case never reaches here.
+      unavailable: empty ? "There is nothing to compact yet." : undefined,
       run: async (instructions) => {
         await compact.mutateAsync({
           path: { agentId, chatId },

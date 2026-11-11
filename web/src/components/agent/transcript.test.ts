@@ -180,6 +180,7 @@ test("user sees reset handoffs and each compaction outcome", async () => {
     { kind: "boundary", id: "e3", boundary: "compaction", status: "failed", reason: "model down" },
     { kind: "boundary", id: "e4", boundary: "reset", at: 1, text: "keep the blue plan" },
     { kind: "boundary", id: "compaction:9", boundary: "compaction", status: "pending" },
+    { kind: "boundary", id: "compaction-write:7", boundary: "compaction", status: "queued" },
   ];
 
   const html = await render(
@@ -195,6 +196,7 @@ test("user sees reset handoffs and each compaction outcome", async () => {
   expect(html).toContain("Context cleared");
   expect(html).toContain("keep the blue plan");
   expect(html).toContain("Compacting context");
+  expect(html).toContain("Summary ready");
 });
 
 test("user sees an ask_user answer as the muted question above the answer", async () => {

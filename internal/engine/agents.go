@@ -610,8 +610,18 @@ func noteCompaction(ctx context.Context, h harness.Harness, conversation harness
 		if err != nil {
 			return err
 		}
-		if result.EntryId != nil || result.SubmissionId != nil {
+		if result.EntryId != nil {
 			return nil
+		}
+		if result.SubmissionId != nil {
+			// A busy chat places the summary at the next boundary. A reset or another summary placed
+			// before it makes it stale, and nothing else would tell the user.
+			placed, err := waitSubmission(ctx, h, *result.SubmissionId)
+			if err != nil || placed.Status == durable.SubmissionDone {
+				return err
+			}
+			note.Error = "The context changed before the summary was ready, so the summary was not used."
+			break
 		}
 		note.Outcome = "nothing"
 	case durable.OutcomeAborted:
@@ -629,6 +639,14 @@ func noteCompaction(ctx context.Context, h harness.Harness, conversation harness
 	requestID := fmt.Sprintf("dex.compaction:%d", id)
 	_, err = conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeWrite, RequestId: &requestID, Entry: &durable.EntryDraft{Kind: CompactionNoteKind, Data: data}})
 	return err
+}
+
+func waitSubmission(ctx context.Context, h harness.Harness, id durable.SubmissionId) (durable.SettledSubmissionRecord, error) {
+	submission, err := h.Submission(ctx, id)
+	if err != nil {
+		return durable.SettledSubmissionRecord{}, err
+	}
+	return submission.Wait(ctx)
 }
 
 func (a *Agents) Abort(ctx context.Context, ref Ref) error {

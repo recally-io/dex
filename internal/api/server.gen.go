@@ -93,6 +93,7 @@ const (
 	BoundaryItemStatusFailed  BoundaryItemStatus = "failed"
 	BoundaryItemStatusNothing BoundaryItemStatus = "nothing"
 	BoundaryItemStatusPending BoundaryItemStatus = "pending"
+	BoundaryItemStatusQueued  BoundaryItemStatus = "queued"
 )
 
 // Valid indicates whether the value is a known member of the BoundaryItemStatus enum.
@@ -103,6 +104,8 @@ func (e BoundaryItemStatus) Valid() bool {
 	case BoundaryItemStatusNothing:
 		return true
 	case BoundaryItemStatusPending:
+		return true
+	case BoundaryItemStatusQueued:
 		return true
 	default:
 		return false
@@ -710,7 +713,7 @@ type BoundaryItem struct {
 	// Reason Why the compaction failed.
 	Reason *string `json:"reason,omitempty"`
 
-	// Status Only on compaction. pending while the summary is made or waits for the next boundary; nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+	// Status Only on compaction. pending while the summary is made; queued when the summary waits for the next boundary, which after Stop is the next message; nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
 	Status *BoundaryItemStatus `json:"status,omitempty"`
 
 	// Text The handoff of a reset, or the summary of a compaction. Absent when there is none.
@@ -723,7 +726,7 @@ type BoundaryItemBoundary string
 // BoundaryItemKind defines model for BoundaryItem.Kind.
 type BoundaryItemKind string
 
-// BoundaryItemStatus Only on compaction. pending while the summary is made or waits for the next boundary; nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+// BoundaryItemStatus Only on compaction. pending while the summary is made; queued when the summary waits for the next boundary, which after Stop is the next message; nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
 type BoundaryItemStatus string
 
 // ChannelStatus defines model for ChannelStatus.

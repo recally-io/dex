@@ -791,11 +791,13 @@ same request ID for a retry with the same handoff. The menu greys out `/clear`
 and `/compact` when the last non-compaction item is a plain reset or is absent.
 
 `Agents.Compact` starts a native manual compaction. It also runs during a run;
-the summary then waits in the inbox for the run's next boundary. The view shows
-a pending compaction boundary for each live compaction and each queued summary.
-A goroutine waits for the task. When it ends without a summary, it writes a
-`dex.compaction` note entry with the outcome `nothing` or `failed`. A restart
-before the task ends loses the note, not the compaction.
+the summary then waits in the inbox for the run's next boundary. After Stop,
+that boundary is the next message. The view shows a `pending` compaction
+boundary for each live compaction and a `queued` one for each summary in the
+inbox. A goroutine waits for the task, and then for the queued summary. When no
+summary is placed, it writes a `dex.compaction` note entry with the outcome
+`nothing` or `failed`. A summary that a reset makes stale counts as failed. A
+restart before the goroutine ends loses the note, not the compaction.
 
 A snapshot contains only the active native context. Reset and summary entries
 show dividers. A reset divider shows its handoff; a summary divider can expand
