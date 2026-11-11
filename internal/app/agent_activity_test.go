@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -29,7 +30,12 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 	t.Cleanup(func() { _ = conn.Close() })
 	for i, key := range []string{"main", "chat:busy", "automation:busy", "task:queued", "task:running", "task:done", "task:failed", "task:cancelled", "task:interrupted", "chat:empty", "telegram:old", "dream:hidden"} {
 		id := int64(100 + i)
-		if _, err := conn.ExecContext(t.Context(), "INSERT INTO conversations (id,agent_id,channel_key,created_at) VALUES (?,'default',?,1)", id, key); err != nil {
+		// The migration gives every old task conversation the parent of its task.
+		var parent any
+		if strings.HasPrefix(key, "task:") {
+			parent = 100
+		}
+		if _, err := conn.ExecContext(t.Context(), "INSERT INTO conversations (id,agent_id,channel_key,parent_id,created_at) VALUES (?,'default',?,?,1)", id, key, parent); err != nil {
 			t.Fatal(err)
 		}
 		kind := "message"
@@ -90,8 +96,9 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 		} `json:"agents"`
 	}
 	d.must(t, http.MethodGet, "/api/agents", nil, &listed)
+	// The status column of an old task is not state any more: 103 is 'queued' there but has no pending input.
 	want := map[string]agentActivity{
-		"default": {ActiveSessions: 5, RunningChannels: 1, EnabledAutomations: 2},
+		"default": {ActiveSessions: 4, RunningChannels: 1, EnabledAutomations: 2},
 		b.ID:      {ActiveSessions: 1, RunningChannels: 0, EnabledAutomations: 1},
 	}
 	if len(listed.Agents) != len(want) {
