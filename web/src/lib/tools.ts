@@ -2,15 +2,23 @@
 /* eslint-disable anti-slop/no-runtime-typeof */
 import type { Item, ToolItem } from "../api/generated/types.gen";
 
+type ThinkingItem = Extract<Item, { kind: "thinking" }>;
+
+/** A thinking item or a tool call. Consecutive steps of one answer show as one collapsed row. */
+export type Step = ThinkingItem | ToolItem;
+
 export type ContentBlock =
-  | { kind: "tools"; tools: ToolItem[]; key: string }
-  | { kind: "item"; item: Exclude<Item, { kind: "tool" | "task" }>; index: number };
+  | { kind: "steps"; steps: Step[]; key: string; last: number }
+  | { kind: "item"; item: Exclude<Item, { kind: "tool" | "task" | "thinking" }>; index: number };
 
 type TaskBlock = { kind: "task"; item: Extract<Item, { kind: "task" }>; blocks: ContentBlock[] };
 
 export type Block = ContentBlock | TaskBlock;
 
+const dispatch = (step: Step) => step.kind === "tool" && step.name === "spawn_task";
+
 // A result owns the items up to the next input. Keep original indices for Retry and streaming.
+// A dispatch to the background stays a row of its own, because it names the work it started.
 export function blocks(items: Item[]): Block[] {
   const out: Block[] = [];
   let task: TaskBlock | undefined;
@@ -27,10 +35,11 @@ export function blocks(items: Item[]): Block[] {
     const target = task?.blocks ?? out;
     const last = target.at(-1);
 
-    if (item.kind !== "tool") target.push({ kind: "item", item, index });
-    else if (last?.kind === "tools" && item.name !== "spawn_task" && last.tools[0].name !== "spawn_task")
-      last.tools.push(item);
-    else target.push({ kind: "tools", tools: [item], key: item.id });
+    if (item.kind !== "tool" && item.kind !== "thinking") target.push({ kind: "item", item, index });
+    else if (last?.kind === "steps" && !dispatch(item) && !dispatch(last.steps[0])) {
+      last.steps.push(item);
+      last.last = index;
+    } else target.push({ kind: "steps", steps: [item], key: item.id, last: index });
   });
 
   return out;
@@ -93,23 +102,30 @@ const pastTense = new Map([
   ["Write", "Wrote"],
 ]);
 
-// The header of a step: the text while a call runs, and the text after the step ends.
-export function stepTitle(tools: ToolItem[], memory?: string) {
+/**
+ * The header of a steps row. active is set while a call runs or the model thinks; done is the
+ * summary after the steps end. thinking is true while the last step is a thought that streams.
+ */
+export function stepTitle(steps: Step[], memory?: string, thinking = false) {
+  const tools = steps.filter((step) => step.kind === "tool");
   const running = tools.find((t) => t.status === "running");
   const failed = tools.filter((t) => t.status === "error").length;
   const n = tools.length;
-  let done: string;
+  let done = "";
 
-  if (tools.every((t) => touchesMemory(t, memory)))
+  if (n && tools.every((t) => touchesMemory(t, memory)))
     done =
       n === 1
         ? describeTool(tools[0], memory).verb.replace(/^\w+/, (verb) => pastTense.get(verb) ?? verb)
         : `Used memory ${n} times`;
   else if (n === 1) done = tools[0].name === "bash" ? "Ran a command" : `Used ${tools[0].name}`;
-  else done = `Ran ${n} tools`;
+  else if (n) done = `Ran ${n} tools`;
+
+  if (steps.some((step) => step.kind === "thinking"))
+    done = done ? `Thought process · ${done}` : "Thought process";
 
   return {
-    active: running ? `Running ${running.name}` : done,
+    active: running ? `Running ${running.name}` : thinking ? "Thinking" : undefined,
     done: failed ? `${done} · ${failed} failed` : done,
   };
 }

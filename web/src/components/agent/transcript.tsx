@@ -1,6 +1,7 @@
 import {
   ArrowUpRight,
   Check,
+  ChevronRight,
   Clock3,
   CodeXml,
   Copy,
@@ -17,29 +18,35 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
 import { formatSize, isImage } from "../../lib/attachments";
-import { blocks, describeTool, seconds, stepTitle, type ContentBlock } from "../../lib/tools";
+import { blocks, describeTool, seconds, stepTitle, type ContentBlock, type Step } from "../../lib/tools";
+import { remarkStrong, strongText } from "../../lib/strong";
 import { retryMessage } from "../../lib/chat-state";
 import { Button } from "../ui/button";
 import { Spinner } from "../feedback";
 import { cn } from "../../lib/utils";
-import { Badge } from "../ui/badge";
 
 const markdown: Components = {
-  p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
+  p: ({ children }) => <p className="my-3 first:mt-0 last:mb-0">{children}</p>,
   h1: ({ children }) => (
-    <h3 className="mt-4 mb-2 text-[15px] font-semibold text-foreground first:mt-0">{children}</h3>
+    <h3 className="mt-6 mb-2 text-[17px] leading-snug font-semibold text-foreground first:mt-0">
+      {children}
+    </h3>
   ),
   h2: ({ children }) => (
-    <h3 className="mt-4 mb-2 text-[14px] font-semibold text-foreground first:mt-0">{children}</h3>
+    <h3 className="mt-6 mb-2 text-[16px] leading-snug font-semibold text-foreground first:mt-0">
+      {children}
+    </h3>
   ),
   h3: ({ children }) => (
-    <h4 className="mt-3 mb-1.5 text-[13.5px] font-semibold text-foreground first:mt-0">{children}</h4>
+    <h4 className="mt-5 mb-1.5 text-[15px] leading-snug font-semibold text-foreground first:mt-0">
+      {children}
+    </h4>
   ),
   ul: ({ children }) => (
-    <ul className="my-2 flex list-disc flex-col gap-1 pl-5 marker:text-muted-foreground">{children}</ul>
+    <ul className="my-3 flex list-disc flex-col gap-1.5 pl-5 marker:text-muted-foreground">{children}</ul>
   ),
   ol: ({ children }) => (
-    <ol className="my-2 flex list-decimal flex-col gap-1 pl-5 marker:text-muted-foreground">{children}</ol>
+    <ol className="my-3 flex list-decimal flex-col gap-1.5 pl-5 marker:text-muted-foreground">{children}</ol>
   ),
   strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   a: ({ href, children }) => (
@@ -48,18 +55,18 @@ const markdown: Components = {
     </a>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="my-2 border-l-2 border-ring pl-3 text-muted-foreground">{children}</blockquote>
+    <blockquote className="my-3 border-l-2 border-ring pl-3 text-muted-foreground">{children}</blockquote>
   ),
   table: ({ children }) => (
-    <div className="my-2 overflow-x-auto rounded-md shadow-card">
-      <table className="w-full text-left text-[12.5px]">{children}</table>
+    <div className="my-3 overflow-x-auto rounded-md shadow-card">
+      <table className="w-full text-left text-[13.5px] leading-normal">{children}</table>
     </div>
   ),
   th: ({ children }) => (
     <th className="border-b border-border bg-muted px-3 py-1.5 font-medium">{children}</th>
   ),
   td: ({ children }) => <td className="border-b border-border px-3 py-1.5 align-top">{children}</td>,
-  pre: ({ children }) => <div className="my-2">{children}</div>,
+  pre: ({ children }) => <div className="my-3">{children}</div>,
   // Fenced code gets a code block. Inline code is a chip.
   code: ({ className, children }) => {
     const text = String(children).replace(/\n$/, "");
@@ -67,7 +74,7 @@ const markdown: Components = {
     return className || text.includes("\n") ? (
       <CodeBlock language={className?.replace("language-", "")} text={text} />
     ) : (
-      <code className="inline rounded-md bg-muted px-1.5 py-0.5 font-mono text-[12px]">{children}</code>
+      <code className="inline rounded-md bg-muted px-1.5 py-0.5 font-mono text-[13px]">{children}</code>
     );
   },
 };
@@ -101,7 +108,7 @@ function CodeBlock({ language, text }: { language?: string; text: string }) {
           {copied ? "Copied" : "Copy"}
         </Button>
       </figcaption>
-      <pre className="overflow-auto py-2 font-mono text-[12px] leading-relaxed text-foreground">
+      <pre className="overflow-auto py-2 font-mono text-[12.5px] leading-relaxed text-foreground">
         <code className="grid grid-cols-[auto_1fr]">
           {text.split("\n").map((line, index) => (
             // Lines have no identity of their own; the listing never reorders them.
@@ -119,6 +126,21 @@ function CodeBlock({ language, text }: { language?: string; text: string }) {
   );
 }
 
+const today = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+const earlier = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+// The UI text is English, so the time format is too: "08:30" today, else "Thu 15 Oct, 08:30".
+function stamp(at: number) {
+  return new Date(at).toDateString() === new Date().toDateString() ? today.format(at) : earlier.format(at);
+}
+
 function entryName(origin?: string) {
   switch (origin?.split(":", 1)[0]) {
     case "telegram":
@@ -132,82 +154,8 @@ function entryName(origin?: string) {
   }
 }
 
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-      className={cn("shrink-0 transition-transform duration-300", open && "rotate-180")}
-    >
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
-
-function Sparkle({ working }: { working: boolean }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill={working ? "var(--muted-foreground)" : "var(--muted-foreground)"}
-      aria-hidden
-      className="shrink-0"
-    >
-      <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z" />
-    </svg>
-  );
-}
-
 function Shimmer({ children }: { children: ReactNode }) {
   return <span className="truncate text-[13px] font-medium text-muted-foreground">{children}</span>;
-}
-
-/** The header of a step row. Look from upstream primitives/ThinkingState.tsx. */
-function StepHeader({
-  working,
-  active,
-  done,
-  failed = false,
-  open,
-  onToggle,
-}: {
-  working: boolean;
-  active: string;
-  done: string;
-  failed?: boolean;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-expanded={open}
-      onClick={onToggle}
-      className="-mx-1.5 flex w-fit max-w-full items-center gap-2 rounded-md px-1.5 py-1 transition-colors duration-100 hover:bg-accent"
-    >
-      <Sparkle working={working} />
-      {working ? (
-        <Shimmer>{active}</Shimmer>
-      ) : (
-        <span
-          className={cn("truncate text-[13px] font-medium", failed ? "text-red" : "text-muted-foreground")}
-        >
-          {done}
-        </span>
-      )}
-      <span className="text-muted-foreground">
-        <Chevron open={open} />
-      </span>
-    </button>
-  );
 }
 
 function Trace({ children }: { children: ReactNode }) {
@@ -219,6 +167,10 @@ function Trace({ children }: { children: ReactNode }) {
   );
 }
 
+// Tool output is plain text, failed or not. The row's red dot marks a failed call.
+const outputBox =
+  "overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-[12px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]";
+
 function Output({ tool }: { tool: ToolItem }) {
   // The command or the path is the target of the row. The other arguments show here.
   const extra = Object.entries(tool.args).filter(([key]) => key !== "command" && key !== "path");
@@ -226,16 +178,11 @@ function Output({ tool }: { tool: ToolItem }) {
   return (
     <div className="mb-1 ml-6 flex animate-[fade-up_240ms_var(--ease-out-strong)_both] flex-col gap-2">
       {extra.length ? (
-        <pre className="max-h-48 overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-muted-foreground shadow-card [overflow-wrap:anywhere]">
+        <pre className={cn(outputBox, "max-h-48 text-muted-foreground")}>
           {extra.map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join("\n")}
         </pre>
       ) : null}
-      <pre
-        className={cn(
-          "max-h-60 overflow-auto rounded-md px-3 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap shadow-card [overflow-wrap:anywhere]",
-          tool.status === "error" ? "bg-red-tint text-foreground" : "bg-muted text-muted-foreground",
-        )}
-      >
+      <pre className={cn(outputBox, "max-h-60 text-foreground")}>
         {tool.output || (tool.status === "running" ? "Waiting for tool output…" : "No output.")}
       </pre>
     </div>
@@ -254,53 +201,118 @@ function ToolStatus({ status }: { status: ToolItem["status"] }) {
     return <span role="img" aria-label="Failed" className="mx-[3px] size-2 shrink-0 rounded-full bg-red" />;
 
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="var(--muted-foreground)"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <Check
       role="img"
       aria-label="Done"
-      className="shrink-0"
-    >
-      <path d="M20 6L9 17l-5-5" />
-    </svg>
+      strokeWidth={2.5}
+      className="size-3.5 shrink-0 text-muted-foreground"
+    />
   );
 }
 
-/** Consecutive tool calls as one step row with a line for each call. */
-export function ToolStep({ tools, memory }: { tools: ToolItem[]; memory?: string }) {
-  const agentId = useAgentId();
-  const working = tools.some((t) => t.status === "running");
-  const failed = tools.some((t) => t.status === "error");
-  const [open, setOpen] = useState<boolean | null>(null);
-  // Until the user picks a call, the first failed call shows its output. A call can fail after
-  // the step first shows, so this is not an initial state.
-  const [picked, setSelected] = useState<string | null>();
-  const selected = picked === undefined ? (tools.find((t) => t.status === "error")?.id ?? null) : picked;
-  const expanded = open ?? (working || failed);
-  const title = stepTitle(tools, memory);
+/** A line in the trace of a steps row. A click shows the output or the thought below it. */
+function StepLine({
+  step,
+  memory,
+  shown,
+  onToggle,
+}: {
+  step: Step;
+  memory?: string;
+  shown: boolean;
+  onToggle: () => void;
+}) {
+  const thought = step.kind === "thinking";
 
-  if (tools.length === 1 && tools[0].name === "spawn_task" && !failed) {
-    const dispatch = describeTool(tools[0]);
+  const { verb, target } = thought
+    ? { verb: "Thought", target: step.text.split("\n", 1)[0] || "Not shared by the provider" }
+    : describeTool(step, memory);
+
+  return (
+    <div data-tool={thought ? undefined : step.id}>
+      <button
+        type="button"
+        aria-expanded={shown}
+        onClick={onToggle}
+        className={cn(
+          "flex min-h-7 w-full min-w-0 items-center gap-2 rounded-[6px] px-1.5 py-0.5 text-left transition-colors duration-150",
+          shown ? "bg-muted" : "hover:bg-accent",
+        )}
+      >
+        {thought ? (
+          <span aria-hidden className="mx-[4px] size-1.5 shrink-0 rounded-full bg-ring" />
+        ) : (
+          <ToolStatus status={step.status} />
+        )}
+        <span className="shrink-0 text-[12.5px] font-medium text-foreground">{verb}</span>
+        <span
+          className={cn(
+            "min-w-0 flex-1 text-[12px] text-muted-foreground",
+            !thought && "font-mono",
+            shown && !thought ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate",
+          )}
+          title={target}
+        >
+          {target}
+        </span>
+        {!thought && step.durationMs !== undefined ? (
+          <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+            {seconds(step.durationMs)}
+          </span>
+        ) : null}
+      </button>
+      {shown && thought ? (
+        <p className="mb-1 ml-6 animate-[fade-up_240ms_var(--ease-out-strong)_both] text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground [overflow-wrap:anywhere]">
+          {step.text || "The provider did not share its thought process."}
+        </p>
+      ) : null}
+      {shown && !thought ? <Output tool={step} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The thoughts and tool calls between two answers, as one collapsed row. The row opens by itself
+ * only when a call failed. thinking is true while the last step is a thought that streams.
+ */
+export function Steps({
+  steps,
+  memory,
+  thinking = false,
+}: {
+  steps: Step[];
+  memory?: string;
+  thinking?: boolean;
+}) {
+  const agentId = useAgentId();
+  const failedId = steps.find((step) => step.kind === "tool" && step.status === "error")?.id;
+  const [open, setOpen] = useState<boolean | null>(null);
+  // Until the user picks a line, the first failed call shows its output. A call can fail after
+  // the row first shows, so this is not an initial state.
+  const [picked, setPicked] = useState<string | null>();
+  const selected = picked === undefined ? (failedId ?? null) : picked;
+  const expanded = open ?? !!failedId;
+  const title = stepTitle(steps, memory, thinking);
+  const first = steps[0];
+  // Tools run without a sandbox, so a closed row still shows what runs now.
+  const running = steps.find((step) => step.kind === "tool" && step.status === "running");
+
+  if (steps.length === 1 && first.kind === "tool" && first.name === "spawn_task" && !failedId) {
+    const dispatch = describeTool(first);
 
     return (
       <div className="flex min-w-0 items-start gap-2 py-1 text-[13px] leading-5">
         <ArrowUpRight size={16} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
         <p className="min-w-0 [overflow-wrap:anywhere]">
-          {working ? (
+          {title.active ? (
             <Shimmer>{dispatch.verb}</Shimmer>
           ) : (
             <span className="font-medium text-muted-foreground">{dispatch.verb}</span>
           )}
-          {tools[0].taskId ? (
+          {first.taskId ? (
             <Link
               to="/a/$agentId/tasks/$taskId"
-              params={{ agentId, taskId: tools[0].taskId }}
+              params={{ agentId, taskId: first.taskId }}
               className="ml-1.5 font-medium text-foreground decoration-ring underline-offset-3 hover:underline"
             >
               {dispatch.target}
@@ -315,75 +327,41 @@ export function ToolStep({ tools, memory }: { tools: ToolItem[]; memory?: string
 
   return (
     <div className="flex w-full flex-col">
-      <StepHeader
-        working={working}
-        active={title.active}
-        done={title.done}
-        failed={failed}
-        open={expanded}
-        onToggle={() => setOpen(!expanded)}
-      />
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setOpen(!expanded)}
+        className="-mx-1.5 flex w-fit max-w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-[13px] text-muted-foreground transition-colors duration-100 hover:bg-accent hover:text-foreground"
+      >
+        {title.active ? (
+          <Spinner />
+        ) : failedId ? (
+          <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-red" />
+        ) : null}
+        <span className={cn("max-w-full shrink-0 truncate", !title.active && failedId && "text-red")}>
+          {title.active ?? title.done}
+        </span>
+        {running?.kind === "tool" ? (
+          <span className="min-w-0 truncate font-mono text-[12px]">
+            {describeTool(running, memory).target}
+          </span>
+        ) : null}
+        <ChevronRight
+          aria-hidden
+          className={cn("size-3.5 shrink-0 transition-transform duration-200", expanded && "rotate-90")}
+        />
+      </button>
       {expanded ? (
         <Trace>
-          {tools.map((tool) => {
-            const { verb, target } = describeTool(tool, memory);
-            const shown = selected === tool.id;
-
-            return (
-              <div key={tool.id} data-tool={tool.id}>
-                <button
-                  type="button"
-                  aria-expanded={shown}
-                  onClick={() => setSelected(shown ? null : tool.id)}
-                  className={cn(
-                    "flex min-h-7 w-full min-w-0 items-center gap-2 rounded-[6px] px-1.5 py-0.5 text-left transition-colors duration-150",
-                    shown ? "bg-muted" : "hover:bg-accent",
-                  )}
-                >
-                  <ToolStatus status={tool.status} />
-                  <span className="shrink-0 text-[12.5px] font-medium text-foreground">{verb}</span>
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 font-mono text-[11.5px] text-muted-foreground",
-                      shown ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "truncate",
-                    )}
-                    title={target}
-                  >
-                    {target}
-                  </span>
-                  {tool.durationMs !== undefined ? (
-                    <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
-                      {seconds(tool.durationMs)}
-                    </span>
-                  ) : null}
-                </button>
-                {shown ? <Output tool={tool} /> : null}
-              </div>
-            );
-          })}
-        </Trace>
-      ) : null}
-    </div>
-  );
-}
-
-function ThinkingStep({ text, live }: { text: string; live: boolean }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="flex flex-col">
-      <StepHeader
-        working={live}
-        active="Thinking"
-        done="Thought process"
-        open={open}
-        onToggle={() => setOpen(!open)}
-      />
-      {open ? (
-        <Trace>
-          <p className="px-1.5 text-[12.5px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
-            {text || "The provider did not share its thought process."}
-          </p>
+          {steps.map((step) => (
+            <StepLine
+              key={step.id}
+              step={step}
+              memory={memory}
+              shown={selected === step.id}
+              onToggle={() => setPicked(selected === step.id ? null : step.id)}
+            />
+          ))}
         </Trace>
       ) : null}
     </div>
@@ -611,8 +589,9 @@ export function TranscriptItem({
   queuedActions,
   actions,
   forkable = false,
+  ending = false,
 }: {
-  item: Exclude<Item, { kind: "tool" }>;
+  item: Exclude<Item, { kind: "tool" | "thinking" }>;
   live: boolean;
   retry: () => void;
   canRetry: boolean;
@@ -620,22 +599,24 @@ export function TranscriptItem({
   actions?: MessageActions;
   /** The answer waits for no tool result, so a fork can start after it. */
   forkable?: boolean;
+  /** The answer ends its turn. Only such an answer has actions, so a turn reads as one unit. */
+  ending?: boolean;
 }) {
   const agentId = useAgentId();
 
   switch (item.kind) {
     case "boundary":
-      return <BoundaryItem item={item} />;
-    case "user":
       return (
-        <div className="group flex animate-[fade-up_300ms_var(--ease-out-strong)_both] flex-col items-end gap-1 pl-10 sm:pl-24">
-          {entryName(item.origin) ? (
-            <span data-origin={item.origin}>
-              <Badge variant="secondary" className="h-5 px-2 text-[11.5px]">
-                {entryName(item.origin)}
-              </Badge>
-            </span>
-          ) : null}
+        <div className="mt-5 first:mt-0">
+          <BoundaryItem item={item} />
+        </div>
+      );
+    case "user": {
+      const origin = entryName(item.origin);
+      const actionable = !!item.entryId && (!!item.text || !!actions);
+
+      return (
+        <div className="group mt-5 flex animate-[fade-up_300ms_var(--ease-out-strong)_both] flex-col items-end gap-1 pl-10 first:mt-0 sm:pl-24">
           {item.attachments?.length ? (
             <div className={cn("max-w-full", item.queued && "opacity-70")}>
               <Files files={item.attachments} />
@@ -644,7 +625,7 @@ export function TranscriptItem({
           {item.text ? (
             <div
               className={cn(
-                "rounded-xl bg-card px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap text-foreground shadow-card [overflow-wrap:anywhere]",
+                "rounded-[18px] bg-muted px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]",
                 item.queued && "opacity-70",
               )}
             >
@@ -686,23 +667,35 @@ export function TranscriptItem({
                 </>
               ) : null}
             </span>
-          ) : null}
-          {item.entryId && !item.queued && (item.text || actions) ? (
-            <footer className="flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
-              {item.text ? <CopyText text={item.text} label="Copy message" /> : null}
-              {actions ? (
-                <MessageAction
-                  label="Edit in new chat"
-                  disabled={actions.pending}
-                  onClick={() => actions.fork(item.entryId!, true, item.text)}
-                >
-                  <SquarePen size={14} aria-hidden />
-                </MessageAction>
+          ) : actionable || origin || item.at ? (
+            <footer className="flex h-7 items-center gap-0.5 text-[11.5px] text-muted-foreground">
+              {actionable ? (
+                <span className="flex opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100">
+                  {item.text ? <CopyText text={item.text} label="Copy message" /> : null}
+                  {actions ? (
+                    <MessageAction
+                      label="Edit in new chat"
+                      disabled={actions.pending}
+                      onClick={() => actions.fork(item.entryId!, true, item.text)}
+                    >
+                      <SquarePen size={14} aria-hidden />
+                    </MessageAction>
+                  ) : null}
+                </span>
+              ) : null}
+              {origin || item.at ? (
+                <span className="px-1.5">
+                  {origin ? <span data-origin={item.origin}>{origin}</span> : null}
+                  {origin && item.at ? " · " : null}
+                  {item.at ? <time dateTime={new Date(item.at).toISOString()}>{stamp(item.at)}</time> : null}
+                </span>
               ) : null}
             </footer>
           ) : null}
         </div>
       );
+    }
+
     case "task":
       return (
         <header className="flex min-w-0 items-start gap-2 text-[13px] leading-5">
@@ -719,15 +712,13 @@ export function TranscriptItem({
           </h3>
         </header>
       );
-    case "thinking":
-      return <ThinkingStep text={item.text} live={live} />;
     case "assistant":
       if (!live && !item.text.trim()) return null;
 
       return (
-        <article className="group min-w-0">
+        <article className="group relative min-w-0">
           {live ? (
-            <div className="max-w-[640px] text-[13.5px] leading-[1.65] whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]">
+            <div className="max-w-[680px] text-[15px] leading-[1.75] whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]">
               <span>
                 {item.text}
                 <span aria-hidden className="stream-caret is-streaming" />
@@ -736,24 +727,28 @@ export function TranscriptItem({
           ) : (
             <Markdown text={item.text} />
           )}
-          <footer className="mt-1.5 flex h-7 items-center gap-1.5 text-[11.5px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
-            {item.model ? <span className="min-w-0 truncate font-mono">{item.model}</span> : null}
-            {item.usage ? (
-              <span className="shrink-0 tabular-nums">
-                {item.usage.input.toLocaleString()} in · {item.usage.output.toLocaleString()} out
-              </span>
-            ) : null}
-            {live ? null : <CopyText text={item.text} label="Copy answer" />}
-            {actions && item.entryId && forkable && !live ? (
-              <MessageAction
-                label="Fork from here"
-                disabled={actions.pending}
-                onClick={() => actions.fork(item.entryId!, false)}
-              >
-                <GitBranch size={14} aria-hidden />
-              </MessageAction>
-            ) : null}
-          </footer>
+          {ending ? (
+            // With a mouse, the actions show on hover in the 32px gap below the turn, so they
+            // take no space. A touch screen has no hover, so there they always show.
+            <footer className="mt-1 flex h-7 items-center gap-1.5 text-[11.5px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 pointer-fine:absolute pointer-fine:inset-x-0 pointer-fine:top-full">
+              {item.model ? <span className="min-w-0 truncate font-mono">{item.model}</span> : null}
+              {item.usage ? (
+                <span className="shrink-0 tabular-nums">
+                  {item.usage.input.toLocaleString()} in · {item.usage.output.toLocaleString()} out
+                </span>
+              ) : null}
+              {live ? null : <CopyText text={item.text} label="Copy answer" />}
+              {actions && item.entryId && forkable && !live ? (
+                <MessageAction
+                  label="Fork from here"
+                  disabled={actions.pending}
+                  onClick={() => actions.fork(item.entryId!, false)}
+                >
+                  <GitBranch size={14} aria-hidden />
+                </MessageAction>
+              ) : null}
+            </footer>
+          ) : null}
         </article>
       );
     case "error":
@@ -831,8 +826,13 @@ export function Transcript({
   );
 
   function content(block: ContentBlock) {
-    return block.kind === "tools" ? (
-      <ToolStep key={block.key} tools={block.tools} memory={memory} />
+    return block.kind === "steps" ? (
+      <Steps
+        key={block.key}
+        steps={block.steps}
+        memory={memory}
+        thinking={running && block.last === items.length - 1 && block.steps.at(-1)?.kind === "thinking"}
+      />
     ) : (
       <TranscriptItem
         key={block.item.id}
@@ -843,6 +843,7 @@ export function Transcript({
         queuedActions={queuedActions}
         actions={messageActions}
         forkable={!!block.item.entryId && !withTools.has(block.item.entryId)}
+        ending={["user", "task", "boundary", undefined].includes(items[block.index + 1]?.kind)}
       />
     );
   }
@@ -852,12 +853,12 @@ export function Transcript({
       <section
         key={block.item.id}
         aria-label={`Background result: ${block.item.title}`}
-        className="flex min-w-0 flex-col gap-2"
+        className="mt-5 flex min-w-0 flex-col gap-3 first:mt-0"
       >
         <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />
         {/* The main agent answers the user here; indenting it made the reply read as background output. */}
         {block.blocks.length ? (
-          <div className="flex min-w-0 flex-col gap-4">{block.blocks.map(content)}</div>
+          <div className="flex min-w-0 flex-col gap-3">{block.blocks.map(content)}</div>
         ) : null}
       </section>
     ) : (
@@ -889,9 +890,9 @@ export function RetryNotice({ retry }: { retry: Retry }) {
 
 export function Markdown({ text }: { text: string }) {
   return (
-    <div className="max-w-[640px] text-[13.5px] leading-[1.65] text-foreground [overflow-wrap:anywhere]">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdown}>
-        {text}
+    <div className="max-w-[680px] text-[15px] leading-[1.75] text-foreground [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkStrong]} components={markdown}>
+        {strongText(text)}
       </ReactMarkdown>
     </div>
   );

@@ -458,7 +458,14 @@ export function Composer({
           )}
         </div>
       </form>
-      <p id={descriptionId} className="mt-2 px-2 text-center text-[11.5px] text-muted-foreground">
+      {/* The sandbox warning is on the blank page. Screen readers hear it with every message. */}
+      <p
+        id={descriptionId}
+        className={cn(
+          "mt-2 px-2 text-center text-[11.5px] text-muted-foreground",
+          !disabledReason && !fix && "sr-only",
+        )}
+      >
         {disabledReason || "Tools run on this computer without a sandbox. Review commands and results."}
         {fix ? <> {fix}</> : null}
       </p>

@@ -159,6 +159,11 @@ entry. Channel input cannot reach a separate Chat session. Old per-peer
 conversations receive no new channel input. Their saved transcript URLs remain readable.
 
 The main chat shows the user's messages and the main agent's answers.
+The thoughts and tool calls between two answers show as one collapsed row. While
+a tool runs, the row shows its command or path. The row opens by itself when a
+call fails. A channel message shows its channel and time below it. The composer
+does not repeat the sandbox warning; the empty chat shows it, and screen readers
+hear it with the composer.
 The web chat marks a delegation with the work's title. A returned result has
 a named label and a thin line that groups its replies and tool calls. The mark
 shows where the report belongs; it does not confirm that the work reached its goal.

@@ -4,7 +4,7 @@ import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } fr
 import { expect, test } from "vite-plus/test";
 import type { Item, ToolItem } from "../../api/generated/types.gen";
 import { blocks } from "../../lib/tools";
-import { splitAnswer, ToolStep, Transcript } from "./transcript";
+import { Markdown, splitAnswer, Steps, Transcript } from "./transcript";
 
 const tool = (id: string, status: ToolItem["status"], output: string): ToolItem => ({
   kind: "tool",
@@ -16,8 +16,17 @@ const tool = (id: string, status: ToolItem["status"], output: string): ToolItem 
   durationMs: 1200,
 });
 
-test("consecutive tool calls make one step", async () => {
-  const first = [tool("t1", "done", "one"), tool("t2", "done", "two")];
+const ids = (items: Item[]) =>
+  blocks(items).map((b) =>
+    b.kind === "steps" ? b.steps.map((t) => t.id) : b.kind === "item" ? b.item.id : b.kind,
+  );
+
+test("thoughts and tool calls between two answers make one collapsed row", async () => {
+  const first = [
+    { kind: "thinking", id: "k1", text: "Look at the files\nthen decide" } as const,
+    tool("t1", "done", "one"),
+    tool("t2", "done", "two"),
+  ];
 
   const items: Item[] = [
     { kind: "user", id: "u", text: "hi" },
@@ -26,23 +35,41 @@ test("consecutive tool calls make one step", async () => {
     tool("t3", "done", "three"),
   ];
 
-  expect(blocks(items).map((b) => (b.kind === "tools" ? b.tools.map((t) => t.id) : b.item.id))).toEqual([
-    "u",
-    ["t1", "t2"],
-    "a",
-    ["t3"],
-  ]);
+  expect(ids(items)).toEqual(["u", ["k1", "t1", "t2"], "a", ["t3"]]);
 
-  // A finished step is closed. Its header counts the calls.
-  const html = await render(createElement(ToolStep, { tools: first }));
-  expect(html).toContain("Ran 2 tools");
+  // A finished row is closed. Its header names the thought and counts the calls.
+  const html = await render(createElement(Steps, { steps: first }));
+  expect(html).toContain("Thought process · Ran 2 tools");
   expect(html).toContain('aria-expanded="false"');
   expect(html).not.toContain("printf one");
+  expect(html).not.toContain("Look at the files");
+
+  // A row that runs stays closed and shows the command that runs now.
+  const running = await render(createElement(Steps, { steps: [first[0], tool("t4", "running", "now")] }));
+  expect(running).toContain("Running bash");
+  expect(running).toContain("printf now");
+  expect(running).toContain('aria-expanded="false"');
+
+  const thinking = await render(createElement(Steps, { steps: [first[0]], thinking: true }));
+  expect(thinking).toContain(">Thinking<");
+});
+
+test("a dispatch to the background stays a row of its own", () => {
+  const dispatch: ToolItem = { ...tool("d1", "done", ""), name: "spawn_task", args: { title: "Logs" } };
+
+  expect(
+    ids([
+      { kind: "thinking", id: "k1", text: "" },
+      dispatch,
+      tool("t1", "done", "one"),
+      { kind: "thinking", id: "k2", text: "" },
+    ]),
+  ).toEqual([["k1"], ["d1"], ["t1", "k2"]]);
 });
 
 test("user sees the failed call of a step, with its command, time and output", async () => {
   const html = await render(
-    createElement(ToolStep, { tools: [tool("t1", "done", "one"), tool("t2", "error", "boom")] }),
+    createElement(Steps, { steps: [tool("t1", "done", "one"), tool("t2", "error", "boom")] }),
   );
 
   expect(html).toContain("Ran 2 tools · 1 failed");
@@ -76,7 +103,7 @@ test("user sees which background work returned after a topic change", async () =
     item: { title: "检查日志写入" },
     blocks: [
       { kind: "item", index: 5, item: { id: "a3" } },
-      { kind: "tools", tools: [{ id: "t1" }] },
+      { kind: "steps", steps: [{ id: "t1" }] },
       { kind: "item", index: 7, item: { id: "a4" } },
     ],
   });
@@ -118,7 +145,7 @@ test("user sees a delegation by its name without internal arguments", async () =
   };
 
   // When the call is shown, then the user sees the work name and dispatch outcome.
-  const html = await render(createElement(ToolStep, { tools: [dispatch] }));
+  const html = await render(createElement(Steps, { steps: [dispatch] }));
   expect(html).toContain("Sent to background");
   expect(html).toContain("检查日志写入");
   expect(html).toContain('href="/a/default/tasks/internal-id"');
@@ -127,7 +154,7 @@ test("user sees a delegation by its name without internal arguments", async () =
 
   // A failed dispatch still exposes its cause through the existing tool trace.
   const failed = await render(
-    createElement(ToolStep, { tools: [{ ...dispatch, status: "error", output: "No capacity" }] }),
+    createElement(Steps, { steps: [{ ...dispatch, status: "error", output: "No capacity" }] }),
   );
 
   expect(failed).toContain("No capacity");
@@ -157,7 +184,7 @@ test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", asyn
 test("memory calls read as memory use", async () => {
   const memory = "/data/memory";
   const read: ToolItem = { ...tool("t1", "done", ""), name: "read", args: { path: `${memory}/MEMORY.md` } };
-  const html = await render(createElement(ToolStep, { tools: [read], memory }));
+  const html = await render(createElement(Steps, { steps: [read], memory }));
 
   expect(html).toContain("Read memory");
 });
@@ -220,10 +247,11 @@ test("user sees message actions only where a fork can start", async () => {
     }),
   );
 
-  // The answer that called a tool cannot start a fork; the queued message has no entry yet.
+  // Only the answer that ends the turn has actions. The answer that called a tool cannot start
+  // a fork; the queued message has no entry yet.
   expect(html.match(/aria-label="Fork from here"/g)).toHaveLength(1);
   expect(html.match(/aria-label="Edit in new chat"/g)).toHaveLength(1);
-  expect(html.match(/aria-label="Copy answer"/g)).toHaveLength(2);
+  expect(html.match(/aria-label="Copy answer"/g)).toHaveLength(1);
   expect(html.match(/aria-label="Copy message"/g)).toHaveLength(1);
 
   // A streaming answer has no actions.
@@ -265,4 +293,47 @@ test("user sees an ask_user answer as the muted question above the answer", asyn
   expect(html).toContain(">Which branch?</span>");
   expect(html).toContain("Use main");
   expect(html).not.toContain("Answer to:");
+});
+
+test("user sees bold text next to CJK punctuation as bold", async () => {
+  // Given forms that CommonMark leaves as text, and forms it parses.
+  const html = await render(
+    createElement(Markdown, {
+      text: [
+        "**限制：**这篇混合",
+        "这是**“引号”**结尾和**ok**",
+        "plain **bold** and `**code**`",
+        "```",
+        "**限制：**这篇",
+        "```",
+      ].join("\n"),
+    }),
+  );
+
+  // Then each pair shows as bold, and code stays as typed.
+  expect(html).toContain(">限制：</strong>这篇混合");
+  expect(html).toContain("这是<strong");
+  expect(html).toContain(">“引号”</strong>结尾和<strong");
+  expect(html).toContain(">ok</strong>");
+  expect(html).toContain(">bold</strong>");
+  expect(html).toContain("**code**</code>");
+  expect(html).toContain(">**限制：**这篇\n</code>");
+  expect(html).not.toContain("\uE000");
+});
+
+test("user sees where and when a message came in below it", async () => {
+  const at = new Date();
+  at.setHours(8, 30, 0, 0);
+
+  const html = await render(
+    createElement(Transcript, {
+      items: [{ kind: "user", id: "u", origin: "telegram:7", at: at.getTime(), text: "hello" }],
+      running: false,
+      retry: () => {},
+      canRetry: false,
+    }),
+  );
+
+  expect(html).toContain('data-origin="telegram:7">Telegram</span>');
+  expect(html).toContain(">08:30</time>");
 });
