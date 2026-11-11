@@ -2,6 +2,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json/v2"
@@ -290,6 +291,12 @@ func chatView(c chat.Chat) api.Chat {
 	if c.ParentID != 0 {
 		out.ParentId = &c.ParentID
 	}
+	if c.AgentID != "" {
+		out.AgentId, out.AgentName = &c.AgentID, &c.AgentName
+	}
+	if c.ParentAgentID != "" {
+		out.ParentAgentId, out.ParentAgentName = &c.ParentAgentID, &c.ParentAgentName
+	}
 	if o := c.ForkedFrom; o != nil {
 		out.ForkedFrom = &api.ChatOrigin{Id: o.ID, Title: o.Title, Main: o.Main}
 	}
@@ -336,12 +343,14 @@ func (h *handler) listChats(ctx context.Context, agentID string) (api.ListChats2
 		if !c.Busy {
 			continue
 		}
-		full, err := h.Chats.Get(ctx, agentID, c.ID)
+		// A child in another bot belongs to that bot.
+		owner := cmp.Or(c.AgentID, agentID)
+		full, err := h.Chats.Get(ctx, owner, c.ID)
 		if err != nil {
 			return api.ListChats200JSONResponse{}, err
 		}
 		if full.ExecutionID > 0 {
-			refOf[i] = engine.Ref{AgentID: agentID, ID: full.ExecutionID}
+			refOf[i] = engine.Ref{AgentID: owner, ID: full.ExecutionID}
 			refs = append(refs, refOf[i])
 		}
 	}

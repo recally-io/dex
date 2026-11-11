@@ -408,6 +408,83 @@ func TestUserStopWithdrawsInputThatAnotherBotAdmits(t *testing.T) {
 	t.Logf("the shell started in %d of %d rounds", started, len(delays))
 }
 
+// crossBotChat is a session in the list of the web API. The bot fields are set only when the session
+// or its parent belongs to another bot than the one in the path.
+type crossBotChat struct {
+	ID              int64  `json:"id"`
+	ParentID        *int64 `json:"parentId"`
+	AgentID         string `json:"agentId"`
+	AgentName       string `json:"agentName"`
+	ParentAgentID   string `json:"parentAgentId"`
+	ParentAgentName string `json:"parentAgentName"`
+}
+
+func (s *bots) webList(agent string) map[int64]crossBotChat {
+	s.t.Helper()
+	var list struct {
+		Chats []crossBotChat `json:"chats"`
+	}
+	s.d.must(s.t, http.MethodGet, "/api/agents/"+agent+"/chats", nil, &list)
+	out := map[int64]crossBotChat{}
+	for _, c := range list.Chats {
+		out[c.ID] = c
+	}
+	return out
+}
+
+func TestUserWebSeesAChildInAnotherBotWithItsBots(t *testing.T) {
+	t.Parallel()
+	// Given a parent chat in A with one child in A and one child in B, and an unrelated chat in B.
+	s := startBots(t)
+	parent := s.chat("default")
+	inA := parent.newChild(map[string]any{"title": "Child in A", "message": "hello a", "provider": "faux", "modelId": "echo"})
+	inB := parent.newChild(map[string]any{"bot": "Coder", "title": "Child in B", "message": "hello b", "provider": "faux", "modelId": "echo"})
+	waitResults(t, s.conn, parent.id, 2)
+	other := s.echoChat(s.b.ID, "chat of b")
+	childA, childB := inA.conversation(t), inB.conversation(t)
+	// When the web lists the sessions of A, the child in B shows with its bot, and the child in A does not.
+	listA := s.webList("default")
+	if got := listA[childB]; got.AgentID != s.b.ID || got.AgentName != "Coder" || got.ParentID == nil || *got.ParentID != parent.id || got.ParentAgentID != "" {
+		t.Fatalf("child in B, list of A: %+v", got)
+	}
+	if got, ok := listA[childA]; !ok || got.AgentID != "" || got.ParentAgentID != "" {
+		t.Fatalf("child in A, list of A: %+v", got)
+	}
+	// And the chat of B that has no parent in A stays out of the list of A.
+	if _, ok := listA[other.id]; ok {
+		t.Fatal("a chat of B shows in the list of A")
+	}
+	// And the list of B shows the child in B with the bot of its parent.
+	listB := s.webList(s.b.ID)
+	if got := listB[childB]; got.AgentID != "" || got.ParentAgentID != "default" || got.ParentAgentName != "Dex" {
+		t.Fatalf("child in B, list of B: %+v", got)
+	}
+	if _, ok := listB[childA]; ok {
+		t.Fatal("the child in A shows in the list of B")
+	}
+	// And a single chat read in B names the bot of its parent.
+	var one crossBotChat
+	s.d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/%s/chats/%d", s.b.ID, childB), nil, &one)
+	if one.ParentAgentID != "default" || one.ParentAgentName != "Dex" {
+		t.Fatalf("child in B, chat of B: %+v", one)
+	}
+	// And the link of a result in A opens the child in B: the turn names it with its bot.
+	turn := waitDoneChildTurns(t, s.conn, childB, 1)[0].id
+	var opened crossBotChat
+	s.d.must(t, http.MethodGet, "/api/agents/default/turns/"+turn, nil, &opened)
+	if opened.ID != childB || opened.AgentID != s.b.ID || opened.AgentName != "Coder" {
+		t.Fatalf("turn of the child in B, opened in A: %+v", opened)
+	}
+	// But a turn of a chat in B that is no child of A is not found in A.
+	var unrelated string
+	if err := s.conn.QueryRowContext(t.Context(), `SELECT id FROM submissions WHERE conversation_id = ? AND kind = 'message'`, other.id).Scan(&unrelated); err != nil {
+		t.Fatal(err)
+	}
+	if status, _ := s.d.call(t, http.MethodGet, "/api/agents/default/turns/"+unrelated, nil); status != http.StatusNotFound {
+		t.Fatalf("turn of an unrelated chat in B, opened in A: status %d", status)
+	}
+}
+
 func TestUserRestartInterruptsAChildInAnotherBotOnce(t *testing.T) {
 	t.Parallel()
 	// Given a child in B that records each start of its shell before it waits at a gate.

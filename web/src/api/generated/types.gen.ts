@@ -73,6 +73,22 @@ export type Chat = {
      */
     parentId?: number;
     /**
+     * The bot that owns this session. Only on a child session that belongs to another bot than the one in the request path. The list of the parent shows it.
+     */
+    agentId?: string;
+    /**
+     * The name of the bot in agentId. Present with agentId.
+     */
+    agentName?: string;
+    /**
+     * The bot of the parent session. Only on a child session whose parent belongs to another bot than the one in the request path.
+     */
+    parentAgentId?: string;
+    /**
+     * The name of the bot in parentAgentId. Present with parentAgentId.
+     */
+    parentAgentName?: string;
+    /**
      * The latest engine observation of activity. Only the session list sets it, and only while the session is busy.
      */
     lastActivityAt?: number;

@@ -577,7 +577,8 @@ paths:
         Find the session that holds one input. A result in a parent session and an old
         `/tasks/<id>` link name a turn of a child session by its input ID. A task from before
         child sessions uses its task ID, which is the ID of its first input. Reads inputs of any
-        session of this agent, and returns 404 for another agent's input.
+        session of this agent, and of a child session of this agent's sessions in another bot.
+        That child names its bot in `agentId`. It returns 404 for any other input of another agent.
       responses:
         "200":
           description: The session of the turn.
@@ -1585,6 +1586,22 @@ components:
           type: integer
           format: int64
           description: The session that created this child session. Absent on any other session.
+        agentId:
+          type: string
+          description: >-
+            The bot that owns this session. Only on a child session that belongs to
+            another bot than the one in the request path. The list of the parent shows it.
+        agentName:
+          type: string
+          description: The name of the bot in agentId. Present with agentId.
+        parentAgentId:
+          type: string
+          description: >-
+            The bot of the parent session. Only on a child session whose parent belongs to
+            another bot than the one in the request path.
+        parentAgentName:
+          type: string
+          description: The name of the bot in parentAgentId. Present with parentAgentId.
         lastActivityAt:
           type: integer
           format: int64

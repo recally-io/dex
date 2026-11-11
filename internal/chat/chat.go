@@ -44,6 +44,12 @@ type Chat struct {
 	Writable bool
 	// ParentID is the session that created this child session. It is zero for any other session.
 	ParentID int64
+	// AgentID and AgentName name the bot of the session. Only a child session in another bot than
+	// the bot that was asked for has them: the list of a parent shows it.
+	AgentID, AgentName string
+	// ParentAgentID and ParentAgentName name the bot of the parent, when it is not the bot that was
+	// asked for.
+	ParentAgentID, ParentAgentName string
 	// ExecutionID is zero until native execution creates the conversation.
 	ExecutionID int64
 	// Question is the question that waits for the user, or whose answer waits in the queue.
@@ -439,8 +445,20 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 			Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 			Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, Question: byChat[r.ID],
 		}
+		if r.AgentID != agentID {
+			chats[i].AgentID, chats[i].AgentName = r.AgentID, r.AgentName
+		}
+		chats[i].ParentAgentID, chats[i].ParentAgentName = otherBot(agentID, r.ParentAgentID, r.ParentAgentName)
 	}
 	return chats, nil
+}
+
+// otherBot returns the bot of a parent when it is not the bot that was asked for.
+func otherBot(agentID string, id, name sql.NullString) (string, string) {
+	if !id.Valid || id.String == agentID {
+		return "", ""
+	}
+	return id.String, name.String
 }
 
 // Get returns chat id of agentID, or ErrNotFound.
@@ -456,12 +474,14 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	if err != nil {
 		return Chat{}, err
 	}
-	return Chat{
+	c := Chat{
 		Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 		Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, ExecutionID: r.ExecutionID.Int64, Question: question,
 		ForkedFrom: forkOrigin(r),
-	}, nil
+	}
+	c.ParentAgentID, c.ParentAgentName = otherBot(agentID, r.ParentAgentID, r.ParentAgentName)
+	return c, nil
 }
 
 func forkOrigin(r sqlc.GetChatRow) *Origin {
