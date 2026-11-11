@@ -47,7 +47,7 @@ export function ExtensionsPage() {
         </Button>
       }
     >
-      <div className="px-5 pt-5 sm:px-8">
+      <div className="mb-6">
         <Note tone="warn">
           Environment values stay out of this page, the extensions API, and app logs. The model can read .env
           files or run env. Tool output becomes part of the transcript. Use mode 0600 and keep .env files out
