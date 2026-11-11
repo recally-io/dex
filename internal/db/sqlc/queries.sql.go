@@ -237,7 +237,7 @@ func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error 
 const createFork = `-- name: CreateFork :one
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id
 `
 
 type CreateForkParams struct {
@@ -283,6 +283,7 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 		&i.ArchivedAt,
 		&i.Cwd,
 		&i.ForkedFrom,
+		&i.ParentID,
 	)
 	return i, err
 }
@@ -394,7 +395,7 @@ const ensureConversation = `-- name: EnsureConversation :one
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id
 `
 
 type EnsureConversationParams struct {
@@ -433,6 +434,7 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		&i.ArchivedAt,
 		&i.Cwd,
 		&i.ForkedFrom,
+		&i.ParentID,
 	)
 	return i, err
 }
@@ -451,7 +453,7 @@ VALUES (
     '', ?3
 )
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id
 `
 
 type EnsureEmptyChatParams struct {
@@ -478,6 +480,7 @@ func (q *Queries) EnsureEmptyChat(ctx context.Context, arg EnsureEmptyChatParams
 		&i.ArchivedAt,
 		&i.Cwd,
 		&i.ForkedFrom,
+		&i.ParentID,
 	)
 	return i, err
 }
@@ -696,7 +699,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from FROM conversations WHERE id = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id FROM conversations WHERE id = ?
 `
 
 func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
@@ -716,12 +719,13 @@ func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, 
 		&i.ArchivedAt,
 		&i.Cwd,
 		&i.ForkedFrom,
+		&i.ParentID,
 	)
 	return i, err
 }
 
 const getConversationByKey = `-- name: GetConversationByKey :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from FROM conversations WHERE agent_id = ? AND channel_key = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id FROM conversations WHERE agent_id = ? AND channel_key = ?
 `
 
 type GetConversationByKeyParams struct {
@@ -746,6 +750,7 @@ func (q *Queries) GetConversationByKey(ctx context.Context, arg GetConversationB
 		&i.ArchivedAt,
 		&i.Cwd,
 		&i.ForkedFrom,
+		&i.ParentID,
 	)
 	return i, err
 }
@@ -793,7 +798,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -816,6 +821,7 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.Kind,
 		&i.AdmittedAt,
 		&i.WhenBusy,
+		&i.ParentRequestID,
 	)
 	return i, err
 }
