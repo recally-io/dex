@@ -745,7 +745,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                 }
               }}
             >
-              <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col justify-end gap-6 px-4 py-8 sm:px-8">
+              <div className="mx-auto flex min-h-full w-full max-w-[760px] flex-col justify-end gap-3 px-4 py-8 sm:px-8">
                 {transcript}
               </div>
             </div>
@@ -757,24 +757,27 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                   blank && "flex min-h-0 flex-1 items-center",
                 )}
               >
-                <div className="relative mx-auto w-full max-w-[720px]">
+                <div className="relative mx-auto w-full max-w-[760px]">
                   {blank ? (
                     <div className="mb-4 px-2">
                       <p className="text-[20px] leading-tight font-semibold tracking-[-0.01em] text-foreground">
                         {`What should ${settings.agent.name} do?`}
                       </p>
-                      {!chat.data?.main ? (
-                        <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                          This session has its own context. It does not see the main timeline.
-                        </p>
-                      ) : null}
+                      <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                        {chat.data?.main
+                          ? null
+                          : "This session has its own context. It does not see the main timeline. "}
+                        Tools run on this computer without a sandbox.
+                      </p>
                     </div>
                   ) : null}
                   {jump ? (
                     <Button
-                      size="xs"
+                      size="icon-lg"
                       variant="secondary"
-                      className="absolute -top-10 left-1/2 -translate-x-1/2 gap-1"
+                      aria-label="Jump to latest"
+                      title="Jump to latest"
+                      className="absolute -top-12 right-0 rounded-full shadow-card"
                       onClick={() => {
                         pinned.current = true;
                         setJump(false);
@@ -784,8 +787,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                         });
                       }}
                     >
-                      <ArrowDown className="size-3.5" />
-                      Jump to latest
+                      <ArrowDown className="size-4" />
                     </Button>
                   ) : null}
                   {composer}
