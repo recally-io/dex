@@ -51,20 +51,10 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 	if err != nil {
 		return 0, err
 	}
+	// The result of the input that started the run covers the inputs that joined it.
 	outcome, send := resultOutcome(event)
-	if !send {
+	if !send || event.Covered {
 		return 0, nil
-	}
-	if event.Starter != "" {
-		// The run of the starter has one answer for both inputs. The result of the starter covers this
-		// input when the starter is a parent turn too.
-		shared, err := q.IsParentTurn(ctx, event.Starter)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return 0, err
-		}
-		if shared {
-			return 0, nil
-		}
 	}
 	body := sessionResult{Session: strconv.FormatInt(link.ChildID, 10), Title: link.Title, Turn: turn, Outcome: outcome, Reason: event.Reason, Withdrawn: withdrawn}
 	if outcome == "done" {

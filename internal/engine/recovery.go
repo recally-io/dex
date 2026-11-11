@@ -26,11 +26,12 @@ const (
 )
 
 // Recovered is the committed native state of one input. Outcome is set only when State is
-// RecoverySettled. A settled outcome never has a Starter, so a steered input that settled before the
-// restart reports on its own.
+// RecoverySettled. Covered is set for a placed or settled input that an earlier input of its run
+// started.
 type Recovered struct {
 	State   RecoveryState
 	Outcome Outcome
+	Covered bool
 }
 
 // RecoveryOutcome reads a committed input before any Harness can resume. It never admits work.
@@ -67,15 +68,20 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 	if err != nil {
 		return Recovered{}, err
 	}
-	switch {
-	case record == nil:
+	if record == nil {
 		return Recovered{State: RecoveryAbsent}, nil
-	case record.Status == durable.SubmissionQueued:
-		return Recovered{State: RecoveryQueued}, nil
-	case record.Status == durable.SubmissionPlaced:
-		return Recovered{State: RecoveryPlaced}, nil
 	}
-	outcome := Outcome{Status: string(record.Status)}
+	if record.Status == durable.SubmissionQueued {
+		return Recovered{State: RecoveryQueued}, nil
+	}
+	isCovered, err := covered(readCtx, store, record)
+	if err != nil {
+		return Recovered{}, err
+	}
+	if record.Status == durable.SubmissionPlaced {
+		return Recovered{State: RecoveryPlaced, Covered: isCovered}, nil
+	}
+	outcome := Outcome{Status: string(record.Status), Covered: isCovered}
 	if record.Reason != nil {
 		outcome.Reason = *record.Reason
 	}

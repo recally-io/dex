@@ -190,17 +190,6 @@ func (q *Queries) GetTurnParent(ctx context.Context, id string) (GetTurnParentRo
 	return i, err
 }
 
-const isParentTurn = `-- name: IsParentTurn :one
-SELECT parent_request_id IS NOT NULL FROM submissions WHERE id = ?
-`
-
-func (q *Queries) IsParentTurn(ctx context.Context, id string) (bool, error) {
-	row := q.db.QueryRowContext(ctx, isParentTurn, id)
-	var column_1 bool
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const latestTurn = `-- name: LatestTurn :one
 SELECT s.id, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s
@@ -233,27 +222,27 @@ func (q *Queries) LatestTurn(ctx context.Context, conversationID int64) (LatestT
 	return i, err
 }
 
-const listAdmittedPending = `-- name: ListAdmittedPending :many
+const listChildPending = `-- name: ListChildPending :many
 SELECT id, parent_request_id IS NOT NULL AS from_parent
 FROM submissions
-WHERE conversation_id = ? AND status = 'pending' AND admitted_at IS NOT NULL
+WHERE conversation_id = ? AND status = 'pending'
 ORDER BY rowid
 `
 
-type ListAdmittedPendingRow struct {
+type ListChildPendingRow struct {
 	ID         string `json:"id"`
 	FromParent bool   `json:"from_parent"`
 }
 
-func (q *Queries) ListAdmittedPending(ctx context.Context, conversationID int64) ([]ListAdmittedPendingRow, error) {
-	rows, err := q.db.QueryContext(ctx, listAdmittedPending, conversationID)
+func (q *Queries) ListChildPending(ctx context.Context, conversationID int64) ([]ListChildPendingRow, error) {
+	rows, err := q.db.QueryContext(ctx, listChildPending, conversationID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListAdmittedPendingRow{}
+	items := []ListChildPendingRow{}
 	for rows.Next() {
-		var i ListAdmittedPendingRow
+		var i ListChildPendingRow
 		if err := rows.Scan(&i.ID, &i.FromParent); err != nil {
 			return nil, err
 		}
@@ -272,7 +261,7 @@ const listRecoveryChildren = `-- name: ListRecoveryChildren :many
 SELECT DISTINCT c.id, c.agent_id, c.execution_id
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL AND s.admitted_at IS NOT NULL
+WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL
     AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL
 ORDER BY c.id
 `
@@ -283,8 +272,8 @@ type ListRecoveryChildrenRow struct {
 	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
-// The child sessions with a parent turn that crossed the native admission boundary and has no
-// outcome. Recovery decides what became of each of them.
+// The child sessions with a pending parent turn. Recovery reads the native state of each pending
+// input, because the admission receipt and the native admission are not one transaction.
 func (q *Queries) ListRecoveryChildren(ctx context.Context) ([]ListRecoveryChildrenRow, error) {
 	rows, err := q.db.QueryContext(ctx, listRecoveryChildren)
 	if err != nil {

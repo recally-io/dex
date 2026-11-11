@@ -34,6 +34,7 @@ type agentOpening struct {
 
 type agentResources struct {
 	harness harness.Harness
+	store   durable.Storage
 	loaded  *loadedExtensions
 }
 
@@ -335,7 +336,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err != nil {
 		return nil, err
 	}
-	return &agentResources{harness: h, loaded: loaded}, nil
+	return &agentResources{harness: h, store: store, loaded: loaded}, nil
 }
 
 // Withdrawal and abort marks commit before the paused Harness can run saved work.

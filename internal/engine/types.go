@@ -70,10 +70,9 @@ type InputMetadata struct {
 }
 type Outcome struct {
 	Status, Answer, Reason string
-	// Starter is the request ID of the input that started the run when this input was steered into
-	// that run and both inputs share one answer. It is empty otherwise. A run that failed gives no
-	// grouping, so each of its inputs reports on its own.
-	Starter string
+	// Covered is true when an earlier input of the same run started it, so the outcome of that
+	// input speaks for this one. It is set only for inputs of child sessions.
+	Covered bool
 }
 type Config struct {
 	DataDir, Home string

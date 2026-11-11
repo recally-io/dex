@@ -92,21 +92,18 @@ JOIN submissions source ON source.id = turn.parent_request_id
 WHERE turn.id = @turn_id AND c.parent_id IS NOT NULL
 ON CONFLICT DO NOTHING;
 
--- name: IsParentTurn :one
-SELECT parent_request_id IS NOT NULL FROM submissions WHERE id = ?;
-
 -- name: ListRecoveryChildren :many
--- The child sessions with a parent turn that crossed the native admission boundary and has no
--- outcome. Recovery decides what became of each of them.
+-- The child sessions with a pending parent turn. Recovery reads the native state of each pending
+-- input, because the admission receipt and the native admission are not one transaction.
 SELECT DISTINCT c.id, c.agent_id, c.execution_id
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL AND s.admitted_at IS NOT NULL
+WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL
     AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL
 ORDER BY c.id;
 
--- name: ListAdmittedPending :many
+-- name: ListChildPending :many
 SELECT id, parent_request_id IS NOT NULL AS from_parent
 FROM submissions
-WHERE conversation_id = ? AND status = 'pending' AND admitted_at IS NOT NULL
+WHERE conversation_id = ? AND status = 'pending'
 ORDER BY rowid;

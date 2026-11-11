@@ -32,48 +32,47 @@ func (s *Service) RecoverSessions(ctx context.Context) error {
 }
 
 type recoveredInput struct {
-	id         string
-	fromParent bool
-	outcome    engine.Outcome
+	id      string
+	outcome engine.Outcome
 }
 
-// recoverChild settles the admitted inputs of one child from the native state of each. When a run
-// was cut off, abort_pending makes Recover withdraw the inputs that waited behind it.
+// recoverChild settles the pending inputs of one child from the native state of each. Native
+// admission and its receipt are two commits, so the receipt cannot tell which inputs entered a run.
+// A run that a restart cut off is aborted. Every input that waited behind it is withdrawn, whether
+// it sits in the native queue or only in the control database, and the result of the interrupted
+// turn counts them.
 func (s *Service) recoverChild(ctx context.Context, c sqlc.ListRecoveryChildrenRow) error {
 	ref := engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}
-	pending, err := s.q.ListAdmittedPending(ctx, c.ID)
+	pending, err := s.q.ListChildPending(ctx, c.ID)
 	if err != nil {
 		return err
 	}
-	var settled, queued []recoveredInput
-	interrupted := 0
+	var settled, running, waiting []recoveredInput
+	interrupted := false
 	for _, p := range pending {
 		recovered, err := s.engine.RecoveryOutcome(ctx, ref, p.ID)
 		if err != nil {
 			return err
 		}
-		in := recoveredInput{id: p.ID, fromParent: p.FromParent}
+		in := recoveredInput{id: p.ID}
 		switch recovered.State {
 		case engine.RecoverySettled:
 			in.outcome = recovered.Outcome
+			settled = append(settled, in)
 		case engine.RecoveryPlaced:
-			in.outcome = engine.Outcome{Status: "unanswered", Reason: "interrupted"}
-			interrupted++
-		case engine.RecoveryQueued:
-			// Recover withdraws it only when a cut-off run makes it abort. Decided below.
+			in.outcome = engine.Outcome{Status: "unanswered", Reason: "interrupted", Covered: recovered.Covered}
+			// A run of user input resumes by itself. Only a parent turn in the run interrupts it.
+			interrupted = interrupted || p.FromParent
+			running = append(running, in)
+		case engine.RecoveryQueued, engine.RecoveryAbsent:
 			in.outcome = engine.Outcome{Status: "unanswered", Reason: "withdrawn"}
-			queued = append(queued, in)
-			continue
-		case engine.RecoveryAbsent:
-			// Native execution never saw the input. Admission sends it again.
-			continue
+			waiting = append(waiting, in)
 		}
-		settled = append(settled, in)
 	}
 	withdrawn := 0
-	if interrupted > 0 {
-		settled = append(settled, queued...)
-		withdrawn = len(queued)
+	if interrupted {
+		settled = append(append(settled, running...), waiting...)
+		withdrawn = len(waiting)
 	}
 	if len(settled) == 0 {
 		return nil
@@ -100,7 +99,7 @@ func (s *Service) recoverChild(ctx context.Context, c sqlc.ListRecoveryChildrenR
 			parents = append(parents, parent)
 		}
 	}
-	if interrupted > 0 {
+	if interrupted {
 		if err := q.RequestExecutionAbort(ctx, c.ID); err != nil {
 			return err
 		}

@@ -63,7 +63,6 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		return nil, err
 	}
 	var native durable.Submission
-	var starter durable.SubmissionId
 	if record := existing; record != nil {
 		h, err := a.harness(ctx, ref.AgentID)
 		if err != nil {
@@ -113,13 +112,6 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			return nil, err
 		}
 		draft := durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"))), WhenBusy: durable.WhenBusy(cmp.Or(input.WhenBusy, string(durable.WhenBusyFollowUp))), InputEntry: &durable.InputEntry{Kind: kind, Data: data}}
-		if input.WhenBusy == string(durable.WhenBusySteer) {
-			// A steered input joins the run that is live now. Remember who started it, so the
-			// settlement can tell that the run's answer covers this input.
-			if starter, err = a.runStarter(ctx, conversation); err != nil {
-				return nil, err
-			}
-		}
 		native, err = conversation.Submit(ctx, draft)
 		if err != nil {
 			if _, ok := errors.AsType[*durable.ConversationBusy](err); ok {
@@ -128,55 +120,10 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			return nil, err
 		}
 	}
-	return a.settleSubmission(ctx, ref, conversation, input, native, starter), nil
+	return a.settleSubmission(ctx, ref, conversation, input, native), nil
 }
 
-// runStarter returns the first input of the live run, or zero when the conversation is idle or the
-// run has no input.
-func (a *Agents) runStarter(ctx context.Context, conversation harness.Conversation) (durable.SubmissionId, error) {
-	var starter durable.SubmissionId
-	_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
-		live, err := durable.TxDoc[harness.LiveState](tx, harness.LiveDoc, conversation.Id())
-		if err != nil {
-			return nil, err
-		}
-		state, err := durable.DecodeDoc[harness.LiveState](live.Snapshot())
-		if err != nil {
-			return nil, err
-		}
-		if state.Run != nil && len(state.Run.Inputs) > 0 {
-			starter = state.Run.Inputs[0]
-		}
-		return nil, nil
-	})
-	return starter, err
-}
-
-// sharedStarter returns the request ID of the starter of the run when the done submission shares
-// its answer with that starter. Otherwise it returns an empty string.
-func (a *Agents) sharedStarter(ctx context.Context, ref Ref, mine durable.SettledSubmissionRecord, starter durable.SubmissionId) (string, error) {
-	if starter == 0 || starter == mine.Id || mine.Answer == nil {
-		return "", nil
-	}
-	h, err := a.harness(ctx, ref.AgentID)
-	if err != nil {
-		return "", err
-	}
-	native, err := h.Submission(ctx, starter)
-	if err != nil || native == nil {
-		return "", err
-	}
-	record, err := native.Status(ctx)
-	if err != nil {
-		return "", err
-	}
-	if record.Status != durable.SubmissionDone || record.Answer == nil || *record.Answer != *mine.Answer || record.RequestId == nil {
-		return "", nil
-	}
-	return *record.RequestId, nil
-}
-
-func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation harness.Conversation, input Input, native durable.Submission, starter durable.SubmissionId) *Submission {
+func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation harness.Conversation, input Input, native durable.Submission) *Submission {
 	var err error
 	result := &Submission{ID: int64(native.Id()), done: make(chan struct{})}
 	var stopActivity func()
@@ -201,6 +148,9 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 			result.err = err
 		} else {
 			result.outcome = Outcome{Status: string(settled.Status)}
+			if input.Child {
+				result.outcome.Covered, result.err = a.covered(settlementCtx, ref, settled)
+			}
 			if settled.Reason != nil {
 				result.outcome.Reason = *settled.Reason
 			}
@@ -215,9 +165,6 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 					result.err = err
 				} else if entry != nil {
 					result.outcome.Answer = answerText(entry.Model)
-				}
-				if result.err == nil {
-					result.outcome.Starter, result.err = a.sharedStarter(settlementCtx, ref, settled, starter)
 				}
 			}
 		}
