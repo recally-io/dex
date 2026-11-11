@@ -120,13 +120,17 @@ func (s *Service) botArchived(agentID string) {
 	}
 }
 
-// ToolBotCaller checks the source of a bot tool call. Reading needs Main, a Chat, or an automation
-// session. Changing a bot also needs a person's input in the conversation: a task result, an
+// ToolBotCaller checks the source of a bot tool call. A child session has a Chat key, so the stored
+// parent decides, not the key: a conversation with a parent never uses a bot tool. Reading needs
+// Main, a Chat, or an automation session. Changing a bot also needs a person's input in the conversation: a task result, an
 // automation run, or a dream cannot change a bot, as with routine tools.
 func (s *Service) ToolBotCaller(ctx context.Context, r engine.TaskContext, change bool) error {
 	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
 		return err
+	}
+	if conv.ParentID.Valid {
+		return fmt.Errorf("%w: a child session cannot use bot tools", ErrBotCaller)
 	}
 	if !change {
 		if !Writable(conv.ChannelKey) && !strings.HasPrefix(conv.ChannelKey, "automation:") {

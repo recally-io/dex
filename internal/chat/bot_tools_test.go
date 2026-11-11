@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -297,5 +298,38 @@ func TestBotToolCallerNeedsAPersonInMainOrAChat(t *testing.T) {
 				t.Fatalf("err=%v want allowed=%v", err, c.want)
 			}
 		})
+	}
+}
+
+// A child session has a Chat key (ADR 0015), so only its stored parent tells it from a Chat.
+func TestBotToolCallerRefusesAChildSessionWithAChatKey(t *testing.T) {
+	r := startNative(t, "echo")
+	_, source := taskParent(t, r)
+	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Child", Message: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := strconv.ParseInt(child.ID, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := r.q.GetConversation(t.Context(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(row.ChannelKey, ChatPrefix) || !row.ParentID.Valid {
+		t.Fatalf("child: key %q, parent %v", row.ChannelKey, row.ParentID)
+	}
+	if _, err := r.conn.ExecContext(t.Context(), "UPDATE conversations SET execution_id = 7000 WHERE id = ?", row.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "child-followup", ConversationID: row.ID, Content: "change a bot", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []bool{false, true} {
+		err := r.service.ToolBotCaller(t.Context(), engine.TaskContext{AgentID: "bot", ConversationID: 7000, SourceRequestID: "child-followup"}, change)
+		if !errors.Is(err, ErrBotCaller) {
+			t.Errorf("change=%v: err=%v, want ErrBotCaller", change, err)
+		}
 	}
 }
