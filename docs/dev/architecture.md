@@ -686,11 +686,13 @@ ordinary messages.
 A child is writable on the web at any time. A user message goes to the child
 like to any Chat and sends no result. Web Stop covers the selected session and
 its children that have pending input. Channel `/stop` calls main Stop with the
-same scope. Chat, automation and other agents stay outside it. `/clear` does not
+same scope. Other Chats, automations and other agents stay outside it. The
+scope includes children in other bots. `/clear` does not
 cancel children.
 Submission, Stop, Clear and reconciliation share a delivery lock per agent.
 Stop withdraws pending input of the session and of its children in one
-transaction, then requests cancellation through the engine for each execution.
+transaction, then requests cancellation through the engine for each execution
+of its own bot. A child in another bot waits for the reconciliation of its bot.
 Pending cancellation intent stays in business storage until native abort
 succeeds. Reconciliation completes cancellation before it admits later input.
 Both cold recovery and ordinary Stop atomically withdraw queued input and save

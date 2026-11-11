@@ -290,16 +290,13 @@ func TestUserParentsStopChildrenInEachOthersBotsWithoutDeadlock(t *testing.T) {
 	s := startBots(t)
 	parents := []botChat{s.chat("default"), s.chat(s.b.ID)}
 	targets := []string{s.b.ID, "default"}
-	// When each parent creates two short children in the other bot at the same time,
-	var wg sync.WaitGroup
-	for i, parent := range parents {
-		wg.Go(func() {
-			for n := range 2 {
-				parent.newChild(map[string]any{"bot": targets[i], "title": fmt.Sprintf("Short %d", n), "message": "sleep 0.2; echo short", "provider": "faux", "modelId": "bash"})
-			}
-		})
+	// When each parent creates two short children in the other bot. They run while the next
+	// child is created, so settlements in one bot overlap deliveries in the other.
+	for n := range 2 {
+		for i, parent := range parents {
+			parent.newChild(map[string]any{"bot": targets[i], "title": fmt.Sprintf("Short %d", n), "message": "sleep 0.2; echo short", "provider": "faux", "modelId": "bash"})
+		}
 	}
-	wg.Wait()
 	// Then every result is delivered to the conversation of its parent, and the parents process it.
 	for _, parent := range parents {
 		rows := waitResults(t, s.conn, parent.id, 2)
@@ -311,19 +308,22 @@ func TestUserParentsStopChildrenInEachOthersBotsWithoutDeadlock(t *testing.T) {
 	}
 	// And when each parent has a gated child in the other bot and both parents are stopped at once,
 	for i, parent := range parents {
+		name := fmt.Sprintf("gate-%d", i)
+		parent.newChild(map[string]any{"bot": targets[i], "title": name, "message": taskGate(t, s.dir, name), "provider": "faux", "modelId": "bash"})
+		waitTaskFile(t, filepath.Join(s.dir, name+".pid"))
+	}
+	var wg sync.WaitGroup
+	statuses := make([]int, len(parents))
+	for i, parent := range parents {
 		wg.Go(func() {
-			name := fmt.Sprintf("gate-%d", i)
-			parent.newChild(map[string]any{"bot": targets[i], "title": name, "message": taskGate(t, s.dir, name), "provider": "faux", "modelId": "bash"})
-			waitTaskFile(t, filepath.Join(s.dir, name+".pid"))
+			// Goroutines must not call t.Fatal: the status is checked after Wait.
+			statuses[i], _ = s.d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/abort", parent.agent, parent.id), nil)
 		})
 	}
 	wg.Wait()
-	for _, parent := range parents {
-		wg.Go(func() {
-			s.d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/abort", parent.agent, parent.id), nil, nil)
-		})
+	if statuses[0] != http.StatusOK || statuses[1] != http.StatusOK {
+		t.Fatalf("abort statuses: %v", statuses)
 	}
-	wg.Wait()
 	// Then every shell exits, every input ends, and no result follows a stop.
 	for i := range parents {
 		waitTaskPIDGone(t, filepath.Join(s.dir, fmt.Sprintf("gate-%d.pid", i)))
