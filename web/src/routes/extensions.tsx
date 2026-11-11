@@ -1,50 +1,32 @@
 import { useAgentId } from "../lib/agent-scope";
 import type { ReactNode } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { Extensions, McpServer, Skill } from "../api/generated/types.gen";
-import {
-  getExtensionsOptions,
-  getExtensionsQueryKey,
-  reloadExtensionsMutation,
-} from "../api/generated/@tanstack/react-query.gen";
-import { errorText, queryClient } from "../lib/queries";
-import { useApp } from "../lib/app-state";
-import { Failure, Loading, Spinner } from "../components/feedback";
+import { getExtensionsOptions } from "../api/generated/@tanstack/react-query.gen";
+import { Failure, Loading } from "../components/feedback";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
-import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { BotSettingsSwitcher } from "../components/settings-switcher";
 import { EnvKeys } from "../components/env-keys";
 
 export function ExtensionsPage() {
   const agentId = useAgentId();
-  const { notify } = useApp();
-  const query = useQuery(getExtensionsOptions({ path: { agentId } }));
 
-  const reload = useMutation({
-    ...reloadExtensionsMutation(),
-    onSuccess: (data) => {
-      queryClient.setQueryData(getExtensionsQueryKey({ path: { agentId } }), data);
-      notify("Reloaded this bot.");
-    },
-    onError: (error) => notify(errorText(error)),
+  const query = useQuery({
+    ...getExtensionsOptions({ path: { agentId } }),
+    // An invalid configuration does not reload until its files change, so it does not poll.
+    refetchInterval: (q) => (q.state.data?.reloadPending && !q.state.data.errors.length ? 3000 : false),
   });
 
   return (
     <FramedPage
       title="Tools"
       toolbar={<BotSettingsSwitcher segment="extensions" />}
-      description="Skills, MCP servers and environment keys of this bot. dex reads home, then dex, then the bot. A narrower level replaces an entry with the same name."
+      description="Skills, MCP servers and environment keys of this bot. Tools start from your login shell environment. dex reads home, then dex, then the bot. A narrower level replaces an entry with the same name. Changes apply automatically when all bots are idle."
       actions={
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={reload.isPending}
-          onClick={() => reload.mutate({ path: { agentId } })}
-        >
-          {reload.isPending ? <Spinner /> : null}
-          Reload tools
-        </Button>
+        query.data?.reloadPending && !query.data.errors.length ? (
+          <Badge variant="secondary">Change waiting for idle bots</Badge>
+        ) : null
       }
     >
       <div className="mb-6">
@@ -142,7 +124,7 @@ function Catalog({ extensions: e, agentId }: { extensions: Extensions; agentId: 
       <Section
         n={5}
         title="MCP servers"
-        caption="Reload to apply mcp.json changes. Tools are available through tool_search."
+        caption="mcp.json changes apply automatically. Tools are available through tool_search."
       >
         <List
           items={e.servers.map((server) => (

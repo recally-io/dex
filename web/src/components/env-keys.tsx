@@ -2,11 +2,9 @@ import { Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Extensions } from "../api/generated/types.gen";
-import { reloadExtensions } from "../api/generated/sdk.gen";
 import {
   getExtensionsOptions,
   getExtensionsQueryKey,
-  listAgentsOptions,
   putExtensionEnvMutation,
   deleteExtensionEnvMutation,
 } from "../api/generated/@tanstack/react-query.gen";
@@ -33,11 +31,16 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
   // The dex file does not depend on the bot, so any bot can read and write it. The default bot
   // always exists.
   const agentId = target.scope === "agent" ? target.agentId : "default";
-  const query = useQuery(getExtensionsOptions({ path: { agentId } }));
-  const agents = useQuery({ ...listAgentsOptions(), enabled: target.scope === "dex" });
+
+  // While a change waits for idle bots, poll so that the note goes away after the reload.
+  const query = useQuery({
+    ...getExtensionsOptions({ path: { agentId } }),
+    // An invalid configuration does not reload until its files change, so it does not poll.
+    refetchInterval: (q) => (q.state.data?.reloadPending && !q.state.data.errors.length ? 3000 : false),
+  });
+
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
-  const [changed, setChanged] = useState(false);
   const form = useRef<HTMLFormElement>(null);
 
   const refresh = (data: Extensions) => {
@@ -45,53 +48,20 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
     void queryClient.invalidateQueries({ queryKey: [{ _id: "getExtensions" }] });
   };
 
-  const saved = (data: Extensions) => {
-    refresh(data);
-    setChanged(true);
-  };
-
   const save = useMutation({
     ...putExtensionEnvMutation(),
     gcTime: 0,
-    onSuccess: saved,
+    onSuccess: refresh,
     onError: (error) => notify(errorText(error)),
   });
 
   const remove = useMutation({
     ...deleteExtensionEnvMutation(),
-    onSuccess: saved,
+    onSuccess: refresh,
     onError: (error) => notify(errorText(error)),
   });
 
-  // A dex key reaches every bot, so the global page reloads all of them. A reload needs every
-  // bot idle, and a second reload counts as work, so they run one at a time.
-  const reload = useMutation({
-    mutationFn: async () => {
-      const bots =
-        target.scope === "agent"
-          ? [{ id: agentId, name: "this bot" }]
-          : (agents.data?.agents.map((a) => ({ id: a.id!, name: a.name })) ?? []);
-
-      const failed: string[] = [];
-
-      for (const bot of bots) {
-        // oxlint-disable-next-line no-await-in-loop -- reloads must not overlap.
-        await reloadExtensions({ path: { agentId: bot.id }, throwOnError: true }).catch(() =>
-          failed.push(bot.name),
-        );
-      }
-
-      if (failed.length) throw new Error(`Reload failed for ${failed.join(", ")}. Try again.`);
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: [{ _id: "getExtensions" }] });
-      setChanged(false);
-      notify(target.scope === "agent" ? "Reloaded this bot." : "Reloaded all bots.");
-    },
-    onError: (error) => notify(errorText(error)),
-  });
-
-  const busy = save.isPending || remove.isPending || reload.isPending;
+  const busy = save.isPending || remove.isPending;
   const catalog = query.data;
   const levels: Level[] = target.scope === "agent" ? ["agent", "dex", "home"] : ["dex", "home"];
 
@@ -171,24 +141,9 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
             </div>
           </form>
         </Panel>
-        {changed ? (
+        {catalog?.reloadPending && !catalog.errors.length ? (
           <div className="mt-4" role="status">
-            <Note>
-              <p>
-                The change applies after Reload.{" "}
-                {target.scope === "agent"
-                  ? "Reload restarts the tools of this bot."
-                  : "Reload restarts the tools of all bots."}
-              </p>
-              <Button
-                className="mt-3"
-                size="sm"
-                disabled={busy || (target.scope === "dex" && !agents.data)}
-                onClick={() => reload.mutate()}
-              >
-                {reload.isPending ? <Spinner /> : null}Reload
-              </Button>
-            </Note>
+            <Note>The change applies automatically when all bots are idle.</Note>
           </div>
         ) : null}
       </Section>

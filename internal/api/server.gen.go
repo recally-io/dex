@@ -322,6 +322,27 @@ func (e OkStatus) Valid() bool {
 	}
 }
 
+// Defines values for OnePasswordMode.
+const (
+	OnePasswordModeConnect        OnePasswordMode = "connect"
+	OnePasswordModeOff            OnePasswordMode = "off"
+	OnePasswordModeServiceAccount OnePasswordMode = "service-account"
+)
+
+// Valid indicates whether the value is a known member of the OnePasswordMode enum.
+func (e OnePasswordMode) Valid() bool {
+	switch e {
+	case OnePasswordModeConnect:
+		return true
+	case OnePasswordModeOff:
+		return true
+	case OnePasswordModeServiceAccount:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RunEventType.
 const (
 	Run RunEventType = "run"
@@ -516,31 +537,31 @@ func (e ThinkingItemKind) Valid() bool {
 
 // Defines values for ThinkingLevel.
 const (
-	High    ThinkingLevel = "high"
-	Low     ThinkingLevel = "low"
-	Max     ThinkingLevel = "max"
-	Medium  ThinkingLevel = "medium"
-	Minimal ThinkingLevel = "minimal"
-	Off     ThinkingLevel = "off"
-	Xhigh   ThinkingLevel = "xhigh"
+	ThinkingLevelHigh    ThinkingLevel = "high"
+	ThinkingLevelLow     ThinkingLevel = "low"
+	ThinkingLevelMax     ThinkingLevel = "max"
+	ThinkingLevelMedium  ThinkingLevel = "medium"
+	ThinkingLevelMinimal ThinkingLevel = "minimal"
+	ThinkingLevelOff     ThinkingLevel = "off"
+	ThinkingLevelXhigh   ThinkingLevel = "xhigh"
 )
 
 // Valid indicates whether the value is a known member of the ThinkingLevel enum.
 func (e ThinkingLevel) Valid() bool {
 	switch e {
-	case High:
+	case ThinkingLevelHigh:
 		return true
-	case Low:
+	case ThinkingLevelLow:
 		return true
-	case Max:
+	case ThinkingLevelMax:
 		return true
-	case Medium:
+	case ThinkingLevelMedium:
 		return true
-	case Minimal:
+	case ThinkingLevelMinimal:
 		return true
-	case Off:
+	case ThinkingLevelOff:
 		return true
-	case Xhigh:
+	case ThinkingLevelXhigh:
 		return true
 	default:
 		return false
@@ -860,6 +881,9 @@ type Extensions struct {
 		Scope ExtensionScope `json:"scope"`
 	} `json:"levels"`
 
+	// ReloadPending Extension files, shell rc files, or 1Password settings changed after the agent loaded. dex reloads the agent when all agents are idle and the configuration is valid.
+	ReloadPending bool `json:"reloadPending"`
+
 	// Servers Loaded servers, or idle declarations before the agent opens.
 	Servers []McpServer `json:"servers"`
 
@@ -1015,6 +1039,27 @@ type Ok struct {
 
 // OkStatus defines model for Ok.Status.
 type OkStatus string
+
+// OnePassword defines model for OnePassword.
+type OnePassword struct {
+	// Cli The path of op in the PATH of the tool environment, or empty.
+	Cli                    string          `json:"cli"`
+	ConnectHost            string          `json:"connectHost"`
+	ConnectTokenSet        bool            `json:"connectTokenSet"`
+	Mode                   OnePasswordMode `json:"mode"`
+	ServiceAccountTokenSet bool            `json:"serviceAccountTokenSet"`
+}
+
+// OnePasswordInput defines model for OnePasswordInput.
+type OnePasswordInput struct {
+	ConnectHost         *string         `json:"connectHost,omitempty"`
+	ConnectToken        *string         `json:"connectToken,omitempty"`
+	Mode                OnePasswordMode `json:"mode"`
+	ServiceAccountToken *string         `json:"serviceAccountToken,omitempty"`
+}
+
+// OnePasswordMode defines model for OnePasswordMode.
+type OnePasswordMode string
 
 // Provider defines model for Provider.
 type Provider struct {
@@ -1510,6 +1555,9 @@ type PreviewScheduleJSONRequestBody = ScheduleInput
 
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = NewSession
+
+// SetOnePasswordJSONRequestBody defines body for SetOnePassword for application/json ContentType.
+type SetOnePasswordJSONRequestBody = OnePasswordInput
 
 // SetProviderJSONRequestBody defines body for SetProvider for application/json ContentType.
 type SetProviderJSONRequestBody = ProviderInput
@@ -2171,6 +2219,12 @@ type ServerInterface interface {
 
 	// (GET /api/settings)
 	GetSettings(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/settings/onepassword)
+	GetOnePassword(w http.ResponseWriter, r *http.Request)
+
+	// (PUT /api/settings/onepassword)
+	SetOnePassword(w http.ResponseWriter, r *http.Request)
 
 	// (DELETE /api/settings/providers/{providerId})
 	DeleteProvider(w http.ResponseWriter, r *http.Request, providerId string)
@@ -4158,6 +4212,34 @@ func (siw *ServerInterfaceWrapper) GetSettings(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetOnePassword operation middleware
+func (siw *ServerInterfaceWrapper) GetOnePassword(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOnePassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetOnePassword operation middleware
+func (siw *ServerInterfaceWrapper) SetOnePassword(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetOnePassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteProvider operation middleware
 func (siw *ServerInterfaceWrapper) DeleteProvider(w http.ResponseWriter, r *http.Request) {
 
@@ -4386,6 +4468,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/maintenance", wrapper.ReleaseMaintenance)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/maintenance", wrapper.AcquireMaintenance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings", wrapper.GetSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/onepassword", wrapper.GetOnePassword)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/onepassword", wrapper.SetOnePassword)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/models", wrapper.ListModels)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.DeleteProvider)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.SetProvider)
@@ -8278,6 +8362,97 @@ func (response GetSettingsdefaultJSONResponse) VisitGetSettingsResponse(w http.R
 	return err
 }
 
+type GetOnePasswordRequestObject struct {
+}
+
+type GetOnePasswordResponseObject interface {
+	VisitGetOnePasswordResponse(w http.ResponseWriter) error
+}
+
+type GetOnePassword200JSONResponse OnePassword
+
+func (response GetOnePassword200JSONResponse) VisitGetOnePasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOnePassworddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetOnePassworddefaultJSONResponse) VisitGetOnePasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOnePasswordRequestObject struct {
+	Body *SetOnePasswordJSONRequestBody
+}
+
+type SetOnePasswordResponseObject interface {
+	VisitSetOnePasswordResponse(w http.ResponseWriter) error
+}
+
+type SetOnePassword200JSONResponse OnePassword
+
+func (response SetOnePassword200JSONResponse) VisitSetOnePasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOnePassword400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SetOnePassword400JSONResponse) VisitSetOnePasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOnePassworddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetOnePassworddefaultJSONResponse) VisitSetOnePasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteProviderRequestObject struct {
 	ProviderId string `json:"providerId"`
 }
@@ -8613,6 +8788,12 @@ type StrictServerInterface interface {
 
 	// (GET /api/settings)
 	GetSettings(ctx context.Context, request GetSettingsRequestObject) (GetSettingsResponseObject, error)
+
+	// (GET /api/settings/onepassword)
+	GetOnePassword(ctx context.Context, request GetOnePasswordRequestObject) (GetOnePasswordResponseObject, error)
+
+	// (PUT /api/settings/onepassword)
+	SetOnePassword(ctx context.Context, request SetOnePasswordRequestObject) (SetOnePasswordResponseObject, error)
 
 	// (DELETE /api/settings/providers/{providerId})
 	DeleteProvider(ctx context.Context, request DeleteProviderRequestObject) (DeleteProviderResponseObject, error)
@@ -10564,6 +10745,61 @@ func (sh *strictHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetSettingsResponseObject); ok {
 		if err := validResponse.VisitGetSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOnePassword operation middleware
+func (sh *strictHandler) GetOnePassword(w http.ResponseWriter, r *http.Request) {
+	var request GetOnePasswordRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOnePassword(ctx, request.(GetOnePasswordRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOnePassword")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOnePasswordResponseObject); ok {
+		if err := validResponse.VisitGetOnePasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetOnePassword operation middleware
+func (sh *strictHandler) SetOnePassword(w http.ResponseWriter, r *http.Request) {
+	var request SetOnePasswordRequestObject
+
+	var body SetOnePasswordJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetOnePassword(ctx, request.(SetOnePasswordRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetOnePassword")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetOnePasswordResponseObject); ok {
+		if err := validResponse.VisitSetOnePasswordResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

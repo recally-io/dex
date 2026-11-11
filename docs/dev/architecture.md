@@ -273,6 +273,12 @@ The Extensions API reads the agent workspace. Each level is walked like Pi's ski
 `name` wins over the directory name. A second skill with the same name in one
 level is a warning, not an error, so it does not block MCP Reload.
 Each agent has its own environment snapshot for tools and stdio MCP servers.
+It starts from the login shell environment, then the `.env` levels, then the
+1Password credentials of the settings. When `op` exists, the prompt tells the
+agent to read secrets with `op read`; dex never runs `op`. A scheduler job
+reloads an open agent after its extension files, shell rc files, or
+1Password settings change, when all agents are idle. See
+[ADR 0013](decisions/0013-tool-environment-sources.md).
 Invalid `.env` or MCP files prevent all MCP startup for that agent. Invalid
 `.env` also removes all file environment values from that snapshot.
 The [engine extension loader](../../internal/engine/extensions.go) connects
@@ -285,8 +291,8 @@ key names or values. Environment edits do not change its text.
 `PUT` and `DELETE /api/agents/{agentId}/extensions/env` call the engine's
 write-only environment methods. Edits are serialized per path and replace
 the file atomically with mode `0600`. They preserve unrelated lines and refuse
-invalid files. Home is read-only. Saving does not reload. The file is the only
-store.
+invalid files. Home is read-only. Saving does not reload; the automatic reload
+applies the change. The file is the only store.
 
 `GET /api/agents/{agentId}/extensions` reads file metadata. Before the agent
 opens, servers are `idle`. `POST /api/agents/{agentId}/extensions/reload`
@@ -1136,10 +1142,11 @@ later chats; the rules tell the agent that memory is data, not instructions,
 and git history shows each change.
 
 Control does not log the Telegram token; Bot API errors drop the request URL,
-which holds the token. Tool and stdio MCP processes receive an explicit base
-environment plus home, dex, and agent `.env` values. A server's own `env` wins.
-The engine does not change the dex process environment. Tool execution does not
-inherit ambient process credentials. Extension files remain outside the
+which holds the token. Tool and stdio MCP processes receive the login shell
+environment plus home, dex, and agent `.env` values and the 1Password
+credentials. A server's own `env` wins. The engine does not change the dex
+process environment. Tools see what the user's login shell exports, including
+credentials. Extension files remain outside the
 sandbox boundary; the model can read them through tools.
 
 ## Limits

@@ -70,6 +70,7 @@ type Agents struct {
 	Catalog          *Catalog
 	config           Config
 	memory           *MemoryRepo
+	env              *toolEnv
 	mu               sync.Mutex
 	resources        map[string]*agentResources
 	activity         map[Ref]*activityRecord
@@ -100,7 +101,7 @@ func New(config Config) (*Agents, error) {
 		}
 	}
 	config.BaseEnv = maps.Clone(config.BaseEnv)
-	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: NewMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]int{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
+	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: NewMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]int{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
 }
 
 func (a *Agents) begin() error {
@@ -922,7 +923,36 @@ func (a *Agents) close(ctx context.Context) {
 }
 
 func (a *Agents) files(agentID string) *agentExtensions {
-	return newAgentExtensions(a.config.Home, a.config.DataDir, agentID, a.config.BaseEnv)
+	return newAgentExtensions(a.config.Home, a.config.DataDir, agentID, a.env)
+}
+
+// SetOnePassword changes the 1Password credentials of tools. Open agents become stale and
+// apply them at their next reload.
+func (a *Agents) SetOnePassword(op OnePassword) { a.env.setOnePassword(op) }
+
+// OnePasswordCLI returns the path of op in the PATH of the base tool environment, or "". It
+// captures the login shell first when no agent has, because the service PATH can lack op.
+func (a *Agents) OnePasswordCLI(ctx context.Context) string {
+	env, _ := a.env.load(ctx)
+	return findOp(env)
+}
+
+// StaleExtensions returns the open agents whose extension files, shell rc files, or 1Password
+// settings changed after their load, with the current stamp of each.
+func (a *Agents) StaleExtensions() map[string]string {
+	a.mu.Lock()
+	loaded := map[string]string{}
+	for id, resource := range a.resources {
+		loaded[id] = resource.loaded.stamp
+	}
+	a.mu.Unlock()
+	stale := map[string]string{}
+	for id, stamp := range loaded {
+		if current := a.files(id).stamp(); current != stamp {
+			stale[id] = current
+		}
+	}
+	return stale
 }
 func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo, error) {
 	if !agentIDPattern.MatchString(agentID) {
@@ -937,6 +967,7 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	a.mu.Unlock()
 	if resource != nil {
 		info.Servers = resource.loaded.ServerInfo()
+		info.ReloadPending = a.files(agentID).stamp() != resource.loaded.stamp
 	}
 	return info, nil
 }
@@ -980,6 +1011,7 @@ func (a *Agents) Reload(ctx context.Context, agentID string) error {
 		a.finishOpening(agentID, opening)
 		return a.closedDuring(ctx, err)
 	}
+	a.env.invalidate()
 	a.mu.Lock()
 	old := a.resources[agentID]
 	delete(a.resources, agentID)

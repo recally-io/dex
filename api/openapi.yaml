@@ -176,6 +176,35 @@ paths:
               schema: { $ref: "#/components/schemas/Settings" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/settings/onepassword:
+    get:
+      operationId: getOnePassword
+      responses:
+        "200":
+          description: The 1Password settings, without tokens.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnePassword" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setOnePassword
+      description: >
+        Saves how tools authenticate the 1Password CLI. An empty or missing token keeps
+        the saved token. Open agents apply the change when all agents are idle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OnePasswordInput" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnePassword" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/models:
     get:
       operationId: listModels
@@ -2286,6 +2315,37 @@ components:
           description: The APIs of custom providers, ID → name.
           additionalProperties: { type: string }
 
+    OnePasswordMode:
+      type: string
+      enum: [off, connect, service-account]
+
+    OnePassword:
+      type: object
+      required: [
+        mode,
+        connectHost,
+        connectTokenSet,
+        serviceAccountTokenSet,
+        cli,
+      ]
+      properties:
+        mode: { $ref: "#/components/schemas/OnePasswordMode" }
+        connectHost: { type: string }
+        connectTokenSet: { type: boolean }
+        serviceAccountTokenSet: { type: boolean }
+        cli:
+          type: string
+          description: The path of op in the PATH of the tool environment, or empty.
+
+    OnePasswordInput:
+      type: object
+      required: [mode]
+      properties:
+        mode: { $ref: "#/components/schemas/OnePasswordMode" }
+        connectHost: { type: string }
+        connectToken: { type: string }
+        serviceAccountToken: { type: string }
+
     Channels:
       x-go-type: agent.Channels
       x-go-type-import:
@@ -2438,7 +2498,7 @@ components:
 
     Extensions:
       type: object
-      required: [levels, skills, servers, env, warnings, errors]
+      required: [levels, skills, servers, env, warnings, errors, reloadPending]
       properties:
         levels:
           type: array
@@ -2476,6 +2536,12 @@ components:
           type: array
           description: Invalid configuration prevents MCP startup and reload.
           items: { type: string }
+        reloadPending:
+          type: boolean
+          description: >
+            Extension files, shell rc files, or 1Password settings changed after the agent
+            loaded. dex reloads the agent when all agents are idle and the configuration is
+            valid.
 
     ExtensionScope:
       type: string

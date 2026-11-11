@@ -583,6 +583,26 @@ export type Settings = {
     };
 };
 
+export type OnePasswordMode = 'off' | 'connect' | 'service-account';
+
+export type OnePassword = {
+    mode: OnePasswordMode;
+    connectHost: string;
+    connectTokenSet: boolean;
+    serviceAccountTokenSet: boolean;
+    /**
+     * The path of op in the PATH of the tool environment, or empty.
+     */
+    cli: string;
+};
+
+export type OnePasswordInput = {
+    mode: OnePasswordMode;
+    connectHost?: string;
+    connectToken?: string;
+    serviceAccountToken?: string;
+};
+
 export type Channels = {
     telegram: Telegram;
     wechat: Wechat;
@@ -732,6 +752,11 @@ export type Extensions = {
      * Invalid configuration prevents MCP startup and reload.
      */
     errors: Array<string>;
+    /**
+     * Extension files, shell rc files, or 1Password settings changed after the agent loaded. dex reloads the agent when all agents are idle and the configuration is valid.
+     *
+     */
+    reloadPending: boolean;
 };
 
 /**
@@ -1157,6 +1182,60 @@ export type GetSettingsResponses = {
 };
 
 export type GetSettingsResponse = GetSettingsResponses[keyof GetSettingsResponses];
+
+export type GetOnePasswordData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/onepassword';
+};
+
+export type GetOnePasswordErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetOnePasswordError = GetOnePasswordErrors[keyof GetOnePasswordErrors];
+
+export type GetOnePasswordResponses = {
+    /**
+     * The 1Password settings, without tokens.
+     */
+    200: OnePassword;
+};
+
+export type GetOnePasswordResponse = GetOnePasswordResponses[keyof GetOnePasswordResponses];
+
+export type SetOnePasswordData = {
+    body: OnePasswordInput;
+    path?: never;
+    query?: never;
+    url: '/api/settings/onepassword';
+};
+
+export type SetOnePasswordErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetOnePasswordError = SetOnePasswordErrors[keyof SetOnePasswordErrors];
+
+export type SetOnePasswordResponses = {
+    /**
+     * Saved.
+     */
+    200: OnePassword;
+};
+
+export type SetOnePasswordResponse = SetOnePasswordResponses[keyof SetOnePasswordResponses];
 
 export type ListModelsData = {
     body?: never;

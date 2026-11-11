@@ -1,6 +1,9 @@
 package engine
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 var (
 	ErrBusy         = errors.New("conversation is busy")
@@ -79,8 +82,11 @@ type InputMetadata struct {
 type Outcome struct{ Status, Answer, Reason string }
 type Config struct {
 	DataDir, Home string
-	BaseEnv       map[string]string
-	FakeModel     bool
-	Tasks         TaskTools
-	Routines      RoutineTools
+	// BaseEnv is the tool environment when LoginEnv is nil or fails.
+	BaseEnv map[string]string
+	// LoginEnv captures the login shell environment for tools; nil keeps BaseEnv.
+	LoginEnv  func(context.Context) (map[string]string, error)
+	FakeModel bool
+	Tasks     TaskTools
+	Routines  RoutineTools
 }

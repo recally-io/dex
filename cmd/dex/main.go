@@ -44,6 +44,7 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 	a, err := app.Start(ctx, app.Config{
 		DataDir:      cfg.DataDir,
 		ToolEnv:      app.ToolEnv(os.Environ()),
+		LoginEnv:     testLoginEnv(),
 		FakeModel:    testFakeModel(),
 		Version:      version(),
 		Token:        token,

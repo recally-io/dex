@@ -750,6 +750,29 @@ func (q *Queries) GetConversationByKey(ctx context.Context, arg GetConversationB
 	return i, err
 }
 
+const getOnePassword = `-- name: GetOnePassword :one
+SELECT mode, connect_host, connect_token, service_account_token FROM one_password WHERE id = 1
+`
+
+type GetOnePasswordRow struct {
+	Mode                string `json:"mode"`
+	ConnectHost         string `json:"connect_host"`
+	ConnectToken        string `json:"connect_token"`
+	ServiceAccountToken string `json:"service_account_token"`
+}
+
+func (q *Queries) GetOnePassword(ctx context.Context) (GetOnePasswordRow, error) {
+	row := q.db.QueryRowContext(ctx, getOnePassword)
+	var i GetOnePasswordRow
+	err := row.Scan(
+		&i.Mode,
+		&i.ConnectHost,
+		&i.ConnectToken,
+		&i.ServiceAccountToken,
+	)
+	return i, err
+}
+
 const getProvider = `-- name: GetProvider :one
 SELECT id, name, api, base_url, api_key, models, created_at FROM providers WHERE id = ?
 `
@@ -1644,6 +1667,30 @@ type SetFirstChatTitleParams struct {
 
 func (q *Queries) SetFirstChatTitle(ctx context.Context, arg SetFirstChatTitleParams) error {
 	_, err := q.db.ExecContext(ctx, setFirstChatTitle, arg.Title, arg.ID)
+	return err
+}
+
+const setOnePassword = `-- name: SetOnePassword :exec
+INSERT INTO one_password (id, mode, connect_host, connect_token, service_account_token)
+VALUES (1, ?, ?, ?, ?)
+ON CONFLICT (id) DO UPDATE SET mode = excluded.mode, connect_host = excluded.connect_host,
+    connect_token = excluded.connect_token, service_account_token = excluded.service_account_token
+`
+
+type SetOnePasswordParams struct {
+	Mode                string `json:"mode"`
+	ConnectHost         string `json:"connect_host"`
+	ConnectToken        string `json:"connect_token"`
+	ServiceAccountToken string `json:"service_account_token"`
+}
+
+func (q *Queries) SetOnePassword(ctx context.Context, arg SetOnePasswordParams) error {
+	_, err := q.db.ExecContext(ctx, setOnePassword,
+		arg.Mode,
+		arg.ConnectHost,
+		arg.ConnectToken,
+		arg.ServiceAccountToken,
+	)
 	return err
 }
 

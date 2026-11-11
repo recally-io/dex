@@ -38,9 +38,11 @@ const DefaultAgentID = "default"
 
 // Config configures an App.
 type Config struct {
-	DataDir   string
-	Home      string
-	ToolEnv   map[string]string
+	DataDir string
+	Home    string
+	ToolEnv map[string]string
+	// LoginEnv captures the login shell environment for tools; nil keeps ToolEnv.
+	LoginEnv  func(context.Context) (map[string]string, error)
 	FakeModel bool
 	// TelegramAPIURL replaces https://api.telegram.org, for example for a local Bot API server.
 	TelegramAPIURL string
@@ -167,7 +169,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return routineTools.Run(ctx, c, id)
 		},
 	}
-	native, err := engine.New(engine.Config{DataDir: cfg.DataDir, Home: cfg.Home, BaseEnv: cfg.ToolEnv, FakeModel: cfg.FakeModel, Tasks: tools, Routines: routines})
+	native, err := engine.New(engine.Config{DataDir: cfg.DataDir, Home: cfg.Home, BaseEnv: cfg.ToolEnv, LoginEnv: cfg.LoginEnv, FakeModel: cfg.FakeModel, Tasks: tools, Routines: routines})
 	if err != nil {
 		cancel()
 		return nil, errors.Join(err, jobs.Close(), conn.Close())
@@ -195,7 +197,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		config.Report = func(state, reason string) { manager.Report("telegram", channel.Status{State: state, Reason: reason}) }
 		manager.Set("telegram", telegram.New(*config, manager))
 	}
-	prefs = settings.New(q, native.Catalog)
+	prefs = settings.New(q, native.Catalog, native)
+	if err := prefs.ApplyOnePassword(ctx); err != nil {
+		return nil, err
+	}
 	if err := chats.RecoverTasks(ctx); err != nil {
 		return nil, err
 	}
@@ -261,6 +266,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	err = errors.Join(
 		jobs.Every("dream", min(every, time.Hour), dreamer.Check),
 		jobs.Every("automations", cmp.Or(cfg.AutomationCheck, time.Minute), automations.Check),
+		// Polling keeps one mechanism for page saves and hand edits; use file events if 3 s is slow.
+		jobs.Every("extensions", 3*time.Second, reloadStale(native, chats)),
 	)
 	if err != nil {
 		return nil, err
@@ -298,7 +305,7 @@ func (a *App) Close() error {
 	return errors.Join(err, a.engine.Close(context.Background()), a.db.Close())
 }
 
-// ToolEnv selects the process values that tools can inherit.
+// ToolEnv selects the process values that tools inherit when the login shell is not available.
 // Provider credentials enter the model catalog through Settings.
 func ToolEnv(environ []string) map[string]string {
 	env := make(map[string]string)

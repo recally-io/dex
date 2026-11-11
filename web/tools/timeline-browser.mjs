@@ -1318,7 +1318,7 @@ try {
   );
   await check(
     "tools belong to the selected agent",
-    `!document.querySelector('aside a[href="/extensions"]') && document.querySelector('main h1')?.textContent === 'Tools' && document.body.innerText.includes('Reload tools')`,
+    `!document.querySelector('aside a[href="/extensions"]') && document.querySelector('main h1')?.textContent === 'Tools' && !document.body.innerText.includes('Reload tools')`,
   );
   await check(
     "tool levels and secrecy",
@@ -1360,7 +1360,7 @@ try {
   const keyRow = `[data-env-key="${secretKey}"][data-env-scope="agent"]`;
   await ui(
     "saved key name",
-    `!!document.querySelector('${keyRow}') && document.body.innerText.includes('The change applies after Reload.') && document.querySelector('input[name="value"]').value === ''`,
+    `!!document.querySelector('${keyRow}') && document.querySelector('input[name="value"]').value === ''`,
   );
   assert.equal(
     await readFile(join(data, "agents", second.id, ".agents", ".env"), "utf8"),
@@ -1410,8 +1410,10 @@ try {
   assert.ok(
     !(await readFile(join(data, "agents", second.id, ".agents", ".env"), "utf8")).includes(secretKey),
   );
-  await click("Reload");
-  await ui("bot reload completed", "!document.body.innerText.includes('The change applies after Reload.')");
+  await ui(
+    "bot change applied without Reload",
+    "!document.body.innerText.includes('The change applies automatically')",
+  );
 
   // The global page writes the dex file and names no bot.
   await tap('main a[href="/environment"]');
@@ -1436,8 +1438,10 @@ try {
   await shot("13i-environment-desktop");
   await tap(`${dexRow} button:last-child`);
   await ui("shared key deleted", `!document.querySelector('${dexRow}')`);
-  await click("Reload");
-  await ui("all bots reloaded", "!document.body.innerText.includes('The change applies after Reload.')");
+  await ui(
+    "all bots applied without Reload",
+    "!document.body.innerText.includes('The change applies automatically')",
+  );
   const secretLog = await readFile(join(artifacts, "browser-app.log"), "utf8");
   assert.ok(
     !secretLog.includes(secretValue) && !secretLog.includes(secretReplacement),
@@ -1475,7 +1479,7 @@ try {
   }
 
   results.push(
-    "env keys: bot Tools writes only its .env, global Environment writes dex and names no bot, replace, delete, Reload, /secrets redirect, no leaked values, desktop and 390px phone",
+    "env keys: bot Tools writes only its .env, global Environment writes dex and names no bot, replace, delete, automatic reload, /secrets redirect, no leaked values, desktop and 390px phone",
   );
   await tap(secondLink);
   await ui("second agent open", `location.pathname === '${secondPath}'`);

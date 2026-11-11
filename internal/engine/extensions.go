@@ -54,6 +54,8 @@ type ExtensionInfo struct {
 	Env      []EnvKeyInfo     `json:"env"`
 	Warnings []string         `json:"warnings"`
 	Errors   []string         `json:"errors"`
+	// ReloadPending reports changed files or settings that wait for all agents to be idle.
+	ReloadPending bool `json:"reloadPending"`
 }
 type EnvEditError struct{ Message string }
 
@@ -63,7 +65,7 @@ func (e *EnvEditError) Unwrap() error { return ErrInvalidInput }
 type agentExtensions struct {
 	levels              []ExtensionLevel
 	workspace, agentDir string
-	baseEnv             map[string]string
+	env                 *toolEnv
 	mu                  sync.Mutex
 	loaded              *loadedExtensions
 }
@@ -74,6 +76,8 @@ type loadedExtensions struct {
 	Servers   []McpServerInfo
 	clients   []*mcp.Client
 	mu        sync.Mutex
+	// stamp is the file and settings stamp before the load; a different stamp means stale.
+	stamp string
 }
 
 func (l *loadedExtensions) ServerInfo() []McpServerInfo {
@@ -118,9 +122,9 @@ var headerVar = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 // A shared lock keeps edits to shared dex files from losing another agent's changes.
 var envWrites sync.Mutex
 
-func newAgentExtensions(home, dataDir, agentID string, baseEnv map[string]string) *agentExtensions {
+func newAgentExtensions(home, dataDir, agentID string, env *toolEnv) *agentExtensions {
 	agentDir := filepath.Join(dataDir, "agents", agentID)
-	a := &agentExtensions{baseEnv: maps.Clone(baseEnv), agentDir: agentDir, workspace: filepath.Join(agentDir, "workspace")}
+	a := &agentExtensions{env: env, agentDir: agentDir, workspace: filepath.Join(agentDir, "workspace")}
 	for _, l := range []ExtensionLevel{{"home", home}, {"dex", dataDir}, {"agent", agentDir}} {
 		l.Dir = canonicalExtensionPath(filepath.Join(l.Dir, ".agents"))
 		a.levels = append(a.levels, l)
@@ -301,8 +305,21 @@ func readMCP(path string) (map[string]serverConfig, error) {
 	}
 	return *envelope.Servers, nil
 }
-func (a *agentExtensions) scan() extensionScan {
-	s := extensionScan{info: ExtensionInfo{Levels: a.levels, Skills: []SkillInfo{}, Servers: []McpServerInfo{}, Env: []EnvKeyInfo{}, Warnings: []string{}, Errors: []string{}}, env: maps.Clone(a.baseEnv)}
+
+// stamp changes when an extension file, a shell rc file, or the 1Password settings change.
+func (a *agentExtensions) stamp() string {
+	return a.env.stamp() + fileStamp(func(yield func(string) bool) {
+		for _, l := range a.distinct() {
+			for _, name := range []string{".env", "mcp.json"} {
+				if !yield(filepath.Join(l.Dir, name)) {
+					return
+				}
+			}
+		}
+	})
+}
+func (a *agentExtensions) scan(base map[string]string) extensionScan {
+	s := extensionScan{info: ExtensionInfo{Levels: a.levels, Skills: []SkillInfo{}, Servers: []McpServerInfo{}, Env: []EnvKeyInfo{}, Warnings: []string{}, Errors: []string{}}, env: maps.Clone(base)}
 	if s.env == nil {
 		s.env = map[string]string{}
 	}
@@ -346,7 +363,7 @@ func (a *agentExtensions) scan() extensionScan {
 		maps.Copy(s.env, vars)
 	}
 	if !validEnv {
-		s.env = maps.Clone(a.baseEnv)
+		s.env = maps.Clone(base)
 	}
 	if valid {
 		for _, name := range slices.Sorted(maps.Keys(servers)) {
@@ -366,7 +383,15 @@ func (a *agentExtensions) Info(ctx context.Context) (ExtensionInfo, error) {
 	if ctx.Err() != nil {
 		return ExtensionInfo{}, context.Cause(ctx)
 	}
-	s := a.scan()
+	base, op, warning := a.env.snapshot()
+	s := a.scan(base)
+	if warning != "" {
+		s.info.Warnings = append(s.info.Warnings, warning)
+	}
+	op.apply(s.env)
+	if op.Mode != "" && findOp(s.env) == "" {
+		s.info.Warnings = append(s.info.Warnings, "1Password is set up, but the op CLI is not in the PATH of the tool environment; install it or add its directory to PATH in a shell rc file")
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.loaded != nil {
@@ -382,17 +407,22 @@ func (a *agentExtensions) Validate(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return context.Cause(ctx)
 	}
-	scan := a.scan()
+	base, _, _ := a.env.snapshot()
+	scan := a.scan(base)
 	if len(scan.info.Errors) > 0 {
 		return &EnvEditError{Message: strings.Join(scan.info.Errors, "\n")}
 	}
 	return nil
 }
 func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
-	s := a.scan()
+	// Take the stamp first, so that a change during the load makes the agent stale.
+	stamp := a.stamp()
+	base, op := a.env.load(ctx)
+	s := a.scan(base)
+	op.apply(s.env)
 	// Keep the status slice stable before any connection can call OnClose.
-	loaded := &loadedExtensions{Env: s.env, Servers: s.info.Servers, Extension: &durable.Extension{Name: "extensions"}}
-	guide := extensionGuide(a.levels)
+	loaded := &loadedExtensions{Env: s.env, Servers: s.info.Servers, Extension: &durable.Extension{Name: "extensions"}, stamp: stamp}
+	guide := extensionGuide(a.levels, secretsGuide(op, findOp(s.env)))
 	loaded.Extension.Sections = []*durable.PromptSection{{Key: "extension-guide", Render: func(context.Context, durable.PromptInput) (*string, error) { return new(guide), nil }}, {Key: "skills", Render: func(_ context.Context, input durable.PromptInput) (*string, error) {
 		// The project level follows the conversation's cwd, which the request's environment has.
 		cwd := a.workspace
@@ -655,7 +685,7 @@ func skillsText(skills []SkillInfo) *string {
 	}
 	return new(strings.Join(lines, "\n"))
 }
-func extensionGuide(levels []ExtensionLevel) string {
+func extensionGuide(levels []ExtensionLevel, secrets string) string {
 	lines := []string{"Extension levels for this bot, from wide to narrow. Each can hold skills/, mcp.json, and .env:"}
 	for _, l := range levels {
 		lines = append(lines, "- "+l.Scope+": "+l.Dir+"/")
@@ -666,7 +696,8 @@ func extensionGuide(levels []ExtensionLevel) string {
 		"Skills: use <level>/skills/<name>/SKILL.md, or <cwd>/.agents/skills/ for the project level, which is narrower than agent. A skill can be in a nested directory; the walk does not go into a skill. Start with YAML front matter fields name and description; name defaults to the directory name. Skill edits apply on the next request. Use the skills list when it is present.",
 		`MCP: use <level>/mcp.json with a mcpServers object. For stdio, use command, args, env, and cwd. For HTTP, use "type": "http", url, and headers. {"disabled": true} turns off a wider server with the same name.`,
 		"",
-		".env: values are in the tool environment. Use $KEY in bash and ${KEY} in mcp.json headers. Never print, echo, or write a value into chat, memory, or files. The user sets values on the Secrets page.",
-		"mcp.json and .env changes apply after the user presses Reload in the Extensions tab. You cannot reload. Ask the user to press Reload when needed.")
+		"The tool environment starts from the user's login shell environment.",
+		secrets,
+		"dex reloads mcp.json, .env, shell rc, and 1Password changes when all bots are idle. You cannot reload; a change applies after your current work ends.")
 	return strings.Join(lines, "\n")
 }
