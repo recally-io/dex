@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"uuid"
 )
 
@@ -334,6 +336,76 @@ func TestUserParentsStopChildrenInEachOthersBotsWithoutDeadlock(t *testing.T) {
 			t.Fatalf("results of chat %d after Stop: %d", parent.id, len(rows))
 		}
 	}
+}
+
+// TestUserStopWithdrawsInputThatAnotherBotAdmits races the admission of a new child in B against
+// the Stop of its parent in A. The delay between the creation of the child and the Stop varies, so
+// Stop lands before, during, and after the admission in B. The shell of a child in B starts 600 to 900 ms
+// after its row (a new execution opens its harness), so the delays cross that range. Whatever the order, the input must end
+// stopped, no row stays pending, no abort request stays open, no shell survives, and the parent gets
+// at most one result.
+func TestUserStopWithdrawsInputThatAnotherBotAdmits(t *testing.T) {
+	t.Parallel()
+	s := startBots(t)
+	delays := []time.Duration{0, 5, 100, 300, 450, 520, 560, 600, 640, 680, 720, 760, 800, 850, 900, 1000, 1100, 1300}
+	for i := range delays {
+		delays[i] *= time.Millisecond
+	}
+	started := 0
+	for i, delay := range delays {
+		// Given a parent in A that creates a gated child in B.
+		parent := s.chat("default")
+		name := fmt.Sprintf("race-%d", i)
+		parent.send(childJSON(t, map[string]any{"tool": "session_new", "bot": "Coder", "title": name, "message": taskGate(t, s.dir, name), "provider": "faux", "modelId": "bash"}))
+		// When the child row appears, Stop runs after the delay. The poll is tight on purpose: B
+		// admits the input within a few milliseconds of the row.
+		var child int64
+		deadline := time.Now().Add(30 * time.Second)
+		for child == 0 {
+			err := s.conn.QueryRowContext(t.Context(), `SELECT id FROM conversations WHERE parent_id = ?`, parent.id).Scan(&child)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				t.Fatal(err)
+			}
+			if child == 0 && time.Now().After(deadline) {
+				t.Fatalf("round %d: the parent did not create a child", i)
+			}
+			if child == 0 {
+				time.Sleep(time.Millisecond)
+			}
+		}
+		time.Sleep(delay)
+		if status, body := s.d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent.id), nil); status != http.StatusOK {
+			t.Fatalf("round %d: abort %d %s", i, status, body)
+		}
+		// Then no input stays pending and no abort request stays open.
+		settled := func() (bool, any) {
+			var pending, aborts int
+			if err := s.conn.QueryRowContext(t.Context(), `SELECT (SELECT count(*) FROM submissions WHERE status = 'pending' AND conversation_id IN (?, ?)), (SELECT count(*) FROM conversations WHERE abort_pending = 1 AND id IN (?, ?))`, parent.id, child, parent.id, child).Scan(&pending, &aborts); err != nil {
+				t.Fatal(err)
+			}
+			return pending == 0 && aborts == 0, fmt.Sprintf("pending=%d aborts=%d", pending, aborts)
+		}
+		eventually(t, fmt.Sprintf("round %d settled", i), settled)
+		// And the state stays so: a late admission or a late abort would show here.
+		time.Sleep(250 * time.Millisecond)
+		if ok, state := settled(); !ok {
+			t.Fatalf("round %d: the state changed after it settled: %v", i, state)
+		}
+		turns := childTurns(t, s.conn, child)
+		if len(turns) != 1 || turns[0].status != "unanswered" || turns[0].reason != "stopped" {
+			t.Fatalf("round %d: input of the child: %+v", i, turns)
+		}
+		if results := resultRows(t, s.conn, parent.id); len(results) > 1 {
+			t.Fatalf("round %d: %d results after Stop: %+v", i, len(results), results)
+		}
+		// And a shell that started is gone.
+		pid := filepath.Join(s.dir, name+".pid")
+		if _, err := os.Stat(pid); err == nil {
+			started++
+			waitTaskPIDGone(t, pid)
+		}
+	}
+	t.Logf("the shell started in %d of %d rounds", started, len(delays))
 }
 
 func TestUserRestartInterruptsAChildInAnotherBotOnce(t *testing.T) {
