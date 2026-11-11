@@ -163,3 +163,36 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 		t.Fatalf("child list: %v", err)
 	}
 }
+
+func TestUserSessionStopReplayKeepsLaterWork(t *testing.T) {
+	// Given a child that the parent stopped, and work that the parent sent to it afterwards.
+	r := startNative(t, "echo")
+	_, source := taskParent(t, r)
+	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Child", Message: "first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := source
+	stop.Key = "bot/stop-one"
+	first, err := r.service.ToolSessionStop(t.Context(), stop, child.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	send := source
+	send.Key = "bot/send-after-stop"
+	if _, err = r.service.ToolSessionSend(t.Context(), send, engine.SessionSendArgs{ID: child.ID, Message: "later work"}); err != nil {
+		t.Fatal(err)
+	}
+	// When the same session_stop call runs again.
+	replay, err := r.service.ToolSessionStop(t.Context(), stop, child.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Then it returns the stored result and the later work stays pending.
+	if replay != first {
+		t.Fatalf("replay returned %+v, the first call returned %+v", replay, first)
+	}
+	if turn := receipt(t, r, turnID(send.Key)); turn.Status != "pending" {
+		t.Fatalf("a replayed stop withdrew later input: status %s, reason %s", turn.Status, turn.Reason.String)
+	}
+}

@@ -25,13 +25,18 @@ SELECT t.* FROM tasks t JOIN conversations c ON c.id = t.conversation_id
 WHERE t.id = ? AND c.agent_id = ?;
 
 -- name: ListStopConversations :many
--- Stop reaches the conversation and the children of it that have pending input.
+-- Stop reaches the conversation and the children of it that have pending input that the parent
+-- started. A child with only user input is not reached.
 SELECT * FROM conversations WHERE conversations.agent_id = @agent_id
 AND (conversations.id = @chat_id OR (conversations.parent_id = @chat_id AND EXISTS (
     SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
+        AND s.parent_request_id IS NOT NULL
 )))
 ORDER BY conversations.id;
 
 -- name: StopConversationSubmissions :execrows
+-- A child that Stop reaches through its parent keeps its pending user input. Stop on the child
+-- itself ends all of it.
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @now
-WHERE conversation_id = @chat_id AND status = 'pending';
+WHERE conversation_id = @chat_id AND status = 'pending'
+    AND (CAST(@parent_only AS INTEGER) = 0 OR parent_request_id IS NOT NULL);

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strconv"
@@ -233,8 +234,13 @@ func (s *Service) ToolSessionStop(ctx context.Context, r engine.TaskContext, id 
 	if err != nil {
 		return engine.SessionRef{}, err
 	}
-	if err := s.Stop(ctx, r.AgentID, child.ID); err != nil {
+	stored, err := s.stop(ctx, r.AgentID, child.ID, nil, &stopCall{task: r, parent: parent.ID, child: child})
+	if err != nil {
 		return engine.SessionRef{}, err
+	}
+	var ref engine.SessionRef
+	if stored != "" {
+		return ref, json.Unmarshal([]byte(stored), &ref)
 	}
 	return s.ref(ctx, s.q, child)
 }

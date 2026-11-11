@@ -3,6 +3,8 @@ package app_test
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -206,5 +208,47 @@ func TestUserSteerToAnIdleChildSendsItsOwnResult(t *testing.T) {
 	rows := waitResults(t, conn, parent, 2)
 	if resultBody(t, rows[1].content)["answer"] != "bash: second" {
 		t.Fatalf("second result: %+v", rows[1])
+	}
+}
+
+func TestUserParentStopLeavesAnIndependentChildTurn(t *testing.T) {
+	t.Parallel()
+	// Given a child that finished a parent turn, and then runs a turn that the user started.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	parent := newParent(t, d)
+	child := spawnChild(t, d, parent, "Reused child", "echo initial", "bash")
+	waitResults(t, conn, parent, 1)
+	d.send(t, child.conversation(t), taskGate(t, dir, "independent"))
+	waitTaskFile(t, filepath.Join(dir, "independent.pid"))
+	// When the user stops the parent chat.
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent), nil, nil)
+	// Then the turn of the user in the child keeps running.
+	if turns := childTurns(t, conn, child.conversation(t)); turns[1].status != "pending" {
+		t.Fatalf("the stop of the parent ended the turn of the user: %+v", turns[1])
+	}
+	releaseResultGate(t, dir, "independent")
+	waitDoneChildTurns(t, conn, child.conversation(t), 2)
+}
+
+func TestUserParentStopEndsWhatTheParentStartedInAChild(t *testing.T) {
+	t.Parallel()
+	// Given a child that runs a parent turn.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	parent := newParent(t, d)
+	child := spawnChild(t, d, parent, "Parent turn", taskGate(t, dir, "parent-turn"), "bash")
+	waitTaskFile(t, filepath.Join(dir, "parent-turn.pid"))
+	// When the user stops the parent chat.
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent), nil, nil)
+	// Then the turn ends as stopped, and the child sends no result.
+	turns := waitChildTurnsEnded(t, conn, child.conversation(t), 1)
+	if turns[0].status != "unanswered" || turns[0].reason != "stopped" {
+		t.Fatalf("turn: %+v", turns[0])
+	}
+	if rows := resultRows(t, conn, parent); len(rows) != 0 {
+		t.Fatalf("results: %+v", rows)
 	}
 }
