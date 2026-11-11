@@ -53,7 +53,15 @@ func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path s
 			return engine.ArtifactInfo{}, err
 		}
 		if source.ParentRequestID.Valid {
-			parent = conv.ParentID.Int64
+			owner, err := q.GetConversation(ctx, conv.ParentID.Int64)
+			if err != nil {
+				return engine.ArtifactInfo{}, err
+			}
+			// The snapshot is in the home of this agent. A parent in another bot cannot serve it, so a
+			// child of another bot delivers in its own conversation.
+			if owner.AgentID == conv.AgentID {
+				parent = owner.ID
+			}
 		}
 	}
 	if _, err := q.GetActiveArtifactInput(ctx, sqlc.GetActiveArtifactInputParams{ID: caller.SourceRequestID, ConversationID: conv.ID}); err != nil {

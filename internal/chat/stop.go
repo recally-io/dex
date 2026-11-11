@@ -91,7 +91,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 	if call != nil {
 		prior, err := q.GetRoutineToolOperation(ctx, call.task.Key)
 		if err == nil {
-			if prior.AgentID != agentID || prior.ConversationID != call.parent || prior.SourceRequestID != call.task.SourceRequestID || prior.Action != toolStopAction {
+			if prior.AgentID != call.task.AgentID || prior.ConversationID != call.parent || prior.SourceRequestID != call.task.SourceRequestID || prior.Action != toolStopAction {
 				return withdrawal{}, fmt.Errorf("%w: tool key belongs to another operation", ErrSessionInvalid)
 			}
 			return withdrawal{stored: prior.Result}, nil
@@ -116,7 +116,10 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		if err := q.DismissQuestions(ctx, sqlc.DismissQuestionsParams{ConversationID: c.ID, Now: now}); err != nil {
 			return withdrawal{}, err
 		}
-		if c.ExecutionID.Valid {
+		// A child of another bot is not aborted here. Its bot has its own delivery gate, and this call
+		// holds one gate only. The abort request above is durable, and the dispatcher of that bot
+		// carries it out. Holding two gates could deadlock two parents that stop each other's children.
+		if c.ExecutionID.Valid && c.AgentID == agentID {
 			targets = append(targets, engine.Ref{AgentID: agentID, ID: c.ExecutionID.Int64})
 		}
 	}
@@ -134,7 +137,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		if err != nil {
 			return withdrawal{}, err
 		}
-		if err := q.CreateRoutineToolOperation(ctx, sqlc.CreateRoutineToolOperationParams{Key: call.task.Key, AgentID: agentID, ConversationID: call.parent, SourceRequestID: call.task.SourceRequestID, Action: toolStopAction, Result: string(data)}); err != nil {
+		if err := q.CreateRoutineToolOperation(ctx, sqlc.CreateRoutineToolOperationParams{Key: call.task.Key, AgentID: call.task.AgentID, ConversationID: call.parent, SourceRequestID: call.task.SourceRequestID, Action: toolStopAction, Result: string(data)}); err != nil {
 			return withdrawal{}, err
 		}
 	}

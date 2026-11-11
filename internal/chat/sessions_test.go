@@ -160,7 +160,7 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 		t.Fatalf("child send: %v", err)
 	}
 	// A child may read.
-	if _, err := r.service.ToolSessionList(t.Context(), asChild, "all"); err != nil {
+	if _, err := r.service.ToolSessionList(t.Context(), asChild, engine.SessionListArgs{Scope: "all"}); err != nil {
 		t.Fatalf("child list: %v", err)
 	}
 }
