@@ -10,6 +10,7 @@ import {
   listChatsOptions,
   createChatMutation,
 } from "../api/generated/@tanstack/react-query.gen";
+import { useNow } from "../lib/clock";
 import { activeSessionCount, isStalled, parentName, sessionKind, sessionTime } from "../lib/sessions";
 import { refreshChats } from "../lib/queries";
 import { Empty, FramedPage, Panel, Section } from "../components/page";
@@ -115,7 +116,8 @@ function SessionRow({ chat, parent }: { chat: Chat; parent?: string }) {
   const agentId = useAgentId();
   const kind = sessionKind(chat);
   const Icon = kind === "Chat" ? MessageCircle : Clock3;
-  const stalled = isStalled(chat);
+  const now = useNow();
+  const stalled = isStalled(chat, now);
 
   return (
     <li className="flex items-center gap-3 border-t border-border px-4 py-3.5 first:border-t-0">

@@ -14,6 +14,7 @@ import {
 import { useAgentId } from "../lib/agent-scope";
 import { useApp } from "../lib/app-state";
 import { errorText, refreshChats } from "../lib/queries";
+import { useNow } from "../lib/clock";
 import { isStalled, parentName, sessionKind } from "../lib/sessions";
 import { cn } from "../lib/utils";
 import { Button, buttonVariants } from "./ui/button";
@@ -237,7 +238,8 @@ function ChatRow({
   const agentId = useAgentId();
   const action = chat.archivedAt ? "Restore" : "Archive";
   const title = chat.title || "New chat";
-  const stalled = isStalled(chat);
+  const now = useNow();
+  const stalled = isStalled(chat, now);
 
   const itemContent = (
     <>

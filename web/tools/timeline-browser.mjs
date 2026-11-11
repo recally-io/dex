@@ -540,6 +540,18 @@ try {
     "the Sessions panel has no task rows, Stop, Mark handled or Completed group",
     `(() => { const panel = document.querySelector('aside[aria-label="Sessions"]'); return !/Mark handled|Mark all handled|Completed|Open full record|step/i.test(panel.innerText) && ![...panel.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Stop'); })()`,
   );
+  // The API data stays the same. Only the clock of the page moves 31 min, with no click, and the
+  // running child, which holds one tool, turns Stalled.
+  await advanceClock(31 * 60 * 1000);
+  await ui(
+    "the panel turns the running child to Stalled when only the clock moves",
+    `!!document.querySelector('aside[aria-label="Sessions"] a[href="/a/default/c/${running.id}"] [role="img"][aria-label="Stalled"]')`,
+  );
+  await restoreClock();
+  await ui(
+    "the panel shows Running again when the clock is real",
+    `!!document.querySelector('aside[aria-label="Sessions"] a[href="/a/default/c/${running.id}"] [role="img"][aria-label="Running"]')`,
+  );
   await shot("04-sessions-panel");
   await tap('button[aria-label="Close sessions"]');
   await visit("/tasks");
@@ -551,6 +563,12 @@ try {
     "session rows keep newest activity first, and show the running state and the parent",
     `(() => { const links = [...document.querySelectorAll('main li:not([inert] *) a')].map((a) => a.getAttribute('href')); const row = document.querySelector('main a[href="/a/default/c/${running.id}"]:not([inert] *)').closest('li'); return links.indexOf('/a/default/c/${running.id}') >= 0 && links.indexOf('/a/default/c/${running.id}') < links.indexOf('/a/default/c/${done.id}') && row.innerText.includes('Started by Main') && row.innerText.includes('Running'); })()`,
   );
+  await advanceClock(31 * 60 * 1000);
+  await ui(
+    "the Sessions page turns the running child to Stalled when only the clock moves",
+    `document.querySelector('main a[href="/a/default/c/${running.id}"]:not([inert] *)').closest('li').innerText.includes('Stalled')`,
+  );
+  await restoreClock();
   await shot("04-sessions");
   await visit("/a/default");
   await ui(
@@ -1911,6 +1929,15 @@ async function holdMaintenance() {
 async function model(modelId) {
   const agent = await api("/api/agents/default");
   await api("/api/agents/default", { ...agent, provider: "faux", modelId }, "PUT");
+}
+
+// Moves only the clock that the page reads. The API data and the timers stay as they are.
+async function advanceClock(ms) {
+  await evaluate(`window.__realNow ??= Date.now; Date.now = () => window.__realNow() + ${ms}; true`);
+}
+
+async function restoreClock() {
+  await evaluate("if (window.__realNow) Date.now = window.__realNow; true");
 }
 
 async function childSessions() {
