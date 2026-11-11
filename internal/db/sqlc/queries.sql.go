@@ -26,7 +26,7 @@ func (q *Queries) AdmitSubmission(ctx context.Context, arg AdmitSubmissionParams
 
 const archiveChat = `-- name: ArchiveChat :exec
 UPDATE conversations SET archived_at = coalesce(archived_at, ?1)
-WHERE id = ?2 AND agent_id = ?3 AND channel_key LIKE 'chat:%'
+WHERE id = ?2 AND agent_id = ?3 AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
 `
 
 type ArchiveChatParams struct {
@@ -35,7 +35,8 @@ type ArchiveChatParams struct {
 	AgentID    string        `json:"agent_id"`
 }
 
-// Keeps the first archive time when the chat is archived already.
+// Keeps the first archive time when the chat is archived already. A child session from before
+// child sessions has a task: key, and it archives too.
 func (q *Queries) ArchiveChat(ctx context.Context, arg ArchiveChatParams) error {
 	_, err := q.db.ExecContext(ctx, archiveChat, arg.ArchivedAt, arg.ID, arg.AgentID)
 	return err
@@ -1754,7 +1755,7 @@ func (q *Queries) SettleSubmission(ctx context.Context, arg SettleSubmissionPara
 
 const unarchiveChat = `-- name: UnarchiveChat :exec
 UPDATE conversations SET archived_at = NULL
-WHERE id = ?1 AND agent_id = ?2 AND channel_key LIKE 'chat:%'
+WHERE id = ?1 AND agent_id = ?2 AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
 `
 
 type UnarchiveChatParams struct {

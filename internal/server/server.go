@@ -92,9 +92,9 @@ func New(cfg Config) http.Handler {
 				status = http.StatusServiceUnavailable
 			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden), errors.Is(err, chat.ErrSettingsForbidden):
 				status = http.StatusForbidden
-			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
+			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, chat.ErrTaskConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
+			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -281,9 +281,6 @@ func chatView(c chat.Chat) api.Chat {
 	if strings.HasPrefix(c.ChannelKey, "feishu:") {
 		out.Channel = api.ChatChannelFeishu
 	}
-	if strings.HasPrefix(c.ChannelKey, "task:") {
-		out.Channel = api.ChatChannelTask
-	}
 	if id, ok := automation.ChatAutomation(c.ChannelKey); ok {
 		out.Channel, out.AutomationId = api.ChatChannelAutomation, &id
 	}
@@ -330,39 +327,30 @@ func (h *handler) listChats(ctx context.Context, agentID string) (api.ListChats2
 	if err != nil {
 		return api.ListChats200JSONResponse{}, err
 	}
-	byConversation, err := h.taskSummaries(ctx, agentID)
-	if err != nil {
-		return api.ListChats200JSONResponse{}, err
-	}
 	out := api.ListChats200JSONResponse{Chats: make([]api.Chat, len(chats))}
+	// The list has no execution ID. Only a busy session needs one, to tell the web UI that it stalled.
+	var refs []engine.Ref
+	refOf := map[int]engine.Ref{}
 	for i, c := range chats {
 		out.Chats[i] = chatView(c)
-		if t, ok := byConversation[c.ID]; ok {
-			out.Chats[i].Task = &t
+		if !c.Busy {
+			continue
 		}
-	}
-	return out, nil
-}
-
-// taskSummaries maps each delegated conversation of the agent to its task.
-func (h *handler) taskSummaries(ctx context.Context, agentID string) (map[int64]api.TaskSummary, error) {
-	tasks, err := h.Chats.TaskRecords(ctx, agentID)
-	if err != nil {
-		return nil, err
-	}
-	byConversation := make(map[int64]api.TaskSummary, len(tasks))
-	refs := make([]engine.Ref, 0, len(tasks))
-	for _, t := range tasks {
-		if t.Status == "running" && t.ExecutionID.Valid {
-			refs = append(refs, engine.Ref{AgentID: agentID, ID: t.ExecutionID.Int64})
+		full, err := h.Chats.Get(ctx, agentID, c.ID)
+		if err != nil {
+			return api.ListChats200JSONResponse{}, err
+		}
+		if full.ExecutionID > 0 {
+			refOf[i] = engine.Ref{AgentID: agentID, ID: full.ExecutionID}
+			refs = append(refs, refOf[i])
 		}
 	}
 	activities := h.Engine.Activity(refs)
-	for _, t := range tasks {
-		activity := activities[engine.Ref{AgentID: agentID, ID: t.ExecutionID.Int64}]
-		byConversation[t.ConversationID] = taskSummary(t, activity)
+	for i, ref := range refOf {
+		out.Chats[i].LastActivityAt = activities[ref].LastActivityAt
+		out.Chats[i].ToolStartedAt = activities[ref].ToolStartedAt
 	}
-	return byConversation, nil
+	return out, nil
 }
 
 func (h *handler) GetChat(ctx context.Context, req api.GetChatRequestObject) (api.GetChatResponseObject, error) {
@@ -370,18 +358,15 @@ func (h *handler) GetChat(ctx context.Context, req api.GetChatRequestObject) (ap
 	if err != nil {
 		return nil, err
 	}
-	out := chatView(c)
-	// The page needs the task state to choose between the Stop bar and the Continue chat composer.
-	if strings.HasPrefix(c.ChannelKey, "task:") {
-		tasks, err := h.taskSummaries(ctx, agentID(ctx))
-		if err != nil {
-			return nil, err
-		}
-		if t, ok := tasks[c.ID]; ok {
-			out.Task = &t
-		}
+	return api.GetChat200JSONResponse(chatView(c)), nil
+}
+
+func (h *handler) GetTurnChat(ctx context.Context, req api.GetTurnChatRequestObject) (api.GetTurnChatResponseObject, error) {
+	c, err := h.Chats.ChatOfTurn(ctx, agentID(ctx), req.TurnId)
+	if err != nil {
+		return nil, err
 	}
-	return api.GetChat200JSONResponse(out), nil
+	return api.GetTurnChat200JSONResponse(chatView(c)), nil
 }
 
 // message validates a message from the client. The text can be empty when the message has an

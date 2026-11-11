@@ -49,13 +49,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ArchiveChat :exec
--- Keeps the first archive time when the chat is archived already.
+-- Keeps the first archive time when the chat is archived already. A child session from before
+-- child sessions has a task: key, and it archives too.
 UPDATE conversations SET archived_at = coalesce(archived_at, @archived_at)
-WHERE id = @id AND agent_id = @agent_id AND channel_key LIKE 'chat:%';
+WHERE id = @id AND agent_id = @agent_id AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
 
 -- name: UnarchiveChat :exec
 UPDATE conversations SET archived_at = NULL
-WHERE id = @id AND agent_id = @agent_id AND channel_key LIKE 'chat:%';
+WHERE id = @id AND agent_id = @agent_id AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
 
 -- name: SetFirstChatTitle :exec
 UPDATE conversations SET title = ? WHERE id = ? AND title = '';
