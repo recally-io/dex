@@ -108,10 +108,18 @@ from before child sessions has the same shape. While a session is busy, the list
 adds `lastActivityAt` and `toolStartedAt` from the engine. The web uses them to
 show a stalled hint. Detail does not carry them.
 
+The list of a bot also holds the children of its sessions that belong to another
+bot. Such a child has `agentId` and `agentName`, and its row opens under that bot.
+A child row names the bot of its parent in `parentAgentId` and `parentAgentName`
+when the parent belongs to another bot than the one in the path. Detail has the
+parent fields.
+
 `GET /api/agents/{agentId}/turns/{turnId}` returns the session that holds a
 turn. Result links and old `/tasks/<id>` links name a turn, because the ID of an
 old task is the ID of its first input. The route returns `404` for an unknown
-turn and for the turn of another agent.
+turn and for the turn of another agent, except a turn of a child of a session of
+this agent in another bot. That child names its bot in `agentId`, and the web
+opens it under that bot.
 
 Channel input enters the agent's main conversation. Chat and automation
 contexts stay separate. See [Product](../product.md#scope) for session behavior,

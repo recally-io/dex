@@ -195,7 +195,10 @@ The chat does not show the internal report as input. Read-only task records
 give the human the saved report, status, times, and work transcript.
 The bot has no Sessions tab. The Sessions panel lists writable Chats and
 links to All sessions, the full session list of the bot. On a phone, the
-Sessions panel opens as a full-screen sheet.
+Sessions panel opens as a full-screen sheet. A child session that runs in
+another bot shows in the panel and in All sessions of its parent bot, with the
+name of its bot, and opens under that bot. Its own bot shows the bot of the
+parent.
 Routine run history links to read-only automation transcripts.
 Old channel transcript URLs remain readable. The legacy Sessions URL remains
 available for saved links.
