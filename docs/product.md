@@ -295,8 +295,9 @@ and task-specific automation result routing are later work. Other chat channels 
   cannot use them. The tools never show `.env` values.
 - Archive: `bot_delete` archives; it never deletes data. The tool only asks. The
   web shows an approval card: the first option is `Archive <name>`, the second
-  is Cancel. Only an exact answer of the first option from the web or from a paired
-  channel peer archives the bot. Any other answer, or an answer from a task,
+  is Cancel. Only an answer of the first option from the web or from a paired
+  channel peer archives the bot. Surrounding whitespace is ignored; the words,
+  case and inner spaces must match. Any other answer, or an answer from a task,
   automation or dream, leaves the bot as it is. The agent sees the decision
   as the last line of the answer. The default bot, the asking bot and a bot with a
   running session are refused. An archived bot leaves the sidebar and the bot

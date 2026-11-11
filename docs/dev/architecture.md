@@ -581,7 +581,9 @@ interruption error, and the model reads the list again.
 `ask_user` does. It must be the only call in its round. Control archives inside
 the receipt transaction of the answer, before the model sees the answer. The
 transaction takes the answer text and origin, and archives only when the origin
-is a user origin and the text equals `approve_text`. It runs the archive guard
+is a user origin and the text equals `approve_text` after `chat.NormalizeText`
+(trim surrounding whitespace). The HTTP handler and this check use the same
+function, so a channel that does not trim gets the same result as the web. It runs the archive guard
 again, because the bot can become busy after the question. It stores the
 decision in `questions.outcome` and appends it to the answer content, so the
 model reads `dex: Approved. Bot "X" is archived.`, `dex: Not approved. ...` or

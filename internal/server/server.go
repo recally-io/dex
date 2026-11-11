@@ -416,7 +416,7 @@ func (h *handler) message(ctx context.Context, in api.MessageInput) (chat.Messag
 	if len(ids) > maxAttachments {
 		return chat.Message{}, errors.Join(errInvalid, errors.New("a message can have at most 10 attachments"))
 	}
-	m := chat.Message{ID: id.String(), Content: strings.TrimSpace(in.Text)}
+	m := chat.Message{ID: id.String(), Content: chat.NormalizeText(in.Text)}
 	if in.AnswersQuestionId != nil {
 		m.AnswersQuestion = *in.AnswersQuestionId
 	}

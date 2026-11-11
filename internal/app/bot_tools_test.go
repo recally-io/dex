@@ -197,9 +197,9 @@ func TestOwnerAnswersThatDoNotApproveKeepTheBot(t *testing.T) {
 	d := startDex(t, dir, "")
 	d.createCoder(t)
 	conn := sessionDB(t, d)
-	for _, answer := range []string{"Cancel", "archive coder", "yes", "Archive Coder please"} {
+	for _, answer := range []string{"Cancel", "archive coder", "yes", "Archive Coder please", "Archive  Coder", "ArchiveCoder"} {
 		chatID, q := askArchive(t, d, "Coder")
-		// When the owner answers with anything but the exact approve text.
+		// When the owner answers with anything but the approve text.
 		d.setModel(t, "echo")
 		d.answer(t, chatID, q.ID, answer, http.StatusAccepted)
 		// Then the model sees the refusal and the bot stays.
@@ -210,6 +210,26 @@ func TestOwnerAnswersThatDoNotApproveKeepTheBot(t *testing.T) {
 		if got := questionOutcome(t, conn, q.ID); !strings.HasPrefix(got, "dex: Not approved.") {
 			t.Fatalf("answer %q outcome: %q", answer, got)
 		}
+	}
+}
+
+func TestOwnerApprovalIgnoresSurroundingWhitespaceOverHTTP(t *testing.T) {
+	t.Parallel()
+	for _, answer := range []string{"Archive Coder ", "\nArchive Coder", "Archive Coder\u00a0"} {
+		t.Run(fmt.Sprintf("%q", answer), func(t *testing.T) {
+			// Given a question that asks to archive a bot.
+			d := startDex(t, t.TempDir(), "")
+			d.createCoder(t)
+			chatID, q := askArchive(t, d, "Coder")
+			// When the owner approves with surrounding whitespace.
+			d.setModel(t, "echo")
+			d.answer(t, chatID, q.ID, answer, http.StatusAccepted)
+			// Then the bot is archived.
+			d.watch(t, chatID).until(t, "approval reaches the model", answeredWith(`Approved. Bot "Coder" is archived.`))
+			if got := d.botNames(t, "/api/agents"); !slices.Equal(got, []string{"Dex"}) {
+				t.Fatalf("answer %q did not archive the bot: %v", answer, got)
+			}
+		})
 	}
 }
 

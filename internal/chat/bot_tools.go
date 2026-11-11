@@ -79,7 +79,7 @@ type answerDecision struct {
 }
 
 // decide settles an action question inside the receipt transaction, before the model sees the
-// answer. Only a person's answer that equals the stored approve text approves. The rules for the bot
+// answer. Only a person's answer that equals the stored approve text, after NormalizeText, approves. The rules for the bot
 // run again now, because the bot can be busy after the owner was asked.
 func (d *answerDecision) decide(ctx context.Context, q *sqlc.Queries, row sqlc.Question, answer, origin string) error {
 	if row.Action.String != archiveAction {
@@ -90,7 +90,7 @@ func (d *answerDecision) decide(ctx context.Context, q *sqlc.Queries, row sqlc.Q
 		return err
 	}
 	var outcome string
-	if !UserOrigin(origin) || answer != row.ApproveText.String {
+	if !UserOrigin(origin) || NormalizeText(answer) != NormalizeText(row.ApproveText.String) {
 		outcome = fmt.Sprintf("dex: Not approved. Bot %q is not archived.", bot.Name)
 	} else if err := db.CheckArchive(ctx, q, bot.ID); err == nil {
 		d.archive = bot.ID

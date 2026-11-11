@@ -84,6 +84,11 @@ func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a engin
 	return s.askQuestion(ctx, r, a, nil)
 }
 
+// NormalizeText is the one rule for text from a person: surrounding whitespace is not part of
+// the message. The HTTP handler stores the normalized text, and the approval check compares the
+// normalized text, so a channel that does not trim gives the same result as the web.
+func NormalizeText(s string) string { return strings.TrimSpace(s) }
+
 // askQuestion saves a question. An action question also needs a user input as its source, and the
 // action must be allowed now; control runs the action only when the owner approves it.
 func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engine.AskUserArgs, action *questionAction) (engine.QuestionInfo, error) {
@@ -94,7 +99,7 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engin
 	}
 	options := make([]string, len(a.Options))
 	for i, option := range a.Options {
-		options[i] = strings.TrimSpace(option)
+		options[i] = NormalizeText(option)
 		if options[i] == "" || utf8.RuneCountInString(options[i]) > maxOption {
 			return engine.QuestionInfo{}, fmt.Errorf("%w: each option has 1 to %d characters", ErrQuestionInvalid, maxOption)
 		}

@@ -90,7 +90,6 @@ func TestOwnerAnswersThatDoNotApproveLeaveTheBotActive(t *testing.T) {
 		{"cancel option", "web", "Cancel"},
 		{"different case", "web", "archive coder"},
 		{"extra words", "web", "Archive Coder please"},
-		{"trailing space", "web", approve + " "},
 		{"task origin", "task", approve},
 		{"automation origin", "automation", approve},
 		{"dream origin", "dream", approve},
@@ -331,5 +330,25 @@ func TestBotToolCallerRefusesAChildSessionWithAChatKey(t *testing.T) {
 		if !errors.Is(err, ErrBotCaller) {
 			t.Errorf("change=%v: err=%v, want ErrBotCaller", change, err)
 		}
+	}
+}
+
+func TestOwnerApprovalIgnoresSurroundingWhitespace(t *testing.T) {
+	for _, text := range []string{approve + " ", "\n" + approve, approve + "\u00a0", " \t" + approve + "\r\n"} {
+		t.Run(strconv.Quote(text), func(t *testing.T) {
+			// Given an open question that asks to archive a bot.
+			r, _, source := archiveFixture(t)
+			q := askArchive(t, r, source)
+
+			// When a person answers with the approve option and surrounding whitespace, from the web or a channel.
+			if err := answer(t, r, q.ID, "telegram:7", text); err != nil {
+				t.Fatal(err)
+			}
+
+			// Then the bot is archived.
+			if !archivedAt(t, r, "coder") {
+				t.Fatalf("answer %q did not approve", text)
+			}
+		})
 	}
 }

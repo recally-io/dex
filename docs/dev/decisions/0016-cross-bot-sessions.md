@@ -82,7 +82,7 @@ route. Isolation of tools is a separate decision.
    `pending_approval`, and the turn ends, as with ask_user.
 2. The owner answers in the web card or in the channel, as for any question.
 3. Before the answer reaches the model, control checks it. Only an answer from
-   a user origin whose text is exactly the approve option runs the action. Any
+   a user origin whose text, after trimming surrounding whitespace, is exactly the approve option runs the action. Any
    other answer cancels it. Control writes the outcome ("archived" or "not
    approved") into the input that the model sees.
 
