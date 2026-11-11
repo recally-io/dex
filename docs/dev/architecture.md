@@ -591,7 +591,8 @@ and runs at once. There is no count limit and no cwd lock. Children in one
 directory run at the same time, so the prompt tells the parent to give each
 writing child separate files or directories. The tools are:
 
-- `session_new` creates a child and sends its first message.
+- `session_new` creates a child and sends its first message. With `bot` (an ID
+  or a name) the child belongs to another bot. See "Cross-bot sessions" below.
 - `session_send` sends a message. An idle child starts a run. For a busy child,
   mode `steer` joins the current run after its current tool step, and mode
   `queue` (the default) runs after it.
@@ -599,18 +600,59 @@ writing child separate files or directories. The tools are:
   user Stop and has no result.
 - `session_fork` branches a child up to a finished answer, with the same parent.
 - `session_list` lists the children of the caller, or with scope `all` every
-  session of the bot except dreams.
+  session except dreams. `bot` is empty (the bot of the caller), `all`, or a bot
+  ID or name.
 - `session_read` returns turns newest first: the input and the final answer of
   each turn, cut at 4,000 characters. It does not return thinking, tool calls or
-  tool output. It reads any session of the same bot except dreams. `turn` with
+  tool output. It reads any session of any bot except dreams. `turn` with
   `offset` reads the rest of a cut text.
 - `session_search` finds turns whose input or answer contains every word of a
-  query. It covers all sessions of the bot except dreams.
+  query, in sessions except dreams. `bot` is empty (the bot of the caller),
+  `all`, or a bot ID or name.
+
+Each session, list row and match names its bot (`bot` and `botId`).
 
 Only a parent can send to, stop or fork a child. A child has no session tools,
 no routine tools and no `ask_user`: the engine removes them from every input of
 a conversation that has a parent, and the handlers refuse the call as well.
 A conversation that was a task before the upgrade is a child in the same way.
+
+### Cross-bot sessions
+
+[ADR 0016](decisions/0016-cross-bot-sessions.md) lets a child belong to another
+bot. Control keeps these rules, and a reviewer must check each new cross-bot path
+against them:
+
+- Ownership is `child.parent_id = caller conversation`. It does not depend on the
+  bot of the child. `childOf` is the only check for `session_send`,
+  `session_stop` and `session_fork`. A conversation that is not the parent, in
+  any bot, gets "not found".
+- `session_new` with `bot` creates the conversation under the target bot. The
+  child takes the model, thinking level and workspace defaults of that bot, not
+  the settings of the parent. Admission reads the agent of the child, so the
+  child runs with the instructions, memory section, skills, MCP servers and
+  `.env` of that bot. A child still cannot create children.
+- A result goes to `conversations.parent_id` in the settlement transaction, in the
+  bot of the parent. Admission of the bot of the parent takes it from the
+  database, as for a result from the same bot.
+- Locks. No call path holds two delivery gates. A session tool runs in the run of
+  its conversation and holds no gate. `session_stop` takes the gate of the bot of
+  the child, as a Stop in that bot does. A Stop takes the gate of the stopped
+  conversation only. It withdraws the pending input of the children in every
+  bot in one transaction, and it aborts only the executions of its own bot. The
+  abort of a child in another bot stays a durable `abort_pending` request. The
+  reconciliation of that bot, under its own gate, carries it out. Two parents
+  in two bots that stop each other's children therefore cannot wait for each
+  other's gate. `settleNative` takes the gate of the bot of the child only for an
+  aborted run, and the result for the parent is a database write without a gate.
+- Restart recovery settles the admitted inputs of each child under the agent of
+  the child, and sends the one `interrupted` result to the parent in its bot.
+- `session_read` reads any session except dreams. `session_search` and
+  `session_list` read one bot, or all bots with `all`. The default is the bot of
+  the caller. A name is not unique: an ambiguous name is an error that lists the
+  IDs.
+- A file that a child in another bot delivers stays in the conversation of the
+  child, because the snapshot is in the home of that bot.
 
 A tool call uses its bot ID and PiG's tool task ID as the turn ID. The turn
 is stored with `submissions.parent_request_id` in the same write transaction as
