@@ -230,19 +230,34 @@ func (q *Queries) RestoreTask(ctx context.Context, arg RestoreTaskParams) (int64
 const stopConversationSubmissions = `-- name: StopConversationSubmissions :execrows
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = ?1
 WHERE conversation_id = ?2 AND status = 'pending'
-    AND (CAST(?3 AS INTEGER) = 0 OR parent_request_id IS NOT NULL)
 `
 
 type StopConversationSubmissionsParams struct {
-	Now        sql.NullInt64 `json:"now"`
-	ChatID     int64         `json:"chat_id"`
-	ParentOnly int64         `json:"parent_only"`
+	Now    sql.NullInt64 `json:"now"`
+	ChatID int64         `json:"chat_id"`
 }
 
-// A child that Stop reaches through its parent keeps its pending user input. Stop on the child
-// itself ends all of it.
 func (q *Queries) StopConversationSubmissions(ctx context.Context, arg StopConversationSubmissionsParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, stopConversationSubmissions, arg.Now, arg.ChatID, arg.ParentOnly)
+	result, err := q.db.ExecContext(ctx, stopConversationSubmissions, arg.Now, arg.ChatID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const stopSubmission = `-- name: StopSubmission :execrows
+UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = ?1
+WHERE id = ?2 AND status = 'pending'
+`
+
+type StopSubmissionParams struct {
+	Now sql.NullInt64 `json:"now"`
+	ID  string        `json:"id"`
+}
+
+// Stop ends one pending input that native execution withdrew.
+func (q *Queries) StopSubmission(ctx context.Context, arg StopSubmissionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, stopSubmission, arg.Now, arg.ID)
 	if err != nil {
 		return 0, err
 	}

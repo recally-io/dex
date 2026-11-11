@@ -163,10 +163,19 @@ is not lost, and a replay does not make a copy.
 Stop clears `abort_pending` before the next input, so `session_send` after
 `session_stop` starts a new run and gives a result.
 
-Stop on a parent chat reaches the inputs that the parent started in its child
-sessions, and the run that holds them. It does not end a turn that the user
-started in a child. Stop on the child itself ends all of its pending input. A
-replayed `session_stop` call returns its first result and stops nothing new.
+Stop on a parent chat reaches each child session that holds pending input that
+the parent started. Stop treats a child as a whole, because native abort ends
+the run and withdraws every queued input of the conversation.
+
+- A child without pending user input ends all of its pending input, and its run
+  aborts.
+- A child with pending user input, running or queued, keeps its run. Stop
+  withdraws only the parent input that is still queued. A run that the parent
+  already started continues, and its result can start a new parent turn after
+  Stop.
+
+Stop on the child itself ends all of its pending input. A replayed
+`session_stop` call returns its first result and stops nothing new.
 
 The recovery rule does not change. Before a Harness resumes, control stops each
 pending parent turn in a child and marks it `interrupted`. Abort also withdraws
