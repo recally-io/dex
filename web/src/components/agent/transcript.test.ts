@@ -247,10 +247,11 @@ test("user sees message actions only where a fork can start", async () => {
     }),
   );
 
-  // The answer that called a tool cannot start a fork; the queued message has no entry yet.
+  // Only the answer that ends the turn has actions. The answer that called a tool cannot start
+  // a fork; the queued message has no entry yet.
   expect(html.match(/aria-label="Fork from here"/g)).toHaveLength(1);
   expect(html.match(/aria-label="Edit in new chat"/g)).toHaveLength(1);
-  expect(html.match(/aria-label="Copy answer"/g)).toHaveLength(2);
+  expect(html.match(/aria-label="Copy answer"/g)).toHaveLength(1);
   expect(html.match(/aria-label="Copy message"/g)).toHaveLength(1);
 
   // A streaming answer has no actions.

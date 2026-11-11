@@ -589,6 +589,7 @@ export function TranscriptItem({
   queuedActions,
   actions,
   forkable = false,
+  ending = false,
 }: {
   item: Exclude<Item, { kind: "tool" | "thinking" }>;
   live: boolean;
@@ -598,6 +599,8 @@ export function TranscriptItem({
   actions?: MessageActions;
   /** The answer waits for no tool result, so a fork can start after it. */
   forkable?: boolean;
+  /** The answer ends its turn. Only such an answer has actions, so a turn reads as one unit. */
+  ending?: boolean;
 }) {
   const agentId = useAgentId();
 
@@ -713,7 +716,7 @@ export function TranscriptItem({
       if (!live && !item.text.trim()) return null;
 
       return (
-        <article className="group min-w-0">
+        <article className="group relative min-w-0">
           {live ? (
             <div className="max-w-[680px] text-[15px] leading-[1.75] whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]">
               <span>
@@ -724,24 +727,28 @@ export function TranscriptItem({
           ) : (
             <Markdown text={item.text} />
           )}
-          <footer className="mt-1.5 flex h-7 items-center gap-1.5 text-[11.5px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
-            {item.model ? <span className="min-w-0 truncate font-mono">{item.model}</span> : null}
-            {item.usage ? (
-              <span className="shrink-0 tabular-nums">
-                {item.usage.input.toLocaleString()} in · {item.usage.output.toLocaleString()} out
-              </span>
-            ) : null}
-            {live ? null : <CopyText text={item.text} label="Copy answer" />}
-            {actions && item.entryId && forkable && !live ? (
-              <MessageAction
-                label="Fork from here"
-                disabled={actions.pending}
-                onClick={() => actions.fork(item.entryId!, false)}
-              >
-                <GitBranch size={14} aria-hidden />
-              </MessageAction>
-            ) : null}
-          </footer>
+          {ending ? (
+            // With a mouse, the actions show on hover in the 32px gap below the turn, so they
+            // take no space. A touch screen has no hover, so there they always show.
+            <footer className="mt-1 flex h-7 items-center gap-1.5 text-[11.5px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 pointer-fine:absolute pointer-fine:inset-x-0 pointer-fine:top-full">
+              {item.model ? <span className="min-w-0 truncate font-mono">{item.model}</span> : null}
+              {item.usage ? (
+                <span className="shrink-0 tabular-nums">
+                  {item.usage.input.toLocaleString()} in · {item.usage.output.toLocaleString()} out
+                </span>
+              ) : null}
+              {live ? null : <CopyText text={item.text} label="Copy answer" />}
+              {actions && item.entryId && forkable && !live ? (
+                <MessageAction
+                  label="Fork from here"
+                  disabled={actions.pending}
+                  onClick={() => actions.fork(item.entryId!, false)}
+                >
+                  <GitBranch size={14} aria-hidden />
+                </MessageAction>
+              ) : null}
+            </footer>
+          ) : null}
         </article>
       );
     case "error":
@@ -836,6 +843,7 @@ export function Transcript({
         queuedActions={queuedActions}
         actions={messageActions}
         forkable={!!block.item.entryId && !withTools.has(block.item.entryId)}
+        ending={["user", "task", "boundary", undefined].includes(items[block.index + 1]?.kind)}
       />
     );
   }
@@ -882,7 +890,7 @@ export function RetryNotice({ retry }: { retry: Retry }) {
 
 export function Markdown({ text }: { text: string }) {
   return (
-    <div className="max-w-[680px] text-[15px] leading-[1.75] text-foreground [overflow-wrap:anywhere]">
+    <div className="max-w-[680px] text-[15px] leading-[1.75] text-foreground [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
       <ReactMarkdown remarkPlugins={[remarkGfm, remarkStrong]} components={markdown}>
         {strongText(text)}
       </ReactMarkdown>

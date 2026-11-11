@@ -68,8 +68,9 @@ function split(value: string): Node[] {
 }
 
 function walk(node: Node) {
-  if (node.type === "inlineCode" || node.type === "code") {
-    node.value = node.value?.replaceAll(open, "**").replaceAll(close, "**");
+  // Code, HTML and other literal nodes show their value as typed.
+  if (node.value !== undefined) {
+    node.value = node.value.replaceAll(open, "**").replaceAll(close, "**");
 
     return;
   }
