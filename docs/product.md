@@ -264,8 +264,10 @@ Web Stop stays in the composer for queued input, an active answer, and active
 background work. Stop covers the selected writable session. On a parent, it
 also covers each child that has pending input that the parent sent. The session
 list marks those children (`stoppedWithParent`), and the parent page shows Stop
-only for them. A run that the user started in a child is not covered: the parent
-page shows no Stop for it, and the user stops it in the child. Stop on a child
+only for them. A child that also has pending user input keeps its run, and
+Stop withdraws only the parent input that is still queued. A run that the user
+started in a child is not covered: the parent page shows no Stop for it, and the
+user stops it in the child. Stop on a child
 ends all pending input of that child. Automation transcripts are read-only.
 Stop needs no model.
 Stop withdraws pending input and results, records cancellation, and requests
