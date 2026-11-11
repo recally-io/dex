@@ -20,26 +20,7 @@ type sessionInfo struct {
 	Main      bool      `json:"main"`
 	ReadOnly  bool      `json:"readOnly"`
 	UpdatedAt int64     `json:"updatedAt"`
-	Task      *taskInfo `json:"task"`
-}
-
-// taskInfo is the saved summary of a background task from before child sessions. New work does not
-// create one; old rows stay readable.
-type taskInfo struct {
-	ID                   string  `json:"id"`
-	Title                string  `json:"title"`
-	Status               string  `json:"status"`
-	Report               string  `json:"report"`
-	CreatedAt            int64   `json:"createdAt"`
-	StartedAt            *int64  `json:"startedAt"`
-	EndedAt              *int64  `json:"endedAt"`
-	HandledAt            *int64  `json:"handledAt"`
-	ConversationID       int64   `json:"conversationId"`
-	ParentConversationID int64   `json:"parentConversationId"`
-	LastAction           *string `json:"lastAction"`
-	LastActivityAt       *int64  `json:"lastActivityAt"`
-	ToolStartedAt        *int64  `json:"toolStartedAt"`
-	ReportOutcome        string  `json:"reportOutcome"`
+	ParentID  *int64    `json:"parentId"`
 }
 
 func (d *dex) newSession(t *testing.T) sessionInfo {
@@ -304,7 +285,7 @@ func TestUserCannotWriteReadOnlySessionKinds(t *testing.T) {
 
 func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 	t.Parallel()
-	// Given saved sessions with equal activity times, task reports and hidden contexts.
+	// Given saved sessions with equal activity times, a child session from before child sessions and hidden contexts.
 	d := startDex(t, t.TempDir(), "")
 	conn := sessionDB(t, d)
 	main := d.mainChat(t)
@@ -323,7 +304,7 @@ func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := conn.ExecContext(t.Context(), "INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at) VALUES ('listed-task', ?, ?, 'listed-spawn', ?, 'Listed task', 'done', 'private report body', 5)", chat, task, fmt.Sprint(chat)); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "UPDATE conversations SET parent_id = ? WHERE id = ?", chat, task); err != nil {
 		t.Fatal(err)
 	}
 	// When the caller lists Sessions, rows follow activity time with a stable ID tie-break.
@@ -344,25 +325,23 @@ func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 	if !slices.Equal(ids, []int64{chat, task, automation}) {
 		t.Fatalf("session list order or exclusions: %v; body=%s", ids, raw)
 	}
-	if list.Chats[1].Task == nil || list.Chats[1].Task.ID != "listed-task" || list.Chats[1].Task.ParentConversationID != chat {
-		t.Fatalf("task summary or Stop scope missing: %s", raw)
-	}
+	// Then the child shows its parent as a Chat, and the old task API is gone.
 	for _, c := range list.Chats {
-		if c.ID != task && c.Task != nil {
-			t.Fatalf("non-task has a task summary: %+v", c)
+		if (c.ID == task) != (c.ParentID != nil && *c.ParentID == chat) {
+			t.Fatalf("parentId on session %d: %v; body=%s", c.ID, c.ParentID, raw)
 		}
 	}
-	// Then task detail keeps the report, and the old task-list API is gone.
-	var detail taskInfo
-	d.must(t, http.MethodGet, "/api/agents/default/tasks/listed-task", nil, &detail)
-	if detail.Report != "private report body" {
-		t.Fatalf("task detail lost report: %+v", detail)
+	if strings.Contains(raw, `"task"`) || strings.Contains(raw, `"channel":"task"`) {
+		t.Fatalf("task fields remain in the list: %s", raw)
 	}
-	status, raw = d.call(t, http.MethodGet, "/api/agents/default/tasks", nil)
-	if status != http.StatusNotFound {
-		t.Fatalf("obsolete task list still exists: %d %s", status, raw)
+	for _, path := range []string{"/api/agents/default/tasks", "/api/agents/default/tasks/listed-task", "/api/agents/default/tasks/listed-task/cancel"} {
+		for _, method := range []string{http.MethodGet, http.MethodPost} {
+			if status, raw := d.call(t, method, path, nil); status != http.StatusNotFound && status != http.StatusMethodNotAllowed {
+				t.Fatalf("%s %s still exists: %d %s", method, path, status, raw)
+			}
+		}
 	}
-	t.Logf("artifact: listed_ids=%v task_detail=%+v", ids, detail)
+	t.Logf("artifact: listed_ids=%v", ids)
 }
 
 func TestUserSeesSessionActivityThroughSettlement(t *testing.T) {

@@ -82,13 +82,10 @@ type report struct {
 	Results     []result `json:"results"`
 }
 type chat struct {
-	ID   int64  `json:"id"`
-	Busy bool   `json:"busy"`
-	Cwd  string `json:"cwd"`
-	Task *struct {
-		Parent int64  `json:"parentConversationId"`
-		Status string `json:"status"`
-	} `json:"task"`
+	ID       int64  `json:"id"`
+	Busy     bool   `json:"busy"`
+	Cwd      string `json:"cwd"`
+	ParentID int64  `json:"parentId"`
 }
 
 type httpError struct {
