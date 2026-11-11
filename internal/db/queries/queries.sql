@@ -422,3 +422,12 @@ UPDATE automation_runs SET
             AND prior.outcome = automation_runs.outcome AND s.status = 'done'
     ) THEN 1 ELSE 0 END
 WHERE automation_runs.id = @id AND automation_runs.status = 'started';
+
+-- name: GetOnePassword :one
+SELECT mode, connect_host, connect_token, service_account_token FROM one_password WHERE id = 1;
+
+-- name: SetOnePassword :exec
+INSERT INTO one_password (id, mode, connect_host, connect_token, service_account_token)
+VALUES (1, ?, ?, ?, ?)
+ON CONFLICT (id) DO UPDATE SET mode = excluded.mode, connect_host = excluded.connect_host,
+    connect_token = excluded.connect_token, service_account_token = excluded.service_account_token;

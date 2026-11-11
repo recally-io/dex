@@ -314,16 +314,23 @@ skills. It explains paths, file formats, environment use, and Reload. It
 contains no environment key names or values. The user sets values in the web
 UI or in the files.
 
+Tools start from the user's login shell environment, so a value that the
+shell exports reaches every bot. The Environment page can also store
+1Password credentials for the `op` CLI: a service account token, or a
+Connect host and token. When `op` is installed, bots read secrets with
+`op read` when a command needs them. dex does not read the secrets.
+
 The Tools tab of a bot writes that bot's `.env` file. It shows dex and home
 keys as read-only, with shadowed state for this bot. The Environment page
 writes the dex `.env` file, which applies to all bots, and shows home keys as
 read-only. Both pages show key names with Replace and Delete actions. Values
-are write-only. File changes apply after Reload. Reload on the Environment page
-reloads every bot. The files remain the only store. The old `/secrets` address
+are write-only. Changes to files, shell rc files, and 1Password settings apply
+automatically when all bots are idle; the pages show a change that waits. The
+files remain the only store. The old `/secrets` address
 opens the Environment page.
 
 The Tools tab also shows the level directories, skills, MCP servers, and
-configuration warnings. Reload
+configuration warnings. The automatic reload
 requires all agents to be idle before it replaces the selected agent's execution
 resources and MCP connections. After that idle check succeeds, other agents
 can start work while Reload continues. Invalid configuration for the selected

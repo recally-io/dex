@@ -32,7 +32,7 @@ func TestUserGetsExtensionGuideWithoutSkillsOrSecretNames(t *testing.T) {
 	for _, text := range []string{catalog.dir("home"), catalog.dir("dex"), catalog.dir("agent"), ".env",
 		"Narrower levels win", "as a whole", "skills/<name>/SKILL.md", "name", "description", "next request",
 		"mcp.json", "mcpServers", "command", "args", "env", "cwd", `"type": "http"`, "url", "headers", `{"disabled": true}`,
-		"$KEY", "${KEY}", "Never print", "chat", "memory", "files", "Secrets page", "Reload", "Extensions tab", "Ask the user"} {
+		"$KEY", "${KEY}", "Never print", "chat", "memory", "files", "Environment page", "login shell", "when all bots are idle", "You cannot reload"} {
 		if text == "" || !strings.Contains(guide, text) {
 			t.Fatalf("guide missing %q", text)
 		}

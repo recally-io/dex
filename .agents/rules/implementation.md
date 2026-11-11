@@ -25,7 +25,7 @@ Read this before you change code, dependencies, native execution, or stored data
 | `internal/service`    | Per-user launchd/systemd definitions, commands, and readiness checks               |
 | `internal/update`     | Release verification, maintenance coordination, and executable replacement         |
 | `internal/mcptest`    | Local MCP test servers; no production execution                                    |
-| `internal/settings`   | Global providers, model checks, access token                                       |
+| `internal/settings`   | Global providers, model checks, 1Password credentials, access token                |
 | `internal/agent`      | Agent settings, activity, paths, channel configuration                             |
 | `web`                 | React UI, built into `web/dist` and embedded                                       |
 

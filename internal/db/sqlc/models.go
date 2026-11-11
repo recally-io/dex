@@ -117,6 +117,14 @@ type FeishuSetting struct {
 	PairingExpiresAt int64  `json:"pairing_expires_at"`
 }
 
+type OnePassword struct {
+	ID                  int64  `json:"id"`
+	Mode                string `json:"mode"`
+	ConnectHost         string `json:"connect_host"`
+	ConnectToken        string `json:"connect_token"`
+	ServiceAccountToken string `json:"service_account_token"`
+}
+
 type Provider struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`

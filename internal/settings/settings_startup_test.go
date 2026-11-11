@@ -46,7 +46,7 @@ func TestUserModelChecksDistinguishPendingDiscoveryFromInvalidModels(t *testing.
 	}
 	catalog := engine.NewCatalog(true)
 	defer catalog.Close()
-	service := New(q, catalog)
+	service := New(q, catalog, nil)
 	discovery, err := service.RegisterProviders(t.Context())
 	if err != nil {
 		t.Fatal(err)

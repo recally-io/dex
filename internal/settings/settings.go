@@ -1,4 +1,4 @@
-// Package settings owns global provider settings, model checks, and the access token.
+// Package settings owns global provider settings, model checks, 1Password, and the access token.
 package settings
 
 import (
@@ -66,13 +66,14 @@ type Provider struct {
 type Service struct {
 	q       *sqlc.Queries
 	catalog *engine.Catalog
+	agents  ToolSettings
 	// Serializes provider save and apply. Agent and channel changes have their own lock.
 	mu sync.Mutex
 }
 
 // New returns the global settings service.
-func New(q *sqlc.Queries, catalog *engine.Catalog) *Service {
-	return &Service{q: q, catalog: catalog}
+func New(q *sqlc.Queries, catalog *engine.Catalog, agents ToolSettings) *Service {
+	return &Service{q: q, catalog: catalog, agents: agents}
 }
 
 // Get returns all settings. It asks the runtime which providers exist.
