@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -638,5 +639,104 @@ func TestUserSessionSearchFindsInputsAndAnswers(t *testing.T) {
 	}
 	if got := searchSessions(t, d, searcher, map[string]any{"query": "zebra"}); len(got) != 0 {
 		t.Fatalf("another bot leaked: %+v", got)
+	}
+}
+
+func childCwd(t *testing.T, conn *sql.DB, child int64) string {
+	t.Helper()
+	var cwd string
+	if err := conn.QueryRowContext(t.Context(), `SELECT cwd FROM conversations WHERE id = ?`, child).Scan(&cwd); err != nil {
+		t.Fatal(err)
+	}
+	return cwd
+}
+
+func TestUserChildSessionRunsInTheGivenProject(t *testing.T) {
+	t.Parallel()
+	// Given a parent in the agent workspace and a project with a skill that only the project has.
+	data := t.TempDir()
+	project, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeSkill(t, filepath.Join(project, ".agents", "skills"), "project-check", "description: Project-only check")
+	d := startDex(t, data, "")
+	conn := taskResultDB(t, data)
+	parent := newParent(t, d)
+	// When the parent gives the project as cwd to two children.
+	var ref childRef
+	d.setModel(t, "spawn")
+	toolJSON(t, callSessionTool(t, d, parent, "session_new", map[string]any{"title": "Skills", "message": "skills", "cwd": project, "provider": "faux", "modelId": "section"}), &ref)
+	toolJSON(t, callSessionTool(t, d, parent, "session_new", map[string]any{"title": "Shell", "message": "pwd > child-cwd", "cwd": project, "provider": "faux", "modelId": "bash"}), &childRef{})
+	rows := waitResults(t, conn, parent, 2)
+	// Then the child cwd is the project, its shell runs there, and it finds the project skill.
+	if got := childCwd(t, conn, ref.conversation(t)); got != project {
+		t.Fatalf("child cwd = %q, want %q", got, project)
+	}
+	// The children end in any order, so find the result by its session.
+	i := slices.IndexFunc(rows, func(r resultRow) bool { return resultBody(t, r.content)["session"] == ref.ID })
+	if i < 0 {
+		t.Fatalf("no result of session %s: %+v", ref.ID, rows)
+	}
+	if got := resultBody(t, rows[i].content)["answer"].(string); !strings.Contains(got, "Project-only check") {
+		t.Fatalf("project skill missing: %s", got)
+	}
+	if got := waitTaskFile(t, filepath.Join(project, "child-cwd")); strings.TrimSpace(got) != project {
+		t.Fatalf("shell cwd: %q", got)
+	}
+	if got := childCwd(t, conn, parent); got != "" {
+		t.Fatalf("the parent cwd changed: %q", got)
+	}
+}
+
+func TestUserChildSessionInheritsTheParentProject(t *testing.T) {
+	t.Parallel()
+	// Given a Chat with a selected project.
+	data := t.TempDir()
+	project, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := startDex(t, data, "")
+	conn := taskResultDB(t, data)
+	parent := newParent(t, d)
+	d.must(t, http.MethodPut, projectURL(parent), map[string]string{"cwd": project}, nil)
+	// When the Chat creates a child without cwd.
+	child := spawnChild(t, d, parent, "Inherit", "pwd > inherited-cwd", "bash")
+	waitResults(t, conn, parent, 1)
+	// Then the child has the cwd of the parent.
+	if got := childCwd(t, conn, child.conversation(t)); got != project {
+		t.Fatalf("child cwd = %q, want %q", got, project)
+	}
+	if got := waitTaskFile(t, filepath.Join(project, "inherited-cwd")); strings.TrimSpace(got) != project {
+		t.Fatalf("shell cwd: %q", got)
+	}
+}
+
+func TestUserChildSessionRefusesAnInvalidDirectory(t *testing.T) {
+	t.Parallel()
+	// Given a parent in the agent workspace and a file that is not a directory.
+	data := t.TempDir()
+	file := filepath.Join(t.TempDir(), "file.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d := startDex(t, data, "")
+	conn := taskResultDB(t, data)
+	parent := newParent(t, d)
+	// When the parent gives a missing, relative or non-directory cwd.
+	for _, cwd := range []string{filepath.Join(t.TempDir(), "missing"), "relative/dir", file} {
+		got := callSessionTool(t, d, parent, "session_new", map[string]any{"title": "Bad", "message": "never", "cwd": cwd, "provider": "faux", "modelId": "echo"})
+		// Then the call fails and no child exists. There is no fallback to the workspace.
+		if !strings.HasPrefix(got, "spawn error") {
+			t.Fatalf("cwd %q: %s", cwd, got)
+		}
+	}
+	var children int
+	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM conversations WHERE parent_id IS NOT NULL`).Scan(&children); err != nil || children != 0 {
+		t.Fatalf("children after refused calls: %d %v", children, err)
+	}
+	if rows := resultRows(t, conn, parent); len(rows) != 0 {
+		t.Fatalf("results: %+v", rows)
 	}
 }

@@ -73,6 +73,43 @@ func TestUserSessionNewReplayKeepsIdentity(t *testing.T) {
 	}
 }
 
+func TestUserSessionNewReplayKeepsTheSavedDirectory(t *testing.T) {
+	// Given a call that created a child in project A.
+	r := startNative(t, "echo")
+	parent, source := taskParent(t, r)
+	a, b := t.TempDir(), t.TempDir()
+	first, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "One", Message: "one", Cwd: a})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// When the parent switches to project B and the same call runs again.
+	if _, err := r.service.SetProject(t.Context(), "bot", parent, b); err != nil {
+		t.Fatal(err)
+	}
+	for _, cwd := range []string{"", b} {
+		replay, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "One", Message: "one", Cwd: cwd})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if replay.ID != first.ID {
+			t.Fatalf("replay with cwd %q made another child: %+v", cwd, replay)
+		}
+	}
+	// Then the child keeps project A, and no second child exists.
+	id, err := strconv.ParseInt(first.ID, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := r.q.GetConversation(t.Context(), id)
+	if err != nil || child.Cwd != a {
+		t.Fatalf("child cwd = %q, want %q (%v)", child.Cwd, a, err)
+	}
+	children, err := r.q.ListSessions(t.Context(), sqlc.ListSessionsParams{AgentID: "bot", ParentID: sql.NullInt64{Int64: parent, Valid: true}, MaxRows: 20})
+	if err != nil || len(children) != 1 {
+		t.Fatalf("children: %+v, %v", children, err)
+	}
+}
+
 func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 	// Given a child of bot and a session of another bot.
 	r := startNative(t, "echo")
