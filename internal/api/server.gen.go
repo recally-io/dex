@@ -713,7 +713,7 @@ type BoundaryItem struct {
 	// Reason Why the compaction failed.
 	Reason *string `json:"reason,omitempty"`
 
-	// Status Only on compaction. pending while the summary is made; queued when the summary waits for the next boundary, which after Stop is the next message; nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+	// Status Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
 	Status *BoundaryItemStatus `json:"status,omitempty"`
 
 	// Text The handoff of a reset, or the summary of a compaction. Absent when there is none.
@@ -726,7 +726,7 @@ type BoundaryItemBoundary string
 // BoundaryItemKind defines model for BoundaryItem.Kind.
 type BoundaryItemKind string
 
-// BoundaryItemStatus Only on compaction. pending while the summary is made; queued when the summary waits for the next boundary, which after Stop is the next message; nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+// BoundaryItemStatus Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
 type BoundaryItemStatus string
 
 // ChannelStatus defines model for ChannelStatus.

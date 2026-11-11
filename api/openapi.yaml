@@ -1015,8 +1015,9 @@ paths:
       description: >
         Summarizes the older context of this writable session. It also works
         while the session runs; the summary joins the context at the next
-        boundary. The timeline shows a pending compaction boundary, then the
-        summary, "nothing to compact", or the failure. Each call starts a new
+        boundary, and Stop drops a summary that still waits. The timeline
+        shows a pending, then a queued compaction boundary, then the summary,
+        "nothing to compact", or the failure. Each call starts a new
         compaction. 409 when the session never ran. Task, automation and
         channel sessions return 403.
       requestBody:
@@ -2008,8 +2009,8 @@ components:
           enum: [pending, queued, nothing, failed]
           description: >
             Only on compaction. pending while the summary is made; queued when
-            the summary waits for the next boundary, which after Stop is the
-            next message; nothing when there was nothing to compact;
+            the summary waits for the run's next boundary (Stop drops it);
+            nothing when there was nothing to compact;
             failed with a reason. Absent on a placed summary.
         reason: { type: string, description: Why the compaction failed. }
 

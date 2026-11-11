@@ -167,17 +167,56 @@ func TestUserStopsRunAfterCompacting(t *testing.T) {
 	d.must(t, http.MethodPost, chatPath(chatID, "compact"), nil, nil, http.StatusAccepted)
 	w.until(t, "summary ready", compaction("queued"))
 
-	// When the user stops the run, then the summary still waits and is not shown as in progress.
+	// When the user stops the run, then the waiting summary is dropped and the transcript says so.
 	d.must(t, http.MethodPost, chatPath(chatID, "abort"), nil, nil)
-	w.until(t, "stopped with summary ready", func(tr *transcript) bool {
-		return !tr.running && compaction("queued")(tr) && !compaction("pending")(tr)
+	w.until(t, "summary dropped", func(tr *transcript) bool {
+		return !tr.running && !compaction("queued")(tr) && slices.ContainsFunc(tr.items, func(it item) bool {
+			return it.Boundary == "compaction" && it.Status == "failed" && strings.HasPrefix(it.Reason, "Stopped before the summary was added")
+		})
 	})
+	// Nothing waits any more, so maintenance can start once the stopped run has settled.
+	eventually(t, "maintenance after stop", func() (bool, any) {
+		status, body := d.call(t, http.MethodPost, "/api/maintenance", nil)
+		return status == http.StatusOK, body
+	})
+	d.must(t, http.MethodDelete, "/api/maintenance", nil, nil)
 
-	// When the user sends the next message, then the summary is placed before it.
+	// When the user sends the next message, then the chat answers.
 	d.setModel(t, "echo")
 	d.send(t, chatID, "after stop")
-	w.until(t, "answer after summary", answered("echo: after stop"))
-	if !compaction("")(&w.tr) || compaction("queued")(&w.tr) {
-		t.Fatalf("the summary was not placed: %+v", w.tr.items)
+	w.until(t, "answer after stop", answered("echo: after stop"))
+	if compaction("")(&w.tr) {
+		t.Fatalf("a dropped summary was placed: %+v", w.tr.items)
+	}
+}
+
+func TestUserClearsWhileCompacting(t *testing.T) {
+	t.Parallel()
+	// Given a long chat whose summarizer is slow: the echo model streams its prompt back. The
+	// three long turns stay in the kept 20000 tokens, so only the short first turn is summarized.
+	d := startDex(t, t.TempDir(), "")
+	chatID := d.newSession(t).ID
+	w := d.watch(t, chatID)
+	d.setModel(t, "section")
+	for i, text := range []string{"a short start", strings.Repeat("bravo ", 5000), strings.Repeat("charlie ", 3750), strings.Repeat("delta ", 5000)} {
+		d.send(t, chatID, text)
+		w.until(t, fmt.Sprintf("answer %d", i), func(tr *transcript) bool { return !tr.running && countKind(tr, "assistant") == i+1 })
+	}
+	d.waitSettled(t, chatID)
+	d.setModel(t, "echo")
+
+	// When the user clears the context while the summary is made.
+	d.must(t, http.MethodPost, chatPath(chatID, "compact"), nil, nil, http.StatusAccepted)
+	w.until(t, "compacting", compaction("pending"))
+	d.must(t, http.MethodPost, chatPath(chatID, "clear"), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusAccepted)
+
+	// Then the late summary is not used, and the transcript says why.
+	w.until(t, "stale summary", func(tr *transcript) bool {
+		return slices.ContainsFunc(tr.items, func(it item) bool {
+			return it.Boundary == "compaction" && it.Status == "failed" && strings.HasPrefix(it.Reason, "The context changed")
+		})
+	})
+	if compaction("")(&w.tr) {
+		t.Fatalf("a stale summary was placed: %+v", w.tr.items)
 	}
 }

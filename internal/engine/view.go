@@ -300,8 +300,7 @@ func (p projection) render() []Item {
 			continue
 		}
 		if q.Mode == harness.InboxWrite {
-			// A summary made during a run waits here for the next boundary. After Stop that is the
-			// next message, so the summary is ready and no longer in progress.
+			// A summary made during a run waits here for the run's next boundary. Stop drops it.
 			if kind, _ := q.Entry.Get("kind"); kind == durable.CompactionEntry.Kind {
 				items = append(items, Item{Kind: "boundary", ID: fmt.Sprintf("compaction-write:%d", q.Id), Boundary: "compaction", Status: "queued"})
 			}

@@ -40,8 +40,8 @@ to read in an afternoon.
   the command is carried into the new context. Earlier messages stay readable
   with Show earlier messages. A clear keeps long-term memory. `/compact`
   summarizes older messages, also during a run. A summary made during a run
-  joins the context at the run's next step; after Stop, it joins before the
-  next message. After a summary, Show earlier
+  joins the context at the run's next step; Stop drops it, and the transcript
+  says to run `/compact` again. After a summary, Show earlier
   messages can load the earlier transcript. A clear and a summary show a
   divider. The bot is one page
   with exactly four tabs: Chat, Routines, Extensions, and Settings. Its

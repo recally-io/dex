@@ -620,7 +620,18 @@ func noteCompaction(ctx context.Context, h harness.Harness, conversation harness
 			if err != nil || placed.Status == durable.SubmissionDone {
 				return err
 			}
-			note.Error = "The context changed before the summary was ready, so the summary was not used."
+			reason := ""
+			if placed.Reason != nil {
+				reason = *placed.Reason
+			}
+			switch reason {
+			case "aborted":
+				note.Error = "Stopped before the summary was added. Run /compact again."
+			case "stale":
+				note.Error = "The context changed before the summary was ready, so the summary was not used."
+			default:
+				note.Error = "The summary was not added: " + reason
+			}
 			break
 		}
 		note.Outcome = "nothing"
@@ -684,7 +695,45 @@ func (a *Agents) Abort(ctx context.Context, ref Ref) error {
 	if err := withdrawQueuedInputs(bounded, conversation); err != nil {
 		return err
 	}
-	return conversation.Abort(bounded, &durable.ConversationAbortOptions{Background: true})
+	if err := conversation.Abort(bounded, &durable.ConversationAbortOptions{Background: true}); err != nil {
+		return err
+	}
+	return a.dropQueuedSummaries(bounded, ref, conversation)
+}
+
+// dropQueuedSummaries withdraws the summaries that wait for a boundary. Native abort keeps queued
+// writes for the next run, so a summary made during the stopped run would wait for the next
+// message and hold off maintenance until then. The compaction note reports the drop.
+func (a *Agents) dropQueuedSummaries(ctx context.Context, ref Ref, conversation harness.Conversation) error {
+	var queue *harness.InboxState
+	_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+		inbox, err := durable.TxDoc[harness.InboxState](tx, harness.InboxDoc, conversation.Id())
+		if err != nil {
+			return nil, err
+		}
+		queue, err = durable.DecodeDoc[harness.InboxState](inbox.Snapshot())
+		return nil, err
+	})
+	if err != nil {
+		return err
+	}
+	h, err := a.harness(ctx, ref.AgentID)
+	if err != nil {
+		return err
+	}
+	id := conversation.Id()
+	for _, item := range queue.Items {
+		if item.Mode != harness.InboxWrite || item.Entry == nil {
+			continue
+		}
+		if kind, _ := item.Entry.Get("kind"); kind != durable.CompactionEntry.Kind {
+			continue
+		}
+		if _, err := h.AbortSubmission(ctx, item.Id, &id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Queue settlement and passive display entries commit together before recovery resumes.
