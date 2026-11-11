@@ -58,7 +58,7 @@ Run `mise tasks` for the full list. The main tasks:
 | Task                | What it does                                                                                                     |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `build`             | Builds `bin/dex` for this platform                                                                               |
-| `check`             | All checks; the pre-commit hook runs it, CI runs its steps in jobs                                               |
+| `check`             | All checks; the pre-push hook runs it, CI runs its steps in jobs                                                 |
 | `check:go`          | golangci-lint, `go build`, `go test -race`                                                                       |
 | `check:native`      | Checks removed backend paths, rejects PiG TUI and extension-host imports, and builds four platforms with cgo off |
 | `generate:diagrams` | Renders the architecture and message-flow PNGs from PlantUML                                                     |

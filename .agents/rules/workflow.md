@@ -19,8 +19,11 @@ Read this for every task.
   use Conventional Commit types such as `feat:` or `fix:`. Emoji are allowed.
 - Write the subject in the imperative, under about 72 characters. Use the body
   for the reason when the diff does not show it.
-- Make each commit one logical change that passes `mise run check`. Commit
-  formatter output separately from behavior changes.
+- Make each commit one logical change. Commit formatter output separately from
+  behavior changes.
+- Run `mise run check` before each push. The pre-push hook runs it, and a push
+  stops when it fails. Commits do not run it, because PRs are squash merged and
+  each check takes minutes.
 - Do not amend or force-push unless the user asks. Use
   `git push --force-with-lease`, never `--force`.
 - Do not add `Signed-off-by`. Never commit secrets, `.env`, or `.local/`.
