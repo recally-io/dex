@@ -103,9 +103,15 @@ main's model context or send its answers to main.
 by `updatedAt` descending, then ID descending. `updatedAt` is the latest
 conversation creation, or input creation or settlement. List and detail use the
 same rule. The list excludes main, old channel conversations, dreams and
-Chat sessions with no message. A child session is a row with `parentId`. A
-session from before child sessions keeps its frozen `task: TaskSummary`, without
-a report body. Its activity fields stay empty.
+Chat sessions with no message. A child session is a row with `parentId`; a task
+from before child sessions has the same shape. While a session is busy, the list
+adds `lastActivityAt` and `toolStartedAt` from the engine. The web uses them to
+show a stalled hint. Detail does not carry them.
+
+`GET /api/agents/{agentId}/turns/{turnId}` returns the session that holds a
+turn. Result links and old `/tasks/<id>` links name a turn, because the ID of an
+old task is the ID of its first input. The route returns `404` for an unknown
+turn and for the turn of another agent.
 
 Channel input enters the agent's main conversation. Chat and automation
 contexts stay separate. See [Product](../product.md#scope) for session behavior,
@@ -161,7 +167,7 @@ agent with a UUID v7 ID (`201`). The ID is read-only. `GET` and `PUT` on
 validation for creation and updates.
 
 Agent resources are under `/api/agents/{agentId}`: main, chats and their
-settings, messages, clear, history, abort and events; task details; uploads;
+settings, messages, clear, history, abort and events; turn lookup; uploads;
 extensions and reload; automations and their run and runs endpoints. An unknown
 agent or a resource owned by another agent returns `404`. Upload storage uses
 `<data dir>/agents/<agentId>/`. Control builds the path store for each request.
