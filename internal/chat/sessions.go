@@ -70,6 +70,8 @@ func (s *Service) childOf(ctx context.Context, q *sqlc.Queries, parent sqlc.Conv
 	return c, err
 }
 
+var errRepeatedTurn = errors.New("a call with this key stored its turn already")
+
 // repeatedTurn finds the conversation of a turn that a replayed tool call stored already.
 func repeatedTurn(ctx context.Context, q *sqlc.Queries, turn string, parent sqlc.Conversation) (sqlc.Conversation, bool, error) {
 	prior, err := q.GetTurn(ctx, turn)
@@ -268,9 +270,20 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a e
 		if _, err := liveSource(ctx, q, r); err != nil {
 			return err
 		}
-		_, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: fork.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: s.now().UnixMilli()})
+		created, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: fork.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: s.now().UnixMilli()})
+		if err == nil && created == 0 {
+			// A concurrent call with the same key stored its fork first. Roll this fork back.
+			return errRepeatedTurn
+		}
 		return err
 	})
+	if errors.Is(err, errRepeatedTurn) {
+		c, ok, err := repeatedTurn(ctx, s.q, turn, parent)
+		if err != nil || !ok {
+			return engine.SessionRef{}, cmp.Or(err, ErrSessionNotFound)
+		}
+		return s.ref(ctx, s.q, c)
+	}
 	if err != nil {
 		return engine.SessionRef{}, err
 	}

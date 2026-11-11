@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -194,5 +195,55 @@ func TestUserSessionStopReplayKeepsLaterWork(t *testing.T) {
 	}
 	if turn := receipt(t, r, turnID(send.Key)); turn.Status != "pending" {
 		t.Fatalf("a replayed stop withdrew later input: status %s, reason %s", turn.Status, turn.Reason.String)
+	}
+}
+
+func TestUserConcurrentSessionForkWithOneKeyCreatesOneFork(t *testing.T) {
+	// Given a child that has a finished turn.
+	r := startNative(t, "echo")
+	parent, source := taskParent(t, r)
+	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Child", Message: "first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = r.service.admit(t.Context(), taskInput(t, r, turnID(source.Key))); err != nil {
+		t.Fatal(err)
+	}
+	awaitReceipt(t, r, turnID(source.Key))
+	// When eight calls with the same key fork it at once.
+	call := source
+	call.Key = "bot/fork-one"
+	start := make(chan struct{})
+	refs := make(chan engine.SessionRef, 8)
+	errs := make(chan error, 8)
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			<-start
+			ref, err := r.service.ToolSessionFork(t.Context(), call, engine.SessionForkArgs{ID: child.ID, Message: "fork work"})
+			refs <- ref
+			errs <- err
+		})
+	}
+	close(start)
+	wg.Wait()
+	close(refs)
+	close(errs)
+	// Then every call succeeds with the same fork, and the parent has the source child and one fork.
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids := map[string]bool{}
+	for ref := range refs {
+		ids[ref.ID] = true
+	}
+	if len(ids) != 1 {
+		t.Fatalf("the calls returned %d different forks: %v", len(ids), ids)
+	}
+	var count int
+	if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM conversations WHERE parent_id = ?`, parent).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("children of the parent: %d, %v", count, err)
 	}
 }
