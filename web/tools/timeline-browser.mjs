@@ -1289,6 +1289,23 @@ try {
   await shot("13-channels-phone");
   await viewport(1440, 1000);
 
+  // Each channel page has the same sections and keeps the settings switcher.
+  for (const channel of ["telegram", "wechat", "feishu"]) {
+    await tap(`main a[href="/a/${second.id}/channels/${channel}"]`);
+    await ui(
+      `${channel} channel template`,
+      `location.pathname.endsWith('/channels/${channel}') && !!document.querySelector('nav[aria-label="Settings pages"] a[aria-current="page"][href$="/channels"]') && ['Connection', 'How to use', '/clear'].every(text => document.querySelector('main').textContent.includes(text))`,
+    );
+    await shot(`13-channel-${channel}-desktop`);
+    await tap('nav[aria-label="Settings pages"] a[href$="/channels"]');
+    await ui(`${channel} back to channels`, `location.pathname.endsWith('/channels')`);
+  }
+
+  await check(
+    "channel icons differ",
+    "new Set([...document.querySelectorAll('main [data-channel-icon]')].map(icon => icon.innerHTML)).size === 3",
+  );
+
   for (const root of [home, data, join(data, "agents", second.id)]) {
     await mkdir(join(root, ".agents"), { recursive: true });
     await writeFile(join(root, ".agents", ".env"), "EXTENSION_DEMO_KEY=never-show-this-value\n");
