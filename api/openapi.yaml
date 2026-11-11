@@ -1675,7 +1675,7 @@ components:
         main: { type: boolean, description: This is the agent's main timeline. }
         readOnly: {
           type: boolean,
-          description: The web cannot send messages to this chat now. A delegated session is read-only while its task runs and writable after the task ends.,
+          description: The web cannot send messages to this chat now. A child session is writable at any time.,
         }
         automationId:
           type: string
@@ -1707,6 +1707,10 @@ components:
           description: The saved task summary on a task session. It has no report.
         question: { $ref: "#/components/schemas/ChatQuestion" }
         forkedFrom: { $ref: "#/components/schemas/ChatOrigin" }
+        parentId:
+          type: integer
+          format: int64
+          description: The session that created this child session. Absent on any other session.
 
     ChatOrigin:
       type: object

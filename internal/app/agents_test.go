@@ -235,19 +235,25 @@ func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
 	} {
 		d.must(t, tc.method, "/api/agents/default/automations/"+auto.ID+tc.suffix, tc.body, nil, http.StatusNotFound)
 	}
-	// When the owner sends a task request through B's main conversation.
+	// When the owner asks B's main conversation for a child session.
 	var main chatInfo
 	d.must(t, http.MethodGet, base+"/chats/main", nil, &main)
-	text := taskJSON(t, map[string]string{"title": "B task", "goal": "B report", "provider": "faux", "modelId": "echo"})
+	text := childJSON(t, map[string]string{"title": "B child", "message": "B report", "provider": "faux", "modelId": "echo"})
 	d.must(t, http.MethodPost, fmt.Sprintf("%s/chats/%d/messages", base, main.ID), map[string]string{"id": uuid.NewV7().String(), "text": text}, nil, http.StatusAccepted)
-	task := waitExecution(t, taskResultDB(t, dir), main.ID, "B task", "done")
-	// Then only B can read the saved task and its work.
-	var detail taskInfo
-	d.must(t, http.MethodGet, base+"/tasks/"+task.ID, nil, &detail)
-	if detail.Report != "echo: B report" {
-		t.Fatalf("task=%+v", detail)
+	conn := taskResultDB(t, dir)
+	rows := waitResults(t, conn, main.ID, 1)
+	// Then only B can see the child, and the result names it.
+	child := resultBody(t, rows[0].content)["session"].(string)
+	if resultBody(t, rows[0].content)["answer"] != "echo: B report" {
+		t.Fatalf("result=%+v", rows[0])
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/tasks/"+task.ID, nil, nil, http.StatusNotFound)
+	var agent string
+	if err := conn.QueryRowContext(t.Context(), "SELECT agent_id FROM conversations WHERE id = ?", child).Scan(&agent); err != nil || agent != b.ID {
+		t.Fatalf("child agent=%q err=%v", agent, err)
+	}
+	if got := callSessionTool(t, d, d.mainChat(t), "session_read", map[string]any{"id": child}); !strings.Contains(got, "not found") {
+		t.Fatalf("the default agent read a child of B: %s", got)
+	}
 	// And B can run and remove its automation without changing the default list.
 	d.must(t, http.MethodPut, base, map[string]string{"name": "B", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
 	input["prompt"] = "no delegated work"
@@ -264,7 +270,7 @@ func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
 	d.must(t, http.MethodGet, base+"/extensions", nil, nil)
 	d.must(t, http.MethodDelete, path, nil, nil)
 	d.must(t, http.MethodGet, path, nil, nil, http.StatusNotFound)
-	t.Logf("artifact: B=%s task=%s automation=%s run=%s", b.ID, task.ID, auto.ID, run.ID)
+	t.Logf("artifact: B=%s child=%s automation=%s run=%s", b.ID, child, auto.ID, run.ID)
 }
 
 func TestUserGetsNotFoundForUnknownAgents(t *testing.T) {

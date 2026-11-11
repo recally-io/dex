@@ -23,6 +23,25 @@ type sessionInfo struct {
 	Task      *taskInfo `json:"task"`
 }
 
+// taskInfo is the saved summary of a background task from before child sessions. New work does not
+// create one; old rows stay readable.
+type taskInfo struct {
+	ID                   string  `json:"id"`
+	Title                string  `json:"title"`
+	Status               string  `json:"status"`
+	Report               string  `json:"report"`
+	CreatedAt            int64   `json:"createdAt"`
+	StartedAt            *int64  `json:"startedAt"`
+	EndedAt              *int64  `json:"endedAt"`
+	HandledAt            *int64  `json:"handledAt"`
+	ConversationID       int64   `json:"conversationId"`
+	ParentConversationID int64   `json:"parentConversationId"`
+	LastAction           *string `json:"lastAction"`
+	LastActivityAt       *int64  `json:"lastActivityAt"`
+	ToolStartedAt        *int64  `json:"toolStartedAt"`
+	ReportOutcome        string  `json:"reportOutcome"`
+}
+
 func (d *dex) newSession(t *testing.T) sessionInfo {
 	t.Helper()
 	var c sessionInfo
@@ -163,30 +182,32 @@ func TestUserChatContextAndClearStaySeparateFromMain(t *testing.T) {
 	t.Logf("artifact: main_context=%+v chat_context=%+v chat_history=%+v", mw.tr.items, sw.tr.items, page.Items)
 }
 
-func TestUserTaskResultReturnsToItsChatSession(t *testing.T) {
+func TestUserChildResultReturnsToItsChatSession(t *testing.T) {
 	t.Parallel()
-	// Given a Chat and main on the same bot, with a task started in Chat.
+	// Given a Chat and main on the same bot, with a child session started in Chat.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "spawn")
 	main := d.mainChat(t)
 	side := sessionFixture(t, d, "chat:task-parent", 1)
 	conn := taskResultDB(t, dir)
-	d.send(t, side, taskJSON(t, map[string]string{
-		"title": "Chat report", "goal": "only for this Chat", "provider": "faux", "modelId": "echo",
+	d.send(t, side, childJSON(t, map[string]string{
+		"title": "Chat report", "message": "only for this Chat", "provider": "faux", "modelId": "echo",
 	}))
-	// When the worker returns the report, only the source Chat gets the result turn.
-	task := waitExecution(t, conn, side, "Chat report", "done")
-	resultID := "task:" + task.ID + ":result"
+	// When the child returns its answer, only the source Chat gets the result turn.
+	child := waitExecution(t, conn, side, "Chat report", "done")
+	rows := waitResults(t, conn, side, 1)
+	if rows[0].id != child.ResultID {
+		t.Fatalf("result %q, want %q", rows[0].id, child.ResultID)
+	}
 	w := d.watch(t, side)
-	w.until(t, "Chat result answer", answeredTaskResult(task.ID))
-	waitResultSubmission(t, conn, resultID, "done")
+	w.until(t, "Chat result answer", answeredWith("task-result: "))
 	var parent int64
 	var origin string
-	if err := conn.QueryRowContext(t.Context(), "SELECT conversation_id, origin FROM submissions WHERE id=?", resultID).Scan(&parent, &origin); err != nil {
+	if err := conn.QueryRowContext(t.Context(), "SELECT conversation_id, origin FROM submissions WHERE id=?", child.ResultID).Scan(&parent, &origin); err != nil {
 		t.Fatal(err)
 	}
-	if parent != side || origin != "web" || !slices.ContainsFunc(w.tr.items, func(it item) bool { return it.Kind == "task" && it.TaskID == task.ID }) {
+	if parent != side || origin != "web" || !slices.ContainsFunc(w.tr.items, func(it item) bool { return it.Kind == "task" && it.TaskID == child.Turn && it.Title == "Chat report" }) {
 		t.Fatalf("Chat result routing: parent=%d origin=%s transcript=%+v", parent, origin, w.tr.items)
 	}
 	mw := d.watch(t, main)
@@ -194,12 +215,7 @@ func TestUserTaskResultReturnsToItsChatSession(t *testing.T) {
 	if len(mw.tr.items) != 0 {
 		t.Fatalf("Chat result leaked into main: %+v", mw.tr.items)
 	}
-	var detail taskInfo
-	d.must(t, http.MethodGet, "/api/agents/default/tasks/"+task.ID, nil, &detail)
-	if detail.ParentConversationID != side || detail.Report != "echo: only for this Chat" {
-		t.Fatalf("Chat task detail: %+v", detail)
-	}
-	t.Logf("artifact: main=%d chat=%d task=%s result=%s origin=%s", main, side, task.ID, resultID, origin)
+	t.Logf("artifact: main=%d chat=%d child=%s result=%s origin=%s", main, side, child.ID, child.ResultID, origin)
 }
 
 func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
@@ -215,7 +231,7 @@ func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
 		id   int64
 		gate string
 	}{{main, "scope-main-task"}, {side, "scope-chat-task"}} {
-		d.send(t, c.id, taskJSON(t, map[string]any{"title": c.gate, "goal": taskGate(t, dir, c.gate), "provider": "faux", "modelId": "bash", "modifiesFiles": false}))
+		d.send(t, c.id, childJSON(t, map[string]any{"title": c.gate, "message": taskGate(t, dir, c.gate), "provider": "faux", "modelId": "bash"}))
 		waitTaskFile(t, filepath.Join(dir, c.gate+".pid"))
 		waitExecution(t, conn, c.id, c.gate, "running")
 	}
@@ -245,7 +261,7 @@ func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
 	})
 	// A later main Stop must also leave Chat's next task and foreground turn alone.
 	d.setModel(t, "spawn")
-	d.send(t, side, taskJSON(t, map[string]any{"title": "scope-chat-next", "goal": taskGate(t, dir, "scope-chat-next"), "provider": "faux", "modelId": "bash", "modifiesFiles": false}))
+	d.send(t, side, childJSON(t, map[string]any{"title": "scope-chat-next", "message": taskGate(t, dir, "scope-chat-next"), "provider": "faux", "modelId": "bash"}))
 	waitTaskFile(t, filepath.Join(dir, "scope-chat-next.pid"))
 	waitExecution(t, conn, side, "scope-chat-next", "running")
 	d.setModel(t, "bash")
@@ -349,9 +365,9 @@ func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 	t.Logf("artifact: listed_ids=%v task_detail=%+v", ids, detail)
 }
 
-func TestUserSeesSessionActivityThroughTaskCompletion(t *testing.T) {
+func TestUserSeesSessionActivityThroughSettlement(t *testing.T) {
 	t.Parallel()
-	// Given an old task and newer Chats with equal completion times.
+	// Given an old child session and newer Chats with equal completion times.
 	d := startDex(t, t.TempDir(), "")
 	conn := sessionDB(t, d)
 	main := sessionFixture(t, d, "main", 1)
@@ -365,27 +381,19 @@ func TestUserSeesSessionActivityThroughTaskCompletion(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := conn.ExecContext(t.Context(), "INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, created_at, started_at, ended_at) VALUES (?, ?, ?, 'old-spawn', ?, 'Old task', 'done', 100, 110, 300)", fmt.Sprint(task), main, task, fmt.Sprint(main)); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "UPDATE conversations SET parent_id = ? WHERE id = ?", main, task); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
 		name    string
 		settled *int64
-		started int64
-		ended   *int64
-		status  string
 		want    int64
 	}{
-		{"input_settlement", new(int64(300)), 110, new(int64(290)), "done", 300},
-		{"task_end", nil, 110, new(int64(310)), "done", 310},
-		{"task_start", nil, 320, nil, "running", 320},
+		{"input_settlement", new(int64(300)), 300},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// When task activity occurs after both newer Chats finish.
+			// When child activity occurs after both newer Chats finish.
 			if _, err := conn.ExecContext(t.Context(), "UPDATE submissions SET settled_at = ? WHERE conversation_id = ?", tc.settled, task); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := conn.ExecContext(t.Context(), "UPDATE tasks SET started_at = ?, ended_at = ?, status = ? WHERE conversation_id = ?", tc.started, tc.ended, tc.status, task); err != nil {
 				t.Fatal(err)
 			}
 			var list struct {
@@ -411,7 +419,7 @@ func TestUserSeesSessionActivityThroughTaskCompletion(t *testing.T) {
 					t.Errorf("session %d activity: list=%d detail=%d want=%d", c.ID, c.UpdatedAt, detail.UpdatedAt, want)
 				}
 			}
-			// Main uses its own settlement, without inheriting child task times.
+			// Main uses its own settlement, without inheriting child times.
 			for _, path := range []string{"/api/agents/default/chats/main", fmt.Sprintf("/api/agents/default/chats/%d", main)} {
 				var c sessionInfo
 				d.must(t, http.MethodGet, path, nil, &c)

@@ -408,14 +408,6 @@ func assistantItems(m ai.AssistantMessage, key string, results map[string]ai.Too
 					}
 				}
 				item.DurationMs = result.DurationMs
-				if b.Name == "spawn_task" && !result.IsError {
-					var task struct {
-						ID string `json:"id"`
-					}
-					if json.Unmarshal([]byte(item.Output), &task) == nil {
-						item.TaskID = task.ID
-					}
-				}
 			}
 		default:
 			continue

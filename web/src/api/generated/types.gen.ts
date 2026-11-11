@@ -81,7 +81,7 @@ export type Chat = {
      */
     main: boolean;
     /**
-     * The web cannot send messages to this chat now. A delegated session is read-only while its task runs and writable after the task ends.
+     * The web cannot send messages to this chat now. A child session is writable at any time.
      */
     readOnly: boolean;
     /**
@@ -110,6 +110,10 @@ export type Chat = {
     task?: TaskSummary;
     question?: ChatQuestion;
     forkedFrom?: ChatOrigin;
+    /**
+     * The session that created this child session. Absent on any other session.
+     */
+    parentId?: number;
 };
 
 /**

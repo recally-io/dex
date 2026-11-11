@@ -235,8 +235,8 @@ func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error 
 }
 
 const createFork = `-- name: CreateFork :one
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, parent_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id
 `
 
@@ -250,11 +250,12 @@ type CreateForkParams struct {
 	Cwd           string        `json:"cwd"`
 	ExecutionID   sql.NullInt64 `json:"execution_id"`
 	ForkedFrom    sql.NullInt64 `json:"forked_from"`
+	ParentID      sql.NullInt64 `json:"parent_id"`
 	CreatedAt     int64         `json:"created_at"`
 }
 
-// A fork is a new Chat with the settings of its source. execution_id is NULL when the fork
-// starts empty, so the first message creates the native conversation.
+// A fork is a new Chat with the settings and the parent of its source. execution_id is NULL when
+// the fork starts empty, so the first message creates the native conversation.
 func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Conversation, error) {
 	row := q.db.QueryRowContext(ctx, createFork,
 		arg.AgentID,
@@ -266,6 +267,7 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 		arg.Cwd,
 		arg.ExecutionID,
 		arg.ForkedFrom,
+		arg.ParentID,
 		arg.CreatedAt,
 	)
 	var i Conversation
@@ -629,6 +631,7 @@ SELECT
     c.cwd,
     c.created_at,
     c.archived_at,
+    c.parent_id,
     c.execution_id,
     c.forked_from,
     f.title AS forked_from_title,
@@ -636,15 +639,11 @@ SELECT
     CAST(max(
         c.created_at,
         coalesce(max(s.created_at), c.created_at),
-        coalesce(max(s.settled_at), c.created_at),
-        coalesce(t.started_at, c.created_at),
-        coalesce(t.ended_at, c.created_at)
+        coalesce(max(s.settled_at), c.created_at)
     ) AS INTEGER) AS updated_at,
-    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending,
-    t.status AS task_status
+    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-LEFT JOIN tasks t ON t.conversation_id = c.id
 LEFT JOIN conversations f ON f.id = c.forked_from
 WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id
@@ -665,13 +664,13 @@ type GetChatRow struct {
 	Cwd             string         `json:"cwd"`
 	CreatedAt       int64          `json:"created_at"`
 	ArchivedAt      sql.NullInt64  `json:"archived_at"`
+	ParentID        sql.NullInt64  `json:"parent_id"`
 	ExecutionID     sql.NullInt64  `json:"execution_id"`
 	ForkedFrom      sql.NullInt64  `json:"forked_from"`
 	ForkedFromTitle sql.NullString `json:"forked_from_title"`
 	ForkedFromKey   sql.NullString `json:"forked_from_key"`
 	UpdatedAt       int64          `json:"updated_at"`
 	Pending         int64          `json:"pending"`
-	TaskStatus      sql.NullString `json:"task_status"`
 }
 
 func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, error) {
@@ -687,13 +686,13 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 		&i.Cwd,
 		&i.CreatedAt,
 		&i.ArchivedAt,
+		&i.ParentID,
 		&i.ExecutionID,
 		&i.ForkedFrom,
 		&i.ForkedFromTitle,
 		&i.ForkedFromKey,
 		&i.UpdatedAt,
 		&i.Pending,
-		&i.TaskStatus,
 	)
 	return i, err
 }
@@ -1094,18 +1093,15 @@ SELECT
     c.cwd,
     c.created_at,
     c.archived_at,
+    c.parent_id,
     CAST(max(
         c.created_at,
         coalesce(max(s.created_at), c.created_at),
-        coalesce(max(s.settled_at), c.created_at),
-        coalesce(t.started_at, c.created_at),
-        coalesce(t.ended_at, c.created_at)
+        coalesce(max(s.settled_at), c.created_at)
     ) AS INTEGER) AS updated_at,
-    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending,
-    t.status AS task_status
+    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-LEFT JOIN tasks t ON t.conversation_id = c.id
 WHERE c.agent_id = ?
     AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
     AND (c.channel_key NOT LIKE 'chat:%' OR c.forked_from IS NOT NULL OR EXISTS (
@@ -1116,18 +1112,18 @@ ORDER BY updated_at DESC, c.id DESC
 `
 
 type ListChatsRow struct {
-	ID            int64          `json:"id"`
-	ChannelKey    string         `json:"channel_key"`
-	Title         string         `json:"title"`
-	ModelProvider string         `json:"model_provider"`
-	ModelID       string         `json:"model_id"`
-	ThinkingLevel string         `json:"thinking_level"`
-	Cwd           string         `json:"cwd"`
-	CreatedAt     int64          `json:"created_at"`
-	ArchivedAt    sql.NullInt64  `json:"archived_at"`
-	UpdatedAt     int64          `json:"updated_at"`
-	Pending       int64          `json:"pending"`
-	TaskStatus    sql.NullString `json:"task_status"`
+	ID            int64         `json:"id"`
+	ChannelKey    string        `json:"channel_key"`
+	Title         string        `json:"title"`
+	ModelProvider string        `json:"model_provider"`
+	ModelID       string        `json:"model_id"`
+	ThinkingLevel string        `json:"thinking_level"`
+	Cwd           string        `json:"cwd"`
+	CreatedAt     int64         `json:"created_at"`
+	ArchivedAt    sql.NullInt64 `json:"archived_at"`
+	ParentID      sql.NullInt64 `json:"parent_id"`
+	UpdatedAt     int64         `json:"updated_at"`
+	Pending       int64         `json:"pending"`
 }
 
 func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow, error) {
@@ -1149,9 +1145,9 @@ func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow
 			&i.Cwd,
 			&i.CreatedAt,
 			&i.ArchivedAt,
+			&i.ParentID,
 			&i.UpdatedAt,
 			&i.Pending,
-			&i.TaskStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -1181,7 +1177,7 @@ FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE
     c.agent_id = ?1
-    AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'task:%'
+    AND c.channel_key NOT LIKE 'dream:%' AND c.parent_id IS NULL
     AND s.kind = 'message'
     AND s.status != 'pending'
     AND (s.settled_at > ?2 OR (s.settled_at = ?2 AND s.id > ?3))
@@ -1476,13 +1472,10 @@ WITH activity AS (
     SELECT c.cwd, c.id, max(
         c.created_at,
         coalesce(max(s.created_at), c.created_at),
-        coalesce(max(s.settled_at), c.created_at),
-        coalesce(t.started_at, c.created_at),
-        coalesce(t.ended_at, c.created_at)
+        coalesce(max(s.settled_at), c.created_at)
     ) AS updated_at
     FROM conversations c
     LEFT JOIN submissions s ON s.conversation_id = c.id
-    LEFT JOIN tasks t ON t.conversation_id = c.id
     WHERE c.agent_id = ? AND c.cwd <> ''
     GROUP BY c.id
 )

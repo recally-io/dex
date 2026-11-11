@@ -290,6 +290,9 @@ func chatView(c chat.Chat) api.Chat {
 	if c.ArchivedAt != 0 {
 		out.ArchivedAt = &c.ArchivedAt
 	}
+	if c.ParentID != 0 {
+		out.ParentId = &c.ParentID
+	}
 	if o := c.ForkedFrom; o != nil {
 		out.ForkedFrom = &api.ChatOrigin{Id: o.ID, Title: o.Title, Main: o.Main}
 	}

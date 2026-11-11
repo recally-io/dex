@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/MichaelKinsy/PiG/durable"
@@ -37,9 +36,6 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 	if input.RequestID == "" {
 		return nil, fmt.Errorf("%w: request ID is required", ErrInvalidInput)
 	}
-	if input.Steer != nil && input.Steer.OriginalRequestID == "" {
-		return nil, fmt.Errorf("%w: original task request ID is required", ErrInvalidInput)
-	}
 	if input.Kind != "" && input.Kind != "message" && input.Kind != "task_result" {
 		return nil, fmt.Errorf("%w: input kind", ErrInvalidInput)
 	}
@@ -56,58 +52,19 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 	if err != nil {
 		return nil, err
 	}
-	if input.Steer != nil {
-		native, err := a.admitTaskSteer(ctx, ref, conversation, input)
-		if err != nil {
-			return nil, err
-		}
-		return a.settleSubmission(ctx, ref, conversation, input, native), nil
-	}
 	// Replay must not change settings or reclassify an existing execution.
 	var existing *durable.SubmissionRecord
 	_, err = conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
 		var err error
 		existing, err = tx.SubmissionByRequest(conversation.Id(), input.RequestID)
-		if err != nil {
-			return nil, err
-		}
-		if existing == nil {
-			_, binding, err := bindingDraft(tx, conversation.Id())
-			if err != nil {
-				return nil, err
-			}
-			if binding.Sealed && (input.Background || !input.TaskContinuation) {
-				return nil, fmt.Errorf("%w: task sealed", ErrNotFound)
-			}
-			if input.Background && binding.Root != "" {
-				return nil, fmt.Errorf("%w: task already bound", ErrInvalidInput)
-			}
-		}
-		return nil, nil
+		return nil, err
 	})
 	if err != nil {
 		return nil, err
 	}
 	var native durable.Submission
+	var starter durable.SubmissionId
 	if record := existing; record != nil {
-		_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
-			_, b, err := bindingDraft(tx, conversation.Id())
-			if err != nil {
-				return nil, err
-			}
-			mapped, bound := b.Inputs[input.RequestID]
-			// Legacy inputs have no binding. Control's task record supplies their background role.
-			if input.Background && (record.Type != durable.SubmissionTypeInput || (b.Root != "" && (b.Root != input.RequestID || !bound || mapped.ID != record.Id || mapped.Kind != inputEntryKind(input)))) {
-				return nil, fmt.Errorf("%w: request is not task root", ErrInvalidInput)
-			}
-			if !input.Background && bound {
-				return nil, fmt.Errorf("%w: request belongs to task", ErrInvalidInput)
-			}
-			return nil, nil
-		})
-		if err != nil {
-			return nil, err
-		}
 		h, err := a.harness(ctx, ref.AgentID)
 		if err != nil {
 			return nil, err
@@ -125,9 +82,9 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck)}}})
 		}
 		// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
-		// so a task, an automation or a dream never gets the tool and needs no removal.
+		// so a child, an automation or a dream never gets the tool and needs no removal.
 		dream := input.Origin == "dream" || strings.Contains(input.Source, "/dream/")
-		asksUser := !input.Automation && !input.Background && !input.TaskContinuation && !dream
+		asksUser := !input.Automation && !input.Child && !dream
 		switch {
 		case input.Main:
 			add := []*durable.Extension{frontDeskExtension()}
@@ -138,13 +95,13 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		case asksUser:
 			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: []*durable.Extension{askUserExtension(ref.AgentID, a.config.Tasks.AskUser)}}})
 		}
-		if input.TaskContinuation {
-			change.Extensions = continuationExtensions(ref.AgentID, a.config)
-		}
-		if input.Background {
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{taskExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{taskReportExtension(ref.AgentID, a.config.Tasks.ReportTask)}}})
-		} else if dream {
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{taskExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"), a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
+		switch {
+		case input.Child:
+			// Every input of a child repeats this edit, so a user message in a child that was a task
+			// before the upgrade loses the same extensions.
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), frontDeskExtension(), routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{childExtension()}}})
+		case dream:
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"), a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
 		}
 		if err := conversation.Configure(ctx, change); err != nil {
 			return nil, err
@@ -156,45 +113,14 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			return nil, err
 		}
 		draft := durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"))), WhenBusy: durable.WhenBusy(cmp.Or(input.WhenBusy, string(durable.WhenBusyFollowUp))), InputEntry: &durable.InputEntry{Kind: kind, Data: data}}
-		if input.Background {
-			var id durable.SubmissionId
-			_, err = conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
-				doc, binding, err := bindingDraft(tx, conversation.Id())
-				if err != nil {
-					return nil, err
-				}
-				if binding.Root != "" {
-					return nil, fmt.Errorf("%w: task already bound", ErrInvalidInput)
-				}
-				existing, err := tx.SubmissionByRequest(conversation.Id(), input.RequestID)
-				if err != nil {
-					return nil, err
-				}
-				if existing != nil {
-					return nil, fmt.Errorf("%w: request already exists", ErrInvalidInput)
-				}
-				admitted, err := harness.AdmitSubmission(tx, conversation.Id(), draft, float64(time.Now().UnixMilli()), taskQueueModes, nil)
-				if err != nil {
-					return nil, err
-				}
-				binding.Root = input.RequestID
-				binding.Inputs[input.RequestID] = taskBoundInput{ID: admitted.Id, Kind: kind}
-				if err := saveBinding(doc, binding); err != nil {
-					return nil, err
-				}
-				id = admitted.Id
-				return nil, nil
-			})
-			if err == nil {
-				var h harness.Harness
-				h, err = a.harness(ctx, ref.AgentID)
-				if err == nil {
-					native, err = h.Submission(ctx, id)
-				}
+		if input.WhenBusy == string(durable.WhenBusySteer) {
+			// A steered input joins the run that is live now. Remember who started it, so the
+			// settlement can tell that the run's answer covers this input.
+			if starter, err = a.runStarter(ctx, conversation); err != nil {
+				return nil, err
 			}
-		} else {
-			native, err = conversation.Submit(ctx, draft)
 		}
+		native, err = conversation.Submit(ctx, draft)
 		if err != nil {
 			if _, ok := errors.AsType[*durable.ConversationBusy](err); ok {
 				return nil, errors.Join(ErrBusy, err)
@@ -202,17 +128,62 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			return nil, err
 		}
 	}
-	return a.settleSubmission(ctx, ref, conversation, input, native), nil
+	return a.settleSubmission(ctx, ref, conversation, input, native, starter), nil
 }
 
-func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation harness.Conversation, input Input, native durable.Submission) *Submission {
+// runStarter returns the first input of the live run, or zero when the conversation is idle or the
+// run has no input.
+func (a *Agents) runStarter(ctx context.Context, conversation harness.Conversation) (durable.SubmissionId, error) {
+	var starter durable.SubmissionId
+	_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+		live, err := durable.TxDoc[harness.LiveState](tx, harness.LiveDoc, conversation.Id())
+		if err != nil {
+			return nil, err
+		}
+		state, err := durable.DecodeDoc[harness.LiveState](live.Snapshot())
+		if err != nil {
+			return nil, err
+		}
+		if state.Run != nil && len(state.Run.Inputs) > 0 {
+			starter = state.Run.Inputs[0]
+		}
+		return nil, nil
+	})
+	return starter, err
+}
+
+// sharedStarter returns the request ID of the starter of the run when the done submission shares
+// its answer with that starter. Otherwise it returns an empty string.
+func (a *Agents) sharedStarter(ctx context.Context, ref Ref, mine durable.SettledSubmissionRecord, starter durable.SubmissionId) (string, error) {
+	if starter == 0 || starter == mine.Id || mine.Answer == nil {
+		return "", nil
+	}
+	h, err := a.harness(ctx, ref.AgentID)
+	if err != nil {
+		return "", err
+	}
+	native, err := h.Submission(ctx, starter)
+	if err != nil || native == nil {
+		return "", err
+	}
+	record, err := native.Status(ctx)
+	if err != nil {
+		return "", err
+	}
+	if record.Status != durable.SubmissionDone || record.Answer == nil || *record.Answer != *mine.Answer || record.RequestId == nil {
+		return "", nil
+	}
+	return *record.RequestId, nil
+}
+
+func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation harness.Conversation, input Input, native durable.Submission, starter durable.SubmissionId) *Submission {
 	var err error
 	result := &Submission{ID: int64(native.Id()), done: make(chan struct{})}
 	var stopActivity func()
-	if input.Background && input.Steer == nil {
+	if input.Child {
 		stopActivity, err = a.startActivityWatch(ctx, ref, conversation)
 		if err != nil {
-			slog.Error("track background activity", "agent", ref.AgentID, "conversation", ref.ID, "error", err)
+			slog.Error("track child activity", "agent", ref.AgentID, "conversation", ref.ID, "error", err)
 		}
 	}
 	a.mu.Lock()
@@ -245,6 +216,9 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 				} else if entry != nil {
 					result.outcome.Answer = answerText(entry.Model)
 				}
+				if result.err == nil {
+					result.outcome.Starter, result.err = a.sharedStarter(settlementCtx, ref, settled, starter)
+				}
 			}
 		}
 		// A failed or aborted execution may have changed memory too.
@@ -253,98 +227,6 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 		}
 	})
 	return result
-}
-
-var taskQueueModes = harness.QueueModes{SteeringMode: durable.QueueAll, FollowUpMode: durable.QueueOneAtATime}
-
-// The control receipt is responsible for request ID/content uniqueness.
-func (a *Agents) admitTaskSteer(ctx context.Context, ref Ref, conversation harness.Conversation, input Input) (durable.Submission, error) {
-	metadata := InputMetadata{RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
-	data, err := durable.ToJsonValue(metadata)
-	if err != nil {
-		return nil, err
-	}
-	kind := inputEntryKind(input)
-	draft := durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"))), WhenBusy: durable.WhenBusySteer, InputEntry: &durable.InputEntry{Kind: kind, Data: data}}
-	var id durable.SubmissionId
-	_, err = conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
-		doc, binding, err := bindingDraft(tx, conversation.Id())
-		if err != nil {
-			return nil, err
-		}
-		if binding.Root != input.Steer.OriginalRequestID {
-			return nil, fmt.Errorf("%w: task binding", ErrNotFound)
-		}
-		existing, err := tx.SubmissionByRequest(conversation.Id(), input.RequestID)
-		if err != nil {
-			return nil, err
-		}
-		if existing != nil {
-			mapped, ok := binding.Inputs[input.RequestID]
-			if !ok || (mapped.ID != existing.Id || mapped.Kind != kind) || input.RequestID == binding.Root || existing.Type != durable.SubmissionTypeInput {
-				return nil, fmt.Errorf("%w: request belongs to another input", ErrInvalidInput)
-			}
-			id = existing.Id
-			return nil, nil
-		}
-		if binding.Sealed {
-			return nil, fmt.Errorf("%w: task sealed", ErrNotFound)
-		}
-		liveDoc, err := tx.Doc(harness.LiveDoc, conversation.Id())
-		if err != nil {
-			return nil, err
-		}
-		live, err := durable.FromJsonValue[harness.LiveState](liveDoc.Snapshot())
-		if err != nil {
-			return nil, err
-		}
-		if live.Run != nil {
-			belongs := false
-			for _, id := range live.Run.Inputs {
-				for _, bound := range binding.Inputs {
-					if id == bound.ID {
-						belongs = true
-						break
-					}
-				}
-			}
-			if !belongs {
-				return nil, fmt.Errorf("%w: task run mismatch", ErrNotFound)
-			}
-			task, err := tx.Task(live.Run.TaskId)
-			if err != nil {
-				return nil, err
-			}
-			if task == nil || task.AbortRequested {
-				return nil, fmt.Errorf("%w: task run aborting", ErrNotFound)
-			}
-		}
-		admission, err := harness.AdmitSubmission(tx, conversation.Id(), draft, float64(time.Now().UnixMilli()), taskQueueModes, nil)
-		if err != nil {
-			return nil, err
-		}
-		binding.Inputs[input.RequestID] = taskBoundInput{ID: admission.Id, Kind: kind}
-		if err := saveBinding(doc, binding); err != nil {
-			return nil, err
-		}
-		id = admission.Id
-		return nil, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	h, err := a.harness(ctx, ref.AgentID)
-	if err != nil {
-		return nil, err
-	}
-	native, err := h.Submission(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if native == nil {
-		return nil, fmt.Errorf("native submission %d missing after admission", id)
-	}
-	return native, nil
 }
 
 func inputText(input Input, workspace string) string {

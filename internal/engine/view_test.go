@@ -168,22 +168,19 @@ func TestUserTranscriptJSONRequiredEmptyFields(t *testing.T) {
 	}
 }
 
-func TestUserTranscriptModelErrorsRetriesAndToolTaskLinks(t *testing.T) {
+func TestUserTranscriptModelErrorsAndRetries(t *testing.T) {
 	failed := transcriptAssistant("")
 	failed.Content = nil
 	failed.StopReason = "error"
 	failed.ErrorMessage = "HTTP 401"
 	stopped := transcriptAssistant("par")
 	stopped.StopReason = "aborted"
-	call := transcriptAssistant("")
-	call.Content = []ai.AssistantContentBlock{ai.ToolCall{ID: "spawn", Name: "spawn_task"}}
-	result := ai.ToolResultMessage{ToolCallID: "spawn", Content: []ai.ToolResultMessageContent{ai.TextContent{Text: `{"id":"task-2"}`}}}
-	p := projection{entries: []durable.EntryRecord{transcriptEntry(1, "pi.assistant", failed, nil), transcriptEntry(2, "pi.assistant", stopped, nil), transcriptEntry(3, "pi.assistant", call, nil), transcriptEntry(4, "pi.toolResult", result, nil)}, live: harness.LiveState{Generation: &harness.LiveGeneration{Attempt: 2, Retry: &harness.RetryStatus{At: 99, Error: "overloaded"}}}}
+	p := projection{entries: []durable.EntryRecord{transcriptEntry(1, "pi.assistant", failed, nil), transcriptEntry(2, "pi.assistant", stopped, nil)}, live: harness.LiveState{Generation: &harness.LiveGeneration{Attempt: 2, Retry: &harness.RetryStatus{At: 99, Error: "overloaded"}}}}
 	e := p.event()
 	if e.Retry == nil || e.Retry.Attempt != 2 || e.Retry.At != 99 {
 		t.Fatalf("retry = %#v", e.Retry)
 	}
-	if !slices.ContainsFunc(e.Items, func(i Item) bool { return i.Reason == "HTTP 401" }) || !slices.ContainsFunc(e.Items, func(i Item) bool { return i.Aborted }) || !slices.ContainsFunc(e.Items, func(i Item) bool { return i.ID == "spawn" && i.TaskID == "task-2" }) {
+	if !slices.ContainsFunc(e.Items, func(i Item) bool { return i.Reason == "HTTP 401" }) || !slices.ContainsFunc(e.Items, func(i Item) bool { return i.Aborted }) {
 		t.Fatalf("items = %#v", e.Items)
 	}
 }

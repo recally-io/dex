@@ -9,57 +9,32 @@ import (
 	"uuid"
 )
 
-func TestUserKeepsOriginThroughBackgroundFollowUps(t *testing.T) {
+func TestUserKeepsOriginThroughChildResults(t *testing.T) {
 	t.Parallel()
 	for _, origin := range []string{"web", "telegram:7"} {
 		t.Run(origin, func(t *testing.T) {
-			// Given a main or channel input that requests two successive background answers.
+			// Given a main or channel input that creates a child session.
 			f := newFakeTelegram(t)
 			dir := t.TempDir()
 			d := startTelegram(t, f, dir, 42)
 			d.setModel(t, "spawn")
 			conn := taskResultDB(t, dir)
 			main := d.mainChat(t)
-			next := taskJSON(t, map[string]string{"title": "Follow-up", "goal": "finished", "provider": "faux", "modelId": "echo"})
-			input := taskJSON(t, map[string]string{"title": "First", "goal": "next-task: " + next, "provider": "faux", "modelId": "echo"})
-			parent := main
+			input := childJSON(t, map[string]string{"title": "First", "message": "finished", "provider": "faux", "modelId": "echo"})
 			if origin == "web" {
 				d.send(t, main, input)
 			} else {
 				f.message(1, 42, 7, "/new")
 				waitTaskChannelText(t, f, "Context cleared.")
 				f.message(2, 42, 7, input)
-				eventually(t, "channel source", func() (bool, any) {
-					err := conn.QueryRowContext(t.Context(), "SELECT parent_conversation_id FROM tasks WHERE title='First'").Scan(&parent)
-					return err == nil, err
-				})
-				if parent != main {
-					t.Fatal("channel input missed main")
-				}
 			}
-			// When the first report starts the next execution, its source is a task result.
-			first := waitExecution(t, conn, parent, "First", "done")
-			second := waitExecution(t, conn, parent, "Follow-up", "done")
-			resultID := "task:" + second.ID + ":result"
-			waitResultSubmission(t, conn, resultID, "done")
-			var source string
-			if err := conn.QueryRowContext(t.Context(), "SELECT source_request_id FROM tasks WHERE id=?", second.ID).Scan(&source); err != nil {
-				t.Fatal(err)
-			}
-			if source != "task:"+first.ID+":result" {
-				t.Fatalf("follow-up source=%q", source)
-			}
-			// Then both result inputs keep the original peer and internal inputs have their own origin.
-			for _, id := range []string{first.ID, second.ID} {
-				assertSubmissionOrigin(t, conn, id, "task")
-				assertSubmissionOrigin(t, conn, "task:"+id+":result", origin)
-			}
-			var sourceID string
-			if err := conn.QueryRowContext(t.Context(), "SELECT source_request_id FROM tasks WHERE id=?", first.ID).Scan(&sourceID); err != nil {
-				t.Fatal(err)
-			}
-			assertSubmissionOrigin(t, conn, sourceID, origin)
-			t.Logf("artifact: origin=%s parent=%d chain=%s -> %s", origin, parent, first.ID, second.ID)
+			// When the child ends, its result is a parent input.
+			first := waitExecution(t, conn, main, "First", "done")
+			waitResultSubmission(t, conn, first.ResultID, "done")
+			// Then the child input has the internal origin and the result keeps the original peer.
+			assertSubmissionOrigin(t, conn, first.Turn, "task")
+			assertSubmissionOrigin(t, conn, first.ResultID, origin)
+			t.Logf("artifact: origin=%s parent=%d child=%s result=%s", origin, main, first.ID, first.ResultID)
 		})
 	}
 }

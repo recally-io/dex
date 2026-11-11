@@ -17,16 +17,23 @@ Do not overwrite another task's changes.
 
 The main agent implements changes, fixes findings, and runs tests in its own
 context. Skills, tools, and the project directory provide its capabilities.
-Use `spawn_task` only for independent work that can run in parallel, long
+Use `session_new` only for independent work that can run in parallel, long
 commands whose output would flood the main context, or independent review.
-Give each such execution the repository path, owned files, required context,
-and completion criteria.
-Background conversations have no task tools. Return a report to the main chat.
-Before a progress answer or follow-up execution, the main chat must query
-`list_tasks` or `get_task`. Tasks start at once and have no count limit. Tasks in one directory run at the same time, so give tasks that modify files separate files or separate directories. Cancellation withdraws queued work or requests cancellation of running work.
-If an execution fails or stops, inspect its report and artifacts before deciding
-whether to retry or continue from saved work. The system does not retry failed
-executions or result delivery. Avoid repeated attempts without new evidence.
+Give each child session the repository path, owned files, required context,
+and completion criteria in its message. A child session has no session tools.
+It ends each turn with a final answer: what changed, commands and results,
+files, and open items.
+To continue the same work, call `session_send` on the same child. The child
+keeps its context and does not read the repository again. Use `session_fork` to
+branch from a child that has the context you need. Use `session_new` only for
+unrelated or parallel work. Before a progress answer, call `session_list`. Call
+`session_read` only when a result is cut. Child sessions start at once and have
+no count limit. Child sessions in one directory run at the same time, so give
+each child that modifies files separate files or separate directories.
+`session_stop` withdraws queued input and stops the running turn.
+If a turn fails or stops, inspect its answer and the files before deciding
+whether to retry or continue with `session_send`. The system does not retry
+failed turns or result delivery. Avoid repeated attempts without new evidence.
 Report blockers that need user input.
 
 Before an execution needs a CLI, confirm that login is complete. If login needs user

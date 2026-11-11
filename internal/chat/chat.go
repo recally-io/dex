@@ -35,13 +35,15 @@ type Chat struct {
 	ChannelKey string
 	Title      string
 	CreatedAt  int64
-	UpdatedAt  int64 // latest conversation, input, or task activity
+	UpdatedAt  int64 // latest conversation or input activity
 	Busy       bool  // a message has no answer yet
 	ArchivedAt int64 // zero when the Chat session is not archived
 	Settings   Settings
-	// Writable is true when the web UI can send input to the session now. Main and Chat sessions are
-	// always writable. A delegated session is writable after its task ends.
+	// Writable is true when the web UI can send input to the session now. Main, Chat and child
+	// sessions are always writable.
 	Writable bool
+	// ParentID is the session that created this child session. It is zero for any other session.
+	ParentID int64
 	// ExecutionID is zero until native execution creates the conversation.
 	ExecutionID int64
 	// Question is the question that waits for the user, or whose answer waits in the queue.
@@ -97,14 +99,14 @@ type Service struct {
 	changed func(chatID int64)
 
 	// The database holds work. A wake can coalesce without losing a submission.
-	wake              chan struct{}
-	waiting           sync.Map // deduplicates Wait goroutines; PiG owns execution state
-	ctx               context.Context
-	cancel            context.CancelFunc
-	wg                sync.WaitGroup
-	db                *sql.DB
-	taskMu            sync.Mutex // task creation and settlement; per agent if throughput matters
-	checkTaskSettings func(context.Context, Settings) error
+	wake          chan struct{}
+	waiting       sync.Map // deduplicates Wait goroutines; PiG owns execution state
+	ctx           context.Context
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
+	db            *sql.DB
+	writeMu       sync.Mutex // writer-first control transactions; per agent if throughput matters
+	checkSettings func(context.Context, Settings) error
 
 	admissionMu    sync.RWMutex // receipt commits and maintenance lease confirmation only
 	delivery       map[string]deliveryGate
@@ -435,7 +437,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 		chats[i] = Chat{
 			Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 			Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
-			Writable: acceptsInput(r.ChannelKey, r.TaskStatus), Question: byChat[r.ID],
+			Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, Question: byChat[r.ID],
 		}
 	}
 	return chats, nil
@@ -457,7 +459,7 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	return Chat{
 		Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
-		Writable: acceptsInput(r.ChannelKey, r.TaskStatus), ExecutionID: r.ExecutionID.Int64, Question: question,
+		Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, ExecutionID: r.ExecutionID.Int64, Question: question,
 		ForkedFrom: forkOrigin(r),
 	}, nil
 }
@@ -486,69 +488,16 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if strings.HasPrefix(p.ChannelKey, dream.Channel) {
 		options.Instructions = dream.Instructions(p.AgentID, options.Instructions)
 	}
-	background, continuation, err := s.taskRole(ctx, p)
-	if err != nil {
-		return err
-	}
-	var task sqlc.Task
-	resumed := false
-	if background {
-		// taskMu protects the durable admission transition. Native work runs without it.
-		// State changes are conditional updates, so a cancel between them stops admission.
-		s.taskMu.Lock()
-		task, err = s.q.GetTask(ctx, p.ID)
-		if err != nil {
-			s.taskMu.Unlock()
-			return err
-		}
-		// A running task whose input is still pending lost its admission receipt.
-		// Submit replays by request ID, so retry from there.
-		resumed = task.Status == "running"
-		if task.Status != "queued" && !resumed {
-			s.taskMu.Unlock()
-			return nil
-		}
-		if !resumed {
-			started, err := s.q.StartTask(ctx, sqlc.StartTaskParams{ID: p.ID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
-			if err != nil || started == 0 {
-				s.taskMu.Unlock()
-				return err
-			}
-			task.Status = "admitting"
-		}
-		s.taskMu.Unlock()
-		options.Instructions = taskInstructions(options.Instructions, p.Content, task)
-	}
 	ref, err := s.execution(ctx, conv.ID, p.AgentID, options)
 	if err != nil {
-		if background {
-			return s.finishAdmissionError(ctx, p.ID, err)
-		}
 		return err
 	}
-	// This admission owns the native work it starts: every exit before the task
-	// becomes running aborts it. A resumed task was already running natively.
-	owned := background && !resumed
-	defer func() {
-		if owned {
-			_, _ = s.abort(context.WithoutCancel(ctx), ref)
-		}
-	}()
 	current, err := s.q.GetSubmission(ctx, p.ID)
 	if err != nil {
 		return err
 	}
 	if current.Status != "pending" {
 		return nil
-	}
-	if background {
-		task, err = s.q.GetTask(ctx, p.ID)
-		if err != nil {
-			return err
-		}
-		if task.Status != "admitting" && task.Status != "running" {
-			return nil
-		}
 	}
 	if p.Kind == "context_reset" {
 		if err = s.engine.Reset(ctx, ref, p.ID, p.Content); err != nil {
@@ -563,33 +512,17 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if err = json.Unmarshal([]byte(p.Attachments), &attachments); err != nil {
 		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: err.Error()})
 	}
-	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Background: background, TaskContinuation: continuation, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
+	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
 	if p.Kind == "task_result" {
-		label, e := s.q.GetTaskResultLabel(ctx, sqlc.GetTaskResultLabelParams{ResultID: p.ID, ChatID: p.ConversationID})
-		if e != nil {
-			return e
-		}
-		input.TaskID, input.TaskTitle = label.ID, label.Title
+		input.TaskID, input.TaskTitle = resultLabel(p.Content)
 	}
 	sub, err := s.engine.Submit(ctx, ref, input)
 	if err != nil {
-		if background {
-			return s.finishAdmissionError(ctx, p.ID, err)
-		}
 		if p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
 			// A rejected input is final. Retrying it would run it after the current run.
 			return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: rejectedBusy})
 		}
 		return s.admissionError(ctx, p.ID, err)
-	}
-	if background && !resumed {
-		s.taskMu.Lock()
-		running, err := s.q.RunTask(ctx, p.ID)
-		s.taskMu.Unlock()
-		if err != nil || running == 0 {
-			return err
-		}
-		owned = false
 	}
 	if err = s.markAdmitted(ctx, p.ID); err != nil {
 		return err
@@ -609,7 +542,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		}
 	})
 	if !started {
-		slog.Warn("task worker did not start", "task", p.ID)
+		slog.Warn("input worker did not start", "submission", p.ID)
 		s.waiting.Delete(p.ID)
 	}
 	return nil
@@ -624,19 +557,6 @@ func chatOptions(agent sqlc.Agent, conv sqlc.Conversation) engine.Options {
 	return options
 }
 
-func admissionPermanent(err error) bool {
-	return errors.Is(err, engine.ErrInvalidInput) || errors.Is(err, engine.ErrNotFound) || errors.Is(err, ErrNoModel)
-}
-
-func (s *Service) finishAdmissionError(ctx context.Context, id string, err error) error {
-	cleanup := context.WithoutCancel(ctx)
-	if admissionPermanent(err) {
-		_, settleErr := s.settleTask(cleanup, id, engine.Outcome{Status: "unanswered", Reason: err.Error()})
-		return settleErr
-	}
-	_, resetErr := s.q.ResetTaskAdmission(cleanup, id)
-	return errors.Join(err, resetErr)
-}
 func (s *Service) markAdmitted(ctx context.Context, id string) error {
 	return s.q.AdmitSubmission(ctx, sqlc.AdmitSubmissionParams{ID: id, AdmittedAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
 }
@@ -673,17 +593,11 @@ func (s *Service) settleNative(agentID, id string, event engine.Outcome) error {
 }
 
 func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) error {
-	handled, err := s.settleTask(ctx, id, event)
+	event, err := s.withQuestion(ctx, id, event)
 	if err != nil {
 		return err
 	}
-	if handled {
-		return nil
-	}
-	if event, err = s.withQuestion(ctx, id, event); err != nil {
-		return err
-	}
-	changed, err := s.settleInput(ctx, id, event)
+	changed, parent, err := s.settleInput(ctx, id, event)
 	if err != nil || changed == 0 {
 		return err
 	}
@@ -695,7 +609,13 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 	s.retryDelay = 0
 	s.retryMu.Unlock()
 	s.signal(reply.ConversationID)
-	if s.notify != nil {
+	if parent != 0 {
+		// The result is a new input of the parent session. Admission takes it from the database.
+		s.signal(parent)
+		s.Wake()
+	}
+	// A parent turn has no channel to answer: its result goes to the parent session.
+	if s.notify != nil && reply.Origin != "task" {
 		s.notify(reply.Origin)
 	}
 	return nil

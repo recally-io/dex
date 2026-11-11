@@ -30,69 +30,6 @@ func (q *Queries) AcknowledgeTask(ctx context.Context, arg AcknowledgeTaskParams
 	return result.RowsAffected()
 }
 
-const createTask = `-- name: CreateTask :exec
-INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, constraints_json, done_criteria_json, modifies_files, status, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)
-`
-
-type CreateTaskParams struct {
-	ID                   string `json:"id"`
-	ParentConversationID int64  `json:"parent_conversation_id"`
-	ConversationID       int64  `json:"conversation_id"`
-	SpawnKey             string `json:"spawn_key"`
-	SourceRequestID      string `json:"source_request_id"`
-	Title                string `json:"title"`
-	ConstraintsJson      string `json:"constraints_json"`
-	DoneCriteriaJson     string `json:"done_criteria_json"`
-	ModifiesFiles        int64  `json:"modifies_files"`
-	CreatedAt            int64  `json:"created_at"`
-}
-
-func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) error {
-	_, err := q.db.ExecContext(ctx, createTask,
-		arg.ID,
-		arg.ParentConversationID,
-		arg.ConversationID,
-		arg.SpawnKey,
-		arg.SourceRequestID,
-		arg.Title,
-		arg.ConstraintsJson,
-		arg.DoneCriteriaJson,
-		arg.ModifiesFiles,
-		arg.CreatedAt,
-	)
-	return err
-}
-
-const createTaskResult = `-- name: CreateTaskResult :exec
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
-SELECT ?1, ?2, ?3, 'null', ?4, source.origin, 'task_result', 'pending', ?5
-FROM tasks t JOIN submissions source ON source.id = t.source_request_id
-WHERE t.id = ?6
-ON CONFLICT DO NOTHING
-`
-
-type CreateTaskResultParams struct {
-	ID             string         `json:"id"`
-	ConversationID int64          `json:"conversation_id"`
-	Content        string         `json:"content"`
-	SourceKey      sql.NullString `json:"source_key"`
-	CreatedAt      int64          `json:"created_at"`
-	TaskID         string         `json:"task_id"`
-}
-
-func (q *Queries) CreateTaskResult(ctx context.Context, arg CreateTaskResultParams) error {
-	_, err := q.db.ExecContext(ctx, createTaskResult,
-		arg.ID,
-		arg.ConversationID,
-		arg.Content,
-		arg.SourceKey,
-		arg.CreatedAt,
-		arg.TaskID,
-	)
-	return err
-}
-
 const getAgentTask = `-- name: GetAgentTask :one
 SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.created_at, t.started_at, t.ended_at, t.constraints_json, t.done_criteria_json, t.structured_report, t.modifies_files, t.handled_at FROM tasks t JOIN conversations c ON c.id = t.conversation_id
 WHERE t.id = ? AND c.agent_id = ?
@@ -128,6 +65,7 @@ func (q *Queries) GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (Tas
 }
 
 const getConversationByExecution = `-- name: GetConversationByExecution :one
+
 SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id FROM conversations WHERE agent_id = ? AND execution_id = ?
 `
 
@@ -136,6 +74,8 @@ type GetConversationByExecutionParams struct {
 	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
+// Legacy task rows. Child sessions replace tasks (ADR 0015). Nothing writes these rows now.
+// The web UI of the previous release still reads them until the cleanup removes the table.
 func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConversationByExecutionParams) (Conversation, error) {
 	row := q.db.QueryRowContext(ctx, getConversationByExecution, arg.AgentID, arg.ExecutionID)
 	var i Conversation
@@ -156,158 +96,6 @@ func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConvers
 		&i.ParentID,
 	)
 	return i, err
-}
-
-const getTask = `-- name: GetTask :one
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files, handled_at FROM tasks WHERE id = ?
-`
-
-func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
-	row := q.db.QueryRowContext(ctx, getTask, id)
-	var i Task
-	err := row.Scan(
-		&i.ID,
-		&i.ParentConversationID,
-		&i.ConversationID,
-		&i.SpawnKey,
-		&i.SourceRequestID,
-		&i.Title,
-		&i.Status,
-		&i.Report,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.EndedAt,
-		&i.ConstraintsJson,
-		&i.DoneCriteriaJson,
-		&i.StructuredReport,
-		&i.ModifiesFiles,
-		&i.HandledAt,
-	)
-	return i, err
-}
-
-const getTaskByConversation = `-- name: GetTaskByConversation :one
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files, handled_at FROM tasks WHERE conversation_id = ?
-`
-
-func (q *Queries) GetTaskByConversation(ctx context.Context, conversationID int64) (Task, error) {
-	row := q.db.QueryRowContext(ctx, getTaskByConversation, conversationID)
-	var i Task
-	err := row.Scan(
-		&i.ID,
-		&i.ParentConversationID,
-		&i.ConversationID,
-		&i.SpawnKey,
-		&i.SourceRequestID,
-		&i.Title,
-		&i.Status,
-		&i.Report,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.EndedAt,
-		&i.ConstraintsJson,
-		&i.DoneCriteriaJson,
-		&i.StructuredReport,
-		&i.ModifiesFiles,
-		&i.HandledAt,
-	)
-	return i, err
-}
-
-const getTaskByKey = `-- name: GetTaskByKey :one
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files, handled_at FROM tasks WHERE spawn_key = ?
-`
-
-func (q *Queries) GetTaskByKey(ctx context.Context, spawnKey string) (Task, error) {
-	row := q.db.QueryRowContext(ctx, getTaskByKey, spawnKey)
-	var i Task
-	err := row.Scan(
-		&i.ID,
-		&i.ParentConversationID,
-		&i.ConversationID,
-		&i.SpawnKey,
-		&i.SourceRequestID,
-		&i.Title,
-		&i.Status,
-		&i.Report,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.EndedAt,
-		&i.ConstraintsJson,
-		&i.DoneCriteriaJson,
-		&i.StructuredReport,
-		&i.ModifiesFiles,
-		&i.HandledAt,
-	)
-	return i, err
-}
-
-const getTaskResultLabel = `-- name: GetTaskResultLabel :one
-SELECT t.id, t.title FROM submissions s
-JOIN tasks t ON s.id = 'task:' || t.id || ':result'
-WHERE s.id = ?1 AND s.conversation_id = ?2 AND s.kind = 'task_result'
-AND t.parent_conversation_id = s.conversation_id
-`
-
-type GetTaskResultLabelParams struct {
-	ResultID string `json:"result_id"`
-	ChatID   int64  `json:"chat_id"`
-}
-
-type GetTaskResultLabelRow struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-}
-
-func (q *Queries) GetTaskResultLabel(ctx context.Context, arg GetTaskResultLabelParams) (GetTaskResultLabelRow, error) {
-	row := q.db.QueryRowContext(ctx, getTaskResultLabel, arg.ResultID, arg.ChatID)
-	var i GetTaskResultLabelRow
-	err := row.Scan(&i.ID, &i.Title)
-	return i, err
-}
-
-const listActiveTasks = `-- name: ListActiveTasks :many
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files, handled_at FROM tasks WHERE parent_conversation_id = ? AND status IN ('queued', 'admitting', 'running')
-`
-
-func (q *Queries) ListActiveTasks(ctx context.Context, parentConversationID int64) ([]Task, error) {
-	rows, err := q.db.QueryContext(ctx, listActiveTasks, parentConversationID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Task{}
-	for rows.Next() {
-		var i Task
-		if err := rows.Scan(
-			&i.ID,
-			&i.ParentConversationID,
-			&i.ConversationID,
-			&i.SpawnKey,
-			&i.SourceRequestID,
-			&i.Title,
-			&i.Status,
-			&i.Report,
-			&i.CreatedAt,
-			&i.StartedAt,
-			&i.EndedAt,
-			&i.ConstraintsJson,
-			&i.DoneCriteriaJson,
-			&i.StructuredReport,
-			&i.ModifiesFiles,
-			&i.HandledAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listAgentTasks = `-- name: ListAgentTasks :many
@@ -366,54 +154,12 @@ func (q *Queries) ListAgentTasks(ctx context.Context, agentID string) ([]ListAge
 	return items, nil
 }
 
-const listLiveTasks = `-- name: ListLiveTasks :many
-SELECT id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at, started_at, ended_at, constraints_json, done_criteria_json, structured_report, modifies_files, handled_at FROM tasks WHERE status IN ('admitting', 'running')
-`
-
-func (q *Queries) ListLiveTasks(ctx context.Context) ([]Task, error) {
-	rows, err := q.db.QueryContext(ctx, listLiveTasks)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Task{}
-	for rows.Next() {
-		var i Task
-		if err := rows.Scan(
-			&i.ID,
-			&i.ParentConversationID,
-			&i.ConversationID,
-			&i.SpawnKey,
-			&i.SourceRequestID,
-			&i.Title,
-			&i.Status,
-			&i.Report,
-			&i.CreatedAt,
-			&i.StartedAt,
-			&i.EndedAt,
-			&i.ConstraintsJson,
-			&i.DoneCriteriaJson,
-			&i.StructuredReport,
-			&i.ModifiesFiles,
-			&i.HandledAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listStopConversations = `-- name: ListStopConversations :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id FROM conversations WHERE agent_id = ?1
-AND id = ?2
-ORDER BY id
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id FROM conversations WHERE conversations.agent_id = ?1
+AND (conversations.id = ?2 OR (conversations.parent_id = ?2 AND EXISTS (
+    SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
+)))
+ORDER BY conversations.id
 `
 
 type ListStopConversationsParams struct {
@@ -421,6 +167,7 @@ type ListStopConversationsParams struct {
 	ChatID  int64  `json:"chat_id"`
 }
 
+// Stop reaches the conversation and the children of it that have pending input.
 func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConversationsParams) ([]Conversation, error) {
 	rows, err := q.db.QueryContext(ctx, listStopConversations, arg.AgentID, arg.ChatID)
 	if err != nil {
@@ -459,67 +206,6 @@ func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConvers
 	return items, nil
 }
 
-const listTasks = `-- name: ListTasks :many
-SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.created_at, t.started_at, t.ended_at, t.constraints_json, t.done_criteria_json, t.structured_report, t.modifies_files, t.handled_at FROM tasks t
-WHERE t.parent_conversation_id = ?1 AND
-(t.ended_at IS NULL OR t.id IN (SELECT recent.id FROM tasks recent WHERE recent.parent_conversation_id = ?1
-AND recent.ended_at IS NOT NULL ORDER BY recent.ended_at DESC, recent.id DESC LIMIT 10))
-ORDER BY t.created_at DESC, t.id DESC
-`
-
-func (q *Queries) ListTasks(ctx context.Context, parentID int64) ([]Task, error) {
-	rows, err := q.db.QueryContext(ctx, listTasks, parentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Task{}
-	for rows.Next() {
-		var i Task
-		if err := rows.Scan(
-			&i.ID,
-			&i.ParentConversationID,
-			&i.ConversationID,
-			&i.SpawnKey,
-			&i.SourceRequestID,
-			&i.Title,
-			&i.Status,
-			&i.Report,
-			&i.CreatedAt,
-			&i.StartedAt,
-			&i.EndedAt,
-			&i.ConstraintsJson,
-			&i.DoneCriteriaJson,
-			&i.StructuredReport,
-			&i.ModifiesFiles,
-			&i.HandledAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const resetTaskAdmission = `-- name: ResetTaskAdmission :execrows
-UPDATE tasks SET status = 'queued', started_at = NULL
-WHERE id = ? AND status = 'admitting' AND ended_at IS NULL
-`
-
-func (q *Queries) ResetTaskAdmission(ctx context.Context, id string) (int64, error) {
-	result, err := q.db.ExecContext(ctx, resetTaskAdmission, id)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const restoreTask = `-- name: RestoreTask :execrows
 UPDATE tasks SET handled_at = NULL
 WHERE tasks.id = ?1 AND tasks.status IN ('done', 'failed', 'cancelled', 'interrupted')
@@ -533,83 +219,6 @@ type RestoreTaskParams struct {
 
 func (q *Queries) RestoreTask(ctx context.Context, arg RestoreTaskParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, restoreTask, arg.TaskID, arg.AgentID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const runTask = `-- name: RunTask :execrows
-UPDATE tasks SET status = 'running'
-WHERE id = ?1 AND status = 'admitting'
-`
-
-func (q *Queries) RunTask(ctx context.Context, id string) (int64, error) {
-	result, err := q.db.ExecContext(ctx, runTask, id)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const settleTask = `-- name: SettleTask :execrows
-UPDATE tasks SET status = ?, report = ?, ended_at = ?
-WHERE id = ? AND status IN ('queued', 'admitting', 'running')
-`
-
-type SettleTaskParams struct {
-	Status  string        `json:"status"`
-	Report  string        `json:"report"`
-	EndedAt sql.NullInt64 `json:"ended_at"`
-	ID      string        `json:"id"`
-}
-
-func (q *Queries) SettleTask(ctx context.Context, arg SettleTaskParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, settleTask,
-		arg.Status,
-		arg.Report,
-		arg.EndedAt,
-		arg.ID,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const stageTaskReport = `-- name: StageTaskReport :execrows
-UPDATE tasks SET structured_report = ?1
-WHERE tasks.id = ?2 AND tasks.conversation_id = ?3
-AND status IN ('queued', 'admitting', 'running') AND structured_report = ''
-AND EXISTS (SELECT 1 FROM submissions s WHERE s.id = tasks.id AND s.status = 'pending')
-`
-
-type StageTaskReportParams struct {
-	Report         string `json:"report"`
-	ID             string `json:"id"`
-	ConversationID int64  `json:"conversation_id"`
-}
-
-func (q *Queries) StageTaskReport(ctx context.Context, arg StageTaskReportParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, stageTaskReport, arg.Report, arg.ID, arg.ConversationID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const startTask = `-- name: StartTask :execrows
-UPDATE tasks SET status = 'admitting', started_at = ?1
-WHERE id = ?2 AND status = 'queued'
-`
-
-type StartTaskParams struct {
-	Now sql.NullInt64 `json:"now"`
-	ID  string        `json:"id"`
-}
-
-func (q *Queries) StartTask(ctx context.Context, arg StartTaskParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, startTask, arg.Now, arg.ID)
 	if err != nil {
 		return 0, err
 	}

@@ -54,11 +54,7 @@ func (s *Service) SetProject(ctx context.Context, agentID string, id int64, path
 	if err != nil {
 		return "", err
 	}
-	writable, err := s.writable(ctx, conv)
-	if err != nil {
-		return "", err
-	}
-	if !writable {
+	if !acceptsInput(conv.ChannelKey, conv.ParentID) {
 		return "", ErrProjectForbidden
 	}
 	path, err = ProjectPath(path)
@@ -72,7 +68,7 @@ func (s *Service) SetProject(ctx context.Context, agentID string, id int64, path
 }
 
 func (s *Service) ToolSetProject(ctx context.Context, source engine.TaskContext, path string) (string, error) {
-	conv, err := s.taskCaller(ctx, source)
+	conv, err := s.toolCaller(ctx, source)
 	if err != nil {
 		return "", err
 	}

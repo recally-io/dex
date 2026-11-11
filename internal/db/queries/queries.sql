@@ -42,10 +42,10 @@ ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
 RETURNING *;
 
 -- name: CreateFork :one
--- A fork is a new Chat with the settings of its source. execution_id is NULL when the fork
--- starts empty, so the first message creates the native conversation.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+-- A fork is a new Chat with the settings and the parent of its source. execution_id is NULL when
+-- the fork starts empty, so the first message creates the native conversation.
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, parent_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ArchiveChat :exec
@@ -133,18 +133,15 @@ SELECT
     c.cwd,
     c.created_at,
     c.archived_at,
+    c.parent_id,
     CAST(max(
         c.created_at,
         coalesce(max(s.created_at), c.created_at),
-        coalesce(max(s.settled_at), c.created_at),
-        coalesce(t.started_at, c.created_at),
-        coalesce(t.ended_at, c.created_at)
+        coalesce(max(s.settled_at), c.created_at)
     ) AS INTEGER) AS updated_at,
-    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending,
-    t.status AS task_status
+    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-LEFT JOIN tasks t ON t.conversation_id = c.id
 WHERE c.agent_id = ?
     AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
     AND (c.channel_key NOT LIKE 'chat:%' OR c.forked_from IS NOT NULL OR EXISTS (
@@ -164,6 +161,7 @@ SELECT
     c.cwd,
     c.created_at,
     c.archived_at,
+    c.parent_id,
     c.execution_id,
     c.forked_from,
     f.title AS forked_from_title,
@@ -171,15 +169,11 @@ SELECT
     CAST(max(
         c.created_at,
         coalesce(max(s.created_at), c.created_at),
-        coalesce(max(s.settled_at), c.created_at),
-        coalesce(t.started_at, c.created_at),
-        coalesce(t.ended_at, c.created_at)
+        coalesce(max(s.settled_at), c.created_at)
     ) AS INTEGER) AS updated_at,
-    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending,
-    t.status AS task_status
+    CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
-LEFT JOIN tasks t ON t.conversation_id = c.id
 LEFT JOIN conversations f ON f.id = c.forked_from
 WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id;
@@ -269,7 +263,7 @@ FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE
     c.agent_id = @agent_id
-    AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'task:%'
+    AND c.channel_key NOT LIKE 'dream:%' AND c.parent_id IS NULL
     AND s.kind = 'message'
     AND s.status != 'pending'
     AND (s.settled_at > @after_settled_at OR (s.settled_at = @after_settled_at AND s.id > @after_id))
@@ -380,13 +374,10 @@ WITH activity AS (
     SELECT c.cwd, c.id, max(
         c.created_at,
         coalesce(max(s.created_at), c.created_at),
-        coalesce(max(s.settled_at), c.created_at),
-        coalesce(t.started_at, c.created_at),
-        coalesce(t.ended_at, c.created_at)
+        coalesce(max(s.settled_at), c.created_at)
     ) AS updated_at
     FROM conversations c
     LEFT JOIN submissions s ON s.conversation_id = c.id
-    LEFT JOIN tasks t ON t.conversation_id = c.id
     WHERE c.agent_id = ? AND c.cwd <> ''
     GROUP BY c.id
 )

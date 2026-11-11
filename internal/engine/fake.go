@@ -94,25 +94,16 @@ func fakeProvider() *ai.ModelsProvider {
 				return ai.AssistantMessage{}, fmt.Errorf("faux/spawn requires a JSON object")
 			}
 			if result, ok := args["task-result"]; ok {
-				next := args["nextTask"]
-				if report, ok := result.(map[string]any); ok {
-					if value, ok := report["report"].(string); ok && strings.HasPrefix(value, "echo: next-task: ") {
-						if err := json.Unmarshal([]byte(strings.TrimPrefix(value, "echo: next-task: ")), &next); err != nil {
-							return ai.AssistantMessage{}, fmt.Errorf("invalid next task")
-						}
-					}
-				}
-				if next != nil {
-					task, ok := next.(map[string]any)
-					if !ok {
-						return ai.AssistantMessage{}, fmt.Errorf("invalid next task")
-					}
-					return fakeCall("spawn_task", task), nil
-				}
 				data, err := json.Marshal(result, json.Deterministic(true))
 				return fakeText("task-result: " + string(data)), err
 			}
-			return fakeCall("spawn_task", args), nil
+			// The optional "tool" field names a session tool; the default creates a child session.
+			name := "session_new"
+			if tool, ok := args["tool"].(string); ok {
+				name = tool
+				delete(args, "tool")
+			}
+			return fakeCall(name, args), nil
 		default:
 			return fakeText(m.ID + ": " + text), nil
 		}

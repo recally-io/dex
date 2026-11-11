@@ -30,7 +30,7 @@ func (s *Service) ToolReadDreamMessage(ctx context.Context, caller engine.TaskCo
 		return engine.DreamMessagePage{}, denied
 	}
 	owner, err := s.q.GetConversation(ctx, message.ConversationID)
-	if err != nil || owner.AgentID != caller.AgentID || strings.HasPrefix(owner.ChannelKey, dream.Channel) || strings.HasPrefix(owner.ChannelKey, "task:") {
+	if err != nil || owner.AgentID != caller.AgentID || strings.HasPrefix(owner.ChannelKey, dream.Channel) || owner.ParentID.Valid {
 		return engine.DreamMessagePage{}, denied
 	}
 	text := message.Content

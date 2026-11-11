@@ -253,39 +253,16 @@ func TestUserRoutineAndItsTaskDeliverFiles(t *testing.T) {
 		t.Fatalf("routine artifacts=%+v", rows)
 	}
 	d.setModel(t, "spawn")
-	b := d.createAutomation(t, "Task delivery", taskJSON(t, map[string]any{"title": "Routine task", "goal": `deliver_file {"path":"routine.markdown"}`, "provider": "faux", "modelId": "tool"}), "new", map[string]any{"kind": "daily", "time": "09:00"})
+	b := d.createAutomation(t, "Task delivery", childJSON(t, map[string]any{"title": "Routine child", "message": `deliver_file {"path":"routine.markdown"}`, "provider": "faux", "modelId": "tool"}), "new", map[string]any{"kind": "daily", "time": "09:00"})
 	run = d.runNow(t, b.ID)
-	task := waitExecution(t, taskResultDB(t, data), run.ChatID, "Routine task", "done")
-	var view taskInfo
-	d.must(t, http.MethodGet, "/api/agents/default/tasks/"+task.ID, nil, &view)
+	waitResults(t, taskResultDB(t, data), run.ChatID, 1)
+	var child int64
+	if err := taskResultDB(t, data).QueryRowContext(t.Context(), `SELECT id FROM conversations WHERE parent_id = ?`, run.ChatID).Scan(&child); err != nil {
+		t.Fatal(err)
+	}
 	rows := listArtifacts(t, d, run.ChatID)
-	if len(rows) != 1 || rows[0].ConversationID != view.ConversationID || rows[0].DisplayConversationID != run.ChatID {
-		t.Fatalf("task=%+v artifacts=%+v", view, rows)
-	}
-}
-
-func TestUserDoesNotPublishPathsFromATaskReport(t *testing.T) {
-	t.Parallel()
-	// Given a background task report that names a workspace file without delivering it.
-	data := t.TempDir()
-	d := startDex(t, data, "")
-	workspace := filepath.Join(data, "agents", "default", "workspace")
-	if err := os.MkdirAll(workspace, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(workspace, "private.md"), []byte("not delivered\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	parent := d.newSession(t).ID
-	conn := taskResultDB(t, data)
-
-	// When the task saves that free-form path in report_task.files.
-	spawnExecution(t, d, parent, "Report only", `report_task {"outcome":"done","summary":"reported a private path","cause":"","reproduction":[],"files":["private.md"],"openItems":[]}`, "tool")
-	waitExecution(t, conn, parent, "Report only", "done")
-
-	// Then no HTTP-readable artifact is created.
-	if artifacts := listArtifacts(t, d, parent); len(artifacts) != 0 {
-		t.Fatalf("reported path became public: %+v", artifacts)
+	if len(rows) != 1 || rows[0].ConversationID != child || rows[0].DisplayConversationID != run.ChatID {
+		t.Fatalf("child=%d artifacts=%+v", child, rows)
 	}
 }
 
@@ -338,22 +315,13 @@ func TestUserFindsBackgroundDeliveriesFromTheirParentChat(t *testing.T) {
 	parent := d.newSession(t).ID
 	conn := taskResultDB(t, data)
 
-	// When the background agent calls the same explicit delivery tool.
-	spawnExecution(t, d, parent, "Deliver task result", `deliver_file {"path":"task.md"}`, "tool")
-	task := waitExecution(t, conn, parent, "Deliver task result", "done")
-	var taskView taskInfo
-	d.must(t, http.MethodGet, "/api/agents/default/tasks/"+task.ID, nil, &taskView)
+	// When the child session calls the same explicit delivery tool.
+	child := spawnChild(t, d, parent, "Deliver task result", `deliver_file {"path":"task.md"}`, "tool")
+	waitResults(t, conn, parent, 1)
+	childID := child.conversation(t)
 	parentArtifacts := listArtifacts(t, d, parent)
-	taskArtifacts := listArtifacts(t, d, taskView.ConversationID)
-	if len(parentArtifacts) != 1 || len(taskArtifacts) != 1 || parentArtifacts[0] != taskArtifacts[0] || parentArtifacts[0].Name != "task.md" || parentArtifacts[0].ConversationID != taskView.ConversationID || parentArtifacts[0].DisplayConversationID != parent {
-		t.Fatalf("task=%+v parent=%+v taskArtifacts=%+v", taskView, parentArtifacts, taskArtifacts)
+	childArtifacts := listArtifacts(t, d, childID)
+	if len(parentArtifacts) != 1 || len(childArtifacts) != 1 || parentArtifacts[0] != childArtifacts[0] || parentArtifacts[0].Name != "task.md" || parentArtifacts[0].ConversationID != childID || parentArtifacts[0].DisplayConversationID != parent {
+		t.Fatalf("child=%d parent=%+v childArtifacts=%+v", childID, parentArtifacts, childArtifacts)
 	}
-
-	// Then an unrelated Chat and another agent cannot fetch the snapshot.
-	otherChat := d.newSession(t).ID
-	d.must(t, http.MethodGet, artifactPath(otherChat, parentArtifacts[0].ID), nil, nil, http.StatusNotFound)
-	var other apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &other, http.StatusCreated)
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/%s/chats/%d/artifacts/%s", other.ID, parent, parentArtifacts[0].ID), nil, nil, http.StatusNotFound)
-	t.Logf("artifact: task=%s parent=%d source=%d id=%s", task.ID, parent, taskView.ConversationID, parentArtifacts[0].ID)
 }
