@@ -78,6 +78,8 @@ func TestUserOpensAnOldTaskLinkAndArchivesItsSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rows.Close()
+
 	type task struct {
 		id, title    string
 		conversation int64
@@ -93,7 +95,6 @@ func TestUserOpensAnOldTaskLinkAndArchivesItsSession(t *testing.T) {
 	if err := rows.Err(); err != nil || len(tasks) != 3 {
 		t.Fatalf("tasks %+v, %v", tasks, err)
 	}
-	_ = rows.Close()
 
 	for _, k := range tasks {
 		// When the web opens the old link /tasks/<task id>.
