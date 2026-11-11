@@ -1842,12 +1842,12 @@ async function childSessions() {
   return (await api("/api/agents/default/chats")).chats.filter((chat) => chat.parentId !== undefined);
 }
 
-function withControlDB(use) {
+function withControlDB(read) {
   const db = new DatabaseSync(join(data, "control.sqlite"));
   db.exec("PRAGMA busy_timeout = 5000");
 
   try {
-    return use(db);
+    return read(db);
   } finally {
     db.close();
   }
