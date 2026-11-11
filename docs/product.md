@@ -99,8 +99,8 @@ to read in an afternoon.
   affect an answer at another entry. Channel messages show their channel name
   in the web timeline. Replies return only to the input's origin. Web input
   sends no channel reply. Each input gets its own answer, in admission order.
-  `/new` clears main's context when main is idle. A repeated command cannot
-  clear again. A busy refusal leaves the context unchanged.
+  `/clear` clears main's context when main is idle. `/new` is an alias. A
+  repeated command cannot clear again. A busy refusal leaves the context unchanged.
   `/stop` stops main's current answer, pending input and background work from
   every main entry. Chat and automation sessions stay outside that scope.
   `/help` lists commands.
@@ -261,7 +261,7 @@ The system does not retry failed execution or result delivery. The main agent
 reads saved records and artifacts, then decides whether to retry or continue
 from saved work. After a user Stop, the main agent waits for new user
 authorization. A later user message does not retry an old result. Result
-delivery keeps the source input's origin after `/new`.
+delivery keeps the source input's origin after `/clear`.
 
 After a dex restart, running execution becomes interrupted and does not restart
 automatically. Queued execution that never started can start for the first

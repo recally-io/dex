@@ -662,7 +662,7 @@ conversations, old channel sessions, and automation sessions are read-only on
 the web. Ended task conversations accept user input.
 Channel `/stop` calls main Stop. It covers main input from every entry and
 tasks started in main. Chat, automation and other agents stay outside that scope.
-Channel `/new` calls main Clear with the same busy check and reset ordering.
+Channel `/clear` (alias `/new`) calls main Clear with the same busy check and reset ordering.
 It does not cancel background work. The result keeps the work's original peer.
 Stop withdraws pending ordinary input and results. The same transaction sets
 active background executions to `cancelled` and withdraws their own input.
@@ -844,7 +844,7 @@ so dex needs no public URL.
   change cancels the previous code. Manual user-ID entry remains available.
   An allowed user who repeats a pairing command receives an already-paired
   reply, including after a lost acknowledgement or restart.
-- The bot registers `/new`, `/stop`, and `/help`
+- The bot registers `/clear`, `/stop`, and `/help`
   with `setMyCommands`.
   The channel manager owns command execution and deduplication.
 - Each update has a stable source key: `telegram:<bot id>:<update id>`.
@@ -909,8 +909,9 @@ per-peer conversations remain stored but receive no new channel input. The
 Sessions list excludes those conversations. Main and Chat are writable on
 the web. Automation transcripts have no web composer.
 
-`/new`, `/stop`, and `/help` use durable command
-receipts. `/new` uses `channel:<source key>` as its stable reset request ID.
+`/clear`, `/new`, `/stop`, and `/help` use durable command
+receipts. `/clear` and its alias `/new` use `channel:<source key>` as the stable
+reset request ID.
 A crash after reset admission but before command completion reuses that reset.
 A busy refusal is saved in the command receipt; replay cannot clear it later.
 The command sends one short notice. Reset submissions have no model reply.
@@ -969,7 +970,7 @@ The bot ignores groups and other users. Text mentions are removed. Rich posts
 become text and image attachments. Code blocks keep their text and language
 in Markdown fences. Repeated `/pair` messages never reach the agent.
 Message resources pass through `upload.Store`, with its 20 MB file limit and 10 attachments per message.
-The shared channel manager handles `/new`, `/stop`, and `/help`. A source key contains `feishu:<app ID>:<message ID>`. The bot acknowledges valid agent
+The shared channel manager handles `/clear`, `/new`, `/stop`, and `/help`. A source key contains `feishu:<app ID>:<message ID>`. The bot acknowledges valid agent
 input after durable admission succeeds. Invalid content, rejected resource access,
 and files with invalid names or excessive size are acknowledged and ignored.
 Storage and temporary platform failures get a 500 acknowledgement for retry.

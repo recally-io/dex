@@ -1,5 +1,5 @@
 // Package telegram connects Telegram chats to an agent. It reads messages from the Bot API with long
-// polling and sends replies back. /new clears the main timeline's context.
+// polling and sends replies back. /clear clears the main timeline's context.
 package telegram
 
 import (
@@ -90,7 +90,7 @@ func New(cfg Config, chats *channel.Manager) *Bot {
 // Run receives messages and sends replies until ctx is done.
 func (b *Bot) Run(ctx context.Context) error {
 	if err := b.call(ctx, "setMyCommands", map[string]any{"commands": []map[string]string{
-		{"command": "new", "description": "Clear the main context"},
+		{"command": "clear", "description": "Clear the main context"},
 		{"command": "stop", "description": "Stop the main answer and its background work"},
 		{"command": "help", "description": "List commands"},
 	}}, nil); err != nil {
@@ -207,7 +207,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	} else if receiveErr != nil {
 		return receiveErr
 	}
-	if content != "/new" && content != "/stop" && content != "/help" {
+	if !channel.IsCommand(content) {
 		b.startPreview(ctx, source, m.Chat.ID)
 	}
 	return nil

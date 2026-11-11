@@ -17,7 +17,7 @@ func TestUserChannelHelpHasNoTaskManagementCommands(t *testing.T) {
 	f.message(1, 42, 7, "/help")
 	reply := html.UnescapeString(f.next(t).Text)
 	// Then neither entry point exposes task management or creates a model conversation.
-	if menu != "/new /stop /help " {
+	if menu != "/clear /stop /help " {
 		t.Fatalf("command menu: %q", menu)
 	}
 	for _, command := range []string{"/tasks", "/task ", "/cancel"} {
