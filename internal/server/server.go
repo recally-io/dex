@@ -553,7 +553,7 @@ func (h *handler) ListArtifacts(ctx context.Context, req api.ListArtifactsReques
 	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
 		return nil, err
 	}
-	rows, err := h.Artifacts.List(ctx, agentID(ctx), req.ChatId)
+	rows, err := h.Artifacts.List(ctx, req.ChatId)
 	if err != nil {
 		return nil, err
 	}
@@ -568,11 +568,11 @@ func (h *handler) GetArtifact(ctx context.Context, req api.GetArtifactRequestObj
 	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
 		return nil, err
 	}
-	a, err := h.Artifacts.Get(ctx, agentID(ctx), req.ChatId, req.ArtifactId)
+	a, err := h.Artifacts.Get(ctx, req.ChatId, req.ArtifactId)
 	if err != nil {
 		return nil, err
 	}
-	f, err := artifact.Open(agent.Home(h.DataDir, agentID(ctx)), a.ID)
+	f, err := artifact.Open(agent.Home(h.DataDir, a.AgentID), a.ID)
 	if err != nil {
 		return nil, err
 	}

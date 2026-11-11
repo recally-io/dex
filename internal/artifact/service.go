@@ -53,15 +53,9 @@ func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path s
 			return engine.ArtifactInfo{}, err
 		}
 		if source.ParentRequestID.Valid {
-			owner, err := q.GetConversation(ctx, conv.ParentID.Int64)
-			if err != nil {
-				return engine.ArtifactInfo{}, err
-			}
-			// The snapshot is in the home of this agent. A parent in another bot cannot serve it, so a
-			// child of another bot delivers in its own conversation.
-			if owner.AgentID == conv.AgentID {
-				parent = owner.ID
-			}
+			// The snapshot stays in the home of this agent, whatever the bot of the parent. The row names
+			// that agent, and the readers of the parent open the file from there.
+			parent = conv.ParentID.Int64
 		}
 	}
 	if _, err := q.GetActiveArtifactInput(ctx, sqlc.GetActiveArtifactInputParams{ID: caller.SourceRequestID, ConversationID: conv.ID}); err != nil {
@@ -111,10 +105,13 @@ func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path s
 	return engine.ArtifactInfo{ID: snapshot.ID, Name: snapshot.Name, Size: snapshot.Size, ConversationID: conv.ID, DisplayConversationID: parent}, nil
 }
 
-func (s *Service) Get(ctx context.Context, agentID string, conversationID int64, id string) (sqlc.Artifact, error) {
-	return sqlc.New(s.db).GetArtifact(ctx, sqlc.GetArtifactParams{ID: id, AgentID: agentID, ConversationID: conversationID, DisplayConversationID: conversationID})
+// Get and List return the files of a conversation and the files that its children show in it. The
+// caller must have checked access to the conversation. A file can belong to another bot: open it
+// from the home of Artifact.AgentID.
+func (s *Service) Get(ctx context.Context, conversationID int64, id string) (sqlc.Artifact, error) {
+	return sqlc.New(s.db).GetArtifact(ctx, sqlc.GetArtifactParams{ID: id, ConversationID: conversationID, DisplayConversationID: conversationID})
 }
 
-func (s *Service) List(ctx context.Context, agentID string, conversationID int64) ([]sqlc.Artifact, error) {
-	return sqlc.New(s.db).ListArtifacts(ctx, sqlc.ListArtifactsParams{AgentID: agentID, ConversationID: conversationID, DisplayConversationID: conversationID})
+func (s *Service) List(ctx context.Context, conversationID int64) ([]sqlc.Artifact, error) {
+	return sqlc.New(s.db).ListArtifacts(ctx, sqlc.ListArtifactsParams{ConversationID: conversationID, DisplayConversationID: conversationID})
 }

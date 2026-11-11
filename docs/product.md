@@ -167,7 +167,8 @@ to read in an afternoon.
   bots cannot delegate in a loop. Any session of any bot can be read, except
   dreams. `session_search` and `session_list` cover the current bot by default,
   all bots with `all`, or one bot by ID or name, and each result names its bot.
-  A file that a child delivers stays in the child's own conversation. Bot
+  A file that a child delivers in a turn of its parent shows in the parent
+  conversation, also when the child belongs to another bot. Bot
   isolation holds for everything else: the API returns 404 for another bot's
   resources, and channels, routines, and `.env` stay with their bot.
 

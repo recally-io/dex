@@ -11,8 +11,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 -- name: GetArtifactByOperation :one
 SELECT * FROM artifacts WHERE operation_key = ? AND agent_id = ?;
 
+-- The caller has already checked access to the conversation. The file can belong to another bot:
+-- a child in another bot shows its file in the conversation of its parent. artifacts.agent_id
+-- names the bot that holds the file.
 -- name: GetArtifact :one
-SELECT * FROM artifacts WHERE id = ? AND agent_id = ? AND (conversation_id = ? OR display_conversation_id = ?);
+SELECT * FROM artifacts WHERE id = ? AND (conversation_id = ? OR display_conversation_id = ?);
 
 -- name: ListArtifacts :many
-SELECT * FROM artifacts WHERE agent_id = ? AND (conversation_id = ? OR display_conversation_id = ?) ORDER BY created_at, id;
+SELECT * FROM artifacts WHERE conversation_id = ? OR display_conversation_id = ? ORDER BY created_at, id;

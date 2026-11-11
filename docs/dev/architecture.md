@@ -651,8 +651,11 @@ against them:
   `session_list` read one bot, or all bots with `all`. The default is the bot of
   the caller. A name is not unique: an ambiguous name is an error that lists the
   IDs.
-- A file that a child in another bot delivers stays in the conversation of the
-  child, because the snapshot is in the home of that bot.
+- A file that a child in another bot delivers stays in the home of the bot of
+  the child. Its row names that bot in `artifacts.agent_id`. The row shows the
+  file in the parent conversation when the turn came from the parent, so the API
+  of the parent bot lists the file and opens it from the home that the row
+  names. Control does not copy the file.
 
 A tool call uses its bot ID and PiG's tool task ID as the turn ID. The turn
 is stored with `submissions.parent_request_id` in the same write transaction as
