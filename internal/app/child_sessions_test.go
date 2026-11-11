@@ -22,6 +22,8 @@ type childRef struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
 	State string `json:"state"`
+	Bot   string `json:"bot"`
+	BotID string `json:"botId"`
 }
 
 type resultRow struct {
@@ -497,6 +499,8 @@ type readTurn struct {
 }
 
 type readPage struct {
+	Bot        string     `json:"bot"`
+	BotID      string     `json:"botId"`
 	Turns      []readTurn `json:"turns"`
 	Next       string     `json:"next"`
 	Text       string     `json:"text"`
@@ -571,11 +575,12 @@ func TestUserSessionReadReturnsOnlyInputsAndAnswers(t *testing.T) {
 	if got := readSession(t, d, reader, map[string]any{"id": fmt.Sprint(main)}); len(got.Turns) != 1 || got.Turns[0].Input != "main only" {
 		t.Fatalf("main: %+v", got)
 	}
-	// And a session of another bot or a dream is not found.
-	for _, id := range []int64{otherMain.ID, dream} {
-		if got := callSessionTool(t, d, reader, "session_read", map[string]any{"id": fmt.Sprint(id)}); !strings.HasPrefix(got, "spawn error") || !strings.Contains(got, "not found") {
-			t.Fatalf("read of %d: %s", id, got)
-		}
+	// And a session of another bot is readable (ADR 0016), but a dream is not found.
+	if got := readSession(t, d, reader, map[string]any{"id": fmt.Sprint(otherMain.ID)}); len(got.Turns) != 1 || got.Turns[0].Input != "other bot secret" || got.BotID != other.ID {
+		t.Fatalf("session of another bot: %+v", got)
+	}
+	if got := callSessionTool(t, d, reader, "session_read", map[string]any{"id": fmt.Sprint(dream)}); !strings.HasPrefix(got, "spawn error") || !strings.Contains(got, "not found") {
+		t.Fatalf("read of a dream: %s", got)
 	}
 }
 
