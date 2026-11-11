@@ -178,19 +178,20 @@ func (d *dex) chats(t *testing.T) []chatInfo {
 
 // item is a transcript item of the chat event stream.
 type item struct {
-	Origin string `json:"origin"`
-	Kind   string `json:"kind"`
-	TaskID string `json:"taskId"`
-	Title  string `json:"title"`
-	At     int64  `json:"at"`
-	ID     string `json:"id"`
-	Text   string `json:"text"`
-	Queued bool   `json:"queued"`
-	Steer  bool   `json:"steer"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
-	Output string `json:"output"`
-	Reason string `json:"reason"`
+	Origin  string `json:"origin"`
+	Kind    string `json:"kind"`
+	TaskID  string `json:"taskId"`
+	Title   string `json:"title"`
+	At      int64  `json:"at"`
+	ID      string `json:"id"`
+	Text    string `json:"text"`
+	Queued  bool   `json:"queued"`
+	Steer   bool   `json:"steer"`
+	Failure string `json:"failure"`
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Output  string `json:"output"`
+	Reason  string `json:"reason"`
 	// Attachments of a user item.
 	Attachments []attachment `json:"attachments"`
 }

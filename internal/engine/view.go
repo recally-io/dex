@@ -35,7 +35,10 @@ type Item struct {
 	Usage       *Usage         `json:"usage,omitzero"`
 	Reason      string         `json:"reason,omitempty"`
 	Aborted     bool           `json:"aborted,omitzero"`
-	Boundary    string         `json:"boundary,omitempty"`
+	// Failure is the reason of the newest failed run, on the error item that ends it. A client
+	// can continue that run.
+	Failure  string `json:"failure,omitempty"`
+	Boundary string `json:"boundary,omitempty"`
 }
 
 type Usage struct {
@@ -222,6 +225,7 @@ func (p projection) render() []Item {
 	}
 	items := []Item{}
 	seen := map[string]bool{}
+	runError := -1
 	for index, e := range entries {
 		key := fmt.Sprintf("e%d", e.Id)
 		var rendered []Item
@@ -263,6 +267,16 @@ func (p projection) render() []Item {
 			items = append(items, item)
 			seen[item.ID] = true
 		}
+		if n := len(rendered); n > 0 && rendered[n-1].Kind == "error" && e.Kind != "dex.withdrawn" {
+			runError = len(items) - 1
+		}
+	}
+	if f := p.live.RunFailure; f != nil && p.live.Run == nil && failureCurrent(entries, f) {
+		if runError >= 0 && runError == len(items)-1 {
+			items[runError].Failure = string(f.Reason)
+		} else if item, ok := failureItem(*f); ok {
+			items = append(items, item)
+		}
 	}
 	if g := p.live.Generation; g != nil && g.Message != nil {
 		items = append(items, assistantItems(*g.Message, fmt.Sprintf("partial:%d", g.Message.Timestamp), results, tools, true, false)...)
@@ -284,6 +298,45 @@ func (p projection) render() []Item {
 		items = append(items, item)
 	}
 	return items
+}
+
+// failureCurrent reports whether the newest run failure still ends the transcript: no later run
+// answered and no reset followed it.
+func failureCurrent(entries []durable.EntryRecord, f *harness.RunFailure) bool {
+	for _, e := range entries {
+		if len(e.Model) == 0 || e.ByTaskId == nil || *e.ByTaskId <= f.TaskId {
+			continue
+		}
+		if _, ok := e.Model[0].(ai.AssistantMessage); ok {
+			return false
+		}
+	}
+	return len(entries) == 0 || entries[len(entries)-1].Kind != durable.ResetEntry.Kind
+}
+
+// failureItem is the error item of a failed run that left no error answer, for example a run that
+// was stopped in a tool. A reset ends a run on purpose and shows its own boundary.
+func failureItem(f harness.RunFailure) (Item, bool) {
+	item := Item{Kind: "error", ID: fmt.Sprintf("failure:%d", f.TaskId), Failure: string(f.Reason)}
+	detail := ""
+	if f.Detail != nil {
+		detail = *f.Detail
+	}
+	switch f.Reason {
+	case harness.RunReset:
+		return Item{}, false
+	case harness.RunAborted:
+		item.Reason, item.Aborted = "Stopped.", true
+	case harness.RunNothingToAnswer:
+		item.Reason = "Nothing to continue. The last reply is already complete."
+	case harness.RunNoModel:
+		item.Reason = "No model is available. Choose a model, then retry."
+	case harness.RunModelError:
+		item.Reason = cmp.Or(detail, "The model returned an error.")
+	case harness.RunFaulted, harness.RunOrphaned, harness.RunInterrupted, harness.RunRestartLimit, harness.RunTurnLimit:
+		item.Reason = cmp.Or(detail, "The run ended before it answered.") + " (" + string(f.Reason) + ")"
+	}
+	return item, true
 }
 
 func assistantItems(m ai.AssistantMessage, key string, results map[string]ai.ToolResultMessage, tools map[string]harness.ToolSlot, live, committed bool) []Item {

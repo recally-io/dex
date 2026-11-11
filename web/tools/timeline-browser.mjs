@@ -396,6 +396,34 @@ try {
   );
   results.push("Enter steers a running chat and the run answers once");
 
+  // Retry on a stopped run continues the same run and does not send the message again.
+  const retryGate = join(isolated, "retry.gate");
+  const retryCommand = `while ! test -f '${retryGate}'; do sleep 0.05; done; echo retry-gate`;
+  await send(retryCommand);
+  await ui(
+    "retry run is active",
+    "!!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
+  );
+  await tap('button[aria-label="Stop run"]');
+  await poll("retry run stopped", async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy);
+
+  const retries =
+    "[...document.querySelectorAll('button:not([inert] *)')].filter(b => b.textContent.trim() === 'Retry').length";
+
+  await ui("stopped card offers Retry", `${retries} > 0`);
+
+  const before = await evaluate(retries);
+
+  await evaluate(
+    "[...document.querySelectorAll('button:not([inert] *)')].filter(b => b.textContent.trim() === 'Retry').at(-1).click()",
+  );
+  await ui(
+    "continued run answers without a second message",
+    `${retries} === ${before - 1} && document.body.innerText.split(${JSON.stringify(retryCommand)}).length === 2`,
+  );
+  await writeFile(retryGate, "release");
+  results.push("Retry continues a stopped run without a second message");
+
   // Given two same-title tasks, dispatch and result links use their saved IDs.
   await model("spawn");
   await send(JSON.stringify({ title: "Check", goal: "saved report", provider: "faux", modelId: "echo" }));

@@ -956,6 +956,46 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/chats/{chatId}/continue:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    post:
+      operationId: continueChat
+      description: >
+        Runs this writable session again on its current context, for example
+        after a failed or stopped run. It sends no new message. A repeated
+        UUID starts nothing new. When the context ends in a complete answer,
+        the run ends at once and the timeline shows "Nothing to continue".
+        409 while the session runs or when it never ran. Task, automation and
+        channel sessions return 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: {
+                  type: string,
+                  description: A stable client UUID for this continue.,
+                }
+      responses:
+        "202":
+          description: The run started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SentMessage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/chats/{chatId}/history:
     parameters:
       - in: path
@@ -2032,6 +2072,13 @@ components:
         aborted:
           type: boolean
           description: True when the user stopped the run.
+        failure:
+          type: string
+          description: >
+            The reason of the newest failed run, on the error item that ends
+            it, such as aborted, model_error, no_model or nothing_to_answer.
+            POST .../continue runs such a run again, except for
+            nothing_to_answer.
 
     Usage:
       type: object

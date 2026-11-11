@@ -490,6 +490,40 @@ func (a *Agents) Reset(ctx context.Context, ref Ref, requestID string) error {
 	return err
 }
 
+// Continue starts a run on the current context without new input, for example after a failed or
+// stopped run. A request ID that exists already starts nothing. It returns ErrBusy while a run is
+// active. A context that ends in an answer gives a run that fails with nothing_to_answer.
+func (a *Agents) Continue(ctx context.Context, ref Ref, requestID string, options Options) error {
+	if requestID == "" {
+		return fmt.Errorf("%w: request ID is required", ErrInvalidInput)
+	}
+	if options.Model.ModelID == "" {
+		return ErrNoModel
+	}
+	if err := a.begin(); err != nil {
+		return err
+	}
+	defer a.end()
+	unlock, err := a.lock(ctx, ref)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	conversation, err := a.conversation(ctx, ref)
+	if err != nil {
+		return err
+	}
+	// The user can choose another model after a model error; the continued run uses it.
+	if err := conversation.Configure(ctx, agentChange(options)); err != nil {
+		return err
+	}
+	_, err = conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeContinue, RequestId: &requestID})
+	if _, ok := errors.AsType[*durable.ConversationBusy](err); ok {
+		return errors.Join(ErrBusy, err)
+	}
+	return err
+}
+
 func (a *Agents) Abort(ctx context.Context, ref Ref) error {
 	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 {
 		return fmt.Errorf("%w: cancellation reference", ErrInvalidInput)
