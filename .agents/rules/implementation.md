@@ -8,7 +8,7 @@ Read this before you change code, dependencies, native execution, or stored data
 | --------------------- | ---------------------------------------------------------------------------------- |
 | `cmd/dex`             | Process entry: data directory, address, HTTP server                                |
 | `internal/app`        | Wiring: business storage, engine, chat service, HTTP, channels                     |
-| `internal/chat`       | Input intents, business receipts, task records, source state                       |
+| `internal/chat`       | Input intents, business receipts, child session turns and results, source state    |
 | `internal/engine`     | PiG Harnesses, execution storage, models, tools, extensions, transcript projection |
 | `internal/db`         | `control.sqlite`, goose migrations, sqlc queries                                   |
 | `internal/server`     | HTTP API handlers of `api/openapi.yaml`, the web UI at `/`                         |

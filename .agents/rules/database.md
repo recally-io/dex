@@ -7,8 +7,8 @@ instead of PostgreSQL. PiG execution data stays in each agent's
 `state.sqlite`. Only `internal/engine` opens that storage. Business services
 use typed engine methods; they do not query execution tables.
 
-`control.sqlite` owns input intents, admission and outcome receipts, tasks,
-settings, and channel reply delivery facts. `conversations.execution_id`
+`control.sqlite` owns input intents, admission and outcome receipts, child session
+links, settings, and channel reply delivery facts. `conversations.execution_id`
 connects a business chat to its native execution conversation. Keep stable
 request IDs across the two stores. Their commits are separate; reconciliation
 must handle native admission before the receipt write and a receipt that
