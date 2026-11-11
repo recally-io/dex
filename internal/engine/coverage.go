@@ -2,7 +2,7 @@ package engine
 
 import (
 	"context"
-	"slices"
+	"reflect"
 
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/harness"
@@ -22,71 +22,109 @@ func (a *Agents) covered(ctx context.Context, ref Ref, record durable.Submission
 	return covered(ctx, resource.store, &record)
 }
 
-// doneScanLimit bounds how many done inputs of a conversation covered looks at, newest first. An
-// input whose starter lies further back counts as a starter itself: a repeated result is better
-// than a lost one.
-const doneScanLimit = 256
-
-// covered reports whether the run of an input has an earlier input that started it. The result of
-// the starter covers such an input, so it sends none of its own. Only persisted native state decides,
-// so a restart and a retried receipt give the same answer as the first settlement:
+// runPeers lists the earlier inputs that may start the run a new input joins. It reads the run and
+// the inbox in the commit that admits the input, so no run can start between the read and the
+// admission. Admission is the only moment this fact is known: a later run replaces the live run
+// and clears its failure.
 //
-//   - done: inputs that share one answer entry ran together. The earliest input entry started them.
-//   - placed: the live run lists its inputs in order. The first one started it.
-//   - unanswered: the newest failed run lists its inputs in order. The first one started it. An older
-//     failure is gone, and its inputs count as starters.
-//
-// A queued input has not joined a run yet.
-func covered(ctx context.Context, store durable.Storage, record *durable.SubmissionRecord) (bool, error) {
-	switch record.Status {
-	case durable.SubmissionDone:
-		return coveredByAnswer(ctx, store, record)
-	case durable.SubmissionPlaced, durable.SubmissionUnanswered:
-		live, err := liveState(ctx, store, record.ConversationId)
-		if err != nil || live == nil {
-			return false, err
-		}
-		var inputs []durable.SubmissionId
-		switch {
-		case record.Status == durable.SubmissionPlaced && live.Run != nil:
-			inputs = live.Run.Inputs
-		case record.Status == durable.SubmissionUnanswered && live.RunFailure != nil:
-			inputs = live.RunFailure.Inputs
-		}
-		return slices.Index(inputs, record.Id) > 0, nil
-	case durable.SubmissionQueued:
+// A followUp starts its own run, together with every queued steer. An earlier followUp in the queue
+// runs first, so it has no peers. A steer joins the live run at the next tool step. When the run
+// ends first, the steer starts the next run together with the other queued steers and the first
+// queued followUp. The list names each input that could be the starter. The settlement tells which
+// one was.
+func runPeers(tx durable.Tx, conversation durable.ConversationId, whenBusy durable.WhenBusy) ([]int64, error) {
+	live, err := durable.TxDoc[harness.LiveState](tx, harness.LiveDoc, conversation)
+	if err != nil {
+		return nil, err
 	}
-	return false, nil
+	inbox, err := durable.TxDoc[harness.InboxState](tx, harness.InboxDoc, conversation)
+	if err != nil {
+		return nil, err
+	}
+	state, err := durable.DecodeDoc[harness.LiveState](live.Snapshot())
+	if err != nil {
+		return nil, err
+	}
+	queue, err := durable.DecodeDoc[harness.InboxState](inbox.Snapshot())
+	if err != nil {
+		return nil, err
+	}
+	var firstSteer, firstFollowUp durable.SubmissionId
+	for _, item := range queue.Items {
+		switch {
+		case item.Mode == harness.InboxSteer && firstSteer == 0:
+			firstSteer = item.Id
+		case item.Mode == harness.InboxFollowUp && firstFollowUp == 0:
+			firstFollowUp = item.Id
+		}
+	}
+	var peers []durable.SubmissionId
+	switch whenBusy {
+	case durable.WhenBusySteer:
+		if state.Run != nil && len(state.Run.Inputs) > 0 {
+			peers = append(peers, state.Run.Inputs[0])
+		}
+		peers = append(peers, firstSteer, firstFollowUp)
+	case durable.WhenBusyFollowUp:
+		if firstFollowUp == 0 {
+			peers = append(peers, firstSteer)
+		}
+	case durable.WhenBusyReject:
+	}
+	var ids []int64
+	for _, peer := range peers {
+		if peer != 0 {
+			ids = append(ids, int64(peer))
+		}
+	}
+	return ids, nil
 }
 
-func coveredByAnswer(ctx context.Context, store durable.Storage, record *durable.SubmissionRecord) (bool, error) {
-	if record.Answer == nil || record.Entry == nil {
+// covered reports whether an earlier input started the run of an input. The result of that starter
+// speaks for this input, so it sends none of its own. The admission wrote the peers into the input
+// entry, and the native record of each peer says whether it shared the run:
+//
+//   - placed: a placed peer is in the one run that exists.
+//   - done: a peer with the same answer entry ran together with this input. This is exact.
+//   - unanswered: a peer that ran and failed with the same reason and detail. Two runs that fail with
+//     the same error look alike, so one result can stand for both. The parent still hears the error.
+//
+// A queued input has not joined a run yet. Only persisted native state decides, so a restart and a
+// retried receipt give the same answer as the first settlement.
+func covered(ctx context.Context, store durable.Storage, record *durable.SubmissionRecord) (bool, error) {
+	if record.Status == durable.SubmissionQueued || record.Entry == nil {
 		return false, nil
 	}
-	done, order := durable.SubmissionDone, durable.ScanDescending
-	page, err := store.ScanSubmissions(ctx, durable.SubmissionQuery{ConversationId: &record.ConversationId, Status: &done, Order: &order}, doneScanLimit, nil)
+	entry, err := store.Entry(ctx, *record.Entry)
+	if err != nil || entry == nil || entry.Entry.Data == nil {
+		return false, err
+	}
+	meta, err := durable.FromJsonValue[InputMetadata](entry.Entry.Data)
 	if err != nil {
 		return false, err
 	}
-	for _, other := range page.Items {
-		if other.Id != record.Id && other.Answer != nil && *other.Answer == *record.Answer && other.Entry != nil && *other.Entry < *record.Entry {
+	for _, id := range meta.RunPeers {
+		peer, err := store.Submission(ctx, durable.SubmissionId(id))
+		if err != nil {
+			return false, err
+		}
+		if peer != nil && sharesRun(record, peer) {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-// liveState reads the committed run control of a conversation. It returns nil when the conversation
-// has no such document.
-func liveState(ctx context.Context, store durable.Storage, conversation durable.ConversationId) (*harness.LiveState, error) {
-	address := durable.DocumentAddress{Kind: harness.LiveDoc.AnyDefinition().Kind, Scope: durable.DocumentRecordScope{Kind: durable.ScopeConversation, ConversationId: conversation}}
-	record, err := store.FindDocument(ctx, address, durable.CurrentPoint)
-	if err != nil || record == nil {
-		return nil, err
+func sharesRun(record, peer *durable.SubmissionRecord) bool {
+	switch record.Status {
+	case durable.SubmissionPlaced:
+		return peer.Status == durable.SubmissionPlaced
+	case durable.SubmissionDone:
+		return peer.Status == durable.SubmissionDone && peer.Answer != nil && record.Answer != nil && *peer.Answer == *record.Answer
+	case durable.SubmissionUnanswered:
+		return peer.Status == durable.SubmissionUnanswered && peer.Entry != nil && peer.Reason != nil && record.Reason != nil &&
+			*peer.Reason == *record.Reason && reflect.DeepEqual(peer.Detail, record.Detail)
+	case durable.SubmissionQueued:
 	}
-	stored, err := store.Document(ctx, record.Id, durable.CurrentPoint)
-	if err != nil || stored == nil {
-		return nil, err
-	}
-	return durable.DecodeDoc[harness.LiveState](stored.Value)
+	return false
 }

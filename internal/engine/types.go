@@ -67,6 +67,9 @@ type InputMetadata struct {
 	TaskID      string       `json:"taskId,omitempty"`
 	TaskTitle   string       `json:"taskTitle,omitempty"`
 	Reason      string       `json:"reason,omitempty"`
+	// RunPeers are the earlier inputs that may have started the run of this input. Admission writes
+	// them, and coverage reads them.
+	RunPeers []int64 `json:"runPeers,omitempty"`
 }
 type Outcome struct {
 	Status, Answer, Reason string
