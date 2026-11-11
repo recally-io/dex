@@ -88,6 +88,30 @@ func (e BoundaryItemKind) Valid() bool {
 	}
 }
 
+// Defines values for BoundaryItemStatus.
+const (
+	BoundaryItemStatusFailed  BoundaryItemStatus = "failed"
+	BoundaryItemStatusNothing BoundaryItemStatus = "nothing"
+	BoundaryItemStatusPending BoundaryItemStatus = "pending"
+	BoundaryItemStatusQueued  BoundaryItemStatus = "queued"
+)
+
+// Valid indicates whether the value is a known member of the BoundaryItemStatus enum.
+func (e BoundaryItemStatus) Valid() bool {
+	switch e {
+	case BoundaryItemStatusFailed:
+		return true
+	case BoundaryItemStatusNothing:
+		return true
+	case BoundaryItemStatusPending:
+		return true
+	case BoundaryItemStatusQueued:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChatChannel.
 const (
 	ChatChannelAutomation ChatChannel = "automation"
@@ -685,6 +709,15 @@ type BoundaryItem struct {
 	EntryId  *int64               `json:"entryId,omitempty"`
 	Id       string               `json:"id"`
 	Kind     BoundaryItemKind     `json:"kind"`
+
+	// Reason Why the compaction failed.
+	Reason *string `json:"reason,omitempty"`
+
+	// Status Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+	Status *BoundaryItemStatus `json:"status,omitempty"`
+
+	// Text The handoff of a reset, or the summary of a compaction. Absent when there is none.
+	Text *string `json:"text,omitempty"`
 }
 
 // BoundaryItemBoundary defines model for BoundaryItem.Boundary.
@@ -692,6 +725,9 @@ type BoundaryItemBoundary string
 
 // BoundaryItemKind defines model for BoundaryItem.Kind.
 type BoundaryItemKind string
+
+// BoundaryItemStatus Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+type BoundaryItemStatus string
 
 // ChannelStatus defines model for ChannelStatus.
 type ChannelStatus = channel.Status
@@ -1319,8 +1355,17 @@ type PollWechatLoginJSONBody struct {
 
 // ClearContextJSONBody defines parameters for ClearContext.
 type ClearContextJSONBody struct {
+	// Handoff Text that starts the new context as its first user message. It does not start a run; the next run reads it.
+	Handoff *string `json:"handoff,omitempty"`
+
 	// Id A stable client UUID for this reset.
 	Id string `json:"id"`
+}
+
+// CompactChatJSONBody defines parameters for CompactChat.
+type CompactChatJSONBody struct {
+	// Instructions What the summary must keep.
+	Instructions *string `json:"instructions,omitempty"`
 }
 
 // ContinueChatJSONBody defines parameters for ContinueChat.
@@ -1415,6 +1460,9 @@ type PollWechatLoginJSONRequestBody PollWechatLoginJSONBody
 
 // ClearContextJSONRequestBody defines body for ClearContext for application/json ContentType.
 type ClearContextJSONRequestBody ClearContextJSONBody
+
+// CompactChatJSONRequestBody defines body for CompactChat for application/json ContentType.
+type CompactChatJSONRequestBody CompactChatJSONBody
 
 // ContinueChatJSONRequestBody defines body for ContinueChat for application/json ContentType.
 type ContinueChatJSONRequestBody ContinueChatJSONBody
@@ -2001,6 +2049,9 @@ type ServerInterface interface {
 
 	// (POST /api/agents/{agentId}/chats/{chatId}/clear)
 	ClearContext(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
+	// (POST /api/agents/{agentId}/chats/{chatId}/compact)
+	CompactChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
 	// (POST /api/agents/{agentId}/chats/{chatId}/continue)
 	ContinueChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
@@ -3068,6 +3119,41 @@ func (siw *ServerInterfaceWrapper) ClearContext(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ClearContext(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompactChat operation middleware
+func (siw *ServerInterfaceWrapper) CompactChat(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompactChat(w, r, agentId, chatId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4282,6 +4368,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw", wrapper.WithdrawMessage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/clear", wrapper.ClearContext)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/continue", wrapper.ContinueChat)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/compact", wrapper.CompactChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/history", wrapper.GetChatHistory)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/abort", wrapper.AbortChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/events", wrapper.WatchChat)
@@ -6061,6 +6148,97 @@ type ClearContextdefaultJSONResponse struct {
 }
 
 func (response ClearContextdefaultJSONResponse) VisitClearContextResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompactChatRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  ChatId `json:"chatId"`
+	Body    *CompactChatJSONRequestBody
+}
+
+type CompactChatResponseObject interface {
+	VisitCompactChatResponse(w http.ResponseWriter) error
+}
+
+type CompactChat202Response struct {
+}
+
+func (response CompactChat202Response) VisitCompactChatResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type CompactChat400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CompactChat400JSONResponse) VisitCompactChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompactChat403JSONResponse Error
+
+func (response CompactChat403JSONResponse) VisitCompactChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompactChat404JSONResponse Error
+
+func (response CompactChat404JSONResponse) VisitCompactChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompactChat409JSONResponse Error
+
+func (response CompactChat409JSONResponse) VisitCompactChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompactChatdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CompactChatdefaultJSONResponse) VisitCompactChatResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -8207,6 +8385,9 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/chats/{chatId}/clear)
 	ClearContext(ctx context.Context, request ClearContextRequestObject) (ClearContextResponseObject, error)
 
+	// (POST /api/agents/{agentId}/chats/{chatId}/compact)
+	CompactChat(ctx context.Context, request CompactChatRequestObject) (CompactChatResponseObject, error)
+
 	// (POST /api/agents/{agentId}/chats/{chatId}/continue)
 	ContinueChat(ctx context.Context, request ContinueChatRequestObject) (ContinueChatResponseObject, error)
 
@@ -9286,6 +9467,43 @@ func (sh *strictHandler) ClearContext(w http.ResponseWriter, r *http.Request, ag
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ClearContextResponseObject); ok {
 		if err := validResponse.VisitClearContextResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompactChat operation middleware
+func (sh *strictHandler) CompactChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
+	var request CompactChatRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+
+	var body CompactChatJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompactChat(ctx, request.(CompactChatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompactChat")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompactChatResponseObject); ok {
+		if err := validResponse.VisitCompactChatResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

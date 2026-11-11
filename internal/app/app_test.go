@@ -188,10 +188,12 @@ type item struct {
 	Queued  bool   `json:"queued"`
 	Steer   bool   `json:"steer"`
 	Failure string `json:"failure"`
-	Name    string `json:"name"`
-	Status  string `json:"status"`
-	Output  string `json:"output"`
-	Reason  string `json:"reason"`
+	// Boundary is reset or compaction on a boundary item.
+	Boundary string `json:"boundary"`
+	Name     string `json:"name"`
+	Status   string `json:"status"`
+	Output   string `json:"output"`
+	Reason   string `json:"reason"`
 	// Attachments of a user item.
 	Attachments []attachment `json:"attachments"`
 }

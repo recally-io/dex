@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Textarea } from "./ui/textarea";
+import { findCommand, matchCommands, parseCommand, SlashMenu, type SlashCommand } from "./slash-commands";
 import { cn } from "../lib/utils";
 
 // The file chip from upstream PromptBar.tsx, with a thumbnail, the upload state and the error.
@@ -94,6 +95,7 @@ export function Composer({
   text,
   onTextChange,
   placeholder,
+  commands,
   autoFocus = false,
 }: {
   /** Actions for the current context. */
@@ -112,12 +114,15 @@ export function Composer({
   text: string;
   onTextChange: (text: string) => void;
   placeholder: string;
+  /** Slash commands. A draft that starts with "/" runs one of them and is never sent. */
+  commands?: SlashCommand[];
   autoFocus?: boolean;
 }) {
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const composing = useRef(false);
   const descriptionId = useId();
+  const menuId = useId();
   const [dropping, setDropping] = useState(false);
   // The send button keeps the chosen mode until the run ends.
   const [mode, setMode] = useState<SendMode>("steer");
@@ -128,6 +133,15 @@ export function Composer({
 
     if (!running) setMode("steer");
   }
+
+  // The hint stays until the draft changes.
+  const [hint, setHint] = useState<{ text: string; for: string }>();
+  const [active, setActive] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+  const command = commands ? parseCommand(text) : undefined;
+  const options = command?.typingName && !dismissed ? matchCommands(commands ?? [], command.name) : [];
+  const highlighted = options[Math.min(active, options.length - 1)];
+  const shownHint = hint?.for === text ? hint.text : undefined;
 
   const canAttach = !!files && !disabledReason;
 
@@ -147,7 +161,45 @@ export function Composer({
     if (autoFocus) area.current?.focus();
   }, [autoFocus]);
 
+  function complete(picked: SlashCommand) {
+    onTextChange(`/${picked.name} `);
+    setActive(0);
+    area.current?.focus();
+  }
+
+  async function runCommand(name: string, arg: string) {
+    const found = findCommand(commands ?? [], name);
+
+    if (!found) {
+      setHint({
+        for: text,
+        text: `Unknown command /${name}. Type / to see the commands. To send text that starts with /, put a space before it.`,
+      });
+
+      return;
+    }
+
+    if (found.unavailable) {
+      setHint({ for: text, text: `/${found.name}: ${found.unavailable}` });
+
+      return;
+    }
+
+    if (await found.run(arg)) onTextChange("");
+  }
+
   async function send() {
+    if (command) {
+      // A partly typed name runs the highlighted command, as the menu shows it.
+      const exact = findCommand(commands ?? [], command.name);
+
+      if (!exact && highlighted && command.typingName) return complete(highlighted);
+
+      if (!pending) await runCommand(exact?.name ?? command.name, command.arg);
+
+      return;
+    }
+
     if (!canSend) return;
     const value = text;
     await onSend(value.trim(), sendMode);
@@ -162,7 +214,13 @@ export function Composer({
   );
 
   return (
-    <div className="w-full">
+    <div className="relative w-full">
+      <SlashMenu
+        id={menuId}
+        options={options}
+        active={Math.min(active, options.length - 1)}
+        onPick={complete}
+      />
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -200,6 +258,11 @@ export function Composer({
             ))}
           </ul>
         ) : null}
+        {shownHint ? (
+          <p role="status" className="px-1 text-[12px] text-muted-foreground">
+            {shownHint}
+          </p>
+        ) : null}
         {files?.notice ? (
           <p role="alert" className="px-1 text-[12px] text-red">
             {files.notice}
@@ -220,9 +283,15 @@ export function Composer({
           placeholder={running ? "Add to this run…" : placeholder}
           aria-label={running ? "Add to this run…" : placeholder}
           aria-describedby={descriptionId}
+          aria-controls={options.length ? menuId : undefined}
+          aria-activedescendant={highlighted ? `${menuId}-${highlighted.name}` : undefined}
           value={text}
           disabled={!!disabledReason}
-          onChange={(e) => onTextChange(e.target.value)}
+          onChange={(e) => {
+            setDismissed(false);
+            setActive(0);
+            onTextChange(e.target.value);
+          }}
           onPaste={(e) => {
             if (!canAttach) return;
 
@@ -245,6 +314,28 @@ export function Composer({
             composing.current = false;
           }}
           onKeyDown={(e) => {
+            if (options.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+              e.preventDefault();
+              const step = e.key === "ArrowDown" ? 1 : options.length - 1;
+              setActive((Math.min(active, options.length - 1) + step) % options.length);
+
+              return;
+            }
+
+            if (options.length && e.key === "Escape") {
+              e.preventDefault();
+              setDismissed(true);
+
+              return;
+            }
+
+            if (highlighted && e.key === "Tab" && !e.shiftKey) {
+              e.preventDefault();
+              complete(highlighted);
+
+              return;
+            }
+
             if (
               e.key === "Enter" &&
               !e.shiftKey &&
@@ -301,7 +392,7 @@ export function Composer({
             >
               <span aria-hidden className="size-2.5 rounded-[2px] bg-current" />
             </Button>
-          ) : stoppable ? (
+          ) : stoppable && !command ? (
             // While anything can be stopped, a draft gets a split button: the main part sends,
             // the menu picks the mode and keeps Stop in reach.
             <div className="flex h-8 shrink-0 items-stretch overflow-hidden rounded-md bg-foreground text-card">
@@ -352,12 +443,12 @@ export function Composer({
               type="submit"
               variant="default"
               size="icon-sm"
-              aria-label="Send message"
-              title={blocked || "Send message"}
-              disabled={!canSend}
+              aria-label={command ? "Run command" : "Send message"}
+              title={command ? "Run command (Enter)" : blocked || "Send message"}
+              disabled={command ? pending : !canSend}
               className={cn(
                 "shrink-0 rounded-md transition-[background-color,color,transform] duration-200",
-                canSend
+                canSend || command
                   ? "bg-foreground text-card hover:bg-foreground"
                   : "bg-ring text-muted-foreground hover:bg-ring",
               )}

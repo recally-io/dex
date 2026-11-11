@@ -145,10 +145,10 @@ func TestUserKeepsInputAdmittedAfterClear(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitReceipt(t, r, "before")
-	if err = r.service.Clear(t.Context(), "bot", id, "reset", "web"); err != nil {
+	if err = r.service.Clear(t.Context(), "bot", id, "reset", "web", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err = r.service.Clear(t.Context(), "bot", id, "reset", "web"); err != nil {
+	if err = r.service.Clear(t.Context(), "bot", id, "reset", "web", ""); err != nil {
 		t.Fatal(err)
 	}
 	// The clock can move backwards. Admission order still defines the context.
@@ -160,7 +160,7 @@ func TestUserKeepsInputAdmittedAfterClear(t *testing.T) {
 	if !strings.Contains(sub.Answer.String, "new input") || strings.Contains(sub.Answer.String, "old input") {
 		t.Fatalf("context after clear: %s", sub.Answer.String)
 	}
-	if err = r.service.Clear(t.Context(), "bot", id, "after", "web"); !errors.Is(err, ErrResetID) {
+	if err = r.service.Clear(t.Context(), "bot", id, "after", "web", ""); !errors.Is(err, ErrResetID) {
 		t.Fatalf("reused message ID: %v", err)
 	}
 }
@@ -323,7 +323,7 @@ func TestUserClearAcceptsDurableResetAfterAdmissionWriteFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When Clear has saved the reset, it accepts responsibility for retrying.
-	if err = r.service.Clear(t.Context(), "bot", id, "reset", "web"); err != nil {
+	if err = r.service.Clear(t.Context(), "bot", id, "reset", "web", ""); err != nil {
 		t.Fatalf("durable reset rejected: %v", err)
 	}
 	if receipt(t, r, "reset").AdmittedAt.Valid {

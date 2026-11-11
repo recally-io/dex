@@ -217,7 +217,7 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 			return err
 		}
 		// A stable reset ID closes the crash window before command completion.
-		err = m.chats.Clear(ctx, m.agentID, main.ID, "channel:"+c.SourceKey, c.Peer)
+		err = m.chats.Clear(ctx, m.agentID, main.ID, "channel:"+c.SourceKey, c.Peer, "")
 		switch {
 		case errors.Is(err, chat.ErrConversationBusy):
 			answer = "Context not cleared. The main timeline is busy. Wait for the reply or stop it, then send /new again."

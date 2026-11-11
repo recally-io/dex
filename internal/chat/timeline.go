@@ -107,8 +107,9 @@ func (s *Service) Main(ctx context.Context, agentID string) (Chat, error) {
 	return s.Get(ctx, agentID, c.ID)
 }
 
-// Clear stores a reset only when both owners are idle. Delivery cannot pass this check.
-func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, requestID, origin string) error {
+// Clear stores a reset only when both owners are idle. Delivery cannot pass this check. A
+// handoff is the first message of the new context; it does not start a run.
+func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, requestID, origin, handoff string) error {
 	unlock, err := s.lockAgent(ctx, agentID)
 	if err != nil {
 		return err
@@ -122,7 +123,7 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 		return ErrNotFound
 	}
 	if sub, err := s.q.GetSubmission(ctx, requestID); err == nil {
-		if sub.ConversationID != chatID || sub.Kind != "context_reset" {
+		if sub.ConversationID != chatID || sub.Kind != "context_reset" || sub.Content != handoff {
 			return ErrResetID
 		}
 		return nil
@@ -165,7 +166,7 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 			return ErrConversationBusy
 		}
 		created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
-			ID: requestID, ConversationID: chatID, Attachments: "null", Origin: origin, Kind: "context_reset", CreatedAt: s.now().UnixMilli(),
+			ID: requestID, ConversationID: chatID, Content: handoff, Attachments: "null", Origin: origin, Kind: "context_reset", CreatedAt: s.now().UnixMilli(),
 		})
 		if err != nil {
 			return err

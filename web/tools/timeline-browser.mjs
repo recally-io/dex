@@ -162,8 +162,8 @@ try {
   })()`,
   );
   await check(
-    "empty timeline has a composer and no Clear context",
-    "!!document.querySelector('textarea[aria-label=\"Message Dex\"]') && ![...document.querySelectorAll('button:not([inert] *)')].some(b => b.textContent.trim() === 'Clear context')",
+    "empty timeline has a composer",
+    "!!document.querySelector('textarea[aria-label=\"Message Dex\"]')",
   );
   await shot("01-empty");
   await check(
@@ -198,6 +198,12 @@ try {
   await model("echo");
   await reload();
   await ui("composer ready", "!!document.querySelector('textarea:not(:disabled):not([inert] *)')");
+  await typeDraft("/");
+  await ui(
+    "empty context greys out /clear and /compact",
+    `${commandOption("clear")}?.getAttribute('aria-disabled') === 'true' && ${commandOption("clear")}.textContent.includes('already empty') && ${commandOption("compact")}?.getAttribute('aria-disabled') === 'true'`,
+  );
+  await typeDraft("");
 
   // Maintenance refuses input before admission. Release must not create a ghost turn.
   await holdMaintenance();
@@ -223,10 +229,17 @@ try {
   );
   await sendFromComposer("first input");
   await ui("first answer", "document.body.innerText.includes('echo: first input')");
+  await typeDraft("/");
   await ui(
-    "clear visible",
-    "!![...document.querySelectorAll('button:not([inert] *)')].find(b => b.textContent.trim() === 'Clear context')",
+    "command menu offers /clear and /compact",
+    `${commandOption("clear")}?.getAttribute('aria-disabled') === 'false' && ${commandOption("compact")}?.getAttribute('aria-disabled') === 'false'`,
   );
+  await shot("01a-command-menu");
+  // An unknown command shows a hint and is never sent.
+  await command("/nope");
+  await ui("unknown command hint", "document.body.innerText.includes('Unknown command /nope.')");
+  assert.ok(!messages.some((entry) => entry.request.text === "/nope"), "an unknown command is not sent");
+  await typeDraft("");
 
   // Reload during maintenance closes the stream. Release permits a fresh native subscription.
   await holdMaintenance();
@@ -266,17 +279,20 @@ try {
     "document.body.innerText.includes('Stop requested. Earlier actions are not undone. Processes and remote work may continue.')",
   );
 
-  // When a real tool holds the run, only the server refuses Clear context.
+  // When a real tool holds the run, only the server refuses /clear.
   await model("bash");
   const busyGate = join(isolated, "busy.gate");
   await send(`while ! test -f '${busyGate}'; do sleep 0.05; done; echo gate-released`);
   await ui("run is active", "!!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')");
-  await check(
-    "Clear context remains enabled while busy",
-    "![...document.querySelectorAll('button:not([inert] *)')].find(b => b.textContent.trim() === 'Clear context').disabled",
+  await typeDraft("/");
+  await ui(
+    "/clear remains available while busy",
+    `${commandOption("clear")}?.getAttribute('aria-disabled') === 'false'`,
   );
-  await click("Clear context");
+  await command("/clear");
   await poll("real 409", () => clears.some((entry) => entry.status === 409));
+  // The refused command stays in the box; Escape closes its menu.
+  await key("Escape");
   await ui(
     "409 warn note",
     "document.body.innerText.includes('Context not cleared.') && document.body.innerText.includes('Dex is working. Wait for the reply or stop it, then try again.')",
@@ -328,7 +344,7 @@ try {
   }
 
   await viewport(1280, 900);
-  await click("Clear context");
+  await key("Enter");
   await poll("second refusal", () => clears.filter((entry) => entry.status === 409).length === 2);
   assert.equal(clears[0].request.id, clears[1].request.id, "transport retry keeps its reset ID");
   await writeFile(busyGate, "release");
@@ -341,14 +357,14 @@ try {
     "reply settled before Clear",
     async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy,
   );
-  await click("Clear context");
+  await key("Enter");
   await poll("accepted clear", () => clears.some((entry) => entry.status === 202));
   assert.equal(clears[0].request.id, clears.at(-1).request.id, "accepted retry keeps the refused ID");
   await ui(
-    "reset divider",
-    "!!document.querySelector('[role=separator]') && ![...document.querySelectorAll('button:not([inert] *)')].some(b => b.textContent.trim() === 'Clear context')",
+    "reset divider and empty box",
+    "!!document.querySelector('[role=separator]') && document.querySelector('textarea:not([inert] *)').value === ''",
   );
-  results.push("server 409 note, stable reset ID, idle clear, divider, hidden Clear after reset");
+  results.push("server 409 note, stable reset ID, idle /clear, divider, empty box after reset");
   await reload();
   await ui(
     "fresh history boundary",
@@ -357,9 +373,15 @@ try {
   await click("Show earlier messages");
   await ui("earlier messages loaded", "document.body.innerText.includes('echo: first input')");
   await check(
-    "history merges once and does not make cleared context writable again",
-    "document.querySelectorAll('[role=separator]').length === 1 && document.body.innerText.split('echo: first input').length === 2 && ![...document.querySelectorAll('button:not([inert] *)')].some(b => b.textContent.trim() === 'Clear context')",
+    "history merges once",
+    "document.querySelectorAll('[role=separator]').length === 1 && document.body.innerText.split('echo: first input').length === 2",
   );
+  await typeDraft("/");
+  await ui(
+    "loaded history does not make the cleared context clearable again",
+    `${commandOption("clear")}?.getAttribute('aria-disabled') === 'true'`,
+  );
+  await typeDraft("");
   await model("context");
   await sendFromComposer("after clear");
   await ui(
@@ -428,6 +450,16 @@ try {
     "!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)') && !document.body.innerText.includes('Nothing to continue')",
   );
   results.push("Retry continues a stopped run without a second message");
+
+  // /compact on a short context says there is nothing to compact.
+  await poll("retry run settled", async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy);
+  await command("/compact keep the plan");
+  await ui(
+    "nothing to compact",
+    "document.body.innerText.includes('Nothing to compact. The context is still short.')",
+  );
+  await shot("03c-nothing-to-compact");
+  results.push("/compact reports a short context");
 
   // Given two same-title tasks, dispatch and result links use their saved IDs.
   await model("spawn");
@@ -600,8 +632,11 @@ try {
     `!!document.querySelector('aside a[href="/a/default"][aria-current="page"]') &&
       document.querySelector('header nav a[aria-current="page"]').dataset.tab === 'Chat'`,
   );
-  await click("Clear context");
-  await ui("Chat reset divider", "!!document.querySelector('[role=separator]')");
+  await command("/new carry the plan");
+  await ui(
+    "Chat reset divider shows the handoff",
+    "!!document.querySelector('[role=separator]') && document.body.innerText.includes('Carried into the new context') && document.body.innerText.includes('carry the plan')",
+  );
   await reload();
   await ui("Chat history is available", "document.body.innerText.includes('Show earlier messages')");
   await click("Show earlier messages");
@@ -611,8 +646,8 @@ try {
   );
   await sendFromComposer("Fresh Chat context");
   await ui(
-    "Chat clear resets only its model context",
-    "document.body.innerText.includes('context: [\"Fresh Chat context\"]')",
+    "Chat clear keeps only the handoff in its model context",
+    'document.body.innerText.includes(\'context: ["carry the plan","Fresh Chat context"]\')',
   );
   await visit("/a/default");
   await ui(
@@ -1608,6 +1643,32 @@ async function sendFromComposer(text) {
   await call("Input.insertText", { text });
   await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter" });
   await call("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter" });
+}
+
+function commandOption(name) {
+  return `document.querySelector('[role=listbox][aria-label=Commands] [role=option][id$="-${name}"]')`;
+}
+
+// Replace the draft. An empty text clears it.
+async function typeDraft(text) {
+  await ui("composer enabled", "!!document.querySelector('textarea:not(:disabled):not([inert] *)')");
+  // execCommand edits like a user, so React sees the change.
+  await evaluate(
+    "(() => { const area = document.querySelector('textarea:not([inert] *)'); area.focus(); area.select(); document.execCommand('delete'); })()",
+  );
+
+  if (text) await call("Input.insertText", { text });
+}
+
+async function key(name) {
+  await evaluate("document.querySelector('textarea:not([inert] *)').focus()");
+  await call("Input.dispatchKeyEvent", { type: "keyDown", key: name, code: name });
+  await call("Input.dispatchKeyEvent", { type: "keyUp", key: name, code: name });
+}
+
+async function command(text) {
+  await typeDraft(text);
+  await key("Enter");
 }
 
 async function click(text) {

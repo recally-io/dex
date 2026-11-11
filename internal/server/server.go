@@ -94,7 +94,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, chat.ErrTaskNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, chat.ErrTaskConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
+			case errors.Is(err, chat.ErrTaskConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -782,10 +782,31 @@ func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestO
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Clear(ctx, agentID(ctx), req.ChatId, id.String(), "web"); err != nil {
+	handoff := strings.TrimSpace(deref(req.Body.Handoff))
+	if utf8.RuneCountInString(handoff) > maxMessage {
+		return nil, errors.Join(errInvalid, errors.New("the handoff must have at most 32000 characters"))
+	}
+	if err := h.Chats.Clear(ctx, agentID(ctx), req.ChatId, id.String(), "web", handoff); err != nil {
 		return nil, err
 	}
 	return api.ClearContext202JSONResponse{SubmissionId: id.String()}, nil
+}
+
+func (h *handler) CompactChat(ctx context.Context, req api.CompactChatRequestObject) (api.CompactChatResponseObject, error) {
+	instructions := ""
+	if req.Body != nil {
+		instructions = strings.TrimSpace(deref(req.Body.Instructions))
+	}
+	if utf8.RuneCountInString(instructions) > maxMessage {
+		return nil, errors.Join(errInvalid, errors.New("the instructions must have at most 32000 characters"))
+	}
+	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+		return nil, err
+	}
+	if err := h.Chats.Compact(ctx, agentID(ctx), req.ChatId, instructions); err != nil {
+		return nil, err
+	}
+	return api.CompactChat202Response{}, nil
 }
 
 func (h *handler) ContinueChat(ctx context.Context, req api.ContinueChatRequestObject) (api.ContinueChatResponseObject, error) {

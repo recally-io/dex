@@ -494,6 +494,84 @@ function UserText({ text }: { text: string }) {
   );
 }
 
+function Divider({ label }: { label: string }) {
+  return (
+    <div role="separator" className="flex items-center gap-3 py-3 text-[12px] text-muted-foreground">
+      <span className="h-px flex-1 bg-border" />
+      <span>{label}</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+function BoundaryItem({ item }: { item: Extract<Item, { kind: "boundary" }> }) {
+  if (item.boundary === "reset")
+    return (
+      <div className="flex flex-col gap-1">
+        <Divider label="Context cleared" />
+        {item.text ? (
+          <div className="mx-auto flex max-w-[560px] flex-col gap-1 rounded-md bg-muted px-3 py-2 text-[12.5px]">
+            <span className="font-medium text-muted-foreground">Carried into the new context</span>
+            <p className="whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]">{item.text}</p>
+          </div>
+        ) : null}
+      </div>
+    );
+
+  switch (item.status) {
+    case "pending":
+      return (
+        <p
+          role="status"
+          className="flex items-center justify-center gap-2 py-2 text-[12.5px] text-muted-foreground"
+        >
+          <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-muted-foreground" />
+          Compacting context…
+        </p>
+      );
+    case "queued":
+      return (
+        <p role="status" className="py-2 text-center text-[12.5px] text-muted-foreground">
+          Summary ready. It replaces the older context before the next model call.
+        </p>
+      );
+    case "nothing":
+      return (
+        <p role="status" className="py-2 text-center text-[12.5px] text-muted-foreground">
+          Nothing to compact. The context is still short.
+        </p>
+      );
+    case "failed":
+      return (
+        <div
+          role="alert"
+          className="mx-auto flex max-w-[560px] flex-col gap-1 rounded-md bg-red-tint px-3 py-2 text-[12.5px]"
+        >
+          <span className="font-medium text-red">Could not compact the context</span>
+          {item.reason ? (
+            <p className="text-muted-foreground [overflow-wrap:anywhere]">{item.reason}</p>
+          ) : null}
+        </div>
+      );
+    case undefined:
+      return (
+        <div className="flex flex-col gap-1">
+          <Divider label="Context compacted" />
+          {item.text ? (
+            <details className="mx-auto w-full max-w-[640px] text-[12.5px]">
+              <summary className="cursor-pointer text-center text-muted-foreground hover:text-foreground">
+                Show summary
+              </summary>
+              <div className="mt-2 rounded-md bg-muted px-3 py-2">
+                <Markdown text={item.text} />
+              </div>
+            </details>
+          ) : null}
+        </div>
+      );
+  }
+}
+
 export function TranscriptItem({
   item,
   live,
@@ -511,15 +589,7 @@ export function TranscriptItem({
 
   switch (item.kind) {
     case "boundary":
-      if (item.boundary === "compaction") return null;
-
-      return (
-        <div role="separator" className="flex items-center gap-3 py-3 text-[12px] text-muted-foreground">
-          <span className="h-px flex-1 bg-border" />
-          <span>Context cleared</span>
-          <span className="h-px flex-1 bg-border" />
-        </div>
-      );
+      return <BoundaryItem item={item} />;
     case "user":
       return (
         <div className="flex animate-[fade-up_300ms_var(--ease-out-strong)_both] flex-col items-end gap-1 pl-10 sm:pl-24">

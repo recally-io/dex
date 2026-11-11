@@ -365,6 +365,20 @@ export type BoundaryItem = {
      * The boundary time in milliseconds.
      */
     at?: number;
+    /**
+     * The handoff of a reset, or the summary of a compaction. Absent when there is none.
+     *
+     */
+    text?: string;
+    /**
+     * Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+     *
+     */
+    status?: 'pending' | 'queued' | 'nothing' | 'failed';
+    /**
+     * Why the compaction failed.
+     */
+    reason?: string;
 };
 
 export type Item = ({
@@ -2337,6 +2351,11 @@ export type ClearContextData = {
          * A stable client UUID for this reset.
          */
         id: string;
+        /**
+         * Text that starts the new context as its first user message. It does not start a run; the next run reads it.
+         *
+         */
+        handoff?: string;
     };
     path: {
         agentId: string;
@@ -2428,6 +2447,53 @@ export type ContinueChatResponses = {
 };
 
 export type ContinueChatResponse = ContinueChatResponses[keyof ContinueChatResponses];
+
+export type CompactChatData = {
+    body?: {
+        /**
+         * What the summary must keep.
+         */
+        instructions?: string;
+    };
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/compact';
+};
+
+export type CompactChatErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CompactChatError = CompactChatErrors[keyof CompactChatErrors];
+
+export type CompactChatResponses = {
+    /**
+     * The compaction started.
+     */
+    202: unknown;
+};
 
 export type GetChatHistoryData = {
     body?: never;

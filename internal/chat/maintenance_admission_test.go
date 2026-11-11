@@ -23,7 +23,7 @@ func TestUserStopWithdrawsQueuedInputAndClearRefusesBusy(t *testing.T) {
 	if _, err = r.service.Post(t.Context(), "bot", MainKey, "", "queued", "touch "+output); err != nil {
 		t.Fatal(err)
 	}
-	if err = r.service.Clear(t.Context(), "bot", id, "busy-reset", "web"); !errors.Is(err, ErrConversationBusy) {
+	if err = r.service.Clear(t.Context(), "bot", id, "busy-reset", "web", ""); !errors.Is(err, ErrConversationBusy) {
 		t.Fatalf("clear busy: %v", err)
 	}
 	if err = r.service.Stop(t.Context(), "bot", id); err != nil {
