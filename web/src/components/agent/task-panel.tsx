@@ -11,6 +11,7 @@ import {
   ListTodo,
   PanelRightClose,
   Timer,
+  X,
   XCircle,
 } from "lucide-react";
 import type { Chat, Item, TaskSummary } from "../../api/generated/types.gen";
@@ -350,8 +351,17 @@ export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => 
             Mark all handled
           </Button>
         ) : null}
-        <Button type="button" variant="ghost" size="icon-xs" aria-label="Close tasks" onClick={onClose}>
-          <PanelRightClose />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Close tasks"
+          onClick={onClose}
+          className="max-md:size-8"
+        >
+          {/* A phone shows the panel as a full-screen sheet, which closes like the Chats sheet. */}
+          <X className="md:hidden" />
+          <PanelRightClose className="max-md:hidden" />
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto py-1">

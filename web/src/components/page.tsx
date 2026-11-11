@@ -55,7 +55,11 @@ export function PageHeader({
         id={heading ? "page-title" : undefined}
         tabIndex={heading ? -1 : undefined}
         // The global heading font is for page headings; the bar keeps the body face on every page.
-        className="max-w-[40%] min-w-0 shrink-0 truncate font-sans text-[14px] font-semibold tracking-[-0.01em] text-foreground outline-none sm:max-w-[200px]"
+        // On a phone the tabs and actions need the width, and the avatar still names the bot.
+        className={cn(
+          "max-w-[40%] min-w-0 shrink-0 truncate font-sans text-[14px] font-semibold tracking-[-0.01em] text-foreground outline-none sm:max-w-[200px]",
+          tabs && avatar ? "max-sm:sr-only" : "",
+        )}
       >
         {title}
       </Title>
