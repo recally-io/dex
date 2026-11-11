@@ -560,6 +560,11 @@ reconciliation cover the gap between their commits.
 
 ## Bot tools
 
+`bot_list` reports `runningSessions` from `AgentRunningSessions`: the conversations
+of the bot with a pending input, Main included. It is the busy rule of the archive
+guard, so a count above zero means `bot_delete` refuses the bot. The sidebar's
+`activeSessions` is a different count and leaves Main out.
+
 Main and Chat conversations have `bot_list` and `bot_get`, and the three change
 tools `bot_create`, `bot_update` and `bot_delete`. The automation conversation
 has only the read tools. Extension edits persist on the conversation, and each

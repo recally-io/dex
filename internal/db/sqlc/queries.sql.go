@@ -59,6 +59,43 @@ func (q *Queries) AgentArchived(ctx context.Context, agentID string) (int64, err
 	return column_1, err
 }
 
+const agentRunningSessions = `-- name: AgentRunningSessions :many
+SELECT c.agent_id, CAST(count(DISTINCT c.id) AS INTEGER) AS sessions
+FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+WHERE s.status = 'pending'
+GROUP BY c.agent_id
+`
+
+type AgentRunningSessionsRow struct {
+	AgentID  string `json:"agent_id"`
+	Sessions int64  `json:"sessions"`
+}
+
+// The conversations of each bot that have a pending input, Main included. This is the busy rule of
+// AgentArchiveBlocker, so a bot with a count above zero is a bot that cannot be archived.
+func (q *Queries) AgentRunningSessions(ctx context.Context) ([]AgentRunningSessionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, agentRunningSessions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentRunningSessionsRow{}
+	for rows.Next() {
+		var i AgentRunningSessionsRow
+		if err := rows.Scan(&i.AgentID, &i.Sessions); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const archiveAgent = `-- name: ArchiveAgent :execrows
 UPDATE agents SET archived_at = ?1
 WHERE agents.id = ?2 AND archived_at IS NULL AND agents.id <> 'default'

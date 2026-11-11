@@ -31,6 +31,14 @@ SELECT CAST(CASE
     ELSE ''
 END AS TEXT);
 
+-- name: AgentRunningSessions :many
+-- The conversations of each bot that have a pending input, Main included. This is the busy rule of
+-- AgentArchiveBlocker, so a bot with a count above zero is a bot that cannot be archived.
+SELECT c.agent_id, CAST(count(DISTINCT c.id) AS INTEGER) AS sessions
+FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+WHERE s.status = 'pending'
+GROUP BY c.agent_id;
+
 -- name: AgentArchived :one
 -- Input writers call this after they hold the SQLite writer, so an input and an archive are ordered.
 SELECT CAST(EXISTS (SELECT 1 FROM agents WHERE agents.id = @agent_id AND archived_at IS NOT NULL) AS INTEGER);

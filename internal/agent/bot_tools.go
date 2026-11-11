@@ -102,11 +102,22 @@ func (t BotTools) list(ctx context.Context, c engine.TaskContext) ([]engine.BotI
 	if err != nil {
 		return nil, err
 	}
+	rows, err := t.Agents.q.AgentRunningSessions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	running := make(map[string]int64, len(rows))
+	for _, row := range rows {
+		running[row.AgentID] = row.Sessions
+	}
 	out := make([]engine.BotInfo, len(agents))
 	for i, a := range agents {
 		out[i] = botInfo(a)
 		out[i].Instructions, _, _ = strings.Cut(strings.TrimSpace(a.Instructions), "\n")
-		out[i].RunningSessions = &a.Activity.ActiveSessions
+		// Not Activity.ActiveSessions: that sidebar count leaves Main out, and bot_delete refuses
+		// a bot that has any pending input.
+		n := running[a.ID]
+		out[i].RunningSessions = &n
 	}
 	return out, nil
 }
