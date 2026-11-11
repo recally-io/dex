@@ -14,7 +14,7 @@ import {
 import { useAgentId } from "../lib/agent-scope";
 import { useApp } from "../lib/app-state";
 import { errorText, refreshChats } from "../lib/queries";
-import { isStalled, sessionKind } from "../lib/sessions";
+import { isStalled, parentName, sessionKind } from "../lib/sessions";
 import { cn } from "../lib/utils";
 import { Button, buttonVariants } from "./ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
@@ -108,18 +108,12 @@ export function ChatSection({ chatId }: { chatId: number }) {
   const pending = !onMain && sessions.isSuccess && !chats.some((chat) => chat.id === chatId);
 
   // A child session names its parent. Main is not in the list, and an archived parent still has its title.
-  const parentName = (chat: Chat) =>
-    chat.parentId === undefined
-      ? undefined
-      : chat.parentId === main.data?.id
-        ? "Main"
-        : (sessions.data?.chats.find((item) => item.id === chat.parentId)?.title ?? "a chat");
 
   const item = (chat: Chat) => (
     <ChatRow
       key={chat.id}
       chat={chat}
-      parent={parentName(chat)}
+      parent={parentName(chat, main.data?.id, sessions.data?.chats ?? [])}
       current={chat.id === chatId}
       onToggleArchive={toggleArchive}
     />

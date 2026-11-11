@@ -14,6 +14,24 @@ export function sessionKind(chat: Pick<Chat, "channel" | "main">) {
   return "Channel";
 }
 
+/**
+ * The name that a child row shows after "Started by". Main is not in the session list, so only its
+ * ID says Main. The list must hold archived sessions too: an archived parent keeps its title.
+ */
+export function parentName(
+  chat: Pick<Chat, "parentId">,
+  mainId: number | undefined,
+  all: Pick<Chat, "id" | "title">[],
+) {
+  if (chat.parentId === undefined) return undefined;
+
+  if (chat.parentId === mainId) return "Main";
+
+  const parent = all.find((item) => item.id === chat.parentId);
+
+  return parent === undefined ? "a chat" : parent.title || "New session";
+}
+
 export function activeSessionCount(sessions: Pick<Chat, "busy">[]) {
   return sessions.filter((chat) => chat.busy).length;
 }

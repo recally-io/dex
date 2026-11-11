@@ -969,6 +969,42 @@ try {
     "Chat context, title, Clear, history, child result, Stop and main Stop scope use the selected session",
   );
 
+  // A child of a Chat names that Chat as its parent, also after the user archived the Chat.
+  await model("spawn");
+  const orphanParent = await api("/api/agents/default/chats", {}, "POST");
+
+  await api(`/api/agents/default/chats/${orphanParent.id}/messages`, {
+    id: randomUUID(),
+    text: JSON.stringify({
+      title: "Orphan check",
+      message: "echo orphan",
+      provider: "faux",
+      modelId: "echo",
+    }),
+  });
+
+  const orphan = await poll("child of a Chat", async () =>
+    (await childSessions()).find(
+      (child) => child.title === "Orphan check" && child.parentId === orphanParent.id && !child.busy,
+    ),
+  );
+
+  await poll(
+    "the parent Chat is idle",
+    async () => !(await api(`/api/agents/default/chats/${orphanParent.id}`)).busy,
+  );
+  await api(`/api/agents/default/chats/${orphanParent.id}/archive`, undefined, "PUT");
+
+  const orphanParentTitle =
+    (await api(`/api/agents/default/chats/${orphanParent.id}`)).title || "New session";
+
+  await visit("/tasks");
+  await ui(
+    "the child of an archived Chat names that Chat",
+    `(() => { const row = document.querySelector('main a[href="/a/default/c/${orphan.id}"]:not([inert] *)')?.closest('li'); return !!row && row.innerText.includes(${JSON.stringify(`Started by ${orphanParentTitle}`)}) && !row.innerText.includes('Started by Main'); })()`,
+  );
+  results.push("a child of an archived Chat names its parent");
+
   // Saved channel inputs use real reconciliation. Go tests cover each platform boundary.
   await model("echo");
   await holdMaintenance();
