@@ -19,8 +19,13 @@ Read this for every task.
   use Conventional Commit types such as `feat:` or `fix:`. Emoji are allowed.
 - Write the subject in the imperative, under about 72 characters. Use the body
   for the reason when the diff does not show it.
-- Make each commit one logical change that passes `mise run check`. Commit
-  formatter output separately from behavior changes.
+- Make each commit one logical change. Commit formatter output separately from
+  behavior changes.
+- Before each push, the pre-push hook runs `mise run check:quick`, and a push
+  stops when it fails. It runs the static checks and the tests of the changed
+  Go packages, in about one minute. Commits run no check.
+- CI runs the full `mise run check`, including the `internal/app` race tests.
+  Mark a PR ready or merge it only when CI passes.
 - Do not amend or force-push unless the user asks. Use
   `git push --force-with-lease`, never `--force`.
 - Do not add `Signed-off-by`. Never commit secrets, `.env`, or `.local/`.

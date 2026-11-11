@@ -1,5 +1,5 @@
 minimum_prek_version = "0.5.5"
-default_install_hook_types = ["pre-commit"]
+default_install_hook_types = ["pre-push"]
 
 [[repos]]
 repo = "local"
@@ -7,7 +7,8 @@ repo = "local"
 [[repos.hooks]]
 id = "check"
 name = "Repository checks"
-entry = "mise run check"
+entry = "mise run check:quick"
 language = "system"
 pass_filenames = false
 always_run = true
+stages = ["pre-push"]

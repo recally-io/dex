@@ -40,8 +40,9 @@ depends = ["build:web"]
 run = "go build -o bin/dex ./cmd/dex"
 
 [tasks."hooks:install"]
-description = "Install the prek-managed pre-commit hook"
-run = "prek install"
+description = "Install the prek-managed pre-push hook"
+# Older clones have the pre-commit shim; remove it so commits stay fast.
+run = ["prek uninstall -t pre-commit", "prek install"]
 
 [tasks."build:web"]
 description = "Build the embedded web UI"
