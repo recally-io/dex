@@ -524,7 +524,7 @@ try {
     ["routines", "/a/default/automations"],
     ["extensions", "/a/default/extensions"],
     ["channels", "/a/default/channels"],
-    ["secrets", "/secrets"],
+    ["environment", "/environment"],
     ["about", "/about"],
   ];
   for (const theme of ["light", "dark"])

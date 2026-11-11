@@ -133,28 +133,42 @@ try {
     await api("/api/agents/default", { ...initial, provider: "faux", modelId: "echo" }, "PUT");
     const original = await api("/api/agents/default");
 
-    const bot = await api("/api/agents", {
-      name: "Audit Bot",
-      provider: "audit-provider",
-      modelId: "audit-model",
-      thinkingLevel: "off",
-    });
+    const bots = [];
 
-    await visit(`/a/${bot.id}`);
+    for (const name of ["Audit Bot", "Second Audit Bot"]) {
+      bots.push(
+        await api("/api/agents", {
+          name,
+          provider: "audit-provider",
+          modelId: "audit-model",
+          thinkingLevel: "off",
+        }),
+      );
+    }
+
+    // Opened from the default bot, Providers still lists every bot that uses the provider.
+    await visit("/a/default");
     await tap('aside a[href="/providers"]');
     await poll("client navigation to providers", () => evaluate("location.pathname === '/providers'"));
+    await poll("provider users shown", () =>
+      evaluate("document.body.innerText.includes('Used by Audit Bot, Second Audit Bot')"),
+    );
     await tap('button[aria-label="Remove Audit provider"]');
-    await poll("provider used by bot", () =>
-      evaluate("document.body.innerText.includes('The bot uses this provider now.')"),
+    await poll("provider used by bots", () =>
+      evaluate("document.body.innerText.includes('Audit Bot, Second Audit Bot use this provider now.')"),
     );
     await click("Remove provider");
     await poll(
       "provider removed",
       async () => !(await api("/api/settings")).providers.some((p) => p.id === "audit-provider"),
     );
-    await poll("bot model cleared", async () => !(await api(`/api/agents/${bot.id}`)).modelId);
+
+    for (const bot of bots) {
+      await poll(`${bot.name} model cleared`, async () => !(await api(`/api/agents/${bot.id}`)).modelId);
+    }
+
     assert.deepEqual(await api("/api/agents/default"), original, "default bot must remain unchanged");
-    results.push("client navigation B → Providers removes B model and preserves default");
+    results.push("Providers from the default bot removes the models of both users and preserves default");
   }
 
   if (scenario === "all" || scenario === "session") {

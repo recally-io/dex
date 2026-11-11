@@ -28,7 +28,7 @@ const botPages = [
   { to: "/a/$agentId/agent", label: "General", segment: "agent" },
   { to: "/a/$agentId/instructions", label: "Instructions", segment: "instructions" },
   { to: "/a/$agentId/channels", label: "Channels", segment: "channels" },
-  { to: "/a/$agentId/extensions", label: "Extensions", segment: "extensions" },
+  { to: "/a/$agentId/extensions", label: "Tools", segment: "extensions" },
 ] as const;
 
 /** The pages of a bot's settings. */
@@ -73,7 +73,7 @@ export function BotSettingsSwitcher({
 /** The pages that belong to the whole installation rather than to one bot. */
 export const globalPages = [
   { to: "/providers", label: "Providers" },
-  { to: "/secrets", label: "Secrets" },
+  { to: "/environment", label: "Environment" },
   { to: "/about", label: "About" },
 ] as const;
 

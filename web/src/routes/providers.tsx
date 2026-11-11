@@ -1,10 +1,10 @@
-import type { AgentSettings as Settings } from "../lib/agent-scope";
-import { useAgentId } from "../lib/agent-scope";
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Provider } from "../api/generated/types.gen";
+import type { Agent, Provider, Settings } from "../api/generated/types.gen";
 import {
   deleteProviderMutation,
+  getSettingsOptions,
+  listAgentsOptions,
   listModelsOptions,
   setProviderMutation,
 } from "../api/generated/@tanstack/react-query.gen";
@@ -13,68 +13,102 @@ import { saveAgent } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { ProviderDialog } from "../components/provider-dialog";
 import { Confirm } from "../components/confirm";
-import { Failure, Spinner } from "../components/feedback";
+import { Failure, Loading, Spinner } from "../components/feedback";
 import { Field, Select } from "../components/form";
 import { Empty, Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { WithSettings } from "../components/with-settings";
 import { GlobalSettingsSwitcher } from "../components/settings-switcher";
+
+// The bots that have a model from each provider. A bot without a model ID uses none.
+type Users = Map<string, Agent[]>;
+
+function usersOf(agents: Agent[]): Users {
+  const users: Users = new Map();
+
+  for (const agent of agents) {
+    if (agent.modelId) users.set(agent.provider, [...(users.get(agent.provider) ?? []), agent]);
+  }
+
+  return users;
+}
 
 export function ProvidersPage() {
   const [dialog, setDialog] = useState<Provider | "new" | null>(null);
   const [remove, setRemove] = useState<Provider | null>(null);
+  const settings = useQuery(getSettingsOptions());
+  const agents = useQuery(listAgentsOptions());
+  const failed = settings.error ?? agents.error;
+
+  const data: Data | undefined =
+    settings.data && agents.data
+      ? { settings: settings.data, users: usersOf(agents.data.agents) }
+      : undefined;
 
   return (
     <FramedPage
       eyebrow="Settings for this computer"
       title="Providers"
       toolbar={<GlobalSettingsSwitcher page="/providers" />}
-      description="A provider is a saved connection to a model service. The bot model comes from one of them."
+      description="A provider is a saved connection to a model service. Each bot chooses its model from one of them."
       actions={
         <Button size="sm" onClick={() => setDialog("new")}>
           Add provider
         </Button>
       }
     >
-      <WithSettings>
-        {(settings) => (
-          <>
-            <Connections settings={settings} onEdit={setDialog} onRemove={setRemove} />
-            <Section n={2} title="Keys" caption="Write-only.">
-              <Panel>
-                <Facts
-                  rows={[
-                    ["Where keys are stored", <Mono key="s">control.sqlite in the data directory</Mono>],
-                    ["Shown in the web", "Never. Only whether a key is saved"],
-                    ["To change a key", "Edit the provider and replace the key"],
-                  ]}
-                />
-              </Panel>
-            </Section>
-            {dialog ? (
-              <ProviderDialog
-                settings={settings}
-                existing={dialog === "new" ? undefined : dialog}
-                onClose={() => setDialog(null)}
+      {data ? (
+        <>
+          <Connections {...data} onEdit={setDialog} onRemove={setRemove} />
+          <Section n={2} title="Keys" caption="Write-only.">
+            <Panel>
+              <Facts
+                rows={[
+                  ["Where keys are stored", <Mono key="s">control.sqlite in the data directory</Mono>],
+                  ["Shown in the web", "Never. Only whether a key is saved"],
+                  ["To change a key", "Edit the provider and replace the key"],
+                ]}
               />
-            ) : null}
-            {remove ? (
-              <RemoveProvider provider={remove} settings={settings} onClose={() => setRemove(null)} />
-            ) : null}
-          </>
-        )}
-      </WithSettings>
+            </Panel>
+          </Section>
+          {dialog ? (
+            <ProviderDialog
+              settings={data.settings}
+              existing={dialog === "new" ? undefined : dialog}
+              onClose={() => setDialog(null)}
+            />
+          ) : null}
+          {remove ? (
+            <RemoveProvider
+              provider={remove}
+              users={data.users.get(remove.id) ?? []}
+              onClose={() => setRemove(null)}
+            />
+          ) : null}
+        </>
+      ) : failed ? (
+        <div className="px-5 py-8 sm:px-8">
+          <Failure
+            title="Could not load settings"
+            error={failed}
+            retry={() => void Promise.all([settings.refetch(), agents.refetch()])}
+          />
+        </div>
+      ) : (
+        <Loading />
+      )}
     </FramedPage>
   );
 }
 
+type Data = { settings: Settings; users: Users };
+
 function Connections({
   settings,
+  users,
   onEdit,
   onRemove,
-}: {
-  settings: Settings;
+}: Data & {
   onEdit: (provider: Provider) => void;
   onRemove: (provider: Provider) => void;
 }) {
@@ -106,6 +140,7 @@ function Connections({
               key={p.id}
               provider={p}
               settings={settings}
+              users={users.get(p.id) ?? []}
               onEdit={() => onEdit(p)}
               onRemove={() => onRemove(p)}
             />
@@ -113,7 +148,7 @@ function Connections({
           <Note>
             <strong className="font-medium text-foreground">Saved is not the same as working.</strong> dex
             saves a provider first, then lists its models. A failed listing keeps the provider saved and shows
-            the error on its card. A listed model can still fail when the bot calls it.
+            the error on its card. A listed model can still fail when a bot calls it.
           </Note>
         </div>
       ) : (
@@ -128,18 +163,20 @@ function Connections({
 function ProviderCard({
   provider: p,
   settings,
+  users,
   onEdit,
   onRemove,
 }: {
   provider: Provider;
   settings: Settings;
+  users: Agent[];
   onEdit: () => void;
   onRemove: () => void;
 }) {
   const { notify } = useApp();
   const models = useQuery(listModelsOptions());
   const own = models.data?.models.filter((m) => m.provider === p.id);
-  const inUse = settings.agent.provider === p.id && !!settings.agent.modelId;
+  const used = new Set(users.map((agent) => agent.modelId));
 
   // A save with an empty key keeps the saved key, and makes the worker list the models again.
   const retry = useMutation({
@@ -192,9 +229,9 @@ function ProviderCard({
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <h3 className="text-[14px] font-medium text-foreground">{p.name}</h3>
           <Mono className="text-[11.5px] text-muted-foreground">{p.id}</Mono>
-          {inUse ? (
-            <Badge variant="secondary" className="h-5 bg-primary/10 px-2 text-[11px] text-primary">
-              Bot model
+          {users.length ? (
+            <Badge variant="secondary" className="h-5 max-w-full bg-primary/10 px-2 text-[11px] text-primary">
+              <span className="truncate">Used by {users.map((agent) => agent.name).join(", ")}</span>
             </Badge>
           ) : null}
         </div>
@@ -255,7 +292,7 @@ function ProviderCard({
               key={m.id}
               title={m.id}
               className={
-                inUse && settings.agent.modelId === m.id
+                used.has(m.id)
                   ? "inline-flex h-6 max-w-full items-center rounded-full bg-primary/10 px-2.5 text-[12px] font-medium text-primary"
                   : "inline-flex h-6 max-w-full items-center rounded-full bg-muted px-2.5 text-[12px] font-medium text-muted-foreground shadow-card"
               }
@@ -271,17 +308,17 @@ function ProviderCard({
 
 function RemoveProvider({
   provider,
-  settings,
+  users,
   onClose,
 }: {
   provider: Provider;
-  settings: Settings;
+  users: Agent[];
   onClose: () => void;
 }) {
   const { notify } = useApp();
-  const agentId = useAgentId();
   const models = useQuery(listModelsOptions());
-  const current = settings.agent.provider === provider.id && !!settings.agent.modelId;
+  const current = users.length > 0;
+  const names = users.map((agent) => agent.name).join(", ");
   const others = models.data?.models.filter((m) => m.provider !== provider.id) ?? [];
   const [next, setNext] = useState("");
 
@@ -290,15 +327,21 @@ function RemoveProvider({
     onSettled: () => refreshSettings(),
   });
 
-  // The bot model is a separate save. It runs only after the provider is gone.
+  // The bot models are separate saves. They run only after the provider is gone. A bot that
+  // changed its provider since the dialog opened keeps its new model.
   const replace = useMutation({
     mutationFn: async () => {
       const model = others.find((m) => `${m.provider}/${m.id}` === next);
-      await saveAgent(agentId, (agent) => ({
-        ...agent,
-        provider: model?.provider ?? "",
-        modelId: model?.id ?? "",
-      }));
+
+      await Promise.all(
+        users.map((user) =>
+          saveAgent(user.id!, (agent) =>
+            agent.provider === provider.id
+              ? { ...agent, provider: model?.provider ?? "", modelId: model?.id ?? "" }
+              : agent,
+          ),
+        ),
+      );
     },
   });
 
@@ -308,7 +351,9 @@ function RemoveProvider({
     if (current) await replace.mutateAsync();
     onClose();
     notify(
-      current && !next ? `Removed ${provider.name}. The bot has no model now.` : `Removed ${provider.name}.`,
+      current && !next
+        ? `Removed ${provider.name}. ${names} ${users.length === 1 ? "has" : "have"} no model now.`
+        : `Removed ${provider.name}.`,
     );
   }
 
@@ -316,19 +361,21 @@ function RemoveProvider({
     <Confirm
       title={`Remove ${provider.name}?`}
       description="dex forgets the provider and its saved key. Past answers keep their model label."
-      confirmLabel={remove.isSuccess ? "Save bot model" : "Remove provider"}
+      confirmLabel={remove.isSuccess ? "Save bot models" : "Remove provider"}
       onCancel={onClose}
       onConfirm={() => void confirm().catch(() => {})}
       pending={remove.isPending || replace.isPending}
       error={remove.error ?? replace.error}
     >
       {remove.isSuccess && replace.isError ? (
-        <Note tone="warn">The provider is removed. The bot model did not change; try again.</Note>
+        <Note tone="warn">The provider is removed. Some bot models did not change; try again.</Note>
       ) : null}
       {current ? (
         <div className="flex flex-col gap-3 rounded-md bg-orange-tint p-3">
-          <p className="text-[13px] font-medium text-foreground">The bot uses this provider now.</p>
-          <Field label="After removal, the bot uses">
+          <p className="text-[13px] font-medium text-foreground">
+            {names} {users.length === 1 ? "uses" : "use"} this provider now.
+          </p>
+          <Field label={users.length === 1 ? "After removal, the bot uses" : "After removal, these bots use"}>
             {({ id }) => (
               <Select
                 id={id}

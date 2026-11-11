@@ -1296,20 +1296,20 @@ try {
 
   await botSettingsPage("extensions");
   await ui(
-    "second agent extensions",
+    "second agent tools",
     `document.body.innerText.includes('/agents/${second.id}/.agents/') && !!document.querySelector('main button:not([inert] *)')`,
   );
   await check(
-    "extensions belong to the selected agent",
-    `!document.querySelector('aside a[href="/extensions"]') && document.body.innerText.includes('Reload selected bot')`,
+    "tools belong to the selected agent",
+    `!document.querySelector('aside a[href="/extensions"]') && document.querySelector('main h1')?.textContent === 'Tools' && document.body.innerText.includes('Reload tools')`,
   );
   await check(
-    "extension levels and secrecy",
-    `['home', 'dex', 'agent', 'The model can', 'Tool output becomes part of the transcript', 'MCP servers'].every(text => document.body.innerText.includes(text)) && !!document.querySelector('main a[href="/secrets"]') && !document.body.innerText.includes('EXTENSION_DEMO_KEY') && !document.body.innerText.includes('never-show-this-value')`,
+    "tool levels and secrecy",
+    `['home', 'dex', 'agent', 'The model can', 'Tool output becomes part of the transcript', 'MCP servers'].every(text => document.body.innerText.includes(text)) && !!document.querySelector('main a[href="/environment"]') && !!document.querySelector('[data-env-key="EXTENSION_DEMO_KEY"][data-env-scope="agent"]') && !document.body.innerText.includes('never-show-this-value')`,
   );
   await shot("13a-agent-extensions-desktop");
   await viewport(390, 844);
-  await check("extensions fit phone", "document.documentElement.scrollWidth <= innerWidth + 1");
+  await check("tools fit phone", "document.documentElement.scrollWidth <= innerWidth + 1");
   await shot("13b-agent-extensions-phone");
   await evaluate(
     "Array.from(document.querySelectorAll('h2')).find(node => node.textContent === 'MCP servers').scrollIntoView({block: 'center', behavior: 'instant'})",
@@ -1317,18 +1317,16 @@ try {
   await shot("13c-extension-servers-phone");
   await viewport(1440, 1000);
   await shot("13d-extension-servers-desktop");
-  await tap('main a[href="/secrets"]');
+
+  // A bot edits only its own .env. The dex and home files show as read-only, and the bot key
+  // shadows both.
   await ui(
-    "secrets uses current agent",
-    `!!document.querySelector('main a[href="/a/${second.id}/extensions"]') && !document.body.innerText.includes('Not yet available')`,
-  );
-  await ui(
-    "secrets form ready",
-    `!!document.querySelector('input[name="key"]') && !!document.querySelector('[data-env-scope="home"]')`,
+    "bot env form ready",
+    `!!document.querySelector('input[name="key"]') && !!document.querySelector('[data-env-scope="home"]') && !!document.querySelector('[data-env-scope="dex"]')`,
   );
   await check(
-    "home secrets are read-only",
-    `!document.querySelector('[data-env-scope="home"] button') && document.body.innerText.includes('Home · Read-only') && document.body.innerText.includes('All bots (dex)') && document.body.innerText.includes('Shadowed')`,
+    "wider bot env levels are read-only",
+    `!document.querySelector('[data-env-scope="home"] button') && !document.querySelector('[data-env-scope="dex"] button') && !!document.querySelector('[data-env-scope="agent"] button') && document.body.innerText.includes('Home · Read-only') && document.body.innerText.includes('All bots · Read-only') && document.body.innerText.includes('Shadowed') && !document.querySelector('select[name="scope"]')`,
   );
   const secretKey = "BROWSER_WRITE_ONLY_KEY";
   const secretValue = "browser-private-value-do-not-show";
@@ -1351,19 +1349,21 @@ try {
     await readFile(join(data, "agents", second.id, ".agents", ".env"), "utf8"),
     `EXTENSION_DEMO_KEY=never-show-this-value\n${secretKey}=${secretValue}\n`,
   );
-  await evaluate("document.querySelector('main h1').scrollIntoView({block: 'start', behavior: 'instant'})");
+  await evaluate("document.querySelector('button[aria-label=\"Dismiss notification\"]')?.click()");
   await evaluate(
-    "document.querySelector('button[aria-label=\"Dismiss notification\"]')?.click(); document.querySelector('main .overflow-y-auto').scrollTop = 0",
+    "Array.from(document.querySelectorAll('h2')).find(node => node.textContent === 'Environment keys').scrollIntoView({block: 'start', behavior: 'instant'})",
   );
   await shot("13e-secrets-desktop");
   await viewport(390, 844);
-  await check("secrets form fits phone", "document.documentElement.scrollWidth <= innerWidth + 1");
-  await evaluate("document.querySelector('main .overflow-y-auto').scrollTop = 0");
+  await check("bot env form fits phone", "document.documentElement.scrollWidth <= innerWidth + 1");
+  await evaluate(
+    "Array.from(document.querySelectorAll('h2')).find(node => node.textContent === 'Environment keys').scrollIntoView({block: 'start', behavior: 'instant'})",
+  );
   await shot("13f-secrets-phone");
   await evaluate(
     "Array.from(document.querySelectorAll('h2')).find(node => node.textContent === 'Saved keys').scrollIntoView({block: 'start', behavior: 'instant'})",
   );
-  await check("secrets list fits phone", "document.documentElement.scrollWidth <= innerWidth + 1");
+  await check("bot env list fits phone", "document.documentElement.scrollWidth <= innerWidth + 1");
   await shot("13g-secrets-keys-phone");
   await viewport(1440, 1000);
   await shot("13h-secrets-keys-desktop");
@@ -1393,9 +1393,21 @@ try {
   assert.ok(
     !(await readFile(join(data, "agents", second.id, ".agents", ".env"), "utf8")).includes(secretKey),
   );
-  await evaluate(
-    `(() => { const select = document.querySelector('select[name="scope"]'); select.value = 'dex'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`,
+  await click("Reload");
+  await ui("bot reload completed", "!document.body.innerText.includes('The change applies after Reload.')");
+
+  // The global page writes the dex file and names no bot.
+  await tap('main a[href="/environment"]');
+  await ui(
+    "environment form ready",
+    `location.pathname === '/environment' && !!document.querySelector('input[name="key"]') && !!document.querySelector('[data-env-scope="home"]')`,
   );
+  await check(
+    "environment names no bot",
+    `!document.querySelector('[data-env-scope="agent"]') && !document.querySelector('[data-env-scope="home"] button') && !document.querySelector('main').innerText.includes('Second Bot') && !document.querySelector('main').innerText.includes('This bot') && document.querySelector('main').innerText.includes('Shadowed')`,
+  );
+  await tap('input[name="key"]');
+  await call("Input.insertText", { text: secretKey });
   await tap('input[name="value"]');
   await call("Input.insertText", { text: secretValue });
   await click("Save key");
@@ -1404,22 +1416,53 @@ try {
   assert.ok(
     (await readFile(join(data, ".agents", ".env"), "utf8")).includes(`${secretKey}=${secretValue}\n`),
   );
+  await shot("13i-environment-desktop");
   await tap(`${dexRow} button:last-child`);
   await ui("shared key deleted", `!document.querySelector('${dexRow}')`);
   await click("Reload");
-  await ui(
-    "secret reload completed",
-    "!document.body.innerText.includes('The change applies after Reload.')",
-  );
+  await ui("all bots reloaded", "!document.body.innerText.includes('The change applies after Reload.')");
   const secretLog = await readFile(join(artifacts, "browser-app.log"), "utf8");
   assert.ok(
     !secretLog.includes(secretValue) && !secretLog.includes(secretReplacement),
     "secret values stay out of app logs",
   );
+
+  // Global pages read no bot, so they show the same text after a visit to either bot. Client
+  // navigation keeps the drafts that later checks read.
+  const globalText = async (bot, path) => {
+    await tap(`aside a[href="${bot}"]`);
+    await ui(`${bot} open`, `location.pathname === '${bot}'`);
+    await tap(`aside a[href="/providers"]`);
+    await ui(
+      `${path} from ${bot}`,
+      "location.pathname === '/providers' && document.body.innerText.includes('Connections')",
+    );
+
+    if (path === "/environment") {
+      await tap('nav[aria-label="Settings pages"] a[href="/environment"]');
+      await ui(
+        `${path} keys from ${bot}`,
+        "location.pathname === '/environment' && !!document.querySelector('[data-env-scope=\"home\"]')",
+      );
+    }
+
+    return evaluate("document.querySelector('main').innerText");
+  };
+
+  for (const path of ["/providers", "/environment"]) {
+    assert.equal(
+      await globalText(secondPath, path),
+      await globalText("/a/default", path),
+      `${path} must not depend on the bot`,
+    );
+  }
+
   results.push(
-    "secrets: save, masked value, replace, delete, dex scope, Reload, no leaked values, desktop and 390px phone",
+    "env keys: bot Tools writes only its .env, global Environment writes dex and names no bot, replace, delete, Reload, /secrets redirect, no leaked values, desktop and 390px phone",
   );
-  await tap(`main a[href="/a/${second.id}/extensions"]`);
+  await tap(secondLink);
+  await ui("second agent open", `location.pathname === '${secondPath}'`);
+  await botSettingsPage("extensions");
   await ui(
     "returned to current agent extensions",
     `location.pathname === '/a/${second.id}/extensions' && !!document.querySelector('nav a[data-tab="Settings"][aria-current="page"]')`,
@@ -1518,6 +1561,9 @@ try {
   results.push(
     "agent tabs, kept composer, instructions draft, trimmed name, phone tabs and drawer, stable main ID",
   );
+  await visit("/secrets");
+  await ui("secrets redirects to environment", "location.pathname === '/environment'");
+  results.push("/secrets redirects to /environment");
   await writeFile(
     join(artifacts, "browser-results.json"),
     JSON.stringify(

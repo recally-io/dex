@@ -118,7 +118,7 @@ with a `description` and an optional `name`. Without a `name`, the directory
 name is the skill name. A skill can be in a nested directory, such as
 `skills/team/review/SKILL.md`. dex does not look inside a skill, hidden
 directories, or `node_modules`. When two skills in one level have the same
-name, the first in path order wins, and the Extensions page shows a warning.
+name, the first in path order wins, and the bot's Tools tab shows a warning.
 The prompt lists each skill; the agent reads the file when a task needs it. `mcp.json` has an `mcpServers` object, as in Claude Code and
 Cursor:
 
@@ -143,7 +143,7 @@ A stdio server gets `command`, `args`, `env`, and `cwd` (relative to the agent
 workspace). An HTTP server gets `url` and `headers`. OAuth is not supported.
 
 An edit to a skill applies to the next message. After you edit mcp.json,
-select Reload MCP servers on the Extensions page. Reload replaces only that
+select Reload tools on the bot's Tools tab. Reload replaces only that
 agent's execution resources and MCP connections. An MCP server runs as your
 user without a sandbox, and mcp.json keeps its credentials as plain text.
 
