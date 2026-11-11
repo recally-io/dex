@@ -746,6 +746,11 @@ export type Extensions = {
         key: string;
         scope: ExtensionScope;
         shadowed: boolean;
+        /**
+         * Shape hints of the saved value. A hint never contains value text. assignment: the value looks like a pasted NAME=... line. empty: the value is empty or only whitespace. whitespace: the value has leading or trailing whitespace. op-reference: the value is an op:// reference. Only tools that can run op resolve it.
+         *
+         */
+        hints: Array<'assignment' | 'empty' | 'whitespace' | 'op-reference'>;
     }>;
     warnings: Array<string>;
     /**

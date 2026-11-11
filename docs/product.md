@@ -324,7 +324,9 @@ The Tools tab of a bot writes that bot's `.env` file. It shows dex and home
 keys as read-only, with shadowed state for this bot. The Environment page
 writes the dex `.env` file, which applies to all bots, and shows home keys as
 read-only. Both pages show key names with Replace and Delete actions. Values
-are write-only. Changes to files, shell rc files, and 1Password settings apply
+are write-only. A key whose value looks like a pasted `NAME=...` line, or is
+empty, padded, or an `op://` reference, shows a badge, and a save of an
+assignment-like value shows a warning; dex still saves it. Changes to files, shell rc files, and 1Password settings apply
 automatically when all bots are idle; the pages show a change that waits. The
 files remain the only store. The old `/secrets` address
 opens the Environment page.

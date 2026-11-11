@@ -2524,11 +2524,24 @@ components:
           description: Names only. Values never leave the loader through this API.
           items:
             type: object
-            required: [key, scope, shadowed]
+            required: [key, scope, shadowed, hints]
             properties:
               key: { type: string }
               scope: { $ref: "#/components/schemas/ExtensionScope" }
               shadowed: { type: boolean }
+              hints:
+                type: array
+                description: >
+                  Shape hints of the saved value. A hint never contains value text.
+                  assignment: the value looks like a pasted NAME=... line.
+                  empty: the value is empty or only whitespace.
+                  whitespace: the value has leading or trailing whitespace.
+                  op-reference: the value is an op:// reference. Only tools that
+                  can run op resolve it.
+                items: {
+                  type: string,
+                  enum: [assignment, empty, whitespace, op-reference],
+                }
         warnings:
           type: array
           items: { type: string }
