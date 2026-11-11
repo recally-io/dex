@@ -4,18 +4,17 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { WechatLogin } from "../api/generated/types.gen";
 import {
-  getChannelsOptions,
   beginWechatLoginMutation,
   deleteWechatMutation,
   pollWechatLoginMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { refreshSettings } from "../lib/queries";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
 import { Failure, Spinner } from "./feedback";
 import { Field, Input } from "./form";
 import { Facts, Mono, Note, Panel, Section } from "./page";
 import { Confirm } from "./confirm";
+import { HowToUse, Notifications, Steps, TurnOff } from "./channel-kit";
 
 const loginText: Record<WechatLogin["status"], string> = {
   wait: "Scan this QR code with WeChat on your phone.",
@@ -30,11 +29,7 @@ const loginText: Record<WechatLogin["status"], string> = {
 
 export function WechatChannel({ settings }: { settings: Settings }) {
   const agentId = useAgentId();
-
-  const current =
-    useQuery({ ...getChannelsOptions({ path: { agentId } }), refetchInterval: 3000 }).data ?? settings;
-
-  const account = current.wechat;
+  const account = settings.wechat;
   const [login, setLogin] = useState<WechatLogin>();
   const [code, setCode] = useState("");
   const [off, setOff] = useState(false);
@@ -71,32 +66,49 @@ export function WechatChannel({ settings }: { settings: Settings }) {
     return () => window.clearTimeout(timer);
   }, [agentId, login, pending, pollLogin]);
 
+  const scan = (
+    <Button
+      size="sm"
+      variant={account.enabled ? "secondary" : "default"}
+      disabled={start.isPending || pending}
+      onClick={() => {
+        poll.reset();
+        start.mutate({ path: { agentId } });
+      }}
+    >
+      {start.isPending ? "Getting QR code…" : account.enabled ? "Scan again" : "Connect WeChat"}
+    </Button>
+  );
+
   return (
-    <Section n={1} title="Connection" caption="Scan once. dex recognizes the owner from the login.">
-      <Panel className="space-y-4 px-4 py-3.5">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[13px] text-muted-foreground">Private messages from the owner only.</p>
-          <Badge
-            variant={account.status.state === "running" ? "secondary" : "outline"}
-            className={account.status.state === "running" ? "bg-green-tint text-green" : ""}
-          >
-            {account.status.state === "needs_login" ? "Scan again" : account.status.state}
-          </Badge>
-        </div>
+    <>
+      <Section n={1} title="Connection" action={account.enabled ? scan : null}>
         {account.enabled ? (
-          <Facts
-            rows={[
-              ["Owner", <Mono key="owner">{account.owner}</Mono>],
-              ["Bot", <Mono key="bot">{account.botId}</Mono>],
-            ]}
-          />
-        ) : null}
-        {account.status.reason ? <Note>{account.status.reason}</Note> : null}
+          <Panel>
+            <Facts rows={[["Bot", <Mono key="bot">{account.botId}</Mono>]]} />
+          </Panel>
+        ) : (
+          <Panel className="px-4 py-3.5">
+            <Steps>
+              <li>Select Connect WeChat. dex shows a QR code.</li>
+              <li>Scan the code with WeChat on your phone and confirm.</li>
+            </Steps>
+            <div className="mt-4">{scan}</div>
+          </Panel>
+        )}
         {account.status.state === "needs_login" ? (
-          <Note tone="warn">The saved login expired. Scan again to resume messages and pending replies.</Note>
+          <div className="mt-3">
+            <Note tone="warn">
+              The saved login expired. Scan again to resume messages and pending replies.
+            </Note>
+          </div>
+        ) : account.status.reason ? (
+          <div className="mt-3">
+            <Note>{account.status.reason}</Note>
+          </div>
         ) : null}
         {login ? (
-          <div className="space-y-3">
+          <Panel className="mt-3 space-y-3 px-4 py-3.5">
             <p role="status" className="text-[13px] text-muted-foreground">
               {loginText[login.status]}
             </p>
@@ -136,34 +148,26 @@ export function WechatChannel({ settings }: { settings: Settings }) {
               </form>
             ) : null}
             {pending ? <Spinner /> : null}
+          </Panel>
+        ) : null}
+        {start.error || poll.error ? (
+          <div className="mt-3">
+            <Failure title="WeChat login did not finish" error={start.error ?? poll.error} />
           </div>
         ) : null}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="default"
-            disabled={start.isPending || pending}
-            onClick={() => {
-              poll.reset();
-              start.mutate({ path: { agentId } });
-            }}
-          >
-            {start.isPending ? "Getting QR code…" : account.enabled ? "Scan again" : "Connect WeChat"}
-          </Button>
-          {account.enabled ? (
-            <Button size="sm" variant="secondary" onClick={() => setOff(true)}>
-              Turn off WeChat
-            </Button>
-          ) : null}
-        </div>
-        {start.error || poll.error ? (
-          <Failure title="WeChat login did not finish" error={start.error ?? poll.error} />
-        ) : null}
-        <p className="text-[12px] text-muted-foreground">
-          WeChat shares the main timeline. Use /new to clear main's context when it is idle. Use /stop to stop
-          the main answer and its background work. Use /help for commands.
-        </p>
-      </Panel>
+      </Section>
+      {account.enabled ? (
+        <>
+          <Section n={2} title="Who can use it" caption="Only the person who confirmed the login.">
+            <Panel>
+              <Facts rows={[["Owner", <Mono key="owner">{account.owner}</Mono>]]} />
+            </Panel>
+          </Section>
+          <Notifications channel="wechat" />
+        </>
+      ) : null}
+      <HowToUse channel="wechat" />
+      {account.enabled ? <TurnOff channel="wechat" onTurnOff={() => setOff(true)} /> : null}
       {off ? (
         <Confirm
           title="Turn off WeChat?"
@@ -175,7 +179,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
           error={deletion.error}
         />
       ) : null}
-    </Section>
+    </>
   );
 }
 

@@ -21,7 +21,7 @@ import { AgentPage, InstructionsPage } from "./routes/agent";
 import { ProvidersPage } from "./routes/providers";
 import { ChannelPage, ChannelsPage } from "./routes/channels";
 import { ExtensionsPage } from "./routes/extensions";
-import { SecretsPage } from "./routes/secrets";
+import { EnvironmentPage } from "./routes/environment";
 import { AboutPage } from "./routes/about";
 import { AppProvider } from "./lib/app-state";
 import { FramedPage, Section } from "./components/page";
@@ -77,7 +77,8 @@ const channels = agentPage("/channels", ChannelsPage);
 const automations = agentPage("/automations", AutomationsPage);
 
 // Needs you, Work, Automations and the Inbox list were global pages. Each bot now shows its own
-// items: tasks in its task panel, routines and their results under Routines.
+// items: tasks in its task panel, routines and their results under Routines. Secrets split into
+// the global Environment page and the Tools tab of each bot.
 const retired = <P extends string>(path: P, href: string) =>
   createRoute({
     getParentRoute: () => root,
@@ -92,6 +93,7 @@ const retiredRoutes = [
   retired("/work", "/a/default"),
   retired("/inbox", "/a/default"),
   retired("/automations", "/a/default/automations"),
+  retired("/secrets", "/environment"),
 ] as const;
 
 const inboxDetail = page("/inbox/$runId", () => {
@@ -103,7 +105,7 @@ const inboxDetail = page("/inbox/$runId", () => {
 const providers = page("/providers", ProvidersPage);
 
 const extensions = agentPage("/extensions", ExtensionsPage);
-const secrets = page("/secrets", SecretsPage);
+const environment = page("/environment", EnvironmentPage);
 const about = page("/about", AboutPage);
 
 const channel = createRoute({
@@ -233,7 +235,7 @@ const router = createRouter({
     ...retiredRoutes,
     inboxDetail,
     providers,
-    secrets,
+    environment,
     about,
     settings,
     defaultSettings,

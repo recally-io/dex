@@ -8,11 +8,11 @@ import {
   pollFeishuMutation,
   setFeishuMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { Crumb } from "../components/crumb";
 import { Button } from "../components/ui/button";
 import { Failure } from "../components/feedback";
 import { Field, Input } from "../components/form";
-import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
+import { Facts, Mono, Note, Panel, Section } from "../components/page";
+import { HowToUse, Notifications, Steps, TurnOff } from "../components/channel-kit";
 import { Confirm } from "../components/confirm";
 import type { FeishuSetup } from "../api/generated/types.gen";
 
@@ -104,92 +104,70 @@ export function FeishuChannel() {
   }, [agentId, session, interval, pending, pollFailed, pollApp, expires]);
   const busy = begin.isPending || save.isPending || remove.isPending;
 
-  return (
-    <FramedPage
-      eyebrow={<Crumb to="/a/$agentId/channels">Channels</Crumb>}
-      title="Feishu / Lark"
-      description="Talk to dex in a private chat. Only the paired owner can use the bot."
-    >
-      <Section n={1} title="Connection">
-        <Panel>
-          <Facts
-            rows={[
-              ["Status", saved.data?.status ?? "Loading…"],
-              ["App ID", <Mono key="app">{saved.data?.appId || "Not connected"}</Mono>],
-              ["Owner", saved.data?.paired ? "Paired" : "Not paired"],
-            ]}
-          />
-        </Panel>
-        {saved.data?.error ? <Note tone="warn">{saved.data.error}</Note> : null}
-        {saved.isError ? <Failure title="Cannot read connection" error={saved.error} /> : null}
-      </Section>
-      <Section
-        n={2}
-        title="Create an app"
-        caption="Scan with Feishu or Lark. dex saves the app and pairs the account that creates it."
-      >
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="text-[13px] text-muted-foreground">
-            Platform
-            <select
-              className="ml-2 rounded border border-border bg-sidebar px-3 py-2"
-              value={brand}
-              onChange={(e) => setBrand(e.target.value)}
-              disabled={busy || !!session}
-            >
-              <option value="feishu">Feishu</option>
-              <option value="lark">Lark</option>
-            </select>
-          </label>
-          <Button
-            size="sm"
+  const connected = !!saved.data?.enabled;
+
+  // Creating an app by QR code pairs its creator. An existing app needs its own setup steps and a
+  // pairing code, so it stays folded.
+  const setupForm = (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="text-[13px] text-muted-foreground">
+          Platform
+          <select
+            className="ml-2 rounded border border-border bg-sidebar px-3 py-2"
+            value={brand}
+            onChange={(e) => setBrand(e.target.value)}
             disabled={busy || !!session}
-            onClick={() => {
-              poll.reset();
-              begin.mutate({ path: { agentId }, body: { brand } });
-            }}
           >
-            Create QR code
-          </Button>
-          {session ? (
-            <Button size="sm" variant="secondary" disabled={pending} onClick={() => setSetup(null)}>
-              Cancel
-            </Button>
-          ) : null}
-        </div>
-        {qr.data ? (
-          <img
-            className="mt-4 rounded-lg"
-            src={qr.data}
-            alt="Scan to create the dex app"
-            width={256}
-            height={256}
-          />
-        ) : null}
+            <option value="feishu">Feishu</option>
+            <option value="lark">Lark</option>
+          </select>
+        </label>
+        <Button
+          size="sm"
+          variant={connected ? "secondary" : "default"}
+          disabled={busy || !!session}
+          onClick={() => {
+            poll.reset();
+            begin.mutate({ path: { agentId }, body: { brand } });
+          }}
+        >
+          Create QR code
+        </Button>
         {session ? (
-          <p className="mt-2 text-[13px] text-muted-foreground">
-            Scan the QR code and approve the app. Keep this page open.
-          </p>
+          <Button size="sm" variant="secondary" disabled={pending} onClick={() => setSetup(null)}>
+            Cancel
+          </Button>
         ) : null}
-        {qr.isError ? <Failure title="Cannot render QR code" error={qr.error} /> : null}
-        {qrError ? <Note tone="warn">{qrError}</Note> : null}
-        {begin.isError ? <Failure title="Cannot create QR code" error={begin.error} /> : null}
-        {poll.isError ? (
-          <>
-            <Failure title="Cannot finish setup" error={poll.error} />
-            <Button size="sm" onClick={() => poll.reset()}>
-              Retry
-            </Button>
-          </>
-        ) : null}
-      </Section>
-      <Section
-        n={3}
-        title="Use an existing app"
-        caption="Enable the bot and long connection. Add im:message, im:message.p2p_msg:readonly, im:resource and the im.message.receive_v1 event."
-      >
+      </div>
+      {qr.data ? (
+        <img className="rounded-lg" src={qr.data} alt="Scan to create the dex app" width={256} height={256} />
+      ) : null}
+      {session ? (
+        <p className="text-[13px] text-muted-foreground">
+          Scan the QR code and approve the app. Keep this page open.
+        </p>
+      ) : null}
+      {qr.isError ? <Failure title="Cannot render QR code" error={qr.error} /> : null}
+      {qrError ? <Note tone="warn">{qrError}</Note> : null}
+      {begin.isError ? <Failure title="Cannot create QR code" error={begin.error} /> : null}
+      {poll.isError ? (
+        <div className="flex flex-col items-start gap-2">
+          <Failure title="Cannot finish setup" error={poll.error} />
+          <Button size="sm" onClick={() => poll.reset()}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
+      <details>
+        <summary className="cursor-pointer text-[13px] text-muted-foreground">Use an existing app</summary>
+        <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground">
+          Enable the bot and long connection. Add <Mono>im:message</Mono>,{" "}
+          <Mono>im:message.p2p_msg:readonly</Mono>, <Mono>im:resource</Mono> and the{" "}
+          <Mono>im.message.receive_v1</Mono> event.
+        </p>
         <form
-          className="flex max-w-lg flex-col gap-4"
+          className="mt-3 flex max-w-lg flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             setSetup(null);
@@ -218,32 +196,80 @@ export function FeishuChannel() {
               />
             )}
           </Field>
-          <Button type="submit" size="sm" disabled={busy || !!session}>
-            Save app
-          </Button>
+          <div>
+            <Button type="submit" size="sm" variant="secondary" disabled={busy || !!session}>
+              Save app
+            </Button>
+          </div>
         </form>
-        {setup?.pairingCode ? (
-          <Note>
-            Send <Mono>/pair {setup.pairingCode}</Mono> to the bot in a private chat within 10 minutes. dex
-            refuses other messages until you pair.
-          </Note>
+        {save.isError ? (
+          <div className="mt-3">
+            <Failure title="Cannot save app" error={save.error} />
+          </div>
         ) : null}
-        {save.isError ? <Failure title="Cannot save app" error={save.error} /> : null}
+      </details>
+    </div>
+  );
+
+  return (
+    <>
+      <Section n={1} title="Connection">
+        {saved.isError ? <Failure title="Cannot read connection" error={saved.error} /> : null}
+        {connected ? (
+          <>
+            <Panel>
+              <Facts
+                rows={[
+                  ["Platform", saved.data?.brand === "lark" ? "Lark" : "Feishu"],
+                  ["App ID", <Mono key="app">{saved.data?.appId}</Mono>],
+                ]}
+              />
+            </Panel>
+            <Panel className="mt-3 px-4 py-3.5">
+              <details>
+                <summary className="cursor-pointer text-[13px] text-muted-foreground">
+                  Replace the app
+                </summary>
+                <div className="mt-3">{setupForm}</div>
+              </details>
+            </Panel>
+          </>
+        ) : (
+          <Panel className="px-4 py-3.5">
+            <Steps>
+              <li>Choose Feishu or Lark, then select Create QR code.</li>
+              <li>Scan the code in the app and approve. dex saves the app and pairs your account.</li>
+            </Steps>
+            <div className="mt-4">{setupForm}</div>
+          </Panel>
+        )}
+        {saved.data?.error ? (
+          <div className="mt-3">
+            <Note tone="warn">{saved.data.error}</Note>
+          </div>
+        ) : null}
       </Section>
-      <Section n={4} title="Use the bot" caption="Groups and threads are not supported.">
-        <Note>
-          Send text, rich text, images or files up to 20 MB. Feishu shares the main timeline. Use /new to
-          clear main's context when it is idle. Use /stop to stop the main answer and its background work. Use
-          /help for commands.
-        </Note>
-      </Section>
-      {saved.data?.enabled ? (
-        <Section n={5} title="Turn off">
-          <Button size="sm" variant="secondary" onClick={() => setOff(true)}>
-            Turn off Feishu / Lark
-          </Button>
+      {connected || setup?.pairingCode ? (
+        <Section n={2} title="Who can use it" caption="Only the paired owner, in a private chat.">
+          <Panel>
+            <Facts rows={[["Owner", saved.data?.paired ? "Paired" : "Not paired"]]} />
+          </Panel>
+          {setup?.pairingCode ? (
+            <div className="mt-3">
+              <Note>
+                Send <Mono>/pair {setup.pairingCode}</Mono> to the bot in a private chat within 10 minutes.
+                dex refuses other messages until you pair.
+              </Note>
+            </div>
+          ) : null}
         </Section>
       ) : null}
+      {connected ? <Notifications channel="feishu" /> : null}
+      <HowToUse channel="feishu">
+        <li>Send text, rich text, images or files up to 20 MB.</li>
+        <li>Groups and threads are not supported.</li>
+      </HowToUse>
+      {connected ? <TurnOff channel="feishu" onTurnOff={() => setOff(true)} /> : null}
       {off ? (
         <Confirm
           title="Turn off Feishu / Lark?"
@@ -255,6 +281,6 @@ export function FeishuChannel() {
           error={remove.isError ? remove.error : undefined}
         />
       ) : null}
-    </FramedPage>
+    </>
   );
 }

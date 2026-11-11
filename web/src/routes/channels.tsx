@@ -3,7 +3,7 @@ import { useAgentId } from "../lib/agent-scope";
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronRight, Send } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import {
   createTelegramPairingMutation,
@@ -23,52 +23,38 @@ import { Field, Input, SavedSecret, Select, Textarea } from "../components/form"
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { BotSettingsSwitcher } from "../components/settings-switcher";
 import { Button } from "../components/ui/button";
-import { Badge } from "../components/ui/badge";
+import {
+  ChannelFrame,
+  ChannelIcon,
+  ChannelState,
+  HowToUse,
+  Notifications,
+  Steps,
+  TurnOff,
+  channelInfo,
+  type ChannelId,
+} from "../components/channel-kit";
 import { FeishuChannel } from "./feishu";
-import { Crumb } from "../components/crumb";
 
-function ChannelRow({
-  channel,
-  name,
-  text,
-  status,
-}: {
-  channel: "telegram" | "wechat" | "feishu";
-  name: string;
-  text: string;
-  status: ReactNode;
-}) {
+function ChannelRow({ channel, text, state }: { channel: ChannelId; text: string; state: string }) {
   const agentId = useAgentId();
 
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-muted text-muted-foreground shadow-card">
-        <Send size={16} />
-      </span>
+      <ChannelIcon channel={channel} />
       <span className="min-w-0 flex-1">
         <Link
           to="/a/$agentId/channels/$channelId"
           params={{ agentId, channelId: channel }}
           className="block w-fit text-[13.5px] font-medium text-foreground hover:underline"
         >
-          {name}
+          {channelInfo[channel].name}
         </Link>
         <span className="block text-[12px] text-muted-foreground">{text}</span>
       </span>
-      {status}
+      <ChannelState channel={channel} state={state} />
       <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
     </div>
-  );
-}
-
-// All channel input shares the owner's main context.
-function Boundary() {
-  return (
-    <Note tone="warn">
-      <strong className="font-medium">Channels are for the owner.</strong> Use only your own accounts. Channel
-      input shares the main timeline's context. The bot can read and change files and run commands on this
-      computer.
-    </Note>
   );
 }
 
@@ -87,36 +73,24 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
     onSuccess: () => targets.refetch(),
   });
 
-  const status = (state: string) => (
-    <Badge
-      variant={state === "running" ? "secondary" : "outline"}
-      className={`h-5 shrink-0 px-2 text-[11.5px] ${state === "running" ? "bg-green-tint text-green" : ""}`}
-    >
-      {state}
-    </Badge>
-  );
-
   return (
     <Section n={1} title="Connections" caption="Each channel talks to the same bot.">
       <Panel>
         <div className="divide-y divide-border">
           <ChannelRow
             channel="telegram"
-            name="Telegram"
             text="Private messages from allowed people."
-            status={status(current.telegram.status.state)}
+            state={current.telegram.status.state}
           />
           <ChannelRow
             channel="wechat"
-            name="WeChat"
             text="Private messages from the paired owner."
-            status={status(current.wechat.status.state)}
+            state={current.wechat.status.state}
           />
           <ChannelRow
             channel="feishu"
-            name="Feishu / Lark"
             text="Private messages from the paired owner."
-            status={status(current.feishu.status)}
+            state={current.feishu.status}
           />
         </div>
         <div className="border-t border-border p-4">
@@ -164,44 +138,34 @@ export function ChannelsPage() {
   );
 }
 
-export function ChannelPage({ channel }: { channel: "telegram" | "wechat" | "feishu" }) {
-  return channel === "wechat" ? (
-    <FramedPage
-      eyebrow={<Crumb to="/a/$agentId/channels">Channels</Crumb>}
-      title="WeChat"
-      description="Scan once. dex recognizes the owner from the login."
-    >
-      <WithChannels>{(settings) => <WechatChannel settings={settings} />}</WithChannels>
-    </FramedPage>
-  ) : channel === "feishu" ? (
-    <FeishuChannel />
-  ) : (
-    <TelegramChannel />
-  );
-}
+const descriptions: Record<ChannelId, string> = {
+  telegram: "Talk to dex from your phone through your own Telegram bot.",
+  wechat: "Talk to dex in a private WeChat chat. Scan once to connect.",
+  feishu: "Talk to dex in a private Feishu or Lark chat.",
+};
 
-function TelegramChannel() {
+export function ChannelPage({ channel }: { channel: ChannelId }) {
   const agentId = useAgentId();
-  const saved = useQuery({ ...getChannelsOptions({ path: { agentId } }), refetchInterval: 2000 });
+  const saved = useQuery({ ...getChannelsOptions({ path: { agentId } }), refetchInterval: 3000 });
+  const data = saved.data;
+  const state = data && (channel === "feishu" ? data.feishu.status : data[channel].status.state);
 
   return (
-    <FramedPage
-      eyebrow={<Crumb to="/a/$agentId/channels">Channels</Crumb>}
-      title="Telegram"
-      badge={
-        saved.data ? (
-          <Badge
-            variant={saved.data.telegram.status.state === "running" ? "secondary" : "outline"}
-            className={saved.data.telegram.status.state === "running" ? "bg-green-tint text-green" : ""}
-          >
-            {saved.data.telegram.status.state}
-          </Badge>
-        ) : null
-      }
-      description="Talk to dex from your phone. Only the users that you allow can use the bot."
-    >
-      <WithChannels>{(settings) => <Telegram settings={settings} />}</WithChannels>
-    </FramedPage>
+    <ChannelFrame channel={channel} state={state} description={descriptions[channel]}>
+      {data ? (
+        channel === "telegram" ? (
+          <Telegram settings={data} />
+        ) : channel === "wechat" ? (
+          <WechatChannel settings={data} />
+        ) : (
+          <FeishuChannel />
+        )
+      ) : saved.isError ? (
+        <Failure title="Could not load channels" error={saved.error} retry={() => void saved.refetch()} />
+      ) : (
+        <Loading />
+      )}
+    </ChannelFrame>
   );
 }
 
@@ -226,16 +190,13 @@ function Telegram({ settings }: { settings: Settings }) {
     <>
       <Section
         n={1}
-        title="Bot"
-        caption={telegram.enabled ? undefined : "Not connected."}
+        title="Connection"
         action={
-          <Button
-            size="sm"
-            variant={telegram.enabled ? "secondary" : "default"}
-            onClick={() => setEdit(true)}
-          >
-            {telegram.enabled ? "Edit" : "Connect bot"}
-          </Button>
+          telegram.enabled ? (
+            <Button size="sm" variant="secondary" onClick={() => setEdit(true)}>
+              Edit
+            </Button>
+          ) : null
         }
       >
         {telegram.enabled ? (
@@ -249,93 +210,87 @@ function Telegram({ settings }: { settings: Settings }) {
                     Saved · write-only
                   </span>,
                 ],
-                [
-                  "Allowed user IDs",
-                  <span key="users" className="font-mono text-[12px] text-muted-foreground tabular-nums">
-                    {telegram.allowedUsers.join(", ") || "None. Pair your account below."}
-                  </span>,
-                ],
               ]}
             />
           </Panel>
         ) : (
           <Panel className="px-4 py-3.5">
-            <p className="mb-2 text-[13px] text-muted-foreground">
-              Telegram is off. dex does not read any bot.
-            </p>
-            <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-[13px] text-muted-foreground marker:font-mono marker:text-[11px] marker:text-muted-foreground">
+            <Steps>
               <li>
                 In Telegram, open <Mono>@BotFather</Mono> and send <Mono>/newbot</Mono>.
               </li>
               <li>Copy the token that BotFather gives you.</li>
               <li>Select Connect bot and enter the token.</li>
-              <li>Create a pairing link, then open the link in Telegram and select Start.</li>
-            </ol>
+            </Steps>
+            <Button className="mt-4" size="sm" onClick={() => setEdit(true)}>
+              Connect bot
+            </Button>
           </Panel>
         )}
-        <div className="mt-3">
-          <Note>
-            Runtime status: {telegram.status.state}.{" "}
-            {telegram.status.reason ?? "Send the bot a message to check reply delivery."}
-          </Note>
-        </div>
-        {telegram.enabled && telegram.allowedUsers.length === 0 ? (
-          <div className="mt-3 flex flex-col items-start gap-3">
-            <Note>Pair your account to start. The bot ignores messages until an owner is paired.</Note>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={pairing.isPending}
-              onClick={() => pairing.mutate({ path: { agentId } })}
-            >
-              {pairing.isPending ? "Creating link…" : "Create owner pairing link"}
-            </Button>
-            {pairing.data ? (
-              <Note>
-                <a className="underline" href={pairing.data.url} target="_blank" rel="noreferrer">
-                  Open Telegram and select Start
-                </a>
-                . This link works once and expires at{" "}
-                {new Date(pairing.data.expiresAt * 1000).toLocaleTimeString()}. A new link cancels the
-                previous link.
-              </Note>
-            ) : null}
-            {pairing.isError ? <Failure title="Pairing link failed" error={pairing.error} /> : null}
+        {telegram.status.reason ? (
+          <div className="mt-3">
+            <Note tone={telegram.status.state === "error" ? "warn" : "neutral"}>
+              {telegram.status.reason}
+            </Note>
           </div>
         ) : null}
       </Section>
-      <Section n={2} title="How messages work" caption="Telegram shares the main timeline.">
-        <Panel className="px-4 py-3.5">
-          <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] text-muted-foreground marker:text-muted-foreground">
-            <li>
-              Telegram and web input share the main context. /new clears that context when main is idle.
-            </li>
-            <li>
-              dex replies to the entry that sent the input. The web shows all main input and tool calls.
-            </li>
-            <li>/stop stops the main answer and its background work.</li>
-            <li>dex ignores messages from user IDs that are not allowed.</li>
-            <li>The bot, its tools and its memory are the same as on the web.</li>
-          </ul>
-        </Panel>
-        <div className="mt-3">
-          <Boundary />
-        </div>
-      </Section>
       {telegram.enabled ? (
-        <Section n={3} title="Turn off" caption="The bot stops answering. The main timeline stays.">
-          <Button
-            size="sm"
-            variant="secondary"
-            className="text-red"
-            onClick={() => {
-              deletion.reset();
-              setOff(true);
-            }}
-          >
-            Turn off Telegram
-          </Button>
-        </Section>
+        <>
+          <Section n={2} title="Who can use it" caption="dex ignores messages from other Telegram users.">
+            {telegram.allowedUsers.length ? (
+              <Panel>
+                <Facts
+                  rows={[
+                    [
+                      "Allowed user IDs",
+                      <span key="users" className="font-mono text-[12px] text-muted-foreground tabular-nums">
+                        {telegram.allowedUsers.join(", ")}
+                      </span>,
+                    ],
+                  ]}
+                />
+              </Panel>
+            ) : (
+              <Panel className="flex flex-col items-start gap-3 px-4 py-3.5">
+                <p className="text-[13px] text-muted-foreground">
+                  Pair your account to start. The bot ignores messages until an owner is paired.
+                </p>
+                <Button
+                  size="sm"
+                  disabled={pairing.isPending}
+                  onClick={() => pairing.mutate({ path: { agentId } })}
+                >
+                  {pairing.isPending ? "Creating link…" : "Create owner pairing link"}
+                </Button>
+                {pairing.data ? (
+                  <Note>
+                    <a className="underline" href={pairing.data.url} target="_blank" rel="noreferrer">
+                      Open Telegram and select Start
+                    </a>
+                    . This link works once and expires at{" "}
+                    {new Date(pairing.data.expiresAt * 1000).toLocaleTimeString()}. A new link cancels the
+                    previous link.
+                  </Note>
+                ) : null}
+                {pairing.isError ? <Failure title="Pairing link failed" error={pairing.error} /> : null}
+              </Panel>
+            )}
+          </Section>
+          <Notifications channel="telegram" />
+        </>
+      ) : null}
+      <HowToUse channel="telegram">
+        <li>Send text, images or files in a private chat with the bot.</li>
+      </HowToUse>
+      {telegram.enabled ? (
+        <TurnOff
+          channel="telegram"
+          onTurnOff={() => {
+            deletion.reset();
+            setOff(true);
+          }}
+        />
       ) : null}
       {edit ? (
         <TelegramDialog

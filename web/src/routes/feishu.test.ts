@@ -86,7 +86,7 @@ test("user sees Feishu status and shared main context without a peer link", asyn
     createElement(QueryClientProvider, { client }, createElement(RouterProvider, { router })),
   );
 
-  expect(html).toContain("needs_login");
+  expect(html).toContain("Needs owner");
   expect(html).not.toContain(">Configure<");
   expect(html).not.toContain('href="/c/3"');
   expect(html).not.toContain('href="/c/2"');

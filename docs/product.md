@@ -21,8 +21,10 @@ to read in an afternoon.
   an access token. See [network access](../README.md#access-from-other-devices).
 - Bot settings in the web UI: name, model, thinking level, instructions,
   channels, and routines with their runs. The name has 1 to 40 characters
-  after spaces are trimmed. Providers, Secrets, and About are global pages.
-  Tool secrets can be set for the current agent or for all dex agents.
+  after spaces are trimmed. Providers, Environment, and About are global pages.
+  Global pages show no bot. A bot page changes only that bot.
+  Tool keys can be set for one bot in its Tools tab, or for all bots on the
+  Environment page.
   The CLI manages the service address, data directory, and update policy.
 - Several agents for one owner, each with a name, model, thinking level,
   instructions, conversations, automations, and workspace directory. The API
@@ -45,7 +47,7 @@ to read in an afternoon.
   messages can load the earlier transcript. A clear and a summary show a
   divider. The bot is one page
   with exactly three tabs: Chat, Routines, and Settings. Its
-  Settings tab holds General, Instructions, Channels, and Extensions. Its header shows the
+  Settings tab holds General, Instructions, Channels, and Tools. Its header shows the
   name and the tabs. The model and the thinking level change in Settings. On the
   Chat tab, the header has Chat settings and a Sessions button. Chat settings
   shows a row with the project, model and thinking level of the open chat; a dot
@@ -63,7 +65,7 @@ to read in an afternoon.
   The left sidebar lists only the bots. The user talks to a bot, and the bot
   manages its sessions. Each bot row shows at most one status dot: orange for
   Needs you, blue for Working. Needs you wins. The sidebar also links to global
-  settings: Providers, Secrets, and About. On a phone, the menu button shows an
+  settings: Providers, Environment, and About. On a phone, the menu button shows an
   orange dot when another bot needs the user.
   The browser keeps the sidebar's open or collapsed state. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
@@ -91,14 +93,18 @@ to read in an afternoon.
   entry is an advanced option. The bot ignores other users and group chats.
   Earlier versions accepted group messages from allowed users. The bot now
   ignores all non-private chats, including messages from allowed users.
+- Channel pages in bot Settings use one order: Connection, Who can use it,
+  Notifications, How to use, and Turn off. A channel that is not connected
+  shows short steps and one primary button. Notifications can make the
+  channel's owner the primary target for routine results.
 - Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. All channels
   are for the owner. Each bot belongs to one agent. The web selects an agent.
   Web input and channel input for that agent share its main context. Input from one entry can
   affect an answer at another entry. Channel messages show their channel name
   in the web timeline. Replies return only to the input's origin. Web input
   sends no channel reply. Each input gets its own answer, in admission order.
-  `/new` clears main's context when main is idle. A repeated command cannot
-  clear again. A busy refusal leaves the context unchanged.
+  `/clear` clears main's context when main is idle. `/new` is an alias. A
+  repeated command cannot clear again. A busy refusal leaves the context unchanged.
   `/stop` stops main's current answer, pending input and background work from
   every main entry. Chat and automation sessions stay outside that scope.
   `/help` lists commands.
@@ -259,7 +265,7 @@ The system does not retry failed execution or result delivery. The main agent
 reads saved records and artifacts, then decides whether to retry or continue
 from saved work. After a user Stop, the main agent waits for new user
 authorization. A later user message does not retry an old result. Result
-delivery keeps the source input's origin after `/new`.
+delivery keeps the source input's origin after `/clear`.
 
 After a dex restart, running execution becomes interrupted and does not restart
 automatically. Queued execution that never started can start for the first
@@ -305,17 +311,19 @@ and a dream cannot set a project. Project skills come from
 
 The system prompt always includes a guide to these files, even with no
 skills. It explains paths, file formats, environment use, and Reload. It
-contains no environment key names or values. The user sets values on the
-Secrets page.
+contains no environment key names or values. The user sets values in the web
+UI or in the files.
 
-The Secrets page writes tool credentials to the current agent or dex `.env`
-file. Dex scope applies to all agents. The page shows key names and shadowed
-state, with Replace and Delete actions. Values are write-only. Home keys are
-read-only. File changes apply after Reload on the Extensions page or the Secrets
-page. The files remain the only store.
+The Tools tab of a bot writes that bot's `.env` file. It shows dex and home
+keys as read-only, with shadowed state for this bot. The Environment page
+writes the dex `.env` file, which applies to all bots, and shows home keys as
+read-only. Both pages show key names with Replace and Delete actions. Values
+are write-only. File changes apply after Reload. Reload on the Environment page
+reloads every bot. The files remain the only store. The old `/secrets` address
+opens the Environment page.
 
-The Extensions page in bot Settings shows the level directories, skills, MCP servers, and
-configuration warnings. Environment key names are on the Secrets page. Reload
+The Tools tab also shows the level directories, skills, MCP servers, and
+configuration warnings. Reload
 requires all agents to be idle before it replaces the selected agent's execution
 resources and MCP connections. After that idle check succeeds, other agents
 can start work while Reload continues. Invalid configuration for the selected

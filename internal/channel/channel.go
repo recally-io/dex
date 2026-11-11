@@ -10,7 +10,8 @@
 // ErrPermanent skips a rejected part. Report updates
 // runtime status; Status returns it for the settings API. Connect chat's notify to Notify.
 //
-// Receive sends channel input to main. /new clears main's context; /stop stops main's work.
+// Receive sends channel input to main. /clear clears main's context, and /new is its old name;
+// /stop stops main's work.
 // Replies use the input's origin, including results from background work.
 // Pending reports whether the peer has work, for typing indicators. Delivery retries after a
 // failed send and after restart. It is at least once: a crash after the remote service accepts
@@ -189,7 +190,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 		return err
 	}
 	cmd := strings.TrimSpace(msg.Content)
-	if cmd != "/new" && cmd != "/stop" && cmd != "/help" {
+	if !IsCommand(cmd) {
 		return m.chats.SubmitMessage(ctx, m.agentID, peer, source, msg)
 	}
 	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd}); err != nil {
@@ -202,16 +203,26 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	return m.complete(ctx, command)
 }
 
+// IsCommand reports whether trimmed channel text is a command rather than input for the model.
+func IsCommand(text string) bool {
+	switch text {
+	case "/clear", "/new", "/stop", "/help":
+		return true
+	}
+	return false
+}
+
 func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	if c.AgentID != m.agentID || c.Completed != 0 {
 		return nil
 	}
-	answer := "/new clears the main timeline's context. /stop stops the main answer and its background work. /help shows these commands."
+	answer := "/clear clears the main timeline's context. It takes no text. /new does the same. /stop stops the main answer and its background work. /help shows these commands."
 	switch {
 	case c.ChannelKey != chat.MainKey:
 		// A saved peer command cannot acquire main's scope after an upgrade.
 		answer = "This command is from an earlier version. Send a new command if needed."
-	case c.Command == "/new":
+	// Rows saved before /clear existed hold /new.
+	case c.Command == "/clear" || c.Command == "/new":
 		main, err := m.chats.Main(ctx, m.agentID)
 		if err != nil {
 			return err
@@ -220,7 +231,7 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 		err = m.chats.Clear(ctx, m.agentID, main.ID, "channel:"+c.SourceKey, c.Peer, "")
 		switch {
 		case errors.Is(err, chat.ErrConversationBusy):
-			answer = "Context not cleared. The main timeline is busy. Wait for the reply or stop it, then send /new again."
+			answer = "Context not cleared. The main timeline is busy. Wait for the reply or stop it, then send /clear again."
 		case err != nil:
 			return err
 		default:

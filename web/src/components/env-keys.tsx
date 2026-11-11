@@ -1,98 +1,52 @@
-import { useAgentId } from "../lib/agent-scope";
 import { Link } from "@tanstack/react-router";
-import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Extensions } from "../api/generated/types.gen";
+import { reloadExtensions } from "../api/generated/sdk.gen";
 import {
   getExtensionsOptions,
-  listAgentsOptions,
   getExtensionsQueryKey,
+  listAgentsOptions,
   putExtensionEnvMutation,
   deleteExtensionEnvMutation,
-  reloadExtensionsMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { useApp } from "../lib/app-state";
 import { errorText, queryClient } from "../lib/queries";
-import { Failure, Loading, Spinner } from "../components/feedback";
-import { Field, Input, Select } from "../components/form";
-import { Button, buttonVariants } from "../components/ui/button";
-import { Badge } from "../components/ui/badge";
-import { WithSettings } from "../components/with-settings";
-import { GlobalSettingsSwitcher } from "../components/settings-switcher";
+import { Failure, Loading, Spinner } from "./feedback";
+import { Field, Input } from "./form";
+import { Mono, Note, Panel, Section } from "./page";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
 
-export function SecretsPage() {
-  const agentId = useAgentId();
+type Level = Extensions["env"][number]["scope"];
 
-  return (
-    <FramedPage
-      eyebrow="Settings for this computer"
-      title="Secrets"
-      toolbar={<GlobalSettingsSwitcher page="/secrets" />}
-      description="Set tool credentials for the current bot or all dex bots. Values stay in .env files. Narrower values win."
-    >
-      <ToolEnvironment key={agentId} agentId={agentId} />
-      <WithSettings>
-        {(settings) => (
-          <Section
-            n={3}
-            title="Provider and channel credentials"
-            caption="Credentials that dex itself needs."
-          >
-            <Panel>
-              <Facts
-                rows={[
-                  ...settings.providers.map((p): [string, string] => [
-                    `${p.name} API key`,
-                    p.keySet ? "Saved" : "None",
-                  ]),
-                  ["Channel credentials", "Manage in each bot’s Channels tab"],
-                  ["Stored in", <Mono key="s">control.sqlite in the data directory</Mono>],
-                  ["Shown in the web", "Never. You can only replace them"],
-                ]}
-              />
-            </Panel>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Link to="/providers" className={buttonVariants({ size: "xs", variant: "secondary" })}>
-                Provider keys
-              </Link>
-              <Link
-                to="/a/$agentId/channels/$channelId"
-                params={{ agentId, channelId: "telegram" }}
-                className={buttonVariants({ size: "xs", variant: "secondary" })}
-              >
-                Telegram token
-              </Link>
-            </div>
-          </Section>
-        )}
-      </WithSettings>
-      <Section n={4} title="Secret storage">
-        <Note tone="warn">
-          Use mode 0600 for .env files and keep them out of Git. The model can read the files or run env. Tool
-          output becomes part of the transcript. dex stores credentials as plain text. Do not put passwords in
-          chats, instructions or memory. Memory is a git repository, so a password stays in its history.
-        </Note>
-      </Section>
-    </FramedPage>
-  );
-}
+/**
+ * The .env keys of one writable level and the wider levels it inherits. A bot writes its own
+ * file and reads dex and home. The global page writes dex and reads home. Values never show.
+ */
+export type EnvTarget = { scope: "agent"; agentId: string } | { scope: "dex" };
 
-function ToolEnvironment({ agentId }: { agentId: string }) {
+const titles: Record<Level, string> = { agent: "This bot", dex: "All bots", home: "Home · Read-only" };
+
+export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
   const { notify } = useApp();
+  // The dex file does not depend on the bot, so any bot can read and write it. The default bot
+  // always exists.
+  const agentId = target.scope === "agent" ? target.agentId : "default";
   const query = useQuery(getExtensionsOptions({ path: { agentId } }));
-  // Secrets is a global page, so name the agent that "agent" scope writes to.
-  const agentName = useQuery(listAgentsOptions()).data?.agents.find((agent) => agent.id === agentId)?.name;
-  const agentLabel = agentName ? `Bot: ${agentName}` : "This bot";
-  const [scope, setScope] = useState<"agent" | "dex">("agent");
+  const agents = useQuery({ ...listAgentsOptions(), enabled: target.scope === "dex" });
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
   const [changed, setChanged] = useState(false);
   const form = useRef<HTMLFormElement>(null);
 
-  const saved = (data: Extensions) => {
+  const refresh = (data: Extensions) => {
     queryClient.setQueryData(getExtensionsQueryKey({ path: { agentId } }), data);
     void queryClient.invalidateQueries({ queryKey: [{ _id: "getExtensions" }] });
+  };
+
+  const saved = (data: Extensions) => {
+    refresh(data);
     setChanged(true);
   };
 
@@ -109,56 +63,74 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
     onError: (error) => notify(errorText(error)),
   });
 
+  // A dex key reaches every bot, so the global page reloads all of them. A reload needs every
+  // bot idle, and a second reload counts as work, so they run one at a time.
   const reload = useMutation({
-    ...reloadExtensionsMutation(),
-    onSuccess: (data) => {
-      queryClient.setQueryData(getExtensionsQueryKey({ path: { agentId } }), data);
+    mutationFn: async () => {
+      const bots =
+        target.scope === "agent"
+          ? [{ id: agentId, name: "this bot" }]
+          : (agents.data?.agents.map((a) => ({ id: a.id!, name: a.name })) ?? []);
+
+      const failed: string[] = [];
+
+      for (const bot of bots) {
+        // oxlint-disable-next-line no-await-in-loop -- reloads must not overlap.
+        await reloadExtensions({ path: { agentId: bot.id }, throwOnError: true }).catch(() =>
+          failed.push(bot.name),
+        );
+      }
+
+      if (failed.length) throw new Error(`Reload failed for ${failed.join(", ")}. Try again.`);
+    },
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [{ _id: "getExtensions" }] });
       setChanged(false);
-      notify("Extensions reloaded for the selected bot.");
+      notify(target.scope === "agent" ? "Reloaded this bot." : "Reloaded all bots.");
     },
     onError: (error) => notify(errorText(error)),
   });
 
   const busy = save.isPending || remove.isPending || reload.isPending;
   const catalog = query.data;
+  const levels: Level[] = target.scope === "agent" ? ["agent", "dex", "home"] : ["dex", "home"];
+
+  // The Tools page shows errors in its Configuration section. The global page reads them through
+  // the default bot, so it keeps only the errors that name a dex or home file.
+  const wideDirs = catalog?.levels.filter((l) => l.scope !== "agent").map((l) => l.dir) ?? [];
+
+  const wideErrors =
+    target.scope === "dex"
+      ? (catalog?.errors.filter((error) => wideDirs.some((dir) => error.includes(dir))) ?? [])
+      : [];
+
+  // The API marks a key shadowed for one bot. On the global page, only a dex key hides a home key.
+  const shadowed = (entry: Extensions["env"][number]) =>
+    target.scope === "agent"
+      ? entry.shadowed
+      : entry.scope === "home" && !!catalog?.env.some((e) => e.scope === "dex" && e.key === entry.key);
 
   return (
     <>
-      <Section n={1} title="Tool environment" caption="Values are write-only. Dex scope applies to all bots.">
-        <div className="mb-4 flex flex-wrap gap-2">
-          <Link
-            to="/a/$agentId/extensions"
-            params={{ agentId }}
-            className={buttonVariants({ size: "xs", variant: "secondary" })}
-          >
-            Current bot’s Extensions
-          </Link>
-        </div>
+      <Section
+        n={n}
+        title="Environment keys"
+        caption={
+          target.scope === "agent"
+            ? "Tools of this bot read these. Values are write-only."
+            : "Tools of every bot read these. A bot key with the same name wins. Values are write-only."
+        }
+      >
         <Panel>
           <form
             ref={form}
             className="grid gap-4 p-4"
             onSubmit={(event) => {
               event.preventDefault();
-              save.mutate({ path: { agentId }, body: { scope, key, value } });
+              save.mutate({ path: { agentId }, body: { scope: target.scope, key, value } });
               setValue("");
             }}
           >
-            <Field label="Scope">
-              {({ id }) => (
-                <Select
-                  id={id}
-                  name="scope"
-                  value={scope}
-                  disabled={busy}
-                  onChange={(event) => setScope(event.target.value === "dex" ? "dex" : "agent")}
-                >
-                  <option value="agent">{agentLabel}</option>
-                  <option value="dex">All bots (dex)</option>
-                </Select>
-              )}
-            </Field>
             <Field
               label="Key"
               hint="Use letters, numbers, and underscores. Start with a letter or underscore."
@@ -202,12 +174,17 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
         {changed ? (
           <div className="mt-4" role="status">
             <Note>
-              <p>The change applies after Reload. Reload applies to the selected agent.</p>
+              <p>
+                The change applies after Reload.{" "}
+                {target.scope === "agent"
+                  ? "Reload restarts the tools of this bot."
+                  : "Reload restarts the tools of all bots."}
+              </p>
               <Button
                 className="mt-3"
                 size="sm"
-                disabled={busy}
-                onClick={() => reload.mutate({ path: { agentId } })}
+                disabled={busy || (target.scope === "dex" && !agents.data)}
+                onClick={() => reload.mutate()}
               >
                 {reload.isPending ? <Spinner /> : null}Reload
               </Button>
@@ -216,23 +193,32 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
         ) : null}
       </Section>
       {catalog ? (
-        <Section n={2} title="Saved keys" caption="Names only. A narrower level wins.">
+        <Section n={n + 1} title="Saved keys" caption="Names only. A narrower level wins.">
           <div className="space-y-4">
-            {(["agent", "dex", "home"] as const).map((level) => (
-              <Panel key={level}>
-                <div className="border-b border-border px-4 py-3">
-                  <p className="text-[13px] font-medium text-foreground">
-                    {level === "agent" ? agentLabel : level === "dex" ? "All bots (dex)" : "Home · Read-only"}
-                  </p>
-                  <p className="mt-1 text-[11.5px] text-muted-foreground [overflow-wrap:anywhere]">
-                    <Mono>{catalog.levels.find((l) => l.scope === level)?.dir}/.env</Mono>
-                  </p>
-                </div>
-                {catalog.env.some((entry) => entry.scope === level) ? (
-                  <ul className="divide-y divide-border">
-                    {catalog.env
-                      .filter((entry) => entry.scope === level)
-                      .map((entry) => (
+            {levels.map((level) => {
+              const entries = catalog.env.filter((entry) => entry.scope === level);
+              const writable = level === target.scope;
+
+              return (
+                <Panel key={level}>
+                  <div className="flex flex-wrap items-start gap-2 border-b border-border px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium text-foreground">
+                        {level === "dex" && !writable ? "All bots · Read-only" : titles[level]}
+                      </p>
+                      <p className="mt-1 text-[11.5px] text-muted-foreground [overflow-wrap:anywhere]">
+                        <Mono>{catalog.levels.find((l) => l.scope === level)?.dir}/.env</Mono>
+                      </p>
+                    </div>
+                    {level === "dex" && !writable ? (
+                      <Link to="/environment" className="text-[12px] text-muted-foreground underline">
+                        Edit in Environment
+                      </Link>
+                    ) : null}
+                  </div>
+                  {entries.length ? (
+                    <ul className="divide-y divide-border">
+                      {entries.map((entry) => (
                         <li
                           key={entry.key}
                           data-env-key={entry.key}
@@ -242,19 +228,18 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
                           <span className="min-w-0 w-full text-[12.5px] [overflow-wrap:anywhere] sm:w-auto sm:flex-1">
                             <Mono>{entry.key}</Mono>
                           </span>
-                          {entry.shadowed ? (
+                          {shadowed(entry) ? (
                             <Badge variant="outline" className="h-5 px-2 text-[11.5px]">
                               Shadowed
                             </Badge>
                           ) : null}
-                          {level !== "home" ? (
+                          {writable ? (
                             <div className="flex gap-2">
                               <Button
                                 type="button"
                                 size="xs"
                                 disabled={busy}
                                 onClick={() => {
-                                  setScope(level);
                                   setKey(entry.key);
                                   setValue("");
 
@@ -274,7 +259,7 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
                                 onClick={() =>
                                   remove.mutate({
                                     path: { agentId },
-                                    query: { scope: level, key: entry.key },
+                                    query: { scope: target.scope, key: entry.key },
                                   })
                                 }
                               >
@@ -284,18 +269,19 @@ function ToolEnvironment({ agentId }: { agentId: string }) {
                           ) : null}
                         </li>
                       ))}
-                  </ul>
-                ) : (
-                  <p className="px-4 py-3 text-[12.5px] text-muted-foreground">No keys in this file.</p>
-                )}
-              </Panel>
-            ))}
+                    </ul>
+                  ) : (
+                    <p className="px-4 py-3 text-[12.5px] text-muted-foreground">No keys in this file.</p>
+                  )}
+                </Panel>
+              );
+            })}
           </div>
-          {catalog.errors.length ? (
+          {wideErrors.length ? (
             <div className="mt-4">
               <Failure title="dex cannot read some files">
                 <ul className="[overflow-wrap:anywhere]">
-                  {catalog.errors.map((error) => (
+                  {wideErrors.map((error) => (
                     <li key={error}>{error}</li>
                   ))}
                 </ul>

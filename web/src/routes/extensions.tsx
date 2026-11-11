@@ -1,6 +1,5 @@
 import { useAgentId } from "../lib/agent-scope";
 import type { ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Extensions, McpServer, Skill } from "../api/generated/types.gen";
 import {
@@ -15,6 +14,7 @@ import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/pag
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { BotSettingsSwitcher } from "../components/settings-switcher";
+import { EnvKeys } from "../components/env-keys";
 
 export function ExtensionsPage() {
   const agentId = useAgentId();
@@ -25,16 +25,16 @@ export function ExtensionsPage() {
     ...reloadExtensionsMutation(),
     onSuccess: (data) => {
       queryClient.setQueryData(getExtensionsQueryKey({ path: { agentId } }), data);
-      notify("MCP servers reloaded for the selected bot.");
+      notify("Reloaded this bot.");
     },
     onError: (error) => notify(errorText(error)),
   });
 
   return (
     <FramedPage
-      title="Extensions"
+      title="Tools"
       toolbar={<BotSettingsSwitcher segment="extensions" />}
-      description="Read home, then dex, then bot. A narrower level replaces a skill or MCP server with the same name. Environment keys merge in this order."
+      description="Skills, MCP servers and environment keys of this bot. dex reads home, then dex, then the bot. A narrower level replaces an entry with the same name."
       actions={
         <Button
           size="sm"
@@ -43,11 +43,11 @@ export function ExtensionsPage() {
           onClick={() => reload.mutate({ path: { agentId } })}
         >
           {reload.isPending ? <Spinner /> : null}
-          Reload selected bot
+          Reload tools
         </Button>
       }
     >
-      <div className="px-5 pt-5 sm:px-8">
+      <div className="mb-6">
         <Note tone="warn">
           Environment values stay out of this page, the extensions API, and app logs. The model can read .env
           files or run env. Tool output becomes part of the transcript. Use mode 0600 and keep .env files out
@@ -76,7 +76,7 @@ export function ExtensionsPage() {
         </Panel>
       </Section>
       {query.data ? (
-        <Catalog extensions={query.data} />
+        <Catalog extensions={query.data} agentId={agentId} />
       ) : query.isError ? (
         <div className="px-5 py-8 sm:px-8">
           <Failure error={query.error} retry={() => void query.refetch()} />
@@ -88,22 +88,10 @@ export function ExtensionsPage() {
   );
 }
 
-function Catalog({ extensions: e }: { extensions: Extensions }) {
+function Catalog({ extensions: e, agentId }: { extensions: Extensions; agentId: string }) {
   return (
     <>
-      <Section
-        n={2}
-        title="File levels"
-        caption={
-          <>
-            Each holds skills/, mcp.json and .env. Set .env values on the{" "}
-            <Link to="/secrets" className="underline">
-              Secrets
-            </Link>{" "}
-            page.
-          </>
-        }
-      >
+      <Section n={2} title="File levels" caption="Each holds skills/, mcp.json and .env.">
         <Panel>
           <ul className="divide-y divide-border">
             {e.levels.map((level) => (
@@ -168,6 +156,7 @@ function Catalog({ extensions: e }: { extensions: Extensions }) {
           }
         />
       </Section>
+      <EnvKeys target={{ scope: "agent", agentId }} n={6} />
     </>
   );
 }

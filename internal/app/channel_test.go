@@ -21,9 +21,9 @@ func TestUserClearsChannelMainContextOnce(t *testing.T) {
 	if got := f.next(t).Text; got != "echo: before" {
 		t.Fatal(got)
 	}
-	// When /new is delivered twice and then the user sends another message.
-	f.message(2, 42, 7, "/new")
-	f.message(2, 42, 7, "/new")
+	// When /clear is delivered twice and then the user sends another message.
+	f.message(2, 42, 7, "/clear")
+	f.message(2, 42, 7, "/clear")
 	f.message(3, 42, 7, "after")
 	// Then one notice confirms Clear, and main keeps the transcript.
 	got := []string{f.next(t).Text, f.next(t).Text}
