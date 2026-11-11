@@ -1003,6 +1003,51 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/chats/{chatId}/fork:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    post:
+      operationId: forkChat
+      description: >
+        Starts a new Chat from the history of this writable session. Without
+        before, the history ends at entryId, which must be an answer that
+        waits for no tool result. With before, it ends just before entryId;
+        when nothing comes before it, the new Chat is empty. The new Chat
+        takes the model, thinking level and project of this session and does
+        not run. A running session contributes only its committed entries.
+        Files on disk are not rolled back. Each call creates another Chat.
+        400 when the entry is not in this session or cannot start a fork.
+        Task, automation and channel sessions return 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entryId]
+              properties:
+                entryId: { type: integer, format: int64 }
+                before:
+                  type: boolean
+                  description: End the history just before the entry.
+      responses:
+        "201":
+          description: The new Chat.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chatId]
+                properties:
+                  chatId: { type: integer, format: int64 }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/chats/{chatId}/compact:
     parameters:
       - in: path
@@ -1632,6 +1677,16 @@ components:
           $ref: "#/components/schemas/TaskSummary"
           description: The saved task summary on a task session. It has no report.
         question: { $ref: "#/components/schemas/ChatQuestion" }
+        forkedFrom: { $ref: "#/components/schemas/ChatOrigin" }
+
+    ChatOrigin:
+      type: object
+      description: The session that a Chat was forked from. Only on a single chat.
+      required: [id, title, main]
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        main: { type: boolean }
 
     ChatSettings:
       x-go-type: chat.Settings

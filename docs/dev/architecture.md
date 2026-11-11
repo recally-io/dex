@@ -801,6 +801,19 @@ then for the queued summary. When no summary is placed, it writes a
 that Stop drops, or that a reset makes stale, counts as failed. A restart
 before the goroutine ends loses the note, not the compaction.
 
+`Chat.Fork` starts a new Chat from a writable session. `Agents.Fork` checks that
+the entry is visible from the source with `Conversation.Entries`, then calls
+`Conversation.Fork`. Without `before`, the entry must be an answer without tool
+calls, because a copied call would never get its result. With `before`, the
+copy ends at the previous visible entry; when there is none, the fork has no
+native conversation yet. The control row stores `forked_from` and copies the
+model, thinking level and project, so `EnsureEmptyChat` never reuses a fork and
+`ListChats` lists it before its first message. A fork copies committed entries
+only, so a running source gives no live run, queue or failure. The native fork
+keeps the source configuration until the next admission configures it. Each
+request creates another fork; the web disables the action while one is pending.
+A failure after the native fork leaves an unused native conversation.
+
 A snapshot contains only the active native context. Reset and summary entries
 show dividers. A reset divider shows its handoff; a summary divider can expand
 the summary. `historyBefore` points

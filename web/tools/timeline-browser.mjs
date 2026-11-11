@@ -649,6 +649,30 @@ try {
     "Chat clear keeps only the handoff in its model context",
     'document.body.innerText.includes(\'context: ["carry the plan","Fresh Chat context"]\')',
   );
+  await clickLabel("Fork from here");
+  await ui(
+    "Fork from here opens the fork with its origin",
+    `location.pathname !== '/a/default/c/${emptySession}' && document.body.innerText.includes('The original chat is unchanged. Files on disk are not rolled back.') && !!document.querySelector('main a[href="/a/default/c/${emptySession}"]')`,
+  );
+  await shot("04a-fork-banner");
+  await sendFromComposer("in the fork");
+  await ui(
+    "a fork answers from the copied context",
+    'document.body.innerText.includes(\'context: ["carry the plan","Fresh Chat context","in the fork"]\')',
+  );
+  results.push("Fork from here copies the context into a new Chat");
+  await visit(`/a/default/c/${emptySession}`);
+  await ui(
+    "the source of a fork is unchanged",
+    "document.body.innerText.includes('Fresh Chat context') && !document.body.innerText.includes('in the fork')",
+  );
+  await clickLabel("Edit in new chat");
+  await ui(
+    "Edit in new chat fills the composer of the new Chat",
+    `location.pathname !== '/a/default/c/${emptySession}' && document.querySelector('textarea:not([inert] *)').value === 'Fresh Chat context' && document.body.innerText.includes('Forked from')`,
+  );
+  results.push("Edit in new chat forks before the message and fills the composer");
+  await typeDraft("");
   await visit("/a/default");
   await ui(
     "main stream ready after Chat clear",
@@ -729,7 +753,8 @@ try {
   );
 
   for (const [kind, active, count] of [
-    ["Chat", 1, 1],
+    // The Chat and its two forks.
+    ["Chat", 1, 3],
     ["Task", 1, 4],
     ["Automation", 0, 1],
     ["All kinds", 2, allSessions.length],
@@ -892,8 +917,10 @@ try {
       `channel timeline fits (${label})`,
       `(() => {
         const scroll = document.querySelector('textarea:not([inert] *)').closest('section').querySelector('.overflow-y-auto').getBoundingClientRect();
+        // A phone cannot show every message at once, so each mark scrolls into view first.
         return document.documentElement.scrollWidth <= innerWidth + 1 &&
           [...document.querySelectorAll('[data-origin]')].every(node => {
+            node.scrollIntoView({ block: 'nearest', behavior: 'instant' });
             const rect = node.getBoundingClientRect();
             return rect.top >= scroll.top && rect.bottom <= scroll.bottom;
           });
@@ -1674,6 +1701,13 @@ async function command(text) {
 async function click(text) {
   await evaluate(
     `(() => { const button = [...document.querySelectorAll('button:not([inert] *)')].find(b => b.textContent.trim() === ${JSON.stringify(text)}); if (!button || button.disabled) throw new Error('Button is unavailable'); button.click(); })()`,
+  );
+}
+
+// Click the last button with an accessible name, such as a message action that shows on hover.
+async function clickLabel(label) {
+  await evaluate(
+    `(() => { const button = [...document.querySelectorAll('main button[aria-label=${JSON.stringify(label)}]')].at(-1); if (!button || button.disabled) throw new Error('Button is unavailable'); button.click(); })()`,
   );
 }
 

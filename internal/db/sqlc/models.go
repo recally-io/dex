@@ -96,6 +96,7 @@ type Conversation struct {
 	AbortPending  int64         `json:"abort_pending"`
 	ArchivedAt    sql.NullInt64 `json:"archived_at"`
 	Cwd           string        `json:"cwd"`
+	ForkedFrom    sql.NullInt64 `json:"forked_from"`
 }
 
 type Dream struct {

@@ -234,6 +234,59 @@ func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error 
 	return err
 }
 
+const createFork = `-- name: CreateFork :one
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from
+`
+
+type CreateForkParams struct {
+	AgentID       string        `json:"agent_id"`
+	ChannelKey    string        `json:"channel_key"`
+	Title         string        `json:"title"`
+	ModelProvider string        `json:"model_provider"`
+	ModelID       string        `json:"model_id"`
+	ThinkingLevel string        `json:"thinking_level"`
+	Cwd           string        `json:"cwd"`
+	ExecutionID   sql.NullInt64 `json:"execution_id"`
+	ForkedFrom    sql.NullInt64 `json:"forked_from"`
+	CreatedAt     int64         `json:"created_at"`
+}
+
+// A fork is a new Chat with the settings of its source. execution_id is NULL when the fork
+// starts empty, so the first message creates the native conversation.
+func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Conversation, error) {
+	row := q.db.QueryRowContext(ctx, createFork,
+		arg.AgentID,
+		arg.ChannelKey,
+		arg.Title,
+		arg.ModelProvider,
+		arg.ModelID,
+		arg.ThinkingLevel,
+		arg.Cwd,
+		arg.ExecutionID,
+		arg.ForkedFrom,
+		arg.CreatedAt,
+	)
+	var i Conversation
+	err := row.Scan(
+		&i.ID,
+		&i.AgentID,
+		&i.ChannelKey,
+		&i.ExecutionID,
+		&i.CreatedAt,
+		&i.Title,
+		&i.ModelProvider,
+		&i.ModelID,
+		&i.ThinkingLevel,
+		&i.AbortPending,
+		&i.ArchivedAt,
+		&i.Cwd,
+		&i.ForkedFrom,
+	)
+	return i, err
+}
+
 const createSubmission = `-- name: CreateSubmission :execrows
 INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, coalesce(nullif(CAST(?8 AS TEXT), ''), 'followUp'), 'pending', ?9)
@@ -341,7 +394,7 @@ const ensureConversation = `-- name: EnsureConversation :one
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from
 `
 
 type EnsureConversationParams struct {
@@ -379,6 +432,7 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		&i.AbortPending,
 		&i.ArchivedAt,
 		&i.Cwd,
+		&i.ForkedFrom,
 	)
 	return i, err
 }
@@ -390,13 +444,14 @@ VALUES (
     coalesce((
         SELECT c.channel_key FROM conversations c
         WHERE c.agent_id = ?1 AND c.channel_key LIKE 'chat:%' AND c.archived_at IS NULL
+            AND c.forked_from IS NULL
             AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message')
         ORDER BY c.created_at DESC, c.id DESC LIMIT 1
     ), ?2),
     '', ?3
 )
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from
 `
 
 type EnsureEmptyChatParams struct {
@@ -422,6 +477,7 @@ func (q *Queries) EnsureEmptyChat(ctx context.Context, arg EnsureEmptyChatParams
 		&i.AbortPending,
 		&i.ArchivedAt,
 		&i.Cwd,
+		&i.ForkedFrom,
 	)
 	return i, err
 }
@@ -571,6 +627,9 @@ SELECT
     c.created_at,
     c.archived_at,
     c.execution_id,
+    c.forked_from,
+    f.title AS forked_from_title,
+    f.channel_key AS forked_from_key,
     CAST(max(
         c.created_at,
         coalesce(max(s.created_at), c.created_at),
@@ -583,6 +642,7 @@ SELECT
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN tasks t ON t.conversation_id = c.id
+LEFT JOIN conversations f ON f.id = c.forked_from
 WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id
 `
@@ -593,19 +653,22 @@ type GetChatParams struct {
 }
 
 type GetChatRow struct {
-	ID            int64          `json:"id"`
-	ChannelKey    string         `json:"channel_key"`
-	Title         string         `json:"title"`
-	ModelProvider string         `json:"model_provider"`
-	ModelID       string         `json:"model_id"`
-	ThinkingLevel string         `json:"thinking_level"`
-	Cwd           string         `json:"cwd"`
-	CreatedAt     int64          `json:"created_at"`
-	ArchivedAt    sql.NullInt64  `json:"archived_at"`
-	ExecutionID   sql.NullInt64  `json:"execution_id"`
-	UpdatedAt     int64          `json:"updated_at"`
-	Pending       int64          `json:"pending"`
-	TaskStatus    sql.NullString `json:"task_status"`
+	ID              int64          `json:"id"`
+	ChannelKey      string         `json:"channel_key"`
+	Title           string         `json:"title"`
+	ModelProvider   string         `json:"model_provider"`
+	ModelID         string         `json:"model_id"`
+	ThinkingLevel   string         `json:"thinking_level"`
+	Cwd             string         `json:"cwd"`
+	CreatedAt       int64          `json:"created_at"`
+	ArchivedAt      sql.NullInt64  `json:"archived_at"`
+	ExecutionID     sql.NullInt64  `json:"execution_id"`
+	ForkedFrom      sql.NullInt64  `json:"forked_from"`
+	ForkedFromTitle sql.NullString `json:"forked_from_title"`
+	ForkedFromKey   sql.NullString `json:"forked_from_key"`
+	UpdatedAt       int64          `json:"updated_at"`
+	Pending         int64          `json:"pending"`
+	TaskStatus      sql.NullString `json:"task_status"`
 }
 
 func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, error) {
@@ -622,6 +685,9 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 		&i.CreatedAt,
 		&i.ArchivedAt,
 		&i.ExecutionID,
+		&i.ForkedFrom,
+		&i.ForkedFromTitle,
+		&i.ForkedFromKey,
 		&i.UpdatedAt,
 		&i.Pending,
 		&i.TaskStatus,
@@ -630,7 +696,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd FROM conversations WHERE id = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from FROM conversations WHERE id = ?
 `
 
 func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
@@ -649,12 +715,13 @@ func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, 
 		&i.AbortPending,
 		&i.ArchivedAt,
 		&i.Cwd,
+		&i.ForkedFrom,
 	)
 	return i, err
 }
 
 const getConversationByKey = `-- name: GetConversationByKey :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd FROM conversations WHERE agent_id = ? AND channel_key = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from FROM conversations WHERE agent_id = ? AND channel_key = ?
 `
 
 type GetConversationByKeyParams struct {
@@ -678,6 +745,7 @@ func (q *Queries) GetConversationByKey(ctx context.Context, arg GetConversationB
 		&i.AbortPending,
 		&i.ArchivedAt,
 		&i.Cwd,
+		&i.ForkedFrom,
 	)
 	return i, err
 }
@@ -1011,7 +1079,7 @@ LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN tasks t ON t.conversation_id = c.id
 WHERE c.agent_id = ?
     AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
-    AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
+    AND (c.channel_key NOT LIKE 'chat:%' OR c.forked_from IS NOT NULL OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
     ))
 GROUP BY c.id

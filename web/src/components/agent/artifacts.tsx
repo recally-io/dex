@@ -5,19 +5,9 @@ import { createChat, getChat, setChatProject } from "../../api/generated/sdk.gen
 import { listArtifactsOptions } from "../../api/generated/@tanstack/react-query.gen";
 import type { Artifact } from "../../api/generated/types.gen";
 import { useAgentId } from "../../lib/agent-scope";
+import { putChatDraft } from "../../lib/chat-draft";
 import { Markdown } from "./transcript";
 import { Button } from "../ui/button";
-
-const keyFor = (agentId: string, chatId: number) => `dex-artifact-draft:${agentId}:${chatId}`;
-
-export function takeArtifactDraft(agentId: string, chatId: number) {
-  const key = keyFor(agentId, chatId);
-  const value = sessionStorage.getItem(key);
-
-  sessionStorage.removeItem(key);
-
-  return value;
-}
 
 function reference(item: Artifact) {
   return `Continue modifying delivered file ${item.name} (artifact ID ${item.id}, source conversation ${item.conversationId}). The delivered file is a snapshot and does not change with the source file.`;
@@ -70,8 +60,7 @@ export function Artifacts({ chatId, onContinue }: { chatId: number; onContinue?:
         });
       }
 
-      sessionStorage.setItem(keyFor(agentId, target.id), reference(item));
-      window.dispatchEvent(new Event("dex-artifact-draft"));
+      putChatDraft(agentId, target.id, reference(item));
 
       if (target.main) await navigate({ to: "/a/$agentId", params: { agentId } });
       else await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(target.id) } });

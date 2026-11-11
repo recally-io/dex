@@ -199,6 +199,48 @@ test("user sees reset handoffs and each compaction outcome", async () => {
   expect(html).toContain("Summary ready");
 });
 
+test("user sees message actions only where a fork can start", async () => {
+  const items: Item[] = [
+    { kind: "user", id: "u1", entryId: 1, text: "plan it" },
+    { kind: "assistant", id: "a1", entryId: 2, text: "Let me look." },
+    { ...tool("t1", "done", "files"), entryId: 2 },
+    { kind: "assistant", id: "a2", entryId: 4, text: "Here is the plan." },
+    { kind: "user", id: "u2", text: "and then", queued: true },
+  ];
+
+  const actions = { pending: false, fork: () => {} };
+
+  const html = await render(
+    createElement(Transcript, {
+      items,
+      running: false,
+      retry: () => {},
+      canRetry: false,
+      messageActions: actions,
+    }),
+  );
+
+  // The answer that called a tool cannot start a fork; the queued message has no entry yet.
+  expect(html.match(/aria-label="Fork from here"/g)).toHaveLength(1);
+  expect(html.match(/aria-label="Edit in new chat"/g)).toHaveLength(1);
+  expect(html.match(/aria-label="Copy answer"/g)).toHaveLength(2);
+  expect(html.match(/aria-label="Copy message"/g)).toHaveLength(1);
+
+  // A streaming answer has no actions.
+  const live = await render(
+    createElement(Transcript, {
+      items: [items[0], { kind: "assistant", id: "a3", entryId: 5, text: "Writ" }],
+      running: true,
+      retry: () => {},
+      canRetry: false,
+      messageActions: actions,
+    }),
+  );
+
+  expect(live).not.toContain("Fork from here");
+  expect(live).not.toContain("Copy answer");
+});
+
 test("user sees an ask_user answer as the muted question above the answer", async () => {
   // Given the wrapper that the server stores for an answer.
   const text = "Answer to: Which branch?\nUse main\nand rebase";

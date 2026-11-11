@@ -109,6 +109,16 @@ export type Chat = {
     settings: ChatSettings;
     task?: TaskSummary;
     question?: ChatQuestion;
+    forkedFrom?: ChatOrigin;
+};
+
+/**
+ * The session that a Chat was forked from. Only on a single chat.
+ */
+export type ChatOrigin = {
+    id: number;
+    title: string;
+    main: boolean;
 };
 
 /**
@@ -2447,6 +2457,50 @@ export type ContinueChatResponses = {
 };
 
 export type ContinueChatResponse = ContinueChatResponses[keyof ContinueChatResponses];
+
+export type ForkChatData = {
+    body: {
+        entryId: number;
+        /**
+         * End the history just before the entry.
+         */
+        before?: boolean;
+    };
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/fork';
+};
+
+export type ForkChatErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+};
+
+export type ForkChatError = ForkChatErrors[keyof ForkChatErrors];
+
+export type ForkChatResponses = {
+    /**
+     * The new Chat.
+     */
+    201: {
+        chatId: number;
+    };
+};
+
+export type ForkChatResponse = ForkChatResponses[keyof ForkChatResponses];
 
 export type CompactChatData = {
     body?: {

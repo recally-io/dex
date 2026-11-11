@@ -128,7 +128,7 @@ func (q *Queries) GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (Tas
 }
 
 const getConversationByExecution = `-- name: GetConversationByExecution :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd FROM conversations WHERE agent_id = ? AND execution_id = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from FROM conversations WHERE agent_id = ? AND execution_id = ?
 `
 
 type GetConversationByExecutionParams struct {
@@ -152,6 +152,7 @@ func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConvers
 		&i.AbortPending,
 		&i.ArchivedAt,
 		&i.Cwd,
+		&i.ForkedFrom,
 	)
 	return i, err
 }
@@ -409,7 +410,7 @@ func (q *Queries) ListLiveTasks(ctx context.Context) ([]Task, error) {
 }
 
 const listStopConversations = `-- name: ListStopConversations :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd FROM conversations WHERE agent_id = ?1
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from FROM conversations WHERE agent_id = ?1
 AND id = ?2
 ORDER BY id
 `
@@ -441,6 +442,7 @@ func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConvers
 			&i.AbortPending,
 			&i.ArchivedAt,
 			&i.Cwd,
+			&i.ForkedFrom,
 		); err != nil {
 			return nil, err
 		}

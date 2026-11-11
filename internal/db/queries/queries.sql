@@ -32,12 +32,20 @@ VALUES (
     coalesce((
         SELECT c.channel_key FROM conversations c
         WHERE c.agent_id = @agent_id AND c.channel_key LIKE 'chat:%' AND c.archived_at IS NULL
+            AND c.forked_from IS NULL
             AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message')
         ORDER BY c.created_at DESC, c.id DESC LIMIT 1
     ), @channel_key),
     '', @created_at
 )
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
+RETURNING *;
+
+-- name: CreateFork :one
+-- A fork is a new Chat with the settings of its source. execution_id is NULL when the fork
+-- starts empty, so the first message creates the native conversation.
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ArchiveChat :exec
@@ -139,7 +147,7 @@ LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN tasks t ON t.conversation_id = c.id
 WHERE c.agent_id = ?
     AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
-    AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
+    AND (c.channel_key NOT LIKE 'chat:%' OR c.forked_from IS NOT NULL OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
     ))
 GROUP BY c.id
@@ -157,6 +165,9 @@ SELECT
     c.created_at,
     c.archived_at,
     c.execution_id,
+    c.forked_from,
+    f.title AS forked_from_title,
+    f.channel_key AS forked_from_key,
     CAST(max(
         c.created_at,
         coalesce(max(s.created_at), c.created_at),
@@ -169,6 +180,7 @@ SELECT
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN tasks t ON t.conversation_id = c.id
+LEFT JOIN conversations f ON f.id = c.forked_from
 WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id;
 

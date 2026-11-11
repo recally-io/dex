@@ -184,6 +184,7 @@ type item struct {
 	Title   string `json:"title"`
 	At      int64  `json:"at"`
 	ID      string `json:"id"`
+	EntryID int64  `json:"entryId"`
 	Text    string `json:"text"`
 	Queued  bool   `json:"queued"`
 	Steer   bool   `json:"steer"`

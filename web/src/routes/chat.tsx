@@ -2,8 +2,8 @@ import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useContext, useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { ArrowDown, Clock, Lock, Send } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ArrowDown, Clock, GitBranch, Lock, Send } from "lucide-react";
 import type { Attachment, UserItem, MessageInput, Chat as ChatInfo } from "../api/generated/types.gen";
 import {
   getChatOptions,
@@ -13,6 +13,7 @@ import {
   abortChatMutation,
   continueChatMutation,
   compactChatMutation,
+  forkChatMutation,
   withdrawMessageMutation,
   listModelsOptions,
   listChatsOptions,
@@ -27,11 +28,17 @@ import { useAttachments } from "../lib/attachments";
 import { activeSessionCount, markTaskSeen, sessionKind, taskTime } from "../lib/tasks";
 import { SessionSettings } from "../components/session-settings";
 import { TaskSessionBar } from "../components/agent/task-session-bar";
-import { Artifacts, takeArtifactDraft } from "../components/agent/artifacts";
+import { Artifacts } from "../components/agent/artifacts";
+import { chatDraftEvent, putChatDraft, takeChatDraft } from "../lib/chat-draft";
 import { Composer, type SendMode } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
 import { QuestionCard } from "../components/agent/question-card";
-import { RetryNotice, Transcript, type QueuedActions } from "../components/agent/transcript";
+import {
+  RetryNotice,
+  Transcript,
+  type MessageActions,
+  type QueuedActions,
+} from "../components/agent/transcript";
 import type { SlashCommand } from "../components/slash-commands";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
@@ -99,6 +106,34 @@ function TaskOrigin({ parentId }: { parentId: number }) {
         </span>
       </Badge>
     </Link>
+  );
+}
+
+function ForkOrigin({ origin }: { origin: NonNullable<ChatInfo["forkedFrom"]> }) {
+  const agentId = useAgentId();
+  const name = origin.main ? "Main" : origin.title || "a chat";
+
+  return (
+    <div className="flex items-start gap-2.5 rounded-md bg-muted px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground shadow-card">
+      <GitBranch className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+      <p>
+        Forked from{" "}
+        {origin.main ? (
+          <Link to="/a/$agentId" params={{ agentId }} className="font-medium text-foreground underline">
+            {name}
+          </Link>
+        ) : (
+          <Link
+            to="/a/$agentId/c/$chatId"
+            params={{ agentId, chatId: String(origin.id) }}
+            className="font-medium text-foreground underline"
+          >
+            {name}
+          </Link>
+        )}
+        . The original chat is unchanged. Files on disk are not rolled back.
+      </p>
+    </div>
   );
 }
 
@@ -198,16 +233,16 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const setDraft = main ? app.setComposerText : setLocalDraft;
 
   useEffect(() => {
-    function receiveArtifactDraft() {
-      const text = takeArtifactDraft(agentId, chatId);
+    function receiveDraft() {
+      const text = takeChatDraft(agentId, chatId);
 
       if (text) setDraft((prior) => (prior ? `${prior}\n\n${text}` : text));
     }
 
-    receiveArtifactDraft();
-    window.addEventListener("dex-artifact-draft", receiveArtifactDraft);
+    receiveDraft();
+    window.addEventListener(chatDraftEvent, receiveDraft);
 
-    return () => window.removeEventListener("dex-artifact-draft", receiveArtifactDraft);
+    return () => window.removeEventListener(chatDraftEvent, receiveDraft);
   }, [agentId, chatId, setDraft]);
 
   const embedded = useContext(InPaneContext);
@@ -312,7 +347,30 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const continueRun = useMutation({ ...continueChatMutation(), onSuccess: () => void refreshChats(agentId) });
   const compact = useMutation(compactChatMutation());
   const pending = send.isPending || abort.isPending || continueRun.isPending || compact.isPending;
-  const error = send.error ?? abort.error ?? continueRun.error ?? compact.error;
+  const navigate = useNavigate();
+  const fork = useMutation(forkChatMutation());
+
+  // A fork opens as its own Chat. Edit in new chat carries the message text, not its attachments.
+  const messageActions: MessageActions = {
+    pending: fork.isPending,
+    fork: (entryId, before, text) =>
+      fork.mutate(
+        { path: { agentId, chatId }, body: { entryId, before } },
+        {
+          onSuccess: async (created) => {
+            if (text) putChatDraft(agentId, created.chatId, text);
+
+            await refreshChats(agentId);
+            await navigate({
+              to: "/a/$agentId/c/$chatId",
+              params: { agentId, chatId: String(created.chatId) },
+            });
+          },
+        },
+      ),
+  };
+
+  const error = send.error ?? abort.error ?? continueRun.error ?? compact.error ?? fork.error;
   const empty = !hasContext(items);
 
   const commands: SlashCommand[] = [
@@ -555,6 +613,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
             </div>
           </div>
         ) : null}
+        {chat.data?.forkedFrom ? <ForkOrigin origin={chat.data.forkedFrom} /> : null}
         <LoadEarlierButton
           chatId={chatId}
           before={state.historyBefore}
@@ -575,6 +634,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           canRetry={!readOnly && !reason && !pending}
           memory={memory}
           queuedActions={readOnly ? undefined : queuedActions}
+          messageActions={readOnly ? undefined : messageActions}
         />
         <Artifacts
           chatId={chatId}

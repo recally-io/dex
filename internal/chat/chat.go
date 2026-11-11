@@ -46,6 +46,8 @@ type Chat struct {
 	ExecutionID int64
 	// Question is the question that waits for the user, or whose answer waits in the queue.
 	Question *Question
+	// ForkedFrom is the source of a fork. Get sets it; list rows leave it nil.
+	ForkedFrom *Origin
 }
 
 // Settings are the settings that one chat overrides. An empty field follows the agent's setting.
@@ -456,7 +458,15 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 		Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 		Writable: acceptsInput(r.ChannelKey, r.TaskStatus), ExecutionID: r.ExecutionID.Int64, Question: question,
+		ForkedFrom: forkOrigin(r),
 	}, nil
+}
+
+func forkOrigin(r sqlc.GetChatRow) *Origin {
+	if !r.ForkedFrom.Valid {
+		return nil
+	}
+	return &Origin{ID: r.ForkedFrom.Int64, Title: r.ForkedFromTitle.String, Main: r.ForkedFromKey.String == MainKey}
 }
 
 // admit crosses the durable admission boundary with a stable request ID.
