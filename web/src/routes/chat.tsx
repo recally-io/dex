@@ -42,7 +42,7 @@ import {
 import type { SlashCommand } from "../components/slash-commands";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
-import { InPaneContext, MainPane, Note, PageHeader } from "../components/page";
+import { ChatSettingsContext, InPaneContext, MainPane, Note, PageHeader } from "../components/page";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { cn, newId } from "../lib/utils";
@@ -246,6 +246,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   }, [agentId, chatId, setDraft]);
 
   const embedded = useContext(InPaneContext);
+  const settingsOpen = useContext(ChatSettingsContext);
   const [jump, setJump] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const clear = useClearContext(chatId, state.running, () => setAnnouncement("Context cleared."));
@@ -673,28 +674,41 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           embedded ? "min-h-0" : "lg:border-l lg:border-border",
         )}
       >
-        {/* The bot pane names Main. A Chat keeps a title for focus and screen readers. Both show
-            their project and model; a Chat switches in the Chats sidebar. */}
+        {/* The bot pane names Main. A Chat keeps a title for focus and screen readers. The
+            project, model and thinking level show only after Chat settings in the bot header. */}
         {chat.data && switchable ? (
-          chat.data.main ? (
-            <header className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-4 py-2">
-              <p className="min-w-0 basis-56 flex-1 text-[12px] text-muted-foreground">
-                Changes apply from the next message, including channel messages.
-              </p>
-              <div className="min-w-0 max-w-full">
-                <SessionSettings chat={chat.data} settings={settings} />
+          <>
+            {chat.data.main ? null : (
+              <header className="flex min-w-0 items-center gap-3 border-b border-border px-4 py-2">
+                <h1 id="page-title" tabIndex={-1} className="min-w-0 flex-1 truncate text-sm font-medium">
+                  {chat.data.title || "New chat"}
+                </h1>
+                <Link
+                  to="/a/$agentId"
+                  params={{ agentId }}
+                  className="shrink-0 text-[12.5px] text-muted-foreground hover:text-foreground hover:underline"
+                >
+                  Back to Main
+                </Link>
+              </header>
+            )}
+            {settingsOpen ? (
+              <div
+                role="region"
+                aria-label="Chat settings"
+                className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-muted/40 px-4 py-1.5"
+              >
+                <p className="min-w-0 basis-56 flex-1 text-[12px] text-muted-foreground">
+                  {chat.data.main
+                    ? "Changes apply from the next message, including channel messages."
+                    : "Changes apply from the next message in this chat."}
+                </p>
+                <div className="min-w-0 max-w-full">
+                  <SessionSettings chat={chat.data} settings={settings} />
+                </div>
               </div>
-            </header>
-          ) : (
-            <header className="flex min-w-0 items-center justify-between gap-3 border-b border-border px-4 py-2">
-              <h1 id="page-title" tabIndex={-1} className="truncate text-sm font-medium">
-                {chat.data.title || "New chat"}
-              </h1>
-              <div className="min-w-0 max-w-3/4">
-                <SessionSettings chat={chat.data} settings={settings} />
-              </div>
-            </header>
-          )
+            ) : null}
+          </>
         ) : (
           <PageHeader
             heading

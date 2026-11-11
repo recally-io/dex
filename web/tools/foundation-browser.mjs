@@ -384,13 +384,15 @@ async function projectEvidence(theme, size) {
   };
 }
 async function composerEvidence(theme) {
-  const chatsToggle = `document.querySelector('button[aria-label="Chats"]')`;
-  await waitFor("Chats toggle", () => evaluate(`!!${chatsToggle}`));
-  await evaluate(`${chatsToggle}?.focus()`);
+  const sessionsToggle = `document.querySelector('header button[aria-label^="Sessions"]')`;
+  await waitFor("Sessions toggle", () => evaluate(`!!${sessionsToggle}`));
+  await evaluate(`${sessionsToggle}?.focus()`);
   await press("Enter", "Enter", 13, "\\r");
-  if (!(await evaluate(`!!document.querySelector('aside[aria-label="Chats"]')`)))
-    await evaluate(`${chatsToggle}?.click()`);
-  await waitFor("Chats sidebar", () => evaluate(`!!document.querySelector('aside[aria-label="Chats"]')`));
+  if (!(await evaluate(`!!document.querySelector('aside[aria-label="Sessions"]')`)))
+    await evaluate(`${sessionsToggle}?.click()`);
+  await waitFor("Sessions sidebar", () =>
+    evaluate(`!!document.querySelector('aside[aria-label="Sessions"]')`),
+  );
   const textarea = `document.querySelector('textarea[aria-label^="Message"]')`;
   await evaluate(`${textarea}?.focus()`);
   await typeText("draft survives sidebar switch");

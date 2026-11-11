@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -35,8 +35,8 @@ import { useHandled } from "../../lib/handled";
 import { needsItems, needsTask, workOptions } from "../../lib/work";
 import { cn } from "../../lib/utils";
 import { sidePanel } from "../page";
+import { ChatSection } from "../chat-list";
 import { Button } from "../ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
 function statusIcon(task: TaskSummary, className: string) {
   const bucket = taskBucket(task);
@@ -197,7 +197,25 @@ function TaskRow({
   );
 }
 
-export function TaskSummaryButton({
+/** The counts that the Sessions button shows: what needs the user, and what runs now. */
+function useSessionCounts(tasks: TaskSummary[]) {
+  const agentId = useAgentId();
+  const work = useQuery(workOptions());
+  const needs = needsItems(agentId, work.data);
+  const open = tasks.filter((task) => task.handledAt === undefined);
+
+  return {
+    needs:
+      open.filter((task) => taskBucket(task) === "needs-you").length +
+      needs.questions.length +
+      needs.results.length +
+      needs.setup.length,
+    running: open.filter((task) => ["running", "queued"].includes(taskBucket(task))).length,
+  };
+}
+
+/** Opens the Sessions panel. Its counts tell what needs the user and what the bot runs now. */
+export function SessionsButton({
   tasks,
   open,
   onClick,
@@ -206,81 +224,58 @@ export function TaskSummaryButton({
   open: boolean;
   onClick: () => void;
 }) {
-  const agentId = useAgentId();
-  const seen = readSeen(agentId);
-  const work = useQuery(workOptions());
-  const needs = needsItems(agentId, work.data);
-  const otherNeeds = needs.questions.length + needs.results.length + needs.setup.length;
+  const counts = useSessionCounts(tasks);
 
-  const visibleTasks = tasks.filter(
-    (task) => task.handledAt === undefined && (taskBucket(task) !== "done" || !seen[task.id]),
-  );
-
-  const counts = visibleTasks.reduce(
-    (result, task) => {
-      result[taskBucket(task)] += 1;
-
-      return result;
-    },
-    { "needs-you": otherNeeds, running: 0, queued: 0, done: 0 },
-  );
-
-  // With nothing to report, the button still opens the panel and its link to every session.
-  if (!visibleTasks.length && !otherNeeds)
-    return (
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Background tasks"
-        aria-pressed={open}
-        title="Background tasks"
-        onClick={onClick}
-        className="text-muted-foreground"
-      >
-        <ListTodo size={17} />
-      </Button>
-    );
+  const label = [
+    "Sessions",
+    counts.needs ? `${counts.needs} need you` : "",
+    counts.running ? `${counts.running} running` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label="Background tasks"
-              aria-pressed={open}
-              onClick={onClick}
-              className="flex h-7 items-center gap-2 rounded-full border border-border px-2.5 text-[11.5px] hover:border-ring"
-            />
-          }
-        >
-          {/* Each count sits next to its own icon. */}
-          {(
-            [
-              ["running", CircleDot, "text-primary"],
-              ["queued", Clock3, "text-muted-foreground"],
-              ["needs-you", CircleAlert, "text-orange"],
-              ["done", Check, "text-green"],
-            ] as const
-          ).map(([bucket, Icon, color]) =>
-            counts[bucket] ? (
-              <span key={bucket} className="flex items-center gap-1">
-                <Icon className={`size-3.5 ${color}`} />
-                {counts[bucket]}
-              </span>
-            ) : null,
-          )}
-        </TooltipTrigger>
-        <TooltipContent>Background tasks</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={open}
+      title={label}
+      onClick={onClick}
+      className="flex h-8 items-center gap-2 rounded-full border border-border px-2.5 text-[12.5px] font-medium hover:border-ring aria-pressed:bg-accent"
+    >
+      <ListTodo className="size-4 sm:hidden" aria-hidden />
+      <span className="max-sm:hidden">Sessions</span>
+      {counts.needs ? (
+        <span className="flex items-center gap-1 tabular-nums">
+          <span aria-hidden className="size-1.5 rounded-full bg-orange" />
+          {counts.needs}
+        </span>
+      ) : null}
+      {counts.running ? (
+        <span className="flex items-center gap-1 tabular-nums">
+          <span aria-hidden className="size-1.5 rounded-full bg-primary" />
+          {counts.running}
+        </span>
+      ) : null}
+    </button>
   );
 }
 
-export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => void }) {
-  const { chats, open, onClose } = props;
+function Heading({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="flex h-7 items-center px-3 pt-2">
+      <h2 className="min-w-0 flex-1 text-[11.5px] font-medium text-muted-foreground">{children}</h2>
+      {action}
+    </div>
+  );
+}
+
+/**
+ * Everything the bot manages besides Main: what needs the user, the tasks that run, the Chats and
+ * the finished tasks. Desktop shows it as a right sidebar, a phone as a full-screen sheet.
+ */
+export function SessionsPanel(props: { chats: Chat[]; chatId: number; open: boolean; onClose: () => void }) {
+  const { chats, chatId, open, onClose } = props;
   const agentId = useAgentId();
   const [expanded, setExpanded] = useState<string | undefined>();
   const [doneOpen, setDoneOpen] = useState(false);
@@ -298,16 +293,11 @@ export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => 
   const seen = readSeen(agentId);
   const ordered = orderTasks(tasks, now);
   const handleable = tasks.filter(needsTask);
-  const active = ordered.filter((task) => taskBucket(task, now) !== "done");
+  const needsTasks = ordered.filter((task) => taskBucket(task, now) === "needs-you");
+  const running = ordered.filter((task) => ["running", "queued"].includes(taskBucket(task, now)));
   const done = ordered.filter((task) => taskBucket(task, now) === "done" && !seen[task.id]);
-
-  const grouped =
-    active.length > 6
-      ? groupTasksByChat(
-          active.filter((task) => taskBucket(task, now) !== "needs-you"),
-          chats,
-        )
-      : undefined;
+  const grouped = running.length > 6 ? groupTasksByChat(running, chats) : undefined;
+  const otherNeeds = needs.questions.length + needs.results.length + needs.setup.length;
 
   useEffect(() => {
     if (!open) return;
@@ -340,38 +330,47 @@ export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => 
   );
 
   return (
-    <aside aria-label="Background tasks" className={cn(sidePanel, "md:w-[340px]")}>
+    <aside aria-label="Sessions" className={cn(sidePanel, "md:w-[320px]")}>
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3 md:h-10">
-        <span className="flex-1 text-[14px] font-medium md:text-[12.5px]">Background tasks</span>
-        {handleable.length > 1 ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            disabled={handle.isPending}
-            onClick={() =>
-              handle.mutate(handleable.map((task) => ({ kind: "task", agentId, id: task.id, undo: false })))
-            }
-          >
-            Mark all handled
-          </Button>
-        ) : null}
+        <span className="flex-1 text-[14px] font-medium md:text-[12.5px]">Sessions</span>
         <Button
           type="button"
           variant="ghost"
           size="icon-xs"
-          aria-label="Close tasks"
+          aria-label="Close sessions"
           onClick={onClose}
           className="max-md:size-8"
         >
-          {/* A phone shows the panel as a full-screen sheet, which closes like the Chats sheet. */}
+          {/* A phone shows the panel as a full-screen sheet, which closes with an X. */}
           <X className="md:hidden" />
           <PanelRightClose className="max-md:hidden" />
         </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto py-1">
-        {needs.questions.length || needs.results.length || needs.setup.length ? (
-          <section aria-label="Needs you" className="border-b border-border pb-1">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+        {otherNeeds || needsTasks.length ? (
+          <section aria-label="Needs you" className="pb-1">
+            <Heading
+              action={
+                handleable.length > 1 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    disabled={handle.isPending}
+                    className="-mr-1 text-[12px]"
+                    onClick={() =>
+                      handle.mutate(
+                        handleable.map((task) => ({ kind: "task", agentId, id: task.id, undo: false })),
+                      )
+                    }
+                  >
+                    Mark all handled
+                  </Button>
+                ) : null
+              }
+            >
+              Needs you
+            </Heading>
             {needs.questions.map((chat) => (
               <NeedRow
                 key={`question-${chat.id}`}
@@ -407,42 +406,39 @@ export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => 
                 detail="Routine needs an available model"
               />
             ))}
+            {needsTasks.map(row)}
+            {handle.isError ? (
+              <p className="px-3 py-2 text-[12px] text-destructive">Could not mark the tasks handled.</p>
+            ) : null}
           </section>
         ) : null}
-        {ordered.filter((task) => taskBucket(task, now) === "needs-you").map(row)}
-        {ordered.some((task) => taskBucket(task, now) === "needs-you") && active.length ? (
-          <div className="mx-3 mt-2 border-t border-border" />
+        {running.length ? (
+          <section aria-label="Running">
+            <Heading>Running</Heading>
+            {grouped
+              ? [...grouped].map(([title, group]) => (
+                  <section key={title}>
+                    <div className="px-3 pt-2 pb-1 text-[11px] font-medium">{title}</div>
+                    {group.map(row)}
+                  </section>
+                ))
+              : running.map(row)}
+          </section>
         ) : null}
-        {grouped
-          ? [...grouped].map(([title, group]) => (
-              <section key={title}>
-                <div className="px-3 pt-2 pb-1 text-[11px] font-medium">{title}</div>
-                {group.map(row)}
-              </section>
-            ))
-          : active.filter((task) => taskBucket(task, now) !== "needs-you").map(row)}
+        <ChatSection chatId={chatId} />
         {done.length ? (
-          <>
+          <section aria-label="Completed">
             <button
               type="button"
-              className="flex w-full items-center gap-1 border-t border-border px-3 py-2 text-left text-[11px] text-muted-foreground"
+              aria-expanded={doneOpen}
+              className="flex h-9 w-full items-center gap-1 px-3 text-left text-[11.5px] font-medium text-muted-foreground hover:text-foreground"
               onClick={() => setDoneOpen(!doneOpen)}
             >
-              {doneOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}{" "}
+              {doneOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
               Completed · {done.length}
             </button>
             {doneOpen ? done.map(row) : null}
-          </>
-        ) : null}
-        {!active.length &&
-        !done.length &&
-        !needs.questions.length &&
-        !needs.results.length &&
-        !needs.setup.length ? (
-          <p className="px-3 py-4 text-[12px] text-muted-foreground">No background tasks.</p>
-        ) : null}
-        {handle.isError ? (
-          <p className="px-3 py-2 text-[12px] text-destructive">Could not mark the tasks handled.</p>
+          </section>
         ) : null}
       </div>
       <Link

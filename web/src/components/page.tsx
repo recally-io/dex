@@ -97,6 +97,12 @@ export const sidePanel =
   "fixed inset-0 z-40 flex flex-col bg-background md:static md:z-auto md:shrink-0 md:border-l md:border-border";
 
 /** True inside the bot pane, which already draws the frame and the drawer button. */
+/**
+ * The model, thinking level and project of the open chat change seldom, so their row shows only
+ * after the bot header's Chat settings button asks for it. The chat page renders the row.
+ */
+export const ChatSettingsContext = createContext(false);
+
 export const InPaneContext = createContext(false);
 
 /** The rounded main pane. Below lg it has a small bar with the drawer button. */

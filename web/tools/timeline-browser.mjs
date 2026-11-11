@@ -167,8 +167,8 @@ try {
   );
   await shot("01-empty");
   await check(
-    "main has no Sessions tab and offers a new chat",
-    "!document.querySelector('header nav a[data-tab=\"Sessions\"]') && !!document.querySelector('header button[aria-label=\"New chat\"]')",
+    "main has no Sessions tab, and its header has Chat settings and the Sessions button",
+    "!document.querySelector('header nav a[data-tab=\"Sessions\"]') && !!document.querySelector('header button[aria-label^=\"Sessions\"]') && !!document.querySelector('header button[aria-label^=\"Chat settings\"]') && !document.querySelector('[role=region][aria-label=\"Chat settings\"]')",
   );
   const main = await api("/api/agents/default/chats/main");
   await visit("/a/default/sessions");
@@ -962,13 +962,13 @@ try {
       !/active|channels? on|Idle/.test(document.querySelector('aside[aria-label="Bots"] a[href="/a/default"]').innerText)`,
   );
   // Every orange dot has a place to act on it: the task panel lists the failed run.
-  await tap('header button[aria-label="Background tasks"]');
+  await tap('header button[aria-label^="Sessions"]');
   await ui(
     "the task panel lists a failed routine run under Needs you",
     `[...document.querySelectorAll('section[aria-label="Needs you"] a[href^="/inbox/"]')].some(a => a.textContent.includes('Daily review') && a.textContent.includes('Routine run failed'))`,
   );
-  await tap('button[aria-label="Close tasks"]');
-  await ui("task panel closed", `!document.querySelector('aside[aria-label="Background tasks"]')`);
+  await tap('button[aria-label="Close sessions"]');
+  await ui("Sessions panel closed", `!document.querySelector('aside[aria-label="Sessions"]')`);
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').dataset.probe = 'kept'");
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').focus()");
   await call("Input.insertText", { text: "unsent words" });
@@ -1036,21 +1036,35 @@ try {
 
   // Session controls follow the bot model when there is no session override.
   const chosen = (await api("/api/agents/default")).modelId;
+  const settingsRow = '[role="region"][aria-label="Chat settings"]';
+
+  const openChatSettings = async () => {
+    await ui(
+      "Chat settings button",
+      `!!document.querySelector('header button[aria-label^="Chat settings"]')`,
+    );
+    await tap('header button[aria-label^="Chat settings"]');
+    await ui("Chat settings row", `!!document.querySelector('${settingsRow}')`);
+  };
+
+  await openChatSettings();
   await ui(
-    "the session header shows the model",
-    `document.querySelector('header button[aria-label="Set model"]:not([inert] *)')?.innerText.includes(${JSON.stringify(chosen)})`,
+    "the Chat settings row shows the model",
+    `document.querySelector('${settingsRow} button[aria-label="Set model"]')?.innerText.includes(${JSON.stringify(chosen)}) && document.querySelector('${settingsRow}').innerText.includes('including channel messages')`,
   );
   await model("think");
   await visit("/a/default");
+  await openChatSettings();
   await ui(
     "a reasoning model adds the session thinking control",
-    `document.querySelector('header [aria-label="Set thinking level"]:not([inert] *)')?.innerText.trim().length > 0`,
+    `document.querySelector('${settingsRow} [aria-label="Set thinking level"]')?.innerText.trim().length > 0`,
   );
   await model(chosen);
   await visit("/a/default");
+  await openChatSettings();
   await ui(
     "a model without reasoning leaves the thinking level out",
-    `!document.querySelector('header [aria-label="Set thinking level"]:not([inert] *)')`,
+    `!document.querySelector('${settingsRow} [aria-label="Set thinking level"]')`,
   );
 
   // Instructions is a Settings page; client-side navigation keeps drafts alive.
@@ -1466,7 +1480,12 @@ try {
   const lastAgentPath = `/a/${connectionAgents.at(-1).id}`;
 
   // A full page navigation would close the streams and hide a connection leak.
-  await tap('header button[aria-label="New chat"]:not([inert] *)');
+  await tap('header button[aria-label^="Sessions"]:not([inert] *)');
+  await ui(
+    "Sessions panel open",
+    `!!document.querySelector('aside[aria-label="Sessions"] section[aria-label="Chats"]')`,
+  );
+  await click("New chat");
   await ui(
     "New session works after seven agent switches",
     `location.pathname.startsWith('${lastAgentPath}/c/') && document.querySelector('#page-title')?.textContent === 'New chat'`,

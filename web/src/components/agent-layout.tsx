@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import {
   getChatOptions,
+  getMainChatOptions,
   listAgentsOptions,
   listChatsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
@@ -13,14 +14,13 @@ import { instructionsDirty } from "../lib/instructions";
 import { sessionKind } from "../lib/tasks";
 import { useApp } from "../lib/app-state";
 import { MainTimeline } from "../routes/chat";
-import { MessageCirclePlus, PanelRight } from "lucide-react";
-import { ChatList, useNewChat } from "./chat-list";
-import { TaskPanel, TaskSummaryButton } from "./agent/task-panel";
+import { SlidersHorizontal } from "lucide-react";
+import { SessionsPanel, SessionsButton } from "./agent/sessions-panel";
 import { IconButton } from "./icon-button";
 import { AgentAvatar } from "./agent-avatar";
 import { Failure, Loading } from "./feedback";
 import { Badge } from "./ui/badge";
-import { InPaneContext, MainPane, PageHeader } from "./page";
+import { ChatSettingsContext, InPaneContext, MainPane, PageHeader } from "./page";
 import { cn } from "../lib/utils";
 
 /** The first path segment of each agent tab, with the segments of the pages that open from it. */
@@ -47,26 +47,21 @@ const tabs: AgentTab[] = [
   },
 ];
 
-const chatsKey = "dex-chats";
+const sessionsKey = "dex-sessions-panel";
 
-/** Below md the side panels cover the page, so they start closed and close on navigation. */
+/** Below md the side panel covers the page, so it starts closed and closes on navigation. */
 const narrow = () => window.matchMedia("(max-width: 767px)").matches;
 
-/** The right Chats sidebar starts closed. The choice stays in this browser. */
-function useChatsOpen() {
-  const [open, setOpen] = useState(() => !narrow() && localStorage.getItem(chatsKey) === "open");
+/** The Sessions sidebar starts closed. The choice stays in this browser. */
+function useSessionsOpen() {
+  const [open, setOpen] = useState(() => !narrow() && localStorage.getItem(sessionsKey) === "open");
 
-  function toggle() {
-    localStorage.setItem(chatsKey, open ? "closed" : "open");
-    setOpen(!open);
+  function set(next: boolean) {
+    localStorage.setItem(sessionsKey, next ? "open" : "closed");
+    setOpen(next);
   }
 
-  function close() {
-    localStorage.setItem(chatsKey, "closed");
-    setOpen(false);
-  }
-
-  return [open, toggle, close] as const;
+  return [open, set] as const;
 }
 
 /** Activity reads the bot list cache. Shell owns its polling interval. */
@@ -151,6 +146,10 @@ function AgentPane({ settings }: { settings: Settings }) {
   });
 
   const chats = useQuery({ ...listChatsOptions({ path: { agentId } }) });
+  const main = useQuery({ ...getMainChatOptions({ path: { agentId } }), enabled: openChat === 0 });
+  const shown = openChat > 0 ? chat.data : main.data;
+  // A dot on the button tells that the open chat does not simply follow the bot.
+  const ownSettings = !!shown && !!(shown.cwd || shown.settings.modelId || shown.settings.thinkingLevel);
 
   const webChat = chat.data ? sessionKind(chat.data) === "Chat" : false;
 
@@ -162,37 +161,16 @@ function AgentPane({ settings }: { settings: Settings }) {
         : tabs.find((tab) => tab.segments.includes(segment));
 
   const onChatTab = current === tabs[0];
-  const [chatsOpen, toggleChats, closeChats] = useChatsOpen();
-
-  const [tasksOpen, setTasksOpen] = useState(
-    () => !narrow() && localStorage.getItem(`dex-task-panel:${agentId}`) === "open",
-  );
-
+  const [sessionsOpen, setSessionsOpen] = useSessionsOpen();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelPath, setPanelPath] = useState(path);
 
   if (panelPath !== path) {
     setPanelPath(path);
 
-    if (narrow()) {
-      setTasksOpen(false);
-      closeChats();
-    }
+    if (narrow() && sessionsOpen) setSessionsOpen(false);
   }
 
-  const toggleTasks = () => {
-    const next = !tasksOpen;
-    localStorage.setItem(`dex-task-panel:${agentId}`, next ? "open" : "closed");
-    setTasksOpen(next);
-
-    if (next) closeChats();
-  };
-
-  const closeTasks = () => {
-    localStorage.setItem(`dex-task-panel:${agentId}`, "closed");
-    setTasksOpen(false);
-  };
-
-  const newChat = useNewChat();
   const { draft } = useApp();
   const dirty = instructionsDirty(draft, settings.agent.instructions);
   const activity = useAgentActivity();
@@ -286,43 +264,47 @@ function AgentPane({ settings }: { settings: Settings }) {
           actions={
             onChatTab ? (
               <>
-                <TaskSummaryButton
+                {segment === "tasks" ? null : (
+                  <IconButton
+                    label={ownSettings ? "Chat settings, changed for this chat" : "Chat settings"}
+                    aria-pressed={settingsOpen}
+                    onClick={() => setSettingsOpen(!settingsOpen)}
+                    className="relative"
+                  >
+                    <SlidersHorizontal size={16} />
+                    {ownSettings ? (
+                      <span
+                        aria-hidden
+                        className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary"
+                      />
+                    ) : null}
+                  </IconButton>
+                )}
+                <SessionsButton
                   tasks={(chats.data?.chats ?? []).flatMap((item) => (item.task ? [item.task] : []))}
-                  open={tasksOpen}
-                  onClick={toggleTasks}
+                  open={sessionsOpen}
+                  onClick={() => setSessionsOpen(!sessionsOpen)}
                 />
-                <IconButton
-                  label="New chat"
-                  disabled={newChat.isPending}
-                  onClick={() => newChat.mutate({ path: { agentId } })}
-                >
-                  <MessageCirclePlus size={17} />
-                </IconButton>
-                <IconButton
-                  label="Chats"
-                  aria-pressed={chatsOpen}
-                  onClick={() => {
-                    toggleChats();
-
-                    if (!chatsOpen) closeTasks();
-                  }}
-                >
-                  <PanelRight size={17} />
-                </IconButton>
               </>
             ) : null
           }
         />
         <div className="flex min-h-0 flex-1">
           <div className="flex min-w-0 flex-1 flex-col">
-            <div inert={!onMain} className={cn("min-h-0 flex-1 flex-col", onMain ? "flex" : "hidden")}>
-              <MainTimeline settings={settings} />
-            </div>
-            {!onMain ? <Outlet /> : null}
+            <ChatSettingsContext.Provider value={settingsOpen}>
+              <div inert={!onMain} className={cn("min-h-0 flex-1 flex-col", onMain ? "flex" : "hidden")}>
+                <MainTimeline settings={settings} />
+              </div>
+              {!onMain ? <Outlet /> : null}
+            </ChatSettingsContext.Provider>
           </div>
-          {onChatTab && chatsOpen ? <ChatList chatId={openChat} onClose={closeChats} /> : null}
           {onChatTab ? (
-            <TaskPanel chats={chats.data?.chats ?? []} open={tasksOpen} onClose={closeTasks} />
+            <SessionsPanel
+              chats={chats.data?.chats ?? []}
+              chatId={openChat}
+              open={sessionsOpen}
+              onClose={() => setSessionsOpen(false)}
+            />
           ) : null}
         </div>
       </section>
