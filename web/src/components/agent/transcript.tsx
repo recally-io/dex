@@ -7,6 +7,8 @@ import {
   CornerDownLeft,
   CornerDownRight,
   FileText,
+  GitBranch,
+  SquarePen,
 } from "lucide-react";
 import { useAgentId } from "../../lib/agent-scope";
 import { useEffect, useState, type ReactNode } from "react";
@@ -388,23 +390,46 @@ function ThinkingStep({ text, live }: { text: string; live: boolean }) {
   );
 }
 
-function CopyText({ text }: { text: string }) {
-  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
-
+function MessageAction({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
   return (
     <button
       type="button"
-      aria-label="Copy answer"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="grid size-7 shrink-0 place-items-center rounded-[6px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+    >
+      {children}
+    </button>
+  );
+}
+
+function CopyText({ text, label }: { text: string; label: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+
+  return (
+    <MessageAction
+      label={state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : label}
       onClick={() => {
         void navigator.clipboard.writeText(text).then(
           () => setState("copied"),
           () => setState("failed"),
         );
       }}
-      className="rounded-[6px] px-1.5 py-0.5 font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
-      {state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : "Copy"}
-    </button>
+      {state === "copied" ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+    </MessageAction>
   );
 }
 
@@ -473,6 +498,12 @@ export function splitAnswer(text: string): { question: string; answer: string } 
 }
 
 /** Edit and Remove for messages that wait in the native queue. */
+/** Starts a new Chat from a message. before ends the copy just before the entry; text prefills the new composer. */
+export type MessageActions = {
+  pending: boolean;
+  fork: (entryId: number, before: boolean, text?: string) => void;
+};
+
 export type QueuedActions = {
   /** Item IDs that the live stream confirms as queued. A message that is only local cannot be withdrawn yet. */
   ids: ReadonlySet<string>;
@@ -578,12 +609,17 @@ export function TranscriptItem({
   retry,
   canRetry,
   queuedActions,
+  actions,
+  forkable = false,
 }: {
   item: Exclude<Item, { kind: "tool" }>;
   live: boolean;
   retry: () => void;
   canRetry: boolean;
   queuedActions?: QueuedActions;
+  actions?: MessageActions;
+  /** The answer waits for no tool result, so a fork can start after it. */
+  forkable?: boolean;
 }) {
   const agentId = useAgentId();
 
@@ -592,7 +628,7 @@ export function TranscriptItem({
       return <BoundaryItem item={item} />;
     case "user":
       return (
-        <div className="flex animate-[fade-up_300ms_var(--ease-out-strong)_both] flex-col items-end gap-1 pl-10 sm:pl-24">
+        <div className="group flex animate-[fade-up_300ms_var(--ease-out-strong)_both] flex-col items-end gap-1 pl-10 sm:pl-24">
           {entryName(item.origin) ? (
             <span data-origin={item.origin}>
               <Badge variant="secondary" className="h-5 px-2 text-[11.5px]">
@@ -651,6 +687,20 @@ export function TranscriptItem({
               ) : null}
             </span>
           ) : null}
+          {item.entryId && !item.queued && (item.text || actions) ? (
+            <footer className="flex h-7 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+              {item.text ? <CopyText text={item.text} label="Copy message" /> : null}
+              {actions ? (
+                <MessageAction
+                  label="Edit in new chat"
+                  disabled={actions.pending}
+                  onClick={() => actions.fork(item.entryId!, true, item.text)}
+                >
+                  <SquarePen size={14} aria-hidden />
+                </MessageAction>
+              ) : null}
+            </footer>
+          ) : null}
         </div>
       );
     case "task":
@@ -686,14 +736,23 @@ export function TranscriptItem({
           ) : (
             <Markdown text={item.text} />
           )}
-          <footer className="mt-1.5 flex h-7 items-center gap-3 text-[11.5px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+          <footer className="mt-1.5 flex h-7 items-center gap-1.5 text-[11.5px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
             {item.model ? <span className="min-w-0 truncate font-mono">{item.model}</span> : null}
             {item.usage ? (
               <span className="shrink-0 tabular-nums">
                 {item.usage.input.toLocaleString()} in · {item.usage.output.toLocaleString()} out
               </span>
             ) : null}
-            <CopyText text={item.text} />
+            {live ? null : <CopyText text={item.text} label="Copy answer" />}
+            {actions && item.entryId && forkable && !live ? (
+              <MessageAction
+                label="Fork from here"
+                disabled={actions.pending}
+                onClick={() => actions.fork(item.entryId!, false)}
+              >
+                <GitBranch size={14} aria-hidden />
+              </MessageAction>
+            ) : null}
           </footer>
         </article>
       );
@@ -755,6 +814,7 @@ export function Transcript({
   canRetry,
   memory,
   queuedActions,
+  messageActions,
 }: {
   items: Item[];
   running: boolean;
@@ -762,7 +822,14 @@ export function Transcript({
   canRetry: boolean;
   memory?: string;
   queuedActions?: QueuedActions;
+  messageActions?: MessageActions;
 }) {
+  // An answer that called tools shares its entry with the tool items. A fork after it would copy
+  // calls whose results never come.
+  const withTools = new Set(
+    items.flatMap((item) => (item.kind === "tool" && item.entryId ? [item.entryId] : [])),
+  );
+
   function content(block: ContentBlock) {
     return block.kind === "tools" ? (
       <ToolStep key={block.key} tools={block.tools} memory={memory} />
@@ -774,6 +841,8 @@ export function Transcript({
         retry={() => retry(block.index)}
         canRetry={canRetry && retryable(items, block.index)}
         queuedActions={queuedActions}
+        actions={messageActions}
+        forkable={!!block.item.entryId && !withTools.has(block.item.entryId)}
       />
     );
   }

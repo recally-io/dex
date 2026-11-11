@@ -408,6 +408,70 @@ func (a *Agents) Create(ctx context.Context, agentID string, options Options) (R
 	return Ref{AgentID: agentID, ID: int64(conversation.Id())}, nil
 }
 
+// Fork copies the committed history of ref into a new native conversation, which keeps the
+// source's configuration until the next admission configures it. Without before, the copy ends
+// at entryID, which must be an answer that waits for no tool result. With before, the copy ends
+// just before entryID; ok is false when nothing comes before it.
+func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool) (forked Ref, ok bool, err error) {
+	if err := a.begin(); err != nil {
+		return Ref{}, false, err
+	}
+	defer a.end()
+	conversation, err := a.conversation(ctx, ref)
+	if err != nil {
+		return Ref{}, false, err
+	}
+	// Entries lists the history newest first, so the first entry up to an ID is that entry when
+	// the conversation can see it.
+	latest := func(id int64) (*durable.EntryRecord, error) {
+		page, err := conversation.Entries(ctx, durable.EntryQuery{MaxEntryId: new(durable.EntryId(id))}, 1, nil)
+		if err != nil || len(page.Items) == 0 {
+			return nil, err
+		}
+		return &page.Items[0], nil
+	}
+	entry, err := latest(entryID)
+	if err != nil {
+		return Ref{}, false, err
+	}
+	if entry == nil || int64(entry.Id) != entryID {
+		return Ref{}, false, fmt.Errorf("%w: entry %d is not in this chat", ErrInvalidInput, entryID)
+	}
+	at := entry.Id
+	if before {
+		previous, err := latest(entryID - 1)
+		if err != nil || previous == nil {
+			return Ref{}, false, err
+		}
+		at = previous.Id
+	} else if !finishedAnswer(*entry) {
+		return Ref{}, false, fmt.Errorf("%w: a fork must start from a finished answer", ErrInvalidInput)
+	}
+	copied, err := conversation.Fork(ctx, at, harness.ConversationCreateOptions{Ownership: durable.ConversationOwnership{Kind: durable.ConversationOwnerless}})
+	if err != nil {
+		return Ref{}, false, err
+	}
+	return Ref{AgentID: ref.AgentID, ID: int64(copied.Id())}, true, nil
+}
+
+// finishedAnswer reports an assistant message without tool calls. A fork after a tool call would
+// copy a call whose result never comes.
+func finishedAnswer(entry durable.EntryRecord) bool {
+	if len(entry.Model) != 1 {
+		return false
+	}
+	answer, ok := entry.Model[0].(ai.AssistantMessage)
+	if !ok {
+		return false
+	}
+	for _, block := range answer.Content {
+		if _, ok := block.(ai.ToolCall); ok {
+			return false
+		}
+	}
+	return true
+}
+
 func (a *Agents) checkIdle(ctx context.Context, conversation harness.Conversation) error {
 	_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
 		live, err := durable.TxDoc[harness.LiveState](tx, harness.LiveDoc, conversation.Id())

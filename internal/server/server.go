@@ -290,6 +290,9 @@ func chatView(c chat.Chat) api.Chat {
 	if c.ArchivedAt != 0 {
 		out.ArchivedAt = &c.ArchivedAt
 	}
+	if o := c.ForkedFrom; o != nil {
+		out.ForkedFrom = &api.ChatOrigin{Id: o.ID, Title: o.Title, Main: o.Main}
+	}
 	if q := c.Question; q != nil {
 		out.Question = &api.ChatQuestion{Id: q.ID, Text: q.Text, Options: q.Options, Status: api.ChatQuestionStatus(q.Status)}
 		if q.Answer != "" {
@@ -807,6 +810,20 @@ func (h *handler) CompactChat(ctx context.Context, req api.CompactChatRequestObj
 		return nil, err
 	}
 	return api.CompactChat202Response{}, nil
+}
+
+func (h *handler) ForkChat(ctx context.Context, req api.ForkChatRequestObject) (api.ForkChatResponseObject, error) {
+	if req.Body == nil || req.Body.EntryId <= 0 {
+		return nil, errInvalid
+	}
+	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+		return nil, err
+	}
+	fork, err := h.Chats.Fork(ctx, agentID(ctx), req.ChatId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before)
+	if err != nil {
+		return nil, err
+	}
+	return api.ForkChat201JSONResponse{ChatId: fork.ID}, nil
 }
 
 func (h *handler) ContinueChat(ctx context.Context, req api.ContinueChatRequestObject) (api.ContinueChatResponseObject, error) {

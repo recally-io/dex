@@ -172,7 +172,13 @@ sets the title. Chat defaults to the bot's model settings and uses its instructi
 A saved session model or thinking level override applies from the next input.
 Chat does not read the main timeline's context. A task started in Chat returns
 its result to that Chat. `/clear`, `/compact`, Stop and earlier messages work within
-the selected session. Other sessions cannot enable its Stop. Task conversations are
+the selected session. Other sessions cannot enable its Stop.
+Each finished answer shows Copy and, when it waits for no tool result, Fork
+from here. Each sent message shows Copy and Edit in new chat, which opens a fork
+that ends before the message and puts the message text, without attachments,
+in the composer. A fork is a new Chat with the source's model, thinking level
+and project. It does not run until the user sends a message, and it names its
+source. The source stays unchanged, and files on disk are not rolled back. Task conversations are
 read-only while queued or running. After the task ends, the user can send messages
 and change the conversation's model and project. The original task record, report,
 and parent result stay unchanged. Automation transcripts stay read-only.
