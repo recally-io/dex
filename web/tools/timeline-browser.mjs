@@ -1415,6 +1415,35 @@ try {
     "!document.body.innerText.includes('The change applies automatically')",
   );
 
+  // A value that looks like a pasted assignment is saved with a warning and a hint badge.
+  const pastedKey = "PASTED_LINE_DEMO_KEY";
+  const pastedValue = "NAME_ONE=https://proxy.example PASTED_LINE_DEMO_KEY=browser-pasted-fake";
+  await tap('input[name="key"]');
+  // The key field still holds the replaced key; select it so that the typed text replaces it.
+  await evaluate("document.querySelector('input[name=\"key\"]').select()");
+  await call("Input.insertText", { text: pastedKey });
+  await tap('input[name="value"]');
+  await call("Input.insertText", { text: pastedValue });
+  await click("Save key");
+  const pastedRow = `[data-env-key="${pastedKey}"][data-env-scope="agent"]`;
+  await ui(
+    "pasted assignment warned",
+    `!!document.querySelector('[data-env-warning="${pastedKey}"]') && !!document.querySelector('${pastedRow} [data-env-hint="assignment"]') && document.querySelector('[data-env-warning]').innerText.includes('NAME=')`,
+  );
+  await check(
+    "pasted value stays out of page text",
+    `!document.body.innerText.includes('browser-pasted-fake') && !document.body.innerText.includes('proxy.example')`,
+  );
+  assert.ok(
+    (await readFile(join(data, "agents", second.id, ".agents", ".env"), "utf8")).includes(pastedValue),
+  );
+  await shot("13j-pasted-assignment-warning");
+  await tap(`${pastedRow} button:last-child`);
+  await ui(
+    "pasted key deleted",
+    `!document.querySelector('${pastedRow}') && !document.querySelector('[data-env-warning]')`,
+  );
+
   // The global page writes the dex file and names no bot.
   await tap('main a[href="/environment"]');
   await ui(
@@ -1444,7 +1473,9 @@ try {
   );
   const secretLog = await readFile(join(artifacts, "browser-app.log"), "utf8");
   assert.ok(
-    !secretLog.includes(secretValue) && !secretLog.includes(secretReplacement),
+    !secretLog.includes(secretValue) &&
+      !secretLog.includes(secretReplacement) &&
+      !secretLog.includes("browser-pasted-fake"),
     "secret values stay out of app logs",
   );
 

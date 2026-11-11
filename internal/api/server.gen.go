@@ -196,6 +196,30 @@ func (e ExtensionScope) Valid() bool {
 	}
 }
 
+// Defines values for ExtensionsEnvHints.
+const (
+	Assignment  ExtensionsEnvHints = "assignment"
+	Empty       ExtensionsEnvHints = "empty"
+	OpReference ExtensionsEnvHints = "op-reference"
+	Whitespace  ExtensionsEnvHints = "whitespace"
+)
+
+// Valid indicates whether the value is a known member of the ExtensionsEnvHints enum.
+func (e ExtensionsEnvHints) Valid() bool {
+	switch e {
+	case Assignment:
+		return true
+	case Empty:
+		return true
+	case OpReference:
+		return true
+	case Whitespace:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	HealthStatusOk HealthStatus = "ok"
@@ -863,7 +887,9 @@ type ExtensionScope string
 type Extensions struct {
 	// Env Names only. Values never leave the loader through this API.
 	Env []struct {
-		Key string `json:"key"`
+		// Hints Shape hints of the saved value. A hint never contains value text. assignment: the value looks like a pasted NAME=... line. empty: the value is empty or only whitespace. whitespace: the value has leading or trailing whitespace. op-reference: the value is an op:// reference. Only tools that can run op resolve it.
+		Hints []ExtensionsEnvHints `json:"hints"`
+		Key   string               `json:"key"`
 
 		// Scope Home, resolved data directory, or agent home, each under .agents/.
 		Scope    ExtensionScope `json:"scope"`
@@ -891,6 +917,9 @@ type Extensions struct {
 	Skills   []Skill  `json:"skills"`
 	Warnings []string `json:"warnings"`
 }
+
+// ExtensionsEnvHints defines model for Extensions.Env.Hints.
+type ExtensionsEnvHints string
 
 // Feishu defines model for Feishu.
 type Feishu = agent.Feishu

@@ -286,13 +286,18 @@ servers before it resumes the agent Harness. It installs prompt sections for
 the extension guide and current skills. MCP tools use the names
 `mcp__<server>__<tool>` and deferred tool discovery. The guide lists fixed paths,
 file formats, environment use, secrecy, and Reload. It contains no environment
-key names or values. Environment edits do not change its text.
+key names or values, except the names of keys whose value has a shape hint
+(an assignment, empty, whitespace, or an `op://` reference). It also says that
+`.env` values reach only the tools that dex starts. See
+[ADR 0014](decisions/0014-env-scope-and-value-hints.md).
 
 `PUT` and `DELETE /api/agents/{agentId}/extensions/env` call the engine's
 write-only environment methods. Edits are serialized per path and replace
 the file atomically with mode `0600`. They preserve unrelated lines and refuse
 invalid files. Home is read-only. Saving does not reload; the automatic reload
 applies the change. The file is the only store.
+Each `env` entry of the Extensions API carries `hints`, the shape hints of its
+value. A hint never holds value text.
 
 `GET /api/agents/{agentId}/extensions` reads file metadata. Before the agent
 opens, servers are `idle`. `POST /api/agents/{agentId}/extensions/reload`

@@ -26,6 +26,16 @@ export type EnvTarget = { scope: "agent"; agentId: string } | { scope: "dex" };
 
 const titles: Record<Level, string> = { agent: "This bot", dex: "All bots", home: "Home · Read-only" };
 
+type Hint = Extensions["env"][number]["hints"][number];
+
+// The API sends hint names only; it never sends a part of a value.
+const hintLabels: Record<Hint, string> = {
+  assignment: "Looks like NAME=...",
+  empty: "Empty",
+  whitespace: "Extra whitespace",
+  "op-reference": "op:// reference",
+};
+
 export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
   const { notify } = useApp();
   // The dex file does not depend on the bot, so any bot can read and write it. The default bot
@@ -41,6 +51,8 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
 
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
+  // The key that the last save wrote with a value that looks like a pasted assignment.
+  const [pastedKey, setPastedKey] = useState<string | null>(null);
   const form = useRef<HTMLFormElement>(null);
 
   const refresh = (data: Extensions) => {
@@ -51,13 +63,23 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
   const save = useMutation({
     ...putExtensionEnvMutation(),
     gcTime: 0,
-    onSuccess: refresh,
+    onSuccess: (data, variables) => {
+      refresh(data);
+
+      // The server owns the shape check. The save is never refused; this only warns.
+      const saved = data.env.find((e) => e.scope === variables.body.scope && e.key === variables.body.key);
+
+      setPastedKey(saved?.hints.includes("assignment") ? variables.body.key : null);
+    },
     onError: (error) => notify(errorText(error)),
   });
 
   const remove = useMutation({
     ...deleteExtensionEnvMutation(),
-    onSuccess: refresh,
+    onSuccess: (data) => {
+      refresh(data);
+      setPastedKey(null);
+    },
     onError: (error) => notify(errorText(error)),
   });
 
@@ -97,6 +119,7 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
             className="grid gap-4 p-4"
             onSubmit={(event) => {
               event.preventDefault();
+              setPastedKey(null);
               save.mutate({ path: { agentId }, body: { scope: target.scope, key, value } });
               setValue("");
             }}
@@ -141,6 +164,15 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
             </div>
           </form>
         </Panel>
+        {pastedKey ? (
+          <div className="mt-4" role="alert" data-env-warning={pastedKey}>
+            <Note tone="warn">
+              <Mono className="text-foreground">{pastedKey}</Mono> is saved, but its value looks like it
+              contains a NAME=... assignment. You may have pasted a whole line. Replace the value with the
+              secret alone.
+            </Note>
+          </div>
+        ) : null}
         {catalog?.reloadPending && !catalog.errors.length ? (
           <div className="mt-4" role="status">
             <Note>The change applies automatically when all bots are idle.</Note>
@@ -188,6 +220,16 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
                               Shadowed
                             </Badge>
                           ) : null}
+                          {entry.hints.map((hint) => (
+                            <Badge
+                              key={hint}
+                              variant={hint === "op-reference" ? "outline" : "destructive"}
+                              data-env-hint={hint}
+                              className="h-5 px-2 text-[11.5px]"
+                            >
+                              {hintLabels[hint]}
+                            </Badge>
+                          ))}
                           {writable ? (
                             <div className="flex gap-2">
                               <Button

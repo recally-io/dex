@@ -46,6 +46,8 @@ type EnvKeyInfo struct {
 	Key      string `json:"key"`
 	Scope    string `json:"scope"`
 	Shadowed bool   `json:"shadowed"`
+	// Hints are shape hints of the value (see envlint.go). They never contain value text.
+	Hints []string `json:"hints"`
 }
 type ExtensionInfo struct {
 	Levels   []ExtensionLevel `json:"levels"`
@@ -358,7 +360,7 @@ func (a *agentExtensions) scan(base map[string]string) extensionScan {
 					s.info.Env[i].Shadowed = true
 				}
 			}
-			s.info.Env = append(s.info.Env, EnvKeyInfo{Key: key, Scope: l.Scope})
+			s.info.Env = append(s.info.Env, EnvKeyInfo{Key: key, Scope: l.Scope, Hints: envHints(vars[key])})
 		}
 		maps.Copy(s.env, vars)
 	}
@@ -422,7 +424,8 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 	op.apply(s.env)
 	// Keep the status slice stable before any connection can call OnClose.
 	loaded := &loadedExtensions{Env: s.env, Servers: s.info.Servers, Extension: &durable.Extension{Name: "extensions"}, stamp: stamp}
-	guide := extensionGuide(a.levels, secretsGuide(op, findOp(s.env)))
+	opPath := findOp(s.env)
+	guide := extensionGuide(a.levels, secretsGuide(op, opPath), envScopeGuide(s.info.Env, opPath))
 	loaded.Extension.Sections = []*durable.PromptSection{{Key: "extension-guide", Render: func(context.Context, durable.PromptInput) (*string, error) { return new(guide), nil }}, {Key: "skills", Render: func(_ context.Context, input durable.PromptInput) (*string, error) {
 		// The project level follows the conversation's cwd, which the request's environment has.
 		cwd := a.workspace
@@ -685,7 +688,7 @@ func skillsText(skills []SkillInfo) *string {
 	}
 	return new(strings.Join(lines, "\n"))
 }
-func extensionGuide(levels []ExtensionLevel, secrets string) string {
+func extensionGuide(levels []ExtensionLevel, secrets, scope string) string {
 	lines := []string{"Extension levels for this bot, from wide to narrow. Each can hold skills/, mcp.json, and .env:"}
 	for _, l := range levels {
 		lines = append(lines, "- "+l.Scope+": "+l.Dir+"/")
@@ -698,6 +701,7 @@ func extensionGuide(levels []ExtensionLevel, secrets string) string {
 		"",
 		"The tool environment starts from the user's login shell environment.",
 		secrets,
+		scope,
 		"dex reloads mcp.json, .env, shell rc, and 1Password changes when all bots are idle. You cannot reload; a change applies after your current work ends.")
 	return strings.Join(lines, "\n")
 }
