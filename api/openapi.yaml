@@ -585,27 +585,12 @@ paths:
         name: agentId
         required: true
         schema: { type: string }
-    put:
-      operationId: archiveAgent
-      description: >
-        Archives an agent. It leaves the agent list, its channels stop, and its
-        automations do not run. Its sessions, memory, files, and channel
-        settings stay. The default agent cannot be archived (400). An agent
-        with a running session cannot be archived (409). Every other agent
-        route answers 404 for an archived agent.
-      responses:
-        "200":
-          description: The archived agent.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Agent" }
-        "400": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-        "409": { $ref: "#/components/responses/Error" }
-        default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: restoreAgent
-      description: Restores an archived agent and starts its saved channels. An agent that is not archived answers 404.
+      description: >
+        Restores an archived agent and starts its saved channels. An agent that is not archived
+        answers 404. There is no archive route: an agent is archived only when the owner approves
+        a bot_delete question (ADR 0016). Every other agent route answers 404 for an archived agent.
       responses:
         "200":
           description: The restored agent.

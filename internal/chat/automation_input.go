@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
 	"github.com/recally-io/dex/internal/db"
 
 	"github.com/recally-io/dex/internal/db/sqlc"

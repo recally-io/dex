@@ -2090,9 +2090,6 @@ type ServerInterface interface {
 	// (DELETE /api/agents/{agentId}/archive)
 	RestoreAgent(w http.ResponseWriter, r *http.Request, agentId string)
 
-	// (PUT /api/agents/{agentId}/archive)
-	ArchiveAgent(w http.ResponseWriter, r *http.Request, agentId string)
-
 	// (GET /api/agents/{agentId}/automations)
 	ListAutomations(w http.ResponseWriter, r *http.Request, agentId string)
 
@@ -2407,32 +2404,6 @@ func (siw *ServerInterfaceWrapper) RestoreAgent(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RestoreAgent(w, r, agentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ArchiveAgent operation middleware
-func (siw *ServerInterfaceWrapper) ArchiveAgent(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ArchiveAgent(w, r, agentId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4625,7 +4596,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}", wrapper.UpdateAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/archived-agents", wrapper.ListArchivedAgents)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/archive", wrapper.RestoreAgent)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/archive", wrapper.ArchiveAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}", wrapper.GetTask)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}/acknowledge", wrapper.AcknowledgeTask)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}/restore", wrapper.RestoreTask)
@@ -4926,87 +4896,6 @@ type RestoreAgentdefaultJSONResponse struct {
 }
 
 func (response RestoreAgentdefaultJSONResponse) VisitRestoreAgentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ArchiveAgentRequestObject struct {
-	AgentId string `json:"agentId"`
-}
-
-type ArchiveAgentResponseObject interface {
-	VisitArchiveAgentResponse(w http.ResponseWriter) error
-}
-
-type ArchiveAgent200JSONResponse Agent
-
-func (response ArchiveAgent200JSONResponse) VisitArchiveAgentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ArchiveAgent400JSONResponse struct{ ErrorJSONResponse }
-
-func (response ArchiveAgent400JSONResponse) VisitArchiveAgentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ArchiveAgent404JSONResponse Error
-
-func (response ArchiveAgent404JSONResponse) VisitArchiveAgentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ArchiveAgent409JSONResponse Error
-
-func (response ArchiveAgent409JSONResponse) VisitArchiveAgentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ArchiveAgentdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response ArchiveAgentdefaultJSONResponse) VisitArchiveAgentResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -8911,9 +8800,6 @@ type StrictServerInterface interface {
 	// (DELETE /api/agents/{agentId}/archive)
 	RestoreAgent(ctx context.Context, request RestoreAgentRequestObject) (RestoreAgentResponseObject, error)
 
-	// (PUT /api/agents/{agentId}/archive)
-	ArchiveAgent(ctx context.Context, request ArchiveAgentRequestObject) (ArchiveAgentResponseObject, error)
-
 	// (GET /api/agents/{agentId}/automations)
 	ListAutomations(ctx context.Context, request ListAutomationsRequestObject) (ListAutomationsResponseObject, error)
 
@@ -9294,32 +9180,6 @@ func (sh *strictHandler) RestoreAgent(w http.ResponseWriter, r *http.Request, ag
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RestoreAgentResponseObject); ok {
 		if err := validResponse.VisitRestoreAgentResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ArchiveAgent operation middleware
-func (sh *strictHandler) ArchiveAgent(w http.ResponseWriter, r *http.Request, agentId string) {
-	var request ArchiveAgentRequestObject
-
-	request.AgentId = agentId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ArchiveAgent(ctx, request.(ArchiveAgentRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ArchiveAgent")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ArchiveAgentResponseObject); ok {
-		if err := validResponse.VisitArchiveAgentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

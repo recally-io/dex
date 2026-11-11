@@ -3,9 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
-	"time"
 
-	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/feishu"
 	"github.com/recally-io/dex/internal/telegram"
 	"github.com/recally-io/dex/internal/wechat"
@@ -22,21 +20,6 @@ func (s *Service) ListArchivedAgents(ctx context.Context) ([]Agent, error) {
 		agents[i] = agentView(row)
 	}
 	return agents, nil
-}
-
-// ArchiveAgent hides a bot, stops its channels, and leaves its data and channel settings in place.
-// Its automations do not run while it is archived; they keep their own enabled flag. The default
-// bot and a bot with a running session cannot be archived.
-func (s *Service) ArchiveAgent(ctx context.Context, id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := db.ArchiveAgent(ctx, s.q, id, time.Now()); err != nil {
-		if errors.Is(err, db.ErrAgentMissing) {
-			return ErrNotFound
-		}
-		return err
-	}
-	return s.syncChannelsLocked(ctx, id, false)
 }
 
 // StopChannels stops the channels of a bot that another path archived. Settings stay.

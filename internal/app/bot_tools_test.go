@@ -74,6 +74,16 @@ func waitSignal(t *testing.T, c <-chan struct{}, what string) {
 	}
 }
 
+// archiveCoder archives the bot "Coder" the way the owner does: the default bot asks with
+// bot_delete, and the owner approves in the web card.
+func archiveCoder(t *testing.T, d *dex) {
+	t.Helper()
+	chatID, q := askArchive(t, d, "Coder")
+	d.setModel(t, "echo")
+	d.answer(t, chatID, q.ID, "Archive Coder", http.StatusAccepted)
+	d.watch(t, chatID).until(t, "approval reaches the model", answeredWith(`Approved. Bot "Coder" is archived.`))
+}
+
 func questionOutcome(t *testing.T, conn *sql.DB, id string) string {
 	t.Helper()
 	var outcome sql.NullString
@@ -245,8 +255,7 @@ func TestBotArchiveRefusesDefaultSelfAndBusyBots(t *testing.T) {
 		}
 	}
 
-	// Another bot asks to archive the default bot, and to archive itself; both are refused. The
-	// default bot is also refused at the API.
+	// Another bot asks to archive the default bot, and to archive itself; both are refused.
 	d.setBotModel(t, coder.ID, "tool")
 	ask := func(target string, id string) int64 {
 		var c sessionInfo
@@ -257,9 +266,8 @@ func TestBotArchiveRefusesDefaultSelfAndBusyBots(t *testing.T) {
 	}
 	refused("default bot", coder.ID, ask("default", "018f0000-0000-7000-8000-000000000001"), "default bot")
 	refused("self", coder.ID, ask("Coder", "018f0000-0000-7000-8000-000000000003"), "itself")
-	d.must(t, http.MethodPut, "/api/agents/default/archive", nil, nil, http.StatusBadRequest)
 
-	// A bot with a running session is refused at the tool and at the API.
+	// A bot with a running session is refused.
 	d.setBotModel(t, coder.ID, "bash")
 	var busy sessionInfo
 	d.must(t, http.MethodPost, "/api/agents/"+coder.ID+"/chats", nil, &busy, http.StatusCreated)
@@ -270,7 +278,6 @@ func TestBotArchiveRefusesDefaultSelfAndBusyBots(t *testing.T) {
 		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/%s/chats/%d", coder.ID, busy.ID), nil, &c)
 		return c.Busy, c
 	})
-	d.must(t, http.MethodPut, "/api/agents/"+coder.ID+"/archive", nil, nil, http.StatusConflict)
 	d.setModel(t, "tool")
 	refused("busy bot", "default", d.newChat(t, "bot_delete "+taskJSON(t, map[string]string{"bot": "Coder", "reason": "test"})), "running session")
 	if got := d.botNames(t, "/api/agents"); !slices.Equal(got, []string{"Dex", "Coder"}) {
@@ -325,14 +332,12 @@ func TestBotChangesNeedAUserInput(t *testing.T) {
 	}
 
 	// And a child session cannot change a bot either.
-	parent := d.newSession(t).ID
-	for _, call := range []string{create, update, del} {
-		d.setModel(t, "spawn")
-		title := "child " + call[:10]
-		taskTurn(t, d, parent, taskJSON(t, map[string]any{"title": title, "goal": call, "provider": "faux", "modelId": "tool", "modifiesFiles": false}))
-		task := waitExecution(t, conn, parent, title, "done")
-		if !strings.Contains(task.Report, "is not available") {
-			t.Fatalf("child %q report: %q", call[:10], task.Report)
+	parent := newParent(t, d)
+	for i, call := range []string{create, update, del} {
+		spawnChild(t, d, parent, fmt.Sprintf("child %d", i), call, "tool")
+		rows := waitResults(t, conn, parent, i+1)
+		if got, _ := resultBody(t, rows[i].content)["answer"].(string); !strings.Contains(got, "is not available") {
+			t.Fatalf("child %q answer: %q", call[:10], got)
 		}
 	}
 	if got := d.botNames(t, "/api/agents"); !slices.Equal(got, []string{"Dex"}) {
@@ -377,9 +382,8 @@ func TestArchiveRoutesHideArchivedBots(t *testing.T) {
 	// Restore of an active bot and of an unknown bot is 404.
 	d.must(t, http.MethodDelete, "/api/agents/"+bot.ID+"/archive", nil, nil, http.StatusNotFound)
 	d.must(t, http.MethodDelete, "/api/agents/missing/archive", nil, nil, http.StatusNotFound)
-	// The owner archives it from the API, then every agent route except restore is 404.
-	d.must(t, http.MethodPut, "/api/agents/"+bot.ID+"/archive", nil, nil)
-	d.must(t, http.MethodPut, "/api/agents/"+bot.ID+"/archive", nil, nil, http.StatusNotFound)
+	// The owner approves the archive, then every agent route except restore is 404.
+	archiveCoder(t, d)
 	for _, path := range []string{"", "/chats", "/automations", "/channels/telegram"} {
 		if status, _ := d.call(t, http.MethodGet, "/api/agents/"+bot.ID+path, nil); status != http.StatusNotFound {
 			t.Fatalf("GET %s = %d", path, status)
@@ -387,4 +391,21 @@ func TestArchiveRoutesHideArchivedBots(t *testing.T) {
 	}
 	d.must(t, http.MethodDelete, "/api/agents/"+bot.ID+"/archive", nil, nil)
 	d.must(t, http.MethodGet, "/api/agents/"+bot.ID, nil, nil)
+}
+
+// The API has no archive route. Only an approved bot_delete question archives (ADR 0016).
+func TestArchiveHasNoAPIRoute(t *testing.T) {
+	t.Parallel()
+	d := startDex(t, t.TempDir(), "")
+	bot := d.createCoder(t)
+	for _, id := range []string{bot.ID, "default"} {
+		for _, method := range []string{http.MethodPut, http.MethodPost, http.MethodPatch} {
+			if status, _ := d.call(t, method, "/api/agents/"+id+"/archive", nil); status != http.StatusNotFound && status != http.StatusMethodNotAllowed {
+				t.Fatalf("%s archive of %s = %d, want 404 or 405", method, id, status)
+			}
+		}
+	}
+	if got := d.botNames(t, "/api/agents"); !slices.Equal(got, []string{"Dex", "Coder"}) {
+		t.Fatalf("bots: %v", got)
+	}
 }

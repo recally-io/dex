@@ -1948,45 +1948,6 @@ export type RestoreAgentResponses = {
 
 export type RestoreAgentResponse = RestoreAgentResponses[keyof RestoreAgentResponses];
 
-export type ArchiveAgentData = {
-    body?: never;
-    path: {
-        agentId: string;
-    };
-    query?: never;
-    url: '/api/agents/{agentId}/archive';
-};
-
-export type ArchiveAgentErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    409: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type ArchiveAgentError = ArchiveAgentErrors[keyof ArchiveAgentErrors];
-
-export type ArchiveAgentResponses = {
-    /**
-     * The archived agent.
-     */
-    200: Agent;
-};
-
-export type ArchiveAgentResponse = ArchiveAgentResponses[keyof ArchiveAgentResponses];
-
 export type GetTaskData = {
     body?: never;
     path: {

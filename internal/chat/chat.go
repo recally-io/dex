@@ -8,7 +8,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/recally-io/dex/internal/db"
 	"log/slog"
 	"strings"
 	"sync"
@@ -16,6 +15,8 @@ import (
 	"time"
 	"unicode/utf8"
 	"uuid"
+
+	"github.com/recally-io/dex/internal/db"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"

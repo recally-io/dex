@@ -172,12 +172,20 @@ An agent can be archived (ADR 0016). `agents.archived_at` holds the time. The
 filter is in SQL, not in the `enabled` flags: `ListAgents`, startup channel
 start, dreams, `ListDueAutomations`, the activity query and the inbox all skip an
 archived agent, so a restore needs no state to rebuild. `GET /api/archived-agents`
-lists archived agents. `PUT` and `DELETE /api/agents/{agentId}/archive` archive
-and restore. Every other agent route returns `404` for an archived agent. The
-archive guard is one `UPDATE ... WHERE` in `internal/db`: the agent exists, is not
-`default`, is not archived, and has no pending input in any conversation, which covers queued tasks, automation runs and dreams. A refusal maps to
-`400` (default) or `409` (busy). `agent.Service` stops or starts the Telegram,
-Feishu and WeChat clients under its lock after the database change. Session, health, maintenance, models, provider settings, and
+lists archived agents. `DELETE /api/agents/{agentId}/archive` restores. There is
+no archive route: only an approved `bot_delete` question archives (see
+[Bot tools](#bot-tools)). Every other agent route returns `404` for an archived
+agent. The archive guard is one `UPDATE ... WHERE` in `internal/db`: the agent
+exists, is not `default`, is not archived, and has no pending input in any
+conversation, which covers queued tasks, automation runs and dreams. Every input
+writer (user and channel input, a context reset, a routine run, a child session
+turn and a child result) calls `db.RequireActive` after it takes the SQLite
+writer, in the transaction that stores the input. Input first makes the archive
+fail as busy. Archive first makes the input fail with `ErrAgentArchived`, so an
+archived bot never has a runnable input. After the commit,
+`agent.Service.StopChannels` stops the Telegram, Feishu and WeChat clients under
+its lock.
+Session, health, maintenance, models, provider settings, and
 `/api/automations/preview` stay global. Separate services own global settings
 and agent state. The settings lock orders provider saves and local engine
 configuration. Each settings request releases that lock before it waits for
