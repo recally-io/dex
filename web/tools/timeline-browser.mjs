@@ -153,12 +153,12 @@ try {
   await visit("/a/default");
   await ui("empty timeline", "document.body.innerText.includes('What should Dex do?')");
   await check(
-    "shell lists the bot, work and global settings",
+    "shell lists only the bots and the global settings",
     `(() => {
     const nav = document.querySelector('aside[aria-label="Bots"]');
     return !!nav.querySelector('a[href="/a/default"][aria-current="page"]') &&
-      !!nav.querySelector('a[href="/work"]') && !!nav.querySelector('a[href="/providers"]') &&
-      !!nav.querySelector('input[aria-label="Search sessions"]');
+      !!nav.querySelector('a[href="/providers"]') && !!nav.querySelector('button[aria-label="New bot"]') &&
+      !nav.querySelector('a[href="/work"], a[href="/needs-you"], a[href="/automations"], input');
   })()`,
   );
   await check(
@@ -167,8 +167,8 @@ try {
   );
   await shot("01-empty");
   await check(
-    "main has no Sessions tab and offers a new session",
-    "!document.querySelector('header nav a[data-tab=\"Sessions\"]') && !!document.querySelector('aside button[aria-label=\"New session\"]')",
+    "main has no Sessions tab and offers a new chat",
+    "!document.querySelector('header nav a[data-tab=\"Sessions\"]') && !!document.querySelector('header button[aria-label=\"New chat\"]')",
   );
   const main = await api("/api/agents/default/chats/main");
   await visit("/a/default/sessions");
@@ -489,8 +489,8 @@ try {
 
   assert.notEqual(done.id, running.id);
   await ui(
-    "active task status",
-    "document.querySelector('aside a[href=\"/a/default\"]')?.textContent.includes('1 active')",
+    "a working bot shows the working dot",
+    '!!document.querySelector(\'aside a[href="/a/default"] [role="img"][aria-label="Working"]\')',
   );
   await check(
     "main Stop remains available after dispatch reply",
@@ -577,7 +577,7 @@ try {
   await visit("/a/default");
   await ui(
     "channel work in bot status",
-    "document.querySelector('aside a[href=\"/a/default\"]')?.textContent.includes('1 active')",
+    '!!document.querySelector(\'aside a[href="/a/default"] [role="img"][aria-label="Working"]\')',
   );
   await ui("main stream ready", "!!document.querySelector('textarea:not(:disabled):not([inert] *)')");
   await check(
@@ -706,8 +706,9 @@ try {
   );
   await visit("/a/default");
   await ui(
+    // An earlier failed task can make the row show Needs you, which wins over Working.
     "Chat task in bot status",
-    "document.querySelector('aside a[href=\"/a/default\"]')?.textContent.includes('1 active')",
+    '!!document.querySelector(\'aside a[href="/a/default"] [role="img"]\')',
   );
   await ui("main composer ready", "!!document.querySelector('textarea:not(:disabled):not([inert] *)')");
   await check(
@@ -922,7 +923,8 @@ try {
           [...document.querySelectorAll('[data-origin]')].every(node => {
             node.scrollIntoView({ block: 'nearest', behavior: 'instant' });
             const rect = node.getBoundingClientRect();
-            return rect.top >= scroll.top && rect.bottom <= scroll.bottom;
+            // Scroll offsets snap to device pixels, so a mark can sit a fraction of a pixel outside.
+            return rect.top >= scroll.top - 1 && rect.bottom <= scroll.bottom + 1;
           });
       })()`,
     );
@@ -937,7 +939,7 @@ try {
   }
 
   // Everything of the agent is a tab of its page; the sidebar keeps one row for the agent.
-  const tabs = "Chat,Routines,Extensions,Settings";
+  const tabs = "Chat,Routines,Settings";
   const tab = (label) => `nav a[data-tab="${label}"]`;
   // The channel widths above leave a phone viewport behind; all tabs fit on a desktop one.
   await viewport(1280, 900);
@@ -952,10 +954,12 @@ try {
     (a) => a.enabled,
   ).length;
 
+  // The echo model never reports a check, so the Daily review run above failed and is not done yet.
   await ui(
-    "the Automations tab counts the automations that are on, and the agent row shows its status",
+    "the Routines tab counts the routines that are on, and a failed routine run marks the bot row",
     `document.querySelector('${tab("Routines")}').textContent === 'Routines${automationsOn || ""}' &&
-      [...document.querySelectorAll('aside[aria-label="Bots"] a[href="/a/default"] span')].some(span => /^(\\d+ active|\\d+ channels? on|Idle)$/.test(span.textContent))`,
+      document.querySelector('aside[aria-label="Bots"] a[href="/a/default"] [role="img"]')?.getAttribute('aria-label') === 'Needs you' &&
+      !/active|channels? on|Idle/.test(document.querySelector('aside[aria-label="Bots"] a[href="/a/default"]').innerText)`,
   );
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').dataset.probe = 'kept'");
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').focus()");
@@ -1091,12 +1095,12 @@ try {
   );
   await visit("/a/default");
   await shot("08-mobile");
-  await evaluate("document.querySelector('button[aria-label=\"Open navigation\"]').click()");
+  await evaluate("document.querySelector('button[aria-label^=\"Open navigation\"]').click()");
   await ui("mobile agent row", "!!document.querySelector('[role=dialog] a[href=\"/a/default\"]')");
   await shot("09-mobile-nav");
   await tap('[role="dialog"] a[href="/providers"]');
   await ui("mobile global settings opened", "location.pathname === '/providers'");
-  await evaluate("document.querySelector('button[aria-label=\"Open navigation\"]').click()");
+  await evaluate("document.querySelector('button[aria-label^=\"Open navigation\"]').click()");
   await ui("mobile drawer reopened", "!!document.querySelector('[role=dialog]')");
   await tap('[role="dialog"] button[aria-label="Close navigation"]');
   await ui("mobile drawer closed", "!document.querySelector('[role=dialog]')");
@@ -1133,7 +1137,7 @@ try {
   await ui("default instructions ready", `!!document.querySelector('${visibleInstructions}')`);
   await evaluate(`document.querySelector('${visibleInstructions}').focus()`);
   await call("Input.insertText", { text: "Default instructions draft" });
-  await tap('aside button[aria-label="Create bot"]');
+  await tap('aside button[aria-label="New bot"]');
   await ui("create agent dialog", "!!document.querySelector('form#create-bot input')");
   await evaluate("document.querySelector('form#create-bot input').focus()");
   await call("Input.insertText", { text: "  Second Bot  " });
@@ -1268,7 +1272,7 @@ try {
     await writeFile(join(root, ".agents", ".env"), "EXTENSION_DEMO_KEY=never-show-this-value\n");
   }
 
-  await tap(agentTab("Extensions"));
+  await botSettingsPage("extensions");
   await ui(
     "second agent extensions",
     `document.body.innerText.includes('/agents/${second.id}/.agents/') && !!document.querySelector('main button:not([inert] *)')`,
@@ -1396,7 +1400,7 @@ try {
   await tap(`main a[href="/a/${second.id}/extensions"]`);
   await ui(
     "returned to current agent extensions",
-    `location.pathname === '/a/${second.id}/extensions' && !!document.querySelector('nav a[data-tab="Extensions"][aria-current="page"]')`,
+    `location.pathname === '/a/${second.id}/extensions' && !!document.querySelector('nav a[data-tab="Settings"][aria-current="page"]')`,
   );
   await viewport(390, 844);
   await tap(agentTab("Chat"));
@@ -1406,7 +1410,7 @@ try {
   );
   await ui("second timeline fits phone", "document.documentElement.scrollWidth <= innerWidth + 1");
   await shot("14-multi-agent-phone");
-  await tap('button[aria-label="Open navigation"]:not([inert] *)');
+  await tap('button[aria-label^="Open navigation"]:not([inert] *)');
   await ui(
     "phone lists both agents",
     `!!document.querySelector('[role="dialog"] a[href="${secondPath}"]') && !!document.querySelector('[role="dialog"] a[href="/a/default"]')`,
@@ -1454,7 +1458,7 @@ try {
   const lastAgentPath = `/a/${connectionAgents.at(-1).id}`;
 
   // A full page navigation would close the streams and hide a connection leak.
-  await tap(`aside a[href="${lastAgentPath}"] + button[aria-label="New session"]`);
+  await tap('header button[aria-label="New chat"]:not([inert] *)');
   await ui(
     "New session works after seven agent switches",
     `location.pathname.startsWith('${lastAgentPath}/c/') && document.querySelector('#page-title')?.textContent === 'New chat'`,

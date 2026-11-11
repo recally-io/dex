@@ -515,7 +515,6 @@ try {
     ["chat", "/a/default"],
     ["chat-session", `/a/default/c/${projectChat}`],
     ["workspace-tabs", "/a/default"],
-    ["inbox", "/inbox"],
     ["inbox-detail", `/inbox/${resultRun}`],
     ["routine-history", `/a/default/automations/${routineId}`],
     ["bot-settings", "/a/default/agent"],
@@ -586,7 +585,7 @@ try {
         if (name === "providers" && size === "mobile") {
           const keyboard = await overlayByKeyboard(
             `${theme} drawer`,
-            "document.querySelector('button[aria-label=\"Open navigation\"]')",
+            "document.querySelector('button[aria-label^=\"Open navigation\"]')",
             `${theme}-providers-drawer-mobile.png`,
           );
           results.push({
@@ -616,7 +615,7 @@ try {
           });
         }
         if (name === "bot-settings" && size === "desktop") {
-          await evaluate("document.querySelector('button[aria-label=\"Create bot\"]')?.focus()");
+          await evaluate("document.querySelector('button[aria-label=\"New bot\"]')?.focus()");
           await press("Enter", "Enter", 13, "\r");
           await waitFor("bot create dialog open", () =>
             evaluate("!!document.querySelector('[role=dialog]')"),
@@ -684,14 +683,14 @@ try {
       mobile: false,
     });
     await navigate("/a/default");
-    await waitFor("four tabs", () =>
-      evaluate("document.querySelectorAll('nav[aria-label$=sections] a').length === 4"),
+    await waitFor("three tabs", () =>
+      evaluate("document.querySelectorAll('nav[aria-label$=sections] a').length === 3"),
     );
     assert.deepEqual(
       await evaluate(
         "[...document.querySelectorAll('nav[aria-label$=sections] a')].map(a => a.textContent.trim().replace(/\\s*\\d+$/, ''))",
       ),
-      ["Chat", "Routines", "Extensions", "Settings"],
+      ["Chat", "Routines", "Settings"],
     );
     await navigate(`/inbox/${resultRun}`);
     await waitFor("result detail ready", () =>
@@ -729,21 +728,14 @@ try {
       "dismissed",
       async () => !(await request("/api/inbox")).items.some((item) => item.runId === resultRun),
     );
-    await waitFor("Inbox list", () => evaluate("location.pathname === '/inbox'"));
-    await evaluate(
-      "[...document.querySelectorAll('button')].find(b => b.textContent === 'Needs you').click()",
-    );
-    await waitFor("needs you filter", () =>
-      evaluate('document.body.innerText.includes("You\'re all caught up")'),
-    );
+    await waitFor("back to Routines", () => evaluate("location.pathname === '/a/default/automations'"));
     results.push({
       page: "inbox-interactions",
-      fourTabs: true,
+      threeTabs: true,
       read: true,
       continueProject: true,
       quotedResult: true,
       dismiss: true,
-      needsYouFilter: true,
     });
   }
   await writeFile(join(output, "result.json"), JSON.stringify({ base, results }, null, 2));

@@ -3,7 +3,7 @@ import { Menu } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
 
-export const ShellContext = createContext({ openDrawer: () => {} });
+export const ShellContext = createContext({ openDrawer: () => {}, attention: false });
 
 export type PageHeaderProps = {
   title: ReactNode;
@@ -68,19 +68,29 @@ export function PageHeader({
 
 /** The drawer button for screens below lg. */
 export function MenuButton() {
-  const { openDrawer } = useContext(ShellContext);
+  const { openDrawer, attention } = useContext(ShellContext);
 
   return (
     <button
       type="button"
-      aria-label="Open navigation"
+      aria-label={attention ? "Open navigation, another bot needs you" : "Open navigation"}
       onClick={openDrawer}
-      className="-ml-1 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
+      className="relative -ml-1 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
     >
       <Menu size={18} />
+      {attention ? (
+        <span
+          aria-hidden
+          className="absolute top-1.5 right-1.5 size-2 rounded-full bg-orange ring-2 ring-background"
+        />
+      ) : null}
     </button>
   );
 }
+
+/** A panel at the right of the bot pane. Below md it covers the pane as a full-screen sheet. */
+export const sidePanel =
+  "fixed inset-0 z-40 flex flex-col bg-background md:static md:z-auto md:shrink-0 md:border-l md:border-border";
 
 /** True inside the bot pane, which already draws the frame and the drawer button. */
 export const InPaneContext = createContext(false);

@@ -40,15 +40,21 @@ type AgentTab = {
 const tabs: AgentTab[] = [
   { to: "/a/$agentId", label: "Chat", segments: [undefined] },
   { to: "/a/$agentId/automations", label: "Routines", segments: ["automations"] },
-  { to: "/a/$agentId/extensions", label: "Extensions", segments: ["extensions"] },
-  { to: "/a/$agentId/agent", label: "Settings", segments: ["agent", "instructions", "channels"] },
+  {
+    to: "/a/$agentId/agent",
+    label: "Settings",
+    segments: ["agent", "instructions", "channels", "extensions"],
+  },
 ];
 
 const chatsKey = "dex-chats";
 
+/** Below md the side panels cover the page, so they start closed and close on navigation. */
+const narrow = () => window.matchMedia("(max-width: 767px)").matches;
+
 /** The right Chats sidebar starts closed. The choice stays in this browser. */
 function useChatsOpen() {
-  const [open, setOpen] = useState(() => localStorage.getItem(chatsKey) === "open");
+  const [open, setOpen] = useState(() => !narrow() && localStorage.getItem(chatsKey) === "open");
 
   function toggle() {
     localStorage.setItem(chatsKey, open ? "closed" : "open");
@@ -159,8 +165,19 @@ function AgentPane({ settings }: { settings: Settings }) {
   const [chatsOpen, toggleChats, closeChats] = useChatsOpen();
 
   const [tasksOpen, setTasksOpen] = useState(
-    () => localStorage.getItem(`dex-task-panel:${agentId}`) === "open",
+    () => !narrow() && localStorage.getItem(`dex-task-panel:${agentId}`) === "open",
   );
+
+  const [panelPath, setPanelPath] = useState(path);
+
+  if (panelPath !== path) {
+    setPanelPath(path);
+
+    if (narrow()) {
+      setTasksOpen(false);
+      closeChats();
+    }
+  }
 
   const toggleTasks = () => {
     const next = !tasksOpen;
@@ -289,7 +306,6 @@ function AgentPane({ settings }: { settings: Settings }) {
 
                     if (!chatsOpen) closeTasks();
                   }}
-                  className="hidden md:flex"
                 >
                   <PanelRight size={17} />
                 </IconButton>
@@ -304,7 +320,7 @@ function AgentPane({ settings }: { settings: Settings }) {
             </div>
             {!onMain ? <Outlet /> : null}
           </div>
-          {onChatTab && chatsOpen ? <ChatList chatId={openChat} /> : null}
+          {onChatTab && chatsOpen ? <ChatList chatId={openChat} onClose={closeChats} /> : null}
           {onChatTab ? (
             <TaskPanel chats={chats.data?.chats ?? []} open={tasksOpen} onClose={closeTasks} />
           ) : null}

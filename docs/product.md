@@ -44,8 +44,8 @@ to read in an afternoon.
   says to run `/compact` again. After a summary, Show earlier
   messages can load the earlier transcript. A clear and a summary show a
   divider. The bot is one page
-  with exactly four tabs: Chat, Routines, Extensions, and Settings. Its
-  Settings tab holds General, Instructions, and Channels. Its header shows the
+  with exactly three tabs: Chat, Routines, and Settings. Its
+  Settings tab holds General, Instructions, Channels, and Extensions. Its header shows the
   name and the tabs. The model and the thinking level change in Settings. On the
   Chat tab, the header has New chat and a Chats button. Chats opens a right
   sidebar. Main comes first and cannot be archived. Chat sessions follow in
@@ -56,11 +56,15 @@ to read in an afternoon.
   messages, records and files; a task result still returns to the chat.
   New chat does not reuse an archived
   empty chat. The sidebar starts closed, and the browser keeps the user's choice.
-  The left sidebar links to Needs you, Work, and the global automation list above
-  the agents. It also links to global settings: Providers, Secrets, and About.
+  The left sidebar lists only the bots. The user talks to a bot, and the bot
+  manages its sessions. Each bot row shows at most one status dot: orange for
+  Needs you, blue for Working. Needs you wins. The sidebar also links to global
+  settings: Providers, Secrets, and About. On a phone, the menu button shows an
+  orange dot when another bot needs the user.
   The browser keeps the sidebar's open or collapsed state. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
-  URLs open the default agent. An unknown agent shows a not-found page.
+  URLs open the default agent. `/needs-you`, `/work`, and `/inbox` open the
+  default bot. `/automations` opens its Routines tab. An unknown agent shows a not-found page.
   Every agent has channel setup controls.
   Channel input shares main. Automation runs have separate read-only transcripts.
   Each run requires an explicit changed, unchanged or failed report. Missing
@@ -157,6 +161,8 @@ shows where the report belongs; it does not confirm that the work reached its go
 The chat does not show the internal report as input. Read-only task records
 give the human the saved report, status, times, and work transcript.
 The bot has no Sessions tab. The Chats sidebar lists writable Chats.
+The task panel links to All sessions, the full session list of the bot.
+On a phone, the task panel and the Chats sidebar open as full-screen sheets.
 Routine run history links to read-only automation transcripts.
 Old channel transcript URLs remain readable. The legacy Sessions URL remains
 available for saved links.
@@ -185,9 +191,11 @@ and parent result stay unchanged. Automation transcripts stay read-only.
 Main stays the default view. A Chat session opens
 under the Chat tab. Task pages open under Chat. Automation transcripts open under Routines.
 
-Needs you shows open questions, unhandled failed or blocked tasks, failed
-routine runs, and routines that need a model. Work shows sessions and routine
-runs across bots. The global automation list shows routines across bots.
+A bot needs the user when it has an open question, an unhandled failed or
+blocked task, a failed routine run that is not handled, or a routine that needs
+a model. The bot page shows each item: tasks and questions in the task panel,
+routines in the Routines tab. Mark all handled in the task panel marks every
+finished task that needs the user as handled. There is no cross-bot list.
 Routine result records include settled `changed` or `failed` outcomes without a
 duplicate mark. Unknown and `unchanged` outcomes stay in run history. Opening
 a result marks it read. Marking it handled dismisses it. Both states survive restart.

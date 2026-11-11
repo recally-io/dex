@@ -8,6 +8,7 @@ import {
   CircleAlert,
   CircleDot,
   Clock3,
+  ListTodo,
   PanelRightClose,
   Timer,
   XCircle,
@@ -29,7 +30,10 @@ import {
   taskBucket,
   taskDuration,
 } from "../../lib/tasks";
+import { useHandled } from "../../lib/handled";
+import { needsTask } from "../../lib/work";
 import { cn } from "../../lib/utils";
+import { sidePanel } from "../page";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
@@ -217,8 +221,22 @@ export function TaskSummaryButton({
     { "needs-you": 0, running: 0, queued: 0, done: 0 },
   );
 
-  // With no task to report, the summary would only repeat the panel toggle.
-  if (!visibleTasks.length) return null;
+  // With no task to report, the button still opens the panel and its link to every session.
+  if (!visibleTasks.length)
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Background tasks"
+        aria-pressed={open}
+        title="Background tasks"
+        onClick={onClick}
+        className="text-muted-foreground"
+      >
+        <ListTodo size={17} />
+      </Button>
+    );
 
   return (
     <TooltipProvider>
@@ -270,8 +288,10 @@ export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => 
     [chats],
   );
 
+  const handle = useHandled();
   const seen = readSeen(agentId);
   const ordered = orderTasks(tasks, now);
+  const handleable = tasks.filter(needsTask);
   const active = ordered.filter((task) => taskBucket(task, now) !== "done");
   const done = ordered.filter((task) => taskBucket(task, now) === "done" && !seen[task.id]);
 
@@ -314,12 +334,22 @@ export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => 
   );
 
   return (
-    <aside
-      aria-label="Background tasks"
-      className="hidden w-[340px] shrink-0 flex-col border-l border-border md:flex"
-    >
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
-        <span className="flex-1 text-[12.5px] font-medium">Background tasks</span>
+    <aside aria-label="Background tasks" className={cn(sidePanel, "md:w-[340px]")}>
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3 md:h-10">
+        <span className="flex-1 text-[14px] font-medium md:text-[12.5px]">Background tasks</span>
+        {handleable.length > 1 ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            disabled={handle.isPending}
+            onClick={() =>
+              handle.mutate(handleable.map((task) => ({ kind: "task", agentId, id: task.id, undo: false })))
+            }
+          >
+            Mark all handled
+          </Button>
+        ) : null}
         <Button type="button" variant="ghost" size="icon-xs" aria-label="Close tasks" onClick={onClose}>
           <PanelRightClose />
         </Button>
@@ -353,7 +383,17 @@ export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => 
         {!active.length && !done.length ? (
           <p className="px-3 py-4 text-[12px] text-muted-foreground">No background tasks.</p>
         ) : null}
+        {handle.isError ? (
+          <p className="px-3 py-2 text-[12px] text-destructive">Could not mark the tasks handled.</p>
+        ) : null}
       </div>
+      <Link
+        to="/a/$agentId/sessions"
+        params={{ agentId }}
+        className="shrink-0 border-t border-border px-3 py-2.5 text-[12px] font-medium text-primary hover:underline"
+      >
+        All sessions →
+      </Link>
     </aside>
   );
 }

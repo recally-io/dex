@@ -28,9 +28,10 @@ const botPages = [
   { to: "/a/$agentId/agent", label: "General", segment: "agent" },
   { to: "/a/$agentId/instructions", label: "Instructions", segment: "instructions" },
   { to: "/a/$agentId/channels", label: "Channels", segment: "channels" },
+  { to: "/a/$agentId/extensions", label: "Extensions", segment: "extensions" },
 ] as const;
 
-/** The three pages of a bot's settings. */
+/** The pages of a bot's settings. */
 export function BotSettingsSwitcher({
   segment: active,
   channels = 0,
