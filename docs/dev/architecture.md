@@ -638,8 +638,8 @@ against them:
 - Locks. No call path holds two delivery gates. A session tool runs in the run of
   its conversation and holds no gate. `session_stop` takes the gate of the bot of
   the child, as a Stop in that bot does. A Stop takes the gate of the stopped
-  conversation only. It withdraws the pending input of the children in every
-  bot in one transaction, and it aborts only the executions of its own bot. The
+  conversation only. It withdraws the input that the parent started in the
+  children, in every bot, in one transaction, and it aborts only the executions of its own bot. The
   abort of a child in another bot stays a durable `abort_pending` request. The
   reconciliation of that bot, under its own gate, carries it out. Two parents
   in two bots that stop each other's children therefore cannot wait for each
