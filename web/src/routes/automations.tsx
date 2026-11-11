@@ -482,7 +482,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
     ...deleteAutomationMutation(),
     onSuccess: async () => {
       await refreshAutomations(agentId);
-      await navigate({ to: "/automations" });
+      await navigate({ to: "/a/$agentId/automations", params: { agentId } });
     },
   });
 
@@ -508,8 +508,8 @@ export function AutomationPage({ automationId }: { automationId: string }) {
   const blocked = model && !model.ok ? "Choose an available bot model first." : undefined;
 
   const crumb = (
-    <Link to="/automations" className="hover:underline">
-      Automations
+    <Link to="/a/$agentId/automations" params={{ agentId }} className="hover:underline">
+      Routines
     </Link>
   );
 

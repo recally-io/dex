@@ -1,5 +1,5 @@
-import { addDays, isValid, parse, startOfDay, startOfWeek } from "date-fns";
-import type { AutomationRun, Chat, InboxItem, TaskSummary } from "../api/generated/types.gen";
+import { getWorkOptions } from "../api/generated/@tanstack/react-query.gen";
+import type { AgentActivity, Chat, InboxItem, TaskSummary, Work } from "../api/generated/types.gen";
 import { taskBucket } from "./tasks";
 
 export function automationNeedsYou(
@@ -31,70 +31,63 @@ export function needsTask(task: TaskSummary) {
   return taskBucket(task) === "needs-you";
 }
 
-// The Work page keeps its view in the URL: ?view=calendar&range=today|YYYY-MM-DD&kind=once|repeat.
-// An absent field means the default (board, this week, all kinds). Invalid values mean the default.
-export type WorkSearch = { view?: "calendar"; range?: string; kind?: "once" | "repeat" };
+export type BotStatus = "needs" | "working" | undefined;
 
-export function parseWorkSearch(raw: { view?: unknown; range?: unknown; kind?: unknown }): WorkSearch {
-  const range = String(raw.range ?? "");
+/** The fields of the Work response that a bot status reads. */
+type WorkState = {
+  sessions: { agentId: string; chat: Pick<Chat, "task" | "busy" | "question"> }[];
+  automations: { agentId: string; setup: boolean }[];
+  inbox: Pick<InboxItem, "agentId" | "outcome" | "dismissed">[];
+};
 
+/**
+ * The one status a bot row shows. "needs" wins over "working": a blocked or failed task, an open
+ * question, a failed routine run that is not done, or a routine that needs setup. The bot page
+ * shows each of these again: tasks and questions in the task panel, routines in the Routines tab.
+ */
+export function botStatus(
+  agentId: string,
+  work: WorkState | undefined,
+  activity: Pick<AgentActivity, "activeSessions"> | undefined,
+): BotStatus {
+  const sessions = work?.sessions.filter((item) => item.agentId === agentId) ?? [];
+
+  if (
+    sessions.some((item) => boardBucket(item.chat) === "needs") ||
+    work?.inbox.some((item) => item.agentId === agentId && item.outcome === "failed" && !item.dismissed) ||
+    work?.automations.some((item) => item.agentId === agentId && item.setup)
+  )
+    return "needs";
+
+  if ((activity?.activeSessions ?? 0) > 0 || sessions.some((item) => boardBucket(item.chat) === "working"))
+    return "working";
+
+  return undefined;
+}
+
+// Bot status reads no schedule, so the range is the smallest that the API accepts. One fixed range
+// gives the sidebar and the task panel one shared query.
+const opened = Date.now();
+
+export const workOptions = () => ({
+  ...getWorkOptions({ query: { from: opened, to: opened + 1 } }),
+  refetchInterval: 10_000,
+});
+
+/**
+ * The items besides tasks that make a bot need the user. The task panel lists them, so each orange
+ * dot has a place to act on it.
+ */
+export function needsItems(agentId: string, work: Work | undefined) {
   return {
-    view: raw.view === "calendar" ? "calendar" : undefined,
-    range: range === "today" || /^\d{4}-\d{2}-\d{2}$/.test(range) ? range : undefined,
-    kind: raw.kind === "once" || raw.kind === "repeat" ? raw.kind : undefined,
+    questions: (work?.sessions ?? [])
+      .filter((item) => item.agentId === agentId && openQuestion(item.chat))
+      .map((item) => item.chat),
+    results: (work?.inbox ?? []).filter(
+      (item) => item.agentId === agentId && item.outcome === "failed" && !item.dismissed,
+    ),
+    setup: (work?.automations ?? [])
+      .filter((item) => item.agentId === agentId && item.setup)
+      .map((item) => item.automation),
   };
-}
-
-/** The visible week starts on Monday. A day outside that week falls back to the week. */
-export function resolveRange(range: string | undefined, now: number) {
-  const week = startOfWeek(now, { weekStartsOn: 1 });
-  const weekEnd = addDays(week, 7);
-
-  if (range === "today") {
-    const start = startOfDay(now);
-
-    return { name: "today" as const, start, end: addDays(start, 1) };
-  }
-
-  const day = range ? parse(range, "yyyy-MM-dd", now) : undefined;
-
-  if (day && isValid(day) && day >= week && day < weekEnd)
-    return { name: "day" as const, start: day, end: addDays(day, 1) };
-
-  return { name: "week" as const, start: week, end: weekEnd };
-}
-
-export type EventTone = "working" | "needs" | "result" | "quiet" | "planned";
-
-export const tones: EventTone[] = ["working", "needs", "result", "quiet", "planned"];
-
-// One class string per tone, shared by the calendar events and the legend, so the legend is true.
-export const toneClass: Record<EventTone, string> = {
-  working: "border-primary bg-primary/10 text-foreground",
-  needs: "border-orange bg-orange-tint text-orange",
-  result: "border-green bg-green-tint text-green",
-  quiet: "border-border bg-muted text-muted-foreground",
-  planned: "border-dashed border-muted-foreground bg-background text-muted-foreground",
-};
-
-export const toneLabel: Record<EventTone, string> = {
-  working: "Working",
-  needs: "Needs you",
-  result: "Result, unread",
-  quiet: "Read, unchanged or skipped",
-  planned: "Scheduled",
-};
-
-/** The tone of one automation run on the calendar. */
-export function runTone(
-  run: Pick<AutomationRun, "status" | "outcome">,
-  item: Pick<InboxItem, "outcome" | "read" | "dismissed"> | undefined,
-): EventTone {
-  if (run.status === "running") return "working";
-
-  if (item?.outcome === "failed" && !item.dismissed) return "needs";
-
-  if (item?.outcome === "changed" && !item.read) return "result";
-
-  return "quiet";
 }

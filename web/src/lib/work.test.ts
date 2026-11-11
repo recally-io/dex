@@ -1,14 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import type { TaskSummary } from "../api/generated/types.gen";
-import {
-  boardBucket,
-  needsTask,
-  automationNeedsYou,
-  openQuestion,
-  parseWorkSearch,
-  resolveRange,
-  runTone,
-} from "./work";
+import { boardBucket, botStatus, needsTask, automationNeedsYou, openQuestion } from "./work";
 
 const task: TaskSummary = {
   id: "task",
@@ -46,43 +38,6 @@ test("running tasks stay in Working even when activity is old", () => {
   expect(boardBucket({ task: { ...task, handledAt: 3 }, busy: false })).toBe("idle");
 });
 
-test("Work search keeps valid fields and drops invalid ones", () => {
-  expect(parseWorkSearch({ view: "calendar", range: "2026-11-10", kind: "repeat" })).toEqual({
-    view: "calendar",
-    range: "2026-11-10",
-    kind: "repeat",
-  });
-  expect(parseWorkSearch({ view: "table", range: "next week", kind: "all" })).toEqual({
-    view: undefined,
-    range: undefined,
-    kind: undefined,
-  });
-  expect(parseWorkSearch({ range: "today" }).range).toBe("today");
-});
-
-test("Work range parses a day in local time and ignores days outside the week", () => {
-  // Tuesday 10 Nov 2026, local time. A UTC parse of the day string would shift it west of UTC.
-  const now = new Date(2026, 10, 10, 15, 0).getTime();
-  const day = resolveRange("2026-11-12", now);
-  expect(day.name).toBe("day");
-  expect(day.start).toEqual(new Date(2026, 10, 12));
-  expect(day.end).toEqual(new Date(2026, 10, 13));
-  expect(resolveRange("2026-11-16", now).name).toBe("week");
-  expect(resolveRange("2026-02-30", now).name).toBe("week");
-  expect(resolveRange(undefined, now).start).toEqual(new Date(2026, 10, 9));
-  expect(resolveRange("today", now).start).toEqual(new Date(2026, 10, 10));
-});
-
-test("calendar run tone follows the inbox state of the run", () => {
-  const done = { status: "done", outcome: "changed" } as const;
-  expect(runTone({ status: "running", outcome: "" }, undefined)).toBe("working");
-  expect(runTone(done, { outcome: "failed", read: false, dismissed: false })).toBe("needs");
-  expect(runTone(done, { outcome: "failed", read: true, dismissed: true })).toBe("quiet");
-  expect(runTone(done, { outcome: "changed", read: false, dismissed: false })).toBe("result");
-  expect(runTone(done, { outcome: "changed", read: true, dismissed: false })).toBe("quiet");
-  expect(runTone({ status: "skipped", outcome: "" }, undefined)).toBe("quiet");
-});
-
 test("an open question needs the user until it is answered", () => {
   const question = { id: "q", text: "Which one?", options: [], status: "open" as const };
 
@@ -91,4 +46,32 @@ test("an open question needs the user until it is answered", () => {
   expect(openQuestion({ question: { ...question, status: "answered" } })).toBeUndefined();
   expect(boardBucket({ busy: false, question: { ...question, status: "answered" } })).toBe("idle");
   expect(boardBucket({ busy: false })).toBe("idle");
+});
+
+test("a bot row shows needs you before working, and only for its own items", () => {
+  const empty = { sessions: [], automations: [], inbox: [] };
+  const failedRun = { agentId: "a", outcome: "failed", dismissed: false } as const;
+
+  expect(botStatus("a", empty, { activeSessions: 0 })).toBeUndefined();
+  expect(botStatus("a", empty, { activeSessions: 1 })).toBe("working");
+
+  expect(botStatus("a", { ...empty, sessions: [{ agentId: "a", chat: { busy: true } }] }, undefined)).toBe(
+    "working",
+  );
+
+  expect(
+    botStatus(
+      "a",
+      { ...empty, sessions: [{ agentId: "a", chat: { busy: false, task } }] },
+      { activeSessions: 1 },
+    ),
+  ).toBe("needs");
+
+  expect(
+    botStatus("a", { ...empty, sessions: [{ agentId: "b", chat: { busy: false, task } }] }, undefined),
+  ).toBeUndefined();
+
+  expect(botStatus("a", { ...empty, inbox: [failedRun] }, undefined)).toBe("needs");
+  expect(botStatus("a", { ...empty, inbox: [{ ...failedRun, dismissed: true }] }, undefined)).toBeUndefined();
+  expect(botStatus("a", { ...empty, automations: [{ agentId: "a", setup: true }] }, undefined)).toBe("needs");
 });

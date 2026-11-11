@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { format, isToday, startOfDay, subDays } from "date-fns";
-import { Archive, ChevronRight, MoreHorizontal } from "lucide-react";
+import { Archive, ChevronRight, MoreHorizontal, X } from "lucide-react";
 import type { Chat } from "../api/generated/types.gen";
 import {
   archiveChatMutation,
@@ -17,6 +17,7 @@ import { errorText, refreshChats } from "../lib/queries";
 import { sessionKind } from "../lib/tasks";
 import { cn } from "../lib/utils";
 import { Button, buttonVariants } from "./ui/button";
+import { sidePanel } from "./page";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
@@ -86,7 +87,7 @@ const menuPopup =
  * menu. Chat sessions follow in date groups, newest first, and archived ones go last. Today
  * starts open; each group shows five chats until the user asks for more.
  */
-export function ChatList({ chatId }: { chatId: number }) {
+export function ChatList({ chatId, onClose }: { chatId: number; onClose: () => void }) {
   const agentId = useAgentId();
   const main = useQuery(getMainChatOptions({ path: { agentId } }));
   const sessions = useQuery({ ...listChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
@@ -110,7 +111,13 @@ export function ChatList({ chatId }: { chatId: number }) {
   );
 
   return (
-    <aside aria-label="Chats" className="hidden w-[256px] shrink-0 flex-col border-l border-border md:flex">
+    <aside aria-label="Chats" className={cn(sidePanel, "md:w-[256px]")}>
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3 md:hidden">
+        <span className="flex-1 text-[14px] font-medium">Chats</span>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label="Close chats" onClick={onClose}>
+          <X />
+        </Button>
+      </header>
       <nav aria-label="Chats" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 py-2">
         <Link
           to="/a/$agentId"

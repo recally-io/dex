@@ -12,10 +12,6 @@ import {
 } from "@tanstack/react-router";
 import { errorText, queryClient } from "./lib/queries";
 import { InboxResultPage } from "./routes/inbox";
-import { NeedsYouPage } from "./routes/needs-you";
-import { WorkPage } from "./routes/work";
-import { parseWorkSearch } from "./lib/work";
-import { AllAutomationsPage } from "./routes/all-automations";
 import { Shell } from "./components/shell";
 import { AgentLayout } from "./components/agent-layout";
 import { ChatPage } from "./routes/chat";
@@ -79,39 +75,24 @@ const agent = agentPage("/agent", AgentPage);
 const instructions = agentPage("/instructions", InstructionsPage);
 const channels = agentPage("/channels", ChannelsPage);
 const automations = agentPage("/automations", AutomationsPage);
-const needsYou = page("/needs-you", () => <NeedsYouPage />);
 
-const work = createRoute({
-  getParentRoute: () => root,
-  path: "/work",
-  validateSearch: parseWorkSearch,
-  component: WorkRoute,
-});
+// Needs you, Work, Automations and the Inbox list were global pages. Each bot now shows its own
+// items: tasks in its task panel, routines and their results under Routines.
+const retired = <P extends string>(path: P, href: string) =>
+  createRoute({
+    getParentRoute: () => root,
+    path,
+    beforeLoad: () => {
+      throw redirect({ href, replace: true });
+    },
+  });
 
-function WorkRoute() {
-  const search = work.useSearch();
-  const navigate = work.useNavigate();
-
-  return (
-    <WorkPage
-      search={search}
-      onSearch={(patch) =>
-        void navigate({ search: (previous) => ({ ...previous, ...patch }), replace: true })
-      }
-    />
-  );
-}
-
-const allAutomations = page("/automations", () => <AllAutomationsPage />);
-
-// The Inbox list moved to Needs you. A result keeps its own page.
-const inbox = createRoute({
-  getParentRoute: () => root,
-  path: "/inbox",
-  beforeLoad: () => {
-    throw redirect({ href: "/needs-you", replace: true });
-  },
-});
+const retiredRoutes = [
+  retired("/needs-you", "/a/default"),
+  retired("/work", "/a/default"),
+  retired("/inbox", "/a/default"),
+  retired("/automations", "/a/default/automations"),
+] as const;
 
 const inboxDetail = page("/inbox/$runId", () => {
   const { runId } = inboxDetail.useParams();
@@ -249,11 +230,8 @@ const router = createRouter({
     ]),
     ...oldAgentRoutes,
     tasks,
-    inbox,
+    ...retiredRoutes,
     inboxDetail,
-    needsYou,
-    work,
-    allAutomations,
     providers,
     secrets,
     about,

@@ -1,23 +1,16 @@
-import { AgentContext, useAgentId } from "../lib/agent-scope";
+import { AgentContext } from "../lib/agent-scope";
 import { AgentAvatar } from "./agent-avatar";
 import { DexMark } from "./dex-mark";
 import { AgentCreateDialog } from "./agent-create-dialog";
-import type { Agent, WorkSession } from "../api/generated/types.gen";
-import { boardBucket, needsTask, automationNeedsYou, openQuestion } from "../lib/work";
-import { readSeen } from "../lib/tasks";
-import { useNewChat } from "./chat-list";
+import type { Agent } from "../api/generated/types.gen";
+import { botStatus, workOptions, type BotStatus } from "../lib/work";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogClose, DialogContent } from "./ui/dialog";
-import { Settings, X, Search, Plus, PanelLeft, Inbox, Columns3, Repeat } from "lucide-react";
+import { Settings, X, Plus, PanelLeft } from "lucide-react";
 
-import {
-  getSettingsOptions,
-  getWorkOptions,
-  listAgentsOptions,
-} from "../api/generated/@tanstack/react-query.gen";
-import { Badge } from "./ui/badge";
+import { getSettingsOptions, listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { ShellContext } from "./page";
 import { globalPages } from "./settings-switcher";
 import { useSystemTheme } from "./theme";
@@ -39,8 +32,18 @@ function useSidebarOpen() {
   return [open, toggle] as const;
 }
 
+/** The status of each bot. The Shell polls it, so the drawer button can show it while the drawer is closed. */
+function useBotStatuses() {
+  const agents = useQuery({ ...listAgentsOptions(), refetchInterval: 3000 });
+  const work = useQuery(workOptions());
+
+  return new Map(
+    (agents.data?.agents ?? []).map((agent) => [agent.id!, botStatus(agent.id!, work.data, agent.activity)]),
+  );
+}
+
 export function Shell() {
-  useQuery({ ...listAgentsOptions(), refetchInterval: 3000 });
+  const statuses = useBotStatuses();
   const [menu, setMenu] = useState(false);
   const [sidebarOpen, toggleSidebar] = useSidebarOpen();
   const location = useRouterState({ select: (s) => s.location });
@@ -50,7 +53,10 @@ export function Shell() {
   const [menuPath, setMenuPath] = useState(path);
   const [lastAgent, setLastAgent] = useState("default");
   const routeAgent = path.match(/^\/a\/([^/]+)/)?.[1];
-  const shell = useMemo(() => ({ openDrawer: () => setMenu(true) }), []);
+  const current = routeAgent ?? lastAgent;
+  // The drawer button shows when another bot needs you. The current bot shows its own in the task panel.
+  const attention = [...statuses].some(([id, status]) => id !== current && status === "needs");
+  const shell = useMemo(() => ({ openDrawer: () => setMenu(true), attention }), [attention]);
   useSystemTheme();
 
   if (routeAgent && routeAgent !== lastAgent) setLastAgent(routeAgent);
@@ -89,6 +95,7 @@ export function Shell() {
         </a>
         <Sidebar
           path={path}
+          statuses={statuses}
           collapsed={!sidebarOpen}
           onToggle={toggleSidebar}
           className="hidden pt-0.5 lg:flex"
@@ -107,11 +114,11 @@ export function Shell() {
         >
           <DialogClose
             aria-label="Close navigation"
-            className="absolute top-3 -right-10 z-20 flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="absolute top-2.5 right-2 z-20 flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <X size={18} />
           </DialogClose>
-          <Sidebar path={path} className="w-full" />
+          <Sidebar path={path} statuses={statuses} className="w-full" />
         </DialogContent>
       </Dialog>
     </ShellContext.Provider>
@@ -119,16 +126,19 @@ export function Shell() {
 }
 
 /**
- * The sidebar groups sessions by bot. Global settings stay in the footer.
- * Collapsed, it keeps one icon per bot; the drawer below lg is always expanded.
+ * The sidebar lists the bots and the global settings. Work happens inside a bot: its Main, its
+ * task panel and its Routines. Each row shows one status, so a bot that needs you stands out.
+ * One list of bots fits while there are few; a global inbox comes back if bots outgrow it (~6).
  */
 function Sidebar({
   path,
+  statuses,
   className,
   collapsed = false,
   onToggle,
 }: {
   path: string;
+  statuses: Map<string, BotStatus>;
   className?: string;
   collapsed?: boolean;
   onToggle?: () => void;
@@ -136,52 +146,18 @@ function Sidebar({
   const settings = useQuery(getSettingsOptions());
   const agents = useQuery(listAgentsOptions());
   const [creating, setCreating] = useState(false);
-  const [query, setQuery] = useState("");
-  const [now] = useState(() => Date.now());
-
-  const work = useQuery({
-    ...getWorkOptions({ query: { from: now, to: now + 7 * 86400000 } }),
-    refetchInterval: 10000,
-  });
 
   const [a, selected] = path.split("/").filter(Boolean);
   const agentId = a === "a" ? selected : "default";
   const providerErrors = settings.data?.providers.filter((p) => p.error).length ?? 0;
   const onSettings = globalPages.some((page) => page.to === path);
-
   const list = agents.data?.agents ?? [];
-  const sessions = work.data?.sessions ?? [];
-  const automations = work.data?.automations ?? [];
-  const inbox = work.data?.inbox ?? [];
-
-  const needsAutomations = automations.filter((item) =>
-    automationNeedsYou(item.automation.id, item.setup, inbox),
-  ).length;
-
-  const needs =
-    sessions.filter((item) => item.chat.task && needsTask(item.chat.task)).length +
-    sessions.filter((item) => openQuestion(item.chat)).length +
-    inbox.filter((item) => item.outcome === "failed" && !item.dismissed).length +
-    automations.filter((item) => item.setup).length;
-
-  const search = query.trim().toLowerCase();
-
-  const shown =
-    search && !collapsed
-      ? list.filter(
-          (agent) =>
-            agent.name.toLowerCase().includes(search) ||
-            sessions.some(
-              (item) => item.agentId === agent.id && item.chat.title.toLowerCase().includes(search),
-            ),
-        )
-      : list;
 
   const iconButton =
     "relative flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground";
 
   const footerRow =
-    "relative flex h-8 w-full items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground";
+    "relative flex h-9 w-full items-center gap-2 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground";
 
   const errorLabel = `${providerErrors} ${providerErrors === 1 ? "provider needs" : "providers need"} attention`;
 
@@ -194,126 +170,43 @@ function Sidebar({
         className,
       )}
     >
-      <div className={cn("mt-1 flex h-10 items-center gap-2", collapsed ? "justify-center" : "mx-2 px-2")}>
-        <DexMark />
-        {collapsed ? null : (
-          <span className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">dex</span>
-        )}
-      </div>
-      <Link
-        to="/needs-you"
-        aria-label={`Needs you, ${needs} items`}
-        aria-current={path.startsWith("/needs-you") ? "page" : undefined}
-        className={cn(
-          "relative mx-2 mt-2 flex h-9 items-center gap-2 rounded-md px-2 hover:bg-accent aria-[current=page]:bg-accent",
-          collapsed && "mx-0 size-9 justify-center px-0",
-        )}
-      >
-        <Inbox size={18} />
-        {collapsed ? null : <span className="flex-1 text-sm">Needs you</span>}
-        {needs ? (
-          <Badge
-            variant="destructive"
-            aria-label={`${needs} need attention`}
-            className={cn(
-              "h-4 min-w-4 px-1 text-[10px] tabular-nums",
-              collapsed && "absolute -top-1 -right-1",
-            )}
-          >
-            {needs}
-          </Badge>
-        ) : null}
-      </Link>
-      <Link
-        to="/work"
-        aria-label="Work"
-        aria-current={path.startsWith("/work") ? "page" : undefined}
-        className={cn(
-          "relative mx-2 flex h-9 items-center gap-2 rounded-md px-2 hover:bg-accent aria-[current=page]:bg-accent",
-          collapsed && "mx-0 size-9 justify-center px-0",
-        )}
-      >
-        <Columns3 size={18} />
-        {collapsed ? null : <span className="flex-1 text-sm">Work</span>}
-      </Link>
-      <Link
-        to="/automations"
-        aria-label={`Automations, ${automations.length}, ${needsAutomations} need you`}
-        aria-current={path === "/automations" ? "page" : undefined}
-        className={cn(
-          "relative mx-2 flex h-9 items-center gap-2 rounded-md px-2 hover:bg-accent aria-[current=page]:bg-accent",
-          collapsed && "mx-0 size-9 justify-center px-0",
-        )}
-      >
-        <Repeat size={16} />
-        {collapsed ? null : (
-          <>
-            <span className="flex-1 text-sm">Automations</span>
-            {needsAutomations ? (
-              <span className="text-xs text-orange">{needsAutomations} need you</span>
-            ) : null}
-            <span className="text-xs text-muted-foreground">{automations.length}</span>
-          </>
-        )}
-      </Link>
-      {collapsed ? (
-        <span aria-hidden className="my-2 h-px w-6 shrink-0 bg-border" />
-      ) : (
-        <div className="mx-2 mt-2 mb-1 flex h-7 items-center justify-between px-2">
-          <span className="text-[12px] font-medium text-muted-foreground">Bots</span>
-          <button
-            type="button"
-            aria-label="Create bot"
-            onClick={() => setCreating(true)}
-            className="flex size-6 items-center justify-center rounded-md text-[15px] leading-none text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            +
-          </button>
-        </div>
-      )}
-      {!collapsed ? (
-        <div className="mx-2 mb-1.5 flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-card px-2 text-muted-foreground">
-          <Search size={13} />
-          <input
-            type="search"
-            value={query}
-            aria-label="Search sessions"
-            placeholder="Search sessions"
-            onChange={(event) => setQuery(event.target.value)}
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground"
-          />
-        </div>
-      ) : null}
       <div
-        className={cn("min-h-0 overflow-y-auto", collapsed && "flex flex-col items-center gap-1 px-1 pt-1")}
+        className={cn("mt-1 mb-2 flex h-10 items-center gap-2", collapsed ? "justify-center" : "mx-2 px-2")}
       >
-        {shown.map((agent) => (
+        <DexMark />
+        {collapsed ? null : <span className="text-[14px] font-semibold text-foreground">dex</span>}
+      </div>
+      <div
+        className={cn(
+          "flex min-h-0 flex-col gap-0.5 overflow-y-auto",
+          collapsed ? "items-center px-1" : "px-2",
+        )}
+      >
+        {list.map((agent) => (
+          // The row reads its own bot's draft from app state, so it renders inside that bot's scope.
           <AgentContext.Provider key={agent.id} value={agent.id!}>
             <AgentRow
               agent={agent}
+              status={statuses.get(agent.id!)}
               current={a === "a" && agent.id === selected}
               collapsed={collapsed}
-              sessions={sessions.filter((item) => item.agentId === agent.id)}
-              search={search}
             />
           </AgentContext.Provider>
         ))}
-        {collapsed ? (
-          <button
-            type="button"
-            aria-label="Create bot"
-            title="Create bot"
-            onClick={() => setCreating(true)}
-            className={iconButton}
-          >
-            <Plus size={16} />
-          </button>
-        ) : null}
-        {list.length && !shown.length ? (
-          <p className="px-4 py-2 text-[12.5px] text-muted-foreground">No bot matches.</p>
-        ) : null}
+        <button
+          type="button"
+          aria-label="New bot"
+          title={collapsed ? "New bot" : undefined}
+          onClick={() => setCreating(true)}
+          className={collapsed ? iconButton : footerRow}
+        >
+          <span className="flex size-6 shrink-0 items-center justify-center">
+            <Plus size={15} />
+          </span>
+          {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">New bot</span>}
+        </button>
         {agents.isError ? (
-          <p role="alert" className={cn("text-xs text-red", collapsed ? "px-1 text-center" : "px-4")}>
+          <p role="alert" className={cn("text-xs text-red", collapsed ? "px-1 text-center" : "px-2")}>
             {collapsed ? "Error" : "Could not load bots."}
           </p>
         ) : null}
@@ -341,7 +234,7 @@ function Sidebar({
             "aria-[current=page]:bg-accent aria-[current=page]:text-foreground",
           )}
         >
-          <span className="flex size-5 shrink-0 items-center justify-center">
+          <span className="flex size-6 shrink-0 items-center justify-center">
             <Settings size={15} />
           </span>
           {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">Settings</span>}
@@ -362,7 +255,7 @@ function Sidebar({
             onClick={onToggle}
             className={collapsed ? iconButton : footerRow}
           >
-            <span className="flex size-5 shrink-0 items-center justify-center">
+            <span className="flex size-6 shrink-0 items-center justify-center">
               <PanelLeft size={15} />
             </span>
             {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">Collapse</span>}
@@ -373,192 +266,66 @@ function Sidebar({
   );
 }
 
+const statusLabel = { needs: "Needs you", working: "Working" } as const;
+
+function StatusDot({ status, floating = false }: { status: BotStatus; floating?: boolean }) {
+  if (!status) return null;
+
+  return (
+    <span
+      role="img"
+      aria-label={statusLabel[status]}
+      title={statusLabel[status]}
+      className={cn(
+        "size-2 shrink-0 rounded-full",
+        status === "needs" ? "bg-orange" : "bg-primary",
+        floating && "absolute right-1 bottom-1 ring-2 ring-sidebar",
+      )}
+    />
+  );
+}
+
 function AgentRow({
   agent,
+  status,
   current,
   collapsed,
-  sessions,
-  search,
 }: {
   agent: Agent;
+  status: BotStatus;
   current: boolean;
   collapsed: boolean;
-  sessions: WorkSession[];
-  search: string;
 }) {
-  const agentId = useAgentId();
   const { draft } = useApp();
+  // An unsaved instructions draft survives a bot switch, so the row keeps a mark until it is saved.
   const dirty = instructionsDirty(draft, agent.instructions);
-  const active = agent.activity?.activeSessions ?? 0;
-  const channels = agent.activity?.runningChannels ?? 0;
-  const unread = agent.activity?.inboxUnread ?? 0;
-  const failed = agent.activity?.inboxFailed ?? 0;
 
-  const status =
-    active > 0
-      ? `${active} active`
-      : channels > 0
-        ? `${channels} ${channels === 1 ? "channel" : "channels"} on`
-        : "Idle";
-
-  if (collapsed)
-    return (
-      <Link
-        to="/a/$agentId"
-        params={{ agentId }}
-        aria-current={current ? "page" : undefined}
-        aria-label={`${agent.name}, ${dirty ? "instructions draft, " : ""}${status}`}
-        title={`${agent.name} · ${status}`}
-        className="relative flex size-9 shrink-0 items-center justify-center rounded-md hover:bg-accent aria-[current=page]:bg-accent"
-      >
-        <AgentAvatar agent={agent} />
-        <UnreadBadge unread={unread} failed={failed} floating />
-        {active > 0 || dirty ? (
-          <span
-            aria-hidden
-            className={cn(
-              "absolute right-1 bottom-1 size-2 rounded-full ring-2 ring-background",
-              active > 0 ? "bg-primary" : "bg-orange",
-            )}
-          />
-        ) : null}
-      </Link>
-    );
+  const label = [agent.name, dirty ? "instructions draft" : "", status ? statusLabel[status] : ""]
+    .filter(Boolean)
+    .join(", ");
 
   return (
-    <div>
-      <div className="mx-2 mb-1 flex shrink-0 items-center">
-        <Link
-          to="/a/$agentId"
-          params={{ agentId }}
-          aria-current={current ? "page" : undefined}
-          className={cn(
-            "flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 hover:bg-accent",
-            current && "bg-accent",
-          )}
-        >
-          <AgentAvatar agent={agent} />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-[14px] leading-tight font-semibold text-foreground">
-              {agent.name}
-            </span>
-            <span className="truncate text-[11.5px] leading-tight text-muted-foreground">{status}</span>
-          </span>
-          <UnreadBadge unread={unread} failed={failed} />
-          {dirty ? (
-            <Badge
-              variant="outline"
-              className="h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-foreground"
-            >
-              Draft
-            </Badge>
-          ) : null}
-        </Link>
-        <NewSessionButton agentId={agentId} />
-      </div>
-      <AgentSessions agentId={agentId} sessions={sessions} search={search} />
-    </div>
-  );
-}
-
-function NewSessionButton({ agentId }: { agentId: string }) {
-  const create = useNewChat();
-
-  return (
-    <button
-      type="button"
-      aria-label="New session"
-      disabled={create.isPending}
-      onClick={() => create.mutate({ path: { agentId } })}
-      className="flex size-7 items-center justify-center text-muted-foreground hover:text-foreground"
-    >
-      <Plus size={14} />
-    </button>
-  );
-}
-
-function AgentSessions({
-  agentId,
-  sessions,
-  search,
-}: {
-  agentId: string;
-  sessions: WorkSession[];
-  search: string;
-}) {
-  const [now] = useState(() => Date.now());
-  const seen = readSeen(agentId);
-
-  const chats = sessions
-    .map((item) => item.chat)
-    .filter(
-      (chat) =>
-        !chat.main &&
-        !chat.archivedAt &&
-        (!search || chat.title.toLowerCase().includes(search)) &&
-        (boardBucket(chat) !== "idle" ||
-          now - chat.updatedAt < 86400000 ||
-          (!!chat.task?.endedAt && (seen[chat.task.id] ?? 0) < chat.task.endedAt)),
-    );
-
-  return (
-    <div className="mx-3 mb-2 space-y-1 pl-3">
-      <Link
-        to="/a/$agentId"
-        params={{ agentId }}
-        className="block truncate rounded-md px-2 py-1 text-xs font-semibold hover:bg-accent"
-      >
-        Main
-      </Link>
-      {chats.map((chat) =>
-        chat.task ? (
-          <Link
-            key={chat.id}
-            to="/a/$agentId/tasks/$taskId"
-            params={{ agentId, taskId: chat.task.id }}
-            className="block truncate rounded-md px-2 py-1 text-xs hover:bg-accent"
-          >
-            {chat.task.title}{" "}
-            {boardBucket(chat) === "needs"
-              ? "· Needs you"
-              : boardBucket(chat) === "working"
-                ? "· Working"
-                : ""}
-          </Link>
-        ) : (
-          <Link
-            key={chat.id}
-            to="/a/$agentId/c/$chatId"
-            params={{ agentId, chatId: String(chat.id) }}
-            className="block truncate rounded-md px-2 py-1 text-xs hover:bg-accent"
-          >
-            {chat.title || "Chat"}
-            {chat.busy ? " · Working" : ""}
-          </Link>
-        ),
+    <Link
+      to="/a/$agentId"
+      params={{ agentId: agent.id! }}
+      aria-current={current ? "page" : undefined}
+      aria-label={collapsed ? label : undefined}
+      title={collapsed ? label : undefined}
+      className={cn(
+        "relative flex shrink-0 items-center rounded-md hover:bg-accent aria-[current=page]:bg-accent",
+        collapsed ? "size-9 justify-center" : "h-10 gap-2.5 px-2",
       )}
-    </div>
-  );
-}
-
-function UnreadBadge({
-  unread,
-  failed,
-  floating = false,
-}: {
-  unread: number;
-  failed: number;
-  floating?: boolean;
-}) {
-  if (!unread) return null;
-
-  return (
-    <Badge
-      variant={failed ? "destructive" : "secondary"}
-      aria-label={`${unread} unread${failed ? ", needs you" : ""}`}
-      className={cn("h-4 min-w-4 px-1 text-[10px] tabular-nums", floating && "absolute -top-1 -right-1")}
     >
-      {unread}
-    </Badge>
+      <AgentAvatar agent={agent} />
+      {collapsed ? null : (
+        <>
+          <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-foreground">
+            {agent.name}
+          </span>
+          {dirty ? <span className="shrink-0 text-[11.5px] text-orange">Draft</span> : null}
+        </>
+      )}
+      <StatusDot status={status} floating={collapsed} />
+    </Link>
   );
 }

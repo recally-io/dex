@@ -61,7 +61,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
     mutationFn: async (result: InboxItem) => {
       await dismissInboxItem({ path: { runId: result.runId }, throwOnError: true });
       await refreshInbox();
-      await navigate({ to: "/needs-you" });
+      await navigate({ to: "/a/$agentId/automations", params: { agentId: result.agentId } });
     },
   });
 
@@ -90,7 +90,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
 
   return (
     <FramedPage
-      headerTitle="Needs you"
+      headerTitle="Routine result"
       title={item?.automationName ?? "Result"}
       description={item ? `${item.agentName} · ${new Date(item.createdAt).toLocaleString()}` : undefined}
     >
@@ -98,9 +98,15 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
         n={1}
         title="Result"
         action={
-          <Link to="/needs-you" className="text-sm underline">
-            Needs you
-          </Link>
+          item ? (
+            <Link
+              to="/a/$agentId/automations"
+              params={{ agentId: item.agentId }}
+              className="text-sm underline"
+            >
+              Routines
+            </Link>
+          ) : null
         }
       >
         {pending ? (

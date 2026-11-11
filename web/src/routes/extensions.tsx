@@ -14,6 +14,7 @@ import { Failure, Loading, Spinner } from "../components/feedback";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import { BotSettingsSwitcher } from "../components/settings-switcher";
 
 export function ExtensionsPage() {
   const agentId = useAgentId();
@@ -32,6 +33,7 @@ export function ExtensionsPage() {
   return (
     <FramedPage
       title="Extensions"
+      toolbar={<BotSettingsSwitcher segment="extensions" />}
       description="Read home, then dex, then bot. A narrower level replaces a skill or MCP server with the same name. Environment keys merge in this order."
       actions={
         <Button
