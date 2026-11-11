@@ -421,7 +421,12 @@ try {
     "continued run answers without a second message",
     `${retries} === ${before - 1} && document.body.innerText.split(${JSON.stringify(retryCommand)}).length === 2`,
   );
+  // The stop can land before the tool starts, so the continued run may run the command again.
   await writeFile(retryGate, "release");
+  await ui(
+    "continued run answered",
+    "!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)') && !document.body.innerText.includes('Nothing to continue')",
+  );
   results.push("Retry continues a stopped run without a second message");
 
   // Given two same-title tasks, dispatch and result links use their saved IDs.

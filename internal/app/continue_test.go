@@ -75,3 +75,25 @@ func TestUserRetriesStoppedRunWithoutSendingTheMessageAgain(t *testing.T) {
 		t.Fatalf("answers = %d, want 1: %+v", answers, w.tr.items)
 	}
 }
+
+func TestUserRetriesFailedReplyWithAnotherModel(t *testing.T) {
+	t.Parallel()
+	// Given a reply that failed with a model error.
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "spawn")
+	chatID := d.newSession(t).ID
+	d.send(t, chatID, "not json")
+	w := d.watch(t, chatID)
+	w.until(t, "failed card", func(tr *transcript) bool {
+		last := lastItem(tr)
+		return !tr.running && last.Kind == "error" && last.Failure == "model_error"
+	})
+
+	// When the user picks another model and retries, then the run answers the same message once.
+	d.setModel(t, "echo")
+	d.must(t, http.MethodPost, continuePath(chatID), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusAccepted)
+	w.until(t, "continued answer", answered("echo: not json"))
+	if users := countKind(&w.tr, "user"); users != 1 {
+		t.Fatalf("the message was sent again: %d user items", users)
+	}
+}
