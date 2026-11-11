@@ -57,14 +57,15 @@ get `parent_id` in the migration, so they become children and accept
 
 ### Agent tools
 
-| Tool           | Arguments                                                         | Operation                                                                                           |
-| -------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `session_new`  | `title`, `message`, `cwd`, `provider`, `modelId`, `thinkingLevel` | Create the child with its settings, then submit `message`. An empty setting uses the parent value.  |
-| `session_send` | `id`, `message`, `mode` (`queue` or `steer`, default `queue`)     | An idle child starts a run. A busy child adds `steer` to the current run and runs `queue` after it. |
-| `session_stop` | `id`                                                              | The same as user Stop. It withdraws queued input and stops the run. It does not roll back files.    |
-| `session_list` | none                                                              | The children of the caller, newest activity first, at most 20.                                      |
-| `session_read` | `id`, `turn` (default latest)                                     | The full answer of one turn, the turn list, and the settings.                                       |
-| `session_fork` | `id`, `entry` (default latest), `message`                         | Fork the child with `chat.Service.Fork`. The fork has the same parent.                              |
+| Tool             | Arguments                                                         | Operation                                                                                           |
+| ---------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `session_new`    | `title`, `message`, `cwd`, `provider`, `modelId`, `thinkingLevel` | Create the child with its settings, then submit `message`. An empty setting uses the parent value.  |
+| `session_send`   | `id`, `message`, `mode` (`queue` or `steer`, default `queue`)     | An idle child starts a run. A busy child adds `steer` to the current run and runs `queue` after it. |
+| `session_stop`   | `id`                                                              | The same as user Stop. It withdraws queued input and stops the run. It does not roll back files.    |
+| `session_list`   | `scope` (`children` or `all`, default `children`)                 | Sessions newest activity first, at most 20. `all` lists every session of the bot except dreams.     |
+| `session_read`   | `id`, `before`, `limit` (default 10); or `id`, `turn`, `offset`   | Turns of any session of the bot: the input message and the final answer. See "Reading and search".  |
+| `session_search` | `query`, `session`, `since`, `limit` (default 20)                 | Search inputs and final answers in every session of the bot. See "Reading and search".              |
+| `session_fork`   | `id`, `entry` (default latest), `message`                         | Fork the child with `chat.Service.Fork`. The fork has the same parent.                              |
 
 Remove `spawn_task`, `list_tasks`, `get_task`, `cancel_task`,
 `acknowledge_task`, and `report_task`. `set_project` stays for the calling
@@ -74,6 +75,31 @@ The message carries the goal, the constraints, and the completion criteria.
 The child prompt asks for a final answer with these parts: what changed,
 commands and results, files, and open items. There is no structured report and
 no `goalMet` field. The main agent checks the answer against files and tests.
+
+### Reading and search
+
+`session_read` and `session_search` read the turns of every session of the
+same bot: Main, Chats, child sessions, and automation sessions. Dream
+conversations are excluded. Another bot's sessions are not visible. Child
+sessions can also read and search, so a child can read its parent instead of
+waiting for the parent to repeat the context.
+
+A turn is one `submissions` row of kind `message`: its input `content` and its
+final `answer`, or the failure reason. Thinking, tool calls, tool output, and
+other intermediate steps are not returned, because they do not help the reader
+and they cost context. Child results (`task_result` rows) are skipped because
+they copy the child's answers. The tools read only `control.sqlite`, not the
+native transcript.
+
+- `session_read` returns turns newest first, with turn ID, time, origin, input,
+  and answer. Each text is cut at 4,000 characters. `turn` and `offset` read the
+  rest of one cut text, as `read_dream_message` does.
+- `session_search` matches each word of `query` as a substring of the input or
+  the answer, ignoring ASCII case, and all words must match. It returns session
+  ID, title, turn ID, time, and 150 characters around the first match. A
+  substring scan handles Chinese text, and the default FTS5 tokenizer does not.
+  The scan has no index (`control.sqlite` is 3.2 MB in prod on 2026-11-11). Add
+  a trigram index when one search takes more than one second.
 
 ### Where the task fields go
 
@@ -127,7 +153,7 @@ is not lost, and a replay does not make a copy.
 - A user turn sends no result to the parent. The parent sees it in
   `session_list`.
 - The payload has the child ID, title, turn, outcome, and the answer cut to
-  4,000 characters. A cut answer ends with a pointer to `session_read`.
+  4,000 characters. A cut answer ends with a pointer to `session_read` with `turn` and `offset`.
 - The submission kind stays `task_result` and the native entry kind stays
   `dex.task_result`. A `CHECK` constraint, the channel delivery index, and
   saved transcripts use these names, so a rename costs more than it gives.
@@ -150,7 +176,9 @@ continue in the same context.
   `session_send`. Use `session_new` only for unrelated or parallel work. Use
   `session_fork` to branch from a child that already has the context. Remove
   the rule "cancel the task and spawn a new one".
-- Read the full answer with `session_read` only when the result is cut.
+- Read the full answer with `session_read` only when the result is cut. Use
+  `session_search` and `session_read` to find earlier work and context in any
+  session of the bot before asking the user to repeat it.
 - Update `internal/engine/skills/coding/SKILL.md` to match.
 
 ### Web UI
