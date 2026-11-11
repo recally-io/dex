@@ -25,9 +25,8 @@ import { errorText, refreshChats } from "../lib/queries";
 import { agentModel, findModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
-import { activeSessionCount, markTaskSeen, sessionKind, taskTime } from "../lib/tasks";
+import { activeSessionCount, sessionKind, sessionTime } from "../lib/sessions";
 import { SessionSettings } from "../components/session-settings";
-import { TaskSessionBar } from "../components/agent/task-session-bar";
 import { Artifacts } from "../components/agent/artifacts";
 import { chatDraftEvent, putChatDraft, takeChatDraft } from "../lib/chat-draft";
 import { Composer, type SendMode } from "../components/composer";
@@ -89,22 +88,22 @@ export function MainTimeline({ settings }: { settings: Settings }) {
   );
 }
 
-// A delegated session names the conversation that started it. The parent is Main or a Chat session.
-function TaskOrigin({ parentId }: { parentId: number }) {
+// A child session links to the session that started it. The parent is Main or a Chat session.
+function ParentLink({ parentId }: { parentId: number }) {
   const agentId = useAgentId();
   const parent = useQuery(getChatOptions({ path: { agentId, chatId: parentId } }));
+  const name = parent.data ? (parent.data.main ? "Main" : parent.data.title || "a chat") : "…";
 
-  return (
-    <Link
-      to="/a/$agentId/c/$chatId"
-      params={{ agentId, chatId: String(parentId) }}
-      className="shrink-0 rounded-full hover:opacity-80"
-    >
-      <Badge variant="secondary" className="h-5 max-w-40 shrink-0 gap-1 px-2 text-[11.5px]">
-        <span className="truncate">
-          Started by {parent.data ? (parent.data.main ? "Main" : parent.data.title || "a chat") : "…"}
-        </span>
-      </Badge>
+  const className =
+    "max-w-56 shrink-0 truncate text-[12.5px] text-muted-foreground hover:text-foreground hover:underline";
+
+  return parent.data?.main ? (
+    <Link to="/a/$agentId" params={{ agentId }} className={className}>
+      Started by {name}
+    </Link>
+  ) : (
+    <Link to="/a/$agentId/c/$chatId" params={{ agentId, chatId: String(parentId) }} className={className}>
+      Started by {name}
     </Link>
   );
 }
@@ -139,9 +138,6 @@ function ForkOrigin({ origin }: { origin: NonNullable<ChatInfo["forkedFrom"]> })
 
 function OriginPill({ chat }: { chat: ChatInfo }) {
   const agentId = useAgentId();
-
-  if (chat.channel === "task")
-    return chat.task ? <TaskOrigin parentId={chat.task.parentConversationId} /> : null;
 
   if (!["web", "automation"].includes(chat.channel))
     return (
@@ -183,18 +179,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const kind = chat.data ? sessionKind(chat.data) : undefined;
   const switchable = kind === "Main" || kind === "Chat";
 
-  const task = chat.data?.task;
-  const taskActive = task ? ["queued", "admitting", "running"].includes(task.status) : false;
   const refetchChat = chat.refetch;
-
-  // The session becomes writable when its task ends, so the page follows the task while it is active.
-  useEffect(() => {
-    if (!taskActive) return;
-
-    const timer = setInterval(() => void refetchChat(), 3000);
-
-    return () => clearInterval(timer);
-  }, [taskActive, refetchChat]);
 
   // The live stream carries native events only. The question changes in the control store when its answer
   // ends, so the page polls while an answer waits.
@@ -214,15 +199,8 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     refetchInterval: 3000,
   });
 
-  useEffect(() => {
-    for (const session of sessions.data?.chats ?? []) {
-      if (session.task?.parentConversationId === chatId && session.task.status === "done")
-        markTaskSeen(agentId, session.task.id);
-    }
-  }, [agentId, chatId, sessions.data]);
-
   const activeHere = activeSessionCount(
-    (sessions.data?.chats ?? []).filter((session) => session.task?.parentConversationId === chatId),
+    (sessions.data?.chats ?? []).filter((session) => session.parentId === chatId),
   );
 
   const health = useQuery(getHealthOptions());
@@ -472,17 +450,8 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
 
   const running = state.running;
 
-  const continuing = Boolean(task) && !readOnly;
-
   const composer = readOnly ? null : (
     <>
-      {continuing ? (
-        <p className="mb-3 text-center text-[12px] leading-relaxed text-muted-foreground">
-          The task is finished. You can keep chatting here.
-          <br />
-          Replies stay in this session. {settings.agent.name} does not report them to Main again.
-        </p>
-      ) : null}
       {withdraw.error ? (
         <div role="alert" className="mb-3">
           <Note tone="warn">
@@ -560,7 +529,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         }
         pending={pending}
         disabledReason={reason}
-        placeholder={continuing ? "Continue chat" : `Message ${settings.agent.name}`}
+        placeholder={`Message ${settings.agent.name}`}
         autoFocus
         onSend={(text, mode) => sendText(text, files.ready, undefined, mode)}
         onStop={() => {
@@ -683,13 +652,17 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                 <h1 id="page-title" tabIndex={-1} className="min-w-0 flex-1 truncate text-sm font-medium">
                   {chat.data.title || "New chat"}
                 </h1>
-                <Link
-                  to="/a/$agentId"
-                  params={{ agentId }}
-                  className="shrink-0 text-[12.5px] text-muted-foreground hover:text-foreground hover:underline"
-                >
-                  Back to Main
-                </Link>
+                {chat.data.parentId === undefined ? (
+                  <Link
+                    to="/a/$agentId"
+                    params={{ agentId }}
+                    className="shrink-0 text-[12.5px] text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    Back to Main
+                  </Link>
+                ) : (
+                  <ParentLink parentId={chat.data.parentId} />
+                )}
               </header>
             )}
             {settingsOpen ? (
@@ -715,7 +688,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
             menu={!embedded}
             title={chat.data?.title || "New session"}
             crumb={
-              chat.data && !task ? (
+              chat.data ? (
                 <Link
                   to="/a/$agentId/automations"
                   params={{ agentId }}
@@ -726,9 +699,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
               ) : null
             }
             badge={chat.data ? <OriginPill chat={chat.data} /> : null}
-            actions={
-              continuing && chat.data ? <SessionSettings chat={chat.data} settings={settings} /> : undefined
-            }
           />
         )}
         <div className="flex min-h-0 flex-1">
@@ -749,7 +719,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                 {transcript}
               </div>
             </div>
-            {readOnly && task && taskActive ? <TaskSessionBar task={task} /> : null}
             {readOnly ? null : (
               <div
                 className={cn(
@@ -835,7 +804,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                                 {item.title || "New session"}
                               </span>
                               <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
-                                {taskTime(item.updatedAt)}
+                                {sessionTime(item.updatedAt)}
                               </span>
                             </Link>
                           </li>
@@ -859,9 +828,6 @@ function readOnlyCopy(channel?: ChatInfo["channel"]) {
 
   if (channel === "telegram" || channel === "wechat" || channel === "feishu")
     return `You can read this conversation here. Reply in ${names[channel]}.`;
-
-  if (channel === "task")
-    return "You can read this session while the task runs. You can chat here after it ends.";
 
   return channel === "automation" ? "You can read this run here." : "You can read this conversation here.";
 }
