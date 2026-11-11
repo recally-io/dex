@@ -108,18 +108,22 @@ try {
   // The default bot runs the faux tool model, which turns "bot_delete {json}" into a tool call.
   const initial = await api("/api/agents/default");
   await api("/api/agents/default", { ...initial, provider: "faux", modelId: "tool" }, "PUT");
-  const coder = await api(
+  await api(
     "/api/agents",
     { name: "Coder", provider: "faux", modelId: "echo", thinkingLevel: "off", instructions: "" },
     "POST",
   );
+
   const bots = async (path) => (await api(path)).agents.map((a) => a.name);
 
   async function ask() {
     const chat = await api("/api/agents/default/chats", {}, "POST");
     await api(
       `/api/agents/default/chats/${chat.id}/messages`,
-      { id: crypto.randomUUID(), text: `bot_delete ${JSON.stringify({ bot: "Coder", reason: "Not used any more" })}` },
+      {
+        id: crypto.randomUUID(),
+        text: `bot_delete ${JSON.stringify({ bot: "Coder", reason: "Not used any more" })}`,
+      },
       "POST",
     );
     await visit(`/a/default/c/${chat.id}`);
@@ -142,7 +146,9 @@ try {
   await shot("1-approve-card");
   await api("/api/agents/default", { ...initial, provider: "faux", modelId: "echo" }, "PUT");
   await answer("Cancel");
-  await poll("refusal shown", () => evaluate("document.body.innerText.includes('Not approved. Bot \"Coder\" is not archived.')"));
+  await poll("refusal shown", () =>
+    evaluate("document.body.innerText.includes('Not approved. Bot \"Coder\" is not archived.')"),
+  );
   assert.deepEqual(await bots("/api/agents"), ["Dex", "Coder"]);
   await shot("2-cancelled");
 
@@ -151,10 +157,14 @@ try {
   await ask();
   await api("/api/agents/default", { ...initial, provider: "faux", modelId: "echo" }, "PUT");
   await answer("Archive Coder");
-  await poll("approval shown", () => evaluate("document.body.innerText.includes('Approved. Bot \"Coder\" is archived.')"));
+  await poll("approval shown", () =>
+    evaluate("document.body.innerText.includes('Approved. Bot \"Coder\" is archived.')"),
+  );
   assert.deepEqual(await bots("/api/agents"), ["Dex"]);
   assert.deepEqual(await bots("/api/archived-agents"), ["Coder"]);
-  await poll("sidebar drops the bot", () => evaluate("!document.querySelector('aside').innerText.includes('Coder')"));
+  await poll("sidebar drops the bot", () =>
+    evaluate("!document.querySelector('aside').innerText.includes('Coder')"),
+  );
   await shot("3-archived");
 
   // 3. The archived list restores it.
@@ -163,9 +173,13 @@ try {
   await shot("4-archived-list");
   await click("Restore");
   await poll("restored", async () => (await bots("/api/agents")).includes("Coder"));
-  await poll("empty list", () => evaluate("document.querySelector('main').innerText.includes('No archived bots')"));
+  await poll("empty list", () =>
+    evaluate("document.querySelector('main').innerText.includes('No archived bots')"),
+  );
   assert.deepEqual(await bots("/api/archived-agents"), []);
-  await poll("sidebar shows the bot", () => evaluate("document.querySelector('aside').innerText.includes('Coder')"));
+  await poll("sidebar shows the bot", () =>
+    evaluate("document.querySelector('aside').innerText.includes('Coder')"),
+  );
   await shot("5-restored");
   results.push("cancel keeps the bot; approve archives it; the archived list restores it");
 
@@ -238,11 +252,6 @@ async function visit(path) {
   await poll("page", () =>
     evaluate("document.readyState === 'complete' && !!document.querySelector('main')"),
   );
-}
-
-async function tap(selector) {
-  await poll(`target ${selector}`, () => evaluate(`!!document.querySelector(${JSON.stringify(selector)})`));
-  await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
 }
 
 async function click(text) {
