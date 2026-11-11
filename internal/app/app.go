@@ -41,8 +41,9 @@ type Config struct {
 	DataDir string
 	Home    string
 	ToolEnv map[string]string
-	// LoginEnv captures the login shell environment for tools; nil keeps ToolEnv.
-	LoginEnv  func(context.Context) (map[string]string, error)
+	// LoginEnv captures the login shell environment for tools, started from ToolEnv; nil keeps
+	// ToolEnv.
+	LoginEnv  func(ctx context.Context, base map[string]string) (map[string]string, error)
 	FakeModel bool
 	// TelegramAPIURL replaces https://api.telegram.org, for example for a local Bot API server.
 	TelegramAPIURL string

@@ -22,10 +22,14 @@ import (
 const loginEnvMarker = "__DEX_LOGIN_ENV__"
 
 // LoginShellEnv returns the environment of the user's interactive login shell, so tools see
-// what the user exports in rc files. It starts from the dex process environment and does not
-// change it.
-func LoginShellEnv(ctx context.Context) (map[string]string, error) {
-	return captureShellEnv(ctx, loginShell(ctx), os.Environ(), 10*time.Second)
+// what the user exports in rc files. The shell starts from base, not from the dex process
+// environment, so a dex setting such as DEX_TOKEN does not reach tools.
+func LoginShellEnv(ctx context.Context, base map[string]string) (map[string]string, error) {
+	environ := make([]string, 0, len(base))
+	for key, value := range base {
+		environ = append(environ, key+"="+value)
+	}
+	return captureShellEnv(ctx, loginShell(ctx), environ, 10*time.Second)
 }
 
 func captureShellEnv(ctx context.Context, shell string, environ []string, timeout time.Duration) (map[string]string, error) {
@@ -66,7 +70,8 @@ func captureShellEnv(ctx context.Context, shell string, environ []string, timeou
 	return env, nil
 }
 
-// loginShell is $SHELL, else the shell of the user's account. launchd does not set SHELL.
+// loginShell is $SHELL, else the shell of the user's account, for a service manager that
+// does not set SHELL.
 func loginShell(ctx context.Context) string {
 	if shell := os.Getenv("SHELL"); shell != "" {
 		return shell
@@ -92,27 +97,26 @@ func loginShell(ctx context.Context) string {
 
 // toolEnv is the base environment of all agents: the login shell environment, else the
 // fallback keys, plus the 1Password variables of the settings. One capture serves all agents
-// until a Reload or an edit of a shell rc file.
+// until an edit of a shell rc file.
 type toolEnv struct {
 	home     string
 	fallback map[string]string
-	capture  func(context.Context) (map[string]string, error)
+	capture  func(ctx context.Context, base map[string]string) (map[string]string, error)
 	mu       sync.Mutex
 	env      map[string]string
 	captured bool // a capture ran, also when it failed
 	rc       string
-	stale    bool
 	warning  string
 	op       OnePassword
 	opSet    int
 }
 
-func newToolEnv(home string, fallback map[string]string, capture func(context.Context) (map[string]string, error)) *toolEnv {
+func newToolEnv(home string, fallback map[string]string, capture func(ctx context.Context, base map[string]string) (map[string]string, error)) *toolEnv {
 	return &toolEnv{home: home, fallback: maps.Clone(fallback), capture: capture}
 }
 
 // rcFiles are the startup files of common shells. A change to one of them makes open agents
-// reload. A file that an rc file sources is not watched; Reload covers it.
+// reload. A file that an rc file sources is not watched; touch an rc file to apply it.
 var rcFiles = []string{".zshenv", ".zprofile", ".zshrc", ".zlogin", ".bash_profile", ".bash_login", ".bashrc", ".profile", ".config/fish/config.fish"}
 
 func (t *toolEnv) rcStamp() string {
@@ -129,29 +133,27 @@ func (t *toolEnv) rcStamp() string {
 }
 
 // load returns the base environment for an agent that opens. It captures the login shell
-// again only after a Reload or an rc file change, also after a failure, so that a broken
-// shell does not cost every caller the timeout.
+// again only after an rc file change, also after a failure, so that a broken shell does not
+// cost every caller the timeout. A failure keeps the last captured environment, so a slow rc
+// edit does not take PATH entries away from tools.
 func (t *toolEnv) load(ctx context.Context) (map[string]string, OnePassword) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if rc := t.rcStamp(); t.capture != nil && (!t.captured || t.stale || rc != t.rc) {
-		env, err := t.capture(ctx)
+	if rc := t.rcStamp(); t.capture != nil && (!t.captured || rc != t.rc) {
+		env, err := t.capture(ctx, maps.Clone(t.fallback))
 		switch {
 		case err == nil:
-			t.env, t.captured, t.rc, t.stale, t.warning = env, true, rc, false, ""
+			t.env, t.captured, t.rc, t.warning = env, true, rc, ""
 		case ctx.Err() == nil:
-			t.env, t.captured, t.rc, t.stale = nil, true, rc, false
-			t.warning = "the login shell environment is not available, so tools get only PATH, HOME, TMPDIR, LANG, USER, and SHELL: " + err.Error()
+			t.captured, t.rc = true, rc
+			if t.env != nil {
+				t.warning = "the login shell failed, so tools keep the last captured environment: " + err.Error()
+			} else {
+				t.warning = "the login shell environment is not available, so tools get only PATH, HOME, TMPDIR, LANG, USER, and SHELL: " + err.Error()
+			}
 		}
 	}
 	return t.current(), t.op
-}
-
-// invalidate makes the next load capture the login shell again.
-func (t *toolEnv) invalidate() {
-	t.mu.Lock()
-	t.stale = true
-	t.mu.Unlock()
 }
 
 // current returns the last base environment. The caller holds mu.

@@ -84,8 +84,9 @@ type Config struct {
 	DataDir, Home string
 	// BaseEnv is the tool environment when LoginEnv is nil or fails.
 	BaseEnv map[string]string
-	// LoginEnv captures the login shell environment for tools; nil keeps BaseEnv.
-	LoginEnv  func(context.Context) (map[string]string, error)
+	// LoginEnv captures the login shell environment for tools, started from BaseEnv; nil keeps
+	// BaseEnv.
+	LoginEnv  func(ctx context.Context, base map[string]string) (map[string]string, error)
 	FakeModel bool
 	Tasks     TaskTools
 	Routines  RoutineTools

@@ -1011,7 +1011,6 @@ func (a *Agents) Reload(ctx context.Context, agentID string) error {
 		a.finishOpening(agentID, opening)
 		return a.closedDuring(ctx, err)
 	}
-	a.env.invalidate()
 	a.mu.Lock()
 	old := a.resources[agentID]
 	delete(a.resources, agentID)

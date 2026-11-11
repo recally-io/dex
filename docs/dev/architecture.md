@@ -1145,8 +1145,9 @@ Control does not log the Telegram token; Bot API errors drop the request URL,
 which holds the token. Tool and stdio MCP processes receive the login shell
 environment plus home, dex, and agent `.env` values and the 1Password
 credentials. A server's own `env` wins. The engine does not change the dex
-process environment. Tools see what the user's login shell exports, including
-credentials. Extension files remain outside the
+process environment, and the login shell starts from six process keys, so
+dex settings such as `DEX_TOKEN` do not reach tools. Tools see what the user's
+login shell exports, including credentials. Extension files remain outside the
 sandbox boundary; the model can read them through tools.
 
 ## Limits

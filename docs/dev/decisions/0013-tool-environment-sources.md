@@ -34,16 +34,19 @@ The environment of an agent is built in this order. A later source wins per key:
 dex runs `<shell> -l -i -c` with a command that prints a marker and then
 `env -0`. The shell is `$SHELL`, else the shell of the user account (`dscl`
 on macOS, `getent passwd` on Linux), else `/bin/sh`. The shell starts from
-the dex process environment, with stdin from `/dev/null`, in its own process
-group. After 10 seconds dex kills the group. Output before the marker is
+the six process keys, not from the full dex process environment, so a dex
+setting such as `DEX_TOKEN` does not reach tools. Stdin is `/dev/null`, and
+the shell runs in its own session. After 10 seconds dex kills the group. Output before the marker is
 ignored, so a greeting in an rc file does no harm.
 
-One capture serves all agents. dex captures again on Reload and when a common
-shell rc file changes (`.zshenv`, `.zprofile`, `.zshrc`, `.zlogin`,
+One capture serves all agents. dex captures again only when a common shell rc
+file changes (`.zshenv`, `.zprofile`, `.zshrc`, `.zlogin`,
 `.bash_profile`, `.bash_login`, `.bashrc`, `.profile`, and
 `.config/fish/config.fish` in the home directory). A file that an rc file
-sources is not watched. If the capture fails, tools get the six process keys,
-and the Extensions API shows a warning.
+sources is not watched; touch an rc file to apply it. A Reload does not
+capture again, so a `.env` save does not run the shell once per agent. If a
+capture fails, tools keep the last captured environment, or get the six
+process keys if no capture succeeded, and the Extensions API shows a warning.
 
 All variables pass to tools without a filter. The user decided this: the
 shell environment is already the user's own tool environment. The model can

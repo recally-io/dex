@@ -10,4 +10,6 @@ import (
 
 func testFakeModel() bool { return false }
 
-func testLoginEnv() func(context.Context) (map[string]string, error) { return engine.LoginShellEnv }
+func testLoginEnv() func(ctx context.Context, base map[string]string) (map[string]string, error) {
+	return engine.LoginShellEnv
+}

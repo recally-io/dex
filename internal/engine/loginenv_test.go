@@ -54,7 +54,7 @@ func TestUserHungLoginShellDoesNotBlockTools(t *testing.T) {
 func TestUserSeesAWarningWhenTheLoginShellFails(t *testing.T) {
 	// Given a capture that fails.
 	home, data := t.TempDir(), t.TempDir()
-	env := newToolEnv(home, map[string]string{"PATH": "/usr/bin:/bin"}, func(context.Context) (map[string]string, error) {
+	env := newToolEnv(home, map[string]string{"PATH": "/usr/bin:/bin"}, func(context.Context, map[string]string) (map[string]string, error) {
 		return nil, errors.New("exit status 1")
 	})
 	a := newAgentExtensions(home, data, "a", env)
@@ -77,7 +77,7 @@ func TestUserLoginShellIsCapturedAgainAfterAnRcEdit(t *testing.T) {
 	// Given a loaded agent with a captured environment.
 	home, data := t.TempDir(), t.TempDir()
 	value := "first"
-	env := newToolEnv(home, nil, func(context.Context) (map[string]string, error) {
+	env := newToolEnv(home, nil, func(context.Context, map[string]string) (map[string]string, error) {
 		return map[string]string{"FROM_RC": value}, nil
 	})
 	a := newAgentExtensions(home, data, "a", env)
@@ -162,7 +162,7 @@ func TestUserBrokenShellIsNotRetriedOnEveryOpen(t *testing.T) {
 	// Given a login shell that fails.
 	home := t.TempDir()
 	calls := 0
-	env := newToolEnv(home, map[string]string{"PATH": "/usr/bin"}, func(context.Context) (map[string]string, error) {
+	env := newToolEnv(home, map[string]string{"PATH": "/usr/bin"}, func(context.Context, map[string]string) (map[string]string, error) {
 		calls++
 		return nil, errors.New("exit status 1")
 	})
@@ -172,11 +172,45 @@ func TestUserBrokenShellIsNotRetriedOnEveryOpen(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("captures after two opens: %d", calls)
 	}
-	// When the user reloads, then dex tries again.
-	env.invalidate()
+	// When the user edits an rc file, then dex tries again.
+	extensionFile(t, filepath.Join(home, ".zshrc"), "export FIXED=1\n")
 	env.load(t.Context())
 	if calls != 2 {
-		t.Fatalf("captures after reload: %d", calls)
+		t.Fatalf("captures after an rc edit: %d", calls)
+	}
+}
+
+func TestUserFailedRecaptureKeepsTheLastEnvironment(t *testing.T) {
+	// Given tools that have the captured login shell PATH.
+	home := t.TempDir()
+	var fail error
+	env := newToolEnv(home, map[string]string{"PATH": "/usr/bin"}, func(context.Context, map[string]string) (map[string]string, error) {
+		if fail != nil {
+			return nil, fail
+		}
+		return map[string]string{"PATH": "/opt/homebrew/bin:/usr/bin"}, nil
+	})
+	env.load(t.Context())
+	// When an rc edit makes the next capture time out.
+	fail = errors.New("login shell did not finish in 10s")
+	extensionFile(t, filepath.Join(home, ".zshrc"), "sleep 20\n")
+	got, _ := env.load(t.Context())
+	// Then tools keep the last PATH, and the warning says why.
+	_, _, warning := env.snapshot()
+	if got["PATH"] != "/opt/homebrew/bin:/usr/bin" || !strings.Contains(warning, "keep the last captured environment") {
+		t.Fatalf("environment after a failed capture: %v %q", got, warning)
+	}
+}
+
+func TestUserDexSettingsDoNotReachTheLoginShell(t *testing.T) {
+	// Given dex started with its API token in the process environment.
+	t.Setenv("DEX_TOKEN", "private-dex-token")
+	t.Setenv("SHELL", fakeShell(t, "export FROM_RC=1"))
+	// When dex captures the login shell from the tool base keys.
+	env, err := LoginShellEnv(t.Context(), map[string]string{"PATH": "/usr/bin:/bin", "HOME": t.TempDir()})
+	// Then tools get the shell exports and not the dex token.
+	if err != nil || env["FROM_RC"] != "1" || env["DEX_TOKEN"] != "" {
+		t.Fatalf("environment: FROM_RC=%q DEX_TOKEN set=%v err=%v", env["FROM_RC"], env["DEX_TOKEN"] != "", err)
 	}
 }
 
