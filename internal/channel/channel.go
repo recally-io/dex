@@ -216,7 +216,7 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	if c.AgentID != m.agentID || c.Completed != 0 {
 		return nil
 	}
-	answer := "/clear clears the main timeline's context. /new does the same. /stop stops the main answer and its background work. /help shows these commands."
+	answer := "/clear clears the main timeline's context. It takes no text. /new does the same. /stop stops the main answer and its background work. /help shows these commands."
 	switch {
 	case c.ChannelKey != chat.MainKey:
 		// A saved peer command cannot acquire main's scope after an upgrade.

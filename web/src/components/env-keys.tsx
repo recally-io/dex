@@ -95,6 +95,15 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
   const catalog = query.data;
   const levels: Level[] = target.scope === "agent" ? ["agent", "dex", "home"] : ["dex", "home"];
 
+  // The Tools page shows errors in its Configuration section. The global page reads them through
+  // the default bot, so it keeps only the errors that name a dex or home file.
+  const wideDirs = catalog?.levels.filter((l) => l.scope !== "agent").map((l) => l.dir) ?? [];
+
+  const wideErrors =
+    target.scope === "dex"
+      ? (catalog?.errors.filter((error) => wideDirs.some((dir) => error.includes(dir))) ?? [])
+      : [];
+
   // The API marks a key shadowed for one bot. On the global page, only a dex key hides a home key.
   const shadowed = (entry: Extensions["env"][number]) =>
     target.scope === "agent"
@@ -171,7 +180,12 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
                   ? "Reload restarts the tools of this bot."
                   : "Reload restarts the tools of all bots."}
               </p>
-              <Button className="mt-3" size="sm" disabled={busy} onClick={() => reload.mutate()}>
+              <Button
+                className="mt-3"
+                size="sm"
+                disabled={busy || (target.scope === "dex" && !agents.data)}
+                onClick={() => reload.mutate()}
+              >
                 {reload.isPending ? <Spinner /> : null}Reload
               </Button>
             </Note>
@@ -263,12 +277,11 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
               );
             })}
           </div>
-          {/* The Tools page shows these errors in its Configuration section. */}
-          {target.scope === "dex" && catalog.errors.length ? (
+          {wideErrors.length ? (
             <div className="mt-4">
               <Failure title="dex cannot read some files">
                 <ul className="[overflow-wrap:anywhere]">
-                  {catalog.errors.map((error) => (
+                  {wideErrors.map((error) => (
                     <li key={error}>{error}</li>
                   ))}
                 </ul>

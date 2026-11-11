@@ -93,6 +93,10 @@ to read in an afternoon.
   entry is an advanced option. The bot ignores other users and group chats.
   Earlier versions accepted group messages from allowed users. The bot now
   ignores all non-private chats, including messages from allowed users.
+- Channel pages in bot Settings use one order: Connection, Who can use it,
+  Notifications, How to use, and Turn off. A channel that is not connected
+  shows short steps and one primary button. Notifications can make the
+  channel's owner the primary target for routine results.
 - Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. All channels
   are for the owner. Each bot belongs to one agent. The web selects an agent.
   Web input and channel input for that agent share its main context. Input from one entry can

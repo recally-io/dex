@@ -155,7 +155,8 @@ export function HowToUse({ channel, children }: { channel: ChannelId; children?:
           <summary className="cursor-pointer text-[13px] text-foreground">Commands and limits</summary>
           <ul className="mt-3 flex list-disc flex-col gap-1.5 pl-5 text-[13px] text-muted-foreground marker:text-muted-foreground">
             <li>
-              <Mono>/clear</Mono> clears the main context when main is idle. <Mono>/new</Mono> also works.
+              <Mono>/clear</Mono> clears the main context when main is idle. It takes no text.{" "}
+              <Mono>/new</Mono> also works.
             </li>
             <li>
               <Mono>/stop</Mono> stops the main answer and its background work.
