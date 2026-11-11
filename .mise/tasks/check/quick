@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#MISE description="Fast pre-push check: static checks and the tests of changed Go packages"
+#MISE depends=["build:web"]
+set -euo pipefail
+
+# CI runs the full `mise run check`. The app tests alone take about 5 minutes with -race, so this
+# check skips them and the four cross-platform builds, and tests only the changed packages.
+prek validate-config prek.toml
+dprint check
+mise run check:testpolicy
+mise run check:db-drift
+mise run check:api-drift
+mise run check:web
+golangci-lint fmt --diff
+golangci-lint run
+go build ./...
+
+base="$(git merge-base HEAD origin/main)"
+packages=()
+while IFS= read -r dir; do
+  if [[ "$dir" != internal/app && -n "$(find "$dir" -maxdepth 1 -name '*.go' -print -quit 2>/dev/null)" ]]; then
+    packages+=("./$dir")
+  fi
+done < <({ git diff --name-only "$base"; git diff --name-only; git ls-files --others --exclude-standard; } | xargs -n1 dirname | sort -u)
+
+if ((${#packages[@]})); then
+  go test -race "${packages[@]}"
+else
+  echo "No changed Go packages to test."
+fi
