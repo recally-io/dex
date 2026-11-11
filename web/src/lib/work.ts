@@ -1,4 +1,5 @@
-import type { AgentActivity, Chat, InboxItem, TaskSummary } from "../api/generated/types.gen";
+import { getWorkOptions } from "../api/generated/@tanstack/react-query.gen";
+import type { AgentActivity, Chat, InboxItem, TaskSummary, Work } from "../api/generated/types.gen";
 import { taskBucket } from "./tasks";
 
 export function automationNeedsYou(
@@ -62,4 +63,31 @@ export function botStatus(
     return "working";
 
   return undefined;
+}
+
+// Bot status reads no schedule, so the range is the smallest that the API accepts. One fixed range
+// gives the sidebar and the task panel one shared query.
+const opened = Date.now();
+
+export const workOptions = () => ({
+  ...getWorkOptions({ query: { from: opened, to: opened + 1 } }),
+  refetchInterval: 10_000,
+});
+
+/**
+ * The items besides tasks that make a bot need the user. The task panel lists them, so each orange
+ * dot has a place to act on it.
+ */
+export function needsItems(agentId: string, work: Work | undefined) {
+  return {
+    questions: (work?.sessions ?? [])
+      .filter((item) => item.agentId === agentId && openQuestion(item.chat))
+      .map((item) => item.chat),
+    results: (work?.inbox ?? []).filter(
+      (item) => item.agentId === agentId && item.outcome === "failed" && !item.dismissed,
+    ),
+    setup: (work?.automations ?? [])
+      .filter((item) => item.agentId === agentId && item.setup)
+      .map((item) => item.automation),
+  };
 }

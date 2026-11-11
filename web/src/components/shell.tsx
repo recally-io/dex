@@ -3,18 +3,14 @@ import { AgentAvatar } from "./agent-avatar";
 import { DexMark } from "./dex-mark";
 import { AgentCreateDialog } from "./agent-create-dialog";
 import type { Agent } from "../api/generated/types.gen";
-import { botStatus, type BotStatus } from "../lib/work";
+import { botStatus, workOptions, type BotStatus } from "../lib/work";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogClose, DialogContent } from "./ui/dialog";
 import { Settings, X, Plus, PanelLeft } from "lucide-react";
 
-import {
-  getSettingsOptions,
-  getWorkOptions,
-  listAgentsOptions,
-} from "../api/generated/@tanstack/react-query.gen";
+import { getSettingsOptions, listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { ShellContext } from "./page";
 import { globalPages } from "./settings-switcher";
 import { useSystemTheme } from "./theme";
@@ -39,12 +35,7 @@ function useSidebarOpen() {
 /** The status of each bot. The Shell polls it, so the drawer button can show it while the drawer is closed. */
 function useBotStatuses() {
   const agents = useQuery({ ...listAgentsOptions(), refetchInterval: 3000 });
-  const [now] = useState(() => Date.now());
-
-  const work = useQuery({
-    ...getWorkOptions({ query: { from: now, to: now + 7 * 86400000 } }),
-    refetchInterval: 10000,
-  });
+  const work = useQuery(workOptions());
 
   return new Map(
     (agents.data?.agents ?? []).map((agent) => [agent.id!, botStatus(agent.id!, work.data, agent.activity)]),

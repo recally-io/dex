@@ -193,8 +193,8 @@ under the Chat tab. Task pages open under Chat. Automation transcripts open unde
 
 A bot needs the user when it has an open question, an unhandled failed or
 blocked task, a failed routine run that is not handled, or a routine that needs
-a model. The bot page shows each item: tasks and questions in the task panel,
-routines in the Routines tab. Mark all handled in the task panel marks every
+a model. The task panel of that bot lists each item and opens the place to act on
+it. The task button shows the count of these items. Mark all handled in the task panel marks every
 finished task that needs the user as handled. There is no cross-bot list.
 Routine result records include settled `changed` or `failed` outcomes without a
 duplicate mark. Unknown and `unchanged` outcomes stay in run history. Opening
@@ -302,10 +302,10 @@ Secrets page.
 The Secrets page writes tool credentials to the current agent or dex `.env`
 file. Dex scope applies to all agents. The page shows key names and shadowed
 state, with Replace and Delete actions. Values are write-only. Home keys are
-read-only. File changes apply after Reload in the Extensions tab or Secrets
+read-only. File changes apply after Reload on the Extensions page or the Secrets
 page. The files remain the only store.
 
-The Extensions tab shows the level directories, skills, MCP servers, and
+The Extensions page in bot Settings shows the level directories, skills, MCP servers, and
 configuration warnings. Environment key names are on the Secrets page. Reload
 requires all agents to be idle before it replaces the selected agent's execution
 resources and MCP connections. After that idle check succeeds, other agents

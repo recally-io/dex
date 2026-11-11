@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   Check,
@@ -32,7 +32,7 @@ import {
   taskDuration,
 } from "../../lib/tasks";
 import { useHandled } from "../../lib/handled";
-import { needsTask } from "../../lib/work";
+import { needsItems, needsTask, workOptions } from "../../lib/work";
 import { cn } from "../../lib/utils";
 import { sidePanel } from "../page";
 import { Button } from "../ui/button";
@@ -208,6 +208,9 @@ export function TaskSummaryButton({
 }) {
   const agentId = useAgentId();
   const seen = readSeen(agentId);
+  const work = useQuery(workOptions());
+  const needs = needsItems(agentId, work.data);
+  const otherNeeds = needs.questions.length + needs.results.length + needs.setup.length;
 
   const visibleTasks = tasks.filter(
     (task) => task.handledAt === undefined && (taskBucket(task) !== "done" || !seen[task.id]),
@@ -219,11 +222,11 @@ export function TaskSummaryButton({
 
       return result;
     },
-    { "needs-you": 0, running: 0, queued: 0, done: 0 },
+    { "needs-you": otherNeeds, running: 0, queued: 0, done: 0 },
   );
 
-  // With no task to report, the button still opens the panel and its link to every session.
-  if (!visibleTasks.length)
+  // With nothing to report, the button still opens the panel and its link to every session.
+  if (!visibleTasks.length && !otherNeeds)
     return (
       <Button
         type="button"
@@ -290,6 +293,8 @@ export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => 
   );
 
   const handle = useHandled();
+  const work = useQuery(workOptions());
+  const needs = needsItems(agentId, work.data);
   const seen = readSeen(agentId);
   const ordered = orderTasks(tasks, now);
   const handleable = tasks.filter(needsTask);
@@ -365,6 +370,45 @@ export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => 
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
+        {needs.questions.length || needs.results.length || needs.setup.length ? (
+          <section aria-label="Needs you" className="border-b border-border pb-1">
+            {needs.questions.map((chat) => (
+              <NeedRow
+                key={`question-${chat.id}`}
+                link={
+                  chat.main ? (
+                    <Link to="/a/$agentId" params={{ agentId }} />
+                  ) : (
+                    <Link to="/a/$agentId/c/$chatId" params={{ agentId, chatId: String(chat.id) }} />
+                  )
+                }
+                title={chat.main ? "Main" : chat.title}
+                detail="Asks you a question"
+              />
+            ))}
+            {needs.results.map((item) => (
+              <NeedRow
+                key={`result-${item.runId}`}
+                link={<Link to="/inbox/$runId" params={{ runId: item.runId }} />}
+                title={item.automationName}
+                detail="Routine run failed"
+              />
+            ))}
+            {needs.setup.map((automation) => (
+              <NeedRow
+                key={`setup-${automation.id}`}
+                link={
+                  <Link
+                    to="/a/$agentId/automations/$automationId"
+                    params={{ agentId, automationId: automation.id }}
+                  />
+                }
+                title={automation.name}
+                detail="Routine needs an available model"
+              />
+            ))}
+          </section>
+        ) : null}
         {ordered.filter((task) => taskBucket(task, now) === "needs-you").map(row)}
         {ordered.some((task) => taskBucket(task, now) === "needs-you") && active.length ? (
           <div className="mx-3 mt-2 border-t border-border" />
@@ -390,7 +434,11 @@ export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => 
             {doneOpen ? done.map(row) : null}
           </>
         ) : null}
-        {!active.length && !done.length ? (
+        {!active.length &&
+        !done.length &&
+        !needs.questions.length &&
+        !needs.results.length &&
+        !needs.setup.length ? (
           <p className="px-3 py-4 text-[12px] text-muted-foreground">No background tasks.</p>
         ) : null}
         {handle.isError ? (
@@ -405,5 +453,22 @@ export function TaskPanel(props: { chats: Chat[]; open: boolean; onClose: () => 
         All sessions →
       </Link>
     </aside>
+  );
+}
+
+/** One item that needs the user and is not a task. The row opens the place to act on it. */
+function NeedRow({ link, title, detail }: { link: ReactElement; title: string; detail: string }) {
+  return (
+    <Button
+      variant="ghost"
+      render={link}
+      className="h-auto w-full justify-start gap-2 rounded-none px-3 py-2 text-left"
+    >
+      <CircleAlert className="size-3.5 shrink-0 text-orange" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12.5px] font-medium">{title}</span>
+        <span className="block text-[11.5px] font-normal text-muted-foreground">{detail}</span>
+      </span>
+    </Button>
   );
 }

@@ -961,6 +961,14 @@ try {
       document.querySelector('aside[aria-label="Bots"] a[href="/a/default"] [role="img"]')?.getAttribute('aria-label') === 'Needs you' &&
       !/active|channels? on|Idle/.test(document.querySelector('aside[aria-label="Bots"] a[href="/a/default"]').innerText)`,
   );
+  // Every orange dot has a place to act on it: the task panel lists the failed run.
+  await tap('header button[aria-label="Background tasks"]');
+  await ui(
+    "the task panel lists a failed routine run under Needs you",
+    `[...document.querySelectorAll('section[aria-label="Needs you"] a[href^="/inbox/"]')].some(a => a.textContent.includes('Daily review') && a.textContent.includes('Routine run failed'))`,
+  );
+  await tap('button[aria-label="Close tasks"]');
+  await ui("task panel closed", `!document.querySelector('aside[aria-label="Background tasks"]')`);
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').dataset.probe = 'kept'");
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').focus()");
   await call("Input.insertText", { text: "unsent words" });
