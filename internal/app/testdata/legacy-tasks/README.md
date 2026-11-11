@@ -19,8 +19,9 @@ The fixture has one agent `default` and these conversations:
 
 ## Regeneration
 
-Use an isolated checkout of dex commit `096a9c7`. Add `generate_test.go` to
-`internal/app` with a Go overlay. Run `mise run build:web` first. Set
+Use an isolated checkout of dex commit `096a9c7`. Add `generate_test.go.txt` from
+this directory to `internal/app` as `generate_test.go` with a Go overlay. The
+file has a `.txt` suffix, so `go test` of changed directories does not compile it. Run `mise run build:web` first. Set
 `DEX_LEGACY_FIXTURE_DIR` to an empty directory and run only
 `TestGenerateLegacyTaskFixture`. The test writes `control.sqlite` and
 `agents/default/state.sqlite` with `VACUUM INTO`. Delete the rows of the
