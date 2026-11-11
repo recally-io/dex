@@ -708,7 +708,10 @@ type Chat struct {
 
 	// Settings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
 	Settings ChatSettings `json:"settings"`
-	Title    string       `json:"title"`
+
+	// StoppedWithParent True when Stop on the parent session would act on this child, because the child has pending input that the parent sent. Only the session list sets it.
+	StoppedWithParent *bool  `json:"stoppedWithParent,omitempty"`
+	Title             string `json:"title"`
 
 	// ToolStartedAt The earliest start of a tool that runs now. Only the session list sets it, and only while the session is busy and runs a tool.
 	ToolStartedAt *int64 `json:"toolStartedAt,omitempty"`

@@ -199,8 +199,11 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     refetchInterval: 3000,
   });
 
+  // Stop acts on a child only while it has input that this session sent. The server says which.
   const activeHere = activeSessionCount(
-    (sessions.data?.chats ?? []).filter((session) => session.parentId === chatId),
+    (sessions.data?.chats ?? []).filter(
+      (session) => session.parentId === chatId && session.stoppedWithParent,
+    ),
   );
 
   const health = useQuery(getHealthOptions());

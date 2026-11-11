@@ -44,6 +44,38 @@ func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConvers
 	return i, err
 }
 
+const listChildrenStoppedByParent = `-- name: ListChildrenStoppedByParent :many
+SELECT conversations.id FROM conversations WHERE conversations.agent_id = ? AND conversations.parent_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
+        AND s.parent_request_id IS NOT NULL
+)
+`
+
+// The children that Stop on their parent reaches. Keep the rule equal to ListStopConversations: the
+// web UI shows Stop on a parent page only for these.
+func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID string) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listChildrenStoppedByParent, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStopConversations = `-- name: ListStopConversations :many
 SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id FROM conversations WHERE conversations.agent_id = ?1
 AND (conversations.id = ?2 OR (conversations.parent_id = ?2 AND EXISTS (

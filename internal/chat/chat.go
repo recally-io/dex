@@ -44,6 +44,8 @@ type Chat struct {
 	Writable bool
 	// ParentID is the session that created this child session. It is zero for any other session.
 	ParentID int64
+	// StoppedByParent is set by List: Stop on the parent would act on this child.
+	StoppedByParent bool
 	// ExecutionID is zero until native execution creates the conversation.
 	ExecutionID int64
 	// Question is the question that waits for the user, or whose answer waits in the queue.
@@ -432,12 +434,20 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 			return nil, err
 		}
 	}
+	stopped, err := s.q.ListChildrenStoppedByParent(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	stoppedByParent := make(map[int64]bool, len(stopped))
+	for _, id := range stopped {
+		stoppedByParent[id] = true
+	}
 	chats := make([]Chat, len(rows))
 	for i, r := range rows {
 		chats[i] = Chat{
 			Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 			Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
-			Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, Question: byChat[r.ID],
+			Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, Question: byChat[r.ID], StoppedByParent: stoppedByParent[r.ID],
 		}
 	}
 	return chats, nil

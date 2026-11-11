@@ -14,6 +14,14 @@ AND (conversations.id = @chat_id OR (conversations.parent_id = @chat_id AND EXIS
 )))
 ORDER BY conversations.id;
 
+-- name: ListChildrenStoppedByParent :many
+-- The children that Stop on their parent reaches. Keep the rule equal to ListStopConversations: the
+-- web UI shows Stop on a parent page only for these.
+SELECT conversations.id FROM conversations WHERE conversations.agent_id = ? AND conversations.parent_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
+        AND s.parent_request_id IS NOT NULL
+);
+
 -- name: StopConversationSubmissions :execrows
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @now
 WHERE conversation_id = @chat_id AND status = 'pending';
