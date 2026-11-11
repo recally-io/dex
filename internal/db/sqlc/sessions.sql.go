@@ -315,17 +315,19 @@ SELECT
 FROM conversations c
 JOIN agents a ON a.id = c.agent_id
 WHERE c.channel_key NOT LIKE 'dream:%'
-    AND (CAST(?1 AS INTEGER) = 1 OR c.agent_id = ?2)
-    AND (CAST(?3 AS INTEGER) = 1 OR c.parent_id = ?4)
+    AND (c.parent_id = ?1 OR (
+        CAST(?2 AS INTEGER) = 1
+        AND (CAST(?3 AS INTEGER) = 1 OR c.agent_id = ?4)
+    ))
 ORDER BY updated_at DESC, c.id DESC
 LIMIT ?5
 `
 
 type ListSessionsParams struct {
+	ParentID    sql.NullInt64 `json:"parent_id"`
+	AllSessions int64         `json:"all_sessions"`
 	AllBots     int64         `json:"all_bots"`
 	AgentID     string        `json:"agent_id"`
-	AllSessions int64         `json:"all_sessions"`
-	ParentID    sql.NullInt64 `json:"parent_id"`
 	MaxRows     int64         `json:"max_rows"`
 }
 
@@ -341,14 +343,14 @@ type ListSessionsRow struct {
 	Pending       int64         `json:"pending"`
 }
 
-// Sessions of one bot or of every bot, newest activity first. A child list names the parent. The
-// list of all sessions leaves out dreams.
+// The children of the caller, of any bot, and with all_sessions the sessions of one bot or of every
+// bot, newest activity first. A row names the parent. The list leaves out dreams.
 func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]ListSessionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listSessions,
+		arg.ParentID,
+		arg.AllSessions,
 		arg.AllBots,
 		arg.AgentID,
-		arg.AllSessions,
-		arg.ParentID,
 		arg.MaxRows,
 	)
 	if err != nil {

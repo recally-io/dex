@@ -599,9 +599,10 @@ writing child separate files or directories. The tools are:
 - `session_stop` withdraws queued input and stops the run. It is the same as
   user Stop and has no result.
 - `session_fork` branches a child up to a finished answer, with the same parent.
-- `session_list` lists the children of the caller, or with scope `all` every
-  session except dreams. `bot` is empty (the bot of the caller), `all`, or a bot
-  ID or name.
+- `session_list` lists the children of the caller, whatever their bot, and with
+  scope `all` also the sessions of one bot, except dreams. `bot` selects those
+  other sessions: empty (the bot of the caller), `all`, or a bot ID or name. It
+  never hides a child of the caller. Each row names its bot.
 - `session_read` returns turns newest first: the input and the final answer of
   each turn, cut at 4,000 characters. It does not return thinking, tool calls or
   tool output. It reads any session of any bot except dreams. `turn` with
@@ -647,9 +648,10 @@ against them:
   aborted run, and the result for the parent is a database write without a gate.
 - Restart recovery settles the admitted inputs of each child under the agent of
   the child, and sends the one `interrupted` result to the parent in its bot.
-- `session_read` reads any session except dreams. `session_search` and
-  `session_list` read one bot, or all bots with `all`. The default is the bot of
-  the caller. A name is not unique: an ambiguous name is an error that lists the
+- `session_read` reads any session except dreams. `session_search` reads one
+  bot, or all bots with `all`. `session_list` always shows the children of the
+  caller and takes `bot` for the other sessions. The default is the bot of the
+  caller. A name is not unique: an ambiguous name is an error that lists the
   IDs.
 - A file that a child in another bot delivers stays in the home of the bot of
   the child. Its row names that bot in `artifacts.agent_id`. The row shows the

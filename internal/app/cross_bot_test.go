@@ -471,24 +471,27 @@ func TestUserSessionListCoversOneBotOrAllBots(t *testing.T) {
 		}
 		return bots
 	}
-	// When the parent lists its children with no bot, only the children in its own bot show.
-	if got := list(map[string]any{}); len(got) != 1 || got[inA.ID] != "Dex" {
-		t.Fatalf("children, empty bot: %v", got)
+	// When the parent lists its children, both show with their bots, whatever the bot argument says.
+	for _, args := range []map[string]any{{}, {"bot": "Coder"}, {"bot": "all"}, {"bot": "Dex"}} {
+		if got := list(args); len(got) != 2 || got[inA.ID] != "Dex" || got[inB.ID] != "Coder" {
+			t.Fatalf("children with %v: %v", args, got)
+		}
 	}
-	// And with the bot of the child, the child in B shows with its bot.
-	if got := list(map[string]any{"bot": "Coder"}); len(got) != 1 || got[inB.ID] != "Coder" {
-		t.Fatalf("children, bot B: %v", got)
-	}
-	// And bot all shows the children of every bot.
-	if got := list(map[string]any{"bot": "all"}); len(got) != 2 || got[inA.ID] != "Dex" || got[inB.ID] != "Coder" {
-		t.Fatalf("children, all bots: %v", got)
-	}
-	// And scope all with a named bot lists the sessions of that bot, a chat of it too.
-	if got := list(map[string]any{"scope": "all", "bot": "Coder"}); got[inB.ID] != "Coder" || got[fmt.Sprint(other.id)] != "Coder" || len(got) < 2 {
+	// And scope all with a named bot lists the sessions of that bot, a chat of it too, and keeps the
+	// children of the parent in the other bot.
+	got := list(map[string]any{"scope": "all", "bot": "Coder"})
+	if got[inB.ID] != "Coder" || got[fmt.Sprint(other.id)] != "Coder" || got[inA.ID] != "Dex" || got[fmt.Sprint(parent.id)] != "" {
 		t.Fatalf("all sessions, bot B: %v", got)
 	}
-	if got := list(map[string]any{"scope": "all"}); got[inB.ID] != "" || got[inA.ID] != "Dex" {
+	// And scope all with no bot lists the sessions of this bot, and keeps the child in B but not the
+	// chat of B.
+	got = list(map[string]any{"scope": "all"})
+	if got[inB.ID] != "Coder" || got[inA.ID] != "Dex" || got[fmt.Sprint(parent.id)] != "Dex" || got[fmt.Sprint(other.id)] != "" {
 		t.Fatalf("all sessions, empty bot: %v", got)
+	}
+	// And scope all with all lists every session.
+	if got = list(map[string]any{"scope": "all", "bot": "all"}); got[fmt.Sprint(other.id)] != "Coder" || got[fmt.Sprint(parent.id)] != "Dex" {
+		t.Fatalf("all sessions, all bots: %v", got)
 	}
 }
 

@@ -12,8 +12,8 @@ VALUES (@id, @conversation_id, @content, 'null', 'task', 'message', @when_busy, 
 ON CONFLICT DO NOTHING;
 
 -- name: ListSessions :many
--- Sessions of one bot or of every bot, newest activity first. A child list names the parent. The
--- list of all sessions leaves out dreams.
+-- The children of the caller, of any bot, and with all_sessions the sessions of one bot or of every
+-- bot, newest activity first. A row names the parent. The list leaves out dreams.
 SELECT
     c.id,
     c.agent_id,
@@ -31,8 +31,10 @@ SELECT
 FROM conversations c
 JOIN agents a ON a.id = c.agent_id
 WHERE c.channel_key NOT LIKE 'dream:%'
-    AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
-    AND (CAST(@all_sessions AS INTEGER) = 1 OR c.parent_id = @parent_id)
+    AND (c.parent_id = @parent_id OR (
+        CAST(@all_sessions AS INTEGER) = 1
+        AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
+    ))
 ORDER BY updated_at DESC, c.id DESC
 LIMIT @max_rows;
 

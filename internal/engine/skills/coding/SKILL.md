@@ -30,7 +30,7 @@ unrelated or parallel work. To give work to another bot that has the right
 skills or credentials, call `session_new` with `bot`. That child runs with the
 instructions, environment, and workspace of that bot. You can send to, stop, and
 fork it with its ID. Before a progress answer, call `session_list`. It lists
-only the children in this bot, so add `bot` for a child in another bot. Call
+every child of this conversation with its bot name. Call
 `session_read` only when a result is cut. Child sessions start at once and have
 no count limit. Child sessions in one directory run at the same time, so give
 each child that modifies files separate files or separate directories.
