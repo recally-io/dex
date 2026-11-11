@@ -18,7 +18,8 @@ go build ./...
 base="$(git merge-base HEAD origin/main)"
 packages=()
 while IFS= read -r dir; do
-  if [[ "$dir" != internal/app && -n "$(find "$dir" -maxdepth 1 -name '*.go' -print -quit 2>/dev/null)" ]]; then
+  # cmd/agent-eval builds only with the agenteval tag. `mise run eval:check` tests it.
+  if [[ "$dir" != internal/app && "$dir" != cmd/agent-eval && -n "$(find "$dir" -maxdepth 1 -name '*.go' -print -quit 2>/dev/null)" ]]; then
     packages+=("./$dir")
   fi
 done < <({ git diff --name-only "$base"; git diff --name-only; git ls-files --others --exclude-standard; } | xargs -n1 dirname | sort -u)
