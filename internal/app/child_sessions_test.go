@@ -460,20 +460,23 @@ func TestUserLegacyTaskConversationsWorkAsChildSessions(t *testing.T) {
 	dir := legacyData(t)
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
-	spawn := map[string]string{"provider": "faux", "modelId": "spawn", "thinkingLevel": "off"}
-	for _, id := range []int64{1, 2} {
-		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", id), spawn, nil)
+	model := func(id int64, name string) {
+		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", id), map[string]string{"provider": "faux", "modelId": name, "thinkingLevel": "off"}, nil)
 	}
+	model(1, "spawn")
+	model(2, "echo")
 	d.setModel(t, "spawn")
 	// When the parent sends a message to the migrated task "Ended".
 	var ref childRef
 	toolJSON(t, callSessionTool(t, d, 1, "session_send", map[string]any{"id": "2", "message": "again"}), &ref)
-	// Then the old conversation runs it, and the child has no session tools.
+	// Then the old conversation runs it to an answer.
 	eventually(t, "answer of the old task", func() (bool, any) {
 		turns := childTurns(t, conn, 2)
 		last := turns[len(turns)-1]
-		return last.status != "pending" && last.parentRequest != "", turns
+		return last.status == "done" && last.parentRequest != "" && last.answer == "echo: again", turns
 	})
+	// And the child has no session tools.
+	model(2, "spawn")
 	toolJSON(t, callSessionTool(t, d, 1, "session_send", map[string]any{"id": "2", "message": childJSON(t, map[string]any{"title": "x", "message": "y"})}), &ref)
 	eventually(t, "second answer of the old task", func() (bool, any) {
 		turns := childTurns(t, conn, 2)
@@ -611,9 +614,11 @@ func TestUserSessionSearchFindsInputsAndAnswers(t *testing.T) {
 	d.must(t, http.MethodGet, "/api/agents/"+other.ID+"/chats/main", nil, &otherMain)
 	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/messages", other.ID, otherMain.ID), map[string]string{"id": uuid.NewV7().String(), "text": "zebra quarterly"}, nil, http.StatusAccepted)
 	d.watchPath(t, fmt.Sprintf("/api/agents/%s/chats/%d/events", other.ID, otherMain.ID)).until(t, "other answer", answeredWith("echo: zebra quarterly"))
-	searcher := newParent(t, d)
-	spawnChild(t, d, searcher, "Finder", "child-only needle", "echo")
-	waitResults(t, conn, searcher, 1)
+	// The parent of the child holds the result rows. The Chat that searches is another one.
+	parent := newParent(t, d)
+	spawnChild(t, d, parent, "Finder", "child-only needle", "echo")
+	waitResults(t, conn, parent, 1)
+	searcher := d.newSession(t).ID
 	// When a Chat searches, a Chinese phrase matches inside a sentence.
 	if got := searchSessions(t, d, searcher, map[string]any{"query": "迁移方案"}); len(got) != 1 || got[0].Session != fmt.Sprint(notes) || !strings.Contains(got[0].Snippet, "迁移方案") {
 		t.Fatalf("chinese: %+v", got)
@@ -625,13 +630,21 @@ func TestUserSessionSearchFindsInputsAndAnswers(t *testing.T) {
 	if got := searchSessions(t, d, searcher, map[string]any{"query": "quarterly missing"}); len(got) != 0 {
 		t.Fatalf("a missing word still matched: %+v", got)
 	}
-	// And results of children are not searched, but child inputs and answers are.
-	got := searchSessions(t, d, searcher, map[string]any{"query": "needle"})
-	if len(got) != 1 || got[0].Title != "Finder" {
-		t.Fatalf("child: %+v", got)
+	// And child inputs and answers are searched, but the result rows in the parent are not.
+	found := false
+	for _, hit := range searchSessions(t, d, searcher, map[string]any{"query": "needle"}) {
+		found = found || hit.Title == "Finder"
+		if strings.HasPrefix(hit.Turn, "result:") {
+			t.Fatalf("a result row matched: %+v", hit)
+		}
 	}
-	if got := searchSessions(t, d, searcher, map[string]any{"query": "task-result"}); len(got) != 0 {
-		t.Fatalf("a result matched: %+v", got)
+	if !found {
+		t.Fatal("the child was not found")
+	}
+	for _, query := range []string{"task-result", "outcome"} {
+		if got := searchSessions(t, d, searcher, map[string]any{"query": query}); len(got) != 0 {
+			t.Fatalf("%q matched a result row: %+v", query, got)
+		}
 	}
 	// And the session argument limits the search, and another bot has no hits.
 	if got := searchSessions(t, d, searcher, map[string]any{"query": "echo", "session": fmt.Sprint(notes)}); len(got) != 1 || got[0].Session != fmt.Sprint(notes) {

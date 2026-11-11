@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -74,10 +75,41 @@ func TestUserOpensLegacyTaskData(t *testing.T) {
 	if len(titles) != 3 {
 		t.Fatalf("tasks: %v", titles)
 	}
-	// And the old results stay readable in the parent.
-	var results int
-	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM submissions WHERE conversation_id = 1 AND kind = 'task_result' AND id LIKE 'task:%:result' AND status = 'done'`).Scan(&results); err != nil || results != 2 {
-		t.Fatalf("old results: %d, %v", results, err)
+	// And the old results keep their content in the parent.
+	contents := map[string]string{}
+	resultRows, err := conn.QueryContext(t.Context(), `SELECT id, content FROM submissions WHERE conversation_id = 1 AND kind = 'task_result' AND id LIKE 'task:%:result' AND status = 'done'`)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer resultRows.Close()
+	for resultRows.Next() {
+		var id, content string
+		if err := resultRows.Scan(&id, &content); err != nil {
+			t.Fatal(err)
+		}
+		contents[id] = content
+	}
+	if err := resultRows.Err(); err != nil || len(contents) != 2 {
+		t.Fatalf("old results: %v, %v", contents, err)
+	}
+	for _, want := range []string{`"title":"Ended"`, `"report":"echo: ended goal"`, `"title":"Continued"`, `"report":"echo: continued goal"`} {
+		found := false
+		for _, content := range contents {
+			found = found || strings.Contains(content, want)
+		}
+		if !found {
+			t.Fatalf("no old result has %s: %v", want, contents)
+		}
+	}
+	// And the transcript of the parent reads both results with their task titles.
+	d.watch(t, 1).until(t, "old results in the transcript", func(tr *transcript) bool {
+		titles := map[string]bool{}
+		for _, it := range tr.items {
+			if it.Kind == "task" {
+				titles[it.Title] = true
+			}
+		}
+		return titles["Ended"] && titles["Continued"]
+	})
 	d.chats(t)
 }
