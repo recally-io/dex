@@ -20,10 +20,10 @@ type botQuestion struct {
 	Action  string   `json:"action"`
 }
 
-func (d *dex) createBot(t *testing.T, name string) apiAgent {
+func (d *dex) createCoder(t *testing.T) apiAgent {
 	t.Helper()
 	var a apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": name, "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &a, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Coder", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &a, http.StatusCreated)
 	return a
 }
 
@@ -104,7 +104,7 @@ func TestOwnerArchivesAndRestoresBotWithApproval(t *testing.T) {
 	dir := t.TempDir()
 	d := startDexWith(t, app.Config{DataDir: dir, TelegramAPIURL: f.srv.URL, AutomationCheck: 100 * time.Millisecond})
 	conn := sessionDB(t, d)
-	bot := d.createBot(t, "Coder")
+	bot := d.createCoder(t)
 	d.must(t, http.MethodPut, "/api/agents/"+bot.ID+"/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
 	waitSignal(t, f.pollStarted, "Telegram polling starts")
 	var history sessionInfo
@@ -185,7 +185,7 @@ func TestOwnerAnswersThatDoNotApproveKeepTheBot(t *testing.T) {
 	// Given a question that asks to archive a bot.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
-	d.createBot(t, "Coder")
+	d.createCoder(t)
 	conn := sessionDB(t, d)
 	for _, answer := range []string{"Cancel", "archive coder", "yes", "Archive Coder please"} {
 		chatID, q := askArchive(t, d, "Coder")
@@ -207,7 +207,7 @@ func TestOwnerRetryOfApprovalArchivesOnce(t *testing.T) {
 	t.Parallel()
 	// Given an approved question.
 	d := startDex(t, t.TempDir(), "")
-	bot := d.createBot(t, "Coder")
+	bot := d.createCoder(t)
 	chatID, q := askArchive(t, d, "Coder")
 	d.setModel(t, "echo")
 	answerID := d.answer(t, chatID, q.ID, "Archive Coder", http.StatusAccepted)
@@ -226,7 +226,7 @@ func TestOwnerRetryOfApprovalArchivesOnce(t *testing.T) {
 func TestBotArchiveRefusesDefaultSelfAndBusyBots(t *testing.T) {
 	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
-	coder := d.createBot(t, "Coder")
+	coder := d.createCoder(t)
 	conn := sessionDB(t, d)
 	// refused waits for the bot_delete call to finish with an error that has the reason, and
 	// checks that no action question exists.
@@ -373,7 +373,7 @@ func TestOwnerManagesBotsThroughChat(t *testing.T) {
 func TestArchiveRoutesHideArchivedBots(t *testing.T) {
 	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
-	bot := d.createBot(t, "Coder")
+	bot := d.createCoder(t)
 	// Restore of an active bot and of an unknown bot is 404.
 	d.must(t, http.MethodDelete, "/api/agents/"+bot.ID+"/archive", nil, nil, http.StatusNotFound)
 	d.must(t, http.MethodDelete, "/api/agents/missing/archive", nil, nil, http.StatusNotFound)

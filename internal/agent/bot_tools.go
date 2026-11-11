@@ -12,14 +12,14 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-// AgentPatch changes the fields that are not nil.
-type AgentPatch struct {
+// Patch changes the fields that are not nil.
+type Patch struct {
 	Name, Instructions, Provider, ModelID, ThinkingLevel *string
 }
 
 // PatchAgent merges a patch into a saved active agent and applies the checks of SaveAgent. The
 // read and the write share one lock, so two patches cannot lose each other's fields.
-func (s *Service) PatchAgent(ctx context.Context, id string, p AgentPatch) (Agent, error) {
+func (s *Service) PatchAgent(ctx context.Context, id string, p Patch) (Agent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	row, err := s.q.GetAgent(ctx, id)
@@ -158,7 +158,7 @@ func (t BotTools) update(ctx context.Context, c engine.TaskContext, p engine.Bot
 	if err != nil {
 		return engine.BotInfo{}, err
 	}
-	updated, err := t.Agents.PatchAgent(ctx, target.ID, AgentPatch{Name: p.Name, Instructions: p.Instructions, Provider: p.Provider, ModelID: p.ModelID, ThinkingLevel: p.ThinkingLevel})
+	updated, err := t.Agents.PatchAgent(ctx, target.ID, Patch{Name: p.Name, Instructions: p.Instructions, Provider: p.Provider, ModelID: p.ModelID, ThinkingLevel: p.ThinkingLevel})
 	return botInfo(updated), err
 }
 
