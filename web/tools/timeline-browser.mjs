@@ -605,6 +605,60 @@ try {
   await shot("06b-child-steered");
   results.push("a running child takes a steer from its composer");
 
+  // A child session in another bot shows in the lists of its parent with its bot, and the result
+  // mark of the parent opens it in that bot.
+  const coder = await api("/api/agents", {
+    name: "Coder",
+    provider: "faux",
+    modelId: "echo",
+    thinkingLevel: "off",
+    instructions: "",
+  });
+
+  const parentBot = (await api("/api/agents/default")).name;
+  await visit("/a/default");
+  await send(
+    JSON.stringify({
+      bot: "Coder",
+      title: "Cross-bot check",
+      message: "hello coder",
+      provider: "faux",
+      modelId: "echo",
+    }),
+  );
+
+  const crossChild = await poll("child in another bot", async () =>
+    (await childSessions()).find((child) => child.agentId === coder.id && !child.busy),
+  );
+
+  assert.equal(crossChild.agentName, "Coder");
+  const crossTurn = childTurn(crossChild.id);
+  await tap('header button[aria-label^="Sessions"]');
+  await ui(
+    "the Sessions panel lists the child in another bot with its bot, and the link opens it there",
+    `(() => { const row = document.querySelector('aside[aria-label="Sessions"] a[href="/a/${coder.id}/c/${crossChild.id}"]'); return !!row && row.innerText.includes('Started by Main') && row.innerText.includes('Coder'); })()`,
+  );
+  await shot("06c-cross-bot-panel");
+  await tap('button[aria-label="Close sessions"]');
+  await ui(
+    "result mark of the child in another bot",
+    `!!document.querySelector('a[href="/a/default/tasks/${crossTurn}"]')`,
+  );
+  await evaluate(`document.querySelector('a[href="/a/default/tasks/${crossTurn}"]').click()`);
+  await ui(
+    "the result link opens the child in its own bot, and the child names the bot of its parent",
+    `location.pathname === '/a/${coder.id}/c/${crossChild.id}' && document.body.innerText.includes('echo: hello coder') && document.body.innerText.includes('Started by Main in ${parentBot}') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
+  );
+  await shot("06c-cross-bot-child");
+  await visit(`/a/${coder.id}/sessions`);
+  await ui(
+    "the Sessions page of the child bot names the bot of the parent",
+    `document.body.innerText.includes('Cross-bot check') && document.body.innerText.includes('Started by ${parentBot}')`,
+  );
+  // The child leaves the lists that later checks count.
+  await api(`/api/agents/${coder.id}/chats/${crossChild.id}/archive`, undefined, "PUT");
+  results.push("a child in another bot shows with its bot, and its result link opens it there");
+
   // Release reconciles a saved channel input through the real native admission path.
   await holdMaintenance();
   const channelGate = join(isolated, "channel.gate");

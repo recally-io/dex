@@ -14,6 +14,26 @@ export function sessionKind(chat: Pick<Chat, "channel" | "main">) {
   return "Channel";
 }
 
+/** The bot in the route of a session. A child in another bot names it, so its list row opens there. */
+export function sessionAgentId(chat: Pick<Chat, "agentId">, agentId: string) {
+  return chat.agentId ?? agentId;
+}
+
+/**
+ * Who started a child session. A parent in another bot has no title in this bot's list, so the
+ * name of that bot stands for it. A child that runs in another bot adds the name of that bot.
+ */
+export function startedBy(
+  chat: Pick<Chat, "parentId" | "parentAgentName" | "agentName">,
+  parentTitle: string | undefined,
+) {
+  if (chat.parentId === undefined) return undefined;
+
+  const parent = chat.parentAgentName ?? parentTitle ?? "a chat";
+
+  return chat.agentName ? `${parent} · ${chat.agentName}` : parent;
+}
+
 export function activeSessionCount(sessions: Pick<Chat, "busy">[]) {
   return sessions.filter((chat) => chat.busy).length;
 }

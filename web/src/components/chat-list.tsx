@@ -14,7 +14,7 @@ import {
 import { useAgentId } from "../lib/agent-scope";
 import { useApp } from "../lib/app-state";
 import { errorText, refreshChats } from "../lib/queries";
-import { isStalled, sessionKind } from "../lib/sessions";
+import { isStalled, sessionAgentId, sessionKind, startedBy } from "../lib/sessions";
 import { cn } from "../lib/utils";
 import { Button, buttonVariants } from "./ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
@@ -52,7 +52,11 @@ function useArchive(openChat: number) {
   const archive = useMutation({ ...archiveChatMutation(), onSuccess: done, onError: fail });
   const restore = useMutation({ ...unarchiveChatMutation(), onSuccess: done, onError: fail });
 
-  return (chat: Chat) => (chat.archivedAt ? restore : archive).mutate({ path: { agentId, chatId: chat.id } });
+  // A child in another bot is archived in that bot.
+  return (chat: Chat) =>
+    (chat.archivedAt ? restore : archive).mutate({
+      path: { agentId: sessionAgentId(chat, agentId), chatId: chat.id },
+    });
 }
 
 /** ChatGPT-style buckets by latest activity: recent days first, then one per month. */
@@ -109,11 +113,12 @@ export function ChatSection({ chatId }: { chatId: number }) {
 
   // A child session names its parent. Main is not in the list, and an archived parent still has its title.
   const parentName = (chat: Chat) =>
-    chat.parentId === undefined
-      ? undefined
-      : chat.parentId === main.data?.id
+    startedBy(
+      chat,
+      chat.parentId === main.data?.id
         ? "Main"
-        : (sessions.data?.chats.find((item) => item.id === chat.parentId)?.title ?? "a chat");
+        : sessions.data?.chats.find((item) => item.id === chat.parentId)?.title,
+    );
 
   const item = (chat: Chat) => (
     <ChatRow
@@ -257,7 +262,7 @@ function ChatRow({
       <ContextMenuTrigger className="group relative flex min-w-0 items-center">
         <Link
           to="/a/$agentId/c/$chatId"
-          params={{ agentId, chatId: String(chat.id) }}
+          params={{ agentId: sessionAgentId(chat, agentId), chatId: String(chat.id) }}
           aria-current={current ? "page" : undefined}
           className={cn(
             buttonVariants({ variant: "ghost", size: "sm" }),

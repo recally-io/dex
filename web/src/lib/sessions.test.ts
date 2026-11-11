@@ -1,6 +1,13 @@
 import { expect, test } from "vite-plus/test";
 import type { Chat } from "../api/generated/types.gen";
-import { activeSessionCount, formatDuration, isStalled, sessionKind } from "./sessions";
+import {
+  activeSessionCount,
+  formatDuration,
+  isStalled,
+  sessionAgentId,
+  sessionKind,
+  startedBy,
+} from "./sessions";
 
 test("user sees one count for every busy session", () => {
   expect(activeSessionCount([{ busy: true }, { busy: true }, { busy: false }])).toBe(2);
@@ -34,4 +41,18 @@ test("user sees factual durations", () => {
   expect(formatDuration(48_000)).toBe("48 s");
   expect(formatDuration(312_000)).toBe("5 min 12 s");
   expect(formatDuration(3_840_000)).toBe("1 h 4 min");
+});
+
+test("a child session in another bot opens in that bot and names it", () => {
+  expect(sessionAgentId({}, "default")).toBe("default");
+  expect(sessionAgentId({ agentId: "coder" }, "default")).toBe("coder");
+
+  // No parent, no byline.
+  expect(startedBy({}, undefined)).toBeUndefined();
+  // A parent in this bot has a title in the list.
+  expect(startedBy({ parentId: 1 }, "Main")).toBe("Main");
+  expect(startedBy({ parentId: 1 }, undefined)).toBe("a chat");
+  // A child in another bot adds that bot, and a parent in another bot is named by its bot.
+  expect(startedBy({ parentId: 1, agentName: "Coder" }, "Main")).toBe("Main · Coder");
+  expect(startedBy({ parentId: 1, parentAgentName: "Dex" }, undefined)).toBe("Dex");
 });

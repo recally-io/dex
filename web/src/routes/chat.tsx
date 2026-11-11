@@ -89,10 +89,21 @@ export function MainTimeline({ settings }: { settings: Settings }) {
 }
 
 // A child session links to the session that started it. The parent is Main or a Chat session.
-function ParentLink({ parentId }: { parentId: number }) {
-  const agentId = useAgentId();
+// A parent can belong to another bot, which then names it.
+function ParentLink({
+  parentId,
+  parentAgentId,
+  parentAgentName,
+}: {
+  parentId: number;
+  parentAgentId?: string;
+  parentAgentName?: string;
+}) {
+  const own = useAgentId();
+  const agentId = parentAgentId ?? own;
   const parent = useQuery(getChatOptions({ path: { agentId, chatId: parentId } }));
-  const name = parent.data ? (parent.data.main ? "Main" : parent.data.title || "a chat") : "…";
+  const title = parent.data ? (parent.data.main ? "Main" : parent.data.title || "a chat") : "…";
+  const name = parentAgentName ? `${title} in ${parentAgentName}` : title;
 
   const className =
     "max-w-56 shrink-0 truncate text-[12.5px] text-muted-foreground hover:text-foreground hover:underline";
@@ -313,7 +324,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     agents.data?.agents.find((item) => item.id === agentId)?.activity?.runningChannels ?? 0;
 
   const recent = (sessions.data?.chats ?? [])
-    .filter((item) => !item.main && !item.archivedAt && item.id !== chatId)
+    .filter((item) => !item.main && !item.archivedAt && item.id !== chatId && item.agentId === undefined)
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 3);
 
@@ -661,7 +672,11 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                     Back to Main
                   </Link>
                 ) : (
-                  <ParentLink parentId={chat.data.parentId} />
+                  <ParentLink
+                    parentId={chat.data.parentId}
+                    parentAgentId={chat.data.parentAgentId}
+                    parentAgentName={chat.data.parentAgentName}
+                  />
                 )}
               </header>
             )}
