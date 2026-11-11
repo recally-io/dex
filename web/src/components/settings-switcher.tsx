@@ -74,6 +74,7 @@ export function BotSettingsSwitcher({
 export const globalPages = [
   { to: "/providers", label: "Providers" },
   { to: "/environment", label: "Environment" },
+  { to: "/archived", label: "Archived bots" },
   { to: "/about", label: "About" },
 ] as const;
 

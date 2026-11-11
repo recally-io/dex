@@ -21,6 +21,7 @@ import { AgentPage, InstructionsPage } from "./routes/agent";
 import { ProvidersPage } from "./routes/providers";
 import { ChannelPage, ChannelsPage } from "./routes/channels";
 import { ExtensionsPage } from "./routes/extensions";
+import { ArchivedPage } from "./routes/archived";
 import { EnvironmentPage } from "./routes/environment";
 import { AboutPage } from "./routes/about";
 import { AppProvider } from "./lib/app-state";
@@ -106,6 +107,7 @@ const providers = page("/providers", ProvidersPage);
 
 const extensions = agentPage("/extensions", ExtensionsPage);
 const environment = page("/environment", EnvironmentPage);
+const archived = page("/archived", ArchivedPage);
 const about = page("/about", AboutPage);
 
 const channel = createRoute({
@@ -236,6 +238,7 @@ const router = createRouter({
     inboxDetail,
     providers,
     environment,
+    archived,
     about,
     settings,
     defaultSettings,
