@@ -26,7 +26,11 @@ files, and open items.
 To continue the same work, call `session_send` on the same child. The child
 keeps its context and does not read the repository again. Use `session_fork` to
 branch from a child that has the context you need. Use `session_new` only for
-unrelated or parallel work. Before a progress answer, call `session_list`. Call
+unrelated or parallel work. To give work to another bot that has the right
+skills or credentials, call `session_new` with `bot`. That child runs with the
+instructions, environment, and workspace of that bot. You can send to, stop, and
+fork it with its ID. Before a progress answer, call `session_list`. It lists
+only the children in this bot, so add `bot` for a child in another bot. Call
 `session_read` only when a result is cut. Child sessions start at once and have
 no count limit. Child sessions in one directory run at the same time, so give
 each child that modifies files separate files or separate directories.
