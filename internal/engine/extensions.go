@@ -158,21 +158,6 @@ func distinctLevels(levels []ExtensionLevel) []ExtensionLevel {
 	return out
 }
 
-// hasUserSkill reports whether a valid skill with this name is listed from the dex or agent level.
-// The project level is not read: a repository must not choose how the agent works. It reads the
-// files at each call, so edits apply at the next request like the skills section.
-func (a *agentExtensions) hasUserSkill(name string) bool {
-	found := false
-	for _, l := range a.distinct() {
-		for _, skill := range findSkills(filepath.Join(l.Dir, "skills"), map[string]bool{}, new([]string)) {
-			if skill.Name == name {
-				found = skill.Error == ""
-			}
-		}
-	}
-	return found
-}
-
 // skills reads the skills of the three file levels and of the project level, cwd/.agents/skills.
 // The project level holds only skills; mcp.json and .env stay with the file levels.
 func (a *agentExtensions) skills(cwd string, errs *[]string) []SkillInfo {
