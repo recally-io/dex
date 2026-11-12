@@ -229,6 +229,83 @@ func TestUserParentSteerOfUserRunDeliversOneAnswer(t *testing.T) {
 	}
 }
 
+func TestUserParentSteerOfUserRunSurvivesReceiptRetryAndRestart(t *testing.T) {
+	for _, restart := range []bool{false, true} {
+		t.Run(fmt.Sprintf("restart=%t", restart), func(t *testing.T) {
+			dir := t.TempDir()
+			d := startDex(t, dir, "")
+			conn := controlWriteDB(t, dir)
+			parent := newParent(t, d)
+			child := spawnChild(t, d, parent, "Mixed receipt", "echo initial", "bash")
+			waitResults(t, conn, parent, 1)
+			d.send(t, child.conversation(t), taskGate(t, dir, "mixed-receipt"))
+			waitTaskFile(t, filepath.Join(dir, "mixed-receipt.pid"))
+			execSQL(t, conn, `CREATE TRIGGER hold_parent_steer BEFORE UPDATE OF status ON submissions WHEN OLD.parent_request_id IS NOT NULL AND OLD.when_busy = 'steer' BEGIN SELECT RAISE(FAIL, 'hold parent receipt'); END`)
+			var ref childRef
+			toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "echo parent", "mode": "steer"}), &ref)
+			releaseResultGate(t, dir, "mixed-receipt")
+			d.watch(t, child.conversation(t)).until(t, "native answer", answeredWith("bash: parent"))
+			eventually(t, "user receipt settled", func() (bool, any) {
+				turns := childTurns(t, conn, child.conversation(t))
+				return len(turns) == 3 && turns[1].status == "done" && turns[2].status == "pending", turns
+			})
+			if restart {
+				d.stop()
+			}
+			execSQL(t, conn, `DROP TRIGGER hold_parent_steer`)
+			if restart {
+				startDex(t, dir, "")
+			}
+			turns := waitChildTurnsEnded(t, conn, child.conversation(t), 3)
+			rows := waitResults(t, conn, parent, 2)
+			if rows[1].id != "result:"+turns[2].id {
+				t.Fatalf("parent steer did not own result: turns=%+v results=%+v", turns, rows)
+			}
+		})
+	}
+}
+
+func TestUserParentSteerOfUserRunReportsFailure(t *testing.T) {
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := controlWriteDB(t, dir)
+	parent := newParent(t, d)
+	child := spawnChild(t, d, parent, "User failure", childJSON(t, map[string]any{"tool": "bash", "command": "echo initial"}), "spawn")
+	waitResults(t, conn, parent, 1)
+	d.send(t, child.conversation(t), childJSON(t, map[string]any{"tool": "bash", "command": taskGate(t, dir, "user-failure")}))
+	waitTaskFile(t, filepath.Join(dir, "user-failure.pid"))
+	var ref childRef
+	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "invalid JSON fails the model", "mode": "steer"}), &ref)
+	releaseResultGate(t, dir, "user-failure")
+	turns := waitChildTurnsEnded(t, conn, child.conversation(t), 3)
+	rows := resultRows(t, conn, parent)
+	if len(rows) != 2 || rows[1].id != "result:"+turns[2].id || resultBody(t, rows[1].content)["outcome"] != "failed" {
+		t.Fatalf("parent steer must report failure, user input must not: turns=%+v results=%+v", turns, rows)
+	}
+}
+
+func TestUserParentSteerOfUserRunReportsInterruption(t *testing.T) {
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := controlWriteDB(t, dir)
+	parent := newParent(t, d)
+	child := spawnChild(t, d, parent, "User interruption", "echo initial", "bash")
+	waitResults(t, conn, parent, 1)
+	d.send(t, child.conversation(t), taskGate(t, dir, "user-interrupted"))
+	waitTaskFile(t, filepath.Join(dir, "user-interrupted.pid"))
+	var ref childRef
+	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": taskGate(t, dir, "parent-interrupted"), "mode": "steer"}), &ref)
+	releaseResultGate(t, dir, "user-interrupted")
+	waitTaskFile(t, filepath.Join(dir, "parent-interrupted.pid"))
+	d.stop()
+	startDex(t, dir, "")
+	turns := waitChildTurnsEnded(t, conn, child.conversation(t), 3)
+	rows := resultRows(t, conn, parent)
+	if len(rows) != 2 || rows[1].id != "result:"+turns[2].id || resultBody(t, rows[1].content)["outcome"] != "interrupted" {
+		t.Fatalf("parent steer must report interruption, user input must not: turns=%+v results=%+v", turns, rows)
+	}
+}
+
 func TestUserResultInsertFailureKeepsInputPending(t *testing.T) {
 	for _, trigger := range []string{
 		`CREATE TRIGGER block_result BEFORE INSERT ON submissions WHEN NEW.kind = 'task_result' BEGIN SELECT RAISE(FAIL, 'result unavailable'); END`,

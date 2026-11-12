@@ -45,6 +45,15 @@ func TestUserFailedSharedRunSendsEachResultAfterALaterRunStarted(t *testing.T) {
 		t.Fatalf("two failed parent inputs produced %d results after the next run started: %+v", len(rows), rows)
 	}
 	releaseResultGate(t, dir, "next")
+	rows := waitResults(t, write, parent, 3)
+	counts := map[string]int{}
+	for _, row := range rows {
+		outcome, _ := resultBody(t, row.content)["outcome"].(string)
+		counts[outcome]++
+	}
+	if counts["failed"] != 2 || counts["done"] != 1 {
+		t.Fatalf("failed inputs and later answer must remain separate: %+v", counts)
+	}
 }
 
 func TestUserSharedRunSendsNoSecondResultAfter256LaterInputs(t *testing.T) {
