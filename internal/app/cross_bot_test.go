@@ -730,3 +730,56 @@ func TestUserParentReadsTheFilesOfItsChildInAnotherBot(t *testing.T) {
 		t.Fatalf("artifacts of another chat: %+v", got)
 	}
 }
+
+func TestUserChildUsesTargetBotRuntimeContext(t *testing.T) {
+	t.Parallel()
+	s := startBots(t)
+	writeSkill(t, filepath.Join(s.dir, "agents", "default", ".agents", "skills"), "a-only-skill", "description: A marker")
+	writeSkill(t, filepath.Join(s.dir, "agents", s.b.ID, ".agents", "skills"), "b-only-skill", "description: B marker")
+	writeFile(t, filepath.Join(s.dir, "memory", "agents", "default", "MEMORY.md"), "A_ONLY_MEMORY_MARKER\n")
+	writeFile(t, filepath.Join(s.dir, "memory", "agents", s.b.ID, "MEMORY.md"), "B_ONLY_MEMORY_MARKER\n")
+	aDir, bDir := t.TempDir(), t.TempDir()
+	writeMCP(t, filepath.Join(s.dir, "agents", "default", ".agents", "mcp.json"), map[string]any{"afiles": stdioServer(t, aDir)})
+	writeMCP(t, filepath.Join(s.dir, "agents", s.b.ID, ".agents", "mcp.json"), map[string]any{"bfiles": stdioServer(t, bDir)})
+	if status, body := s.d.reload(t); status != http.StatusOK {
+		t.Fatalf("reload: %d %s", status, body)
+	}
+	parent := s.chat("default")
+	project := t.TempDir()
+	writeSkill(t, filepath.Join(project, ".agents", "skills"), "parent-project-only", "description: Parent project marker")
+	s.d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/project", parent.id), map[string]string{"cwd": project}, nil)
+	s.d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", parent.id), map[string]string{"provider": "faux", "modelId": "spawn", "thinkingLevel": "high"}, nil)
+	run := func(model, message string) string {
+		t.Helper()
+		n := len(resultRows(t, s.conn, parent.id))
+		child := parent.newChild(map[string]any{"bot": "Coder", "title": message, "message": message, "provider": "faux", "modelId": model})
+		rows := waitResults(t, s.conn, parent.id, n+1)
+		answer, _ := resultBody(t, rows[n].content)["answer"].(string)
+		t.Logf("child %s model %s input %q answer %q", child.ID, model, message, answer)
+		return answer
+	}
+	if got := run("section", "agent-memory"); !strings.Contains(got, "B_ONLY_MEMORY_MARKER") || strings.Contains(got, "A_ONLY_MEMORY_MARKER") {
+		t.Errorf("memory: %s", got)
+	}
+	if got := run("section", "skills"); !strings.Contains(got, "b-only-skill") || strings.Contains(got, "a-only-skill") || strings.Contains(got, "parent-project-only") {
+		t.Errorf("skills: %s", got)
+	}
+	if got := run("section", "instructions"); !strings.Contains(got, "Instruction marker of Coder") {
+		t.Errorf("instructions: %s", got)
+	}
+	if got := run("bash", "pwd"); !strings.Contains(got, filepath.Join("agents", s.b.ID, "workspace")) {
+		t.Errorf("workspace: %s", got)
+	}
+	if got := run("bash", `printf %s "$CROSS_MARKER"`); got != "bash: from-b" {
+		t.Errorf("env: %s", got)
+	}
+	if got := run("think", "thinking marker"); !strings.Contains(got, "think off:") {
+		t.Errorf("thinking default: %s", got)
+	}
+	if got := run("tool", `mcp__bfiles__append {"text":"b proof"}`); !strings.Contains(got, "appended 1") {
+		t.Errorf("B MCP: %s", got)
+	}
+	if got := run("tool", `mcp__afiles__append {"text":"a proof"}`); !strings.Contains(got, "not available") {
+		t.Errorf("A MCP leaked: %s", got)
+	}
+}
