@@ -54,6 +54,13 @@ const chromeLog = createWriteStream(join(artifacts, "chrome.log"));
 let chrome;
 let socket;
 const results = [];
+
+// In-page expressions for the "View thread" buttons of the result lines and the thread panel.
+const viewThreadButtons =
+  "[...document.querySelectorAll('h3 button:not([inert] *)')].filter(b => b.textContent.trim() === 'View thread')";
+
+const threadPanel = "document.querySelector('aside[aria-label=\"Session thread\"]:not([inert] *)')";
+
 const clears = [];
 const aborts = [];
 const messages = [];
@@ -577,7 +584,7 @@ try {
   await shot("03c-nothing-to-compact");
   results.push("/compact reports a short context");
 
-  // Given a parent that starts a child session, the result mark links to the session of its turn.
+  // Given a parent that starts a child session, the result line offers its thread.
   await model("spawn");
   await send(JSON.stringify({ title: "Check", message: "saved report", provider: "faux", modelId: "echo" }));
 
@@ -587,17 +594,23 @@ try {
 
   const doneTurn = childTurn(done.id);
 
+  await ui("result line offers the thread", `${viewThreadButtons}.length === 1`);
+  // When the user opens the thread from the parent.
+  await evaluate(`${viewThreadButtons}.at(-1).click()`);
+  // Then the panel beside the parent shows the answer of the child.
   await ui(
-    "result link",
-    `document.querySelectorAll('a[href^="/a/default/tasks/"]').length === 1 && !!document.querySelector('a[href="/a/default/tasks/${doneTurn}"]')`,
+    "thread panel shows the child answer",
+    `${threadPanel}?.innerText.includes('echo: saved report') && !location.pathname.includes('/c/${done.id}')`,
   );
-  // When the user opens the result link from the parent.
-  await evaluate(`document.querySelector('a[href="/a/default/tasks/${doneTurn}"]').click()`);
+  await shot("06-thread-panel");
+  // When the user opens the panel link.
+  await evaluate(`${threadPanel}.querySelector('a[aria-label="Open as a session page"]').click()`);
   // Then the child session opens as a normal chat that names its parent.
   await ui(
-    "result link opens the child session",
+    "thread panel link opens the child session",
     `location.pathname === '/a/default/c/${done.id}' && document.body.innerText.includes('echo: saved report') && document.body.innerText.includes('Started by Main') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
   );
+  assert.ok(doneTurn);
   assert.equal((await api(`/api/agents/default/chats/${done.id}`)).readOnly, false);
   await shot("06-child-session");
 
@@ -620,7 +633,7 @@ try {
   assert.equal((await api(`/api/agents/default/chats/${old.conversationId}`)).readOnly, false);
   // The user can archive it, so it leaves the lists below.
   await api(`/api/agents/default/chats/${old.conversationId}/archive`, undefined, "PUT");
-  results.push("a result link and an old task link open the session of their turn");
+  results.push("a thread panel link and an old task link open the session of their turn");
 
   await visit("/a/default");
   const workGate = join(isolated, "work.gate");
@@ -773,6 +786,11 @@ try {
     "the child runs the user turn",
     async () => (await api(`/api/agents/default/chats/${steered.id}`)).busy,
   );
+  // The result of the steered child started a short run of the parent. Its Stop is not the check here.
+  await poll(
+    "parent idle after the steered child answered",
+    async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy,
+  );
   await visit("/a/default");
 
   const listedOwn = await poll("the list shows the child busy", async () =>
@@ -819,19 +837,20 @@ try {
   );
 
   assert.equal(crossChild.agentName, "Coder");
-  const crossTurn = childTurn(crossChild.id);
   await ui(
     "the bot column lists the child in another bot with its bot, and the link opens it there",
     `(() => { const row = document.querySelector('aside[aria-label="Sidebar"] a[href="/a/${coder.id}/c/${crossChild.id}"]'); return !!row && row.innerText.includes('Started by Main') && row.innerText.includes('Coder'); })()`,
   );
   await shot("06c-cross-bot-panel");
+  await ui("result line of the child in another bot offers its thread", `${viewThreadButtons}.length > 0`);
+  await evaluate(`${viewThreadButtons}.at(-1).click()`);
   await ui(
-    "result mark of the child in another bot",
-    `!!document.querySelector('a[href="/a/default/tasks/${crossTurn}"]')`,
+    "thread panel shows the answer of the child in another bot",
+    `${threadPanel}?.innerText.includes('echo: hello coder') && !!${threadPanel}.querySelector('a[href="/a/${coder.id}/c/${crossChild.id}"]')`,
   );
-  await evaluate(`document.querySelector('a[href="/a/default/tasks/${crossTurn}"]').click()`);
+  await evaluate(`${threadPanel}.querySelector('a[aria-label="Open as a session page"]').click()`);
   await ui(
-    "the result link opens the child in its own bot, and the child names the bot of its parent",
+    "the thread panel link opens the child in its own bot, and the child names the bot of its parent",
     `location.pathname === '/a/${coder.id}/c/${crossChild.id}' && document.body.innerText.includes('echo: hello coder') && document.body.innerText.includes('Started by Main in ${parentBot}') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
   );
   await shot("06c-cross-bot-child");
@@ -842,7 +861,7 @@ try {
   );
   // The child leaves the lists that later checks count.
   await api(`/api/agents/${coder.id}/chats/${crossChild.id}/archive`, undefined, "PUT");
-  results.push("a child in another bot shows with its bot, and its result link opens it there");
+  results.push("a child in another bot shows with its bot, and its thread panel link opens it there");
 
   // A parent-started run with user input has no parent Stop until another parent input is queued.
   // The check above ends on the page of another bot.
@@ -1204,9 +1223,16 @@ try {
     async () => !(await api(`/api/agents/default/chats/${sessionChild.id}`)).busy,
   );
   await visit(`/a/default/c/${emptySession}`);
+  // Given a Chat session whose child finished, the result line names the child.
   await ui(
     "Chat receives its child session result",
-    "document.body.innerText.includes('Session result') && document.body.innerText.includes('task-result:') && document.body.innerText.includes('session-report')",
+    `${viewThreadButtons}.length === 1 && document.body.innerText.includes('Session audit replied')`,
+  );
+  // When the user opens the thread, then the panel holds the answer of the child.
+  await evaluate(`${viewThreadButtons}.at(-1).click()`);
+  await ui(
+    "Chat thread panel shows the child answer",
+    `${threadPanel}?.innerText.includes('session-report')`,
   );
   await visit("/a/default");
   await ui(
