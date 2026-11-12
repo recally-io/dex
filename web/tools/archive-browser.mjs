@@ -51,6 +51,7 @@ app.stderr.pipe(appLog);
 let chrome;
 let socket;
 let serial = 0;
+let pausedStream;
 const pending = new Map();
 const results = [];
 
@@ -86,6 +87,8 @@ try {
   });
   socket.addEventListener("message", ({ data: raw }) => {
     const msg = JSON.parse(String(raw));
+
+    if (msg.method === "Fetch.requestPaused") pausedStream = msg.params.requestId;
 
     if (msg.id) {
       const promise = pending.get(msg.id);
@@ -140,6 +143,30 @@ try {
     evaluate(
       `[...document.querySelectorAll('section[aria-label="Question from the agent"] button')].find((b) => b.textContent.includes(${JSON.stringify(label)})).click()`,
     );
+
+  // A question can arrive after the chat read but before its first stream snapshot.
+  const delayedChat = await api("/api/agents/default/chats", {}, "POST");
+  await call("Fetch.enable", { patterns: [{ urlPattern: "*/events", requestStage: "Request" }] });
+  await visit(`/a/default/c/${delayedChat.id}`);
+  await poll("stream request paused", () => pausedStream);
+  await api(
+    `/api/agents/default/chats/${delayedChat.id}/messages`,
+    {
+      id: crypto.randomUUID(),
+      text: `bot_delete ${JSON.stringify({ bot: "Coder", reason: "Not used any more" })}`,
+    },
+    "POST",
+  );
+  await poll("question saved before snapshot", async () => {
+    const chat = await api(`/api/agents/default/chats/${delayedChat.id}`);
+
+    return chat.question?.status === "open" && !chat.busy;
+  });
+  await call("Fetch.continueRequest", { requestId: pausedStream });
+  await call("Fetch.disable");
+  await poll("question shown after snapshot", () =>
+    evaluate("!!document.querySelector('section[aria-label=\"Question from the agent\"]')"),
+  );
 
   // 1. Any other answer keeps the bot.
   await ask();

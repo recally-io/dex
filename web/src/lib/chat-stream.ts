@@ -52,7 +52,9 @@ export function useChatStream(chatId: number) {
           setConnection("ready");
           setStreamError("");
 
+          // The chat read can precede a question that is already present at snapshot time.
           if (
+            event.type === "snapshot" ||
             (event.type === "run" && !event.running) ||
             (event.type === "item" &&
               event.item.kind === "tool" &&
