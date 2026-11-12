@@ -151,7 +151,7 @@ func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
 	t.Parallel()
 	// Given global skills review and notes, and agent skills review and broken
 	dataDir, home := t.TempDir(), t.TempDir()
-	globalDir := filepath.Join(home, ".agents", "skills")
+	globalDir := filepath.Join(dataDir, ".agents", "skills")
 	agentDir := filepath.Join(dataDir, "agents", app.DefaultAgentID, ".agents", "skills")
 	writeSkill(t, globalDir, "review", "name: review\ndescription: Global review steps")
 	notes := writeSkill(t, globalDir, "notes", "description: Take notes")
@@ -172,12 +172,12 @@ func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
 	for _, s := range got.Skills {
 		rows = append(rows, row{s.Name, s.Scope, s.Overrides, s.Error != ""})
 	}
-	want := []row{{"broken", "agent", false, true}, {"notes", "home", false, false}, {"review", "agent", true, false}}
+	want := []row{{"broken", "agent", false, true}, {"notes", "dex", false, false}, {"review", "agent", true, false}}
 	resolvedGlobal, err := filepath.EvalSymlinks(globalDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(rows, want) || filepath.Join(got.dir("home"), "skills") != resolvedGlobal {
+	if !slices.Equal(rows, want) || filepath.Join(got.dir("dex"), "skills") != resolvedGlobal {
 		t.Fatalf("skills = %+v, levels = %+v", got.Skills, got.Levels)
 	}
 
@@ -207,11 +207,11 @@ func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
 
 func TestUserFindsNestedAndProjectSkills(t *testing.T) {
 	t.Parallel()
-	// Given nested home skills, a skill whose front matter names it, two skills with one name in one
+	// Given nested dex skills, a skill whose front matter names it, two skills with one name in one
 	// level, skills in hidden directories and node_modules, a link cycle, and a project skill in the
-	// bot workspace that replaces a home skill
+	// bot workspace that replaces a dex skill
 	dataDir, home := t.TempDir(), t.TempDir()
-	homeDir := filepath.Join(home, ".agents", "skills")
+	homeDir := filepath.Join(dataDir, ".agents", "skills")
 	projectDir := filepath.Join(dataDir, "agents", app.DefaultAgentID, "workspace", ".agents", "skills")
 	deep := writeSkill(t, filepath.Join(homeDir, "team", "writing"), "drafts", "description: Draft documents")
 	named := writeSkill(t, filepath.Join(homeDir, "vendor"), "pkg-1", "name: release-notes\ndescription: Write release notes")
@@ -232,13 +232,13 @@ func TestUserFindsNestedAndProjectSkills(t *testing.T) {
 	got := d.extensions(t)
 
 	// Then every skill outside hidden directories, node_modules and other skills shows once, with its
-	// front matter name, the project review replaces the home review, and the second twin is a warning
+	// front matter name, the project review replaces the dex review, and the second twin is a warning
 	type row struct{ Name, Scope, Path string }
 	var rows []row
 	for _, s := range got.Skills {
 		rows = append(rows, row{s.Name, s.Scope, s.Path})
 	}
-	want := []row{{"drafts", "home", deep}, {"release-notes", "home", named}, {"review", "project", project}, {"twin", "home", twin}}
+	want := []row{{"drafts", "dex", deep}, {"release-notes", "dex", named}, {"review", "project", project}, {"twin", "dex", twin}}
 	if !slices.Equal(rows, want) || !got.Skills[2].Overrides {
 		t.Fatalf("skills = %+v, want %+v", got.Skills, want)
 	}
@@ -266,11 +266,11 @@ func TestUserFindsNestedAndProjectSkills(t *testing.T) {
 
 func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
 	t.Parallel()
-	// Given global servers files (stdio), web (HTTP), shared and old, and agent servers that
+	// Given dex servers files (stdio), web (HTTP), shared and old, and agent servers that
 	// replace shared, turn off old, and add one whose command does not exist
 	dataDir, home := t.TempDir(), t.TempDir()
 	filesDir, webDir, globalShared, agentShared := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	writeMCP(t, filepath.Join(home, ".agents", "mcp.json"), map[string]any{
+	writeMCP(t, filepath.Join(dataDir, ".agents", "mcp.json"), map[string]any{
 		"files":  stdioServer(t, filesDir),
 		"web":    httpServer(t, webDir),
 		"shared": stdioServer(t, globalShared),
@@ -397,7 +397,7 @@ func TestInterruptedMCPCallIsNotRepeatedAfterRestart(t *testing.T) {
 	t.Parallel()
 	// Given an MCP call that is running when dex stops
 	dataDir, home, filesDir := t.TempDir(), t.TempDir(), t.TempDir()
-	writeMCP(t, filepath.Join(home, ".agents", "mcp.json"), map[string]any{"files": stdioServer(t, filesDir)})
+	writeMCP(t, filepath.Join(dataDir, ".agents", "mcp.json"), map[string]any{"files": stdioServer(t, filesDir)})
 	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
 	d.setModel(t, "tool")
 	chatID := d.newChat(t, `mcp__files__wait {"name":"crash"}`)
@@ -427,7 +427,7 @@ func TestFirstServerKeepsAToolNameThatTwoServersHave(t *testing.T) {
 	a := stdioServer(t, aDir)
 	a["env"].(map[string]string)["DEX_TEST_MCP_PREFIX"] = "b__"
 	a["env"].(map[string]string)["DEX_TEST_MCP_TWICE"] = "1"
-	writeMCP(t, filepath.Join(home, ".agents", "mcp.json"), map[string]any{"a": a, "a__b": stdioServer(t, abDir)})
+	writeMCP(t, filepath.Join(dataDir, ".agents", "mcp.json"), map[string]any{"a": a, "a__b": stdioServer(t, abDir)})
 	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
 	d.setModel(t, "tool")
 

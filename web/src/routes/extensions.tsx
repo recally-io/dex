@@ -22,7 +22,7 @@ export function ExtensionsPage() {
     <FramedPage
       title="Tools"
       toolbar={<BotSettingsSwitcher segment="extensions" />}
-      description="Skills, MCP servers and environment keys of this bot. Tools start from your login shell environment. dex reads home, then dex, then the bot. A narrower level replaces an entry with the same name. Changes apply automatically when all bots are idle."
+      description="Skills, MCP servers and environment keys of this bot. Tools start from your login shell environment. dex reads the dex level, then the bot. A narrower level replaces an entry with the same name. Changes apply automatically when all bots are idle."
       actions={
         query.data?.reloadPending && !query.data.errors.length ? (
           <Badge variant="secondary">Change waiting for idle bots</Badge>

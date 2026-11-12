@@ -866,7 +866,7 @@ export const getExtensions = <ThrowOnError extends boolean = false>(options: Opt
 });
 
 /**
- * Remove an agent or dex .env key. Reload applies changes. Home is read-only.
+ * Remove an agent or dex .env key. Reload applies changes.
  */
 export const deleteExtensionEnv = <ThrowOnError extends boolean = false>(options: Options<DeleteExtensionEnvData, ThrowOnError>): RequestResult<DeleteExtensionEnvResponses, DeleteExtensionEnvErrors, ThrowOnError> => (options.client ?? client).delete<DeleteExtensionEnvResponses, DeleteExtensionEnvErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {

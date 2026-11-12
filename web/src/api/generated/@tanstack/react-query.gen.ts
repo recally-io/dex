@@ -1120,7 +1120,7 @@ export const getExtensionsOptions = (options: Options<GetExtensionsData>) => que
 });
 
 /**
- * Remove an agent or dex .env key. Reload applies changes. Home is read-only.
+ * Remove an agent or dex .env key. Reload applies changes.
  */
 export const deleteExtensionEnvMutation = (options?: Partial<Options<DeleteExtensionEnvData>>): UseMutationOptions<DeleteExtensionEnvResponse, DeleteExtensionEnvError, Options<DeleteExtensionEnvData>> => {
     const mutationOptions: UseMutationOptions<DeleteExtensionEnvResponse, DeleteExtensionEnvError, Options<DeleteExtensionEnvData>> = {

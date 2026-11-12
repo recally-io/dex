@@ -362,9 +362,17 @@ and task-specific automation result routing are later work. Other chat channels 
 
 ## Extension files
 
-Each agent reads skills, `mcp.json`, and `.env` from three `.agents/`
-directories: the user home, the resolved dex data directory, and the agent
-home (`<data dir>/agents/<id>`). The narrower level wins. Tools start
+Each agent reads skills, `mcp.json`, and `.env` from two `.agents/`
+directories: the resolved dex data directory, shared by all agents, and the
+agent home (`<data dir>/agents/<id>`). The narrower level wins. dex does not
+read the user home (`~/.agents`), so personal files and secrets there never
+reach a bot. Both directories can hold `AGENTS.md`, and a project can hold
+`AGENTS.md` in its root. dex adds them to the model instructions in this order:
+dex, agent, the bot's own instructions, project. A line `@path` in these files
+imports another file; a project file can import only files inside the project.
+A bot can opt in to personal rules with a symlink to `~/.agents/AGENTS.md` in
+its own `.agents/`. See
+[ADR 0017](dev/decisions/0017-drop-home-level-and-agents-md.md). Tools start
 in the agent workspace by default. Main and Chat sessions can select an existing
 project directory in the header or with `set_project`. A child session
 can also change its project through the API. The header picker
@@ -390,10 +398,9 @@ shell exports reaches every bot. The Environment page can also store
 Connect host and token. When `op` is installed, bots read secrets with
 `op read` when a command needs them. dex does not read the secrets.
 
-The Tools tab of a bot writes that bot's `.env` file. It shows dex and home
+The Tools tab of a bot writes that bot's `.env` file. It shows dex
 keys as read-only, with shadowed state for this bot. The Environment page
-writes the dex `.env` file, which applies to all bots, and shows home keys as
-read-only. Both pages show key names with Replace and Delete actions. Values
+writes the dex `.env` file, which applies to all bots. Both pages show key names with Replace and Delete actions. Values
 are write-only. A key whose value looks like a pasted `NAME=...` line, or is
 empty, padded, or an `op://` reference, shows a badge, and a save of an
 assignment-like value shows a warning; dex still saves it. Changes to files, shell rc files, and 1Password settings apply

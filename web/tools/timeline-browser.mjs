@@ -1728,7 +1728,7 @@ try {
     "new Set([...document.querySelectorAll('main [data-channel-icon]')].map(icon => icon.innerHTML)).size === 3",
   );
 
-  for (const root of [home, data, join(data, "agents", second.id)]) {
+  for (const root of [data, join(data, "agents", second.id)]) {
     await mkdir(join(root, ".agents"), { recursive: true });
     await writeFile(join(root, ".agents", ".env"), "EXTENSION_DEMO_KEY=never-show-this-value\n");
   }
@@ -1744,7 +1744,7 @@ try {
   );
   await check(
     "tool levels and secrecy",
-    `['home', 'dex', 'agent', 'The model can', 'Tool output becomes part of the transcript', 'MCP servers'].every(text => document.body.innerText.includes(text)) && !!document.querySelector('main a[href="/environment"]') && !!document.querySelector('[data-env-key="EXTENSION_DEMO_KEY"][data-env-scope="agent"]') && !document.body.innerText.includes('never-show-this-value')`,
+    `['dex', 'agent', 'The model can', 'Tool output becomes part of the transcript', 'MCP servers'].every(text => document.body.innerText.includes(text)) && !!document.querySelector('main a[href="/environment"]') && !!document.querySelector('[data-env-key="EXTENSION_DEMO_KEY"][data-env-scope="agent"]') && !document.body.innerText.includes('never-show-this-value')`,
   );
   await shot("13a-agent-extensions-desktop");
   await viewport(390, 844);
@@ -1757,15 +1757,15 @@ try {
   await viewport(1440, 1000);
   await shot("13d-extension-servers-desktop");
 
-  // A bot edits only its own .env. The dex and home files show as read-only, and the bot key
-  // shadows both.
+  // A bot edits only its own .env. The dex file shows as read-only, and the bot key
+  // shadows it.
   await ui(
     "bot env form ready",
-    `!!document.querySelector('input[name="key"]') && !!document.querySelector('[data-env-scope="home"]') && !!document.querySelector('[data-env-scope="dex"]')`,
+    `!!document.querySelector('input[name="key"]') && !!document.querySelector('[data-env-scope="dex"]')`,
   );
   await check(
     "wider bot env levels are read-only",
-    `!document.querySelector('[data-env-scope="home"] button') && !document.querySelector('[data-env-scope="dex"] button') && !!document.querySelector('[data-env-scope="agent"] button') && document.body.innerText.includes('Home · Read-only') && document.body.innerText.includes('All bots · Read-only') && document.body.innerText.includes('Shadowed') && !document.querySelector('select[name="scope"]')`,
+    `!document.querySelector('[data-env-scope="dex"] button') && !!document.querySelector('[data-env-scope="agent"] button') && document.body.innerText.includes('All bots · Read-only') && document.body.innerText.includes('Shadowed') && !document.querySelector('select[name="scope"]')`,
   );
   const secretKey = "BROWSER_WRITE_ONLY_KEY";
   const secretValue = "browser-private-value-do-not-show";
@@ -1870,11 +1870,11 @@ try {
   await tap('main a[href="/environment"]');
   await ui(
     "environment form ready",
-    `location.pathname === '/environment' && !!document.querySelector('input[name="key"]') && !!document.querySelector('[data-env-scope="home"]')`,
+    `location.pathname === '/environment' && !!document.querySelector('input[name="key"]') && !!document.querySelector('[data-env-scope="dex"]')`,
   );
   await check(
     "environment names no bot",
-    `!document.querySelector('[data-env-scope="agent"]') && !document.querySelector('[data-env-scope="home"] button') && !document.querySelector('main').innerText.includes('Second Bot') && !document.querySelector('main').innerText.includes('This bot') && document.querySelector('main').innerText.includes('Shadowed')`,
+    `!document.querySelector('[data-env-scope="agent"]') && !document.querySelector('main').innerText.includes('Second Bot') && !document.querySelector('main').innerText.includes('This bot')`,
   );
   await tap('input[name="key"]');
   await call("Input.insertText", { text: secretKey });
@@ -1916,7 +1916,7 @@ try {
       await tap('nav[aria-label="Settings pages"] a[href="/environment"]');
       await ui(
         `${path} keys from ${bot}`,
-        "location.pathname === '/environment' && !!document.querySelector('[data-env-scope=\"home\"]')",
+        "location.pathname === '/environment' && !!document.querySelector('[data-env-scope=\"dex\"]')",
       );
     }
 

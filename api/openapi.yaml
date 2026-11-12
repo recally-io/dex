@@ -1356,7 +1356,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: deleteExtensionEnv
-      description: Remove an agent or dex .env key. Reload applies changes. Home is read-only.
+      description: Remove an agent or dex .env key. Reload applies changes.
       parameters:
         - in: query
           name: scope
@@ -2530,8 +2530,8 @@ components:
 
     ExtensionScope:
       type: string
-      description: Home, resolved data directory, or agent home, each under .agents/.
-      enum: [home, dex, agent]
+      description: Resolved data directory or agent home, each under .agents/.
+      enum: [dex, agent]
 
     Skill:
       type: object
@@ -2544,7 +2544,7 @@ components:
           description: >
             A file level, or project for .agents/skills under the agent workspace. The
             prompt reads the project level under the conversation's cwd.
-          enum: [home, dex, agent, project]
+          enum: [dex, agent, project]
         path: { type: string, description: The SKILL.md file. }
         overrides:
           type: boolean

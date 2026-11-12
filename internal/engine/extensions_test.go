@@ -33,10 +33,10 @@ func extensionFile(t *testing.T, path, text string) {
 	}
 }
 func TestUserExtensionsMergeAndRefreshSkills(t *testing.T) {
-	// Given values and skills at all three levels.
-	a, home, data := extensionFixture(t)
+	// Given values and skills at dex and agent levels.
+	a, _, data := extensionFixture(t)
 	agent := filepath.Join(data, "agents", "a")
-	for _, dir := range []string{home, data, agent} {
+	for _, dir := range []string{data, agent} {
 		extensionFile(t, filepath.Join(dir, ".agents", ".env"), "TOKEN="+filepath.Base(dir)+"\n")
 		extensionFile(t, filepath.Join(dir, ".agents", "skills", "notes", "SKILL.md"), "---\ndescription: "+filepath.Base(dir)+"\n---\n")
 	}
@@ -49,7 +49,7 @@ func TestUserExtensionsMergeAndRefreshSkills(t *testing.T) {
 		t.Fatalf("environment: %#v", loaded.Env)
 	}
 	info, err := a.Info(t.Context())
-	if err != nil || len(info.Env) != 3 || !info.Env[0].Shadowed || info.Env[2].Shadowed || len(info.Skills) != 1 || !info.Skills[0].Overrides || info.Skills[0].Scope != "agent" {
+	if err != nil || len(info.Env) != 2 || !info.Env[0].Shadowed || info.Env[1].Shadowed || len(info.Skills) != 1 || !info.Skills[0].Overrides || info.Skills[0].Scope != "agent" {
 		t.Fatalf("merge: %#v %v", info, err)
 	}
 	// When the skill changes, the next request sees the new description.
@@ -154,10 +154,9 @@ func TestUserSharedEnvEditsDoNotLoseUpdates(t *testing.T) {
 	}
 }
 func TestUserInvalidEnvPreventsMCPAndPartialSecrets(t *testing.T) {
-	a, home, data := extensionFixture(t)
-	extensionFile(t, filepath.Join(home, ".agents", ".env"), "WIDE=secret\n")
+	a, _, data := extensionFixture(t)
 	extensionFile(t, filepath.Join(data, ".agents", ".env"), "NARROW=secret\nbroken-secret-line\n")
-	extensionFile(t, filepath.Join(home, ".agents", "mcp.json"), `{"mcpServers":{"wide":{"command":"must-not-run"}}}`)
+	extensionFile(t, filepath.Join(data, ".agents", "mcp.json"), `{"mcpServers":{"wide":{"command":"must-not-run"}}}`)
 	loaded, err := a.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -241,14 +240,14 @@ func TestUserStdioMCPGetsOnlyExplicitEnvironment(t *testing.T) {
 }
 
 func TestUserMalformedMCPDoesNotRestoreWiderServers(t *testing.T) {
-	a, home, data := extensionFixture(t)
-	extensionFile(t, filepath.Join(home, ".agents", "mcp.json"), `{"mcpServers":{"notes":{"command":"not-started"}}}`)
-	extensionFile(t, filepath.Join(data, ".agents", "mcp.json"), `{"mcpServers":{"notes":{"disabled":true}}}`)
+	a, _, data := extensionFixture(t)
+	extensionFile(t, filepath.Join(data, ".agents", "mcp.json"), `{"mcpServers":{"notes":{"command":"not-started"}}}`)
+	extensionFile(t, filepath.Join(data, "agents", "a", ".agents", "mcp.json"), `{"mcpServers":{"notes":{"disabled":true}}}`)
 	info, err := a.Info(t.Context())
 	if err != nil || len(info.Servers) != 1 || info.Servers[0].State != "disabled" || !info.Servers[0].Overrides {
 		t.Fatalf("disabled override: %#v %v", info, err)
 	}
-	extensionFile(t, filepath.Join(data, ".agents", "mcp.json"), `{"mcpServers":{"notes":{"headers":"private-secret"}}}`)
+	extensionFile(t, filepath.Join(data, "agents", "a", ".agents", "mcp.json"), `{"mcpServers":{"notes":{"headers":"private-secret"}}}`)
 	loaded, err := a.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)

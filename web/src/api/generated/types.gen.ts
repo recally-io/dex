@@ -764,9 +764,9 @@ export type Extensions = {
 };
 
 /**
- * Home, resolved data directory, or agent home, each under .agents/.
+ * Resolved data directory or agent home, each under .agents/.
  */
-export type ExtensionScope = 'home' | 'dex' | 'agent';
+export type ExtensionScope = 'dex' | 'agent';
 
 export type Skill = {
     name: string;
@@ -775,7 +775,7 @@ export type Skill = {
      * A file level, or project for .agents/skills under the agent workspace. The prompt reads the project level under the conversation's cwd.
      *
      */
-    scope: 'home' | 'dex' | 'agent' | 'project';
+    scope: 'dex' | 'agent' | 'project';
     /**
      * The SKILL.md file.
      */

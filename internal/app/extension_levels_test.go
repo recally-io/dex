@@ -18,23 +18,28 @@ import (
 
 func TestUserReadsExtensionLevelsAndPrivateEnvironment(t *testing.T) {
 	t.Parallel()
-	// Given three levels with the same skill and environment key.
+	// Given dex and agent levels with the same skill and environment key, and home files that dex must ignore.
 	data, home := t.TempDir(), t.TempDir()
-	for _, root := range []string{home, data, filepath.Join(data, "agents", "default")} {
+	for _, root := range []string{data, filepath.Join(data, "agents", "default")} {
 		writeSkill(t, filepath.Join(root, ".agents", "skills"), "review", "description: "+root)
 	}
-	writeFile(t, filepath.Join(home, ".agents", ".env"), "DEX_LEVEL=home\nDEX_HOME_ONLY=home#frag # comment\n")
-	writeFile(t, filepath.Join(data, ".agents", ".env"), "# Shared environment\n\nDEX_LEVEL=\"dex\" # replaced by agent\n")
+	writeSkill(t, filepath.Join(home, ".agents", "skills"), "home-only", "description: from home")
+	writeMCP(t, filepath.Join(home, ".agents", "mcp.json"), map[string]any{"home-server": stdioServer(t, t.TempDir())})
+	writeFile(t, filepath.Join(home, ".agents", ".env"), "DEX_LEVEL=home\nDEX_HOME_ONLY=must-not-reach-the-agent\n")
+	writeFile(t, filepath.Join(data, ".agents", ".env"), "# Shared environment\n\nDEX_LEVEL=\"dex\" # replaced by agent\nDEX_DEX_ONLY=dex#frag # comment\n")
 	writeFile(t, filepath.Join(data, "agents", "default", ".agents", ".env"), "export DEX_LEVEL='agent'\nHOME=/does-not-move-roots\n")
 	d := startDexHome(t, app.Config{DataDir: data}, home)
 	d.setModel(t, "bash")
 	// When the agent runs a tool, it gets its own environment snapshot.
-	w := d.watch(t, d.newChat(t, `printf '%s/%s' "$DEX_LEVEL" "$DEX_HOME_ONLY"`))
-	w.until(t, "layered environment", answered("bash: agent/home#frag"))
-	// Then the API shows the winning skill, but no values.
+	w := d.watch(t, d.newChat(t, `printf '%s/%s/%s' "$DEX_LEVEL" "${DEX_HOME_ONLY-unset}" "$DEX_DEX_ONLY"`))
+	w.until(t, "layered environment", answered("bash: agent/unset/dex#frag"))
+	// Then the API shows the winning skill, but no values, and no home environment key.
 	got := d.extensions(t)
 	if len(got.Skills) != 1 || got.Skills[0].Scope != "agent" || !got.Skills[0].Overrides {
 		t.Fatalf("skills: %+v", got.Skills)
+	}
+	if len(got.Servers) != 0 || len(got.Levels) != 2 || got.dir("home") != "" {
+		t.Fatalf("home level is visible: %+v %+v", got.Levels, got.Servers)
 	}
 	var levels []string
 	for _, entry := range got.Env {
@@ -42,18 +47,17 @@ func TestUserReadsExtensionLevelsAndPrivateEnvironment(t *testing.T) {
 			levels = append(levels, fmt.Sprintf("%s:%t", entry.Scope, entry.Shadowed))
 		}
 	}
-	if strings.Join(levels, ",") != "home:true,dex:true,agent:false" {
+	if strings.Join(levels, ",") != "dex:true,agent:false" {
 		t.Fatalf("env levels: %v", levels)
 	}
 }
 
 func TestUserUsesDexSkillsAndMCPEnvironment(t *testing.T) {
 	t.Parallel()
-	// Given a dex skill that replaces a home skill, and inherited server credentials.
+	// Given a dex skill, and inherited server credentials.
 	data, home, inherited, explicit := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	writeSkill(t, filepath.Join(home, ".agents", "skills"), "notes", "description: Home notes")
 	writeSkill(t, filepath.Join(data, ".agents", "skills"), "notes", "description: Dex notes")
-	writeFile(t, filepath.Join(home, ".agents", ".env"), "DEX_TEST_MCP_DIR="+inherited+"\n")
+	writeFile(t, filepath.Join(data, ".agents", ".env"), "DEX_TEST_MCP_DIR="+inherited+"\n")
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +78,7 @@ func TestUserUsesDexSkillsAndMCPEnvironment(t *testing.T) {
 		t.Fatal("stdio environment precedence failed")
 	}
 	got := d.extensions(t)
-	if len(got.Skills) != 1 || got.Skills[0].Scope != "dex" || !got.Skills[0].Overrides {
+	if len(got.Skills) != 1 || got.Skills[0].Scope != "dex" || got.Skills[0].Overrides {
 		t.Fatalf("skills: %+v", got.Skills)
 	}
 }
@@ -83,10 +87,10 @@ func TestUserGetsNoFallbackFromInvalidExtensionFiles(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []string{"mcp.json", ".env"} {
 		t.Run(kind, func(t *testing.T) {
-			// Given a valid home server and .env, with an invalid dex configuration.
+			// Given a valid agent server and dex .env, with an invalid dex configuration.
 			data, home := t.TempDir(), t.TempDir()
-			writeMCP(t, filepath.Join(home, ".agents", "mcp.json"), map[string]any{"files": stdioServer(t, t.TempDir())})
-			writeFile(t, filepath.Join(home, ".agents", ".env"), "DEX_PRIVATE_VALUE=hidden-home-token\n")
+			writeMCP(t, filepath.Join(data, "agents", "default", ".agents", "mcp.json"), map[string]any{"files": stdioServer(t, t.TempDir())})
+			writeFile(t, filepath.Join(data, ".agents", ".env"), "DEX_PRIVATE_VALUE=hidden-dex-token\n")
 			bad := `{"mcpServers":{"bad":{"args":[]}}}`
 			if kind == ".env" {
 				bad = "DEX_PRIVATE_VALUE=hidden-bad-token\nBAD-KEY=hidden-bad-token"
@@ -96,7 +100,7 @@ func TestUserGetsNoFallbackFromInvalidExtensionFiles(t *testing.T) {
 			d.setModel(t, "bash")
 			// When the agent opens, no wider MCP server starts.
 			command := `printf '%s' "${DEX_PRIVATE_VALUE-unset}"`
-			want := "bash: hidden-home-token"
+			want := "bash: hidden-dex-token"
 			if kind == ".env" {
 				want = "bash: unset"
 			}
@@ -121,9 +125,9 @@ func TestUserGetsNoFallbackFromInvalidExtensionFiles(t *testing.T) {
 
 func TestUserUsesHeaderEnvironmentWithoutLeakingValues(t *testing.T) {
 	t.Parallel()
-	// Given an HTTP server that requires a home key at the agent level.
+	// Given an HTTP server that requires a dex key at the agent level.
 	data, home := t.TempDir(), t.TempDir()
-	writeFile(t, filepath.Join(home, ".agents", ".env"), "TOKEN=private-header-token\nNESTED='${TOKEN}'\n")
+	writeFile(t, filepath.Join(data, ".agents", ".env"), "TOKEN=private-header-token\nNESTED='${TOKEN}'\n")
 	mcp := &mcptest.Server{Dir: t.TempDir()}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer private-header-token" || r.Header.Get("X-Literal") != "${TOKEN}" {

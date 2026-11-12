@@ -20,11 +20,11 @@ type Level = Extensions["env"][number]["scope"];
 
 /**
  * The .env keys of one writable level and the wider levels it inherits. A bot writes its own
- * file and reads dex and home. The global page writes dex and reads home. Values never show.
+ * file and reads dex. The global page writes dex. Values never show.
  */
 export type EnvTarget = { scope: "agent"; agentId: string } | { scope: "dex" };
 
-const titles: Record<Level, string> = { agent: "This bot", dex: "All bots", home: "Home · Read-only" };
+const titles: Record<Level, string> = { agent: "This bot", dex: "All bots" };
 
 type Hint = Extensions["env"][number]["hints"][number];
 
@@ -85,10 +85,10 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
 
   const busy = save.isPending || remove.isPending;
   const catalog = query.data;
-  const levels: Level[] = target.scope === "agent" ? ["agent", "dex", "home"] : ["dex", "home"];
+  const levels: Level[] = target.scope === "agent" ? ["agent", "dex"] : ["dex"];
 
   // The Tools page shows errors in its Configuration section. The global page reads them through
-  // the default bot, so it keeps only the errors that name a dex or home file.
+  // the default bot, so it keeps only the errors that name a dex file.
   const wideDirs = catalog?.levels.filter((l) => l.scope !== "agent").map((l) => l.dir) ?? [];
 
   const wideErrors =
@@ -96,11 +96,8 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
       ? (catalog?.errors.filter((error) => wideDirs.some((dir) => error.includes(dir))) ?? [])
       : [];
 
-  // The API marks a key shadowed for one bot. On the global page, only a dex key hides a home key.
-  const shadowed = (entry: Extensions["env"][number]) =>
-    target.scope === "agent"
-      ? entry.shadowed
-      : entry.scope === "home" && !!catalog?.env.some((e) => e.scope === "dex" && e.key === entry.key);
+  // The API marks a key shadowed for one bot. On the global page, no level is narrower than dex.
+  const shadowed = (entry: Extensions["env"][number]) => target.scope === "agent" && entry.shadowed;
 
   return (
     <>

@@ -396,6 +396,13 @@ func agentChange(options Options) harness.AgentChange {
 	return change
 }
 
+// agentChange adds the AGENTS.md text to the instructions. It reads the files at each admission,
+// so an edit applies from the next input of a conversation.
+func (a *Agents) agentChange(agentID string, options Options) harness.AgentChange {
+	options.Instructions = a.files(agentID).instructions(options.Cwd, options.Instructions)
+	return agentChange(options)
+}
+
 func (a *Agents) Create(ctx context.Context, agentID string, options Options) (Ref, error) {
 	if err := a.begin(); err != nil {
 		return Ref{}, err
@@ -405,7 +412,7 @@ func (a *Agents) Create(ctx context.Context, agentID string, options Options) (R
 	if err != nil {
 		return Ref{}, err
 	}
-	change := agentChange(options)
+	change := a.agentChange(agentID, options)
 	conversation, err := h.CreateConversation(ctx, harness.ConversationCreateOptions{Ownership: durable.ConversationOwnership{Kind: durable.ConversationOwnerless}, Agent: &change})
 	if err != nil {
 		return Ref{}, err
@@ -610,7 +617,7 @@ func (a *Agents) Continue(ctx context.Context, ref Ref, requestID string, option
 		return err
 	}
 	// The user can choose another model after a model error; the continued run uses it.
-	if err := conversation.Configure(ctx, agentChange(options)); err != nil {
+	if err := conversation.Configure(ctx, a.agentChange(ref.AgentID, options)); err != nil {
 		return err
 	}
 	_, err = conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeContinue, RequestId: &requestID})
@@ -641,7 +648,7 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID s
 		return 0, err
 	}
 	// The summary uses the conversation model, so it must be the chat's current choice.
-	if err := conversation.Configure(ctx, agentChange(options)); err != nil {
+	if err := conversation.Configure(ctx, a.agentChange(ref.AgentID, options)); err != nil {
 		return 0, err
 	}
 	h, err := a.harness(ctx, ref.AgentID)
