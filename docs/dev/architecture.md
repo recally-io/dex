@@ -580,11 +580,12 @@ A retry with the same source and boundary returns that Chat; a mismatch returns
 `409`. A concurrent retry can create an extra native conversation before control
 rejects its receipt. That conversation has no control reference and is invisible.
 
-Manual compact with a UUID runs at most once per ID. Control stores the receipt
-before the native call. A synchronous error removes the receipt so a retry can
-try again. A crash after the receipt and before native commit can lose the compact.
-A crash after native commit leaves the receipt and a retry does not run it again.
-The stores do not share a transaction, so a receipt does not prove native commit.
+Manual compact with a UUID runs at most once per ID. Control records the chat and
+instructions before the native call. The native transaction commits a request
+record with the compaction task. Every retry calls native admission again, so a
+control receipt alone cannot suppress a task that did not commit. A synchronous
+failure can be retried with the same ID. A crash after native commit does not
+create a second task. The control receipt also prevents reuse across agents.
 
 A client retry with the same UUID reuses the input intent and native admission.
 The chat, input kind, text, attachments and send mode must match the first request.

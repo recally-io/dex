@@ -29,15 +29,6 @@ func (q *Queries) CreateCompactReceipt(ctx context.Context, arg CreateCompactRec
 	return result.RowsAffected()
 }
 
-const deleteCompactReceipt = `-- name: DeleteCompactReceipt :exec
-DELETE FROM compact_receipts WHERE id = ?
-`
-
-func (q *Queries) DeleteCompactReceipt(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, deleteCompactReceipt, id)
-	return err
-}
-
 const getCompactReceipt = `-- name: GetCompactReceipt :one
 SELECT id, conversation_id, instructions FROM compact_receipts WHERE id = ?
 `

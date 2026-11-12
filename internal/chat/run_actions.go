@@ -62,6 +62,7 @@ func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, ins
 	if s.leaseUntil.Load() != 0 {
 		return engine.ErrMaintenance
 	}
+	receiptExists := false
 	if requestID != "" {
 		s.compactMu.Lock()
 		defer s.compactMu.Unlock()
@@ -70,9 +71,8 @@ func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, ins
 			if receipt.ConversationID != chatID || receipt.Instructions != instructions {
 				return ErrOperationID
 			}
-			return nil
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
+			receiptExists = true
+		} else if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 	}
@@ -87,7 +87,7 @@ func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, ins
 	if err != nil {
 		return err
 	}
-	if requestID != "" {
+	if requestID != "" && !receiptExists {
 		created, err := s.q.CreateCompactReceipt(ctx, sqlc.CreateCompactReceiptParams{ID: requestID, ConversationID: chatID, Instructions: instructions})
 		if err != nil {
 			return err
@@ -96,10 +96,7 @@ func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, ins
 			return ErrOperationID
 		}
 	}
-	_, err = s.engine.Compact(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, instructions, chatOptions(agent, conv))
-	if err != nil && requestID != "" {
-		return errors.Join(err, s.q.DeleteCompactReceipt(context.WithoutCancel(ctx), requestID))
-	}
+	_, err = s.engine.Compact(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, instructions, requestID, chatOptions(agent, conv))
 	if err == nil {
 		s.signal(chatID)
 	}

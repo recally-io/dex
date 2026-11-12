@@ -623,7 +623,7 @@ func (a *Agents) Continue(ctx context.Context, ref Ref, requestID string, option
 // Compact starts a manual compaction and returns its native task ID. It runs beside an active run;
 // a summary made during a run joins the context at the run's next boundary. Instructions tell the
 // summary what to keep.
-func (a *Agents) Compact(ctx context.Context, ref Ref, instructions string, options Options) (int64, error) {
+func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID string, options Options) (int64, error) {
 	if options.Model.ModelID == "" {
 		return 0, ErrNoModel
 	}
@@ -648,11 +648,21 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, instructions string, opti
 	if err != nil {
 		return 0, err
 	}
-	var keep *string
-	if instructions != "" {
-		keep = &instructions
+	var id durable.TaskId
+	if requestID == "" {
+		var keep *string
+		if instructions != "" {
+			keep = &instructions
+		}
+		id, err = conversation.Compact(ctx, keep)
+	} else {
+		var admission compactAdmission
+		admission, err = compactOnce(ctx, conversation, durable.ConversationId(ref.ID), requestID, instructions)
+		id = admission.id
+		if err == nil && !admission.created {
+			return int64(id), nil
+		}
 	}
-	id, err := conversation.Compact(ctx, keep)
 	if err != nil {
 		return 0, err
 	}
