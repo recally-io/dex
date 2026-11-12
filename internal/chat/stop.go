@@ -120,7 +120,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 				return withdrawal{}, err
 			}
 			if slices.ContainsFunc(pending, func(p sqlc.ListChildPendingRow) bool { return !p.FromParent }) {
-				if err := s.withdrawQueuedParentInputs(ctx, q, agentID, c, pending, now); err != nil {
+				if err := s.withdrawQueuedParentInputs(ctx, q, c, pending, now); err != nil {
 					return withdrawal{}, err
 				}
 				continue
@@ -169,14 +169,15 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 // withdrawQueuedParentInputs withdraws the parent input of a child that native execution still
 // holds in its queue. A placed input is part of a run and keeps running. A failed withdrawal fails
 // Stop, so the user can repeat it. A pending input that native execution never saw has no run, and
-// its receipt settles at once.
-func (s *Service) withdrawQueuedParentInputs(ctx context.Context, q *sqlc.Queries, agentID string, c sqlc.Conversation, pending []sqlc.ListChildPendingRow, now sql.NullInt64) error {
+// its receipt settles at once. The native queue belongs to the bot of the child, which can differ
+// from the bot of the parent.
+func (s *Service) withdrawQueuedParentInputs(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation, pending []sqlc.ListChildPendingRow, now sql.NullInt64) error {
 	for _, p := range pending {
 		if !p.FromParent {
 			continue
 		}
 		if c.ExecutionID.Valid {
-			outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID.Int64}, p.ID)
+			outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}, p.ID)
 			if err != nil {
 				return err
 			}

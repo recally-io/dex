@@ -459,6 +459,44 @@ func TestUserSeesParentStopReachAChildInAnotherBot(t *testing.T) {
 	}
 }
 
+func TestUserSeesStopOnlyForWithdrawableMixedInputOfAChildInAnotherBot(t *testing.T) {
+	t.Parallel()
+	// Given a parent turn that runs in another bot, and a queued user input in that child.
+	s := startBots(t)
+	parent := s.chat("default")
+	child := parent.newChild(map[string]any{"bot": "Coder", "title": "Cross mixed", "message": taskGate(t, s.dir, "cross-mixed"), "provider": "faux", "modelId": "bash"})
+	id := child.conversation(t)
+	waitTaskFile(t, filepath.Join(s.dir, "cross-mixed.pid"))
+	botChat{bots: s, agent: s.b.ID, id: id}.send("echo user queued")
+
+	// When no parent input is queued, neither list shows that parent Stop reaches the child.
+	for _, agent := range []string{"default", s.b.ID} {
+		if got := s.webList(agent)[id]; got.StoppedWithParent != nil {
+			t.Fatalf("placed parent input enables Stop in list of %s: %+v", agent, got)
+		}
+	}
+	// When the parent queues input, both lists show it.
+	parent.operate("session_send", map[string]any{"id": child.ID, "message": "echo parent queued"})
+	for _, agent := range []string{"default", s.b.ID} {
+		if got := s.webList(agent)[id]; got.StoppedWithParent == nil || !*got.StoppedWithParent {
+			t.Fatalf("queued parent input does not enable Stop in list of %s: %+v", agent, got)
+		}
+	}
+	// Then parent Stop withdraws only the queued parent input, and the mark goes away.
+	s.d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent.id), nil, nil)
+	turns := childTurns(t, s.conn, id)
+	if len(turns) != 3 || turns[0].status != "pending" || turns[1].status != "pending" || turns[2].status != "unanswered" || turns[2].reason != "stopped" {
+		t.Fatalf("mixed child after Stop: %+v", turns)
+	}
+	for _, agent := range []string{"default", s.b.ID} {
+		if got := s.webList(agent)[id]; got.StoppedWithParent != nil {
+			t.Fatalf("withdrawn parent input enables Stop in list of %s: %+v", agent, got)
+		}
+	}
+	releaseResultGate(t, s.dir, "cross-mixed")
+	waitChildTurnsEnded(t, s.conn, id, 3)
+}
+
 func TestUserWebSeesAChildInAnotherBotWithItsBots(t *testing.T) {
 	t.Parallel()
 	// Given a parent chat in A with one child in A and one child in B, and an unrelated chat in B.

@@ -446,7 +446,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 	}
 	stoppedByParent := make(map[int64]bool, len(stopped))
 	for _, id := range stopped {
-		reached, err := s.childStoppedByParent(ctx, agentID, id)
+		reached, err := s.childStoppedByParent(ctx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -475,8 +475,9 @@ func otherBot(agentID string, id, name sql.NullString) (string, string) {
 	return id.String, name.String
 }
 
-// childStoppedByParent refines the SQL candidate for a child with mixed pending input.
-func (s *Service) childStoppedByParent(ctx context.Context, agentID string, id int64) (bool, error) {
+// childStoppedByParent refines the SQL candidate for a child with mixed pending input. The native
+// queue belongs to the bot of the child, which can differ from the bot that lists it.
+func (s *Service) childStoppedByParent(ctx context.Context, id int64) (bool, error) {
 	pending, err := s.q.ListChildPending(ctx, id)
 	if err != nil {
 		return false, err
@@ -501,7 +502,7 @@ func (s *Service) childStoppedByParent(ctx context.Context, agentID string, id i
 		if !p.FromParent {
 			continue
 		}
-		outcome, err := s.engine.PeekWithdrawal(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID.Int64}, p.ID)
+		outcome, err := s.engine.PeekWithdrawal(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}, p.ID)
 		if errors.Is(err, engine.ErrNotFound) || errors.Is(err, engine.ErrModelsPending) || errors.Is(err, engine.ErrMaintenance) {
 			return true, nil
 		}
