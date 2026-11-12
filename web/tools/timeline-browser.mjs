@@ -155,9 +155,9 @@ try {
   await check(
     "shell lists only the bots and the global settings",
     `(() => {
-    const nav = document.querySelector('aside[aria-label="Bots"]');
-    return !!nav.querySelector('a[href="/a/default"][aria-current="page"]') &&
-      !!nav.querySelector('button[aria-label^="User menu"]') && !!nav.querySelector('button[aria-label="New bot"]') &&
+    const nav = document.querySelector('aside[aria-label="Sidebar"]');
+    return !!nav.querySelector('nav[aria-label="Bots"] a[href="/a/default"][aria-current="page"]') &&
+      !!nav.querySelector('button[aria-label^="More"]') && !!nav.querySelector('button[aria-label="New bot"]') &&
       !nav.querySelector('a[href="/work"], a[href="/needs-you"], a[href="/automations"], input');
   })()`,
   );
@@ -168,7 +168,7 @@ try {
   await shot("01-empty");
   await check(
     "main's header has Chat settings, and the bot column lists its sessions",
-    "!document.querySelector('header nav') && !!document.querySelector('aside[aria-label=\"Bot navigation\"] section[aria-label=\"Chats\"]') && !!document.querySelector('header button[aria-label^=\"Chat settings\"]') && !document.querySelector('[role=region][aria-label=\"Chat settings\"]')",
+    "!document.querySelector('header nav') && !!document.querySelector('aside[aria-label=\"Sidebar\"] a[data-tab=\"Main\"]') && !!document.querySelector('header button[aria-label^=\"Chat settings\"]') && !document.querySelector('[role=region][aria-label=\"Chat settings\"]')",
   );
   const main = await api("/api/agents/default/chats/main");
   await visit("/a/default/sessions");
@@ -187,7 +187,7 @@ try {
   await check(
     "new Chat has its title and composer before choosing a model",
     `document.querySelector('#page-title').textContent === 'New chat' &&
-      !!document.querySelector('textarea:not([inert] *)') && !document.querySelector('aside[aria-label="Bot navigation"] a[data-tab][aria-current="page"]')`,
+      !!document.querySelector('textarea:not([inert] *)') && !document.querySelector('aside[aria-label="Sidebar"] a[data-tab][aria-current="page"]')`,
   );
   await visit("/a/default/sessions");
   await ui("abandoned empty Chat stays hidden", "document.body.innerText.includes('No sessions yet')");
@@ -649,23 +649,23 @@ try {
   // The bot column lists the running child with a running dot and the name of its parent.
   await ui(
     "the bot column lists the running child",
-    `(() => { const row = document.querySelector('aside[aria-label="Bot navigation"] a[href="/a/default/c/${running.id}"]'); return !!row && !!row.querySelector('[role="img"][aria-label="Running"]') && row.innerText.includes('Started by Main'); })()`,
+    `(() => { const row = document.querySelector('aside[aria-label="Sidebar"] a[href="/a/default/c/${running.id}"]'); return !!row && !!row.querySelector('[role="img"][aria-label="Running"]') && row.innerText.includes('Started by Main'); })()`,
   );
   await check(
     "the bot column has no task rows, Stop, Mark handled or Completed group",
-    `(() => { const panel = document.querySelector('aside[aria-label="Bot navigation"]'); return !/Mark handled|Mark all handled|Completed|Open full record|step/i.test(panel.innerText) && ![...panel.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Stop'); })()`,
+    `(() => { const panel = document.querySelector('aside[aria-label="Sidebar"]'); return !/Mark handled|Mark all handled|Completed|Open full record|step/i.test(panel.innerText) && ![...panel.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Stop'); })()`,
   );
   // The API data stays the same. Only the clock of the page moves 31 min, with no click, and the
   // running child, which holds one tool, turns Stalled.
   await advanceClock(31 * 60 * 1000);
   await ui(
     "the panel turns the running child to Stalled when only the clock moves",
-    `!!document.querySelector('aside[aria-label="Bot navigation"] a[href="/a/default/c/${running.id}"] [role="img"][aria-label="Stalled"]')`,
+    `!!document.querySelector('aside[aria-label="Sidebar"] a[href="/a/default/c/${running.id}"] [role="img"][aria-label="Stalled"]')`,
   );
   await restoreClock();
   await ui(
     "the panel shows Running again when the clock is real",
-    `!!document.querySelector('aside[aria-label="Bot navigation"] a[href="/a/default/c/${running.id}"] [role="img"][aria-label="Running"]')`,
+    `!!document.querySelector('aside[aria-label="Sidebar"] a[href="/a/default/c/${running.id}"] [role="img"][aria-label="Running"]')`,
   );
   await shot("04-sessions-panel");
   await visit("/tasks");
@@ -783,7 +783,7 @@ try {
   // The panel has the running dot, so the list has loaded and the parent page had time to read it.
   await ui(
     "the panel shows the child of the user turn as running",
-    `!!document.querySelector('aside[aria-label="Bot navigation"] a[href="/a/default/c/${steered.id}"] [role="img"][aria-label="Running"]')`,
+    `!!document.querySelector('aside[aria-label="Sidebar"] a[href="/a/default/c/${steered.id}"] [role="img"][aria-label="Running"]')`,
   );
   await check(
     "the parent page has no Stop for a child run that the user started",
@@ -822,7 +822,7 @@ try {
   const crossTurn = childTurn(crossChild.id);
   await ui(
     "the bot column lists the child in another bot with its bot, and the link opens it there",
-    `(() => { const row = document.querySelector('aside[aria-label="Bot navigation"] a[href="/a/${coder.id}/c/${crossChild.id}"]'); return !!row && row.innerText.includes('Started by Main') && row.innerText.includes('Coder'); })()`,
+    `(() => { const row = document.querySelector('aside[aria-label="Sidebar"] a[href="/a/${coder.id}/c/${crossChild.id}"]'); return !!row && row.innerText.includes('Started by Main') && row.innerText.includes('Coder'); })()`,
   );
   await shot("06c-cross-bot-panel");
   await ui(
@@ -1009,7 +1009,7 @@ try {
   await check(
     "a Chat session belongs to the agent and its Chat tab",
     `!!document.querySelector('aside a[href="/a/default"][aria-current="page"]') &&
-      !document.querySelector('aside[aria-label="Bot navigation"] a[data-tab][aria-current="page"]')`,
+      !document.querySelector('aside[aria-label="Sidebar"] a[data-tab][aria-current="page"]')`,
   );
   await command("/new carry the plan");
   await ui(
@@ -1355,19 +1355,16 @@ try {
     await shot(`12-channel-sessions-${label}`);
   }
 
-  // The bot column holds every page of the bot: Main in its Chats, Routines and Settings. The rail
-  // keeps one avatar for the bot.
-  const tab = (label) =>
-    label === "Chat"
-      ? 'aside[aria-label="Bot navigation"] nav[aria-label="Chats"] > a:first-child'
-      : `aside[aria-label="Bot navigation"] a[data-tab="${label}"]`;
+  // The open bot in the sidebar holds Main and Routines as rows. Its Settings sit in its ⋯ menu.
+  const tab = (label) => `aside[aria-label="Sidebar"] a[data-tab="${label === "Chat" ? "Main" : label}"]`;
+  const botMenu = 'aside[aria-label="Sidebar"] button[aria-label^="Bot menu"]';
 
   // The channel widths above leave a phone viewport behind; the bot column shows on a desktop one.
   await viewport(1280, 900);
   await visit("/a/default");
   await check(
-    "the bot column links Settings and Routines, and Main is current",
-    `[...document.querySelectorAll('aside[aria-label="Bot navigation"] a[data-tab]')].map(a => a.dataset.tab).join(',') === 'Settings,Routines' &&
+    "the open bot lists Main and Routines, and Main is current",
+    `[...document.querySelectorAll('aside[aria-label="Sidebar"] a[data-tab]')].map(a => a.dataset.tab).join(',') === 'Main,Routines' &&
       document.querySelector('${tab("Chat")}').getAttribute('aria-current') === 'page'`,
   );
 
@@ -1379,47 +1376,48 @@ try {
   await ui(
     "the Routines link counts the routines that are on, and a failed routine run marks the bot row",
     `document.querySelector('${tab("Routines")}').getAttribute('aria-label').startsWith('Routines${automationsOn ? `, ${automationsOn} on` : ""}') &&
-      document.querySelector('aside[aria-label="Bots"] a[href="/a/default"] [role="img"]')?.getAttribute('aria-label') === 'Needs you' &&
-      !/active|channels? on|Idle/.test(document.querySelector('aside[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-label'))`,
+      document.querySelector('nav[aria-label="Bots"] a[href="/a/default"] [role="img"]')?.getAttribute('aria-label') === 'Needs you' &&
+      !/active|channels? on|Idle/.test(document.querySelector('nav[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-label'))`,
   );
-  // Every orange dot has a place to act on it: the bot column lists the failed run.
+  // Every orange dot has a place to act on it: the open bot lists the failed run.
   await ui(
-    "the bot column lists a failed routine run under Needs you",
+    "the open bot lists a failed routine run under Needs you",
     `[...document.querySelectorAll('section[aria-label="Needs you"] a[href^="/inbox/"]')].some(a => a.textContent.includes('Daily review') && a.textContent.includes('Routine run failed'))`,
   );
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').dataset.probe = 'kept'");
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').focus()");
   await call("Input.insertText", { text: "unsent words" });
 
-  // The first header button hides the bot column and shows it again.
-  await tap('main header button[aria-label="Hide bot column"]');
+  // The sidebar hides itself, and the first header button shows it again with focus.
+  await tap('aside[aria-label="Sidebar"] button[aria-label="Hide sidebar"]');
   await ui(
-    "the header button hides the bot column",
-    `!document.querySelector('aside[aria-label="Bot navigation"]')`,
+    "the sidebar hides, and focus moves to the header button",
+    `!document.querySelector('aside[aria-label="Sidebar"]') && document.activeElement?.getAttribute('aria-label')?.startsWith('Show sidebar')`,
   );
-  await tap('main header button[aria-label="Show bot column"]');
-  await ui(
-    "the header button shows the bot column",
-    `!!document.querySelector('aside[aria-label="Bot navigation"]')`,
-  );
+  await tap('main header button[aria-label^="Show sidebar"]');
+  await ui("the header button shows the sidebar", `!!document.querySelector('aside[aria-label="Sidebar"]')`);
 
-  // Each link opens its page, and the bot's avatar in the rail stays current.
-  for (const [label, path, ready] of [
-    [
-      "Routines",
-      "/a/default/automations",
-      "document.querySelector('#page-title')?.textContent === 'Routines'",
-    ],
-    ["Settings", "/a/default/agent", "!!document.querySelector('#bot-name')"],
-  ]) {
-    await tap(tab(label));
-    await ui(`the ${label} tab opens ${path}`, `location.pathname === '${path}' && (${ready})`);
-    await check(
-      `the ${label} link is current, and so is the bot's avatar`,
-      `document.querySelector('${tab(label)}').getAttribute('aria-current') === 'page' &&
-        document.querySelector('aside[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-current') === 'page'`,
-    );
-  }
+  // Routines opens its page, and the bot's row stays current.
+  await tap(tab("Routines"));
+  await ui(
+    "the Routines row opens /a/default/automations",
+    "location.pathname === '/a/default/automations' && document.querySelector('#page-title')?.textContent === 'Routines'",
+  );
+  await check(
+    "the Routines row is current, and so is the bot's row",
+    `document.querySelector('${tab("Routines")}').getAttribute('aria-current') === 'page' &&
+      document.querySelector('nav[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-current') === 'page'`,
+  );
+  // Settings opens from the bot's ⋯, which stays lit there.
+  await openBotSettings('aside[aria-label="Sidebar"]');
+  await ui(
+    "the bot menu opens /a/default/agent",
+    "location.pathname === '/a/default/agent' && !!document.querySelector('#bot-name')",
+  );
+  await check(
+    "the bot menu is lit on Settings",
+    `document.querySelector('aside[aria-label="Sidebar"] button[aria-label^="Bot menu"]').hasAttribute('data-current')`,
+  );
 
   await check(
     "settings hold only the profile",
@@ -1439,7 +1437,7 @@ try {
   await visit("/providers");
   await check(
     "a global settings page is not part of the agent",
-    "!document.querySelector('aside[aria-label=\"Bot navigation\"]') && document.querySelector('aside[aria-label=\"Bots\"] a[href=\"/a/default\"]').getAttribute('aria-current') === null",
+    "!document.querySelector('aside[aria-label=\"Sidebar\"] a[data-tab]') && document.querySelector('nav[aria-label=\"Bots\"] a[href=\"/a/default\"]').getAttribute('aria-current') === null",
   );
 
   // The Settings tab renames the agent; the header, the sidebar and the composer follow.
@@ -1450,9 +1448,9 @@ try {
   await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter" });
   await poll("name saved", async () => (await api("/api/agents/default")).name === "Browser Bot");
   await ui(
-    "the bot column and the rail follow the new name",
-    `document.querySelector('aside[aria-label="Bot navigation"] header').textContent.includes('Browser Bot') &&
-      document.querySelector('aside[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-label').includes('Browser Bot')`,
+    "the sidebar follows the new name",
+    `document.querySelector('nav[aria-label="Bots"] a[href="/a/default"]').textContent.includes('Browser Bot') &&
+      document.querySelector('nav[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-label').includes('Browser Bot')`,
   );
   await check(
     "channel settings have no links to old peer contexts",
@@ -1498,20 +1496,19 @@ try {
   );
 
   // Instructions is a Settings page; client-side navigation keeps drafts alive.
-  await tap(tab("Settings"));
+  await openBotSettings('aside[aria-label="Sidebar"]');
   await tap('nav[aria-label="Settings pages"] a[href="/a/default/instructions"]');
   await ui("instructions tab", "!!document.querySelector('textarea[aria-label=\"Bot instructions\"]')");
   await evaluate("document.querySelector('textarea[aria-label=\"Bot instructions\"]').focus()");
   await call("Input.insertText", { text: "Answer in the language I write in." });
   await ui(
-    "the draft marks the Settings link, the bot column and the rail",
-    `!!document.querySelector('${tab("Settings")} [aria-label="Unsaved instructions draft"]') &&
-      document.querySelector('aside[aria-label="Bot navigation"] header').innerText.includes('Draft') &&
-      document.querySelector('aside[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-label').includes('instructions draft')`,
+    "the draft marks the bot menu and the bot row",
+    `!!document.querySelector('${botMenu} [aria-label="Unsaved instructions draft"]') &&
+      document.querySelector('nav[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-label').includes('instructions draft')`,
   );
   await shot("07a-instructions");
   await tap(tab("Chat"));
-  await tap(tab("Settings"));
+  await openBotSettings('aside[aria-label="Sidebar"]');
   await tap('nav[aria-label="Settings pages"] a[href="/a/default/instructions"]');
   await ui(
     "the draft survives a tab change",
@@ -1524,8 +1521,8 @@ try {
   );
   await ui(
     "saving clears the draft marks",
-    `!document.querySelector('${tab("Settings")} [aria-label="Unsaved instructions draft"]') &&
-      !document.querySelector('aside[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-label').includes('instructions draft')`,
+    `!document.querySelector('${botMenu} [aria-label="Unsaved instructions draft"]') &&
+      !document.querySelector('nav[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-label').includes('instructions draft')`,
   );
   await evaluate(
     "(() => { const t = document.querySelector('textarea[aria-label=\"Bot instructions\"]'); t.focus(); t.select(); document.execCommand('delete'); })()",
@@ -1559,10 +1556,9 @@ try {
   await visit("/a/default");
   const visibleComposer = 'textarea[aria-label^="Message"]:not([inert] *)';
   const visibleInstructions = 'textarea[aria-label="Bot instructions"]:not([inert] *)';
-  const agentTab = (name) => `${tab(name)}:not([inert] *)`;
 
   async function botSettingsPage(name) {
-    await tap(agentTab("Settings"));
+    await openBotSettings('aside[aria-label="Sidebar"]');
     await ui("settings switcher ready", "!!document.querySelector('nav[aria-label=\"Settings pages\"]')");
     await tap(`nav[aria-label="Settings pages"] a[href$="/${name}"]`);
   }
@@ -1602,8 +1598,8 @@ try {
   );
 
   const secondPath = `/a/${second.id}`;
-  const secondLink = `aside[aria-label="Bots"] a[href="${secondPath}"]`;
-  const defaultLink = 'aside[aria-label="Bots"] a[href="/a/default"]';
+  const secondLink = `nav[aria-label="Bots"] a[href="${secondPath}"]`;
+  const defaultLink = 'nav[aria-label="Bots"] a[href="/a/default"]';
   await ui(
     "created agent opens empty timeline",
     `location.pathname === '${secondPath}' && document.body.innerText.includes('What should Second Bot do?')`,
@@ -1910,7 +1906,7 @@ try {
   const globalText = async (bot, path) => {
     await tap(`aside a[href="${bot}"]`);
     await ui(`${bot} open`, `location.pathname === '${bot}'`);
-    await openGlobal('aside[aria-label="Bots"]', "/providers");
+    await openGlobal('aside[aria-label="Sidebar"]', "/providers");
     await ui(
       `${path} from ${bot}`,
       "location.pathname === '/providers' && document.body.innerText.includes('Connections')",
@@ -1943,7 +1939,7 @@ try {
   await botSettingsPage("extensions");
   await ui(
     "returned to current agent extensions",
-    `location.pathname === '/a/${second.id}/extensions' && !!document.querySelector('a[data-tab="Settings"][aria-current="page"]')`,
+    `location.pathname === '/a/${second.id}/extensions' && document.querySelector('aside[aria-label="Sidebar"] button[aria-label^="Bot menu"]').hasAttribute('data-current')`,
   );
   await viewport(390, 844);
   // On a phone the bot column sits in the drawer.
@@ -2006,8 +2002,8 @@ try {
 
   // A full page navigation would close the streams and hide a connection leak.
   await ui(
-    "the bot column lists Chats",
-    `!!document.querySelector('aside[aria-label="Bot navigation"] section[aria-label="Chats"]')`,
+    "the open bot lists Main",
+    `!!document.querySelector('aside[aria-label="Sidebar"] a[data-tab="Main"]')`,
   );
   await click("New chat");
   await ui(
@@ -2326,11 +2322,18 @@ async function clickLabel(label) {
   );
 }
 
-/** Opens the global settings from the user menu at the top of the rail inside `scope`. */
+/** Opens a global page from the ⋯ at the top of the sidebar inside `scope`. */
 async function openGlobal(scope, path) {
-  await tap(`${scope} button[aria-label^="User menu"]`);
-  await ui("the user menu opens", `!!document.querySelector('[role="menu"] a[href="${path}"]')`);
+  await tap(`${scope} button[aria-label^="More"]`);
+  await ui("the sidebar menu opens", `!!document.querySelector('[role="menu"] a[href="${path}"]')`);
   await tap(`[role="menu"] a[href="${path}"]`);
+}
+
+/** Opens the open bot's Settings from its ⋯ in the sidebar inside `scope`. */
+async function openBotSettings(scope) {
+  await tap(`${scope} button[aria-label^="Bot menu"]`);
+  await ui("the bot menu opens", `!!document.querySelector('[role="menu"] a[data-tab="Settings"]')`);
+  await tap('[role="menu"] a[data-tab="Settings"]');
 }
 
 async function tap(selector) {

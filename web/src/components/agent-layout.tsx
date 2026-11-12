@@ -1,6 +1,6 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { AgentContext, useAgentSettings, useAgentId } from "../lib/agent-scope";
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
 import type { Chat } from "../api/generated/types.gen";
 import { useQuery } from "@tanstack/react-query";
@@ -17,7 +17,7 @@ import { ChatTitle, MainTimeline } from "../routes/chat";
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import { AgentAvatar } from "./agent-avatar";
 import { Failure, Loading } from "./feedback";
-import { ChatSettingsContext, InPaneContext, MainPane, MenuButton } from "./page";
+import { ChatSettingsContext, InPaneContext, MainPane, MenuButton, ShellContext } from "./page";
 import { cn } from "../lib/utils";
 
 /** The name of each page under a bot that is not a chat. */
@@ -31,7 +31,7 @@ const pageNames = new Map([
 ]);
 
 /**
- * The page of one bot: a header that names the open page, and the page. The bot column holds the
+ * The page of one bot: a header that names the open page, and the page. The sidebar holds the
  * way to each page. The main timeline stays mounted under the other pages, so its stream and the
  * unsent message survive a visit to them.
  */
@@ -100,15 +100,19 @@ function AgentPane({ settings }: { settings: Settings }) {
   // Main and a writable Chat have settings of their own. A routine transcript does not.
   const writable = shown ? ["Main", "Chat"].includes(sessionKind(shown)) : false;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const sidebarOpen = useContext(ShellContext).sidebar?.open ?? false;
 
   return (
     <InPaneContext.Provider value>
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        {/* The bot column names the bot and holds the way to its pages, so the header names only
-         * the open page. Below lg the column sits in the drawer, so the avatar still names the bot. */}
+        {/* The sidebar names the bot and holds the way to its pages, so the header names only the
+         * open page. When the sidebar is hidden or in the drawer, the avatar still names the bot. */}
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border pr-2 pl-3 sm:pl-4">
           <MenuButton />
-          <AgentAvatar agent={settings.agent} className="size-5 rounded-control text-[11px] lg:hidden" />
+          <AgentAvatar
+            agent={settings.agent}
+            className={cn("size-5 rounded-control text-[11px]", sidebarOpen && "lg:hidden")}
+          />
           {shown ? (
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <ChatTitle chat={shown} heading />

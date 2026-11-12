@@ -384,8 +384,8 @@ async function projectEvidence(theme, size) {
   };
 }
 async function composerEvidence(theme) {
-  await waitFor("bot column", () =>
-    evaluate(`!!document.querySelector('aside[aria-label="Bot navigation"] section[aria-label="Chats"]')`),
+  await waitFor("open bot in the sidebar", () =>
+    evaluate(`!!document.querySelector('aside[aria-label="Sidebar"] a[data-tab="Main"]')`),
   );
   const textarea = `document.querySelector('textarea[aria-label^="Message"]')`;
   await evaluate(`${textarea}?.focus()`);
@@ -697,14 +697,14 @@ try {
       mobile: false,
     });
     await navigate("/a/default");
-    await waitFor("bot column links", () =>
-      evaluate("document.querySelectorAll('aside[aria-label=\"Bot navigation\"] a[data-tab]').length === 2"),
+    await waitFor("open bot rows", () =>
+      evaluate("document.querySelectorAll('aside[aria-label=\"Sidebar\"] a[data-tab]').length === 2"),
     );
     assert.deepEqual(
       await evaluate(
-        "[...document.querySelectorAll('aside[aria-label=\"Bot navigation\"] a[data-tab]')].map(a => a.dataset.tab)",
+        "[...document.querySelectorAll('aside[aria-label=\"Sidebar\"] a[data-tab]')].map(a => a.dataset.tab)",
       ),
-      ["Settings", "Routines"],
+      ["Main", "Routines"],
     );
     await navigate(`/inbox/${resultRun}`);
     await waitFor("result detail ready", () =>

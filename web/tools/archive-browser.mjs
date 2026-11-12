@@ -163,7 +163,8 @@ try {
   assert.deepEqual(await bots("/api/agents"), ["Dex"]);
   assert.deepEqual(await bots("/api/archived-agents"), ["Coder"]);
   await poll("sidebar drops the bot", () =>
-    evaluate("!document.querySelector('aside').innerText.includes('Coder')"),
+    // A bot row names its bot first. Chat titles in the sidebar may name the bot too.
+    evaluate('!document.querySelector(\'nav[aria-label="Bots"] a[aria-label^="Coder"]\')'),
   );
   await shot("3-archived");
 
@@ -178,7 +179,7 @@ try {
   );
   assert.deepEqual(await bots("/api/archived-agents"), []);
   await poll("sidebar shows the bot", () =>
-    evaluate("document.querySelector('aside').innerText.includes('Coder')"),
+    evaluate('!!document.querySelector(\'nav[aria-label="Bots"] a[aria-label^="Coder"]\')'),
   );
   await shot("5-restored");
   results.push("cancel keeps the bot; approve archives it; the archived list restores it");
