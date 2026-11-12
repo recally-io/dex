@@ -369,6 +369,9 @@ the `child-rules` section. A separate extension gives foreground conversations
 and child sessions the `coding-skill` section. Go embeds the full
 [built-in coding skill](../../internal/engine/skills/coding/SKILL.md) in the engine.
 It does not copy the skill into a user directory or add a new extension scope.
+A valid skill named `coding` at the dex or agent level replaces the section.
+The engine checks the files at each model request, like the skills section. A
+project-level `coding` skill does not replace it.
 The skill keeps implementation, fixes and tests in the main context. It
 requires a repository path, project rules, independent review, tests of the
 final revision, and evidence in the answer. It requires serial writes
@@ -826,8 +829,10 @@ cancellation. It does not prove that the remote job stopped. Before another
 turn, the parent must check artifacts and prior actions.
 
 Tools use the local `NodeExecutionEnv`, without a sandbox. CLI tools must be
-logged in and run in the foreground with non-interactive options. Detached
-processes and daemons are outside the supported lifecycle. Bash has no default
+logged in and run in the foreground with non-interactive options. A process
+must not outlive its turn. A turn can start and supervise a process, such as a
+worker in a Rex tab, but must stop it before the final answer
+([ADR 0018](decisions/0018-supervised-processes-and-user-coding-skill.md)). Bash has no default
 timeout. Its visible output keeps at most the last 2000 lines or 50 KiB,
 whichever limit comes first; complete output goes to a temporary file.
 A durable checkpoint does not attach a CLI after restart or guarantee that

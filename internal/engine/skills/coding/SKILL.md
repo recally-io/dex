@@ -42,7 +42,10 @@ Report blockers that need user input.
 
 Before an execution needs a CLI, confirm that login is complete. If login needs user
 input, report the blocker. Run CLI commands in the foreground with non-interactive
-options. Do not detach processes or start daemons.
+options. Do not leave processes running after the turn ends. A process that you
+start and supervise in the same turn, such as a worker in a Rex tab, is allowed.
+Stop it and close its tab before the final answer. Before new work, check for
+processes or tabs that an earlier interrupted turn left.
 
 ## Change and verify
 

@@ -271,7 +271,8 @@ show the web result group.
 The main agent checks saved execution records before it reports progress or
 starts follow-up work. The built-in coding skill requires a repository path,
 project rules, independent review, tests of the final revision, and evidence.
-Writes to one repository must run in order or in separate worktrees.
+Writes to one repository must run in order or in separate worktrees. A user
+skill named `coding` in the dex or agent directory replaces the built-in skill.
 
 A queued message in the web shows Edit and Remove until its run starts. Remove
 withdraws it. Edit withdraws it and puts the text and files back in the box.
@@ -323,7 +324,8 @@ artifacts and side effects. Tools run on the host without a sandbox. The SDK
 requests cancellation of local commands and MCP calls. It does not guarantee
 that detached processes or remote jobs stop. A completed MCP call can return
 its report. CLI tools must be logged in and run in the foreground without user
-input.
+input. A turn can supervise a process it started, such as a worker in a terminal
+tab, but must stop it before the final answer.
 
 Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,
 background tasks, timers, skills, and MCP servers are available.
