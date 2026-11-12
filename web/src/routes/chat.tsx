@@ -349,6 +349,7 @@ function Chat({
 
   const continueRun = useMutation({ ...continueChatMutation(), onSuccess: () => void refreshChats(agentId) });
   const compact = useMutation(compactChatMutation());
+  const failedCompact = useRef<{ chatId: number; instructions: string; id: string } | null>(null);
   const pending = send.isPending || abort.isPending || continueRun.isPending || compact.isPending;
   const navigate = useNavigate();
   const fork = useMutation(forkChatMutation());
@@ -404,10 +405,16 @@ function Chat({
       // The composer is disabled without an available model, so that case never reaches here.
       unavailable: empty ? "There is nothing to compact yet." : undefined,
       run: async (instructions) => {
+        const prior = failedCompact.current;
+
+        const id = prior?.chatId === chatId && prior.instructions === instructions ? prior.id : newId();
+        failedCompact.current = { chatId, instructions, id };
+
         await compact.mutateAsync({
           path: { agentId, chatId },
-          body: instructions ? { instructions } : {},
+          body: { id, instructions },
         });
+        failedCompact.current = null;
 
         return true;
       },

@@ -2,7 +2,10 @@ package chat
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+
+	"github.com/recally-io/dex/internal/db/sqlc"
 
 	"github.com/recally-io/dex/internal/engine"
 )
@@ -48,7 +51,7 @@ func (s *Service) Continue(ctx context.Context, agentID string, chatID int64, re
 // Compact summarizes the older context of a writable chat. It also works while the chat runs; the
 // summary joins the context at the run's next boundary. The transcript shows the progress and the
 // outcome. Instructions say what the summary must keep.
-func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, instructions string) error {
+func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, instructions, requestID string) error {
 	c, err := s.Get(ctx, agentID, chatID)
 	if err != nil {
 		return err
@@ -58,6 +61,20 @@ func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, ins
 	}
 	if s.leaseUntil.Load() != 0 {
 		return engine.ErrMaintenance
+	}
+	if requestID != "" {
+		s.compactMu.Lock()
+		defer s.compactMu.Unlock()
+		receipt, err := s.q.GetCompactReceipt(ctx, requestID)
+		if err == nil {
+			if receipt.ConversationID != chatID || receipt.Instructions != instructions {
+				return ErrOperationID
+			}
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
 	}
 	conv, err := s.q.GetConversation(ctx, chatID)
 	if err != nil {
@@ -70,7 +87,19 @@ func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, ins
 	if err != nil {
 		return err
 	}
+	if requestID != "" {
+		created, err := s.q.CreateCompactReceipt(ctx, sqlc.CreateCompactReceiptParams{ID: requestID, ConversationID: chatID, Instructions: instructions})
+		if err != nil {
+			return err
+		}
+		if created == 0 {
+			return ErrOperationID
+		}
+	}
 	_, err = s.engine.Compact(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, instructions, chatOptions(agent, conv))
+	if err != nil && requestID != "" {
+		return errors.Join(err, s.q.DeleteCompactReceipt(context.WithoutCancel(ctx), requestID))
+	}
 	if err == nil {
 		s.signal(chatID)
 	}

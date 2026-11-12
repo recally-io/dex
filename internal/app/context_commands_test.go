@@ -66,6 +66,51 @@ func TestUserClearsContextWithHandoff(t *testing.T) {
 	w.until(t, "answer after handoff", answered(`context: ["keep the blue plan","next"]`))
 }
 
+func TestUserCompactReplayRunsOnce(t *testing.T) {
+	t.Parallel()
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "echo")
+	chatID := d.newSession(t).ID
+	w := d.watch(t, chatID)
+	d.send(t, chatID, "short")
+	w.until(t, "answer", answered("echo: short"))
+	d.waitSettled(t, chatID)
+	id := uuid.NewV7().String()
+	body := map[string]string{"id": id, "instructions": "keep notes"}
+	d.must(t, http.MethodPost, chatPath(chatID, "compact"), body, nil, http.StatusAccepted)
+	w.until(t, "compaction result", compaction("nothing"))
+	d.must(t, http.MethodPost, chatPath(chatID, "compact"), body, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, chatPath(chatID, "compact"), map[string]string{"id": id, "instructions": "different"}, nil, http.StatusConflict)
+	d.send(t, chatID, "after")
+	w.until(t, "next answer", answered("echo: after"))
+	count := 0
+	for _, item := range w.tr.items {
+		if item.Kind == "boundary" && item.Boundary == "compaction" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("compaction boundaries = %d", count)
+	}
+}
+
+func TestUserCompactRetryAfterSynchronousFailure(t *testing.T) {
+	t.Parallel()
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "echo")
+	chatID := d.newSession(t).ID
+	w := d.watch(t, chatID)
+	d.send(t, chatID, "short")
+	w.until(t, "answer", answered("echo: short"))
+	d.waitSettled(t, chatID)
+	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "", "modelId": "", "thinkingLevel": "off"}, nil)
+	body := map[string]string{"id": uuid.NewV7().String()}
+	d.must(t, http.MethodPost, chatPath(chatID, "compact"), body, nil, http.StatusConflict)
+	d.setModel(t, "echo")
+	d.must(t, http.MethodPost, chatPath(chatID, "compact"), body, nil, http.StatusAccepted)
+	w.until(t, "compaction after retry", compaction("nothing"))
+}
+
 func TestUserCompactsChat(t *testing.T) {
 	t.Parallel()
 	// Given a chat that never ran.

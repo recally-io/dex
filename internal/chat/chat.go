@@ -118,6 +118,7 @@ type Service struct {
 	wg            sync.WaitGroup
 	db            *sql.DB
 	writeMu       sync.Mutex // writer-first control transactions; per agent if throughput matters
+	compactMu     sync.Mutex // serialize receipt and native call; per ID if throughput matters
 	checkSettings func(context.Context, Settings) error
 
 	admissionMu    sync.RWMutex // receipt commits and maintenance lease confirmation only

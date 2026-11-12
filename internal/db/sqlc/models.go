@@ -84,6 +84,12 @@ type ChannelPeer struct {
 	ChannelKey string `json:"channel_key"`
 }
 
+type CompactReceipt struct {
+	ID             string `json:"id"`
+	ConversationID int64  `json:"conversation_id"`
+	Instructions   string `json:"instructions"`
+}
+
 type Conversation struct {
 	ID            int64         `json:"id"`
 	AgentID       string        `json:"agent_id"`

@@ -840,9 +840,16 @@ func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestO
 }
 
 func (h *handler) CompactChat(ctx context.Context, req api.CompactChatRequestObject) (api.CompactChatResponseObject, error) {
-	instructions := ""
+	instructions, requestID := "", ""
 	if req.Body != nil {
 		instructions = strings.TrimSpace(deref(req.Body.Instructions))
+		if req.Body.Id != nil {
+			id, err := uuid.Parse(*req.Body.Id)
+			if err != nil {
+				return nil, errors.Join(errInvalid, err)
+			}
+			requestID = id.String()
+		}
 	}
 	if utf8.RuneCountInString(instructions) > maxMessage {
 		return nil, errors.Join(errInvalid, errors.New("the instructions must have at most 32000 characters"))
@@ -850,7 +857,7 @@ func (h *handler) CompactChat(ctx context.Context, req api.CompactChatRequestObj
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Compact(ctx, agentID(ctx), req.ChatId, instructions); err != nil {
+	if err := h.Chats.Compact(ctx, agentID(ctx), req.ChatId, instructions, requestID); err != nil {
 		return nil, err
 	}
 	return api.CompactChat202Response{}, nil

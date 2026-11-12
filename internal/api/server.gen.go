@@ -1308,6 +1308,9 @@ type ClearContextJSONBody struct {
 
 // CompactChatJSONBody defines parameters for CompactChat.
 type CompactChatJSONBody struct {
+	// Id Optional client UUID for safe retries.
+	Id *string `json:"id,omitempty"`
+
 	// Instructions What the summary must keep.
 	Instructions *string `json:"instructions,omitempty"`
 }

@@ -913,7 +913,7 @@ export const forkChatMutation = (options?: Partial<Options<ForkChatData>>): UseM
 };
 
 /**
- * Summarizes the older context of this writable session. It also works while the session runs; the summary joins the context at the next boundary, and Stop drops a summary that still waits. The timeline shows a pending, then a queued compaction boundary, then the summary, "nothing to compact", or the failure. Each call starts a new compaction. 409 when the session never ran. Automation and channel sessions return 403.
+ * Summarizes the older context of this writable session. It also works while the session runs; the summary joins the context at the next boundary, and Stop drops a summary that still waits. The timeline shows a pending, then a queued compaction boundary, then the summary, "nothing to compact", or the failure. Without an id each call starts a new compaction. A retry with the same id starts at most one compaction. Different instructions or chat return 409. 409 when the session never ran. Automation and channel sessions return 403.
  *
  */
 export const compactChatMutation = (options?: Partial<Options<CompactChatData>>): UseMutationOptions<unknown, CompactChatError, Options<CompactChatData>> => {

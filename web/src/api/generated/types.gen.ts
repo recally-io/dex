@@ -2558,6 +2558,10 @@ export type ForkChatResponse = ForkChatResponses[keyof ForkChatResponses];
 export type CompactChatData = {
     body?: {
         /**
+         * Optional client UUID for safe retries.
+         */
+        id?: string;
+        /**
          * What the summary must keep.
          */
         instructions?: string;
