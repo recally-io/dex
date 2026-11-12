@@ -14,7 +14,7 @@ import { queryClient, refreshChats } from "../lib/queries";
 import { inboxOptions, resultQuote } from "../lib/inbox";
 import { Empty, FramedPage, Section } from "../components/page";
 import { Failure, Loading } from "../components/feedback";
-import { Button } from "../components/ui/button";
+import { Button, buttonVariants } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 
 async function refreshInbox() {
@@ -128,7 +128,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
               <Link
                 to="/a/$agentId/automations/$automationId"
                 params={{ agentId: item.agentId, automationId: item.automationId }}
-                className="underline"
+                className={buttonVariants({ variant: "secondary" })}
               >
                 Open routine
               </Link>
@@ -136,7 +136,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
                 <Link
                   to="/a/$agentId/c/$chatId"
                   params={{ agentId: item.agentId, chatId: String(item.chatId) }}
-                  className="underline"
+                  className={buttonVariants({ variant: "secondary" })}
                 >
                   Run transcript
                 </Link>

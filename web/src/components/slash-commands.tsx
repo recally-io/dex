@@ -51,7 +51,7 @@ export function SlashMenu({
       id={id}
       role="listbox"
       aria-label="Commands"
-      className="absolute right-0 bottom-full left-0 z-10 mb-2 flex animate-[pop-in_160ms_var(--ease-out-strong)_both] flex-col rounded-[10px] bg-card p-1 shadow-raised"
+      className="absolute right-0 bottom-full left-0 z-10 mb-2 flex animate-[pop-in_160ms_var(--ease-out-strong)_both] flex-col rounded-card bg-card p-1 shadow-raised"
     >
       {options.map((command, index) => (
         <div
@@ -65,7 +65,7 @@ export function SlashMenu({
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onPick(command)}
           className={cn(
-            "flex cursor-pointer flex-col rounded-[7px] px-2 py-1.5 text-left",
+            "flex cursor-pointer flex-col rounded-control px-2 py-1.5 text-left",
             index === active && "bg-accent",
             command.unavailable && "cursor-default opacity-50",
           )}

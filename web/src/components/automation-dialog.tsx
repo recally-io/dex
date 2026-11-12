@@ -125,11 +125,10 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
       onClose={onClose}
       footer={
         <>
-          <Button size="sm" variant="secondary" disabled={pending} onClick={onClose}>
+          <Button variant="secondary" disabled={pending} onClick={onClose}>
             Cancel
           </Button>
           <Button
-            size="sm"
             variant="default"
             type="submit"
             form={formId}

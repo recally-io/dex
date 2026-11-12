@@ -1569,7 +1569,7 @@ try {
   );
   await check(
     "tools belong to the selected agent",
-    `!document.querySelector('aside a[href="/extensions"]') && document.querySelector('main h1')?.textContent === 'Tools' && !document.body.innerText.includes('Reload tools')`,
+    `!document.querySelector('aside a[href="/extensions"]') && document.querySelector('main h1:not([inert] *)')?.textContent === 'Tools' && !document.body.innerText.includes('Reload tools')`,
   );
   await check(
     "tool levels and secrecy",

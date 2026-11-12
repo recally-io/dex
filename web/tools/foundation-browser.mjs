@@ -565,6 +565,24 @@ try {
           await evaluate(
             "[...document.querySelectorAll('h2')].find(h => ['Check history', 'Run history'].includes(h.textContent))?.scrollIntoView({block: 'start'})",
           );
+        if (name === "chat" && size === "mobile") {
+          for (const mobileWidth of [360, 390]) {
+            await call("Emulation.setDeviceMetricsOverride", {
+              width: mobileWidth,
+              height,
+              deviceScaleFactor: 1,
+              mobile,
+            });
+            assert.equal(
+              await evaluate(`(() => {
+              const nav = document.querySelector('nav[aria-label$=" sections"]');
+              return !!nav && nav.scrollWidth <= nav.clientWidth && [...nav.querySelectorAll('[data-tab]')].every(tab => tab.getBoundingClientRect().right <= nav.getBoundingClientRect().right);
+            })()`),
+              true,
+              `All bot tabs fit at ${mobileWidth}px`,
+            );
+          }
+        }
         await capture(`${theme}-${name}-${size}.png`);
         const text =
           (await call("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }))

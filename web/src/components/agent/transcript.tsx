@@ -234,7 +234,7 @@ function StepLine({
         aria-expanded={shown}
         onClick={onToggle}
         className={cn(
-          "flex min-h-7 w-full min-w-0 items-center gap-2 rounded-[6px] px-1.5 py-0.5 text-left transition-colors duration-150",
+          "flex min-h-7 w-full min-w-0 items-center gap-2 rounded-control px-1.5 py-0.5 text-left transition-colors duration-150",
           shown ? "bg-muted" : "hover:bg-accent",
         )}
       >
@@ -355,7 +355,7 @@ function MessageAction({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="grid size-7 shrink-0 place-items-center rounded-[6px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+      className="grid size-7 shrink-0 place-items-center rounded-control text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
     >
       {children}
     </button>
@@ -409,9 +409,9 @@ function Files({ files }: { files: Attachment[] }) {
             <a
               href={`/api/agents/${encodeURIComponent(agentId)}/uploads/${f.id}`}
               download={f.name}
-              className="flex h-10 min-w-0 items-center gap-2 rounded-[10px] bg-card py-1 pr-2.5 pl-1 text-[11.5px] shadow-card transition-colors hover:bg-accent"
+              className="flex h-10 min-w-0 items-center gap-2 rounded-card bg-card py-1 pr-2.5 pl-1 text-[11.5px] shadow-card transition-colors hover:bg-accent"
             >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-muted text-muted-foreground">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-control bg-muted text-muted-foreground">
                 <FileText size={15} />
               </span>
               <span className="flex min-w-0 flex-col leading-tight">
@@ -594,7 +594,7 @@ export function TranscriptItem({
           {item.text ? (
             <div
               className={cn(
-                "rounded-[18px] bg-muted px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]",
+                "rounded-bubble bg-muted px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]",
                 item.queued && "opacity-70",
               )}
             >

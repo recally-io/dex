@@ -63,7 +63,15 @@ export type ModelOverride = {
 
 // An anchored, non-modal model list. A click on a model saves it at once; the list stays open
 // with the error when the save fails. Without override, the list sets the bot's model.
-export function ModelPicker({ trigger, override }: { trigger: ReactElement; override?: ModelOverride }) {
+export function ModelPicker({
+  trigger,
+  override,
+  side,
+}: {
+  trigger: ReactElement;
+  override?: ModelOverride;
+  side?: "top" | "bottom";
+}) {
   const agentId = useAgentId();
   const { notify } = useApp();
   const [open, setOpen] = useState(false);
@@ -96,9 +104,10 @@ export function ModelPicker({ trigger, override }: { trigger: ReactElement; over
       <PopoverTrigger render={trigger} />
       <PopoverContent
         align="start"
+        side={side}
         sideOffset={6}
         aria-label={override ? "Chat model" : "Bot model"}
-        className="z-[60] flex max-h-[min(420px,var(--available-height))] w-[352px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-[12px] bg-card p-0 shadow-raised outline-none"
+        className="z-[60] flex max-h-[min(420px,var(--available-height))] w-[352px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-window bg-card p-0 shadow-raised outline-none"
       >
         <ModelList
           override={override}
@@ -194,7 +203,7 @@ function ModelList({
             data-checked={!current}
             disabled={busy}
             onSelect={() => onPick(null, !current)}
-            className="mb-1 flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent"
+            className="mb-1 flex h-8 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent"
           >
             <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
               Use default ({override.defaultName})
@@ -239,7 +248,7 @@ function ModelList({
                       data-checked={checked}
                       disabled={busy}
                       onSelect={() => onPick(m, checked)}
-                      className="flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent"
+                      className="flex h-8 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent"
                     >
                       <span
                         className="min-w-0 truncate text-[12.5px] font-medium text-foreground"

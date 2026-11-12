@@ -51,11 +51,7 @@ export function ProvidersPage() {
       title="Providers"
       toolbar={<GlobalSettingsSwitcher page="/providers" />}
       description="A provider is a saved connection to a model service. Each bot chooses its model from one of them."
-      actions={
-        <Button size="sm" onClick={() => setDialog("new")}>
-          Add provider
-        </Button>
-      }
+      actions={<Button onClick={() => setDialog("new")}>Add provider</Button>}
     >
       {data ? (
         <>
