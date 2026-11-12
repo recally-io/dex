@@ -274,7 +274,8 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := a.memory.Open(ctx); err != nil {
 		return nil, err
 	}
-	loaded, err := a.files(agentID).Load(ctx)
+	files := a.files(agentID)
+	loaded, err := files.Load(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +288,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		return nil, err
 	}
 	registry := harness.CreateRegistry()
-	extensions := []*durable.Extension{codingTools(loaded.Env), codingSkill(), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), workLoopExtension(), artifactExtension(agentID, workspace, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
+	extensions := []*durable.Extension{codingTools(loaded.Env), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), workLoopExtension(), artifactExtension(agentID, workspace, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
 	}), loaded.Extension}
 	if loaded.HasTools {
