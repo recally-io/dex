@@ -47,11 +47,13 @@ to read in an afternoon.
   says to run `/compact` again. After a summary, Show earlier
   messages can load the earlier transcript. A clear and a summary show a
   divider. The window has three parts. At the far left, a
-  narrow rail shows each bot as an avatar. Each avatar shows at most one status
-  dot: orange for Needs you, blue for Working. Needs you wins. The rail ends
-  with New bot, global settings (Providers, Environment, Archived bots, and
-  About), and a button that hides or shows the bot column. The browser keeps
-  that choice. The user talks to a bot, and the bot manages its sessions.
+  narrow rail starts with the user's avatar. Its menu shows the Dex version and
+  opens the global settings, which hold Providers, Environment, Archived bots,
+  and About. A red dot on the avatar tells that a provider needs attention. Below it, the rail shows each
+  bot as an avatar, then New bot. Each bot avatar shows at most one status
+  dot: orange for Needs you, blue for Working. Needs you wins. On a bot page,
+  the first button of the page header hides or shows the bot column. The
+  browser keeps that choice. The user talks to a bot, and the bot manages its sessions.
   Next to the rail, the bot column holds everything of the selected bot. Its
   header names the bot and has a gear that opens the bot's Settings: General,
   Instructions, Channels, and Tools. The model and the thinking level change

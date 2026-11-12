@@ -157,7 +157,7 @@ try {
     `(() => {
     const nav = document.querySelector('aside[aria-label="Bots"]');
     return !!nav.querySelector('a[href="/a/default"][aria-current="page"]') &&
-      !!nav.querySelector('a[href="/providers"]') && !!nav.querySelector('button[aria-label="New bot"]') &&
+      !!nav.querySelector('button[aria-label^="User menu"]') && !!nav.querySelector('button[aria-label="New bot"]') &&
       !nav.querySelector('a[href="/work"], a[href="/needs-you"], a[href="/automations"], input');
   })()`,
   );
@@ -1391,6 +1391,18 @@ try {
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').focus()");
   await call("Input.insertText", { text: "unsent words" });
 
+  // The first header button hides the bot column and shows it again.
+  await tap('main header button[aria-label="Hide bot column"]');
+  await ui(
+    "the header button hides the bot column",
+    `!document.querySelector('aside[aria-label="Bot navigation"]')`,
+  );
+  await tap('main header button[aria-label="Show bot column"]');
+  await ui(
+    "the header button shows the bot column",
+    `!!document.querySelector('aside[aria-label="Bot navigation"]')`,
+  );
+
   // Each link opens its page, and the bot's avatar in the rail stays current.
   for (const [label, path, ready] of [
     [
@@ -1534,7 +1546,7 @@ try {
   await evaluate("document.querySelector('button[aria-label^=\"Open navigation\"]').click()");
   await ui("mobile agent row", "!!document.querySelector('[role=dialog] a[href=\"/a/default\"]')");
   await shot("09-mobile-nav");
-  await tap('[role="dialog"] a[href="/providers"]');
+  await openGlobal('[role="dialog"]', "/providers");
   await ui("mobile global settings opened", "location.pathname === '/providers'");
   await evaluate("document.querySelector('button[aria-label^=\"Open navigation\"]').click()");
   await ui("mobile drawer reopened", "!!document.querySelector('[role=dialog]')");
@@ -1898,7 +1910,7 @@ try {
   const globalText = async (bot, path) => {
     await tap(`aside a[href="${bot}"]`);
     await ui(`${bot} open`, `location.pathname === '${bot}'`);
-    await tap(`aside a[href="/providers"]`);
+    await openGlobal('aside[aria-label="Bots"]', "/providers");
     await ui(
       `${path} from ${bot}`,
       "location.pathname === '/providers' && document.body.innerText.includes('Connections')",
@@ -1943,6 +1955,8 @@ try {
   );
   await ui("second timeline fits phone", "document.documentElement.scrollWidth <= innerWidth + 1");
   await shot("14-multi-agent-phone");
+  // The drawer closes with an animation after navigation. A tap before it ends lands on its backdrop.
+  await ui("the drawer closed after navigation", "!document.querySelector('[role=dialog]')");
   await tap('button[aria-label^="Open navigation"]:not([inert] *)');
   await ui(
     "phone lists both agents",
@@ -2310,6 +2324,13 @@ async function clickLabel(label) {
   await evaluate(
     `(() => { const button = [...document.querySelectorAll('main button[aria-label=${JSON.stringify(label)}]')].at(-1); if (!button || button.disabled) throw new Error('Button is unavailable'); button.click(); })()`,
   );
+}
+
+/** Opens the global settings from the user menu at the top of the rail inside `scope`. */
+async function openGlobal(scope, path) {
+  await tap(`${scope} button[aria-label^="User menu"]`);
+  await ui("the user menu opens", `!!document.querySelector('[role="menu"] a[href="${path}"]')`);
+  await tap(`[role="menu"] a[href="${path}"]`);
 }
 
 async function tap(selector) {

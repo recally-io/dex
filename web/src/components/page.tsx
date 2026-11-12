@@ -1,9 +1,14 @@
 import { createContext, useContext, useId, type ReactNode } from "react";
-import { Menu } from "lucide-react";
+import { Menu, PanelLeft } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
 
-export const ShellContext = createContext({ openDrawer: () => {}, attention: false });
+export const ShellContext = createContext<{
+  openDrawer: () => void;
+  attention: boolean;
+  /** The bot column, which only a bot page has. */
+  column?: { open: boolean; toggle: () => void };
+}>({ openDrawer: () => {}, attention: false });
 
 export type PageHeaderProps = {
   title: ReactNode;
@@ -64,29 +69,46 @@ export function PageHeader({
   );
 }
 
-/** The drawer button for screens below lg. */
+/**
+ * The first control of the header. Below lg it opens the drawer. From lg on, a bot page uses the
+ * same place to hide or show its bot column.
+ */
 export function MenuButton() {
-  const { openDrawer, attention } = useContext(ShellContext);
+  const { openDrawer, attention, column } = useContext(ShellContext);
+  const columnLabel = column?.open ? "Hide bot column" : "Show bot column";
 
   return (
-    <button
-      type="button"
-      aria-label={attention ? "Open navigation, another bot needs you" : "Open navigation"}
-      onClick={openDrawer}
-      className="relative -ml-1 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
-    >
-      <Menu size={18} />
-      {attention ? (
-        <span
-          aria-hidden
-          className="absolute top-1.5 right-1.5 size-2 rounded-full bg-orange ring-2 ring-background"
-        />
+    <>
+      {column ? (
+        <button
+          type="button"
+          aria-label={columnLabel}
+          aria-expanded={column.open}
+          title={columnLabel}
+          onClick={column.toggle}
+          className="-ml-1 hidden size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:flex"
+        >
+          <PanelLeft size={16} />
+        </button>
       ) : null}
-    </button>
+      <button
+        type="button"
+        aria-label={attention ? "Open navigation, another bot needs you" : "Open navigation"}
+        onClick={openDrawer}
+        className="relative -ml-1 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
+      >
+        <Menu size={18} />
+        {attention ? (
+          <span
+            aria-hidden
+            className="absolute top-1.5 right-1.5 size-2 rounded-full bg-orange ring-2 ring-background"
+          />
+        ) : null}
+      </button>
+    </>
   );
 }
 
-/** True inside the bot pane, which already draws the frame and the drawer button. */
 /**
  * The model, thinking level and project of the open chat change seldom, so their row shows only
  * after the bot header's Chat settings button asks for it. The chat page renders the row.

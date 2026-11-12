@@ -148,7 +148,11 @@ try {
 
     // Opened from the default bot, Providers still lists every bot that uses the provider.
     await visit("/a/default");
-    await tap('aside a[href="/providers"]');
+    await tap('aside[aria-label="Bots"] button[aria-label^="User menu"]');
+    await poll("user menu open", () =>
+      evaluate(`!!document.querySelector('[role="menu"] a[href="/providers"]')`),
+    );
+    await tap('[role="menu"] a[href="/providers"]');
     await poll("client navigation to providers", () => evaluate("location.pathname === '/providers'"));
     await poll("provider users shown", () =>
       evaluate("document.body.innerText.includes('Used by Audit Bot, Second Audit Bot')"),
