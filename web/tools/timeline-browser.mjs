@@ -735,6 +735,8 @@ try {
   results.push("a child in another bot shows with its bot, and its result link opens it there");
 
   // A parent-started run with user input has no parent Stop until another parent input is queued.
+  // The check above ends on the page of another bot.
+  await visit("/a/default");
   const mixedGate = join(isolated, "mixed-stop.gate");
   await send(
     JSON.stringify({
