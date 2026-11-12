@@ -246,14 +246,18 @@ func (c *Catalog) Failure(provider string) string {
 	return ""
 }
 
-// Close cancels discovery and joins both catalog and SDK work.
-func (c *Catalog) Close() error {
+func (c *Catalog) cancelDiscovery() {
 	c.mu.Lock()
 	c.closed = true
 	for _, current := range c.custom {
 		current.cancel()
 	}
 	c.mu.Unlock()
+}
+
+// Close cancels discovery and joins both catalog and SDK work.
+func (c *Catalog) Close() error {
+	c.cancelDiscovery()
 	c.work.Wait()
 	c.Models.Close()
 	return nil

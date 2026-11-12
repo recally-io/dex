@@ -941,7 +941,7 @@ func (a *Agents) Close(ctx context.Context) error {
 }
 func (a *Agents) close(ctx context.Context) {
 	var errs []error
-	errs = append(errs, a.Catalog.Close())
+	a.Catalog.cancelDiscovery()
 	a.operations.Wait()
 	a.mu.Lock()
 	resources := maps.Clone(a.resources)
@@ -950,6 +950,8 @@ func (a *Agents) close(ctx context.Context) {
 		errs = append(errs, resource.harness.Close(ctx))
 	}
 	a.settlements.Wait()
+	// Harnesses must stop starting model streams before Models.Close waits for them.
+	errs = append(errs, a.Catalog.Close())
 	for _, resource := range resources {
 		errs = append(errs, resource.loaded.Close(ctx))
 	}
