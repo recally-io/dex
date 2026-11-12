@@ -86,7 +86,7 @@ func New(cfg Config) http.Handler {
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
-				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid):
+				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
@@ -96,7 +96,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived):
 				status = http.StatusNotFound
-			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
+			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)

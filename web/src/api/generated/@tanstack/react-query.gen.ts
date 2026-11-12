@@ -859,7 +859,7 @@ export const withdrawMessageMutation = (options?: Partial<Options<WithdrawMessag
 };
 
 /**
- * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again; the same UUID with another handoff returns 400. Refuses a busy session without a change. Automation and channel sessions return 403.
+ * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again; the same UUID with another handoff or chat returns 409. Refuses a busy session without a change. Automation and channel sessions return 403.
  *
  */
 export const clearContextMutation = (options?: Partial<Options<ClearContextData>>): UseMutationOptions<ClearContextResponse, ClearContextError, Options<ClearContextData>> => {

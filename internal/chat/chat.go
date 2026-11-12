@@ -118,7 +118,6 @@ type Service struct {
 	wg            sync.WaitGroup
 	db            *sql.DB
 	writeMu       sync.Mutex // writer-first control transactions; per agent if throughput matters
-	compactMu     sync.Mutex // serialize receipt and native call; per ID if throughput matters
 	checkSettings func(context.Context, Settings) error
 
 	admissionMu    sync.RWMutex // receipt commits and maintenance lease confirmation only
@@ -450,13 +449,19 @@ func originalMessageContent(ctx context.Context, q *sqlc.Queries, prior sqlc.Sub
 		}
 	}
 	if errors.Is(err, sql.ErrNoRows) {
+		if questionID != "" {
+			return "", ErrMessageID
+		}
 		return prior.Content, nil
 	}
 	if err != nil {
 		return "", err
 	}
-	content := strings.TrimPrefix(prior.Content, answerPrefix+question.Text+"\n")
-	if question.Outcome.Valid {
+	content, wasAnswer := strings.CutPrefix(prior.Content, answerPrefix+question.Text+"\n")
+	if wasAnswer != (questionID != "") || (wasAnswer && question.ID != questionID) {
+		return "", ErrMessageID
+	}
+	if question.Outcome.Valid && wasAnswer {
 		content = strings.TrimSuffix(content, outcomeSeparator+question.Outcome.String)
 	}
 	return content, nil
