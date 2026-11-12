@@ -8,7 +8,7 @@ import { Failure } from "./feedback";
 import { Mark } from "./model-picker";
 
 const itemClass =
-  "flex h-8 w-full min-w-0 items-center gap-2 rounded-[7px] px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent";
+  "flex h-8 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent";
 
 // An anchored, non-modal list of the levels that pi-ai supports for the model. It saves like
 // ModelPicker. With clearable, the first item "Default" clears the chat's level (save(null)).
@@ -52,7 +52,7 @@ export function ThinkingPicker({
         sideOffset={6}
         aria-label="Thinking level"
         initialFocus={root}
-        className="flex w-[240px] max-w-[calc(100vw-1rem)] origin-(--transform-origin) animate-[pop-in_180ms_var(--ease-out-strong)_both] flex-col overflow-hidden rounded-[12px] bg-card shadow-raised outline-none"
+        className="flex w-[240px] max-w-[calc(100vw-1rem)] origin-(--transform-origin) animate-[pop-in_180ms_var(--ease-out-strong)_both] flex-col overflow-hidden rounded-window bg-card shadow-raised outline-none"
       >
         <Command ref={root} defaultValue={current} label="Thinking level" className="outline-none">
           <CommandList className="p-1">

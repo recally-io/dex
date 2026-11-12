@@ -44,7 +44,7 @@ export function SignIn() {
             )}
           </Field>
           <div>
-            <Button size="sm" type="submit" disabled={signIn.isPending || token.trim() === ""}>
+            <Button type="submit" disabled={signIn.isPending || token.trim() === ""}>
               Sign in
             </Button>
           </div>

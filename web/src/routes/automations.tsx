@@ -17,7 +17,7 @@ import { refreshAutomations, refreshChats, refreshWork } from "../lib/queries";
 import { useHandled } from "../lib/handled";
 import { useAgentModel } from "../lib/agent";
 import { ago, runTime, scheduleText } from "../lib/automations";
-import { taskDuration } from "../lib/tasks";
+import { formatDuration } from "../lib/sessions";
 import { Failure, Loading, Spinner } from "../components/feedback";
 import { Confirm } from "../components/confirm";
 import { AutomationDialog } from "../components/automation-dialog";
@@ -140,7 +140,7 @@ function AutomationsSection() {
         caption={`${on} of ${list.length} on. Open one to see its runs.`}
         // SAFETY: ToggleGroup values come only from the two Filter items below.
         action={
-          <Button size="sm" disabled={noModel} onClick={() => setCreate(true)}>
+          <Button disabled={noModel} onClick={() => setCreate(true)}>
             New routine
           </Button>
         }
@@ -330,7 +330,7 @@ function RunBlock({
         <p className="text-xs text-muted-foreground">
           Received {runTime(run.admittedAt, timeZone)}
           {run.settledAt !== undefined && run.settledAt >= run.admittedAt
-            ? ` · ${taskDuration(run.settledAt - run.admittedAt)} until settled`
+            ? ` · ${formatDuration(run.settledAt - run.admittedAt)} until settled`
             : ""}
         </p>
       ) : null}
@@ -351,7 +351,7 @@ function RunBlock({
               size="sm"
               variant="outline"
               disabled={handle.isPending}
-              onClick={() => handle.mutate({ kind: "run", id: run.id, undo: false })}
+              onClick={() => handle.mutate({ id: run.id, undo: false })}
             >
               Mark handled
             </Button>
@@ -536,6 +536,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
 
   return (
     <FramedPage
+      wide
       eyebrow={crumb}
       title={data.name}
       badge={

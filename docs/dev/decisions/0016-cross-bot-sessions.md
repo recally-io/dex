@@ -45,7 +45,9 @@ Its result goes to the parent as in ADR 0015.
 - `session_read` reads any session of any bot, except dreams.
 - `session_search` gets `bot`: empty searches the current bot, `all` searches
   every bot, and an ID or a name searches that bot.
-- `session_list` gets the same `bot` argument, with the same default.
+- `session_list` gets the same `bot` argument, with the same default. The
+  caller's own children always appear, whatever their bot. `bot` filters the
+  other sessions that scope `all` lists.
 - Each result names its bot.
 
 ### Bot tools

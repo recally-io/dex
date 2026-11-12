@@ -12,10 +12,12 @@ VALUES (@id, @conversation_id, @content, 'null', 'task', 'message', @when_busy, 
 ON CONFLICT DO NOTHING;
 
 -- name: ListSessions :many
--- Sessions of one bot, newest activity first. A child list names the parent. The list of all
--- sessions leaves out dreams.
+-- The children of the caller, of any bot, and with all_sessions the sessions of one bot or of every
+-- bot, newest activity first. A row names the parent. The list leaves out dreams.
 SELECT
     c.id,
+    c.agent_id,
+    a.name AS agent_name,
     c.title,
     c.model_provider,
     c.model_id,
@@ -27,8 +29,12 @@ SELECT
     ) AS INTEGER) AS updated_at,
     CAST((SELECT count(*) FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
 FROM conversations c
-WHERE c.agent_id = @agent_id AND c.channel_key NOT LIKE 'dream:%'
-    AND (CAST(@all_sessions AS INTEGER) = 1 OR c.parent_id = @parent_id)
+JOIN agents a ON a.id = c.agent_id
+WHERE c.channel_key NOT LIKE 'dream:%'
+    AND (c.parent_id = @parent_id OR (
+        CAST(@all_sessions AS INTEGER) = 1
+        AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
+    ))
 ORDER BY updated_at DESC, c.id DESC
 LIMIT @max_rows;
 
@@ -58,10 +64,12 @@ LIMIT @max_rows;
 -- name: SearchTurns :many
 -- A turn matches when every non-empty word is a substring of its input or its answer. The caller
 -- lowercases ASCII letters of the words, and lower() does the same for the text.
-SELECT s.id, s.conversation_id, c.title, s.content, s.answer, s.created_at
+SELECT s.id, s.conversation_id, c.agent_id, a.name AS agent_name, c.title, s.content, s.answer, s.created_at
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
-WHERE s.kind = 'message' AND c.agent_id = @agent_id AND c.channel_key NOT LIKE 'dream:%'
+JOIN agents a ON a.id = c.agent_id
+WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%'
+    AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
     AND (CAST(@session_id AS INTEGER) = 0 OR c.id = @session_id)
     AND s.created_at >= @since
     AND (CAST(@w1 AS TEXT) = '' OR instr(lower(s.content), CAST(@w1 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(@w1 AS TEXT)) > 0)

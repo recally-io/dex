@@ -54,13 +54,12 @@ SELECT a.id, a.name FROM agents a JOIN feishu_settings s ON s.agent_id = a.id WH
 -- name: ListAgentActivity :many
 WITH active AS (
     SELECT c.agent_id, count(*) AS sessions
-    FROM conversations c LEFT JOIN tasks t ON t.conversation_id = c.id
+    FROM conversations c
     WHERE (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
       AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
           SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
       ))
-      AND (t.status IN ('queued', 'admitting', 'running')
-          OR EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending'))
+      AND EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending')
     GROUP BY c.agent_id
 ), enabled AS (
     SELECT agent_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY agent_id

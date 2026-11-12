@@ -21,11 +21,11 @@ export function AgentAvatar({ agent, className }: { agent: Pick<Agent, "id" | "n
       aria-hidden
       style={style}
       className={cn(
-        "agent-avatar flex size-6 shrink-0 items-center justify-center rounded-[7px] text-[12px] font-semibold",
+        "agent-avatar flex size-6 shrink-0 items-center justify-center rounded-control text-[12px] font-semibold",
         className,
       )}
     >
-      {agent.name.charAt(0).toLowerCase()}
+      {agent.name.charAt(0).toUpperCase()}
     </span>
   );
 }

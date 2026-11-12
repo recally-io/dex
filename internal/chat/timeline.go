@@ -33,7 +33,7 @@ func (s *Service) Create(ctx context.Context, agentID string) (Chat, error) {
 }
 
 // ErrNotArchivable is an archive request for Main or a read-only kind.
-var ErrNotArchivable = errors.New("only a Chat session can be archived; Main always stays")
+var ErrNotArchivable = errors.New("only a Chat session or a child session can be archived; Main always stays")
 
 // SetArchived archives or restores a Chat session. It changes only the list state: messages,
 // records, files and running work stay, and a child session result still returns to the chat.
@@ -42,7 +42,8 @@ func (s *Service) SetArchived(ctx context.Context, agentID string, id int64, arc
 	if err != nil {
 		return Chat{}, err
 	}
-	if !strings.HasPrefix(c.ChannelKey, ChatPrefix) {
+	// A child session from before child sessions has a task: key. It is a child, so the user can archive it.
+	if !strings.HasPrefix(c.ChannelKey, ChatPrefix) && c.ParentID == 0 {
 		return Chat{}, ErrNotArchivable
 	}
 	if archived {

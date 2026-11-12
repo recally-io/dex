@@ -23,14 +23,14 @@ function FileChip({ file, onRemove }: { file: DraftFile; onRemove: () => void })
   return (
     <li
       className={cn(
-        "flex h-10 max-w-full min-w-0 animate-[pop-in_200ms_var(--ease-out-strong)_both] items-center gap-2 rounded-[10px] py-1 pr-1 pl-1 text-[11.5px] shadow-card",
+        "flex h-10 max-w-full min-w-0 animate-[pop-in_200ms_var(--ease-out-strong)_both] items-center gap-2 rounded-card py-1 pr-1 pl-1 text-[11.5px] shadow-card",
         file.error ? "bg-red-tint" : "bg-card",
       )}
     >
       {file.preview ? (
-        <img src={file.preview} alt="" className="size-8 shrink-0 rounded-[6px] object-cover" />
+        <img src={file.preview} alt="" className="size-8 shrink-0 rounded-control object-cover" />
       ) : (
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-muted text-muted-foreground">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-control bg-muted text-muted-foreground">
           <FileText className="size-[15px]" />
         </span>
       )}
@@ -55,7 +55,7 @@ function FileChip({ file, onRemove }: { file: DraftFile; onRemove: () => void })
         size="icon-xs"
         aria-label={`Remove ${file.name}`}
         onClick={onRemove}
-        className="shrink-0 rounded-[6px] text-muted-foreground hover:bg-border/70 hover:text-foreground"
+        className="shrink-0 rounded-control text-muted-foreground hover:bg-border/70 hover:text-foreground"
       >
         <X className="size-[14px]" />
       </Button>
@@ -67,10 +67,10 @@ function FileChip({ file, onRemove }: { file: DraftFile; onRemove: () => void })
 export type SendMode = "steer" | "followUp";
 
 const menuPopup =
-  "w-[260px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-[10px] bg-card p-1 shadow-raised outline-none";
+  "w-[260px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-card bg-card p-1 shadow-raised outline-none";
 
 const menuItem =
-  "flex w-full items-start gap-2.5 rounded-[7px] px-2 py-1.5 text-left text-foreground data-highlighted:bg-accent data-disabled:opacity-40";
+  "flex w-full items-start gap-2.5 rounded-control px-2 py-1.5 text-left text-foreground data-highlighted:bg-accent data-disabled:opacity-40";
 
 function MenuText({ title, help }: { title: string; help: string }) {
   return (
@@ -243,7 +243,7 @@ export function Composer({
           files.add([...e.dataTransfer.files]);
         }}
         className={cn(
-          "relative isolate flex flex-col gap-2 overflow-hidden rounded-[12px] border border-border bg-card px-3 pt-2 pb-2 transition-[border-color] duration-150 focus-within:border-ring",
+          "relative isolate flex flex-col gap-2 overflow-hidden rounded-window border border-border bg-card px-3 pt-2 pb-2 transition-[border-color] duration-150 focus-within:border-ring",
           dropping && "border-primary focus-within:border-primary",
         )}
       >

@@ -15,10 +15,7 @@ type TaskBlock = { kind: "task"; item: Extract<Item, { kind: "task" }>; blocks: 
 
 export type Block = ContentBlock | TaskBlock;
 
-const dispatch = (step: Step) => step.kind === "tool" && step.name === "spawn_task";
-
 // A result owns the items up to the next input. Keep original indices for Retry and streaming.
-// A dispatch to the background stays a row of its own, because it names the work it started.
 export function blocks(items: Item[]): Block[] {
   const out: Block[] = [];
   let task: TaskBlock | undefined;
@@ -36,7 +33,7 @@ export function blocks(items: Item[]): Block[] {
     const last = target.at(-1);
 
     if (item.kind !== "tool" && item.kind !== "thinking") target.push({ kind: "item", item, index });
-    else if (last?.kind === "steps" && !dispatch(item) && !dispatch(last.steps[0])) {
+    else if (last?.kind === "steps") {
       last.steps.push(item);
       last.last = index;
     } else target.push({ kind: "steps", steps: [item], key: item.id, last: index });
@@ -65,17 +62,6 @@ export function touchesMemory(tool: ToolItem, memory?: string) {
 // The verb and the main argument of a step row. dex sends only the tool name and its arguments.
 export function describeTool(tool: ToolItem, memory?: string) {
   const path = arg(tool, "path");
-
-  if (tool.name === "spawn_task")
-    return {
-      verb:
-        tool.status === "running"
-          ? "Sending to background"
-          : tool.status === "error"
-            ? "Could not send to background"
-            : "Sent to background",
-      target: arg(tool, "title"),
-    };
 
   if (tool.name === "bash") {
     const command = arg(tool, "command");

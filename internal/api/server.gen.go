@@ -116,7 +116,6 @@ func (e BoundaryItemStatus) Valid() bool {
 const (
 	ChatChannelAutomation ChatChannel = "automation"
 	ChatChannelFeishu     ChatChannel = "feishu"
-	ChatChannelTask       ChatChannel = "task"
 	ChatChannelTelegram   ChatChannel = "telegram"
 	ChatChannelWeb        ChatChannel = "web"
 	ChatChannelWechat     ChatChannel = "wechat"
@@ -128,8 +127,6 @@ func (e ChatChannel) Valid() bool {
 	case ChatChannelAutomation:
 		return true
 	case ChatChannelFeishu:
-		return true
-	case ChatChannelTask:
 		return true
 	case ChatChannelTelegram:
 		return true
@@ -436,123 +433,15 @@ func (e SnapshotEventType) Valid() bool {
 	}
 }
 
-// Defines values for TaskReportOutcome.
-const (
-	TaskReportOutcomeBlocked TaskReportOutcome = "blocked"
-	TaskReportOutcomeDone    TaskReportOutcome = "done"
-	TaskReportOutcomeFailed  TaskReportOutcome = "failed"
-)
-
-// Valid indicates whether the value is a known member of the TaskReportOutcome enum.
-func (e TaskReportOutcome) Valid() bool {
-	switch e {
-	case TaskReportOutcomeBlocked:
-		return true
-	case TaskReportOutcomeDone:
-		return true
-	case TaskReportOutcomeFailed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for TaskStatus.
-const (
-	TaskStatusAdmitting   TaskStatus = "admitting"
-	TaskStatusCancelled   TaskStatus = "cancelled"
-	TaskStatusDone        TaskStatus = "done"
-	TaskStatusFailed      TaskStatus = "failed"
-	TaskStatusInterrupted TaskStatus = "interrupted"
-	TaskStatusQueued      TaskStatus = "queued"
-	TaskStatusRunning     TaskStatus = "running"
-)
-
-// Valid indicates whether the value is a known member of the TaskStatus enum.
-func (e TaskStatus) Valid() bool {
-	switch e {
-	case TaskStatusAdmitting:
-		return true
-	case TaskStatusCancelled:
-		return true
-	case TaskStatusDone:
-		return true
-	case TaskStatusFailed:
-		return true
-	case TaskStatusInterrupted:
-		return true
-	case TaskStatusQueued:
-		return true
-	case TaskStatusRunning:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for TaskItemKind.
 const (
-	TaskItemKindTask TaskItemKind = "task"
+	Task TaskItemKind = "task"
 )
 
 // Valid indicates whether the value is a known member of the TaskItemKind enum.
 func (e TaskItemKind) Valid() bool {
 	switch e {
-	case TaskItemKindTask:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for TaskSummaryReportOutcome.
-const (
-	TaskSummaryReportOutcomeBlocked TaskSummaryReportOutcome = "blocked"
-	TaskSummaryReportOutcomeDone    TaskSummaryReportOutcome = "done"
-	TaskSummaryReportOutcomeFailed  TaskSummaryReportOutcome = "failed"
-)
-
-// Valid indicates whether the value is a known member of the TaskSummaryReportOutcome enum.
-func (e TaskSummaryReportOutcome) Valid() bool {
-	switch e {
-	case TaskSummaryReportOutcomeBlocked:
-		return true
-	case TaskSummaryReportOutcomeDone:
-		return true
-	case TaskSummaryReportOutcomeFailed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for TaskSummaryStatus.
-const (
-	TaskSummaryStatusAdmitting   TaskSummaryStatus = "admitting"
-	TaskSummaryStatusCancelled   TaskSummaryStatus = "cancelled"
-	TaskSummaryStatusDone        TaskSummaryStatus = "done"
-	TaskSummaryStatusFailed      TaskSummaryStatus = "failed"
-	TaskSummaryStatusInterrupted TaskSummaryStatus = "interrupted"
-	TaskSummaryStatusQueued      TaskSummaryStatus = "queued"
-	TaskSummaryStatusRunning     TaskSummaryStatus = "running"
-)
-
-// Valid indicates whether the value is a known member of the TaskSummaryStatus enum.
-func (e TaskSummaryStatus) Valid() bool {
-	switch e {
-	case TaskSummaryStatusAdmitting:
-		return true
-	case TaskSummaryStatusCancelled:
-		return true
-	case TaskSummaryStatusDone:
-		return true
-	case TaskSummaryStatusFailed:
-		return true
-	case TaskSummaryStatusInterrupted:
-		return true
-	case TaskSummaryStatusQueued:
-		return true
-	case TaskSummaryStatusRunning:
+	case Task:
 		return true
 	default:
 		return false
@@ -797,6 +686,12 @@ type Channels = agent.Channels
 
 // Chat defines model for Chat.
 type Chat struct {
+	// AgentId The bot that owns this session. Only on a child session that belongs to another bot than the one in the request path. The list of the parent shows it.
+	AgentId *string `json:"agentId,omitempty"`
+
+	// AgentName The name of the bot in agentId. Present with agentId.
+	AgentName *string `json:"agentName,omitempty"`
+
 	// ArchivedAt When the user archived this Chat session, in Unix milliseconds. Absent when the session is not archived.
 	ArchivedAt *int64 `json:"archivedAt,omitempty"`
 
@@ -817,8 +712,17 @@ type Chat struct {
 	ForkedFrom *ChatOrigin `json:"forkedFrom,omitempty"`
 	Id         int64       `json:"id"`
 
+	// LastActivityAt The latest engine observation of activity. Only the session list sets it, and only while the session is busy.
+	LastActivityAt *int64 `json:"lastActivityAt,omitempty"`
+
 	// Main This is the agent's main timeline.
 	Main bool `json:"main"`
+
+	// ParentAgentId The bot of the parent session. Only on a child session whose parent belongs to another bot than the one in the request path.
+	ParentAgentId *string `json:"parentAgentId,omitempty"`
+
+	// ParentAgentName The name of the bot in parentAgentId. Present with parentAgentId.
+	ParentAgentName *string `json:"parentAgentName,omitempty"`
 
 	// ParentId The session that created this child session. Absent on any other session.
 	ParentId *int64 `json:"parentId,omitempty"`
@@ -831,10 +735,15 @@ type Chat struct {
 
 	// Settings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
 	Settings ChatSettings `json:"settings"`
-	Task     *TaskSummary `json:"task,omitempty"`
-	Title    string       `json:"title"`
 
-	// UpdatedAt Latest activity time, in Unix milliseconds. Includes conversation creation, input creation and settlement, and task start and end. Task times apply only to the task's own conversation.
+	// StoppedWithParent True when Stop on the parent session would act on this child, because the child has pending input that the parent sent. Only the session list sets it.
+	StoppedWithParent *bool  `json:"stoppedWithParent,omitempty"`
+	Title             string `json:"title"`
+
+	// ToolStartedAt The earliest start of a tool that runs now. Only the session list sets it, and only while the session is busy and runs a tool.
+	ToolStartedAt *int64 `json:"toolStartedAt,omitempty"`
+
+	// UpdatedAt Latest activity time, in Unix milliseconds. Includes conversation creation, and input creation and settlement.
 	UpdatedAt int64 `json:"updatedAt"`
 }
 
@@ -1241,93 +1150,20 @@ type SnapshotEvent struct {
 // SnapshotEventType defines model for SnapshotEvent.Type.
 type SnapshotEventType string
 
-// Task defines model for Task.
-type Task struct {
-	ConversationId int64  `json:"conversationId"`
-	CreatedAt      int64  `json:"createdAt"`
-	EndedAt        *int64 `json:"endedAt,omitempty"`
-
-	// HandledAt When the finished task was acknowledged, without changing its result.
-	HandledAt *int64 `json:"handledAt,omitempty"`
-	Id        string `json:"id"`
-
-	// LastAction The latest observed tool call, when the task is running.
-	LastAction *string `json:"lastAction,omitempty"`
-
-	// LastActivityAt The latest engine observation of task activity, when the task is running.
-	LastActivityAt *int64 `json:"lastActivityAt,omitempty"`
-
-	// ParentConversationId The conversation that started this task and can stop it.
-	ParentConversationId int64 `json:"parentConversationId"`
-
-	// Report The saved report in Markdown.
-	Report string `json:"report"`
-
-	// ReportOutcome The structured report outcome, when the task has a report.
-	ReportOutcome *TaskReportOutcome `json:"reportOutcome,omitempty"`
-	StartedAt     *int64             `json:"startedAt,omitempty"`
-	Status        TaskStatus         `json:"status"`
-	Title         string             `json:"title"`
-
-	// ToolStartedAt The earliest start of a currently running tool, when the task is running a tool.
-	ToolStartedAt *int64 `json:"toolStartedAt,omitempty"`
-}
-
-// TaskReportOutcome The structured report outcome, when the task has a report.
-type TaskReportOutcome string
-
-// TaskStatus defines model for Task.Status.
-type TaskStatus string
-
-// TaskItem Marks a background result. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
+// TaskItem Marks the result of a child session turn. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
 type TaskItem struct {
 	At      *int64       `json:"at,omitempty"`
 	EntryId *int64       `json:"entryId,omitempty"`
 	Id      string       `json:"id"`
 	Kind    TaskItemKind `json:"kind"`
 
-	// TaskId The saved task ID.
+	// TaskId The input ID of the child session turn, or the ID of an old task. getTurnChat finds its session.
 	TaskId string `json:"taskId"`
 	Title  string `json:"title"`
 }
 
 // TaskItemKind defines model for TaskItem.Kind.
 type TaskItemKind string
-
-// TaskSummary defines model for TaskSummary.
-type TaskSummary struct {
-	ConversationId int64  `json:"conversationId"`
-	CreatedAt      int64  `json:"createdAt"`
-	EndedAt        *int64 `json:"endedAt,omitempty"`
-
-	// HandledAt When the finished task was acknowledged, without changing its result.
-	HandledAt *int64 `json:"handledAt,omitempty"`
-	Id        string `json:"id"`
-
-	// LastAction The latest observed tool call, when the task is running.
-	LastAction *string `json:"lastAction,omitempty"`
-
-	// LastActivityAt The latest engine observation of task activity, when the task is running.
-	LastActivityAt *int64 `json:"lastActivityAt,omitempty"`
-
-	// ParentConversationId The conversation that started this task and can stop it.
-	ParentConversationId int64 `json:"parentConversationId"`
-
-	// ReportOutcome The structured report outcome, when the task has a report.
-	ReportOutcome *TaskSummaryReportOutcome `json:"reportOutcome,omitempty"`
-	StartedAt     *int64                    `json:"startedAt,omitempty"`
-	Status        TaskSummaryStatus         `json:"status"`
-	Title         string                    `json:"title"`
-
-	// ToolStartedAt The earliest start of a currently running tool, when the task is running a tool.
-	ToolStartedAt *int64 `json:"toolStartedAt,omitempty"`
-}
-
-// TaskSummaryReportOutcome The structured report outcome, when the task has a report.
-type TaskSummaryReportOutcome string
-
-// TaskSummaryStatus defines model for TaskSummary.Status.
-type TaskSummaryStatus string
 
 // Telegram defines model for Telegram.
 type Telegram struct {
@@ -1375,9 +1211,6 @@ type ToolItem struct {
 
 	// Status A call that ended without a result is an error.
 	Status ToolItemStatus `json:"status"`
-
-	// TaskId The saved task ID of a successful spawn_task call.
-	TaskId *string `json:"taskId,omitempty"`
 }
 
 // ToolItemKind defines model for ToolItem.Kind.
@@ -2225,17 +2058,8 @@ type ServerInterface interface {
 	// (GET /api/agents/{agentId}/projects)
 	ListRecentProjects(w http.ResponseWriter, r *http.Request, agentId string)
 
-	// (GET /api/agents/{agentId}/tasks/{taskId})
-	GetTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
-
-	// (POST /api/agents/{agentId}/tasks/{taskId}/acknowledge)
-	AcknowledgeTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
-
-	// (POST /api/agents/{agentId}/tasks/{taskId}/cancel)
-	CancelTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
-
-	// (POST /api/agents/{agentId}/tasks/{taskId}/restore)
-	RestoreTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
+	// (GET /api/agents/{agentId}/turns/{turnId})
+	GetTurnChat(w http.ResponseWriter, r *http.Request, agentId string, turnId string)
 
 	// (POST /api/agents/{agentId}/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request, agentId string)
@@ -3857,8 +3681,8 @@ func (siw *ServerInterfaceWrapper) ListRecentProjects(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
-// GetTask operation middleware
-func (siw *ServerInterfaceWrapper) GetTask(w http.ResponseWriter, r *http.Request) {
+// GetTurnChat operation middleware
+func (siw *ServerInterfaceWrapper) GetTurnChat(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	_ = err
@@ -3872,122 +3696,17 @@ func (siw *ServerInterfaceWrapper) GetTask(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// ------------- Path parameter "taskId" -------------
-	var taskId string
+	// ------------- Path parameter "turnId" -------------
+	var turnId string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "turnId", r.PathValue("turnId"), &turnId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "turnId", Err: err})
 		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetTask(w, r, agentId, taskId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// AcknowledgeTask operation middleware
-func (siw *ServerInterfaceWrapper) AcknowledgeTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "taskId" -------------
-	var taskId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AcknowledgeTask(w, r, agentId, taskId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CancelTask operation middleware
-func (siw *ServerInterfaceWrapper) CancelTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "taskId" -------------
-	var taskId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CancelTask(w, r, agentId, taskId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// RestoreTask operation middleware
-func (siw *ServerInterfaceWrapper) RestoreTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "taskId" -------------
-	var taskId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RestoreTask(w, r, agentId, taskId)
+		siw.Handler.GetTurnChat(w, r, agentId, turnId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4596,10 +4315,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}", wrapper.UpdateAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/archived-agents", wrapper.ListArchivedAgents)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/archive", wrapper.RestoreAgent)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}", wrapper.GetTask)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}/acknowledge", wrapper.AcknowledgeTask)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}/restore", wrapper.RestoreTask)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/tasks/{taskId}/cancel", wrapper.CancelTask)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/turns/{turnId}", wrapper.GetTurnChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/main", wrapper.GetMainChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.ListChats)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.CreateChat)
@@ -7600,18 +7316,18 @@ func (response ListRecentProjectsdefaultJSONResponse) VisitListRecentProjectsRes
 	return err
 }
 
-type GetTaskRequestObject struct {
+type GetTurnChatRequestObject struct {
 	AgentId string `json:"agentId"`
-	TaskId  string `json:"taskId"`
+	TurnId  string `json:"turnId"`
 }
 
-type GetTaskResponseObject interface {
-	VisitGetTaskResponse(w http.ResponseWriter) error
+type GetTurnChatResponseObject interface {
+	VisitGetTurnChatResponse(w http.ResponseWriter) error
 }
 
-type GetTask200JSONResponse Task
+type GetTurnChat200JSONResponse Chat
 
-func (response GetTask200JSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
+func (response GetTurnChat200JSONResponse) VisitGetTurnChatResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7623,9 +7339,9 @@ func (response GetTask200JSONResponse) VisitGetTaskResponse(w http.ResponseWrite
 	return err
 }
 
-type GetTask404JSONResponse struct{ ErrorJSONResponse }
+type GetTurnChat404JSONResponse struct{ ErrorJSONResponse }
 
-func (response GetTask404JSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
+func (response GetTurnChat404JSONResponse) VisitGetTurnChatResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7637,174 +7353,12 @@ func (response GetTask404JSONResponse) VisitGetTaskResponse(w http.ResponseWrite
 	return err
 }
 
-type GetTaskdefaultJSONResponse struct {
+type GetTurnChatdefaultJSONResponse struct {
 	Body       Error
 	StatusCode int
 }
 
-func (response GetTaskdefaultJSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AcknowledgeTaskRequestObject struct {
-	AgentId string `json:"agentId"`
-	TaskId  string `json:"taskId"`
-}
-
-type AcknowledgeTaskResponseObject interface {
-	VisitAcknowledgeTaskResponse(w http.ResponseWriter) error
-}
-
-type AcknowledgeTask200JSONResponse Task
-
-func (response AcknowledgeTask200JSONResponse) VisitAcknowledgeTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AcknowledgeTask404JSONResponse struct{ ErrorJSONResponse }
-
-func (response AcknowledgeTask404JSONResponse) VisitAcknowledgeTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AcknowledgeTask409JSONResponse Error
-
-func (response AcknowledgeTask409JSONResponse) VisitAcknowledgeTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AcknowledgeTaskdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response AcknowledgeTaskdefaultJSONResponse) VisitAcknowledgeTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CancelTaskRequestObject struct {
-	AgentId string `json:"agentId"`
-	TaskId  string `json:"taskId"`
-}
-
-type CancelTaskResponseObject interface {
-	VisitCancelTaskResponse(w http.ResponseWriter) error
-}
-
-type CancelTask200JSONResponse Task
-
-func (response CancelTask200JSONResponse) VisitCancelTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CancelTask404JSONResponse struct{ ErrorJSONResponse }
-
-func (response CancelTask404JSONResponse) VisitCancelTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CancelTaskdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response CancelTaskdefaultJSONResponse) VisitCancelTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RestoreTaskRequestObject struct {
-	AgentId string `json:"agentId"`
-	TaskId  string `json:"taskId"`
-}
-
-type RestoreTaskResponseObject interface {
-	VisitRestoreTaskResponse(w http.ResponseWriter) error
-}
-
-type RestoreTask200JSONResponse Task
-
-func (response RestoreTask200JSONResponse) VisitRestoreTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RestoreTaskdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response RestoreTaskdefaultJSONResponse) VisitRestoreTaskResponse(w http.ResponseWriter) error {
+func (response GetTurnChatdefaultJSONResponse) VisitGetTurnChatResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -8935,17 +8489,8 @@ type StrictServerInterface interface {
 	// (GET /api/agents/{agentId}/projects)
 	ListRecentProjects(ctx context.Context, request ListRecentProjectsRequestObject) (ListRecentProjectsResponseObject, error)
 
-	// (GET /api/agents/{agentId}/tasks/{taskId})
-	GetTask(ctx context.Context, request GetTaskRequestObject) (GetTaskResponseObject, error)
-
-	// (POST /api/agents/{agentId}/tasks/{taskId}/acknowledge)
-	AcknowledgeTask(ctx context.Context, request AcknowledgeTaskRequestObject) (AcknowledgeTaskResponseObject, error)
-
-	// (POST /api/agents/{agentId}/tasks/{taskId}/cancel)
-	CancelTask(ctx context.Context, request CancelTaskRequestObject) (CancelTaskResponseObject, error)
-
-	// (POST /api/agents/{agentId}/tasks/{taskId}/restore)
-	RestoreTask(ctx context.Context, request RestoreTaskRequestObject) (RestoreTaskResponseObject, error)
+	// (GET /api/agents/{agentId}/turns/{turnId})
+	GetTurnChat(ctx context.Context, request GetTurnChatRequestObject) (GetTurnChatResponseObject, error)
 
 	// (POST /api/agents/{agentId}/uploads)
 	CreateUpload(ctx context.Context, request CreateUploadRequestObject) (CreateUploadResponseObject, error)
@@ -10501,107 +10046,26 @@ func (sh *strictHandler) ListRecentProjects(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-// GetTask operation middleware
-func (sh *strictHandler) GetTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
-	var request GetTaskRequestObject
+// GetTurnChat operation middleware
+func (sh *strictHandler) GetTurnChat(w http.ResponseWriter, r *http.Request, agentId string, turnId string) {
+	var request GetTurnChatRequestObject
 
 	request.AgentId = agentId
-	request.TaskId = taskId
+	request.TurnId = turnId
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetTask(ctx, request.(GetTaskRequestObject))
+		return sh.ssi.GetTurnChat(ctx, request.(GetTurnChatRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetTask")
+		handler = middleware(handler, "GetTurnChat")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetTaskResponseObject); ok {
-		if err := validResponse.VisitGetTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// AcknowledgeTask operation middleware
-func (sh *strictHandler) AcknowledgeTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
-	var request AcknowledgeTaskRequestObject
-
-	request.AgentId = agentId
-	request.TaskId = taskId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.AcknowledgeTask(ctx, request.(AcknowledgeTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "AcknowledgeTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(AcknowledgeTaskResponseObject); ok {
-		if err := validResponse.VisitAcknowledgeTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CancelTask operation middleware
-func (sh *strictHandler) CancelTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
-	var request CancelTaskRequestObject
-
-	request.AgentId = agentId
-	request.TaskId = taskId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CancelTask(ctx, request.(CancelTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CancelTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CancelTaskResponseObject); ok {
-		if err := validResponse.VisitCancelTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// RestoreTask operation middleware
-func (sh *strictHandler) RestoreTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
-	var request RestoreTaskRequestObject
-
-	request.AgentId = agentId
-	request.TaskId = taskId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.RestoreTask(ctx, request.(RestoreTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "RestoreTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(RestoreTaskResponseObject); ok {
-		if err := validResponse.VisitRestoreTaskResponse(w); err != nil {
+	} else if validResponse, ok := response.(GetTurnChatResponseObject); ok {
+		if err := validResponse.VisitGetTurnChatResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

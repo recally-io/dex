@@ -25,9 +25,8 @@ import { errorText, refreshChats } from "../lib/queries";
 import { agentModel, findModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
-import { activeSessionCount, markTaskSeen, sessionKind, taskTime } from "../lib/tasks";
+import { activeSessionCount, sessionKind, sessionTime } from "../lib/sessions";
 import { SessionSettings } from "../components/session-settings";
-import { TaskSessionBar } from "../components/agent/task-session-bar";
 import { Artifacts } from "../components/agent/artifacts";
 import { chatDraftEvent, putChatDraft, takeChatDraft } from "../lib/chat-draft";
 import { Composer, type SendMode } from "../components/composer";
@@ -72,7 +71,7 @@ export function ChatPage({ chatId }: { chatId?: number }) {
   );
 }
 
-export function MainTimeline({ settings }: { settings: Settings }) {
+export function MainTimeline({ settings, visible = true }: { settings: Settings; visible?: boolean }) {
   const agentId = useAgentId();
   const main = useQuery(getMainChatOptions({ path: { agentId } }));
 
@@ -85,26 +84,37 @@ export function MainTimeline({ settings }: { settings: Settings }) {
       <Failure title="Could not open the timeline" error={main.error} retry={() => void main.refetch()} />
     </MainPane>
   ) : (
-    <Chat key={main.data.id} chatId={main.data.id} settings={settings} main />
+    <Chat key={main.data.id} chatId={main.data.id} settings={settings} main visible={visible} />
   );
 }
 
-// A delegated session names the conversation that started it. The parent is Main or a Chat session.
-function TaskOrigin({ parentId }: { parentId: number }) {
-  const agentId = useAgentId();
+// A child session links to the session that started it. The parent is Main or a Chat session.
+// A parent can belong to another bot, which then names it.
+function ParentLink({
+  parentId,
+  parentAgentId,
+  parentAgentName,
+}: {
+  parentId: number;
+  parentAgentId?: string;
+  parentAgentName?: string;
+}) {
+  const own = useAgentId();
+  const agentId = parentAgentId ?? own;
   const parent = useQuery(getChatOptions({ path: { agentId, chatId: parentId } }));
+  const title = parent.data ? (parent.data.main ? "Main" : parent.data.title || "a chat") : "…";
+  const name = parentAgentName ? `${title} in ${parentAgentName}` : title;
 
-  return (
-    <Link
-      to="/a/$agentId/c/$chatId"
-      params={{ agentId, chatId: String(parentId) }}
-      className="shrink-0 rounded-full hover:opacity-80"
-    >
-      <Badge variant="secondary" className="h-5 max-w-40 shrink-0 gap-1 px-2 text-[11.5px]">
-        <span className="truncate">
-          Started by {parent.data ? (parent.data.main ? "Main" : parent.data.title || "a chat") : "…"}
-        </span>
-      </Badge>
+  const className =
+    "max-w-56 shrink-0 truncate text-[12.5px] text-muted-foreground hover:text-foreground hover:underline";
+
+  return parent.data?.main ? (
+    <Link to="/a/$agentId" params={{ agentId }} className={className}>
+      Started by {name}
+    </Link>
+  ) : (
+    <Link to="/a/$agentId/c/$chatId" params={{ agentId, chatId: String(parentId) }} className={className}>
+      Started by {name}
     </Link>
   );
 }
@@ -140,9 +150,6 @@ function ForkOrigin({ origin }: { origin: NonNullable<ChatInfo["forkedFrom"]> })
 function OriginPill({ chat }: { chat: ChatInfo }) {
   const agentId = useAgentId();
 
-  if (chat.channel === "task")
-    return chat.task ? <TaskOrigin parentId={chat.task.parentConversationId} /> : null;
-
   if (!["web", "automation"].includes(chat.channel))
     return (
       <Badge variant="secondary" className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
@@ -173,7 +180,17 @@ function OriginPill({ chat }: { chat: ChatInfo }) {
   return null;
 }
 
-function Chat({ chatId, settings, main = false }: { chatId: number; settings: Settings; main?: boolean }) {
+function Chat({
+  chatId,
+  settings,
+  main = false,
+  visible = true,
+}: {
+  chatId: number;
+  settings: Settings;
+  main?: boolean;
+  visible?: boolean;
+}) {
   const agentId = useAgentId();
 
   const { chat, state, setState, queued, setQueued, connection, streamError, reconnect } =
@@ -183,18 +200,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const kind = chat.data ? sessionKind(chat.data) : undefined;
   const switchable = kind === "Main" || kind === "Chat";
 
-  const task = chat.data?.task;
-  const taskActive = task ? ["queued", "admitting", "running"].includes(task.status) : false;
   const refetchChat = chat.refetch;
-
-  // The session becomes writable when its task ends, so the page follows the task while it is active.
-  useEffect(() => {
-    if (!taskActive) return;
-
-    const timer = setInterval(() => void refetchChat(), 3000);
-
-    return () => clearInterval(timer);
-  }, [taskActive, refetchChat]);
 
   // The live stream carries native events only. The question changes in the control store when its answer
   // ends, so the page polls while an answer waits.
@@ -214,15 +220,11 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     refetchInterval: 3000,
   });
 
-  useEffect(() => {
-    for (const session of sessions.data?.chats ?? []) {
-      if (session.task?.parentConversationId === chatId && session.task.status === "done")
-        markTaskSeen(agentId, session.task.id);
-    }
-  }, [agentId, chatId, sessions.data]);
-
+  // Stop acts on a child only while it has input that this session sent. The server says which.
   const activeHere = activeSessionCount(
-    (sessions.data?.chats ?? []).filter((session) => session.task?.parentConversationId === chatId),
+    (sessions.data?.chats ?? []).filter(
+      (session) => session.parentId === chatId && session.stoppedWithParent,
+    ),
   );
 
   const health = useQuery(getHealthOptions());
@@ -335,7 +337,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     agents.data?.agents.find((item) => item.id === agentId)?.activity?.runningChannels ?? 0;
 
   const recent = (sessions.data?.chats ?? [])
-    .filter((item) => !item.main && !item.archivedAt && item.id !== chatId)
+    .filter((item) => !item.main && !item.archivedAt && item.id !== chatId && item.agentId === undefined)
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 3);
 
@@ -472,17 +474,8 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
 
   const running = state.running;
 
-  const continuing = Boolean(task) && !readOnly;
-
   const composer = readOnly ? null : (
     <>
-      {continuing ? (
-        <p className="mb-3 text-center text-[12px] leading-relaxed text-muted-foreground">
-          The task is finished. You can keep chatting here.
-          <br />
-          Replies stay in this session. {settings.agent.name} does not report them to Main again.
-        </p>
-      ) : null}
       {withdraw.error ? (
         <div role="alert" className="mb-3">
           <Note tone="warn">
@@ -560,7 +553,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         }
         pending={pending}
         disabledReason={reason}
-        placeholder={continuing ? "Continue chat" : `Message ${settings.agent.name}`}
+        placeholder={`Message ${settings.agent.name}`}
         autoFocus
         onSend={(text, mode) => sendText(text, files.ready, undefined, mode)}
         onStop={() => {
@@ -674,24 +667,38 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           embedded ? "min-h-0" : "lg:border-l lg:border-border",
         )}
       >
-        {/* The bot pane names Main. A Chat keeps a title for focus and screen readers. The
-            project, model and thinking level show only after Chat settings in the bot header. */}
         {chat.data && switchable ? (
           <>
-            {chat.data.main ? null : (
-              <header className="flex min-w-0 items-center gap-3 border-b border-border px-4 py-2">
-                <h1 id="page-title" tabIndex={-1} className="min-w-0 flex-1 truncate text-sm font-medium">
-                  {chat.data.title || "New chat"}
-                </h1>
-                <Link
-                  to="/a/$agentId"
-                  params={{ agentId }}
-                  className="shrink-0 text-[12.5px] text-muted-foreground hover:text-foreground hover:underline"
-                >
-                  Back to Main
-                </Link>
-              </header>
-            )}
+            <header className="flex min-w-0 items-center gap-2 border-b border-border px-4 py-2">
+              {!chat.data.main ? (
+                <>
+                  <Link
+                    to="/a/$agentId"
+                    params={{ agentId }}
+                    className="shrink-0 text-sm text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    Main
+                  </Link>
+                  <span aria-hidden className="text-ring">
+                    /
+                  </span>
+                </>
+              ) : null}
+              <h1
+                id={visible ? "page-title" : undefined}
+                tabIndex={-1}
+                className="min-w-0 flex-1 truncate text-sm font-medium"
+              >
+                {chat.data.main ? "Main" : chat.data.title || "New chat"}
+              </h1>
+              {!chat.data.main && chat.data.parentId !== undefined ? (
+                <ParentLink
+                  parentId={chat.data.parentId}
+                  parentAgentId={chat.data.parentAgentId}
+                  parentAgentName={chat.data.parentAgentName}
+                />
+              ) : null}
+            </header>
             {settingsOpen ? (
               <div
                 role="region"
@@ -715,7 +722,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
             menu={!embedded}
             title={chat.data?.title || "New session"}
             crumb={
-              chat.data && !task ? (
+              chat.data ? (
                 <Link
                   to="/a/$agentId/automations"
                   params={{ agentId }}
@@ -726,9 +733,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
               ) : null
             }
             badge={chat.data ? <OriginPill chat={chat.data} /> : null}
-            actions={
-              continuing && chat.data ? <SessionSettings chat={chat.data} settings={settings} /> : undefined
-            }
           />
         )}
         <div className="flex min-h-0 flex-1">
@@ -749,7 +753,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                 {transcript}
               </div>
             </div>
-            {readOnly && task && taskActive ? <TaskSessionBar task={task} /> : null}
             {readOnly ? null : (
               <div
                 className={cn(
@@ -835,7 +838,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                                 {item.title || "New session"}
                               </span>
                               <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
-                                {taskTime(item.updatedAt)}
+                                {sessionTime(item.updatedAt)}
                               </span>
                             </Link>
                           </li>
@@ -859,9 +862,6 @@ function readOnlyCopy(channel?: ChatInfo["channel"]) {
 
   if (channel === "telegram" || channel === "wechat" || channel === "feishu")
     return `You can read this conversation here. Reply in ${names[channel]}.`;
-
-  if (channel === "task")
-    return "You can read this session while the task runs. You can chat here after it ends.";
 
   return channel === "automation" ? "You can read this run here." : "You can read this conversation here.";
 }

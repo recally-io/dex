@@ -52,8 +52,8 @@ func startNative(t *testing.T, model string) *nativeTest {
 			Stop: func(ctx context.Context, c engine.TaskContext, id string) (engine.SessionRef, error) {
 				return service.ToolSessionStop(ctx, c, id)
 			},
-			List: func(ctx context.Context, c engine.TaskContext, scope string) ([]engine.SessionInfo, error) {
-				return service.ToolSessionList(ctx, c, scope)
+			List: func(ctx context.Context, c engine.TaskContext, a engine.SessionListArgs) ([]engine.SessionInfo, error) {
+				return service.ToolSessionList(ctx, c, a)
 			},
 		},
 	}})

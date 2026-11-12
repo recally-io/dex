@@ -1,5 +1,4 @@
 import {
-  ArrowUpRight,
   Check,
   ChevronRight,
   Clock3,
@@ -235,7 +234,7 @@ function StepLine({
         aria-expanded={shown}
         onClick={onToggle}
         className={cn(
-          "flex min-h-7 w-full min-w-0 items-center gap-2 rounded-[6px] px-1.5 py-0.5 text-left transition-colors duration-150",
+          "flex min-h-7 w-full min-w-0 items-center gap-2 rounded-control px-1.5 py-0.5 text-left transition-colors duration-150",
           shown ? "bg-muted" : "hover:bg-accent",
         )}
       >
@@ -284,7 +283,6 @@ export function Steps({
   memory?: string;
   thinking?: boolean;
 }) {
-  const agentId = useAgentId();
   const failedId = steps.find((step) => step.kind === "tool" && step.status === "error")?.id;
   const [open, setOpen] = useState<boolean | null>(null);
   // Until the user picks a line, the first failed call shows its output. A call can fail after
@@ -293,37 +291,8 @@ export function Steps({
   const selected = picked === undefined ? (failedId ?? null) : picked;
   const expanded = open ?? !!failedId;
   const title = stepTitle(steps, memory, thinking);
-  const first = steps[0];
   // Tools run without a sandbox, so a closed row still shows what runs now.
   const running = steps.find((step) => step.kind === "tool" && step.status === "running");
-
-  if (steps.length === 1 && first.kind === "tool" && first.name === "spawn_task" && !failedId) {
-    const dispatch = describeTool(first);
-
-    return (
-      <div className="flex min-w-0 items-start gap-2 py-1 text-[13px] leading-5">
-        <ArrowUpRight size={16} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
-        <p className="min-w-0 [overflow-wrap:anywhere]">
-          {title.active ? (
-            <Shimmer>{dispatch.verb}</Shimmer>
-          ) : (
-            <span className="font-medium text-muted-foreground">{dispatch.verb}</span>
-          )}
-          {first.taskId ? (
-            <Link
-              to="/a/$agentId/tasks/$taskId"
-              params={{ agentId, taskId: first.taskId }}
-              className="ml-1.5 font-medium text-foreground decoration-ring underline-offset-3 hover:underline"
-            >
-              {dispatch.target}
-            </Link>
-          ) : (
-            <span className="ml-1.5 font-medium text-foreground">{dispatch.target}</span>
-          )}
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className="flex w-full flex-col">
@@ -386,7 +355,7 @@ function MessageAction({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="grid size-7 shrink-0 place-items-center rounded-[6px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+      className="grid size-7 shrink-0 place-items-center rounded-control text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
     >
       {children}
     </button>
@@ -440,9 +409,9 @@ function Files({ files }: { files: Attachment[] }) {
             <a
               href={`/api/agents/${encodeURIComponent(agentId)}/uploads/${f.id}`}
               download={f.name}
-              className="flex h-10 min-w-0 items-center gap-2 rounded-[10px] bg-card py-1 pr-2.5 pl-1 text-[11.5px] shadow-card transition-colors hover:bg-accent"
+              className="flex h-10 min-w-0 items-center gap-2 rounded-card bg-card py-1 pr-2.5 pl-1 text-[11.5px] shadow-card transition-colors hover:bg-accent"
             >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-muted text-muted-foreground">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-control bg-muted text-muted-foreground">
                 <FileText size={15} />
               </span>
               <span className="flex min-w-0 flex-col leading-tight">
@@ -625,7 +594,7 @@ export function TranscriptItem({
           {item.text ? (
             <div
               className={cn(
-                "rounded-[18px] bg-muted px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]",
+                "rounded-bubble bg-muted px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]",
                 item.queued && "opacity-70",
               )}
             >
@@ -701,10 +670,10 @@ export function TranscriptItem({
         <header className="flex min-w-0 items-start gap-2 text-[13px] leading-5">
           <CornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
           <h3 className="min-w-0 [overflow-wrap:anywhere]">
-            <span className="mr-1.5 font-medium text-muted-foreground">Background result</span>
+            <span className="mr-1.5 font-medium text-muted-foreground">Session result</span>
             <Link
-              to="/a/$agentId/tasks/$taskId"
-              params={{ agentId, taskId: item.taskId }}
+              to="/a/$agentId/tasks/$turnId"
+              params={{ agentId, turnId: item.taskId }}
               className="font-semibold text-foreground decoration-ring underline-offset-3 hover:underline"
             >
               {item.title}
@@ -852,7 +821,7 @@ export function Transcript({
     block.kind === "task" ? (
       <section
         key={block.item.id}
-        aria-label={`Background result: ${block.item.title}`}
+        aria-label={`Session result: ${block.item.title}`}
         className="mt-5 flex min-w-0 flex-col gap-3 first:mt-0"
       >
         <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />

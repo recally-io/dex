@@ -46,6 +46,14 @@ type Chat struct {
 	Writable bool
 	// ParentID is the session that created this child session. It is zero for any other session.
 	ParentID int64
+	// StoppedByParent is set by List: Stop on the parent would act on this child.
+	StoppedByParent bool
+	// AgentID and AgentName name the bot of the session. Only a child session in another bot than
+	// the bot that was asked for has them: the list of a parent shows it.
+	AgentID, AgentName string
+	// ParentAgentID and ParentAgentName name the bot of the parent, when it is not the bot that was
+	// asked for.
+	ParentAgentID, ParentAgentName string
 	// ExecutionID is zero until native execution creates the conversation.
 	ExecutionID int64
 	// Question is the question that waits for the user, or whose answer waits in the queue.
@@ -450,15 +458,80 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 			return nil, err
 		}
 	}
+	stopped, err := s.q.ListChildrenStoppedByParent(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	stoppedByParent := make(map[int64]bool, len(stopped))
+	for _, id := range stopped {
+		reached, err := s.childStoppedByParent(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		stoppedByParent[id] = reached
+	}
 	chats := make([]Chat, len(rows))
 	for i, r := range rows {
 		chats[i] = Chat{
 			Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 			Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
-			Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, Question: byChat[r.ID],
+			Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, Question: byChat[r.ID], StoppedByParent: stoppedByParent[r.ID],
 		}
+		if r.AgentID != agentID {
+			chats[i].AgentID, chats[i].AgentName = r.AgentID, r.AgentName
+		}
+		chats[i].ParentAgentID, chats[i].ParentAgentName = otherBot(agentID, r.ParentAgentID, r.ParentAgentName)
 	}
 	return chats, nil
+}
+
+// otherBot returns the bot of a parent when it is not the bot that was asked for.
+func otherBot(agentID string, id, name sql.NullString) (string, string) {
+	if !id.Valid || id.String == agentID {
+		return "", ""
+	}
+	return id.String, name.String
+}
+
+// childStoppedByParent refines the SQL candidate for a child with mixed pending input. The native
+// queue belongs to the bot of the child, which can differ from the bot that lists it.
+func (s *Service) childStoppedByParent(ctx context.Context, id int64) (bool, error) {
+	pending, err := s.q.ListChildPending(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	user := false
+	parent := false
+	for _, p := range pending {
+		user = user || !p.FromParent
+		parent = parent || p.FromParent
+	}
+	if !parent || !user {
+		return parent, nil
+	}
+	c, err := s.q.GetConversation(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if !c.ExecutionID.Valid {
+		return true, nil
+	}
+	for _, p := range pending {
+		if !p.FromParent {
+			continue
+		}
+		outcome, err := s.engine.PeekWithdrawal(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}, p.ID)
+		if errors.Is(err, engine.ErrNotFound) || errors.Is(err, engine.ErrModelsPending) || errors.Is(err, engine.ErrMaintenance) {
+			return true, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if outcome != engine.Placed {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Get returns chat id of agentID, or ErrNotFound.
@@ -474,12 +547,14 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	if err != nil {
 		return Chat{}, err
 	}
-	return Chat{
+	c := Chat{
 		Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 		Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, ExecutionID: r.ExecutionID.Int64, Question: question,
 		ForkedFrom: forkOrigin(r),
-	}, nil
+	}
+	c.ParentAgentID, c.ParentAgentName = otherBot(agentID, r.ParentAgentID, r.ParentAgentName)
+	return c, nil
 }
 
 func forkOrigin(r sqlc.GetChatRow) *Origin {

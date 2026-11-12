@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -29,7 +30,12 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 	t.Cleanup(func() { _ = conn.Close() })
 	for i, key := range []string{"main", "chat:busy", "automation:busy", "task:queued", "task:running", "task:done", "task:failed", "task:cancelled", "task:interrupted", "chat:empty", "telegram:old", "dream:hidden"} {
 		id := int64(100 + i)
-		if _, err := conn.ExecContext(t.Context(), "INSERT INTO conversations (id,agent_id,channel_key,created_at) VALUES (?,'default',?,1)", id, key); err != nil {
+		// The migration gives every old task conversation the parent of its task.
+		var parent any
+		if strings.HasPrefix(key, "task:") {
+			parent = 100
+		}
+		if _, err := conn.ExecContext(t.Context(), "INSERT INTO conversations (id,agent_id,channel_key,parent_id,created_at) VALUES (?,'default',?,?,1)", id, key, parent); err != nil {
 			t.Fatal(err)
 		}
 		kind := "message"
@@ -39,14 +45,8 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 		if _, err := conn.ExecContext(t.Context(), "INSERT INTO submissions (id,conversation_id,content,status,created_at,kind) VALUES (?,?,'fixture','pending',1,?)", fmt.Sprint(id), id, kind); err != nil {
 			t.Fatal(err)
 		}
-		if i >= 3 && i <= 8 {
-			status := key[len("task:"):]
-			if _, err := conn.ExecContext(t.Context(), "INSERT INTO tasks (id,parent_conversation_id,conversation_id,spawn_key,source_request_id,title,status,created_at) VALUES (?,100,?,?,?,'fixture',?,1)", fmt.Sprint(id), id, key, fmt.Sprint(id), status); err != nil {
-				t.Fatal(err)
-			}
-		}
 	}
-	// A queued task counts even with no pending worker input. Two inputs in a Chat count once.
+	// A session with a pending input counts, and so does a child session. Two inputs in a Chat count once.
 	for _, stmt := range []string{
 		"UPDATE submissions SET status='done' WHERE conversation_id=103",
 		// A finished task has settled its own input. A pending input there would be a continuation.
@@ -57,11 +57,10 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// A finished task whose session holds a pending user message is active again.
+	// A finished child session that holds a pending user message is active again.
 	for _, stmt := range []string{
-		"INSERT INTO conversations (id,agent_id,channel_key,created_at) VALUES (300,'default','task:continued',1)",
+		"INSERT INTO conversations (id,agent_id,channel_key,parent_id,created_at) VALUES (300,'default','chat:continued',100,1)",
 		"INSERT INTO submissions (id,conversation_id,content,status,created_at,kind) VALUES ('300',300,'goal','done',1,'message')",
-		"INSERT INTO tasks (id,parent_conversation_id,conversation_id,spawn_key,source_request_id,title,status,created_at) VALUES ('300',100,300,'task:continued','300','fixture','done',1)",
 		"INSERT INTO submissions (id,conversation_id,content,status,created_at,kind) VALUES ('continuation',300,'reply','pending',2,'message')",
 	} {
 		if _, err := conn.ExecContext(t.Context(), stmt); err != nil {
@@ -91,8 +90,9 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 		} `json:"agents"`
 	}
 	d.must(t, http.MethodGet, "/api/agents", nil, &listed)
+	// The status column of an old task is not state any more: 103 is 'queued' there but has no pending input.
 	want := map[string]agentActivity{
-		"default": {ActiveSessions: 5, RunningChannels: 1, EnabledAutomations: 2},
+		"default": {ActiveSessions: 4, RunningChannels: 1, EnabledAutomations: 2},
 		b.ID:      {ActiveSessions: 1, RunningChannels: 0, EnabledAutomations: 1},
 	}
 	if len(listed.Agents) != len(want) {
@@ -105,19 +105,12 @@ func TestUserReadsAllAgentActivityInOneList(t *testing.T) {
 		var sessions struct {
 			Chats []struct {
 				Busy bool `json:"busy"`
-				Task *struct {
-					Status string `json:"status"`
-				} `json:"task"`
 			} `json:"chats"`
 		}
 		d.must(t, http.MethodGet, "/api/agents/"+agent.ID+"/chats", nil, &sessions)
 		var active int64
 		for _, session := range sessions.Chats {
-			if session.Task != nil {
-				if session.Task.Status == "queued" || session.Task.Status == "running" || session.Busy {
-					active++
-				}
-			} else if session.Busy {
+			if session.Busy {
 				active++
 			}
 		}

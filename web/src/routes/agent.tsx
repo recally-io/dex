@@ -95,7 +95,7 @@ function Agent({ settings }: { settings: Settings }) {
             </div>
             <ModelPicker
               trigger={
-                <Button variant="secondary" size="sm">
+                <Button variant="secondary">
                   {settings.agent.modelId ? "Change model" : "Choose model"}
                   <svg
                     width="11"
@@ -138,7 +138,7 @@ function Agent({ settings }: { settings: Settings }) {
                   notify(`Thinking is now ${thinkingNames[level]}. It applies from the next message.`);
                 }}
                 trigger={
-                  <Button variant="secondary" size="sm">
+                  <Button variant="secondary">
                     Change thinking
                     <svg
                       width="11"
@@ -158,7 +158,7 @@ function Agent({ settings }: { settings: Settings }) {
                 }
               />
             ) : (
-              <Button variant="secondary" size="sm" disabled>
+              <Button variant="secondary" disabled>
                 Change thinking
               </Button>
             )}

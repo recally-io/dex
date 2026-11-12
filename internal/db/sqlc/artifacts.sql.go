@@ -56,23 +56,20 @@ func (q *Queries) GetActiveArtifactInput(ctx context.Context, arg GetActiveArtif
 }
 
 const getArtifact = `-- name: GetArtifact :one
-SELECT id, agent_id, conversation_id, display_conversation_id, operation_key, name, size, created_at FROM artifacts WHERE id = ? AND agent_id = ? AND (conversation_id = ? OR display_conversation_id = ?)
+SELECT id, agent_id, conversation_id, display_conversation_id, operation_key, name, size, created_at FROM artifacts WHERE id = ? AND (conversation_id = ? OR display_conversation_id = ?)
 `
 
 type GetArtifactParams struct {
 	ID                    string `json:"id"`
-	AgentID               string `json:"agent_id"`
 	ConversationID        int64  `json:"conversation_id"`
 	DisplayConversationID int64  `json:"display_conversation_id"`
 }
 
+// The caller has already checked access to the conversation. The file can belong to another bot:
+// a child in another bot shows its file in the conversation of its parent. artifacts.agent_id
+// names the bot that holds the file.
 func (q *Queries) GetArtifact(ctx context.Context, arg GetArtifactParams) (Artifact, error) {
-	row := q.db.QueryRowContext(ctx, getArtifact,
-		arg.ID,
-		arg.AgentID,
-		arg.ConversationID,
-		arg.DisplayConversationID,
-	)
+	row := q.db.QueryRowContext(ctx, getArtifact, arg.ID, arg.ConversationID, arg.DisplayConversationID)
 	var i Artifact
 	err := row.Scan(
 		&i.ID,
@@ -113,17 +110,16 @@ func (q *Queries) GetArtifactByOperation(ctx context.Context, arg GetArtifactByO
 }
 
 const listArtifacts = `-- name: ListArtifacts :many
-SELECT id, agent_id, conversation_id, display_conversation_id, operation_key, name, size, created_at FROM artifacts WHERE agent_id = ? AND (conversation_id = ? OR display_conversation_id = ?) ORDER BY created_at, id
+SELECT id, agent_id, conversation_id, display_conversation_id, operation_key, name, size, created_at FROM artifacts WHERE conversation_id = ? OR display_conversation_id = ? ORDER BY created_at, id
 `
 
 type ListArtifactsParams struct {
-	AgentID               string `json:"agent_id"`
-	ConversationID        int64  `json:"conversation_id"`
-	DisplayConversationID int64  `json:"display_conversation_id"`
+	ConversationID        int64 `json:"conversation_id"`
+	DisplayConversationID int64 `json:"display_conversation_id"`
 }
 
 func (q *Queries) ListArtifacts(ctx context.Context, arg ListArtifactsParams) ([]Artifact, error) {
-	rows, err := q.db.QueryContext(ctx, listArtifacts, arg.AgentID, arg.ConversationID, arg.DisplayConversationID)
+	rows, err := q.db.QueryContext(ctx, listArtifacts, arg.ConversationID, arg.DisplayConversationID)
 	if err != nil {
 		return nil, err
 	}

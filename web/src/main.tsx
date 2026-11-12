@@ -16,7 +16,7 @@ import { Shell } from "./components/shell";
 import { AgentLayout } from "./components/agent-layout";
 import { ChatPage } from "./routes/chat";
 import { AutomationPage, AutomationsPage } from "./routes/automations";
-import { SessionsPage, TaskPage } from "./routes/sessions";
+import { SessionsPage, TurnPage } from "./routes/sessions";
 import { AgentPage, InstructionsPage } from "./routes/agent";
 import { ProvidersPage } from "./routes/providers";
 import { ChannelPage, ChannelsPage } from "./routes/channels";
@@ -78,7 +78,7 @@ const channels = agentPage("/channels", ChannelsPage);
 const automations = agentPage("/automations", AutomationsPage);
 
 // Needs you, Work, Automations and the Inbox list were global pages. Each bot now shows its own
-// items: tasks in its task panel, routines and their results under Routines. Secrets split into
+// items: questions in its Sessions panel, routines and their results under Routines. Secrets split into
 // the global Environment page and the Tools tab of each bot.
 const retired = <P extends string>(path: P, href: string) =>
   createRoute({
@@ -183,12 +183,13 @@ const tasks = createRoute({
   },
 });
 
-const task = createRoute({ getParentRoute: () => agentPages, path: "/tasks/$taskId", component: TaskRoute });
+// A result link and an old task link name a turn. The page opens the session that holds it.
+const turn = createRoute({ getParentRoute: () => agentPages, path: "/tasks/$turnId", component: TurnRoute });
 
-function TaskRoute() {
-  const { taskId } = task.useParams();
+function TurnRoute() {
+  const { turnId } = turn.useParams();
 
-  return <TaskPage key={taskId} taskId={taskId} />;
+  return <TurnPage key={turnId} turnId={turnId} />;
 }
 
 const oldAgentPage = <P extends string>(path: P) =>
@@ -211,7 +212,7 @@ const oldAgentRoutes = [
   oldAgentPage("/automations/$automationId"),
   oldAgentPage("/sessions"),
   oldAgentPage("/c/$chatId"),
-  oldAgentPage("/tasks/$taskId"),
+  oldAgentPage("/tasks/$turnId"),
   oldAgentPage("/agent"),
   oldAgentPage("/extensions"),
 ] as const;
@@ -223,7 +224,7 @@ const router = createRouter({
       home,
       chat,
       sessions,
-      task,
+      turn,
       instructions,
       channels,
       channel,

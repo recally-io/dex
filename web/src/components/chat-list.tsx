@@ -14,7 +14,8 @@ import {
 import { useAgentId } from "../lib/agent-scope";
 import { useApp } from "../lib/app-state";
 import { errorText, refreshChats } from "../lib/queries";
-import { sessionKind } from "../lib/tasks";
+import { useNow } from "../lib/clock";
+import { isStalled, parentName, sessionAgentId, sessionKind } from "../lib/sessions";
 import { cn } from "../lib/utils";
 import { Button, buttonVariants } from "./ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
@@ -52,7 +53,11 @@ function useArchive(openChat: number) {
   const archive = useMutation({ ...archiveChatMutation(), onSuccess: done, onError: fail });
   const restore = useMutation({ ...unarchiveChatMutation(), onSuccess: done, onError: fail });
 
-  return (chat: Chat) => (chat.archivedAt ? restore : archive).mutate({ path: { agentId, chatId: chat.id } });
+  // A child in another bot is archived in that bot.
+  return (chat: Chat) =>
+    (chat.archivedAt ? restore : archive).mutate({
+      path: { agentId: sessionAgentId(chat, agentId), chatId: chat.id },
+    });
 }
 
 /** ChatGPT-style buckets by latest activity: recent days first, then one per month. */
@@ -76,15 +81,16 @@ const row =
   "h-9 min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground aria-[current=page]:bg-accent aria-[current=page]:text-foreground";
 
 const menuItem =
-  "h-8 w-full justify-start gap-2 rounded-[7px] px-2 text-[12.5px] text-foreground data-highlighted:bg-accent";
+  "h-8 w-full justify-start gap-2 rounded-control px-2 text-[12.5px] text-foreground data-highlighted:bg-accent";
 
 const menuPopup =
-  "w-[180px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-[10px] bg-card p-1 shadow-raised outline-none";
+  "w-[180px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-card bg-card p-1 shadow-raised outline-none";
 
 /**
- * The Chats section of the Sessions panel. Main is the bot's one timeline: it comes first and has
- * no menu. Chat sessions follow in date groups, newest first, and archived ones go last. Today
- * starts open; each group shows five chats until the user asks for more.
+ * The session list of the Sessions panel. Main is the bot's one timeline: it comes first and has
+ * no menu. Chat sessions and child sessions follow in date groups, newest activity first, and
+ * archived ones go last. A busy session has a dot, and a stalled one says so. Today starts open;
+ * each group shows five sessions until the user asks for more.
  */
 export function ChatSection({ chatId }: { chatId: number }) {
   const agentId = useAgentId();
@@ -106,8 +112,16 @@ export function ChatSection({ chatId }: { chatId: number }) {
   // The list skips empty chats, so a Chat opened just now shows on its own until its first message.
   const pending = !onMain && sessions.isSuccess && !chats.some((chat) => chat.id === chatId);
 
+  // A child session names its parent. Main is not in the list, and an archived parent still has its title.
+
   const item = (chat: Chat) => (
-    <ChatRow key={chat.id} chat={chat} current={chat.id === chatId} onToggleArchive={toggleArchive} />
+    <ChatRow
+      key={chat.id}
+      chat={chat}
+      parent={parentName(chat, main.data?.id, sessions.data?.chats ?? [])}
+      current={chat.id === chatId}
+      onToggleArchive={toggleArchive}
+    />
   );
 
   return (
@@ -216,16 +230,20 @@ function Group({
 /** One Chat. The ⋯ button and a right-click open the same menu. */
 function ChatRow({
   chat,
+  parent,
   current,
   onToggleArchive,
 }: {
   chat: Chat;
+  parent?: string;
   current: boolean;
   onToggleArchive: (chat: Chat) => void;
 }) {
   const agentId = useAgentId();
   const action = chat.archivedAt ? "Restore" : "Archive";
   const title = chat.title || "New chat";
+  const now = useNow();
+  const stalled = isStalled(chat, now);
 
   const itemContent = (
     <>
@@ -239,11 +257,30 @@ function ChatRow({
       <ContextMenuTrigger className="group relative flex min-w-0 items-center">
         <Link
           to="/a/$agentId/c/$chatId"
-          params={{ agentId, chatId: String(chat.id) }}
+          params={{ agentId: sessionAgentId(chat, agentId), chatId: String(chat.id) }}
           aria-current={current ? "page" : undefined}
-          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), row, "flex-1 pr-9")}
+          className={cn(
+            buttonVariants({ variant: "ghost", size: "sm" }),
+            row,
+            "flex-1 pr-9",
+            parent && "h-auto min-h-9 py-1.5",
+          )}
         >
-          <span className="min-w-0 flex-1 truncate">{title}</span>
+          {chat.busy ? (
+            <span
+              role="img"
+              aria-label={stalled ? "Stalled" : "Running"}
+              title={stalled ? "Stalled: no sign of work" : "Running"}
+              className={cn("size-1.5 shrink-0 rounded-full", stalled ? "bg-orange" : "bg-primary")}
+            />
+          ) : null}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate">{title}</span>
+            {parent ? (
+              <span className="block truncate text-[11px] text-muted-foreground">Started by {parent}</span>
+            ) : null}
+          </span>
+          {stalled ? <span className="shrink-0 text-[11.5px] text-orange">Stalled</span> : null}
           <span className="shrink-0 text-[11.5px] text-muted-foreground tabular-nums group-hover:invisible group-focus-within:invisible">
             {format(chat.updatedAt, isToday(chat.updatedAt) ? "HH:mm" : "d MMM")}
           </span>

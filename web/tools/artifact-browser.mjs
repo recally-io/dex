@@ -80,13 +80,13 @@ try {
     main.id,
     JSON.stringify({
       title: "Artifact task",
-      goal: 'deliver_file {"path":"task.md"}',
+      message: 'deliver_file {"path":"task.md"}',
       provider: "faux",
       modelId: "tool",
     }),
   );
-  const task = await taskNamed("Artifact task");
-  const taskArtifact = await artifact(task.conversationId, "task.md");
+  const task = await childNamed("Artifact task");
+  const taskArtifact = await artifact(task.id, "task.md");
   await model("tool");
   const routine = await makeRoutine("Routine delivery", 'deliver_file {"path":"routine.md"}');
   const run = await api(`/api/agents/default/automations/${routine.id}/run`, {}, "POST");
@@ -97,15 +97,15 @@ try {
     "Routine task",
     JSON.stringify({
       title: "Routine child",
-      goal: 'deliver_file {"path":"routine-task.md"}',
+      message: 'deliver_file {"path":"routine-task.md"}',
       provider: "faux",
       modelId: "tool",
     }),
   );
 
   const run2 = await api(`/api/agents/default/automations/${routine2.id}/run`, {}, "POST");
-  const child = await taskNamed("Routine child");
-  const childArtifact = await artifact(child.conversationId, "routine-task.md");
+  const child = await childNamed("Routine child");
+  const childArtifact = await artifact(child.id, "routine-task.md");
   assert.equal(childArtifact.displayConversationId, run2.chatId);
   await model("echo");
   chrome = spawn(
@@ -174,23 +174,24 @@ try {
   await preview("main.markdown", mainArtifact.id);
   await click("Continue editing");
   await hasDraft(mainArtifact.id);
-  await poll("task link", () =>
-    evaluate(`!!document.querySelector('a[href="/a/default/tasks/${task.id}"]:not([inert] *)')`),
+  await poll("result link", () =>
+    evaluate(`!!document.querySelector('a[href^="/a/default/tasks/"]:not([inert] *)')`),
   );
-  await evaluate(`document.querySelector('a[href="/a/default/tasks/${task.id}"]:not([inert] *)').click()`);
+  await evaluate(`document.querySelector('a[href^="/a/default/tasks/"]:not([inert] *)').click()`);
+  await poll(
+    "result link opens the child session",
+    async () => (await evaluate("location.pathname")) === `/a/default/c/${task.id}`,
+  );
   await preview("task.md", taskArtifact.id);
   await click("Continue editing");
-  await poll(
-    "terminal task opens its writable conversation",
-    async () => (await evaluate("location.pathname")) === `/a/default/c/${task.conversationId}`,
-  );
   await hasDraft(taskArtifact.id);
-  assert.equal((await api(`/api/agents/default/chats/${task.conversationId}`)).readOnly, false);
+  assert.equal(await evaluate("location.pathname"), `/a/default/c/${task.id}`);
+  assert.equal((await api(`/api/agents/default/chats/${task.id}`)).readOnly, false);
   await shot("task");
   await evaluate(`document.querySelector('aside a[href="/a/default"]').click()`);
   await poll("main restored", async () => (await evaluate("location.pathname")) === "/a/default");
   await hasDraft(mainArtifact.id);
-  results.push("terminal task continues in its writable conversation and preserves the main draft");
+  results.push("a child session continues in its own conversation and preserves the main draft");
   await visit(`/a/default/c/${run.chatId}`);
   await preview("routine.md", routineArtifact.id);
   await click("Continue editing");
@@ -204,19 +205,23 @@ try {
   assert.equal((await api(`/api/agents/default/chats/${routineChat}`)).cwd, project);
   await shot("routine");
   results.push("routine opens writable Chat with project");
-  await visit(`/a/default/tasks/${child.id}`);
+  await visit(`/a/default/c/${run2.chatId}`);
+  await poll("routine result link", () =>
+    evaluate(`!!document.querySelector('a[href^="/a/default/tasks/"]:not([inert] *)')`),
+  );
+  await evaluate(`document.querySelector('a[href^="/a/default/tasks/"]:not([inert] *)').click()`);
+  await poll(
+    "routine result link opens the child session",
+    async () => (await evaluate("location.pathname")) === `/a/default/c/${child.id}`,
+  );
   await preview("routine-task.md", childArtifact.id);
   await click("Continue editing");
-  await poll("routine child opens writable Chat", async () =>
-    (await evaluate("location.pathname")).startsWith("/a/default/c/"),
-  );
   await hasDraft(childArtifact.id);
-  const childChat = Number((await evaluate("location.pathname")).split("/").at(-1));
-  const childView = await api(`/api/agents/default/chats/${childChat}`);
+  const childView = await api(`/api/agents/default/chats/${child.id}`);
   assert.equal(childView.readOnly, false);
   assert.equal(childView.cwd, project);
   await shot("routine-task");
-  results.push("routine task opens writable Chat with project");
+  results.push("a routine child session is a writable Chat with project");
   await writeFile(
     join(evidence, "results.json"),
     JSON.stringify(
@@ -293,11 +298,11 @@ async function artifact(id, name) {
   );
 }
 
-async function taskNamed(title) {
+async function childNamed(title) {
   return poll(title, async () =>
-    (await api("/api/agents/default/chats")).chats
-      .map((c) => c.task)
-      .find((t) => t?.title === title && t.status === "done"),
+    (await api("/api/agents/default/chats")).chats.find(
+      (c) => c.parentId !== undefined && c.title === title && !c.busy,
+    ),
   );
 }
 

@@ -12,7 +12,10 @@ import (
 	"github.com/recally-io/dex/internal/db"
 )
 
-const childSessionsMigration = "20261111180000_child_sessions.sql"
+const (
+	childSessionsMigration = "20261111180000_child_sessions.sql"
+	dropTasksMigration     = "20261112120000_drop_tasks.sql"
+)
 
 func migrationFS(t *testing.T, keep func(name string) bool) fstest.MapFS {
 	t.Helper()
@@ -73,6 +76,7 @@ func TestUserUpgradesTaskConversationsToChildSessions(t *testing.T) {
 		`INSERT INTO submissions (id, conversation_id, content, status, created_at) VALUES ('source', 1, 'please delegate', 'done', 1), ('t1', 2, 'goal', 'done', 2), ('user', 2, 'thanks', 'done', 3)`,
 		`INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, created_at) VALUES ('t1', 1, 2, 'default/7', 'source', 'Old task', 'done', 2)`,
 		`INSERT INTO submissions (id, conversation_id, content, status, kind, source_key, created_at) VALUES ('task:t1:result', 1, '{}', 'done', 'task_result', 'task:t1:result', 4)`,
+		`INSERT INTO task_steer_receipts (agent_id, parent_conversation_id, task_id, request_id, native_request_id, content, state, created_at) VALUES ('default', 1, 't1', 'steer', 'native-steer', 'more', 'pending', 5)`,
 	} {
 		if _, err := old.ExecContext(t.Context(), stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -117,10 +121,10 @@ func TestUserUpgradesTaskConversationsToChildSessions(t *testing.T) {
 	if requests["t1"] != (sql.NullString{String: "source", Valid: true}) || requests["user"].Valid || requests["source"].Valid || requests["task:t1:result"].Valid {
 		t.Fatalf("parent_request_id: %+v", requests)
 	}
-	// And the old task row stays readable for the web UI.
-	var title string
-	if err := conn.QueryRowContext(t.Context(), `SELECT title FROM tasks WHERE id = 't1'`).Scan(&title); err != nil || title != "Old task" {
-		t.Fatalf("task row: %q, %v", title, err)
+	// And the task tables are gone, with the rows and the steer receipt that they held.
+	var tables int
+	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM sqlite_master WHERE name IN ('tasks', 'task_steer_receipts')`).Scan(&tables); err != nil || tables != 0 {
+		t.Fatalf("task tables left: %d, %v", tables, err)
 	}
 }
 
@@ -154,5 +158,38 @@ func TestChildSessionsMigrationRollsBackAndAppliesAgain(t *testing.T) {
 	}
 	if _, err := conn.ExecContext(t.Context(), `SELECT parent_request_id FROM submissions`); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDropTasksMigrationRollsBackAndAppliesAgain(t *testing.T) {
+	// Given a database at the newest schema.
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "control.sqlite")+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	provider, err := goose.NewProvider(goose.DialectSQLite3, conn, migrationFS(t, func(name string) bool { return name <= dropTasksMigration }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Up(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	// When the migration rolls back and applies again.
+	if _, err := provider.Down(t.Context()); err != nil {
+		t.Fatalf("down: %v", err)
+	}
+	// Then down restores both tables, empty, and up drops them again.
+	for _, table := range []string{"tasks", "task_steer_receipts"} {
+		var rows int
+		if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM `+table).Scan(&rows); err != nil || rows != 0 {
+			t.Fatalf("%s after down: %d, %v", table, rows, err)
+		}
+	}
+	if _, err := provider.UpByOne(t.Context()); err != nil {
+		t.Fatalf("up again: %v", err)
+	}
+	if _, err := conn.ExecContext(t.Context(), `SELECT 1 FROM tasks`); err == nil {
+		t.Fatal("up kept tasks")
 	}
 }
