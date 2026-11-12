@@ -5,6 +5,7 @@ import {
   CodeXml,
   Copy,
   CornerDownLeft,
+  CornerDownRight,
   FileText,
   GitBranch,
   SquarePen,
@@ -705,7 +706,17 @@ export function TranscriptItem({
     }
 
     case "task":
-      return <ResultLine item={item} />;
+      if (item.taskId) return <ResultLine item={item} />;
+
+      return (
+        <header className="flex min-w-0 items-start gap-2 text-[13px] leading-5">
+          <CornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
+          <h3 className="min-w-0 [overflow-wrap:anywhere]">
+            <span className="mr-1.5 font-medium text-muted-foreground">Background command</span>
+            <span className="font-semibold text-foreground">{item.title}</span>
+          </h3>
+        </header>
+      );
     case "assistant":
       if (!live && !item.text.trim()) return null;
 

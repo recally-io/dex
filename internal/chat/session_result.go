@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json/v2"
@@ -82,13 +83,17 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 	return link.ParentID.Int64, nil
 }
 
-// resultLabel reads the turn and the session title from a result, to label the transcript entry.
+// resultLabel reads the turn and the session title from a result, to label the transcript entry. The
+// wake-up of a background command has no turn: its label is the title.
 func resultLabel(content string) (turn, title string) {
 	var body struct {
-		Result sessionResult `json:"task-result"`
+		Result     sessionResult `json:"task-result"`
+		Background struct {
+			Label string `json:"label"`
+		} `json:"background-result"`
 	}
 	if json.Unmarshal([]byte(content), &body) != nil {
 		return "", ""
 	}
-	return body.Result.Turn, body.Result.Title
+	return body.Result.Turn, cmp.Or(body.Result.Title, body.Background.Label)
 }

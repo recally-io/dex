@@ -48,9 +48,12 @@ WHERE s.conversation_id = ? AND s.kind = 'message'
 ORDER BY s.rowid DESC LIMIT 1;
 
 -- name: GetTurn :one
+-- A turn is an input of a person or a session. The wake-up of a background command is a turn too: a
+-- parent reads it when the result of a child session cut its answer. It stays a non-user input,
+-- and ListTurns does not list it.
 SELECT s.id, s.conversation_id, s.content, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s
-WHERE s.id = ? AND s.kind = 'message';
+WHERE s.id = ? AND (s.kind = 'message' OR (s.kind = 'task_result' AND s.id LIKE 'background:%'));
 
 -- name: ListTurns :many
 -- The turns of a session, newest first. A non-empty before is the turn ID that the page follows.

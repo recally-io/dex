@@ -35,6 +35,7 @@ type TaskTools struct {
 	SetProject       func(context.Context, TaskContext, string) (string, error)
 	AskUser          func(context.Context, TaskContext, AskUserArgs) (QuestionInfo, error)
 	Sessions         SessionTools
+	Background       BackgroundTools
 }
 
 // SessionTools are the operations of the session tools. Send, Stop, and Fork act on the children of
