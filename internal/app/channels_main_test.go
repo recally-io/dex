@@ -206,6 +206,14 @@ func TestUserChannelMainTaskResultsFollowTheirSource(t *testing.T) {
 				t.Fatalf("channel work parent=%d main=%d", parent, main)
 			}
 			work := waitExecution(t, conn, main, "Channel result", "running")
+			// The channel receives the front desk's reply while the child is still running.
+			var requestID string
+			eventually(t, "channel request", func() (bool, any) {
+				err := conn.QueryRowContext(t.Context(), "SELECT id FROM submissions WHERE origin=? AND kind='message'", e.peer).Scan(&requestID)
+				return err == nil, err
+			})
+			initial := waitResultSubmission(t, conn, requestID, "done")
+			e.wait(t, initial.answer)
 			releaseResultGate(t, e.dir, "channel-result")
 			web := d.send(t, main, childJSON(t, map[string]any{"title": "Web result", "message": "web report", "provider": "faux", "modelId": "echo"}))
 			waitResultSubmission(t, conn, web, "done")
