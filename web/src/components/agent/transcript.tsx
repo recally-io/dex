@@ -1,5 +1,4 @@
 import {
-  ArrowUpRight,
   Check,
   ChevronRight,
   Clock3,
@@ -284,7 +283,6 @@ export function Steps({
   memory?: string;
   thinking?: boolean;
 }) {
-  const agentId = useAgentId();
   const failedId = steps.find((step) => step.kind === "tool" && step.status === "error")?.id;
   const [open, setOpen] = useState<boolean | null>(null);
   // Until the user picks a line, the first failed call shows its output. A call can fail after
@@ -293,37 +291,8 @@ export function Steps({
   const selected = picked === undefined ? (failedId ?? null) : picked;
   const expanded = open ?? !!failedId;
   const title = stepTitle(steps, memory, thinking);
-  const first = steps[0];
   // Tools run without a sandbox, so a closed row still shows what runs now.
   const running = steps.find((step) => step.kind === "tool" && step.status === "running");
-
-  if (steps.length === 1 && first.kind === "tool" && first.name === "spawn_task" && !failedId) {
-    const dispatch = describeTool(first);
-
-    return (
-      <div className="flex min-w-0 items-start gap-2 py-1 text-[13px] leading-5">
-        <ArrowUpRight size={16} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
-        <p className="min-w-0 [overflow-wrap:anywhere]">
-          {title.active ? (
-            <Shimmer>{dispatch.verb}</Shimmer>
-          ) : (
-            <span className="font-medium text-muted-foreground">{dispatch.verb}</span>
-          )}
-          {first.taskId ? (
-            <Link
-              to="/a/$agentId/tasks/$taskId"
-              params={{ agentId, taskId: first.taskId }}
-              className="ml-1.5 font-medium text-foreground decoration-ring underline-offset-3 hover:underline"
-            >
-              {dispatch.target}
-            </Link>
-          ) : (
-            <span className="ml-1.5 font-medium text-foreground">{dispatch.target}</span>
-          )}
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className="flex w-full flex-col">
@@ -701,10 +670,10 @@ export function TranscriptItem({
         <header className="flex min-w-0 items-start gap-2 text-[13px] leading-5">
           <CornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
           <h3 className="min-w-0 [overflow-wrap:anywhere]">
-            <span className="mr-1.5 font-medium text-muted-foreground">Background result</span>
+            <span className="mr-1.5 font-medium text-muted-foreground">Session result</span>
             <Link
-              to="/a/$agentId/tasks/$taskId"
-              params={{ agentId, taskId: item.taskId }}
+              to="/a/$agentId/tasks/$turnId"
+              params={{ agentId, turnId: item.taskId }}
               className="font-semibold text-foreground decoration-ring underline-offset-3 hover:underline"
             >
               {item.title}
@@ -852,7 +821,7 @@ export function Transcript({
     block.kind === "task" ? (
       <section
         key={block.item.id}
-        aria-label={`Background result: ${block.item.title}`}
+        aria-label={`Session result: ${block.item.title}`}
         className="mt-5 flex min-w-0 flex-col gap-3 first:mt-0"
       >
         <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />

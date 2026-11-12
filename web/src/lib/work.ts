@@ -1,6 +1,5 @@
 import { getWorkOptions } from "../api/generated/@tanstack/react-query.gen";
-import type { AgentActivity, Chat, InboxItem, TaskSummary, Work } from "../api/generated/types.gen";
-import { taskBucket } from "./tasks";
+import type { AgentActivity, Chat, InboxItem, Work } from "../api/generated/types.gen";
 
 export function automationNeedsYou(
   id: string,
@@ -17,33 +16,26 @@ export function openQuestion(chat: Pick<Chat, "question">) {
   return chat.question?.status === "open" ? chat.question : undefined;
 }
 
-export function boardBucket(chat: Pick<Chat, "task" | "busy" | "question">): "needs" | "working" | "idle" {
-  if (openQuestion(chat) || (chat.task && needsTask(chat.task))) return "needs";
+export function boardBucket(chat: Pick<Chat, "busy" | "question">): "needs" | "working" | "idle" {
+  if (openQuestion(chat)) return "needs";
 
-  if (chat.task ? ["running", "admitting", "queued"].includes(chat.task.status) : chat.busy) return "working";
-
-  return "idle";
-}
-
-export function needsTask(task: TaskSummary) {
-  if (task.status === "running" || task.status === "admitting" || task.status === "queued") return false;
-
-  return taskBucket(task) === "needs-you";
+  return chat.busy ? "working" : "idle";
 }
 
 export type BotStatus = "needs" | "working" | undefined;
 
 /** The fields of the Work response that a bot status reads. */
 type WorkState = {
-  sessions: { agentId: string; chat: Pick<Chat, "task" | "busy" | "question"> }[];
+  sessions: { agentId: string; chat: Pick<Chat, "busy" | "question"> }[];
   automations: { agentId: string; setup: boolean }[];
   inbox: Pick<InboxItem, "agentId" | "outcome" | "dismissed">[];
 };
 
 /**
- * The one status a bot row shows. "needs" wins over "working": a blocked or failed task, an open
- * question, a failed routine run that is not done, or a routine that needs setup. The bot page
- * shows each of these again: tasks and questions in the task panel, routines in the Routines tab.
+ * The one status a bot row shows. "needs" wins over "working": an open question, a failed routine
+ * run that is not done, or a routine that needs setup. The bot page shows each of these again:
+ * questions in the Sessions panel, routines in the Routines tab. A failed child session is not
+ * here: its parent session tells the user.
  */
 export function botStatus(
   agentId: string,
@@ -66,7 +58,7 @@ export function botStatus(
 }
 
 // Bot status reads no schedule, so the range is the smallest that the API accepts. One fixed range
-// gives the sidebar and the task panel one shared query.
+// gives the sidebar and the Sessions panel one shared query.
 const opened = Date.now();
 
 export const workOptions = () => ({
@@ -74,10 +66,7 @@ export const workOptions = () => ({
   refetchInterval: 10_000,
 });
 
-/**
- * The items besides tasks that make a bot need the user. The task panel lists them, so each orange
- * dot has a place to act on it.
- */
+/** The items that make a bot need the user. The Sessions panel lists them, so each orange dot has a place to act on it. */
 export function needsItems(agentId: string, work: Work | undefined) {
   return {
     questions: (work?.sessions ?? [])

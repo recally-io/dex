@@ -1,24 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import type { TaskSummary } from "../api/generated/types.gen";
-import { boardBucket, botStatus, needsTask, automationNeedsYou, openQuestion } from "./work";
-
-const task: TaskSummary = {
-  id: "task",
-  title: "Work",
-  status: "done",
-  createdAt: 1,
-  endedAt: 2,
-  conversationId: 1,
-  parentConversationId: 2,
-  reportOutcome: "blocked",
-};
-
-test("blocked and failed tasks need action until handled", () => {
-  expect(needsTask(task)).toBe(true);
-  expect(needsTask({ ...task, handledAt: 3 })).toBe(false);
-  expect(needsTask({ ...task, status: "interrupted", reportOutcome: undefined })).toBe(true);
-  expect(needsTask({ ...task, status: "running", endedAt: undefined })).toBe(false);
-});
+import { boardBucket, botStatus, automationNeedsYou, openQuestion } from "./work";
 
 test("setup and any unhandled failed run keep an automation in Needs you", () => {
   expect(automationNeedsYou("a", true, [])).toBe(true);
@@ -30,12 +11,9 @@ test("setup and any unhandled failed run keep an automation in Needs you", () =>
   );
 });
 
-test("running tasks stay in Working even when activity is old", () => {
-  expect(
-    boardBucket({ task: { ...task, status: "running", endedAt: undefined, lastActivityAt: 1 }, busy: true }),
-  ).toBe("working");
-  expect(boardBucket({ task, busy: false })).toBe("needs");
-  expect(boardBucket({ task: { ...task, handledAt: 3 }, busy: false })).toBe("idle");
+test("a busy session is Working, and a failed child session does not need the user", () => {
+  expect(boardBucket({ busy: true })).toBe("working");
+  expect(boardBucket({ busy: false })).toBe("idle");
 });
 
 test("an open question needs the user until it is answered", () => {
@@ -59,16 +37,14 @@ test("a bot row shows needs you before working, and only for its own items", () 
     "working",
   );
 
+  const question = { id: "q", text: "Which one?", options: [], status: "open" as const };
+
   expect(
-    botStatus(
-      "a",
-      { ...empty, sessions: [{ agentId: "a", chat: { busy: false, task } }] },
-      { activeSessions: 1 },
-    ),
+    botStatus("a", { ...empty, sessions: [{ agentId: "a", chat: { busy: true, question } }] }, undefined),
   ).toBe("needs");
 
   expect(
-    botStatus("a", { ...empty, sessions: [{ agentId: "b", chat: { busy: false, task } }] }, undefined),
+    botStatus("a", { ...empty, sessions: [{ agentId: "b", chat: { busy: false, question } }] }, undefined),
   ).toBeUndefined();
 
   expect(botStatus("a", { ...empty, inbox: [failedRun] }, undefined)).toBe("needs");

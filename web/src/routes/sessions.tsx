@@ -1,48 +1,23 @@
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChevronRight, MessageCircle, ListTodo, Clock3, Plus } from "lucide-react";
-import type { Chat, TaskSummary } from "../api/generated/types.gen";
+import { ChevronRight, MessageCircle, Clock3, Plus } from "lucide-react";
+import type { Chat } from "../api/generated/types.gen";
 import {
-  getTaskOptions,
+  getMainChatOptions,
+  getTurnChatOptions,
   listChatsOptions,
   createChatMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { activeSessionCount, markTaskSeen, sessionKind, taskTime, taskTimes } from "../lib/tasks";
+import { useNow } from "../lib/clock";
+import { activeSessionCount, isStalled, parentName, sessionKind, sessionTime } from "../lib/sessions";
 import { refreshChats } from "../lib/queries";
 import { Empty, FramedPage, Panel, Section } from "../components/page";
 import { Failure, Loading } from "../components/feedback";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Select } from "../components/form";
-
-const labels = {
-  queued: "Queued",
-  admitting: "Starting",
-  running: "Running",
-  done: "Done",
-  failed: "Failed",
-  cancelled: "Cancelled",
-  interrupted: "Interrupted",
-} as const;
-
-function TaskPill({ task }: { task: Pick<TaskSummary, "status"> }) {
-  return (
-    <Badge
-      variant={
-        task.status === "failed"
-          ? "destructive"
-          : task.status === "running" || task.status === "admitting"
-            ? "secondary"
-            : "outline"
-      }
-      className={`h-5 shrink-0 px-2 text-[11.5px] ${task.status === "running" || task.status === "admitting" ? "bg-orange-tint text-orange" : ""}`}
-    >
-      {labels[task.status]}
-    </Badge>
-  );
-}
 
 export function SessionsPage() {
   const agentId = useAgentId();
@@ -54,6 +29,7 @@ export function SessionsPage() {
     refetchInterval: 3000,
   });
 
+  const main = useQuery(getMainChatOptions({ path: { agentId } }));
   const navigate = useNavigate();
 
   const create = useMutation({
@@ -67,13 +43,14 @@ export function SessionsPage() {
   const [kind, setKind] = useState("All kinds");
   const name = settings.data?.agent.name ?? "dex";
   // Archived Chats live in the Chats sidebar of the Chat tab, not here.
-  const all = (sessions.data?.chats ?? []).filter((chat) => !chat.archivedAt);
+  const everyChat = sessions.data?.chats ?? [];
+  const all = everyChat.filter((chat) => !chat.archivedAt);
   const list = all.filter((chat) => kind === "All kinds" || sessionKind(chat) === kind);
 
   return (
     <FramedPage
       title="Sessions"
-      description={`Conversations of ${name} apart from the main timeline. Each session has its own context. Chat sessions take messages. The other kinds are read-only.`}
+      description={`Conversations of ${name} apart from the main timeline. Each session has its own context. Chat sessions and the sessions that ${name} started take messages. Automation runs are read-only.`}
       actions={
         <Button
           size="sm"
@@ -97,7 +74,7 @@ export function SessionsPage() {
               value={kind}
               onChange={(event) => setKind(event.target.value)}
             >
-              {["All kinds", "Chat", "Task", "Automation"].map((value) => (
+              {["All kinds", "Chat", "Automation"].map((value) => (
                 <option key={value}>{value}</option>
               ))}
             </Select>
@@ -117,7 +94,7 @@ export function SessionsPage() {
           <Panel>
             <ul>
               {list.map((chat) => (
-                <SessionRow key={chat.id} chat={chat} />
+                <SessionRow key={chat.id} chat={chat} parent={parentName(chat, main.data?.id, everyChat)} />
               ))}
             </ul>
           </Panel>
@@ -125,8 +102,8 @@ export function SessionsPage() {
           <Empty title="No sessions of this kind">Choose All kinds to see every session.</Empty>
         ) : (
           <Empty title="No sessions yet">
-            Tasks, automation runs and your Chat sessions show here. Use New session for work that needs a
-            clean context.
+            Automation runs, sessions that {name} started and your Chat sessions show here. Use New session
+            for work that needs a clean context.
           </Empty>
         )}
       </Section>
@@ -134,48 +111,35 @@ export function SessionsPage() {
   );
 }
 
-function SessionRow({ chat }: { chat: Chat }) {
+/** A busy row says Running, or Stalled when the session shows no sign of work. */
+function SessionRow({ chat, parent }: { chat: Chat; parent?: string }) {
   const agentId = useAgentId();
   const kind = sessionKind(chat);
-
-  const Icon = kind === "Chat" ? MessageCircle : kind === "Task" ? ListTodo : Clock3;
-
-  const content = (
-    <>
-      <span className="block text-[13.5px] font-medium text-foreground [overflow-wrap:anywhere]">
-        {chat.title || "New session"}
-      </span>
-      <span className="mt-0.5 block text-[12px] text-muted-foreground">
-        {kind} · {chat.task ? taskTimes(chat.task) : taskTime(chat.updatedAt)}
-      </span>
-    </>
-  );
+  const Icon = kind === "Chat" ? MessageCircle : Clock3;
+  const now = useNow();
+  const stalled = isStalled(chat, now);
 
   return (
     <li className="flex items-center gap-3 border-t border-border px-4 py-3.5 first:border-t-0">
       <Icon size={16} className="mt-0.5 shrink-0 self-start text-muted-foreground" />
-      {chat.task ? (
-        <Link
-          to="/a/$agentId/tasks/$taskId"
-          params={{ agentId, taskId: chat.task.id }}
-          className="min-w-0 flex-1 hover:underline"
+      <Link
+        to="/a/$agentId/c/$chatId"
+        params={{ agentId, chatId: String(chat.id) }}
+        className="min-w-0 flex-1 hover:underline"
+      >
+        <span className="block text-[13.5px] font-medium text-foreground [overflow-wrap:anywhere]">
+          {chat.title || "New session"}
+        </span>
+        <span className="mt-0.5 block text-[12px] text-muted-foreground">
+          {parent === undefined ? kind : `Started by ${parent}`} · {sessionTime(chat.updatedAt)}
+        </span>
+      </Link>
+      {chat.busy ? (
+        <Badge
+          variant="secondary"
+          className={`h-5 shrink-0 px-2 text-[11.5px] ${stalled ? "bg-orange-tint text-orange" : "bg-primary/10 text-primary"}`}
         >
-          {content}
-        </Link>
-      ) : (
-        <Link
-          to="/a/$agentId/c/$chatId"
-          params={{ agentId, chatId: String(chat.id) }}
-          className="min-w-0 flex-1 hover:underline"
-        >
-          {content}
-        </Link>
-      )}
-      {chat.task ? (
-        <TaskPill task={chat.task} />
-      ) : chat.busy ? (
-        <Badge variant="secondary" className="h-5 shrink-0 bg-primary/10 px-2 text-[11.5px] text-primary">
-          Running
+          {stalled ? "Stalled" : "Running"}
         </Badge>
       ) : null}
       <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
@@ -183,28 +147,18 @@ function SessionRow({ chat }: { chat: Chat }) {
   );
 }
 
-/** Old task links open the task's session, which shows the report, Stop while it runs and Continue chat after it ends. */
-export function TaskPage({ taskId }: { taskId: string }) {
+/** An old task link and a result link name a turn. They open the session that holds it. */
+export function TurnPage({ turnId }: { turnId: string }) {
   const agentId = useAgentId();
-  const task = useQuery(getTaskOptions({ path: { agentId, taskId } }));
+  const turn = useQuery(getTurnChatOptions({ path: { agentId, turnId } }));
 
-  useEffect(() => {
-    if (task.data) markTaskSeen(agentId, task.data.id);
-  }, [agentId, task.data]);
-
-  if (task.data)
-    return (
-      <Navigate
-        to="/a/$agentId/c/$chatId"
-        params={{ agentId, chatId: String(task.data.conversationId) }}
-        replace
-      />
-    );
+  if (turn.data)
+    return <Navigate to="/a/$agentId/c/$chatId" params={{ agentId, chatId: String(turn.data.id) }} replace />;
 
   return (
-    <FramedPage title="Task">
-      {task.isError ? (
-        <Failure title="Could not load task" error={task.error} retry={() => void task.refetch()} />
+    <FramedPage title="Session">
+      {turn.isError ? (
+        <Failure title="Could not find the session" error={turn.error} retry={() => void turn.refetch()} />
       ) : (
         <Loading />
       )}

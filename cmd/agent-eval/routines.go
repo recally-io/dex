@@ -69,13 +69,12 @@ func (c client) waitForWork(parent int64, includeRoutines bool) (ids []int64, st
 		busy := false
 		var observed []string
 		for _, ch := range all.Chats {
-			if ch.ID == parent || (ch.Task != nil && ch.Task.Parent == parent) {
+			if ch.ID == parent || ch.ParentID == parent {
 				if !slices.Contains(ids, ch.ID) {
 					ids = append(ids, ch.ID)
 				}
-				active := ch.Busy || (ch.Task != nil && (ch.Task.Status == "queued" || ch.Task.Status == "running"))
-				busy = busy || active
-				observed = append(observed, fmt.Sprintf("chat %d busy=%t", ch.ID, active))
+				busy = busy || ch.Busy
+				observed = append(observed, fmt.Sprintf("chat %d busy=%t", ch.ID, ch.Busy))
 			}
 		}
 		if includeRoutines {

@@ -10,60 +10,6 @@ import (
 	"database/sql"
 )
 
-const acknowledgeTask = `-- name: AcknowledgeTask :execrows
-UPDATE tasks SET handled_at = coalesce(handled_at, ?1)
-WHERE tasks.id = ?2 AND tasks.status IN ('done', 'failed', 'cancelled', 'interrupted')
-AND tasks.conversation_id IN (SELECT c.id FROM conversations c WHERE c.agent_id = ?3)
-`
-
-type AcknowledgeTaskParams struct {
-	HandledAt sql.NullInt64 `json:"handled_at"`
-	TaskID    string        `json:"task_id"`
-	AgentID   string        `json:"agent_id"`
-}
-
-func (q *Queries) AcknowledgeTask(ctx context.Context, arg AcknowledgeTaskParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, acknowledgeTask, arg.HandledAt, arg.TaskID, arg.AgentID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const getAgentTask = `-- name: GetAgentTask :one
-SELECT t.id, t.parent_conversation_id, t.conversation_id, t.spawn_key, t.source_request_id, t.title, t.status, t.report, t.created_at, t.started_at, t.ended_at, t.constraints_json, t.done_criteria_json, t.structured_report, t.modifies_files, t.handled_at FROM tasks t JOIN conversations c ON c.id = t.conversation_id
-WHERE t.id = ? AND c.agent_id = ?
-`
-
-type GetAgentTaskParams struct {
-	ID      string `json:"id"`
-	AgentID string `json:"agent_id"`
-}
-
-func (q *Queries) GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (Task, error) {
-	row := q.db.QueryRowContext(ctx, getAgentTask, arg.ID, arg.AgentID)
-	var i Task
-	err := row.Scan(
-		&i.ID,
-		&i.ParentConversationID,
-		&i.ConversationID,
-		&i.SpawnKey,
-		&i.SourceRequestID,
-		&i.Title,
-		&i.Status,
-		&i.Report,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.EndedAt,
-		&i.ConstraintsJson,
-		&i.DoneCriteriaJson,
-		&i.StructuredReport,
-		&i.ModifiesFiles,
-		&i.HandledAt,
-	)
-	return i, err
-}
-
 const getConversationByExecution = `-- name: GetConversationByExecution :one
 
 SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id FROM conversations WHERE agent_id = ? AND execution_id = ?
@@ -74,8 +20,8 @@ type GetConversationByExecutionParams struct {
 	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
-// Legacy task rows. Child sessions replace tasks (ADR 0015). Nothing writes these rows now.
-// The web UI of the previous release still reads them until the cleanup removes the table.
+// Child sessions replace tasks (ADR 0015). Nothing reads or writes the tasks table now. The
+// cleanup removes it.
 func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConversationByExecutionParams) (Conversation, error) {
 	row := q.db.QueryRowContext(ctx, getConversationByExecution, arg.AgentID, arg.ExecutionID)
 	var i Conversation
@@ -98,52 +44,28 @@ func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConvers
 	return i, err
 }
 
-const listAgentTasks = `-- name: ListAgentTasks :many
-SELECT t.id, t.parent_conversation_id, t.conversation_id, c.execution_id, t.title, t.status,
-    t.created_at, t.started_at, t.ended_at, t.handled_at, t.structured_report
-FROM tasks t JOIN conversations c ON c.id = t.conversation_id
-WHERE c.agent_id = ? ORDER BY t.created_at DESC, t.id DESC
+const listChildrenStoppedByParent = `-- name: ListChildrenStoppedByParent :many
+SELECT conversations.id FROM conversations WHERE conversations.agent_id = ? AND conversations.parent_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
+        AND s.parent_request_id IS NOT NULL
+)
 `
 
-type ListAgentTasksRow struct {
-	ID                   string        `json:"id"`
-	ParentConversationID int64         `json:"parent_conversation_id"`
-	ConversationID       int64         `json:"conversation_id"`
-	ExecutionID          sql.NullInt64 `json:"execution_id"`
-	Title                string        `json:"title"`
-	Status               string        `json:"status"`
-	CreatedAt            int64         `json:"created_at"`
-	StartedAt            sql.NullInt64 `json:"started_at"`
-	EndedAt              sql.NullInt64 `json:"ended_at"`
-	HandledAt            sql.NullInt64 `json:"handled_at"`
-	StructuredReport     string        `json:"structured_report"`
-}
-
-func (q *Queries) ListAgentTasks(ctx context.Context, agentID string) ([]ListAgentTasksRow, error) {
-	rows, err := q.db.QueryContext(ctx, listAgentTasks, agentID)
+// The children that Stop on their parent reaches. Keep the rule equal to ListStopConversations: the
+// web UI shows Stop on a parent page only for these.
+func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID string) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listChildrenStoppedByParent, agentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListAgentTasksRow{}
+	items := []int64{}
 	for rows.Next() {
-		var i ListAgentTasksRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ParentConversationID,
-			&i.ConversationID,
-			&i.ExecutionID,
-			&i.Title,
-			&i.Status,
-			&i.CreatedAt,
-			&i.StartedAt,
-			&i.EndedAt,
-			&i.HandledAt,
-			&i.StructuredReport,
-		); err != nil {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		items = append(items, i)
+		items = append(items, id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -206,25 +128,6 @@ func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConvers
 		return nil, err
 	}
 	return items, nil
-}
-
-const restoreTask = `-- name: RestoreTask :execrows
-UPDATE tasks SET handled_at = NULL
-WHERE tasks.id = ?1 AND tasks.status IN ('done', 'failed', 'cancelled', 'interrupted')
-    AND tasks.conversation_id IN (SELECT c.id FROM conversations c WHERE c.agent_id = ?2)
-`
-
-type RestoreTaskParams struct {
-	TaskID  string `json:"task_id"`
-	AgentID string `json:"agent_id"`
-}
-
-func (q *Queries) RestoreTask(ctx context.Context, arg RestoreTaskParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, restoreTask, arg.TaskID, arg.AgentID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
 }
 
 const stopConversationSubmissions = `-- name: StopConversationSubmissions :execrows

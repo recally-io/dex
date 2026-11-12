@@ -20,6 +20,37 @@ const (
 	NotAdmitted Withdrawal = "not_admitted"
 )
 
+// PeekWithdrawal reads the native state without waiting for the execution serialization gate.
+// The result is a snapshot; placement can race with a later Stop.
+func (a *Agents) PeekWithdrawal(ctx context.Context, ref Ref, requestID string) (Withdrawal, error) {
+	if requestID == "" {
+		return "", fmt.Errorf("%w: request ID is required", ErrInvalidInput)
+	}
+	if err := a.begin(); err != nil {
+		return "", err
+	}
+	defer a.end()
+	conversation, err := a.conversation(ctx, ref)
+	if err != nil {
+		return "", err
+	}
+	var record *durable.SubmissionRecord
+	if _, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+		var err error
+		record, err = tx.SubmissionByRequest(conversation.Id(), requestID)
+		return nil, err
+	}); err != nil {
+		return "", err
+	}
+	if record == nil {
+		return NotAdmitted, nil
+	}
+	if record.Status == durable.SubmissionQueued || (record.Status == durable.SubmissionUnanswered && record.Reason != nil && *record.Reason == "aborted") {
+		return Withdrawn, nil
+	}
+	return Placed, nil
+}
+
 // Withdraw removes one queued input by its business request ID. The native transaction decides
 // whether the input is still queued; a placed input keeps running.
 func (a *Agents) Withdraw(ctx context.Context, ref Ref, requestID string) (Withdrawal, error) {

@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acknowledgeTask, acquireMaintenance, archiveChat, beginFeishu, beginWechatLogin, cancelTask, clearContext, compactChat, continueChat, createAgent, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteExtensionEnv, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, dismissInboxItem, forkChat, getAgent, getArtifact, getAutomation, getChannels, getChat, getChatHistory, getExtensions, getFeishu, getHealth, getMainChat, getNotificationTargets, getOnePassword, getSettings, getTask, getUpload, getWork, listAgents, listArtifacts, listAutomationRuns, listAutomations, listChats, listDirectories, listInbox, listModels, listRecentProjects, type Options, pollFeishu, pollWechatLogin, previewSchedule, putExtensionEnv, readInboxItem, releaseMaintenance, reloadExtensions, restoreInboxItem, restoreTask, runAutomation, sendMessage, setChatProject, setChatSettings, setFeishu, setOnePassword, setPrimaryNotificationTarget, setProvider, setTelegram, unarchiveChat, updateAgent, updateAutomation, withdrawMessage } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcknowledgeTaskData, AcknowledgeTaskError, AcknowledgeTaskResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, ArchiveChatData, ArchiveChatError, ArchiveChatResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, CancelTaskData, CancelTaskError, CancelTaskResponse, ClearContextData, ClearContextError, ClearContextResponse, CompactChatData, CompactChatError, ContinueChatData, ContinueChatError, ContinueChatResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteExtensionEnvData, DeleteExtensionEnvError, DeleteExtensionEnvResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, DismissInboxItemData, DismissInboxItemError, DismissInboxItemResponse, ForkChatData, ForkChatError, ForkChatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetArtifactData, GetArtifactError, GetArtifactResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetNotificationTargetsData, GetNotificationTargetsError, GetNotificationTargetsResponse, GetOnePasswordData, GetOnePasswordError, GetOnePasswordResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTaskData, GetTaskError, GetTaskResponse, GetUploadData, GetUploadError, GetUploadResponse, GetWorkData, GetWorkError, GetWorkResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListArtifactsData, ListArtifactsError, ListArtifactsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListDirectoriesData, ListDirectoriesError, ListDirectoriesResponse, ListInboxData, ListInboxError, ListInboxResponse, ListModelsData, ListModelsError, ListModelsResponse, ListRecentProjectsData, ListRecentProjectsError, ListRecentProjectsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, PutExtensionEnvData, PutExtensionEnvError, PutExtensionEnvResponse, ReadInboxItemData, ReadInboxItemError, ReadInboxItemResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RestoreInboxItemData, RestoreInboxItemError, RestoreInboxItemResponse, RestoreTaskData, RestoreTaskError, RestoreTaskResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatProjectData, SetChatProjectError, SetChatProjectResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetOnePasswordData, SetOnePasswordError, SetOnePasswordResponse, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetError, SetPrimaryNotificationTargetResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UnarchiveChatData, UnarchiveChatError, UnarchiveChatResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse, WithdrawMessageData, WithdrawMessageError, WithdrawMessageResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, archiveChat, beginFeishu, beginWechatLogin, clearContext, compactChat, continueChat, createAgent, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteAutomation, deleteExtensionEnv, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, dismissInboxItem, forkChat, getAgent, getArtifact, getAutomation, getChannels, getChat, getChatHistory, getExtensions, getFeishu, getHealth, getMainChat, getNotificationTargets, getOnePassword, getSettings, getTurnChat, getUpload, getWork, listAgents, listArtifacts, listAutomationRuns, listAutomations, listChats, listDirectories, listInbox, listModels, listRecentProjects, type Options, pollFeishu, pollWechatLogin, previewSchedule, putExtensionEnv, readInboxItem, releaseMaintenance, reloadExtensions, restoreInboxItem, runAutomation, sendMessage, setChatProject, setChatSettings, setFeishu, setOnePassword, setPrimaryNotificationTarget, setProvider, setTelegram, unarchiveChat, updateAgent, updateAutomation, withdrawMessage } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, ArchiveChatData, ArchiveChatError, ArchiveChatResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CompactChatData, CompactChatError, ContinueChatData, ContinueChatError, ContinueChatResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteExtensionEnvData, DeleteExtensionEnvError, DeleteExtensionEnvResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, DismissInboxItemData, DismissInboxItemError, DismissInboxItemResponse, ForkChatData, ForkChatError, ForkChatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetArtifactData, GetArtifactError, GetArtifactResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetNotificationTargetsData, GetNotificationTargetsError, GetNotificationTargetsResponse, GetOnePasswordData, GetOnePasswordError, GetOnePasswordResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTurnChatData, GetTurnChatError, GetTurnChatResponse, GetUploadData, GetUploadError, GetUploadResponse, GetWorkData, GetWorkError, GetWorkResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListArtifactsData, ListArtifactsError, ListArtifactsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListDirectoriesData, ListDirectoriesError, ListDirectoriesResponse, ListInboxData, ListInboxError, ListInboxResponse, ListModelsData, ListModelsError, ListModelsResponse, ListRecentProjectsData, ListRecentProjectsError, ListRecentProjectsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, PutExtensionEnvData, PutExtensionEnvError, PutExtensionEnvResponse, ReadInboxItemData, ReadInboxItemError, ReadInboxItemResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RestoreInboxItemData, RestoreInboxItemError, RestoreInboxItemResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatProjectData, SetChatProjectError, SetChatProjectResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetOnePasswordData, SetOnePasswordError, SetOnePasswordResponse, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetError, SetPrimaryNotificationTargetResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UnarchiveChatData, UnarchiveChatError, UnarchiveChatResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse, WithdrawMessageData, WithdrawMessageError, WithdrawMessageResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -589,14 +589,15 @@ export const updateAgentMutation = (options?: Partial<Options<UpdateAgentData>>)
     return mutationOptions;
 };
 
-export const getTaskQueryKey = (options: Options<GetTaskData>) => createQueryKey('getTask', options);
+export const getTurnChatQueryKey = (options: Options<GetTurnChatData>) => createQueryKey('getTurnChat', options);
 
 /**
- * Read one task and its conversation ID. The conversation accepts user input after the task ends.
+ * Find the session that holds one input. A result in a parent session and an old `/tasks/<id>` link name a turn of a child session by its input ID. A task from before child sessions uses its task ID, which is the ID of its first input. Reads inputs of any session of this agent, and returns 404 for another agent's input.
+ *
  */
-export const getTaskOptions = (options: Options<GetTaskData>) => queryOptions<GetTaskResponse, GetTaskError, GetTaskResponse, ReturnType<typeof getTaskQueryKey>>({
+export const getTurnChatOptions = (options: Options<GetTurnChatData>) => queryOptions<GetTurnChatResponse, GetTurnChatError, GetTurnChatResponse, ReturnType<typeof getTurnChatQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await getTask({
+        const { data } = await getTurnChat({
             ...options,
             ...queryKey[0],
             signal,
@@ -604,59 +605,8 @@ export const getTaskOptions = (options: Options<GetTaskData>) => queryOptions<Ge
         });
         return data;
     },
-    queryKey: getTaskQueryKey(options)
+    queryKey: getTurnChatQueryKey(options)
 });
-
-/**
- * Mark a finished task as handled without changing its result.
- */
-export const acknowledgeTaskMutation = (options?: Partial<Options<AcknowledgeTaskData>>): UseMutationOptions<AcknowledgeTaskResponse, AcknowledgeTaskError, Options<AcknowledgeTaskData>> => {
-    const mutationOptions: UseMutationOptions<AcknowledgeTaskResponse, AcknowledgeTaskError, Options<AcknowledgeTaskData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await acknowledgeTask({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Undo handling a finished task without changing its result.
- */
-export const restoreTaskMutation = (options?: Partial<Options<RestoreTaskData>>): UseMutationOptions<RestoreTaskResponse, RestoreTaskError, Options<RestoreTaskData>> => {
-    const mutationOptions: UseMutationOptions<RestoreTaskResponse, RestoreTaskError, Options<RestoreTaskData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await restoreTask({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Requests cancellation of a task owned by this agent. Queued tasks are withdrawn without execution.
- */
-export const cancelTaskMutation = (options?: Partial<Options<CancelTaskData>>): UseMutationOptions<CancelTaskResponse, CancelTaskError, Options<CancelTaskData>> => {
-    const mutationOptions: UseMutationOptions<CancelTaskResponse, CancelTaskError, Options<CancelTaskData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await cancelTask({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
 
 export const getMainChatQueryKey = (options: Options<GetMainChatData>) => createQueryKey('getMainChat', options);
 
@@ -679,7 +629,7 @@ export const getMainChatOptions = (options: Options<GetMainChatData>) => queryOp
 export const listChatsQueryKey = (options: Options<ListChatsData>) => createQueryKey('listChats', options);
 
 /**
- * Session summaries of the requested agent, newest activity first, then highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no message. Task summaries have no reports. Transcripts are not included.
+ * Session summaries of the requested agent, newest activity first, then highest ID first. Excludes main, channel conversations, dreams and Chat sessions with no message. Transcripts are not included.
  *
  */
 export const listChatsOptions = (options: Options<ListChatsData>) => queryOptions<ListChatsResponse, ListChatsError, ListChatsResponse, ReturnType<typeof listChatsQueryKey>>({
@@ -801,7 +751,7 @@ export const listRecentProjectsOptions = (options: Options<ListRecentProjectsDat
 });
 
 /**
- * Sets the project directory of a conversation from the next message. It applies to every conversation that accepts messages: Main, Chat sessions, and delegated sessions whose task ended. Read-only conversations return 403. Empty cwd restores the agent workspace. The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
+ * Sets the project directory of a conversation from the next message. It applies to every conversation that accepts messages: Main, Chat sessions, and child sessions (child sessions too). Read-only conversations return 403. Empty cwd restores the agent workspace. The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
  *
  */
 export const setChatProjectMutation = (options?: Partial<Options<SetChatProjectData>>): UseMutationOptions<SetChatProjectResponse, SetChatProjectError, Options<SetChatProjectData>> => {
@@ -819,7 +769,7 @@ export const setChatProjectMutation = (options?: Partial<Options<SetChatProjectD
 };
 
 /**
- * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message, including channel input on Main. Conversations that accept messages (Main, Chat sessions, delegated sessions whose task ended) and automation chats accept overrides. Other read-only conversations return 403.
+ * Sets the model and the thinking level of one chat. An absent field follows the agent's setting. They apply from the next message, including channel input on Main. Conversations that accept messages (Main, Chat sessions, child sessions) and automation chats accept overrides. Other read-only conversations return 403.
  *
  */
 export const setChatSettingsMutation = (options?: Partial<Options<SetChatSettingsData>>): UseMutationOptions<SetChatSettingsResponse, SetChatSettingsError, Options<SetChatSettingsData>> => {
@@ -837,7 +787,7 @@ export const setChatSettingsMutation = (options?: Partial<Options<SetChatSetting
 };
 
 /**
- * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model, or when the mode is reject and the agent is working in the chat. Main and Chat sessions take web messages. Task, automation and channel sessions return 403.
+ * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model, or when the mode is reject and the agent is working in the chat. Main and Chat sessions take web messages. Automation and channel sessions return 403.
  *
  */
 export const sendMessageMutation = (options?: Partial<Options<SendMessageData>>): UseMutationOptions<SendMessageResponse, SendMessageError, Options<SendMessageData>> => {
@@ -855,7 +805,7 @@ export const sendMessageMutation = (options?: Partial<Options<SendMessageData>>)
 };
 
 /**
- * Withdraws one message that waits in the queue and returns its text and attachments. The native queue decides whether the message is still queued. The receipt and the source key stay, so a channel redelivery does not run the message. A repeated request returns the same result. 409 when the message has started or finished. A withdrawn answer to a question opens the question again. Main and Chat sessions take this request. Task, automation and channel sessions return 403.
+ * Withdraws one message that waits in the queue and returns its text and attachments. The native queue decides whether the message is still queued. The receipt and the source key stay, so a channel redelivery does not run the message. A repeated request returns the same result. 409 when the message has started or finished. A withdrawn answer to a question opens the question again. Main and Chat sessions take this request. Automation and channel sessions return 403.
  *
  */
 export const withdrawMessageMutation = (options?: Partial<Options<WithdrawMessageData>>): UseMutationOptions<WithdrawMessageResponse, WithdrawMessageError, Options<WithdrawMessageData>> => {
@@ -873,7 +823,7 @@ export const withdrawMessageMutation = (options?: Partial<Options<WithdrawMessag
 };
 
 /**
- * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again; the same UUID with another handoff returns 400. Refuses a busy session without a change. Task, automation and channel sessions return 403.
+ * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again; the same UUID with another handoff returns 400. Refuses a busy session without a change. Automation and channel sessions return 403.
  *
  */
 export const clearContextMutation = (options?: Partial<Options<ClearContextData>>): UseMutationOptions<ClearContextResponse, ClearContextError, Options<ClearContextData>> => {
@@ -891,7 +841,7 @@ export const clearContextMutation = (options?: Partial<Options<ClearContextData>
 };
 
 /**
- * Runs this writable session again on its current context, for example after a failed or stopped run. It sends no new message. A repeated UUID starts nothing new. When the context ends in a complete answer, the run ends at once and the timeline shows "Nothing to continue". 409 while the session runs or when it never ran. Task, automation and channel sessions return 403.
+ * Runs this writable session again on its current context, for example after a failed or stopped run. It sends no new message. A repeated UUID starts nothing new. When the context ends in a complete answer, the run ends at once and the timeline shows "Nothing to continue". 409 while the session runs or when it never ran. Automation and channel sessions return 403.
  *
  */
 export const continueChatMutation = (options?: Partial<Options<ContinueChatData>>): UseMutationOptions<ContinueChatResponse, ContinueChatError, Options<ContinueChatData>> => {
@@ -909,7 +859,7 @@ export const continueChatMutation = (options?: Partial<Options<ContinueChatData>
 };
 
 /**
- * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. Each call creates another Chat. 400 when the entry is not in this session or cannot start a fork. Task, automation and channel sessions return 403.
+ * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. Each call creates another Chat. 400 when the entry is not in this session or cannot start a fork. Automation and channel sessions return 403.
  *
  */
 export const forkChatMutation = (options?: Partial<Options<ForkChatData>>): UseMutationOptions<ForkChatResponse, ForkChatError, Options<ForkChatData>> => {
@@ -927,7 +877,7 @@ export const forkChatMutation = (options?: Partial<Options<ForkChatData>>): UseM
 };
 
 /**
- * Summarizes the older context of this writable session. It also works while the session runs; the summary joins the context at the next boundary, and Stop drops a summary that still waits. The timeline shows a pending, then a queued compaction boundary, then the summary, "nothing to compact", or the failure. Each call starts a new compaction. 409 when the session never ran. Task, automation and channel sessions return 403.
+ * Summarizes the older context of this writable session. It also works while the session runs; the summary joins the context at the next boundary, and Stop drops a summary that still waits. The timeline shows a pending, then a queued compaction boundary, then the summary, "nothing to compact", or the failure. Each call starts a new compaction. 409 when the session never ran. Automation and channel sessions return 403.
  *
  */
 export const compactChatMutation = (options?: Partial<Options<CompactChatData>>): UseMutationOptions<unknown, CompactChatError, Options<CompactChatData>> => {
@@ -1024,7 +974,7 @@ export const getChatHistoryInfiniteOptions = (options: Options<GetChatHistoryDat
 };
 
 /**
- * Withdraws queued input and results, then requests cancellation of the current turn and background execution of this session. Earlier actions are not undone. Processes and remote work may continue. Task, automation and channel sessions return 403.
+ * Withdraws queued input and results, then requests cancellation of the current turn and background execution of this session. Earlier actions are not undone. Processes and remote work may continue. Automation and channel sessions return 403.
  *
  */
 export const abortChatMutation = (options?: Partial<Options<AbortChatData>>): UseMutationOptions<AbortChatResponse, AbortChatError, Options<AbortChatData>> => {
@@ -1081,7 +1031,7 @@ export const getUploadOptions = (options: Options<GetUploadData>) => queryOption
 export const listArtifactsQueryKey = (options: Options<ListArtifactsData>) => createQueryKey('listArtifacts', options);
 
 /**
- * Delivered snapshots from this conversation and its background tasks.
+ * Delivered snapshots from this conversation and its child sessions.
  */
 export const listArtifactsOptions = (options: Options<ListArtifactsData>) => queryOptions<ListArtifactsResponse, ListArtifactsError, ListArtifactsResponse, ReturnType<typeof listArtifactsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {

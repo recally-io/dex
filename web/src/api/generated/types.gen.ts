@@ -29,53 +29,12 @@ export type Health = {
     runtimeReady: boolean;
 };
 
-export type TaskSummary = {
-    id: string;
-    title: string;
-    status: 'queued' | 'admitting' | 'running' | 'done' | 'failed' | 'cancelled' | 'interrupted';
-    createdAt: number;
-    startedAt?: number;
-    endedAt?: number;
-    conversationId: number;
-    /**
-     * The conversation that started this task and can stop it.
-     */
-    parentConversationId: number;
-    /**
-     * The latest observed tool call, when the task is running.
-     */
-    lastAction?: string;
-    /**
-     * The latest engine observation of task activity, when the task is running.
-     */
-    lastActivityAt?: number;
-    /**
-     * The earliest start of a currently running tool, when the task is running a tool.
-     */
-    toolStartedAt?: number;
-    /**
-     * When the finished task was acknowledged, without changing its result.
-     */
-    handledAt?: number;
-    /**
-     * The structured report outcome, when the task has a report.
-     */
-    reportOutcome?: 'done' | 'blocked' | 'failed';
-};
-
-export type Task = TaskSummary & {
-    /**
-     * The saved report in Markdown.
-     */
-    report: string;
-};
-
 export type Chat = {
     id: number;
     /**
      * External channel chats are read-only in the web UI.
      */
-    channel: 'web' | 'telegram' | 'wechat' | 'feishu' | 'automation' | 'task';
+    channel: 'web' | 'telegram' | 'wechat' | 'feishu' | 'automation';
     /**
      * This is the agent's main timeline.
      */
@@ -95,7 +54,7 @@ export type Chat = {
     title: string;
     createdAt: number;
     /**
-     * Latest activity time, in Unix milliseconds. Includes conversation creation, input creation and settlement, and task start and end. Task times apply only to the task's own conversation.
+     * Latest activity time, in Unix milliseconds. Includes conversation creation, and input creation and settlement.
      */
     updatedAt: number;
     /**
@@ -107,13 +66,24 @@ export type Chat = {
      */
     archivedAt?: number;
     settings: ChatSettings;
-    task?: TaskSummary;
     question?: ChatQuestion;
     forkedFrom?: ChatOrigin;
     /**
      * The session that created this child session. Absent on any other session.
      */
     parentId?: number;
+    /**
+     * The latest engine observation of activity. Only the session list sets it, and only while the session is busy.
+     */
+    lastActivityAt?: number;
+    /**
+     * The earliest start of a tool that runs now. Only the session list sets it, and only while the session is busy and runs a tool.
+     */
+    toolStartedAt?: number;
+    /**
+     * True when Stop on the parent session would act on this child, because the child has pending input that the parent sent. Only the session list sets it.
+     */
+    stoppedWithParent?: boolean;
 };
 
 /**
@@ -434,7 +404,7 @@ export type UserItem = {
 };
 
 /**
- * Marks a background result. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
+ * Marks the result of a child session turn. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
  */
 export type TaskItem = {
     kind: 'task';
@@ -443,7 +413,7 @@ export type TaskItem = {
     at?: number;
     title: string;
     /**
-     * The saved task ID.
+     * The input ID of the child session turn, or the ID of an old task. getTurnChat finds its session.
      */
     taskId: string;
 };
@@ -475,10 +445,6 @@ export type ToolItem = {
      */
     status: 'running' | 'done' | 'error';
     durationMs?: number;
-    /**
-     * The saved task ID of a successful spawn_task call.
-     */
-    taskId?: string;
 };
 
 export type AssistantItem = {
@@ -1877,17 +1843,17 @@ export type UpdateAgentResponses = {
 
 export type UpdateAgentResponse = UpdateAgentResponses[keyof UpdateAgentResponses];
 
-export type GetTaskData = {
+export type GetTurnChatData = {
     body?: never;
     path: {
         agentId: string;
-        taskId: string;
+        turnId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/tasks/{taskId}';
+    url: '/api/agents/{agentId}/turns/{turnId}';
 };
 
-export type GetTaskErrors = {
+export type GetTurnChatErrors = {
     /**
      * The request failed.
      */
@@ -1898,112 +1864,16 @@ export type GetTaskErrors = {
     default: Error;
 };
 
-export type GetTaskError = GetTaskErrors[keyof GetTaskErrors];
+export type GetTurnChatError = GetTurnChatErrors[keyof GetTurnChatErrors];
 
-export type GetTaskResponses = {
+export type GetTurnChatResponses = {
     /**
-     * The task. Done means that it returned a report.
+     * The session of the turn.
      */
-    200: Task;
+    200: Chat;
 };
 
-export type GetTaskResponse = GetTaskResponses[keyof GetTaskResponses];
-
-export type AcknowledgeTaskData = {
-    body?: never;
-    path: {
-        agentId: string;
-        taskId: string;
-    };
-    query?: never;
-    url: '/api/agents/{agentId}/tasks/{taskId}/acknowledge';
-};
-
-export type AcknowledgeTaskErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    409: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type AcknowledgeTaskError = AcknowledgeTaskErrors[keyof AcknowledgeTaskErrors];
-
-export type AcknowledgeTaskResponses = {
-    /**
-     * The task was acknowledged.
-     */
-    200: Task;
-};
-
-export type AcknowledgeTaskResponse = AcknowledgeTaskResponses[keyof AcknowledgeTaskResponses];
-
-export type RestoreTaskData = {
-    body?: never;
-    path: {
-        agentId: string;
-        taskId: string;
-    };
-    query?: never;
-    url: '/api/agents/{agentId}/tasks/{taskId}/restore';
-};
-
-export type RestoreTaskErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type RestoreTaskError = RestoreTaskErrors[keyof RestoreTaskErrors];
-
-export type RestoreTaskResponses = {
-    /**
-     * The task was restored.
-     */
-    200: Task;
-};
-
-export type RestoreTaskResponse = RestoreTaskResponses[keyof RestoreTaskResponses];
-
-export type CancelTaskData = {
-    body?: never;
-    path: {
-        agentId: string;
-        taskId: string;
-    };
-    query?: never;
-    url: '/api/agents/{agentId}/tasks/{taskId}/cancel';
-};
-
-export type CancelTaskErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type CancelTaskError = CancelTaskErrors[keyof CancelTaskErrors];
-
-export type CancelTaskResponses = {
-    /**
-     * The cancellation request was accepted.
-     */
-    200: Task;
-};
-
-export type CancelTaskResponse = CancelTaskResponses[keyof CancelTaskResponses];
+export type GetTurnChatResponse = GetTurnChatResponses[keyof GetTurnChatResponses];
 
 export type GetMainChatData = {
     body?: never;
