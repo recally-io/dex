@@ -1040,7 +1040,10 @@ paths:
               type: object
               required: [entryId]
               properties:
-                id: { type: string, description: "Optional client UUID for safe retries." }
+                id: {
+                  type: string,
+                  description: "Optional client UUID for safe retries.",
+                }
                 entryId: { type: integer, format: int64 }
                 before:
                   type: boolean
@@ -1086,7 +1089,10 @@ paths:
             schema:
               type: object
               properties:
-                id: { type: string, description: "Optional client UUID for safe retries." }
+                id: {
+                  type: string,
+                  description: "Optional client UUID for safe retries.",
+                }
                 instructions:
                   type: string
                   maxLength: 32000
