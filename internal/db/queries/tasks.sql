@@ -1,5 +1,5 @@
--- Child sessions replace tasks (ADR 0015). Nothing reads or writes the tasks table now. The
--- cleanup removes it.
+-- Stop of a conversation and of its child sessions (ADR 0015). The file keeps its name from the
+-- task layer that child sessions replaced.
 
 -- name: GetConversationByExecution :one
 SELECT * FROM conversations WHERE agent_id = ? AND execution_id = ?;

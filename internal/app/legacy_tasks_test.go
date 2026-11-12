@@ -37,43 +37,65 @@ func legacyData(t *testing.T) string {
 	return dir
 }
 
+// legacyTask is a row of the tasks table in the data of dex commit 096a9c7.
+type legacyTask struct {
+	id, source, title string
+	conversation      int64
+}
+
+// legacyTasks reads the task rows of legacy data before dex upgrades it. The upgrade drops the table.
+func legacyTasks(t *testing.T, dir string) []legacyTask {
+	t.Helper()
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?mode=ro&_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	rows, err := conn.QueryContext(t.Context(), "SELECT id, source_request_id, conversation_id, title FROM tasks ORDER BY rowid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var tasks []legacyTask
+	for rows.Next() {
+		var k legacyTask
+		if err := rows.Scan(&k.id, &k.source, &k.conversation, &k.title); err != nil {
+			t.Fatal(err)
+		}
+		tasks = append(tasks, k)
+	}
+	if err := rows.Err(); err != nil || len(tasks) != 3 {
+		t.Fatalf("tasks %+v, %v", tasks, err)
+	}
+	return tasks
+}
+
 func TestUserOpensLegacyTaskData(t *testing.T) {
 	t.Parallel()
 	// Given the data of a dex version with background tasks: two finished tasks and one running.
 	dir := legacyData(t)
+
+	tasks := legacyTasks(t, dir)
 
 	// When the current dex starts on it.
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
 
 	// Then each task conversation is a child of its parent chat, and each task input is a parent turn.
-	rows, err := conn.QueryContext(t.Context(), `SELECT t.title, c.parent_id, s.parent_request_id, source.id
-		FROM tasks t
-		JOIN conversations c ON c.id = t.conversation_id
-		JOIN submissions s ON s.id = t.id
-		JOIN submissions source ON source.id = t.source_request_id
-		ORDER BY t.rowid`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	titles := []string{}
-	for rows.Next() {
-		var title, requestID, sourceID string
+	for _, k := range tasks {
 		var parent int64
-		if err := rows.Scan(&title, &parent, &requestID, &sourceID); err != nil {
-			t.Fatal(err)
+		var request string
+		if err := conn.QueryRowContext(t.Context(), `SELECT c.parent_id, s.parent_request_id FROM submissions s JOIN conversations c ON c.id = s.conversation_id WHERE s.id = ?`, k.id).Scan(&parent, &request); err != nil {
+			t.Fatalf("%s: %v", k.title, err)
 		}
-		if parent != 1 || requestID != sourceID {
-			t.Fatalf("%s: parent=%d parent_request_id=%s source=%s", title, parent, requestID, sourceID)
+		if parent != 1 || request != k.source {
+			t.Fatalf("%s: parent=%d parent_request_id=%s source=%s", k.title, parent, request, k.source)
 		}
-		titles = append(titles, title)
 	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	if len(titles) != 3 {
-		t.Fatalf("tasks: %v", titles)
+	// And the task tables are gone.
+	var tables int
+	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM sqlite_master WHERE name IN ('tasks', 'task_steer_receipts')`).Scan(&tables); err != nil || tables != 0 {
+		t.Fatalf("task tables left: %d, %v", tables, err)
 	}
 	// And the old results keep their content in the parent.
 	contents := map[string]string{}

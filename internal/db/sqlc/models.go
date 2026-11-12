@@ -210,38 +210,6 @@ type Submission struct {
 	NativeAnswerID  sql.NullInt64  `json:"native_answer_id"`
 }
 
-type Task struct {
-	ID                   string        `json:"id"`
-	ParentConversationID int64         `json:"parent_conversation_id"`
-	ConversationID       int64         `json:"conversation_id"`
-	SpawnKey             string        `json:"spawn_key"`
-	SourceRequestID      string        `json:"source_request_id"`
-	Title                string        `json:"title"`
-	Status               string        `json:"status"`
-	Report               string        `json:"report"`
-	CreatedAt            int64         `json:"created_at"`
-	StartedAt            sql.NullInt64 `json:"started_at"`
-	EndedAt              sql.NullInt64 `json:"ended_at"`
-	ConstraintsJson      string        `json:"constraints_json"`
-	DoneCriteriaJson     string        `json:"done_criteria_json"`
-	StructuredReport     string        `json:"structured_report"`
-	ModifiesFiles        int64         `json:"modifies_files"`
-	HandledAt            sql.NullInt64 `json:"handled_at"`
-}
-
-type TaskSteerReceipt struct {
-	Sequence             int64  `json:"sequence"`
-	AgentID              string `json:"agent_id"`
-	ParentConversationID int64  `json:"parent_conversation_id"`
-	TaskID               string `json:"task_id"`
-	RequestID            string `json:"request_id"`
-	NativeRequestID      string `json:"native_request_id"`
-	Content              string `json:"content"`
-	State                string `json:"state"`
-	Reason               string `json:"reason"`
-	CreatedAt            int64  `json:"created_at"`
-}
-
 type TelegramSetting struct {
 	AgentID        string `json:"agent_id"`
 	Token          string `json:"token"`
