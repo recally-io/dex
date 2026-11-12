@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -20,6 +21,14 @@ func TestUserGetsFrontDeskRulesInMainAndWorkLoopRulesInChat(t *testing.T) {
 	d.send(t, mainID, "work-loop")
 	// Then main has no rule that tells it to do long work itself.
 	w.until(t, "no work loop rules in main", answered("section: "))
+
+	// Coding guidance must not tell main to do the work that its front desk delegates.
+	d.send(t, mainID, "coding-skill")
+	w.until(t, "coding skill respects the front desk", answeredWith("section: ---\nname: coding"))
+	w.until(t, "coding skill delegates main work", answeredWith("When the front desk handles a request"))
+	if answer := w.tr.items[len(w.tr.items)-1].Text; strings.Contains(answer, "The main agent implements changes") {
+		t.Fatalf("coding skill contradicts the front desk: %s", answer)
+	}
 
 	// When the user writes in a Chat session, the agent keeps doing the work in its own loop.
 	chatID := d.newChat(t, "work-loop")

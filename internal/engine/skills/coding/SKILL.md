@@ -15,18 +15,19 @@ Confirm the repository path, applicable rules, and acceptance criteria before
 changes. Keep writes to the same repository serial, or use separate worktrees.
 Do not overwrite another task's changes.
 
-The main agent implements changes, fixes findings, and runs tests in its own
-context. Skills, tools, and the project directory provide its capabilities.
-Use `session_new` only for independent work that can run in parallel, long
-commands whose output would flood the main context, or independent review.
+When the front desk handles a request, delegate coding work that needs multiple
+steps to a child session and end the turn promptly. When a Chat or child session
+handles the work, implement changes, fix findings, and run tests in that session.
+Use `session_new` for independent parallel work, long commands, or independent
+review when the current session has that tool.
 Give each child session the repository path, owned files, required context,
 and completion criteria in its message. A child session has no session tools.
 It ends each turn with a final answer: what changed, commands and results,
 files, and open items.
 To continue the same work, call `session_send` on the same child. The child
 keeps its context and does not read the repository again. Use `session_fork` to
-branch from a child that has the context you need. Use `session_new` only for
-unrelated or parallel work. To give work to another bot that has the right
+branch from a child that has the context you need. Use `session_new` for new
+work rather than repeating work in an existing child. To give work to another bot that has the right
 skills or credentials, call `session_new` with `bot`. That child runs with the
 instructions, environment, and workspace of that bot. You can send to, stop, and
 fork it with its ID. Before a progress answer, call `session_list`. It lists

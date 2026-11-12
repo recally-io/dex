@@ -369,7 +369,8 @@ the `child-rules` section. A separate extension gives foreground conversations
 and child sessions the `coding-skill` section. Go embeds the full
 [built-in coding skill](../../internal/engine/skills/coding/SKILL.md) in the engine.
 It does not copy the skill into a user directory or add a new extension scope.
-The skill keeps implementation, fixes and tests in the main context. It
+The skill asks Main to delegate multi-step coding and end the turn promptly.
+Chat and child sessions implement, fix and test in their own context. It
 requires a repository path, project rules, independent review, tests of the
 final revision, and evidence in the answer. It requires serial writes
 or separate worktrees for children that change the same repository.
