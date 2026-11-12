@@ -110,10 +110,10 @@ const (
 	batchLines = 50
 	batchBytes = 8 << 10
 	// A line is cut here. The rest of it is in the output file.
-	longestLine     = 64 << 10
-	endAttempts     = 5
-	endRetryBackoff = 100 * time.Millisecond
-	sizePoll        = 250 * time.Millisecond
+	longestLine       = 64 << 10
+	storeAttempts     = 5
+	storeRetryBackoff = 100 * time.Millisecond
+	sizePoll          = 250 * time.Millisecond
 )
 
 // StartParams describe one command.
@@ -480,19 +480,12 @@ func (m *Manager) finish(p *proc, state string, status int, reason string) {
 			wake = &params
 		}
 	}
-	// A busy database is the credible failure, so a few attempts with backoff are enough. After the
-	// last one the row stays running until the next start marks it unknown.
+	// After the last attempt the row stays running until the next start marks it unknown.
 	var woke bool
-	var err error
-	for attempt, backoff := 0, endRetryBackoff; attempt < endAttempts; attempt, backoff = attempt+1, backoff*2 {
-		if attempt > 0 {
-			time.Sleep(backoff)
-		}
-		if woke, err = m.storeEnd(ctx, p, state, status, reason, wake); err == nil {
-			break
-		}
-		slog.Warn("store background command end", "id", p.row.ID, "attempt", attempt+1, "err", err)
-	}
+	err := retryStore("store background command end", p.row.ID, func() (err error) {
+		woke, err = m.storeEnd(ctx, p, state, status, reason, wake)
+		return err
+	})
 	if err != nil {
 		slog.Error("store background command end", "id", p.row.ID, "err", err)
 		return
@@ -765,8 +758,9 @@ func (m *Manager) event(p *proc, line string) {
 	}
 }
 
-// flush wakes the session with the lines that wait. A failed write loses that batch: the output
-// file still has the lines, and the end wake-up of the command carries the tail of it.
+// flush wakes the session with the lines that wait. A write that fails after all attempts loses
+// that batch: the output file still has the lines, and the end wake-up carries the tail of it.
+// The attempts hold eventMu, so a busy database slows the reader of the pipe for a few seconds.
 func (p *proc) flush(m *Manager) {
 	p.eventMu.Lock()
 	defer p.eventMu.Unlock()
@@ -787,15 +781,37 @@ func (p *proc) flush(m *Manager) {
 	}
 	p.sent++
 	params, err := m.wakeParams(p, fmt.Sprint(p.sent), result{ID: p.row.ID, Label: p.row.Label, Event: "lines", Lines: lines, Omitted: omitted, OutputFile: p.row.OutputPath})
+	var stored int64
 	if err == nil {
-		var stored int64
-		if stored, err = m.q.CreateBackgroundWake(context.Background(), params); err == nil && stored > 0 && m.changed != nil {
-			m.changed(p.row.ConversationID)
-		}
+		err = retryStore("store background lines wake-up", p.row.ID, func() (err error) {
+			stored, err = m.q.CreateBackgroundWake(context.Background(), params)
+			return err
+		})
 	}
 	if err != nil {
 		slog.Error("store background lines wake-up", "id", p.row.ID, "err", err)
+		return
 	}
+	if stored > 0 && m.changed != nil {
+		m.changed(p.row.ConversationID)
+	}
+}
+
+// retryStore runs a write a few times with backoff. A busy database is the credible failure: under
+// load a writer can hold the lock past the busy timeout. The wake-up ID makes a repeated insert a
+// no-op, so a write that committed before an error is not stored twice.
+func retryStore(what, id string, write func() error) error {
+	var err error
+	for attempt, backoff := 0, storeRetryBackoff; attempt < storeAttempts; attempt, backoff = attempt+1, backoff*2 {
+		if attempt > 0 {
+			time.Sleep(backoff)
+		}
+		if err = write(); err == nil {
+			return nil
+		}
+		slog.Warn(what, "id", id, "attempt", attempt+1, "err", err)
+	}
+	return err
 }
 
 // result is the body of a wake-up. The key "background-result" tells the model, and the
