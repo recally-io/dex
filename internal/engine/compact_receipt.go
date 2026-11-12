@@ -16,7 +16,7 @@ type compactReceipt struct {
 
 var compactReceipts = durable.DefineDocFamily(durable.DocFamilyDefinition[compactReceipt, string]{
 	Kind: "dex.compact.receipt", Version: 1, Family: true,
-	DocumentSemantics: {Scope: durable.ScopeSession},
+	DocumentSemantics: durable.DocumentSemantics{Scope: durable.ScopeSession}, //nolint:modernize // Generic literals require the explicit embedded type.
 	Initial:           func(string) compactReceipt { return compactReceipt{} },
 	CheckpointWhen:    func(compactReceipt, []durable.Op, durable.CheckpointInfo) bool { return false },
 })
