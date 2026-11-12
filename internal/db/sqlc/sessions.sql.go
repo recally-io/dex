@@ -130,7 +130,7 @@ func (q *Queries) CreateTurnResult(ctx context.Context, arg CreateTurnResultPara
 const getTurn = `-- name: GetTurn :one
 SELECT s.id, s.conversation_id, s.content, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s
-WHERE s.id = ? AND s.kind = 'message'
+WHERE s.id = ? AND (s.kind = 'message' OR (s.kind = 'task_result' AND s.id LIKE 'background:%'))
 `
 
 type GetTurnRow struct {
@@ -145,6 +145,9 @@ type GetTurnRow struct {
 	SettledAt      sql.NullInt64  `json:"settled_at"`
 }
 
+// A turn is an input of a person or a session. The wake-up of a background command is a turn too: a
+// parent reads it when the result of a child session cut its answer. It stays a non-user input,
+// and ListTurns does not list it.
 func (q *Queries) GetTurn(ctx context.Context, id string) (GetTurnRow, error) {
 	row := q.db.QueryRowContext(ctx, getTurn, id)
 	var i GetTurnRow

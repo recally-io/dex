@@ -97,6 +97,10 @@ func fakeProvider() *ai.ModelsProvider {
 				data, err := json.Marshal(result, json.Deterministic(true))
 				return fakeText("task-result: " + string(data)), err
 			}
+			if result, ok := args["background-result"]; ok {
+				data, err := json.Marshal(result, json.Deterministic(true))
+				return fakeText("background-result: " + string(data)), err
+			}
 			// The optional "tool" field names a session tool; the default creates a child session.
 			name := "session_new"
 			if tool, ok := args["tool"].(string); ok {

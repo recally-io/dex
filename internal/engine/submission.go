@@ -78,7 +78,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		}
 		change := a.agentChange(ref.AgentID, input.Options)
 		if input.Automation {
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck), botReadExtension(ref.AgentID, a.config.Bots)}}})
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil, "", "")}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck), botReadExtension(ref.AgentID, a.config.Bots)}}})
 		}
 		// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
 		// so a child, an automation or a dream never gets the tool and needs no removal.
@@ -100,7 +100,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			// before the upgrade loses the same extensions.
 			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), frontDeskExtension(), routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{childExtension()}}})
 		case dream:
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"), a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil, "", ""), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"), a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
 		}
 		if err := conversation.Configure(ctx, change); err != nil {
 			return nil, err

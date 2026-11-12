@@ -95,6 +95,13 @@ func (i Item) MarshalJSON() ([]byte, error) {
 			*plain
 			Text string `json:"text"`
 		}{(*plain)(&i), i.Text})
+	case "task":
+		// A background command result has no child session, so its task ID is empty.
+		return json.Marshal(struct {
+			*plain
+			TaskID string `json:"taskId"`
+			Title  string `json:"title"`
+		}{(*plain)(&i), i.TaskID, i.Title})
 	case "tool":
 		args := i.Args
 		if args == nil {
@@ -161,7 +168,9 @@ func userItem(m InputMetadata, id string, at int64, text string) Item {
 	if len(m.Attachments) > 0 {
 		text = stripAttachedFiles(text, m.Attachments)
 	}
-	if m.TaskID != "" || m.Kind == "dex.task_result" {
+	// A withdrawn input keeps the kind of the input: task_result. An input in the log has dex.task_result.
+	// A background wake-up has no TaskID, so the kind decides.
+	if m.TaskID != "" || m.Kind == "dex.task_result" || m.Kind == "task_result" {
 		return Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle}
 	}
 	return Item{Kind: "user", ID: cmp.Or(m.RequestID, id), At: at, Text: text, Origin: m.Origin, Attachments: m.Attachments}

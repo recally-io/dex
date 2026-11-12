@@ -322,8 +322,10 @@ tool processes ended. Before another execution, the main agent must check prior
 artifacts and side effects. Tools run on the host without a sandbox. The SDK
 requests cancellation of local commands and MCP calls. It does not guarantee
 that detached processes or remote jobs stop. A completed MCP call can return
-its report. CLI tools must be logged in and run in the foreground without user
-input.
+its report. CLI tools must be logged in and run without user input. Long work
+runs as a background command (`background_start`): dex tracks it, wakes the
+session when it ends, and ends it when the session stops or dex shuts
+down. A crash of dex can leave the process; the command then shows as unknown.
 
 Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,
 background tasks, timers, skills, and MCP servers are available.

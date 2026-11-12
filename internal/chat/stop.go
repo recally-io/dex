@@ -61,6 +61,7 @@ func (s *Service) stop(ctx context.Context, agentID string, id int64, command *s
 		return w.stored, err
 	}
 	conversations, targets := w.conversations, w.targets
+	s.stopBackground(ctx, w.stopped)
 	for _, c := range conversations {
 		s.signal(c.ID)
 		if s.notify != nil {
@@ -80,6 +81,8 @@ func (s *Service) stop(ctx context.Context, agentID string, id int64, command *s
 type withdrawal struct {
 	conversations []sqlc.Conversation
 	targets       []engine.Ref
+	// stopped are the conversations that the stop ended as a whole. A child that keeps its run is not one.
+	stopped []int64
 	// stored is the result of the first run of a replayed tool call.
 	stored string
 }
@@ -112,6 +115,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		return withdrawal{}, err
 	}
 	var targets []engine.Ref
+	var stopped []int64
 	now := sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}
 	for _, c := range conversations {
 		if c.ID != id {
@@ -129,6 +133,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		if _, err := q.StopConversationSubmissions(ctx, sqlc.StopConversationSubmissionsParams{ChatID: c.ID, Now: now}); err != nil {
 			return withdrawal{}, err
 		}
+		stopped = append(stopped, c.ID)
 		if err := q.RequestExecutionAbort(ctx, c.ID); err != nil {
 			return withdrawal{}, err
 		}
@@ -163,7 +168,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 	if err := tx.Commit(); err != nil {
 		return withdrawal{}, err
 	}
-	return withdrawal{conversations: conversations, targets: targets}, nil
+	return withdrawal{conversations: conversations, targets: targets, stopped: stopped}, nil
 }
 
 // withdrawQueuedParentInputs withdraws the parent input of a child that native execution still

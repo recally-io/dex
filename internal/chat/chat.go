@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 	"uuid"
 
+	"github.com/recally-io/dex/internal/background"
 	"github.com/recally-io/dex/internal/db"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -119,6 +120,7 @@ type Service struct {
 	db            *sql.DB
 	writeMu       sync.Mutex // writer-first control transactions; per agent if throughput matters
 	checkSettings func(context.Context, Settings) error
+	background    *background.Manager
 
 	admissionMu    sync.RWMutex // receipt commits and maintenance lease confirmation only
 	delivery       map[string]deliveryGate

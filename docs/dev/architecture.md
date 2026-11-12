@@ -827,7 +827,8 @@ turn, the parent must check artifacts and prior actions.
 
 Tools use the local `NodeExecutionEnv`, without a sandbox. CLI tools must be
 logged in and run in the foreground with non-interactive options. Detached
-processes and daemons are outside the supported lifecycle. Bash has no default
+processes and daemons are outside the supported lifecycle. Long work uses
+[background commands](#background-commands), which dex tracks. Bash has no default
 timeout. Its visible output keeps at most the last 2000 lines or 50 KiB,
 whichever limit comes first; complete output goes to a temporary file.
 A durable checkpoint does not attach a CLI after restart or guarantee that
@@ -841,6 +842,88 @@ and the ID of an old task is the ID of its first input. Old results stay as
 `task_result` inputs. The saved task report and the acknowledgement of a task
 are gone, and so are the old task endpoints. A rollback of the migration
 restores empty tables.
+
+## Background commands
+
+A session runs long work with `background_start`. dex tracks the command, so
+the session does not block on it or detach it. The tools live in the
+`background` extension, next to the `session_*` tools. The PiG `bash` tool does
+not change. [`internal/background`](../../internal/background/background.go)
+owns the processes. [`internal/chat/background.go`](../../internal/chat/background.go)
+binds a tool call to its session.
+
+- `background_start(command, wake, timeout, cwd, label)` starts the command and
+  returns the ID and the output file path at once. It runs in a new session
+  (`Setsid`), so the shell leads its own process group, with the environment of
+  the bash tool of the bot. A conversation that has a project uses it as the
+  working directory. stdout and stderr go to
+  `<data dir>/agents/<id>/background/<background id>.log`.
+- Wake `exit` (the default) sends one input when the command ends: the ID, the
+  exit status, and the last 20 lines (at most 4 KiB) of the output. A command
+  with this mode has no default timeout. A wait on a condition is a command that
+  loops until the condition holds.
+- Wake `lines` sends the stdout lines as events. dex reads stdout through a
+  pipe, copies it to the output file, and batches the lines of one second into
+  one input (at most 50 lines and 8 KiB, with a count of the omitted lines).
+  stderr is not an event. The command ends at its exit or its timeout (5
+  minutes by default, 30 minutes at most), and the session gets a last input.
+- `background_list` shows the commands of the session. `background_stop` sends
+  SIGTERM to the process group and SIGKILL after 5 s.
+- A command owns its whole process group. When the shell leader exits, dex ends
+  the rest of the group (SIGTERM, then SIGKILL after 5 s) before it stores the
+  final state. The delayed SIGKILL goes out only while dex still owns the
+  group, so it cannot hit a reused group ID.
+
+`background_commands` in `control.sqlite` has one row for each command: the
+session, the starting input, the wake mode, the label, the command, the working
+directory, the output path, the PID, the process group ID, the time that dex
+recorded for the start (not an OS identity), the state, the exit status and the
+reason. The state is `starting`, `running`, `exited`, `stopped`, `timed_out` or
+`unknown`. The reason is `stop`, `shutdown`, `timeout`, `output_limit` or
+`rate_limit`.
+
+The tool call key is unique. `background_start` stores the row in state
+`starting` before it starts the process, then stores the PID and `running`. A
+replay that finds any row returns it and never starts a process, so a crash
+between the process start and the row write cannot run a command twice. After
+the row is stored, the start checks the session again. If a stop withdrew the
+session in between, dex stops the new command at once. The final state and the
+end wake-up are one transaction, so an ended row always has its wake-up. A
+failed write of a `lines` batch can lose that batch: dex does not retry it.
+
+A wake-up is a durable input of kind `task_result` in the owning session, as
+the result of a child session is. Its ID is `background:<id>:<n>` or
+`background:<id>:end`, so a replay stores it once. It keeps the origin and the
+parent link of the input that started the command. A reply reaches the same
+channel, and a child session still reports to its parent. A wake-up is not
+a person's input: tools that need a person (bot changes) reject it. An input
+that arrives while a turn runs queues like other input. An archived bot gets no
+wake-up.
+
+Stop, restart and limits:
+
+- A stop of a session ends the process group of each of its commands. A stopped
+  command sends no wake-up. A child session that keeps its run after a stop of
+  the parent keeps its commands. Archiving a bot ends all its commands.
+  Archiving a chat does not.
+- A graceful shutdown (`App.Close`) stops the process group of every running
+  command (SIGTERM, then SIGKILL after 5 s), stores `stopped` with reason
+  `shutdown`, and stores an end wake-up that says dex shut down, so the agent
+  can start the command again. This runs before the database closes. dex does
+  not restart a command by itself.
+- Only a crash leaves a process behind. At the next start every `starting` and
+  `running` row becomes `unknown`: dex cannot tell whether the process runs.
+  dex does not stop an `unknown` command, because the OS can give the PID to
+  another process. The row keeps the PID and the process group ID, so a person
+  can check.
+- Limits: 8 running commands for each bot, 64 MiB of output for each command,
+  and 100 stdout lines in 1 minute for a `lines` command. A command over the
+  output or line limit is stopped and the session gets a wake-up with a notice.
+  The output limit is soft: dex checks the file size every 250 ms, so a file
+  can pass the limit by what the command writes in that time.
+- A `lines` batch has at most 50 lines and 8 KiB. dex counts a line over either
+  limit as omitted. dex cuts a line longer than 64 KiB and continues with the
+  next line.
 
 ## Attachments
 
@@ -1179,7 +1262,9 @@ the saved context token before each send, including after a restart.
 
 ## Failure behavior
 
-- **dex exits.** Native execution and business receipts remain in their
+- **dex exits.** On a graceful exit, dex stops its background commands and
+  stores `stopped`. After a crash, their rows show as `unknown` at the next
+  start and the processes can remain. Native execution and business receipts remain in their
   separate SQLite stores. The next start registers interrupted child sessions before
   Harness resume and reconciles input admission and receipt outcomes. A stable
   request ID reacquires admitted work instead of creating another input.

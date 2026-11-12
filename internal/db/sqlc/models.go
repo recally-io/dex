@@ -68,6 +68,26 @@ type AutomationRun struct {
 	DismissedAt  sql.NullInt64  `json:"dismissed_at"`
 }
 
+type BackgroundCommand struct {
+	ID               string        `json:"id"`
+	CallKey          string        `json:"call_key"`
+	ConversationID   int64         `json:"conversation_id"`
+	SourceRequestID  string        `json:"source_request_id"`
+	Wake             string        `json:"wake"`
+	Label            string        `json:"label"`
+	Command          string        `json:"command"`
+	Cwd              string        `json:"cwd"`
+	OutputPath       string        `json:"output_path"`
+	TimeoutMs        sql.NullInt64 `json:"timeout_ms"`
+	Pid              int64         `json:"pid"`
+	Pgid             int64         `json:"pgid"`
+	ProcessStartedAt int64         `json:"process_started_at"`
+	State            string        `json:"state"`
+	ExitStatus       sql.NullInt64 `json:"exit_status"`
+	Reason           string        `json:"reason"`
+	EndedAt          sql.NullInt64 `json:"ended_at"`
+}
+
 type ChannelCommand struct {
 	AgentID     string        `json:"agent_id"`
 	SourceKey   string        `json:"source_key"`

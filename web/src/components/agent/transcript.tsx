@@ -670,14 +670,23 @@ export function TranscriptItem({
         <header className="flex min-w-0 items-start gap-2 text-[13px] leading-5">
           <CornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
           <h3 className="min-w-0 [overflow-wrap:anywhere]">
-            <span className="mr-1.5 font-medium text-muted-foreground">Session result</span>
-            <Link
-              to="/a/$agentId/tasks/$turnId"
-              params={{ agentId, turnId: item.taskId }}
-              className="font-semibold text-foreground decoration-ring underline-offset-3 hover:underline"
-            >
-              {item.title}
-            </Link>
+            {item.taskId ? (
+              <>
+                <span className="mr-1.5 font-medium text-muted-foreground">Session result</span>
+                <Link
+                  to="/a/$agentId/tasks/$turnId"
+                  params={{ agentId, turnId: item.taskId }}
+                  className="font-semibold text-foreground decoration-ring underline-offset-3 hover:underline"
+                >
+                  {item.title}
+                </Link>
+              </>
+            ) : (
+              <>
+                <span className="mr-1.5 font-medium text-muted-foreground">Background command</span>
+                <span className="font-semibold text-foreground">{item.title}</span>
+              </>
+            )}
           </h3>
         </header>
       );

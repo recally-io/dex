@@ -18,6 +18,7 @@ import (
 	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
+	"github.com/recally-io/dex/internal/background"
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
@@ -61,6 +62,8 @@ type Config struct {
 	DreamEvery time.Duration
 	// AutomationCheck is the time between two checks for due automations; zero means 1 minute.
 	AutomationCheck time.Duration
+	// Background sets the limits of background commands; a zero field takes its default.
+	Background background.Limits
 	// Token is the access token that the API requires. Empty means the stored token when
 	// RequireToken is set, and no authentication otherwise.
 	Token        string
@@ -69,13 +72,14 @@ type Config struct {
 
 // App is a running control process.
 type App struct {
-	db      *sql.DB
-	engine  *engine.Agents
-	handler http.Handler
-	bots    *channelRegistry
-	jobs    *scheduler.Scheduler
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
+	db         *sql.DB
+	engine     *engine.Agents
+	handler    http.Handler
+	bots       *channelRegistry
+	jobs       *scheduler.Scheduler
+	background *background.Manager
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
 }
 
 // Start restores task cancellation, applies settings, and starts business services.
@@ -109,6 +113,12 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		bots          *channelRegistry
 	)
 	artifacts := artifact.New(conn, cfg.DataDir)
+	bg := background.New(conn, time.Now, cfg.Background, func(id int64) { chats.WakeConversation(id) })
+	// A previous run owned the processes of running commands. This must precede any new command.
+	if err := bg.Recover(ctx); err != nil {
+		cancel()
+		return nil, errors.Join(err, jobs.Close(), conn.Close())
+	}
 	tools := engine.TaskTools{
 		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
 			return chats.ToolReadDreamMessage(ctx, c, request)
@@ -141,6 +151,17 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			},
 			Search: func(ctx context.Context, c engine.TaskContext, a engine.SessionSearchArgs) ([]engine.SessionMatch, error) {
 				return chats.ToolSessionSearch(ctx, c, a)
+			},
+		},
+		Background: engine.BackgroundTools{
+			Start: func(ctx context.Context, c engine.TaskContext, a engine.BackgroundStartArgs) (engine.BackgroundInfo, error) {
+				return chats.ToolBackgroundStart(ctx, c, a)
+			},
+			List: func(ctx context.Context, c engine.TaskContext) ([]engine.BackgroundInfo, error) {
+				return chats.ToolBackgroundList(ctx, c)
+			},
+			Stop: func(ctx context.Context, c engine.TaskContext, id string) (engine.BackgroundInfo, error) {
+				return chats.ToolBackgroundStop(ctx, c, id)
 			},
 		},
 		AskUser: func(ctx context.Context, c engine.TaskContext, a engine.AskUserArgs) (engine.QuestionInfo, error) {
@@ -189,11 +210,12 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, errors.Join(err, jobs.Close(), conn.Close())
 	}
 	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
+	chats.ConfigureBackground(bg)
 	automations := automation.New(q, chats, time.Now)
 	routineTools = automation.NewToolService(conn, automations, chats.AutomationCommitted)
 	hub = live.New(chats, native)
 	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
-	a := &App{db: conn, engine: native, bots: bots, jobs: jobs, cancel: cancel}
+	a := &App{db: conn, engine: native, bots: bots, jobs: jobs, background: bg, cancel: cancel}
 	defer func() { //nolint:contextcheck // Shutdown joins the app lifetime.
 		if err != nil {
 			err = errors.Join(err, a.Close())
@@ -226,6 +248,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	botTools = agent.BotTools{Agents: agentsService, Chats: chats, Extensions: native.Extensions}
 	// An approved archive commits in a chat receipt; the channels stop right after it.
 	chats.OnBotArchived = func(id string) {
+		if err := bg.StopAgent(runCtx, id); err != nil {
+			slog.Error("stop background commands of an archived bot", "agent", id, "err", err)
+		}
 		if err := agentsService.StopChannels(runCtx, id); err != nil {
 			slog.Error("stop channels of an archived bot", "agent", id, "err", err)
 		}
@@ -323,6 +348,7 @@ func (a *App) Close() error {
 	a.bots.Close()
 	a.cancel()
 	a.wg.Wait()
+	a.background.Close()
 	return errors.Join(err, a.engine.Close(context.Background()), a.db.Close())
 }
 
