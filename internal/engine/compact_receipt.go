@@ -16,7 +16,7 @@ type compactReceipt struct {
 
 var compactReceipts = durable.DefineDocFamily(durable.DocFamilyDefinition[compactReceipt, string]{
 	Kind: "dex.compact.receipt", Version: 1, Family: true,
-	DocumentSemantics: durable.DocumentSemantics{Scope: durable.ScopeSession},
+	DocumentSemantics: {Scope: durable.ScopeSession},
 	Initial:           func(string) compactReceipt { return compactReceipt{} },
 	CheckpointWhen:    func(compactReceipt, []durable.Op, durable.CheckpointInfo) bool { return false },
 })
@@ -65,5 +65,5 @@ func compactOnce(ctx context.Context, conversation harness.Conversation, convers
 	if err != nil {
 		return compactAdmission{}, err
 	}
-	return result.(compactAdmission), nil
+	return result.(compactAdmission), nil //nolint:forcetypeassert // The transaction returns compactAdmission on success.
 }
