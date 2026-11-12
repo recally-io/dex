@@ -200,7 +200,7 @@ function WechatQR({ content }: { content: string }) {
       width={240}
       height={240}
       alt="Scan with WeChat to connect dex"
-      className="rounded-[9px] bg-white"
+      className="rounded-card bg-white"
     />
   ) : qr.error ? (
     <Failure title="Could not draw the QR code" error={qr.error} />

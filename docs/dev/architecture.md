@@ -747,11 +747,14 @@ whichever limit comes first; complete output goes to a temporary file.
 A durable checkpoint does not attach a CLI after restart or guarantee that
 external actions occurred once.
 
-The `tasks` and `task_steer_receipts` tables stay in the schema while the web
-reads old task records, and no new code writes them. Old records keep their
-saved reports. A migration filled `parent_id` and `parent_request_id` for them,
-so each old task conversation is a child session. The old task endpoints serve
-those frozen records only.
+The migration `20261112120000_drop_tasks` drops the `tasks` and
+`task_steer_receipts` tables. An earlier migration copied the parent link and
+the parent request of each old task into `conversations.parent_id` and
+`submissions.parent_request_id`. Each old task conversation is a child session,
+and the ID of an old task is the ID of its first input. Old results stay as
+`task_result` inputs. The saved task report and the acknowledgement of a task
+are gone, and so are the old task endpoints. A rollback of the migration
+restores empty tables.
 
 ## Attachments
 

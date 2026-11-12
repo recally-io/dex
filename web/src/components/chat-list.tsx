@@ -81,10 +81,10 @@ const row =
   "h-9 min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground aria-[current=page]:bg-accent aria-[current=page]:text-foreground";
 
 const menuItem =
-  "h-8 w-full justify-start gap-2 rounded-[7px] px-2 text-[12.5px] text-foreground data-highlighted:bg-accent";
+  "h-8 w-full justify-start gap-2 rounded-control px-2 text-[12.5px] text-foreground data-highlighted:bg-accent";
 
 const menuPopup =
-  "w-[180px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-[10px] bg-card p-1 shadow-raised outline-none";
+  "w-[180px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-card bg-card p-1 shadow-raised outline-none";
 
 /**
  * The session list of the Sessions panel. Main is the bot's one timeline: it comes first and has

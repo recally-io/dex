@@ -71,7 +71,7 @@ export function ChatPage({ chatId }: { chatId?: number }) {
   );
 }
 
-export function MainTimeline({ settings }: { settings: Settings }) {
+export function MainTimeline({ settings, visible = true }: { settings: Settings; visible?: boolean }) {
   const agentId = useAgentId();
   const main = useQuery(getMainChatOptions({ path: { agentId } }));
 
@@ -84,7 +84,7 @@ export function MainTimeline({ settings }: { settings: Settings }) {
       <Failure title="Could not open the timeline" error={main.error} retry={() => void main.refetch()} />
     </MainPane>
   ) : (
-    <Chat key={main.data.id} chatId={main.data.id} settings={settings} main />
+    <Chat key={main.data.id} chatId={main.data.id} settings={settings} main visible={visible} />
   );
 }
 
@@ -180,7 +180,17 @@ function OriginPill({ chat }: { chat: ChatInfo }) {
   return null;
 }
 
-function Chat({ chatId, settings, main = false }: { chatId: number; settings: Settings; main?: boolean }) {
+function Chat({
+  chatId,
+  settings,
+  main = false,
+  visible = true,
+}: {
+  chatId: number;
+  settings: Settings;
+  main?: boolean;
+  visible?: boolean;
+}) {
   const agentId = useAgentId();
 
   const { chat, state, setState, queued, setQueued, connection, streamError, reconnect } =
@@ -657,32 +667,38 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           embedded ? "min-h-0" : "lg:border-l lg:border-border",
         )}
       >
-        {/* The bot pane names Main. A Chat keeps a title for focus and screen readers. The
-            project, model and thinking level show only after Chat settings in the bot header. */}
         {chat.data && switchable ? (
           <>
-            {chat.data.main ? null : (
-              <header className="flex min-w-0 items-center gap-3 border-b border-border px-4 py-2">
-                <h1 id="page-title" tabIndex={-1} className="min-w-0 flex-1 truncate text-sm font-medium">
-                  {chat.data.title || "New chat"}
-                </h1>
-                {chat.data.parentId === undefined ? (
+            <header className="flex min-w-0 items-center gap-2 border-b border-border px-4 py-2">
+              {!chat.data.main ? (
+                <>
                   <Link
                     to="/a/$agentId"
                     params={{ agentId }}
-                    className="shrink-0 text-[12.5px] text-muted-foreground hover:text-foreground hover:underline"
+                    className="shrink-0 text-sm text-muted-foreground hover:text-foreground hover:underline"
                   >
-                    Back to Main
+                    Main
                   </Link>
-                ) : (
-                  <ParentLink
-                    parentId={chat.data.parentId}
-                    parentAgentId={chat.data.parentAgentId}
-                    parentAgentName={chat.data.parentAgentName}
-                  />
-                )}
-              </header>
-            )}
+                  <span aria-hidden className="text-ring">
+                    /
+                  </span>
+                </>
+              ) : null}
+              <h1
+                id={visible ? "page-title" : undefined}
+                tabIndex={-1}
+                className="min-w-0 flex-1 truncate text-sm font-medium"
+              >
+                {chat.data.main ? "Main" : chat.data.title || "New chat"}
+              </h1>
+              {!chat.data.main && chat.data.parentId !== undefined ? (
+                <ParentLink
+                  parentId={chat.data.parentId}
+                  parentAgentId={chat.data.parentAgentId}
+                  parentAgentName={chat.data.parentAgentName}
+                />
+              ) : null}
+            </header>
             {settingsOpen ? (
               <div
                 role="region"

@@ -1625,7 +1625,7 @@ try {
   );
   await check(
     "tools belong to the selected agent",
-    `!document.querySelector('aside a[href="/extensions"]') && document.querySelector('main h1')?.textContent === 'Tools' && !document.body.innerText.includes('Reload tools')`,
+    `!document.querySelector('aside a[href="/extensions"]') && document.querySelector('main h1:not([inert] *)')?.textContent === 'Tools' && !document.body.innerText.includes('Reload tools')`,
   );
   await check(
     "tool levels and secrecy",
@@ -2120,8 +2120,8 @@ function childTurn(conversationId) {
   );
 }
 
-// A task from before child sessions, as the migration leaves it: a conversation with a task: key,
-// a parent, and a task whose ID is the ID of its first input.
+// A task from before child sessions, as the migrations leave it: a conversation with a task: key,
+// a parent, and a first input whose ID is the old task ID. The tasks table is gone.
 function seedOldTask(parentId) {
   return withControlDB((db) => {
     const now = Date.now();
@@ -2141,10 +2141,6 @@ function seedOldTask(parentId) {
     db.prepare(
       "INSERT INTO submissions (id, conversation_id, content, attachments, kind, status, answer, parent_request_id, created_at, settled_at) VALUES (?, ?, 'old goal', 'null', 'message', 'done', 'old report', ?, ?, ?)",
     ).run(taskId, id, source, now, now);
-
-    db.prepare(
-      "INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, status, report, created_at) VALUES (?, ?, ?, ?, ?, 'Old task', 'done', 'old report', ?)",
-    ).run(taskId, parentId, id, `spawn-${taskId}`, source, now);
 
     return { taskId, conversationId: id };
   });

@@ -30,16 +30,10 @@ export function Confirm({
       onClose={onCancel}
       footer={
         <>
-          <Button size="sm" variant="secondary" onClick={onCancel} disabled={pending}>
+          <Button variant="secondary" onClick={onCancel} disabled={pending}>
             Cancel
           </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            className="bg-red text-white"
-            onClick={onConfirm}
-            disabled={pending}
-          >
+          <Button variant="destructive" className="bg-red text-white" onClick={onConfirm} disabled={pending}>
             {pending ? "Please wait…" : confirmLabel}
           </Button>
         </>

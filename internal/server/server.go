@@ -58,7 +58,7 @@ const (
 var errInvalid = errors.New("invalid request")
 
 // errReadOnly is a message to a chat that the web UI cannot write to.
-var errReadOnly = errors.New("this session is read-only; send messages in main, a Chat session, or a delegated session whose task ended")
+var errReadOnly = errors.New("this session is read-only; send messages in main, a Chat session, or a child session")
 
 // New returns the handler for the API under /api/ and the web UI at /. The API requires
 // cfg.Token when it is set. It refuses cross-site writes, so a web page in the user's browser

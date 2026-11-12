@@ -86,6 +86,7 @@ function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void 
         <Field label="Model">
           {({ id }) => (
             <ModelPicker
+              side="top"
               override={{
                 value: model,
                 defaultName: modelName,
@@ -98,7 +99,7 @@ function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void 
                 },
               }}
               trigger={
-                <Button id={id} variant="secondary" className="max-w-full truncate">
+                <Button id={id} variant="secondary" className="w-fit max-w-full self-start truncate">
                   {modelName}
                 </Button>
               }

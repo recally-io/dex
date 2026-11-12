@@ -9,7 +9,7 @@ import { cn } from "../lib/utils";
  */
 function Track({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <nav aria-label={label} className="inline-flex items-center gap-0.5 rounded-[8px] bg-accent p-0.5">
+    <nav aria-label={label} className="inline-flex items-center gap-0.5 rounded-card bg-accent p-0.5">
       {children}
     </nav>
   );
@@ -17,7 +17,7 @@ function Track({ label, children }: { label: string; children: ReactNode }) {
 
 function segment(current: boolean) {
   return cn(
-    "flex h-7 shrink-0 items-center gap-1.5 rounded-[6px] px-3 text-[12.5px] whitespace-nowrap transition-colors",
+    "flex h-7 shrink-0 items-center gap-1.5 rounded-control px-3 text-[12.5px] whitespace-nowrap transition-colors",
     current
       ? "bg-card font-medium text-foreground shadow-card"
       : "text-muted-foreground hover:text-foreground",

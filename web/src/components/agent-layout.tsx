@@ -205,7 +205,7 @@ function AgentPane({ settings }: { settings: Settings }) {
         <PageHeader
           title={settings.agent.name}
           // The other tabs open with their own page heading.
-          heading={onMain}
+          heading={false}
           badge={
             dirty ? (
               <Badge
@@ -216,7 +216,12 @@ function AgentPane({ settings }: { settings: Settings }) {
               </Badge>
             ) : null
           }
-          avatar={<AgentAvatar agent={settings.agent} className="size-5 rounded-[6px] text-[11px]" />}
+          avatar={
+            <AgentAvatar
+              agent={settings.agent}
+              className="hidden size-5 rounded-control text-[11px] sm:flex"
+            />
+          }
           tabs={
             <nav
               ref={nav}
@@ -232,7 +237,7 @@ function AgentPane({ settings }: { settings: Settings }) {
                   data-tab={tab.label}
                   aria-current={tab === current ? "page" : undefined}
                   className={cn(
-                    "relative flex shrink-0 items-center gap-1.5 px-2.5 text-[12.5px] whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground",
+                    "relative flex shrink-0 items-center gap-1 px-1.5 text-[12.5px] sm:gap-1.5 sm:px-2.5 whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground",
                     "after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full",
                     "aria-[current=page]:font-medium aria-[current=page]:text-foreground aria-[current=page]:after:bg-foreground",
                   )}
@@ -293,7 +298,7 @@ function AgentPane({ settings }: { settings: Settings }) {
           <div className="flex min-w-0 flex-1 flex-col">
             <ChatSettingsContext.Provider value={settingsOpen}>
               <div inert={!onMain} className={cn("min-h-0 flex-1 flex-col", onMain ? "flex" : "hidden")}>
-                <MainTimeline settings={settings} />
+                <MainTimeline settings={settings} visible={onMain} />
               </div>
               {!onMain ? <Outlet /> : null}
             </ChatSettingsContext.Provider>

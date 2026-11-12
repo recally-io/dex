@@ -30,7 +30,7 @@ export function ChannelIcon({ channel }: { channel: ChannelId }) {
   return (
     <span
       data-channel-icon={channel}
-      className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-muted text-muted-foreground shadow-card"
+      className="flex size-8 shrink-0 items-center justify-center rounded-card bg-muted text-muted-foreground shadow-card"
     >
       <Icon size={16} aria-hidden />
     </span>
