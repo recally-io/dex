@@ -6,8 +6,8 @@ import { cn } from "../lib/utils";
 export const ShellContext = createContext<{
   openDrawer: () => void;
   attention: boolean;
-  /** The bot column, which only a bot page has. */
-  column?: { open: boolean; toggle: () => void };
+  /** The desktop sidebar. Attention tells that a bot needs you while it is hidden. */
+  sidebar?: { open: boolean; toggle: () => void; attention: boolean };
 }>({ openDrawer: () => {}, attention: false });
 
 export type PageHeaderProps = {
@@ -70,25 +70,30 @@ export function PageHeader({
 }
 
 /**
- * The first control of the header. Below lg it opens the drawer. From lg on, a bot page uses the
- * same place to hide or show its bot column.
+ * The first control of the header. Below lg it opens the drawer. From lg on, it shows the sidebar
+ * again after the user hid it; the sidebar holds its own Hide button.
  */
 export function MenuButton() {
-  const { openDrawer, attention, column } = useContext(ShellContext);
-  const columnLabel = column?.open ? "Hide bot column" : "Show bot column";
+  const { openDrawer, attention, sidebar } = useContext(ShellContext);
+  const sidebarLabel = sidebar?.attention ? "Show sidebar, a bot needs you" : "Show sidebar";
 
   return (
     <>
-      {column ? (
+      {sidebar && !sidebar.open ? (
         <button
           type="button"
-          aria-label={columnLabel}
-          aria-expanded={column.open}
-          title={columnLabel}
-          onClick={column.toggle}
-          className="-ml-1 hidden size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:flex"
+          aria-label={sidebarLabel}
+          title={sidebarLabel}
+          onClick={sidebar.toggle}
+          className="relative -ml-1 hidden size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:flex"
         >
           <PanelLeft size={16} />
+          {sidebar.attention ? (
+            <span
+              aria-hidden
+              className="absolute top-1 right-1 size-2 rounded-full bg-orange ring-2 ring-background"
+            />
+          ) : null}
         </button>
       ) : null}
       <button

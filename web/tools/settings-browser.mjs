@@ -148,7 +148,7 @@ try {
 
     // Opened from the default bot, Providers still lists every bot that uses the provider.
     await visit("/a/default");
-    await tap('aside[aria-label="Bots"] button[aria-label^="User menu"]');
+    await tap('aside[aria-label="Sidebar"] button[aria-label^="More"]');
     await poll("user menu open", () =>
       evaluate(`!!document.querySelector('[role="menu"] a[href="/providers"]')`),
     );

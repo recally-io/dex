@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { format, isToday, startOfDay, subDays } from "date-fns";
+import { format, isToday } from "date-fns";
 import { Archive, ChevronRight, MoreHorizontal, Plus } from "lucide-react";
 import type { Chat } from "../api/generated/types.gen";
 import {
@@ -60,25 +60,11 @@ function useArchive(openChat: number) {
     });
 }
 
-/** ChatGPT-style buckets by latest activity: recent days first, then one per month. */
-export function dateGroup(at: number, now: number) {
-  const today = startOfDay(now).getTime();
-
-  if (at >= today) return "Today";
-
-  if (at >= subDays(today, 1).getTime()) return "Yesterday";
-
-  if (at >= subDays(today, 7).getTime()) return "Previous 7 days";
-
-  if (at >= subDays(today, 30).getTime()) return "Previous 30 days";
-
-  return format(at, "MMMM yyyy");
-}
-
 const pageSize = 5;
 
-const row =
-  "h-9 min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground aria-[current=page]:bg-accent aria-[current=page]:text-foreground";
+/** A row of the sidebar. The open page is a raised pill. */
+export const row =
+  "h-8 min-w-0 justify-start gap-2 rounded-[9px] border-0 px-2 text-[13px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground aria-[current=page]:bg-card aria-[current=page]:text-foreground aria-[current=page]:shadow-[0_0_0_1px_var(--border),0_1px_2px_rgb(0_0_0/0.06)]";
 
 const menuItem =
   "h-8 w-full justify-start gap-2 rounded-control px-2 text-[12.5px] text-foreground data-highlighted:bg-accent";
@@ -87,19 +73,17 @@ const menuPopup =
   "w-[180px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-card bg-card p-1 shadow-raised outline-none";
 
 /**
- * The Chats list of the bot column. Main is the bot's one timeline: it comes first and has
- * no menu. Chat sessions and child sessions follow in date groups, newest activity first, and
- * archived ones go last. A busy session has a dot, and a stalled one says so. Today starts open;
- * each group shows five sessions until the user asks for more.
+ * The chats of the open bot in the sidebar: the five with the newest activity and the open one,
+ * then New chat, then the archived ones in a closed group. All sessions lists the rest, so the
+ * other bots stay in view. A busy chat has a dot, and a stalled one says so.
  */
-export function ChatSection({ chatId }: { chatId: number }) {
+export function ChatList({ chatId }: { chatId: number }) {
   const agentId = useAgentId();
   const main = useQuery(getMainChatOptions({ path: { agentId } }));
   const sessions = useQuery({ ...listChatsOptions({ path: { agentId } }), refetchInterval: 3000 });
   const toggleArchive = useArchive(chatId);
   const newChat = useNewChat();
   const onMain = !chatId || chatId === main.data?.id;
-  const [now] = useState(() => Date.now());
 
   const chats = (sessions.data?.chats ?? [])
     .filter((chat) => sessionKind(chat) === "Chat")
@@ -107,13 +91,16 @@ export function ChatSection({ chatId }: { chatId: number }) {
 
   const active = chats.filter((chat) => !chat.archivedAt);
   const archived = chats.filter((chat) => chat.archivedAt);
-  const groups = Map.groupBy(active, (chat) => dateGroup(chat.updatedAt, now));
+  const recent = active.slice(0, pageSize);
+  const open = active.find((chat) => chat.id === chatId);
+
+  if (open && !recent.includes(open)) recent.push(open);
 
   // The list skips empty chats, so a Chat opened just now shows on its own until its first message.
   const pending = !onMain && sessions.isSuccess && !chats.some((chat) => chat.id === chatId);
+  const more = active.length - recent.length;
 
   // A child session names its parent. Main is not in the list, and an archived parent still has its title.
-
   const item = (chat: Chat) => (
     <ChatRow
       key={chat.id}
@@ -125,54 +112,41 @@ export function ChatSection({ chatId }: { chatId: number }) {
   );
 
   return (
-    <section aria-label="Chats" className="flex flex-col px-2 pt-3 pb-1">
-      <div className="flex h-7 items-center px-2">
-        <h2 className="min-w-0 flex-1 text-[11.5px] font-medium text-muted-foreground">Chats</h2>
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          disabled={newChat.isPending}
-          onClick={() => newChat.mutate({ path: { agentId } })}
-          className="-mr-1 gap-1 text-[12px]"
-        >
-          <Plus className="size-3.5" />
-          New chat
-        </Button>
-      </div>
-      <nav aria-label="Chats" className="flex flex-col">
+    <>
+      {recent.map(item)}
+      {pending ? (
+        <span aria-current="page" className={cn(row, "flex items-center")}>
+          <span aria-hidden className="size-3.5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">New chat</span>
+        </span>
+      ) : null}
+      {more > 0 ? (
         <Link
-          to="/a/$agentId"
+          to="/a/$agentId/sessions"
           params={{ agentId }}
-          activeOptions={{ exact: true }}
-          aria-current={onMain ? "page" : undefined}
-          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), row)}
+          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), row, "text-[12.5px]")}
         >
-          <span className="min-w-0 flex-1 truncate font-medium">Main</span>
-          <span className="shrink-0 text-[11.5px] text-muted-foreground">Every channel</span>
+          <span aria-hidden className="size-3.5 shrink-0" />
+          {more} more in All sessions
         </Link>
-        {pending ? (
-          <span aria-current="page" className={cn(row, "mt-0.5 flex items-center")}>
-            <span className="min-w-0 flex-1 truncate">New chat</span>
-          </span>
-        ) : null}
-        {[...groups].map(([label, list]) => (
-          <Group key={label} label={label} count={list.length} defaultOpen={label === "Today"}>
-            {(limit) => list.slice(0, limit).map(item)}
-          </Group>
-        ))}
-        {archived.length ? (
-          <Group label="Archived" count={archived.length} defaultOpen={false}>
-            {(limit) => archived.slice(0, limit).map(item)}
-          </Group>
-        ) : null}
-        {sessions.isSuccess && onMain && !chats.length ? (
-          <p className="px-2 py-2 text-[12px] leading-relaxed text-muted-foreground">
-            New chat starts a conversation with its own context.
-          </p>
-        ) : null}
-      </nav>
-    </section>
+      ) : null}
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={newChat.isPending}
+        onClick={() => newChat.mutate({ path: { agentId } })}
+        className={row}
+      >
+        <Plus className="size-3.5 shrink-0" />
+        New chat
+      </Button>
+      {archived.length ? (
+        <Group label="Archived" count={archived.length} defaultOpen={false}>
+          {(limit) => archived.slice(0, limit).map(item)}
+        </Group>
+      ) : null}
+    </>
   );
 }
 
@@ -266,14 +240,17 @@ function ChatRow({
             parent && "h-auto min-h-9 py-1.5",
           )}
         >
-          {chat.busy ? (
-            <span
-              role="img"
-              aria-label={stalled ? "Stalled" : "Running"}
-              title={stalled ? "Stalled: no sign of work" : "Running"}
-              className={cn("size-1.5 shrink-0 rounded-full", stalled ? "bg-orange" : "bg-primary")}
-            />
-          ) : null}
+          {/* The slot of a row's icon, so every title starts at one edge. */}
+          <span className="flex size-3.5 shrink-0 items-center justify-center">
+            {chat.busy ? (
+              <span
+                role="img"
+                aria-label={stalled ? "Stalled" : "Running"}
+                title={stalled ? "Stalled: no sign of work" : "Running"}
+                className={cn("size-1.5 rounded-full", stalled ? "bg-orange" : "bg-primary")}
+              />
+            ) : null}
+          </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate">{title}</span>
             {parent ? (

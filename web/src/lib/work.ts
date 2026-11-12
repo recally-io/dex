@@ -34,7 +34,7 @@ type WorkState = {
 /**
  * The one status a bot row shows. "needs" wins over "working": an open question, a failed routine
  * run that is not done, or a routine that needs setup. The bot page shows each of these again:
- * questions and routines in the bot column. A failed child session is not
+ * questions and routines in the sidebar. A failed child session is not
  * here: its parent session tells the user.
  */
 export function botStatus(
@@ -58,7 +58,7 @@ export function botStatus(
 }
 
 // Bot status reads no schedule, so the range is the smallest that the API accepts. One fixed range
-// gives the rail and the bot column one shared query.
+// gives the sidebar and the drawer button one shared query.
 const opened = Date.now();
 
 export const workOptions = () => ({
@@ -66,7 +66,7 @@ export const workOptions = () => ({
   refetchInterval: 10_000,
 });
 
-/** The items that make a bot need the user. The bot column lists them, so each orange dot has a place to act on it. */
+/** The items that make a bot need the user. The sidebar lists them, so each orange dot has a place to act on it. */
 export function needsItems(agentId: string, work: Work | undefined) {
   return {
     questions: (work?.sessions ?? [])

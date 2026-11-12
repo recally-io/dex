@@ -46,34 +46,32 @@ to read in an afternoon.
   joins the context at the run's next step; Stop drops it, and the transcript
   says to run `/compact` again. After a summary, Show earlier
   messages can load the earlier transcript. A clear and a summary show a
-  divider. The window has three parts. At the far left, a
-  narrow rail starts with the user's avatar. Its menu shows the Dex version and
-  opens the global settings, which hold Providers, Environment, Archived bots,
-  and About. A red dot on the avatar tells that a provider needs attention. Below it, the rail shows each
-  bot as an avatar, then New bot. Each bot avatar shows at most one status
-  dot: orange for Needs you, blue for Working. Needs you wins. On a bot page,
-  the first button of the page header hides or shows the bot column. The
-  browser keeps that choice. The user talks to a bot, and the bot manages its sessions.
-  Next to the rail, the bot column holds everything of the selected bot. Its
-  header names the bot and has a gear that opens the bot's Settings: General,
-  Instructions, Channels, and Tools. The model and the thinking level change
-  in Settings. Below the header come Needs you, Routines with the number of
-  enabled routines, and Chats. Chats starts with Main and has New chat. A link
-  at the bottom opens All sessions, the full session list of the bot.
+  divider. The window has a sidebar and a page.
+  The user talks to a bot, and the bot manages its sessions. The sidebar lists
+  the bots as groups. Each bot row shows at most one status dot: orange for
+  Needs you, blue for Working. Needs you wins. The open bot expands to Needs
+  you, Main, Routines with the number of enabled routines, its five chats with
+  the newest activity, the open chat, New chat, and a closed Archived group.
+  When the bot has more chats, a row opens All sessions, the full session list
+  of the bot. Other bots show only their row, so the list stays short. The ⋯
+  of the open bot opens its Settings (General, Instructions, Channels, and
+  Tools) and All sessions; it stays lit on those pages. The model and the
+  thinking level change in Settings. The ⋯ at the top of the sidebar opens the
+  global settings (Providers, Environment, Archived bots) and About. A red dot
+  on it tells that a provider needs attention. New bot comes after the bots.
   The page header names only the open page: Main, the title of the open chat,
   Routines, Settings, or All sessions. In Main or a writable Chat, the header
   ends with the model and the thinking level that answer the next message.
   This button opens Chat settings, a row with the project, model and thinking
   level of the open chat; a dot on the button tells that the chat has its own
-  values. Main comes first in Chats and cannot be archived. Chat sessions follow in
-  date groups by latest activity: Today, Yesterday, Previous 7 days, Previous
-  30 days, then one group per month. Archived chats come last. Only Today
-  starts open, and each group shows five chats until the user asks for more.
+  values. Main cannot be archived.
   The row menu and a right-click archive or restore a Chat. Archiving keeps the
   messages, records and files; a child session's result still returns to the chat.
-  New chat does not reuse an archived
-  empty chat. On a phone, the menu button opens the rail and the bot column as a
-  drawer. The menu button shows an orange dot when another bot needs the user.
+  New chat does not reuse an archived empty chat. The button at the top left of
+  the sidebar hides it. The first button of the page header then shows it
+  again, with an orange dot when a bot needs the user, and the header shows the
+  bot's avatar. On a phone, the menu button opens the sidebar as a drawer. The
+  menu button shows an orange dot when another bot needs the user.
   The browser keeps the sidebar's open or collapsed state. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
   URLs open the default agent. `/needs-you`, `/work`, and `/inbox` open the
@@ -199,7 +197,7 @@ a named label and a thin line that groups its replies and tool calls. The mark
 shows where the report belongs; it does not confirm that the work reached its goal.
 The chat does not show the internal report as input. The user opens the
 child session to read its full work.
-The bot has no Sessions tab. Chats in the bot column lists Chats and child sessions,
+The bot has no Sessions tab. The open bot in the sidebar lists Chats and child sessions,
 newest activity first, and links to All sessions, the full session list of the
 bot. A child session is a Chat session with a parent. Its row shows "Started by"
 and the name of the parent: Main, or the title of a Chat, also when that Chat is
@@ -222,7 +220,7 @@ old task in the same way. The UI has no Task page and no Task kind in the filter
 A result shows that the child returned a report. It does not prove goal
 completion. The UI does not show progress percentages.
 
-`New chat` in the bot column opens a writable Chat
+`New chat` in the sidebar opens a writable Chat
 with its own model context. It reuses the
 newest empty Chat, so an abandoned click leaves no list row. The first message
 sets the title. Chat defaults to the bot's model settings and uses its instructions and shared memory.
@@ -247,7 +245,7 @@ Routines before its title.
 
 A bot needs the user when it has an open question, an unhandled failed or
 failed routine run that is not handled, or a routine that needs a model. The
-Needs you section of the bot column lists each item and opens the place to
+Needs you section of the open bot in the sidebar lists each item and opens the place to
 act on it. A failed child session goes to its parent, which tells the user; it
 is not a Needs you item. Mark handled applies to a failed routine run only.
 There is no cross-bot list.
@@ -260,7 +258,7 @@ Continue in chat opens a writable Chat for that bot, sets the routine's current
 project directory, and sends a first message that quotes the stored result
 and exact run reference. Routine history shows outcome dots, summaries,
 duplicate marks, and links to saved results. The Routines
-link in the bot column shows a red dot when an enabled routine's latest run failed.
+row in the sidebar shows a red dot when an enabled routine's latest run failed.
 
 When the main agent starts background work, it continues independent local
 work within the same scope. When no local work remains, it names the background
