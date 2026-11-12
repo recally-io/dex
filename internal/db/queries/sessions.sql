@@ -84,13 +84,13 @@ WHERE s.id = ? AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL;
 -- name: CreateTurnResult :execrows
 -- The result of a parent turn goes to the parent session with the origin of the parent request.
 -- The ID follows the turn, so a replay does not store a second result.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
-SELECT @id, c.parent_id, @content, 'null', @id, source.origin, 'task_result', 'pending', @created_at
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, result_child_id, native_answer_id)
+SELECT @id, c.parent_id, @content, 'null', @id, source.origin, 'task_result', 'pending', @created_at, c.id, sqlc.narg(native_answer_id)
 FROM submissions turn
 JOIN conversations c ON c.id = turn.conversation_id
 JOIN submissions source ON source.id = turn.parent_request_id
 WHERE turn.id = @turn_id AND c.parent_id IS NOT NULL
-ON CONFLICT DO NOTHING;
+ON CONFLICT (result_child_id, native_answer_id) DO NOTHING;
 
 -- name: ListRecoveryChildren :many
 -- The child sessions with a pending parent turn. Recovery reads the native state of each pending

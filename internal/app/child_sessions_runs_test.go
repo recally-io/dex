@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestUserFailedSharedRunSendsNoSecondResultAfterALaterRunStarted(t *testing.T) {
+func TestUserFailedSharedRunSendsEachResultAfterALaterRunStarted(t *testing.T) {
 	t.Parallel()
 	// Given a child run that a parent steer joined and that the model failed, while the control
 	// database refused to settle the receipts of both inputs.
@@ -36,15 +36,58 @@ func TestUserFailedSharedRunSendsNoSecondResultAfterALaterRunStarted(t *testing.
 	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": childJSON(t, map[string]any{"tool": "bash", "command": taskGate(t, dir, "next")})}), &ref)
 	waitTaskFile(t, filepath.Join(dir, "next.pid"))
 	execSQL(t, write, `DROP TRIGGER hold_failed`)
-	// Then the receipts of the failed run settle and the parent gets one result for it.
+	// Then each failed parent input gets its own result.
 	eventually(t, "failed receipts settled", func() (bool, any) {
 		turns := childTurns(t, write, child.conversation(t))
 		return len(turns) == 3 && turns[0].status != "pending" && turns[1].status != "pending", turns
 	})
-	if rows := resultRows(t, write, parent); len(rows) != 1 {
-		t.Fatalf("one failed run produced %d results after the next run started: %+v", len(rows), rows)
+	if rows := resultRows(t, write, parent); len(rows) != 2 {
+		t.Fatalf("two failed parent inputs produced %d results after the next run started: %+v", len(rows), rows)
 	}
 	releaseResultGate(t, dir, "next")
+	rows := waitResults(t, write, parent, 3)
+	counts := map[string]int{}
+	for _, row := range rows {
+		outcome, _ := resultBody(t, row.content)["outcome"].(string)
+		counts[outcome]++
+	}
+	if counts["failed"] != 2 || counts["done"] != 1 {
+		t.Fatalf("failed inputs and later answer must remain separate: %+v", counts)
+	}
+}
+
+func TestUserFailedRunContinueKeepsSeparateDoneAnswer(t *testing.T) {
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := controlWriteDB(t, dir)
+	parent := newParent(t, d)
+	child := spawnChild(t, d, parent, "Continue after failure", childJSON(t, map[string]any{"tool": "bash", "command": taskGate(t, dir, "fail-continue")}), "spawn")
+	waitTaskFile(t, filepath.Join(dir, "fail-continue.pid"))
+	execSQL(t, conn, `CREATE TRIGGER hold_failure BEFORE UPDATE OF status ON submissions WHEN OLD.parent_request_id IS NOT NULL BEGIN SELECT RAISE(FAIL, 'hold receipts'); END`)
+	var ref childRef
+	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "invalid JSON fails the model", "mode": "steer"}), &ref)
+	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": childJSON(t, map[string]any{"tool": "bash", "command": "echo continued"}), "mode": "queue"}), &ref)
+	releaseResultGate(t, dir, "fail-continue")
+	d.watch(t, child.conversation(t)).until(t, "continued answer", answeredWith("spawn: continued"))
+	execSQL(t, conn, `DROP TRIGGER hold_failure`)
+	turns := waitChildTurnsEnded(t, conn, child.conversation(t), 3)
+	rows := waitResults(t, conn, parent, 3)
+	if turns[0].status != "unanswered" || turns[1].status != "unanswered" || turns[2].status != "done" {
+		t.Fatalf("continued run changed failed inputs: %+v", turns)
+	}
+	counts := map[string]int{}
+	for _, row := range rows {
+		outcome, _ := resultBody(t, row.content)["outcome"].(string)
+		counts[outcome]++
+	}
+	if counts["failed"] != 2 || counts["done"] != 1 {
+		t.Fatalf("results: %+v", counts)
+	}
+	d.stop()
+	startDex(t, dir, "")
+	if rows := resultRows(t, conn, parent); len(rows) != 3 {
+		t.Fatalf("restart added results: %+v", rows)
+	}
 }
 
 func TestUserSharedRunSendsNoSecondResultAfter256LaterInputs(t *testing.T) {

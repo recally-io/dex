@@ -618,16 +618,20 @@ the child. A replay finds the stored turn and changes nothing. Stop and the
 tool calls take the SQLite writer before they read.
 
 A turn that a parent sends has origin `task`, so it never goes to a user
-channel. When the turn ends with `done`, `failed` or `interrupted`, control
-writes one `task_result` submission with ID `result:<turn ID>` in the settlement
-transaction. The body names the child, its title, the turn and the outcome. It
-has the final answer cut at 4,000 characters, or the failure reason. A restart
-adds the number of queued inputs it withdrew. The result copies the origin of
-the parent request, so a Chat gets its own results and a channel peer gets the
-results of work that the peer started. A stopped, aborted or withdrawn turn
-sends no result. A user message in a child sends none either. When a steered
-input joins a run, only the input that started the run sends a result. A run
-that fails reports for each input.
+channel. A completed run with a parent input sends one `task_result`, including
+when a user started the run. A pure user run sends none. Control uses the child
+conversation and native Answer entry as a unique key. The first parent input
+to settle owns `result:<turn ID>`. A done native input without an Answer is an
+error. Each failed or interrupted parent input sends its own result; user inputs
+send none. A stopped, aborted or withdrawn input sends none. Result insertion
+and receipt settlement share a control transaction. Only an Answer key conflict
+is treated as already delivered.
+
+The result names the child, its title, the turn and the outcome. It has the
+final answer cut at 4,000 characters, or the failure reason. A restart adds
+the number of queued inputs it withdrew. The result copies the origin of the
+parent request, so a Chat gets its own results and a channel peer gets the
+results of work that the peer started.
 The result enters the parent's follow-up inbox even when the parent is busy.
 Control never changes a settled submission back to pending, so there is no
 retry counter and no delivery recovery state. The parent reads the child's
@@ -660,17 +664,17 @@ The reply of Stop confirms the request. It does not prove process exit.
 Processes and remote work can continue. Cancellation does not undo file writes
 or remote actions.
 
-At process start, control calls `Agents.RecoveryOutcome` for each child input
-that has no outcome and has a parent request. The engine reads committed native
-records through PiG storage without opening or resuming a Harness. Control never
-opens `state.sqlite`. A saved native completion or failure settles through the
-normal transaction. Only an input that entered a run and did not end becomes
-`interrupted`. Control withdraws the queued inputs behind it and counts them,
-writes the one result, and registers the abort with `Agents.Recover` before any
-Harness can resume. Recovery isolates those conversations. An input that native
-execution never saw is admitted for the first time. Repeated restarts keep one
-result per turn, because the result ID is the turn ID. The parent reports the
-interruption and warns that side effects may exist.
+At process start, control reads the native state of every pending input in a
+child with a pending parent input, including admission gaps. The engine reads
+committed records without opening or resuming a Harness. Control never opens
+`state.sqlite`. A saved completion or failure settles through the normal
+transaction. If a parent input is placed in an unfinished run, recovery
+interrupts the placed inputs and withdraws queued and unadmitted inputs. Each
+placed parent input gets an interrupted result with the withdrawal count.
+Settlements, results, withdrawals and abort intent commit together before any
+Harness resumes. Recovery isolates those conversations. A second restart adds
+nothing. The parent reports the interruption and warns that side effects may
+exist.
 
 The SDK owns cancellation of run invocations and tools. Control does not track
 process trees or confirm exit. A normal local or MCP tool return can settle
