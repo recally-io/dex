@@ -536,6 +536,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
 
   return (
     <FramedPage
+      wide
       eyebrow={crumb}
       title={data.name}
       badge={

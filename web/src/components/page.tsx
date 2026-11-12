@@ -135,6 +135,8 @@ type PageProps = {
   actions?: ReactNode;
   /** A control that switches between the pages of this area, shown above the content. */
   toolbar?: ReactNode;
+  /** A page with two columns needs the wide measure. Single-column pages stay narrow to read. */
+  wide?: boolean;
   children?: ReactNode;
 };
 
@@ -146,11 +148,21 @@ type PageProps = {
 export function FramedPage(props: PageProps) {
   if (useContext(InPaneContext)) return <PanePage {...props} />;
 
-  const { eyebrow, title, description, badge, actions, toolbar, children, headerTitle = "Settings" } = props;
+  const {
+    eyebrow,
+    title,
+    description,
+    badge,
+    actions,
+    toolbar,
+    wide,
+    children,
+    headerTitle = "Settings",
+  } = props;
 
   return (
     <MainPane headerTitle={headerTitle}>
-      <div className="w-full max-w-[816px] px-6 py-8">
+      <div className={cn("w-full px-6 py-8", wide ? "max-w-[1120px]" : "max-w-[816px]")}>
         <header className="mb-8 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
           <div className="min-w-0">
             {eyebrow ? <div className="mb-2 text-[12px] text-muted-foreground">{eyebrow}</div> : null}
@@ -183,10 +195,10 @@ export function FramedPage(props: PageProps) {
  * A page inside the bot pane. The tab already names the group, so the title is smaller here; the
  * page still opens with its own heading and one line of description.
  */
-function PanePage({ eyebrow, title, description, badge, actions, toolbar, children }: PageProps) {
+function PanePage({ eyebrow, title, description, badge, actions, toolbar, wide, children }: PageProps) {
   return (
     <MainPane>
-      <div className="w-full max-w-[816px] px-6 pt-6 pb-10">
+      <div className={cn("w-full px-6 pt-6 pb-10", wide ? "max-w-[1120px]" : "max-w-[816px]")}>
         <header className="mb-6 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
           <div className="min-w-0">
             {eyebrow ? <div className="mb-2 text-[12px] text-muted-foreground">{eyebrow}</div> : null}
