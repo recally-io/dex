@@ -872,9 +872,10 @@ paths:
     post:
       operationId: sendMessage
       description: >
-        Stores a message in a web chat and returns. A message with an ID that
-        exists already is not stored again. The answer comes through the
-        event stream. 409 when the agent has no model, or when the mode is
+        Stores a message in a web chat and returns. An identical retry of an
+        accepted message returns 202 with the same submissionId. A retry with the same ID and different
+        text, attachments, mode, or chat returns 409. The answer comes through
+        the event stream. 409 when the agent has no model, or when the mode is
         reject and the agent is working in the chat. Main and Chat sessions
         take web messages. Automation and channel sessions return 403.
       requestBody:
@@ -1715,7 +1716,8 @@ components:
             What happens when the agent is already working in this chat.
             followUp waits until the current run ends. steer joins the current
             run after its current tool step. reject answers 409 and the message
-            does not run. A retried request keeps the mode of the first one.
+            does not run. A retry must use the same mode. An omitted mode
+            is equal to followUp.
             When dex cannot admit a reject message at once, it answers 202 and
             admits it later; the message then runs only if the chat is idle.
 

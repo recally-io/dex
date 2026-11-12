@@ -231,6 +231,9 @@ func (s *Service) reconcileAgent(ctx context.Context, agentID string) error {
 	return errors.Join(errs...)
 }
 
+// ErrMessageID means a message ID was reused for a different request.
+var ErrMessageID = errors.New("the message ID belongs to another input")
+
 // Post stores the message id with content on channelKey and returns the chat ID. It does not wait
 // for the answer. A new chat gets the title title, or the start of content when title is empty.
 // When the agent has no model, it stores nothing and returns ErrNoModel. A message with an ID that
@@ -350,6 +353,35 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		})
 		if err != nil {
 			return 0, err
+		}
+		if created == 0 {
+			prior, priorErr := q.GetSubmission(ctx, m.ID)
+			if priorErr != nil && !errors.Is(priorErr, sql.ErrNoRows) {
+				return 0, priorErr
+			}
+			if priorErr == nil {
+				original := prior.Content
+				question, questionErr := q.GetQuestionByAnswer(ctx, sql.NullString{String: m.ID, Valid: true})
+				if errors.Is(questionErr, sql.ErrNoRows) && m.AnswersQuestion != "" {
+					// A withdrawn answer can be replaced by a later answer to the same question.
+					question, questionErr = q.GetQuestion(ctx, m.AnswersQuestion)
+					if questionErr == nil && question.ConversationID != prior.ConversationID {
+						questionErr = sql.ErrNoRows
+					}
+				}
+				if questionErr != nil && !errors.Is(questionErr, sql.ErrNoRows) {
+					return 0, questionErr
+				}
+				if questionErr == nil {
+					original = strings.TrimPrefix(original, answerPrefix+question.Text+"\n")
+					if question.Outcome.Valid {
+						original = strings.TrimSuffix(original, outcomeSeparator+question.Outcome.String)
+					}
+				}
+				if prior.ConversationID != conv.ID || prior.Kind != "message" || original != m.Content || prior.Attachments != string(attachments) || cmp.Or(prior.WhenBusy, "followUp") != cmp.Or(m.WhenBusy, "followUp") {
+					return 0, ErrMessageID
+				}
+			}
 		}
 		if answers && created > 0 {
 			bound, err := q.AnswerQuestion(ctx, sqlc.AnswerQuestionParams{ID: m.AnswersQuestion, AgentID: agentID, ConversationID: conv.ID, SubmissionID: sql.NullString{String: m.ID, Valid: true}, Outcome: decision.Outcome})

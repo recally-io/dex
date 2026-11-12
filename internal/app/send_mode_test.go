@@ -13,8 +13,11 @@ import (
 
 func sendMode(t *testing.T, d *dex, chatID int64, id, text, mode string, want int) {
 	t.Helper()
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", chatID),
-		map[string]string{"id": id, "text": text, "mode": mode}, nil, want)
+	body := map[string]string{"id": id, "text": text}
+	if mode != "" {
+		body["mode"] = mode
+	}
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", chatID), body, nil, want)
 }
 
 func queuedSteer(id string) func(*transcript) bool {
@@ -36,6 +39,35 @@ func assistantTexts(tr *transcript) []string {
 		}
 	}
 	return out
+}
+
+func TestUserMessageReplayRejectsChanges(t *testing.T) {
+	t.Parallel()
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "echo")
+	first := d.newSession(t).ID
+	id := uuid.NewV7().String()
+	sendMode(t, d, first, id, "hello", "", http.StatusAccepted)
+	sendMode(t, d, first, id, "hello", "followUp", http.StatusAccepted)
+	sendMode(t, d, first, id, "changed", "", http.StatusConflict)
+	sendMode(t, d, first, id, "hello", "steer", http.StatusConflict)
+	second := d.newSession(t).ID
+	sendMode(t, d, second, id, "hello", "", http.StatusConflict)
+
+	status, raw := d.upload(t, "file", "note.txt", []byte("note"))
+	if status != http.StatusCreated {
+		t.Fatalf("upload: %d %s", status, raw)
+	}
+	var file attachment
+	if err := json.Unmarshal([]byte(raw), &file); err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/api/agents/default/chats/%d/messages", second)
+	fileID := uuid.NewV7().String()
+	body := map[string]any{"id": fileID, "text": "file", "attachments": []string{file.ID}}
+	d.must(t, http.MethodPost, path, body, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, path, body, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, path, map[string]any{"id": fileID, "text": "file"}, nil, http.StatusConflict)
 }
 
 func TestUserSteersRunningMainWithoutWaitingForReply(t *testing.T) {
