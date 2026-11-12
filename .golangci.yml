@@ -22,6 +22,10 @@ linters:
     - usestdlibvars # http.MethodGet instead of "GET"
   exclusions:
     generated: strict # skips sqlc and other generated code
+    # Some npm packages ship Go files without a go.mod (flatted), so Go sees them as root-module
+    # packages. They are not dex code.
+    paths:
+      - web/node_modules
     presets:
       - comments
       - std-error-handling
@@ -32,3 +36,6 @@ formatters:
   enable:
     - gofmt
     - goimports
+  exclusions:
+    paths:
+      - web/node_modules
