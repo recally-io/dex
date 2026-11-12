@@ -206,6 +206,8 @@ type Submission struct {
 	AdmittedAt      sql.NullInt64  `json:"admitted_at"`
 	WhenBusy        string         `json:"when_busy"`
 	ParentRequestID sql.NullString `json:"parent_request_id"`
+	ResultChildID   sql.NullInt64  `json:"result_child_id"`
+	NativeAnswerID  sql.NullInt64  `json:"native_answer_id"`
 }
 
 type Task struct {
