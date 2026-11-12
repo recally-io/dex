@@ -97,12 +97,11 @@ dex reads skills and MCP servers from files, for all agents and for one agent:
 
 | Scope   | Skills                                              | MCP servers                           |
 | ------- | --------------------------------------------------- | ------------------------------------- |
-| Home    | `~/.agents/skills/<name>/SKILL.md`                  | `~/.agents/mcp.json`                  |
 | Dex     | `~/.dex/.agents/skills/<name>/SKILL.md`             | `~/.dex/.agents/mcp.json`             |
 | Agent   | `~/.dex/agents/<id>/.agents/skills/<name>/SKILL.md` | `~/.dex/agents/<id>/.agents/mcp.json` |
 | Project | `<cwd>/.agents/skills/<name>/SKILL.md`              | none                                  |
 
-A narrower entry replaces the wider entry with the same name; Project is the
+dex does not read `~/.agents`. A narrower entry replaces the wider entry with the same name; Project is the
 narrowest. Main and Chat sessions can select a project directory in the chat header.
 A task conversation can also select one after the task ends.
 The picker browses folders on the dex host and lists recent projects for the

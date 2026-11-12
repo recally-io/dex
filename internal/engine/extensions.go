@@ -67,9 +67,11 @@ func (e *EnvEditError) Unwrap() error { return ErrInvalidInput }
 type agentExtensions struct {
 	levels              []ExtensionLevel
 	workspace, agentDir string
-	env                 *toolEnv
-	mu                  sync.Mutex
-	loaded              *loadedExtensions
+	// home only expands ~/ in AGENTS.md imports; it is not an extension level.
+	home   string
+	env    *toolEnv
+	mu     sync.Mutex
+	loaded *loadedExtensions
 }
 type loadedExtensions struct {
 	Extension *durable.Extension
@@ -126,8 +128,8 @@ var envWrites sync.Mutex
 
 func newAgentExtensions(home, dataDir, agentID string, env *toolEnv) *agentExtensions {
 	agentDir := filepath.Join(dataDir, "agents", agentID)
-	a := &agentExtensions{env: env, agentDir: agentDir, workspace: filepath.Join(agentDir, "workspace")}
-	for _, l := range []ExtensionLevel{{"home", home}, {"dex", dataDir}, {"agent", agentDir}} {
+	a := &agentExtensions{env: env, home: home, agentDir: agentDir, workspace: filepath.Join(agentDir, "workspace")}
+	for _, l := range []ExtensionLevel{{"dex", dataDir}, {"agent", agentDir}} {
 		l.Dir = canonicalExtensionPath(filepath.Join(l.Dir, ".agents"))
 		a.levels = append(a.levels, l)
 	}
@@ -372,6 +374,9 @@ func (a *agentExtensions) scan(base map[string]string) extensionScan {
 			s.servers = append(s.servers, servers[name])
 			s.info.Servers = append(s.info.Servers, servers[name].info)
 		}
+	}
+	for _, md := range a.agentsMD("") {
+		s.info.Warnings = append(s.info.Warnings, md.warnings...)
 	}
 	for _, name := range []string{"skills", "mcp.json"} {
 		path := filepath.Join(a.agentDir, name)

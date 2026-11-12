@@ -76,7 +76,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if input.Model.ModelID == "" {
 			return nil, ErrNoModel
 		}
-		change := agentChange(input.Options)
+		change := a.agentChange(ref.AgentID, input.Options)
 		if input.Automation {
 			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck), botReadExtension(ref.AgentID, a.config.Bots)}}})
 		}

@@ -191,7 +191,6 @@ func (e ErrorItemKind) Valid() bool {
 const (
 	ExtensionScopeAgent ExtensionScope = "agent"
 	ExtensionScopeDex   ExtensionScope = "dex"
-	ExtensionScopeHome  ExtensionScope = "home"
 )
 
 // Valid indicates whether the value is a known member of the ExtensionScope enum.
@@ -200,8 +199,6 @@ func (e ExtensionScope) Valid() bool {
 	case ExtensionScopeAgent:
 		return true
 	case ExtensionScopeDex:
-		return true
-	case ExtensionScopeHome:
 		return true
 	default:
 		return false
@@ -398,7 +395,6 @@ func (e RunEventType) Valid() bool {
 const (
 	SkillScopeAgent   SkillScope = "agent"
 	SkillScopeDex     SkillScope = "dex"
-	SkillScopeHome    SkillScope = "home"
 	SkillScopeProject SkillScope = "project"
 )
 
@@ -408,8 +404,6 @@ func (e SkillScope) Valid() bool {
 	case SkillScopeAgent:
 		return true
 	case SkillScopeDex:
-		return true
-	case SkillScopeHome:
 		return true
 	case SkillScopeProject:
 		return true
@@ -816,7 +810,7 @@ type ErrorItem struct {
 // ErrorItemKind defines model for ErrorItem.Kind.
 type ErrorItemKind string
 
-// ExtensionScope Home, resolved data directory, or agent home, each under .agents/.
+// ExtensionScope Resolved data directory or agent home, each under .agents/.
 type ExtensionScope string
 
 // Extensions defines model for Extensions.
@@ -827,7 +821,7 @@ type Extensions struct {
 		Hints []ExtensionsEnvHints `json:"hints"`
 		Key   string               `json:"key"`
 
-		// Scope Home, resolved data directory, or agent home, each under .agents/.
+		// Scope Resolved data directory or agent home, each under .agents/.
 		Scope    ExtensionScope `json:"scope"`
 		Shadowed bool           `json:"shadowed"`
 	} `json:"env"`
@@ -839,7 +833,7 @@ type Extensions struct {
 	Levels []struct {
 		Dir string `json:"dir"`
 
-		// Scope Home, resolved data directory, or agent home, each under .agents/.
+		// Scope Resolved data directory or agent home, each under .agents/.
 		Scope ExtensionScope `json:"scope"`
 	} `json:"levels"`
 
@@ -924,7 +918,7 @@ type McpServer struct {
 	// Overrides The server replaces a wider server with the same name.
 	Overrides bool `json:"overrides"`
 
-	// Scope Home, resolved data directory, or agent home, each under .agents/.
+	// Scope Resolved data directory or agent home, each under .agents/.
 	Scope ExtensionScope `json:"scope"`
 
 	// State idle means that the agent has not started, so dex has not connected.

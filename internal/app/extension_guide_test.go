@@ -14,7 +14,7 @@ func TestUserGetsExtensionGuideWithoutSkillsOrSecretNames(t *testing.T) {
 	t.Parallel()
 	// Given three environment files and no skills.
 	data, home := t.TempDir(), t.TempDir()
-	for i, root := range []string{home, data, filepath.Join(data, "agents", "default")} {
+	for i, root := range []string{home, data, filepath.Join(data, "agents", "default")} { // home is ignored
 		writeFile(t, filepath.Join(root, ".agents", ".env"), fmt.Sprintf("PROMPT_PRIVATE_KEY_%d=private-prompt-value\n", i))
 	}
 	d := startDexHome(t, app.Config{DataDir: data}, home)
@@ -29,13 +29,16 @@ func TestUserGetsExtensionGuideWithoutSkillsOrSecretNames(t *testing.T) {
 	w.until(t, "extension guide", answeredWith("section: "))
 	guide := w.tr.items[len(w.tr.items)-1].Text
 	// Then paths, file formats, secrecy, and reload rules are present, without key names or values.
-	for _, text := range []string{catalog.dir("home"), catalog.dir("dex"), catalog.dir("agent"), ".env",
+	for _, text := range []string{catalog.dir("dex"), catalog.dir("agent"), ".env",
 		"Narrower levels win", "as a whole", "skills/<name>/SKILL.md", "name", "description", "next request",
 		"mcp.json", "mcpServers", "command", "args", "env", "cwd", `"type": "http"`, "url", "headers", `{"disabled": true}`,
 		"$KEY", "${KEY}", "Never print", "chat", "memory", "files", "Environment page", "login shell", "when all bots are idle", "You cannot reload"} {
 		if text == "" || !strings.Contains(guide, text) {
 			t.Fatalf("guide missing %q", text)
 		}
+	}
+	if catalog.dir("home") != "" || strings.Contains(guide, filepath.Join(home, ".agents")) {
+		t.Fatal("the guide shows a home level")
 	}
 	if strings.Contains(guide, "PROMPT_PRIVATE_KEY_") || strings.Contains(guide, "private-prompt-value") {
 		t.Fatal("guide disclosed a key name or value")

@@ -67,15 +67,15 @@ backend readiness and maintenance lifecycle.
 
 ## Sources of truth
 
-| Data                                 | Owner             | Location                                                                   |
-| ------------------------------------ | ----------------- | -------------------------------------------------------------------------- |
-| Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))  |
-| Transcripts, runs, tool calls, usage | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                      |
-| Agent files                          | the agent's tools | `<data dir>/agents/<id>/workspace/`                                        |
-| Delivered snapshots                  | control           | `<data dir>/agents/<id>/artifacts/<id>` and `control.sqlite`               |
-| Uploaded files                       | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`              |
-| Memory (git repo)                    | the agent's tools | `<data dir>/memory/`                                                       |
-| Skills and MCP servers               | the user's files  | `$HOME/.agents/`, `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/` |
+| Data                                 | Owner             | Location                                                                  |
+| ------------------------------------ | ----------------- | ------------------------------------------------------------------------- |
+| Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/)) |
+| Transcripts, runs, tool calls, usage | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                     |
+| Agent files                          | the agent's tools | `<data dir>/agents/<id>/workspace/`                                       |
+| Delivered snapshots                  | control           | `<data dir>/agents/<id>/artifacts/<id>` and `control.sqlite`              |
+| Uploaded files                       | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`             |
+| Memory (git repo)                    | the agent's tools | `<data dir>/memory/`                                                      |
+| Skills and MCP servers               | the user's files  | `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/`                  |
 
 Control stores the parent of a child session in `conversations.parent_id` and the
 turn that created work for it in `submissions.parent_request_id`. A child session is a
@@ -274,10 +274,14 @@ share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
 
 ## Extensions
 
-Skills, MCP servers, and `.env` come from three levels: home (`$HOME/.agents/`),
-dex (`<resolved data dir>/.agents/`), and agent (`<data dir>/agents/<id>/.agents/`).
-Narrower levels win. Paths are fixed before `.env` is read. Equal real paths
-are read once as the narrower level. See [ADR 0010](decisions/0010-extension-levels.md).
+Skills, MCP servers, and `.env` come from two levels: dex
+(`<resolved data dir>/.agents/`) and agent (`<data dir>/agents/<id>/.agents/`).
+dex does not read the user home. Narrower levels win. Paths are fixed before
+`.env` is read. Equal real paths are read once as the narrower level. See
+[ADR 0010](decisions/0010-extension-levels.md) and
+[ADR 0017](decisions/0017-drop-home-level-and-agents-md.md).
+`AGENTS.md` comes from the dex level, the agent level, and the conversation cwd;
+the engine adds it around the bot's instructions at each admission.
 Skills have a fourth, narrowest level: `.agents/skills` under the
 conversation's cwd. The skills prompt section reads that cwd from the request's
 execution environment, so it follows the conversation. Chat sessions store
@@ -1253,7 +1257,7 @@ and git history shows each change.
 
 Control does not log the Telegram token; Bot API errors drop the request URL,
 which holds the token. Tool and stdio MCP processes receive the login shell
-environment plus home, dex, and agent `.env` values and the 1Password
+environment plus dex and agent `.env` values and the 1Password
 credentials. A server's own `env` wins. The engine does not change the dex
 process environment, and the login shell starts from six process keys, so
 dex settings such as `DEX_TOKEN` do not reach tools. Tools see what the user's
