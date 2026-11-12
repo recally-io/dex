@@ -23,6 +23,7 @@ import (
 	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/settings"
@@ -93,7 +94,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusServiceUnavailable
 			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden), errors.Is(err, chat.ErrSettingsForbidden):
 				status = http.StatusForbidden
-			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound):
+			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived):
 				status = http.StatusNotFound
 			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
@@ -174,7 +175,12 @@ func agentID(ctx context.Context) string {
 func (h *handler) withAgent(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if id := r.PathValue("agentId"); id != "" {
-			if _, err := h.Agents.Agent(r.Context(), id); err != nil {
+			archived, err := h.Agents.Agent(r.Context(), id)
+			// An archived agent is hidden: only its restore route answers.
+			if err == nil && archived.ArchivedAt != 0 && !isRestore(r) {
+				err = agent.ErrNotFound
+			}
+			if err != nil {
 				if r.Context().Err() != nil {
 					return
 				}
@@ -191,6 +197,11 @@ func (h *handler) withAgent(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isRestore matches DELETE /api/agents/{agentId}/archive.
+func isRestore(r *http.Request) bool {
+	return r.Method == http.MethodDelete && r.Pattern == "DELETE /api/agents/{agentId}/archive"
 }
 
 func (h *handler) uploads(ctx context.Context) *upload.Store {
@@ -308,6 +319,13 @@ func chatView(c chat.Chat) api.Chat {
 		if q.Answer != "" {
 			out.Question.Answer = &q.Answer
 		}
+		if q.Action != "" {
+			action := api.ChatQuestionAction(q.Action)
+			out.Question.Action = &action
+		}
+		if q.Outcome != "" {
+			out.Question.Outcome = &q.Outcome
+		}
 	}
 	return out
 }
@@ -395,7 +413,7 @@ func (h *handler) message(ctx context.Context, in api.MessageInput) (chat.Messag
 	if len(ids) > maxAttachments {
 		return chat.Message{}, errors.Join(errInvalid, errors.New("a message can have at most 10 attachments"))
 	}
-	m := chat.Message{ID: id.String(), Content: strings.TrimSpace(in.Text)}
+	m := chat.Message{ID: id.String(), Content: chat.NormalizeText(in.Text)}
 	if in.AnswersQuestionId != nil {
 		m.AnswersQuestion = *in.AnswersQuestionId
 	}

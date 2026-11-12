@@ -182,6 +182,26 @@ agent or a resource owned by another agent returns `404`. Upload storage uses
 Each live stream uses `engine.Ref{AgentID, ID}` for watches and history.
 Execution IDs can be equal in different agents.
 
+An agent can be archived (ADR 0016). `agents.archived_at` holds the time. The
+filter is in SQL, not in the `enabled` flags: `ListAgents`, startup channel
+start, dreams, `ListDueAutomations`, the activity query and the inbox all skip an
+archived agent, so a restore needs no state to rebuild. `GET /api/archived-agents`
+lists archived agents. `DELETE /api/agents/{agentId}/archive` restores. There is
+no archive route: only an approved `bot_delete` question archives (see
+[Bot tools](#bot-tools)). Every other agent route returns `404` for an archived
+agent. The archive guard is one `UPDATE ... WHERE` in `internal/db`: the agent
+exists, is not `default`, is not archived, and has no pending input in any
+conversation, which covers queued tasks, automation runs and dreams. Every input
+writer (user and channel input, a context reset, a routine run, a child session
+turn and a child result) calls `db.RequireActive` after it takes the SQLite
+writer, in the transaction that stores the input. Input first makes the archive
+fail as busy. Archive first makes the input fail with `ErrAgentArchived`, so an
+archived bot never has a runnable input. After the commit,
+`agent.Service.StopChannels` stops the Telegram, Feishu and WeChat clients under
+its lock, and drops the unfinished WeChat login and Feishu registration. Every
+channel activation (WeChat login, Feishu save, Telegram save) calls
+`db.RequireActive` under the same lock before it saves credentials or starts a
+client, so a poll that was already running cannot restart a channel.
 Session, health, maintenance, models, provider settings, and
 `/api/automations/preview` stay global. Separate services own global settings
 and agent state. The settings lock orders provider saves and local engine
@@ -551,6 +571,47 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
 A client retry with the same UUID reuses the input intent and native admission.
 The two stores do not share a transaction. Stable request IDs and receipt
 reconciliation cover the gap between their commits.
+
+## Bot tools
+
+`bot_list` reports `runningSessions` from `AgentRunningSessions`: the conversations
+of the bot with a pending input, Main included. It is the busy rule of the archive
+guard, so a count above zero means `bot_delete` refuses the bot. The sidebar's
+`activeSessions` is a different count and leaves Main out.
+
+Main and Chat conversations have `bot_list` and `bot_get`, and the three change
+tools `bot_create`, `bot_update` and `bot_delete`. The automation conversation
+has only the read tools. Extension edits persist on the conversation, and each
+user-input `Submit` adds them again, so a conversation that existed before the
+tools gets them on its next user input. The persisted tools do not authorize a
+call: `ToolBotCaller` checks the source input of every call. The engine installs the read
+extension (`bots`) and the change extension (`bot-manage`) through the same `Add`
+lists as `ask_user`, so a task, a dream and a child session never get the change
+tools. `internal/agent.BotTools` maps each call to the same service methods as the
+web (`CreateAgent`, `PatchAgent`). `chat.Service.ToolBotCaller` checks the caller
+again in control: the conversation is Main or a Chat, and the source input is a
+`message` with a user origin in that conversation. A user origin is an allow-list:
+`web`, `telegram:`, `feishu:` and `wechat:`. `bot_create` and `bot_update` replay
+as unsafe, because they have no receipt. A tool that PiG interrupted returns an
+interruption error, and the model reads the list again.
+
+`bot_delete` does not archive. It saves a question that carries an action
+(`questions.action`, `action_agent_id`, `approve_text`) and ends the turn, as
+`ask_user` does. It must be the only call in its round. Control archives inside
+the receipt transaction of the answer, before the model sees the answer. The
+transaction takes the answer text and origin, and archives only when the origin
+is a user origin and the text equals `approve_text` after `chat.NormalizeText`
+(trim surrounding whitespace). The HTTP handler and this check use the same
+function, so a channel that does not trim gets the same result as the web. It runs the archive guard
+again, because the bot can become busy after the question. It stores the
+decision in `questions.outcome` and appends it to the answer content, so the
+model reads `dex: Approved. Bot "X" is archived.`, `dex: Not approved. ...` or
+`dex: Approved, but bot "X" is not archived: <reason>.`. The channel stop runs
+after the commit through `Service.OnBotArchived`, so a slow channel cannot hold
+the admission gate. A decided action question cannot be withdrawn or reopened.
+The archived bot's workspace, `state.sqlite`, memory and conversations stay on
+disk. Cross-bot child sessions, read and search belong to ADR 0016 and are not
+part of this section.
 
 ## Internal delegation
 

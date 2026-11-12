@@ -65,7 +65,7 @@ to read in an afternoon.
   The left sidebar lists only the bots. The user talks to a bot, and the bot
   manages its sessions. Each bot row shows at most one status dot: orange for
   Needs you, blue for Working. Needs you wins. The sidebar also links to global
-  settings: Providers, Environment, and About. On a phone, the menu button shows an
+  settings: Providers, Environment, Archived bots, and About. On a phone, the menu button shows an
   orange dot when another bot needs the user.
   The browser keeps the sidebar's open or collapsed state. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
@@ -328,6 +328,27 @@ and task-specific automation result routing are later work. Other chat channels 
 
 ## Non-goals
 
+- Bots: in main or a writable Chat, the owner can ask the agent to list bots
+  (`bot_list`), read one bot (`bot_get`), create a bot (`bot_create`), change a
+  bot's name, instructions, model or thinking level (`bot_update`), and archive a
+  bot (`bot_delete`). A change uses the same checks as the web. `bot_create` makes
+  a bot with no channels, skills, MCP servers or `.env` values. Reading also works
+  in an automation run. Creating, changing and archiving need a user-input turn
+  in main or a Chat, so automation runs, child sessions, dreams and task results
+  cannot use them. The tools never show `.env` values.
+- Archive: `bot_delete` archives; it never deletes data. The tool only asks. The
+  web shows an approval card: the first option is `Archive <name>`, the second
+  is Cancel. Only an answer of the first option from the web or from a paired
+  channel peer archives the bot. Surrounding whitespace is ignored; the words,
+  case and inner spaces must match. Any other answer, or an answer from a task,
+  automation or dream, leaves the bot as it is. The agent sees the decision
+  as the last line of the answer. The default bot, the asking bot and a bot with a
+  running session are refused. An archived bot leaves the sidebar and the bot
+  list, its Telegram, Feishu and WeChat channels stop, and its routines stop
+  running. Its chats, memory, settings and files stay. Settings > Archived bots
+  lists archived bots with a Restore button. Restore brings back the sidebar row,
+  the channels and the routines as they were. A routine whose time passed while
+  the bot was archived runs again only if it is at most one hour late.
 - Native desktop applications. Use a browser to access the web UI.
 - More than one host. One machine runs one dex process.
 - Sandboxes. Agent tools run on the host, inside the selected project directory or the agent workspace.

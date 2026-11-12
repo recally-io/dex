@@ -37,12 +37,16 @@ type Question struct {
 	Status string
 	// Answer is the text of an answered question.
 	Answer string
+	// Action is what control does when the owner approves ("archive"), or empty for a plain question.
+	Action string
+	// Outcome is the decision of control on an answered action question.
+	Outcome string
 }
 
 const answerPrefix = "Answer to: "
 
 func questionOf(row sqlc.Question) (Question, error) {
-	q := Question{ID: row.ID, Text: row.Text, Status: row.Status}
+	q := Question{ID: row.ID, Text: row.Text, Status: row.Status, Action: row.Action.String, Outcome: row.Outcome.String}
 	return q, json.Unmarshal([]byte(row.OptionsJson), &q.Options)
 }
 
@@ -68,7 +72,7 @@ func (s *Service) questionView(ctx context.Context, row sqlc.Question) (*Questio
 		if err != nil {
 			return nil, err
 		}
-		q.Answer = strings.TrimPrefix(sub.Content, answerPrefix+row.Text+"\n")
+		q.Answer = strings.TrimSuffix(strings.TrimPrefix(sub.Content, answerPrefix+row.Text+"\n"), outcomeSeparator+row.Outcome.String)
 	}
 	return &q, nil
 }
@@ -77,6 +81,17 @@ func (s *Service) questionView(ctx context.Context, row sqlc.Question) (*Questio
 // question. The source input must still run, the chat must not be archived, and the chat must
 // have no other question that waits.
 func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a engine.AskUserArgs) (engine.QuestionInfo, error) {
+	return s.askQuestion(ctx, r, a, nil)
+}
+
+// NormalizeText is the one rule for text from a person: surrounding whitespace is not part of
+// the message. The HTTP handler stores the normalized text, and the approval check compares the
+// normalized text, so a channel that does not trim gives the same result as the web.
+func NormalizeText(s string) string { return strings.TrimSpace(s) }
+
+// askQuestion saves a question. An action question also needs a user input as its source, and the
+// action must be allowed now; control runs the action only when the owner approves it.
+func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engine.AskUserArgs, action *questionAction) (engine.QuestionInfo, error) {
 	// One line, so the answer wrapper "Answer to: <question>" has an unambiguous first line.
 	text := strings.Join(strings.Fields(a.Question), " ")
 	if text == "" || utf8.RuneCountInString(text) > maxQuestion || len(a.Options) < 2 || len(a.Options) > 4 {
@@ -84,7 +99,7 @@ func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a engin
 	}
 	options := make([]string, len(a.Options))
 	for i, option := range a.Options {
-		options[i] = strings.TrimSpace(option)
+		options[i] = NormalizeText(option)
 		if options[i] == "" || utf8.RuneCountInString(options[i]) > maxOption {
 			return engine.QuestionInfo{}, fmt.Errorf("%w: each option has 1 to %d characters", ErrQuestionInvalid, maxOption)
 		}
@@ -124,6 +139,11 @@ func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a engin
 	if err != nil {
 		return engine.QuestionInfo{}, err
 	}
+	if action != nil {
+		if err := action.allowed(ctx, q, r, source); err != nil {
+			return engine.QuestionInfo{}, err
+		}
+	}
 	switch current, err := q.GetCurrentQuestion(ctx, conv.ID); {
 	case errors.Is(err, sql.ErrNoRows):
 	case err != nil:
@@ -137,7 +157,9 @@ func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a engin
 		return engine.QuestionInfo{}, ErrQuestionOpen
 	}
 	id := uuid.NewV7().String()
-	if err := q.CreateQuestion(ctx, sqlc.CreateQuestionParams{ID: id, AgentID: r.AgentID, ConversationID: conv.ID, SourceSubmissionID: source.ID, ToolOperationKey: r.Key, Text: text, OptionsJson: string(encoded), CreatedAt: s.now().UnixMilli()}); err != nil {
+	params := sqlc.CreateQuestionParams{ID: id, AgentID: r.AgentID, ConversationID: conv.ID, SourceSubmissionID: source.ID, ToolOperationKey: r.Key, Text: text, OptionsJson: string(encoded), CreatedAt: s.now().UnixMilli()}
+	action.store(&params)
+	if err := q.CreateQuestion(ctx, params); err != nil {
 		return engine.QuestionInfo{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -148,19 +170,24 @@ func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a engin
 }
 
 // answerContent loads the open question for an answer inside the receipt transaction and returns
-// the content that the model reads.
-func answerContent(ctx context.Context, q *sqlc.Queries, agentID string, chatID int64, questionID, answer string) (string, error) {
+// the content that the model reads. For an action question it also decides the action; see
+// decideAnswer.
+func answerContent(ctx context.Context, q *sqlc.Queries, agentID string, chatID int64, questionID, answer, origin string) (answerDecision, error) {
 	row, err := q.GetQuestion(ctx, questionID)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && (row.AgentID != agentID || row.ConversationID != chatID)) {
-		return "", ErrQuestionClosed
+		return answerDecision{}, ErrQuestionClosed
 	}
 	if err != nil {
-		return "", err
+		return answerDecision{}, err
 	}
 	if row.Status != "open" {
-		return "", ErrQuestionClosed
+		return answerDecision{}, ErrQuestionClosed
 	}
-	return answerPrefix + row.Text + "\n" + answer, nil
+	d := answerDecision{Content: answerPrefix + row.Text + "\n" + answer}
+	if row.Action.Valid {
+		return d, d.decide(ctx, q, row, answer, origin)
+	}
+	return d, nil
 }
 
 // reopenQuestion opens the question again when its answer was withdrawn before it ran.

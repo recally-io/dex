@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/recally-io/dex/internal/db"
+
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
 	"github.com/recally-io/dex/internal/engine"
@@ -54,6 +56,9 @@ func (s *Service) toolCaller(ctx context.Context, r engine.TaskContext) (sqlc.Co
 
 // liveSource returns the input that started the run of the caller, and fails when that run is over.
 func liveSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Submission, error) {
+	if err := db.RequireActive(ctx, q, r.AgentID); err != nil {
+		return sqlc.Submission{}, err
+	}
 	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
 		return sqlc.Submission{}, err

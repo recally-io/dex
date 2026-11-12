@@ -15,6 +15,7 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/feishu"
 	"github.com/recally-io/dex/internal/telegram"
@@ -72,6 +73,8 @@ type Agent struct {
 	ModelID       string    `json:"modelId"`
 	ThinkingLevel string    `json:"thinkingLevel"`
 	Instructions  string    `json:"instructions"`
+	// ArchivedAt is the archive time in Unix milliseconds; zero for an active bot.
+	ArchivedAt int64 `json:"archivedAt,omitzero"`
 }
 
 // Telegram describes the bot without its token.
@@ -93,7 +96,7 @@ func (s *Service) Agent(ctx context.Context, id string) (Agent, error) {
 
 func agentView(row sqlc.Agent) Agent {
 	return Agent{ID: row.ID, Name: row.Name, Provider: row.ModelProvider, ModelID: row.ModelID,
-		ThinkingLevel: row.ThinkingLevel, Instructions: row.Instructions}
+		ThinkingLevel: row.ThinkingLevel, Instructions: row.Instructions, ArchivedAt: row.ArchivedAt.Int64}
 }
 
 // ListAgents returns agents and their activity in creation order.
@@ -189,6 +192,9 @@ func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram
 func (s *Service) SetTelegram(ctx context.Context, agentID string, token string, allowedUsers []int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := db.RequireActive(ctx, s.q, agentID); err != nil {
+		return err
+	}
 	// Pairing uses TryLock, so this snapshot cannot change before the old bot joins.
 	saved, err := s.TelegramConfig(ctx, agentID)
 	if err != nil {

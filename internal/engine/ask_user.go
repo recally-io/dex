@@ -26,6 +26,29 @@ type QuestionInfo struct {
 
 const askUserRules = `Use ask_user when you need the user to decide between 2 to 4 options before you can go on. Call it alone, with no other tool call in the same message, and write no text after it: the call ends your turn. The user answers in a later input that starts with "Answer to:". Do not use ask_user to get approval for side effects.`
 
+// turnEndingCall returns the call context of a tool that ends the turn with Terminate. Native
+// Terminate ends the turn only when every call of the round asks for it. The round's tool slots are
+// saved before any tool starts, so a mixed round is visible here.
+func turnEndingCall(ctx context.Context, api durable.ToolExecutionApi, agentID, tool string) (TaskContext, error) {
+	live, err := durable.Snapshot[harness.LiveState](ctx, api, harness.LiveDoc, api.ConversationId())
+	if err != nil {
+		return TaskContext{}, err
+	}
+	if live == nil || len(live.Tools) != 1 {
+		return TaskContext{}, fmt.Errorf("%s must be the only tool call", tool)
+	}
+	return toolCall(ctx, api, agentID)
+}
+
+// toolCall names the agent, the conversation, the source input, and the tool operation key of a call.
+func toolCall(ctx context.Context, api durable.ToolExecutionApi, agentID string) (TaskContext, error) {
+	requestID, err := taskSource(ctx, api)
+	if err != nil {
+		return TaskContext{}, err
+	}
+	return TaskContext{AgentID: agentID, ConversationID: int64(api.ConversationId()), SourceRequestID: requestID, Key: fmt.Sprintf("%s/%d", agentID, api.TaskId())}, nil
+}
+
 // askUserExtension adds the question tool. Only Main and Chat sessions have it. The question is
 // saved in control; the engine only ends the turn.
 func askUserExtension(agentID string, ask func(context.Context, TaskContext, AskUserArgs) (QuestionInfo, error)) *durable.Extension {
@@ -50,20 +73,11 @@ func askUserExtension(agentID string, ask func(context.Context, TaskContext, Ask
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}
-			// Native Terminate ends the turn only when every call of the round asks for it. The
-			// round's tool slots are saved before any tool starts, so a mixed round is visible here.
-			live, err := durable.Snapshot[harness.LiveState](ctx, api, harness.LiveDoc, api.ConversationId())
+			call, err := turnEndingCall(ctx, api, agentID, "ask_user")
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}
-			if live == nil || len(live.Tools) != 1 {
-				return durable.ToolExecutionResult{}, errors.New("ask_user must be the only tool call")
-			}
-			requestID, err := taskSource(ctx, api)
-			if err != nil {
-				return durable.ToolExecutionResult{}, err
-			}
-			question, err := ask(ctx, TaskContext{AgentID: agentID, ConversationID: int64(api.ConversationId()), SourceRequestID: requestID, Key: fmt.Sprintf("%s/%d", agentID, api.TaskId())}, args)
+			question, err := ask(ctx, call, args)
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}

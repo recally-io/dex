@@ -51,6 +51,10 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 	if err != nil {
 		return 0, err
 	}
+	// An archived bot takes no new input, and a result is input.
+	if archived, err := q.ConversationAgentArchived(ctx, link.ParentID.Int64); err != nil || archived != 0 {
+		return 0, err
+	}
 	outcome, send := resultOutcome(event)
 	if !send {
 		return 0, nil

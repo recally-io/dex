@@ -70,7 +70,13 @@ the home and dex extension levels.
 
 ### Delete needs owner approval
 
-The model cannot delete a bot. Control does it after the owner approves.
+The dex tools cannot delete a bot. Control archives it after the owner approves.
+The approval stops model mistakes and injected instructions that act through the
+dex tools. It is not a boundary against a model that uses bash. Tools run as the
+same OS user as dex, so bash can call the local API or write the database, as it
+can already change any bot setting or delete data. Archive can be restored, so
+dex accepts this risk. The API has no archive route: restore is the only archive
+route. Isolation of tools is a separate decision.
 
 1. `bot_delete` writes a question with the ask_user card: "Archive bot
    `<name>`? Reason: `<reason>`", options "Archive `<name>`" and "Cancel". The
@@ -78,7 +84,7 @@ The model cannot delete a bot. Control does it after the owner approves.
    `pending_approval`, and the turn ends, as with ask_user.
 2. The owner answers in the web card or in the channel, as for any question.
 3. Before the answer reaches the model, control checks it. Only an answer from
-   a user origin whose text is exactly the approve option runs the action. Any
+   a user origin whose text, after trimming surrounding whitespace, is exactly the approve option runs the action. Any
    other answer cancels it. Control writes the outcome ("archived" or "not
    approved") into the input that the model sees.
 

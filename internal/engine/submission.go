@@ -78,7 +78,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		}
 		change := agentChange(input.Options)
 		if input.Automation {
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck)}}})
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck), botReadExtension(ref.AgentID, a.config.Bots)}}})
 		}
 		// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
 		// so a child, an automation or a dream never gets the tool and needs no removal.
@@ -88,11 +88,11 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		case input.Main:
 			add := []*durable.Extension{frontDeskExtension()}
 			if asksUser {
-				add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser))
+				add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots))
 			}
 			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{workLoopExtension()}, Add: add}})
 		case asksUser:
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: []*durable.Extension{askUserExtension(ref.AgentID, a.config.Tasks.AskUser)}}})
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: []*durable.Extension{askUserExtension(ref.AgentID, a.config.Tasks.AskUser), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots)}}})
 		}
 		switch {
 		case input.Child:

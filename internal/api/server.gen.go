@@ -139,6 +139,21 @@ func (e ChatChannel) Valid() bool {
 	}
 }
 
+// Defines values for ChatQuestionAction.
+const (
+	Archive ChatQuestionAction = "archive"
+)
+
+// Valid indicates whether the value is a known member of the ChatQuestionAction enum.
+func (e ChatQuestionAction) Valid() bool {
+	switch e {
+	case Archive:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChatQuestionStatus.
 const (
 	Answered ChatQuestionStatus = "answered"
@@ -754,15 +769,24 @@ type ChatOrigin struct {
 
 // ChatQuestion The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
 type ChatQuestion struct {
+	// Action Present when control acts on the answer. The question asks the owner to approve this action, and only the first option approves.
+	Action *ChatQuestionAction `json:"action,omitempty"`
+
 	// Answer The text of the answer. Present when the status is answered.
 	Answer  *string  `json:"answer,omitempty"`
 	Id      string   `json:"id"`
 	Options []string `json:"options"`
 
+	// Outcome What control decided for the answer. Present for an answered action question.
+	Outcome *string `json:"outcome,omitempty"`
+
 	// Status open waits for an answer. answered means the answer is saved and runs after the current reply.
 	Status ChatQuestionStatus `json:"status"`
 	Text   string             `json:"text"`
 }
+
+// ChatQuestionAction Present when control acts on the answer. The question asks the owner to approve this action, and only the first option approves.
+type ChatQuestionAction string
 
 // ChatQuestionStatus open waits for an answer. answered means the answer is saved and runs after the current reply.
 type ChatQuestionStatus string
@@ -1896,6 +1920,9 @@ type ServerInterface interface {
 	// (PUT /api/agents/{agentId})
 	UpdateAgent(w http.ResponseWriter, r *http.Request, agentId string)
 
+	// (DELETE /api/agents/{agentId}/archive)
+	RestoreAgent(w http.ResponseWriter, r *http.Request, agentId string)
+
 	// (GET /api/agents/{agentId}/automations)
 	ListAutomations(w http.ResponseWriter, r *http.Request, agentId string)
 
@@ -2040,6 +2067,9 @@ type ServerInterface interface {
 	// (GET /api/agents/{agentId}/uploads/{uploadId})
 	GetUpload(w http.ResponseWriter, r *http.Request, agentId string, uploadId string)
 
+	// (GET /api/archived-agents)
+	ListArchivedAgents(w http.ResponseWriter, r *http.Request)
+
 	// (POST /api/automations/preview)
 	PreviewSchedule(w http.ResponseWriter, r *http.Request)
 
@@ -2172,6 +2202,32 @@ func (siw *ServerInterfaceWrapper) UpdateAgent(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateAgent(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestoreAgent operation middleware
+func (siw *ServerInterfaceWrapper) RestoreAgent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreAgent(w, r, agentId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3721,6 +3777,20 @@ func (siw *ServerInterfaceWrapper) GetUpload(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListArchivedAgents operation middleware
+func (siw *ServerInterfaceWrapper) ListArchivedAgents(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListArchivedAgents(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PreviewSchedule operation middleware
 func (siw *ServerInterfaceWrapper) PreviewSchedule(w http.ResponseWriter, r *http.Request) {
 
@@ -4243,6 +4313,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents", wrapper.CreateAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}", wrapper.GetAgent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}", wrapper.UpdateAgent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/archived-agents", wrapper.ListArchivedAgents)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/archive", wrapper.RestoreAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/turns/{turnId}", wrapper.GetTurnChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/main", wrapper.GetMainChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.ListChats)
@@ -4487,6 +4559,59 @@ type UpdateAgentdefaultJSONResponse struct {
 }
 
 func (response UpdateAgentdefaultJSONResponse) VisitUpdateAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreAgentRequestObject struct {
+	AgentId string `json:"agentId"`
+}
+
+type RestoreAgentResponseObject interface {
+	VisitRestoreAgentResponse(w http.ResponseWriter) error
+}
+
+type RestoreAgent200JSONResponse Agent
+
+func (response RestoreAgent200JSONResponse) VisitRestoreAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreAgent404JSONResponse struct{ ErrorJSONResponse }
+
+func (response RestoreAgent404JSONResponse) VisitRestoreAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreAgentdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RestoreAgentdefaultJSONResponse) VisitRestoreAgentResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -7400,6 +7525,46 @@ func (response GetUploaddefaultJSONResponse) VisitGetUploadResponse(w http.Respo
 	return err
 }
 
+type ListArchivedAgentsRequestObject struct {
+}
+
+type ListArchivedAgentsResponseObject interface {
+	VisitListArchivedAgentsResponse(w http.ResponseWriter) error
+}
+
+type ListArchivedAgents200JSONResponse struct {
+	Agents []Agent `json:"agents"`
+}
+
+func (response ListArchivedAgents200JSONResponse) VisitListArchivedAgentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListArchivedAgentsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListArchivedAgentsdefaultJSONResponse) VisitListArchivedAgentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PreviewScheduleRequestObject struct {
 	Body *PreviewScheduleJSONRequestBody
 }
@@ -8186,6 +8351,9 @@ type StrictServerInterface interface {
 	// (PUT /api/agents/{agentId})
 	UpdateAgent(ctx context.Context, request UpdateAgentRequestObject) (UpdateAgentResponseObject, error)
 
+	// (DELETE /api/agents/{agentId}/archive)
+	RestoreAgent(ctx context.Context, request RestoreAgentRequestObject) (RestoreAgentResponseObject, error)
+
 	// (GET /api/agents/{agentId}/automations)
 	ListAutomations(ctx context.Context, request ListAutomationsRequestObject) (ListAutomationsResponseObject, error)
 
@@ -8329,6 +8497,9 @@ type StrictServerInterface interface {
 
 	// (GET /api/agents/{agentId}/uploads/{uploadId})
 	GetUpload(ctx context.Context, request GetUploadRequestObject) (GetUploadResponseObject, error)
+
+	// (GET /api/archived-agents)
+	ListArchivedAgents(ctx context.Context, request ListArchivedAgentsRequestObject) (ListArchivedAgentsResponseObject, error)
 
 	// (POST /api/automations/preview)
 	PreviewSchedule(ctx context.Context, request PreviewScheduleRequestObject) (PreviewScheduleResponseObject, error)
@@ -8528,6 +8699,32 @@ func (sh *strictHandler) UpdateAgent(w http.ResponseWriter, r *http.Request, age
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateAgentResponseObject); ok {
 		if err := validResponse.VisitUpdateAgentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RestoreAgent operation middleware
+func (sh *strictHandler) RestoreAgent(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request RestoreAgentRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RestoreAgent(ctx, request.(RestoreAgentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RestoreAgent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RestoreAgentResponseObject); ok {
+		if err := validResponse.VisitRestoreAgentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -9929,6 +10126,30 @@ func (sh *strictHandler) GetUpload(w http.ResponseWriter, r *http.Request, agent
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetUploadResponseObject); ok {
 		if err := validResponse.VisitGetUploadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListArchivedAgents operation middleware
+func (sh *strictHandler) ListArchivedAgents(w http.ResponseWriter, r *http.Request) {
+	var request ListArchivedAgentsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListArchivedAgents(ctx, request.(ListArchivedAgentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListArchivedAgents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListArchivedAgentsResponseObject); ok {
+		if err := validResponse.VisitListArchivedAgentsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

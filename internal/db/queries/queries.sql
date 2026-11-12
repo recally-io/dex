@@ -10,7 +10,55 @@ UPDATE agents SET name = ?, model_provider = ?, model_id = ?, thinking_level = ?
 SELECT * FROM agents WHERE id = ?;
 
 -- name: ListAgents :many
-SELECT * FROM agents ORDER BY created_at, id;
+-- Active bots only. Startup starts channels for these bots.
+SELECT * FROM agents WHERE archived_at IS NULL ORDER BY created_at, id;
+
+-- name: ListArchivedAgents :many
+SELECT * FROM agents WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id;
+
+-- name: AgentArchiveBlocker :one
+-- Why a bot cannot be archived now, or an empty string. Busy means any pending input in any
+-- conversation of the bot, including automation runs and dreams. A queued task has a pending
+-- input too, so the check needs no task table.
+SELECT CAST(CASE
+    WHEN NOT EXISTS (SELECT 1 FROM agents WHERE agents.id = @agent_id) THEN 'missing'
+    WHEN @agent_id = 'default' THEN 'default'
+    WHEN EXISTS (SELECT 1 FROM agents WHERE agents.id = @agent_id AND archived_at IS NOT NULL) THEN 'archived'
+    WHEN EXISTS (
+        SELECT 1 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+        WHERE c.agent_id = @agent_id AND s.status = 'pending'
+    ) THEN 'busy'
+    ELSE ''
+END AS TEXT);
+
+-- name: AgentRunningSessions :many
+-- The conversations of each bot that have a pending input, Main included. This is the busy rule of
+-- AgentArchiveBlocker, so a bot with a count above zero is a bot that cannot be archived.
+SELECT c.agent_id, CAST(count(DISTINCT c.id) AS INTEGER) AS sessions
+FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+WHERE s.status = 'pending'
+GROUP BY c.agent_id;
+
+-- name: AgentArchived :one
+-- Input writers call this after they hold the SQLite writer, so an input and an archive are ordered.
+SELECT CAST(EXISTS (SELECT 1 FROM agents WHERE agents.id = @agent_id AND archived_at IS NOT NULL) AS INTEGER);
+
+-- name: ConversationAgentArchived :one
+SELECT CAST(EXISTS (SELECT 1 FROM conversations c JOIN agents a ON a.id = c.agent_id
+    WHERE c.id = @conversation_id AND a.archived_at IS NOT NULL) AS INTEGER);
+
+-- name: ArchiveAgent :execrows
+-- One statement holds the rules of AgentArchiveBlocker, so a caller outside a transaction cannot
+-- archive a bot that has just become busy.
+UPDATE agents SET archived_at = @now
+WHERE agents.id = @agent_id AND archived_at IS NULL AND agents.id <> 'default'
+    AND NOT EXISTS (
+        SELECT 1 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+        WHERE c.agent_id = agents.id AND s.status = 'pending'
+    );
+
+-- name: RestoreAgent :execrows
+UPDATE agents SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL;
 
 -- name: CreateAgent :one
 INSERT INTO agents (id, name, model_provider, model_id, thinking_level, instructions, created_at)
@@ -284,7 +332,7 @@ ORDER BY s.settled_at, s.id
 LIMIT @max_rows;
 
 -- name: ListAgentIDs :many
-SELECT id FROM agents ORDER BY id;
+SELECT id FROM agents WHERE archived_at IS NULL ORDER BY id;
 
 -- name: CreateAutomation :exec
 INSERT INTO automations (
@@ -304,7 +352,8 @@ SELECT * FROM automations WHERE id = ? AND agent_id = ?;
 SELECT * FROM automations WHERE agent_id = ? ORDER BY created_at, id;
 
 -- name: ListDueAutomations :many
-SELECT * FROM automations WHERE enabled = 1 AND next_due_at <= ? ORDER BY next_due_at;
+SELECT a.* FROM automations a JOIN agents b ON b.id = a.agent_id
+WHERE a.enabled = 1 AND a.next_due_at <= ? AND b.archived_at IS NULL ORDER BY a.next_due_at;
 
 -- name: SetAutomationNextDue :execrows
 UPDATE automations SET next_due_at = @next_due_at

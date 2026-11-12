@@ -11,6 +11,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/feishu"
 )
@@ -125,6 +126,10 @@ func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, 
 }
 
 func (s *Service) saveFeishu(ctx context.Context, agentID string, cfg feishu.Config, pairing string) error {
+	// A registration poll started before an archive can reach here; an archived bot starts no channel.
+	if err := db.RequireActive(ctx, s.q, agentID); err != nil {
+		return err
+	}
 	if err := s.checkCredential(ctx, agentID, "feishu", cfg.AppID); err != nil {
 		return err
 	}

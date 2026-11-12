@@ -37,6 +37,7 @@ type fakeWechat struct {
 	failSend      atomic.Bool
 	staleSend     atomic.Bool
 	waitQR        atomic.Bool
+	holdQR        atomic.Pointer[holdQR]
 	staleRet      atomic.Int64
 	staleCode     atomic.Int64
 	badMedia      atomic.Bool
@@ -53,6 +54,13 @@ type fakeWechat struct {
 	requests      []wechatRequest
 	updates       []map[string]any
 	sent          chan wechatSent
+}
+
+// holdQR stops the QR status poll at the remote service until release closes.
+type holdQR struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
 }
 
 type wechatRequest struct {
@@ -86,6 +94,10 @@ func newFakeWechat(t *testing.T) *fakeWechat {
 }
 
 func (f *fakeWechat) serve(w http.ResponseWriter, r *http.Request) {
+	if hold := f.holdQR.Load(); hold != nil && r.URL.Path == "/ilink/bot/get_qrcode_status" {
+		hold.once.Do(func() { close(hold.entered) })
+		<-hold.release
+	}
 	if r.URL.Path == "/c2c/download" {
 		f.mediaRequests.Add(1)
 		query := r.URL.Query().Get("encrypted_query_param")

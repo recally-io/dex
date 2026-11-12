@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/recally-io/dex/internal/db"
+
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
@@ -48,11 +50,14 @@ func (s *Service) AutomationCommitted(chatID int64) {
 // StoreAutomationInput stores a run and input in the caller's control transaction.
 // The caller must wake delivery after commit.
 func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInput) (int64, bool, error) {
+	// Take the SQLite writer before reading, so an edit or an archive cannot pass a check before the insert.
+	if err := q.LockRoutineTools(ctx); err != nil {
+		return 0, false, err
+	}
+	if err := db.RequireActive(ctx, q, in.AgentID); err != nil {
+		return 0, false, err
+	}
 	if in.Expected != nil {
-		// Take the SQLite writer before reading, so an edit cannot pass this check before the insert.
-		if err := q.LockRoutineTools(ctx); err != nil {
-			return 0, false, err
-		}
 		current, err := q.GetAutomation(ctx, sqlc.GetAutomationParams{ID: in.Expected.ID, AgentID: in.Expected.AgentID})
 		if errors.Is(err, sql.ErrNoRows) || (err == nil && current != *in.Expected) {
 			return 0, false, ErrAutomationChanged

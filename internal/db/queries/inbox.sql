@@ -7,7 +7,7 @@ SELECT r.id AS run_id, a.agent_id, b.name AS agent_name,
     r.read_at, r.dismissed_at
 FROM automation_runs r
 JOIN automations a ON a.id = r.automation_id
-JOIN agents b ON b.id = a.agent_id
+JOIN agents b ON b.id = a.agent_id AND b.archived_at IS NULL
 LEFT JOIN submissions s ON s.id = r.id
 WHERE (r.outcome = 'failed' OR r.status = 'failed' OR s.status = 'unanswered' OR (r.outcome = 'changed' AND r.duplicate = 0))
     AND (s.status <> 'pending' OR (s.id IS NULL AND r.status = 'failed'))
