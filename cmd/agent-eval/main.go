@@ -36,6 +36,7 @@ import (
 )
 
 type task struct {
+	SessionOperation       string              `json:"sessionOperation,omitempty"`
 	Routine                *routineExpectation `json:"routine,omitempty"`
 	MaxMainToolOutputBytes *int                `json:"maxMainToolOutputBytes"`
 	ID                     string              `json:"id"`
@@ -316,7 +317,15 @@ func run(ctx context.Context, t task, repetition int, model string, rows []sqlc.
 		fail(err)
 		return
 	}
-	ids, states, err := c.waitForWork(ch.ID, t.Routine != nil)
+	var ids []int64
+	var states []routineState
+	if t.SessionOperation != "" {
+		var checks []check
+		ids, checks, err = c.sessionOperation(path, ch.ID, t.SessionOperation)
+		r.Checks = append(r.Checks, checks...)
+	} else {
+		ids, states, err = c.waitForWork(ch.ID, t.Routine != nil)
+	}
 	r.Routines = states
 	if err != nil {
 		fail(err)
