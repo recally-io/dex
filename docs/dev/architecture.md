@@ -142,6 +142,13 @@ The engine stores origin with native input metadata. One projection exposes it
 in queued input, snapshots, live events, and history pages. The web shows the
 channel name beside each channel input.
 
+The first input owns a run. Its origin selects the reply recipient, and its
+receipt is the source for tool calls. A steered input adds content only. It does
+not change the recipient or grant or remove tool authority. Web input and a
+parent's `session_send` can steer. Channel, automation and dream inputs always
+use `followUp`. Bot and routine management check the source input, not the
+steered input.
+
 An agent calls `deliver_file` with a workspace-relative path to publish one
 regular file. The tool copies at most 20 MiB to an immutable snapshot and
 records the source agent and conversation. A project cwd does not widen this
