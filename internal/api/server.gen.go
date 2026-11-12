@@ -1323,6 +1323,9 @@ type ForkChatJSONBody struct {
 	// Before End the history just before the entry.
 	Before  *bool `json:"before,omitempty"`
 	EntryId int64 `json:"entryId"`
+
+	// Id Optional client UUID for safe retries.
+	Id *string `json:"id,omitempty"`
 }
 
 // GetChatHistoryParams defines parameters for GetChatHistory.
@@ -6493,6 +6496,20 @@ func (response ForkChat404JSONResponse) VisitForkChatResponse(w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkChat409JSONResponse Error
+
+func (response ForkChat409JSONResponse) VisitForkChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

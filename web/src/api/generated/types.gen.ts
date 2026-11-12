@@ -2505,6 +2505,10 @@ export type ContinueChatResponse = ContinueChatResponses[keyof ContinueChatRespo
 
 export type ForkChatData = {
     body: {
+        /**
+         * Optional client UUID for safe retries.
+         */
+        id?: string;
         entryId: number;
         /**
          * End the history just before the entry.
@@ -2532,6 +2536,10 @@ export type ForkChatErrors = {
      * The request failed.
      */
     404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
 };
 
 export type ForkChatError = ForkChatErrors[keyof ForkChatErrors];

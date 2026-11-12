@@ -96,7 +96,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived):
 				status = http.StatusNotFound
-			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
+			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -863,7 +863,15 @@ func (h *handler) ForkChat(ctx context.Context, req api.ForkChatRequestObject) (
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	fork, err := h.Chats.Fork(ctx, agentID(ctx), req.ChatId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before)
+	requestID := ""
+	if req.Body.Id != nil {
+		id, err := uuid.Parse(*req.Body.Id)
+		if err != nil {
+			return nil, errors.Join(errInvalid, err)
+		}
+		requestID = id.String()
+	}
+	fork, err := h.Chats.Fork(ctx, agentID(ctx), req.ChatId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before, requestID)
 	if err != nil {
 		return nil, err
 	}

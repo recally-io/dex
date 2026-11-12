@@ -715,7 +715,7 @@ export const continueChat = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
- * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. Each call creates another Chat. 400 when the entry is not in this session or cannot start a fork. Automation and channel sessions return 403.
+ * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork. Automation and channel sessions return 403.
  *
  */
 export const forkChat = <ThrowOnError extends boolean = false>(options: Options<ForkChatData, ThrowOnError>): RequestResult<ForkChatResponses, ForkChatErrors, ThrowOnError> => (options.client ?? client).post<ForkChatResponses, ForkChatErrors, ThrowOnError>({

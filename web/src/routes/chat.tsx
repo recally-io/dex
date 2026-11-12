@@ -352,15 +352,26 @@ function Chat({
   const pending = send.isPending || abort.isPending || continueRun.isPending || compact.isPending;
   const navigate = useNavigate();
   const fork = useMutation(forkChatMutation());
+  const failedFork = useRef<{ chatId: number; entryId: number; before: boolean; id: string } | null>(null);
 
   // A fork opens as its own Chat. Edit in new chat carries the message text, not its attachments.
   const messageActions: MessageActions = {
     pending: fork.isPending,
-    fork: (entryId, before, text) =>
+    fork: (entryId, before, text) => {
+      const prior = failedFork.current;
+
+      const id =
+        prior?.chatId === chatId && prior.entryId === entryId && prior.before === before ? prior.id : newId();
+
+      const body = { id, entryId, before };
+      failedFork.current = { ...body, chatId };
+
       fork.mutate(
-        { path: { agentId, chatId }, body: { entryId, before } },
+        { path: { agentId, chatId }, body },
         {
           onSuccess: async (created) => {
+            failedFork.current = null;
+
             if (text) putChatDraft(agentId, created.chatId, text);
 
             await refreshChats(agentId);
@@ -370,7 +381,8 @@ function Chat({
             });
           },
         },
-      ),
+      );
+    },
   };
 
   const error = send.error ?? abort.error ?? continueRun.error ?? compact.error ?? fork.error;

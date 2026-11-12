@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
+	"uuid"
 )
 
 type forkInfo struct {
@@ -42,6 +44,39 @@ func findItem(t *testing.T, tr *transcript, kind, text string) item {
 		t.Fatalf("no %s item %q: %+v", kind, text, tr.items)
 	}
 	return tr.items[i]
+}
+
+func TestUserForkReplayCreatesOneChat(t *testing.T) {
+	t.Parallel()
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "echo")
+	src := d.newSession(t).ID
+	w := d.watch(t, src)
+	d.send(t, src, "hello")
+	w.until(t, "answer", answered("echo: hello"))
+	d.waitSettled(t, src)
+	entry := findItem(t, &w.tr, "assistant", "echo: hello").EntryID
+	id := uuid.NewV7().String()
+	body := map[string]any{"id": id, "entryId": entry}
+	const count = 4
+	var results [count]struct {
+		status int
+		raw    string
+	}
+	var wg sync.WaitGroup
+	for i := range count {
+		wg.Go(func() { results[i].status, results[i].raw = d.call(t, http.MethodPost, chatPath(src, "fork"), body) })
+	}
+	wg.Wait()
+	for _, result := range results {
+		if result.status != http.StatusCreated || result.raw != results[0].raw {
+			t.Fatalf("fork replay results: %+v", results)
+		}
+	}
+	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"id": id, "entryId": entry, "before": true}, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"id": id, "entryId": entry + 1}, nil, http.StatusConflict)
+	other := d.newSession(t).ID
+	d.must(t, http.MethodPost, chatPath(other, "fork"), body, nil, http.StatusConflict)
 }
 
 func TestUserForksChat(t *testing.T) {

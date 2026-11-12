@@ -568,6 +568,11 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
    confirmed reply parts. A restart reacquires native outcomes by request ID;
    it does not restart a second execution loop in control.
 
+A fork request can carry a UUID. Control commits its receipt with the new Chat.
+A retry with the same source and boundary returns that Chat; a mismatch returns
+`409`. A concurrent retry can create an extra native conversation before control
+rejects its receipt. That conversation has no control reference and is invisible.
+
 A client retry with the same UUID reuses the input intent and native admission.
 The chat, input kind, text, attachments and send mode must match the first request.
 An omitted mode is the same as `followUp`. A mismatch returns `409`.

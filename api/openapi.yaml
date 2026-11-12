@@ -1027,7 +1027,9 @@ paths:
         when nothing comes before it, the new Chat is empty. The new Chat
         takes the model, thinking level and project of this session and does
         not run. A running session contributes only its committed entries.
-        Files on disk are not rolled back. Each call creates another Chat.
+        Files on disk are not rolled back. Without an id, each call creates
+        another Chat. A retry with the same id and parameters returns the same
+        Chat. A different source or parameters return 409.
         400 when the entry is not in this session or cannot start a fork.
         Automation and channel sessions return 403.
       requestBody:
@@ -1038,6 +1040,7 @@ paths:
               type: object
               required: [entryId]
               properties:
+                id: { type: string, description: "Optional client UUID for safe retries." }
                 entryId: { type: integer, format: int64 }
                 before:
                   type: boolean
@@ -1055,6 +1058,7 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
 
   /api/agents/{agentId}/chats/{chatId}/compact:
     parameters:

@@ -119,6 +119,14 @@ type FeishuSetting struct {
 	PairingExpiresAt int64  `json:"pairing_expires_at"`
 }
 
+type ForkReceipt struct {
+	ID          string `json:"id"`
+	SourceID    int64  `json:"source_id"`
+	EntryID     int64  `json:"entry_id"`
+	BeforeEntry int64  `json:"before_entry"`
+	ForkID      int64  `json:"fork_id"`
+}
+
 type OnePassword struct {
 	ID                  int64  `json:"id"`
 	Mode                string `json:"mode"`
