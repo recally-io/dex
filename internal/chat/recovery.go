@@ -60,7 +60,7 @@ func (s *Service) recoverChild(ctx context.Context, c sqlc.ListRecoveryChildrenR
 			in.outcome = recovered.Outcome
 			settled = append(settled, in)
 		case engine.RecoveryPlaced:
-			in.outcome = engine.Outcome{Status: "unanswered", Reason: "interrupted", Covered: recovered.Covered}
+			in.outcome = engine.Outcome{Status: "unanswered", Reason: "interrupted"}
 			// A run of user input resumes by itself. Only a parent turn in the run interrupts it.
 			interrupted = interrupted || p.FromParent
 			running = append(running, in)

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestUserFailedSharedRunSendsNoSecondResultAfterALaterRunStarted(t *testing.T) {
+func TestUserFailedSharedRunSendsEachResultAfterALaterRunStarted(t *testing.T) {
 	t.Parallel()
 	// Given a child run that a parent steer joined and that the model failed, while the control
 	// database refused to settle the receipts of both inputs.
@@ -36,13 +36,13 @@ func TestUserFailedSharedRunSendsNoSecondResultAfterALaterRunStarted(t *testing.
 	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": childJSON(t, map[string]any{"tool": "bash", "command": taskGate(t, dir, "next")})}), &ref)
 	waitTaskFile(t, filepath.Join(dir, "next.pid"))
 	execSQL(t, write, `DROP TRIGGER hold_failed`)
-	// Then the receipts of the failed run settle and the parent gets one result for it.
+	// Then each failed parent input gets its own result.
 	eventually(t, "failed receipts settled", func() (bool, any) {
 		turns := childTurns(t, write, child.conversation(t))
 		return len(turns) == 3 && turns[0].status != "pending" && turns[1].status != "pending", turns
 	})
-	if rows := resultRows(t, write, parent); len(rows) != 1 {
-		t.Fatalf("one failed run produced %d results after the next run started: %+v", len(rows), rows)
+	if rows := resultRows(t, write, parent); len(rows) != 2 {
+		t.Fatalf("two failed parent inputs produced %d results after the next run started: %+v", len(rows), rows)
 	}
 	releaseResultGate(t, dir, "next")
 }

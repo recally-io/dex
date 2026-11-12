@@ -67,15 +67,10 @@ type InputMetadata struct {
 	TaskID      string       `json:"taskId,omitempty"`
 	TaskTitle   string       `json:"taskTitle,omitempty"`
 	Reason      string       `json:"reason,omitempty"`
-	// RunPeers are the earlier inputs that may have started the run of this input. Admission writes
-	// them, and coverage reads them.
-	RunPeers []int64 `json:"runPeers,omitempty"`
 }
 type Outcome struct {
 	Status, Answer, Reason string
-	// Covered is true when an earlier input of the same run started it, so the outcome of that
-	// input speaks for this one. It is set only for inputs of child sessions.
-	Covered bool
+	AnswerID               int64
 }
 type Config struct {
 	DataDir, Home string
