@@ -162,7 +162,20 @@ func userItem(m InputMetadata, id string, at int64, text string) Item {
 		text = stripAttachedFiles(text, m.Attachments)
 	}
 	if m.TaskID != "" || m.Kind == "dex.task_result" {
-		return Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle}
+		item := Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle}
+		var body struct {
+			Result struct {
+				Outcome string `json:"outcome"`
+				Answer  string `json:"answer"`
+				Reason  string `json:"reason"`
+				Report  string `json:"report"`
+				Status  string `json:"status"`
+			} `json:"task-result"`
+		}
+		if json.Unmarshal([]byte(text), &body) == nil {
+			item.Text, item.Status, item.Reason = cmp.Or(body.Result.Answer, body.Result.Report), cmp.Or(body.Result.Outcome, body.Result.Status), body.Result.Reason
+		}
+		return item
 	}
 	return Item{Kind: "user", ID: cmp.Or(m.RequestID, id), At: at, Text: text, Origin: m.Origin, Attachments: m.Attachments}
 }

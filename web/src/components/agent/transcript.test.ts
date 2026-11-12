@@ -109,9 +109,16 @@ test("user sees which child session returned after a topic change", async () => 
 test("user sees two returned results as separate groups", async () => {
   // Given two results that arrive together.
   const items: Item[] = [
-    { kind: "task", id: "result-1", taskId: "task-1", title: "Access logs" },
+    { kind: "task", id: "result-1", taskId: "task-1", title: "Access logs", text: "Child report" },
     { kind: "assistant", id: "a1", text: "First report" },
-    { kind: "task", id: "result-2", taskId: "task-2", title: "Error logs" },
+    {
+      kind: "task",
+      id: "result-2",
+      taskId: "task-2",
+      title: "Error logs",
+      status: "interrupted",
+      reason: "Restarted",
+    },
     { kind: "error", id: "error-2", reason: "The provider failed" },
   ];
 
@@ -120,6 +127,33 @@ test("user sees two returned results as separate groups", async () => {
     { kind: "task", item: { title: "Access logs" }, blocks: [{ item: { id: "a1" } }] },
     { kind: "task", item: { title: "Error logs" }, blocks: [{ item: { id: "error-2" }, index: 3 }] },
   ]);
+
+  const html = await render(
+    createElement(Transcript, { items, running: false, retry: () => {}, canRetry: false }),
+  );
+
+  expect(html).toContain("Child report");
+  expect(html).toContain("interrupted: Restarted");
+});
+
+test("user sees a pending dispatch and a legacy task", async () => {
+  const pending = {
+    ...tool("pending", "running", ""),
+    name: "session_new",
+    args: { title: "Check", message: "Look" },
+  };
+
+  const legacy = {
+    ...tool("legacy", "done", ""),
+    name: "spawn_task",
+    args: { title: "Old task", goal: "Old goal" },
+  };
+
+  const html = await render(createElement(Steps, { steps: [pending, legacy] }));
+
+  expect(html).toContain("Dispatching session: Check");
+  expect(html).toContain("Session dispatched: Old task");
+  expect(html).toContain("Old goal");
 });
 
 test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", async (text) => {
@@ -138,7 +172,8 @@ test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", asyn
     createElement(Transcript, { items, running: false, retry: () => {}, canRetry: true }),
   );
 
-  expect(html).toContain("Used session_new");
+  expect(html).toContain("Check logs");
+  expect(html).toContain("Check the saved logs");
   expect(html).not.toContain('aria-label="Copy answer"');
 });
 

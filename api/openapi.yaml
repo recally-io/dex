@@ -2124,6 +2124,15 @@ components:
         entryId: { type: integer, format: int64 }
         at: { type: integer, format: int64 }
         title: { type: string }
+        text:
+          type: string
+          description: The child session's final answer, when available.
+        status:
+          type: string
+          description: The outcome of the child session turn.
+        reason:
+          type: string
+          description: The reason the child session turn failed or was interrupted.
 
         taskId:
           type: string

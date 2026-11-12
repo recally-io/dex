@@ -780,8 +780,8 @@ final answer from the result and can call `session_read` for a cut text.
 
 Control passes a trusted input kind, the turn ID and the child title to the
 engine. The engine stores results as `dex.task_result` entries. The public
-projection replaces each result input with a `task` mark without the answer
-text. A failed result reply cannot retry the user message before the mark.
+projection replaces each result input with a `task` mark containing the child
+answer or failure reason. A failed result reply cannot retry the user message before the mark.
 Neither layer uses message text or an ID pattern to hide results. Child
 conversations stay absent from dream inputs, and dream input selects only
 ordinary messages.

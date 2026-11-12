@@ -438,6 +438,18 @@ export type TaskItem = {
     at?: number;
     title: string;
     /**
+     * The child session's final answer, when available.
+     */
+    text?: string;
+    /**
+     * The outcome of the child session turn.
+     */
+    status?: string;
+    /**
+     * The reason the child session turn failed or was interrupted.
+     */
+    reason?: string;
+    /**
      * The input ID of the child session turn, or the ID of an old task. getTurnChat finds its session.
      */
     taskId: string;

@@ -188,8 +188,19 @@ func TestUserChildResultReturnsToItsChatSession(t *testing.T) {
 	if err := conn.QueryRowContext(t.Context(), "SELECT conversation_id, origin FROM submissions WHERE id=?", child.ResultID).Scan(&parent, &origin); err != nil {
 		t.Fatal(err)
 	}
-	if parent != side || origin != "web" || !slices.ContainsFunc(w.tr.items, func(it item) bool { return it.Kind == "task" && it.TaskID == child.Turn && it.Title == "Chat report" }) {
+	if parent != side || origin != "web" || !slices.ContainsFunc(w.tr.items, func(it item) bool {
+		return it.Kind == "task" && it.TaskID == child.Turn && it.Title == "Chat report" && it.Text == "echo: only for this Chat" && it.Status == "done"
+	}) {
 		t.Fatalf("Chat result routing: parent=%d origin=%s transcript=%+v", parent, origin, w.tr.items)
+	}
+	var page struct {
+		Items []item `json:"items"`
+	}
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9007199254740991&limit=100", side), nil, &page)
+	if !slices.ContainsFunc(page.Items, func(it item) bool {
+		return it.Kind == "task" && it.TaskID == child.Turn && it.Text == "echo: only for this Chat"
+	}) {
+		t.Fatalf("history lost child result: %+v", page.Items)
 	}
 	mw := d.watch(t, main)
 	mw.until(t, "main snapshot", func(tr *transcript) bool { return tr.snapshots > 0 })

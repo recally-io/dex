@@ -17,7 +17,15 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
 import { formatSize, isImage } from "../../lib/attachments";
-import { blocks, describeTool, seconds, stepTitle, type ContentBlock, type Step } from "../../lib/tools";
+import {
+  blocks,
+  describeTool,
+  dispatch,
+  seconds,
+  stepTitle,
+  type ContentBlock,
+  type Step,
+} from "../../lib/tools";
 import { remarkStrong, strongText } from "../../lib/strong";
 import { retryMessage } from "../../lib/chat-state";
 import { Button } from "../ui/button";
@@ -296,6 +304,23 @@ export function Steps({
 
   return (
     <div className="flex w-full flex-col">
+      {steps.map((step) => {
+        if (step.kind !== "tool") return null;
+        const detail = dispatch(step);
+
+        if (!detail) return null;
+
+        return (
+          <section key={step.id} className="my-2 min-w-0 rounded-md border p-3 text-sm">
+            <div className="font-semibold">
+              {detail.status}: {detail.title}
+            </div>
+            {detail.message ? (
+              <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{detail.message}</p>
+            ) : null}
+          </section>
+        );
+      })}
       <button
         type="button"
         aria-expanded={expanded}
@@ -825,6 +850,17 @@ export function Transcript({
         className="mt-5 flex min-w-0 flex-col gap-3 first:mt-0"
       >
         <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />
+        {block.item.status && block.item.status !== "done" ? (
+          <p className="text-sm text-muted-foreground">
+            {block.item.status}
+            {block.item.reason ? `: ${block.item.reason}` : ""}
+          </p>
+        ) : null}
+        {block.item.text ? (
+          <div className="rounded-md border p-3 text-sm">
+            <Markdown text={block.item.text} />
+          </div>
+        ) : null}
         {/* The main agent answers the user here; indenting it made the reply read as background output. */}
         {block.blocks.length ? (
           <div className="flex min-w-0 flex-col gap-3">{block.blocks.map(content)}</div>
