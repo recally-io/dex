@@ -2,11 +2,9 @@ package chat
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
-
 	"github.com/recally-io/dex/internal/engine"
 )
 
@@ -62,20 +60,6 @@ func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, ins
 	if s.leaseUntil.Load() != 0 {
 		return engine.ErrMaintenance
 	}
-	receiptExists := false
-	if requestID != "" {
-		s.compactMu.Lock()
-		defer s.compactMu.Unlock()
-		receipt, err := s.q.GetCompactReceipt(ctx, requestID)
-		if err == nil {
-			if receipt.ConversationID != chatID || receipt.Instructions != instructions {
-				return ErrOperationID
-			}
-			receiptExists = true
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-	}
 	conv, err := s.q.GetConversation(ctx, chatID)
 	if err != nil {
 		return err
@@ -87,13 +71,19 @@ func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, ins
 	if err != nil {
 		return err
 	}
-	if requestID != "" && !receiptExists {
+	if requestID != "" {
 		created, err := s.q.CreateCompactReceipt(ctx, sqlc.CreateCompactReceiptParams{ID: requestID, ConversationID: chatID, Instructions: instructions})
 		if err != nil {
 			return err
 		}
 		if created == 0 {
-			return ErrOperationID
+			receipt, err := s.q.GetCompactReceipt(ctx, requestID)
+			if err != nil {
+				return err
+			}
+			if receipt.ConversationID != chatID || receipt.Instructions != instructions {
+				return ErrOperationID
+			}
 		}
 	}
 	_, err = s.engine.Compact(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, instructions, requestID, chatOptions(agent, conv))

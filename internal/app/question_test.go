@@ -89,8 +89,10 @@ func TestUserAnswersQuestionFromCard(t *testing.T) {
 
 	// When the user writes a plain message, then the question stays open.
 	d.setModel(t, "echo")
-	d.send(t, chatID, "unrelated")
+	plainID := d.send(t, chatID, "unrelated")
 	d.watch(t, chatID).until(t, "plain message answered", answered("echo: unrelated"))
+	d.must(t, http.MethodPost, chatPath(chatID, "messages"),
+		map[string]string{"id": plainID, "text": "unrelated", "answersQuestionId": q.ID}, nil, http.StatusConflict)
 	if again := d.question(t, chatID); again == nil || again.ID != q.ID || again.Status != "open" {
 		t.Fatalf("plain message changed the question: %+v", again)
 	}
@@ -107,6 +109,8 @@ func TestUserAnswersQuestionFromCard(t *testing.T) {
 	d.answer(t, chatID, q.ID, "Investigate only", http.StatusConflict)
 	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", chatID),
 		map[string]string{"id": answerID, "text": "Start a separate session", "answersQuestionId": q.ID}, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, chatPath(chatID, "messages"),
+		map[string]string{"id": answerID, "text": "Start a separate session"}, nil, http.StatusConflict)
 }
 
 func TestUserCannotOpenSecondQuestion(t *testing.T) {

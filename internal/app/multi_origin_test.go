@@ -51,13 +51,9 @@ func TestUserSteerCannotGrantBotAuthorityToChildResult(t *testing.T) {
 	main := d.mainChat(t)
 	conn := sessionDB(t, d)
 	child := newGatedRun(t, "child")
-	parentID := d.send(t, main, childJSON(t, map[string]string{"title": "gated child", "message": child.command, "provider": "faux", "modelId": "bash"}))
+	d.send(t, main, childJSON(t, map[string]string{"title": "gated child", "message": child.command, "provider": "faux", "modelId": "bash"}))
 	child.waitStarted(t)
 	d.waitSettled(t, main)
-	// Preserve a task origin on the parent receipt so its actual child result inherits it.
-	if _, err := conn.ExecContext(t.Context(), "UPDATE submissions SET origin='task' WHERE id=?", parentID); err != nil {
-		t.Fatal(err)
-	}
 	run := newGatedRun(t, "result")
 	args, err := json.Marshal(map[string]string{"command": run.command})
 	if err != nil {
@@ -75,7 +71,7 @@ func TestUserSteerCannotGrantBotAuthorityToChildResult(t *testing.T) {
 	if err := conn.QueryRowContext(t.Context(), "SELECT id, origin, kind FROM submissions WHERE conversation_id=? AND kind='task_result'", main).Scan(&resultID, &origin, &kind); err != nil {
 		t.Fatal(err)
 	}
-	if origin != "task" || kind != "task_result" {
+	if origin != "web" || kind != "task_result" {
 		t.Fatalf("child result = %s %s", origin, kind)
 	}
 	steer := uuid.NewV7().String()
