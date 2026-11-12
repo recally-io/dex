@@ -446,7 +446,11 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 	}
 	stoppedByParent := make(map[int64]bool, len(stopped))
 	for _, id := range stopped {
-		stoppedByParent[id] = true
+		reached, err := s.childStoppedByParent(ctx, agentID, id)
+		if err != nil {
+			return nil, err
+		}
+		stoppedByParent[id] = reached
 	}
 	chats := make([]Chat, len(rows))
 	for i, r := range rows {
@@ -469,6 +473,46 @@ func otherBot(agentID string, id, name sql.NullString) (string, string) {
 		return "", ""
 	}
 	return id.String, name.String
+}
+
+// childStoppedByParent refines the SQL candidate for a child with mixed pending input.
+func (s *Service) childStoppedByParent(ctx context.Context, agentID string, id int64) (bool, error) {
+	pending, err := s.q.ListChildPending(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	user := false
+	parent := false
+	for _, p := range pending {
+		user = user || !p.FromParent
+		parent = parent || p.FromParent
+	}
+	if !parent || !user {
+		return parent, nil
+	}
+	c, err := s.q.GetConversation(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if !c.ExecutionID.Valid {
+		return true, nil
+	}
+	for _, p := range pending {
+		if !p.FromParent {
+			continue
+		}
+		outcome, err := s.engine.PeekWithdrawal(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID.Int64}, p.ID)
+		if errors.Is(err, engine.ErrNotFound) || errors.Is(err, engine.ErrModelsPending) || errors.Is(err, engine.ErrMaintenance) {
+			return true, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if outcome != engine.Placed {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Get returns chat id of agentID, or ErrNotFound.

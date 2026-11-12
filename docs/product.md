@@ -85,7 +85,7 @@ to read in an afternoon.
   long commands whose output would flood the context, and independent review.
   Each execution has one input and fixed model settings. The main agent
   handles implementation, review findings, tests, and the final answer.
-  Each child session starts as soon as it is created. There is no limit on the number of child sessions, and sessions in one directory run at the same time. Stop on a parent withdraws the work that the parent sent and requests cancellation of its running work, and a tool may still complete actions. A child session cannot delegate more work. The main agent handles failures and decides the
+  Each child session starts as soon as it is created. There is no limit on the number of child sessions, and sessions in one directory run at the same time. Stop on a parent follows the child Stop rules below. A tool may still complete actions. A child session cannot delegate more work. The main agent handles failures and decides the
   next action.
 - Telegram setup: save a bot token, then open a single-use pairing link to
   allow the owner's account while the bot has no owner. Links expire after
@@ -283,10 +283,10 @@ cannot ask. The web shows an answer as the question in muted text above the answ
 
 Web Stop stays in the composer for queued input, an active answer, and active
 background work. Stop covers the selected writable session. On a parent, it
-also covers each child that has pending input that the parent sent. The session
+also covers each child where it can stop work that the parent sent. The session
 list marks those children (`stoppedWithParent`), and the parent page shows Stop
-only for them. A child that also has pending user input keeps its run, and
-Stop withdraws only the parent input that is still queued. A run that the user
+for them. A child that also has pending user input keeps its run, and
+Stop withdraws only parent input that is still queued or not admitted. A run that the user
 started in a child is not covered: the parent page shows no Stop for it, and the
 user stops it in the child. Stop on a child
 ends all pending input of that child. Automation transcripts are read-only.
@@ -297,13 +297,14 @@ process exit. Processes and remote work can continue. Prior actions are not
 undone.
 
 Normal completion and execution failure return a report to the main agent.
-Stop and cancellation do not create a result turn. A restart interruption
+Work cancelled by Stop or cancellation does not create a result turn. A kept
+parent-started run can return a result that starts a new parent turn. A restart interruption
 creates one durable result that warns that side effects may exist.
 A saved report stays unchanged after cancellation or a late execution event.
 The system does not retry failed execution or result delivery. The main agent
 reads saved records and artifacts, then decides whether to retry or continue
 from saved work. After a user Stop, the main agent waits for new user
-authorization. A later user message does not retry an old result. Result
+authorization before it resumes cancelled work. A later user message does not retry an old result. Result
 delivery keeps the source input's origin after `/clear`.
 
 After a dex restart, running execution becomes interrupted and does not restart

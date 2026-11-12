@@ -806,7 +806,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -830,6 +830,8 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.AdmittedAt,
 		&i.WhenBusy,
 		&i.ParentRequestID,
+		&i.ResultChildID,
+		&i.NativeAnswerID,
 	)
 	return i, err
 }

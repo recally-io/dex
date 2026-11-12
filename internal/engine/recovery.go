@@ -26,12 +26,10 @@ const (
 )
 
 // Recovered is the committed native state of one input. Outcome is set only when State is
-// RecoverySettled. Covered is set for a placed or settled input that an earlier input of its run
-// started.
+// RecoverySettled.
 type Recovered struct {
 	State   RecoveryState
 	Outcome Outcome
-	Covered bool
 }
 
 // RecoveryOutcome reads a committed input before any Harness can resume. It never admits work.
@@ -74,18 +72,18 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 	if record.Status == durable.SubmissionQueued {
 		return Recovered{State: RecoveryQueued}, nil
 	}
-	isCovered, err := covered(readCtx, store, record)
-	if err != nil {
-		return Recovered{}, err
-	}
 	if record.Status == durable.SubmissionPlaced {
-		return Recovered{State: RecoveryPlaced, Covered: isCovered}, nil
+		return Recovered{State: RecoveryPlaced}, nil
 	}
-	outcome := Outcome{Status: string(record.Status), Covered: isCovered}
+	outcome := Outcome{Status: string(record.Status)}
 	if record.Reason != nil {
 		outcome.Reason = *record.Reason
 	}
-	if record.Status == durable.SubmissionDone && record.Answer != nil {
+	if record.Status == durable.SubmissionDone && record.Type == durable.SubmissionTypeInput {
+		if record.Answer == nil {
+			return Recovered{}, errors.New("completed native input has no answer")
+		}
+		outcome.AnswerID = int64(*record.Answer)
 		entry, err := store.Entry(readCtx, *record.Answer)
 		if err != nil {
 			return Recovered{}, err

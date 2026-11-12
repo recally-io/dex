@@ -141,17 +141,20 @@ latest turn, and the first 300 characters of its answer.
 
 ### Result delivery
 
-When a parent turn ends as done, failed, or interrupted, control writes one
-result submission to the parent in the same transaction as the settlement. The
-ID is `result:<child submission id>`. Each turn has its own ID, so a later turn
-is not lost, and a replay does not make a copy.
+A completed run that contains a parent input sends its answer once, even when
+the user started the run. A run with only user inputs sends no result. Control
+uses the child conversation ID and native Answer entry ID as a unique key. The
+first parent input that settles owns `result:<child submission id>`. The result
+insert and receipt settlement share one control transaction. Only a conflict on
+the Answer key means the answer was already delivered. A done native input
+without an Answer is an error.
 
-- A steered input joins the current run. That run sends one result, which
-  covers the steer.
-- A queued input starts its own run and sends its own result.
-- A stopped run sends no result. The caller of Stop already knows.
-- A user turn sends no result to the parent. The parent sees it in
-  `session_list`.
+Each failed or interrupted parent input sends its own result with ID
+`result:<child submission id>`. This includes a parent steer in a run that the
+user started. A retry or restart does not add another result for that input.
+User inputs never send results. A stopped, aborted, or withdrawn input sends no
+result. The caller of Stop already knows.
+
 - The payload has the child ID, title, turn, outcome, and the answer cut to
   4,000 characters. A cut answer ends with a pointer to `session_read` with `turn` and `offset`.
 - The submission kind stays `task_result` and the native entry kind stays
@@ -177,12 +180,15 @@ the run and withdraws every queued input of the conversation.
 Stop on the child itself ends all of its pending input. A replayed
 `session_stop` call returns its first result and stops nothing new.
 
-The recovery rule does not change. Before a Harness resumes, control stops each
-pending parent turn in a child and marks it `interrupted`. Abort also withdraws
-queued input. The parent gets one result. It names the interrupted turn and
-the number of withdrawn queued inputs. Side effects of the stopped run are not
-known, so dex does not run it again. The main agent can call `session_send` to
-continue in the same context.
+Before a Harness resumes, recovery reads each pending input's native state,
+including admission gaps. If a parent input is placed in an unfinished run,
+recovery interrupts the placed inputs and withdraws queued and unadmitted
+inputs. Each placed parent input gets its own interrupted result with the count
+of withdrawn inputs. User inputs get no result. Settlements, results,
+withdrawals, and abort intent commit in one control transaction. A second
+restart adds nothing. Side effects of the stopped run are not known, so dex
+does not run it again. The main agent can call `session_send` to continue in
+the same context.
 
 ### Prompt rules
 

@@ -94,20 +94,21 @@ func (q *Queries) CreateParentTurn(ctx context.Context, arg CreateParentTurnPara
 }
 
 const createTurnResult = `-- name: CreateTurnResult :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
-SELECT ?1, c.parent_id, ?2, 'null', ?1, source.origin, 'task_result', 'pending', ?3
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, result_child_id, native_answer_id)
+SELECT ?1, c.parent_id, ?2, 'null', ?1, source.origin, 'task_result', 'pending', ?3, c.id, ?4
 FROM submissions turn
 JOIN conversations c ON c.id = turn.conversation_id
 JOIN submissions source ON source.id = turn.parent_request_id
-WHERE turn.id = ?4 AND c.parent_id IS NOT NULL
-ON CONFLICT DO NOTHING
+WHERE turn.id = ?5 AND c.parent_id IS NOT NULL
+ON CONFLICT (result_child_id, native_answer_id) DO NOTHING
 `
 
 type CreateTurnResultParams struct {
-	ID        string `json:"id"`
-	Content   string `json:"content"`
-	CreatedAt int64  `json:"created_at"`
-	TurnID    string `json:"turn_id"`
+	ID             string        `json:"id"`
+	Content        string        `json:"content"`
+	CreatedAt      int64         `json:"created_at"`
+	NativeAnswerID sql.NullInt64 `json:"native_answer_id"`
+	TurnID         string        `json:"turn_id"`
 }
 
 // The result of a parent turn goes to the parent session with the origin of the parent request.
@@ -117,6 +118,7 @@ func (q *Queries) CreateTurnResult(ctx context.Context, arg CreateTurnResultPara
 		arg.ID,
 		arg.Content,
 		arg.CreatedAt,
+		arg.NativeAnswerID,
 		arg.TurnID,
 	)
 	if err != nil {

@@ -107,16 +107,9 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		}
 		kind := inputEntryKind(input)
 		whenBusy := durable.WhenBusy(cmp.Or(input.WhenBusy, string(durable.WhenBusyFollowUp)))
-		// The run peers and the admission share one commit, so they describe the same moment.
 		var id durable.SubmissionId
 		_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
 			metadata := InputMetadata{RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
-			if input.Child {
-				var err error
-				if metadata.RunPeers, err = runPeers(tx, conversation.Id(), whenBusy); err != nil {
-					return nil, err
-				}
-			}
 			data, err := durable.ToJsonValue(metadata)
 			if err != nil {
 				return nil, err
@@ -167,22 +160,25 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 			result.err = err
 		} else {
 			result.outcome = Outcome{Status: string(settled.Status)}
-			if input.Child {
-				result.outcome.Covered, result.err = a.covered(settlementCtx, ref, settled)
-			}
 			if settled.Reason != nil {
 				result.outcome.Reason = *settled.Reason
 			}
-			if settled.Status == durable.SubmissionDone && settled.Answer != nil {
+			if settled.Status == durable.SubmissionDone && settled.Answer == nil {
+				result.err = errors.New("completed native input has no answer")
+			} else if settled.Status == durable.SubmissionDone {
+				result.outcome.AnswerID = int64(*settled.Answer)
 				var entry *durable.EntryRecord
 				_, err := conversation.Commit(settlementCtx, func(tx durable.Tx) (any, error) {
 					var err error
 					entry, err = tx.Entry(*settled.Answer)
 					return nil, err
 				})
-				if err != nil {
+				switch {
+				case err != nil:
 					result.err = err
-				} else if entry != nil {
+				case entry == nil:
+					result.err = errors.New("completed native input has no answer entry")
+				default:
 					result.outcome.Answer = answerText(entry.Model)
 				}
 			}

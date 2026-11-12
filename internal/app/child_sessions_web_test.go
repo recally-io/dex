@@ -153,6 +153,40 @@ func TestUserSeesBusyChildActivityInTheSessionList(t *testing.T) {
 	})
 }
 
+func TestUserSeesStopOnlyForWithdrawableMixedChildInput(t *testing.T) {
+	t.Parallel()
+	// Given a parent-started run and a queued user input in the child.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	parent := newParent(t, d)
+	child := spawnChild(t, d, parent, "Mixed", taskGate(t, dir, "mixed-web"), "bash")
+	waitTaskFile(t, filepath.Join(dir, "mixed-web.pid"))
+	d.send(t, child.conversation(t), "echo user queued")
+
+	// When no parent input is queued, Stop cannot act on the child.
+	if got := d.listWebChats(t)[child.conversation(t)]; got.StoppedWithParent != nil {
+		t.Fatalf("placed parent input must not enable Stop: %+v", got)
+	}
+	var ref childRef
+	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "echo parent queued"}), &ref)
+	if got := d.listWebChats(t)[child.conversation(t)]; got.StoppedWithParent == nil || !*got.StoppedWithParent {
+		t.Fatalf("queued parent input must enable Stop: %+v", got)
+	}
+
+	// When the parent stops, only the queued parent input ends.
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent), nil, nil)
+	turns := childTurns(t, conn, child.conversation(t))
+	if len(turns) != 3 || turns[0].status != "pending" || turns[1].status != "pending" || turns[2].status != "unanswered" || turns[2].reason != "stopped" {
+		t.Fatalf("mixed child after Stop: %+v", turns)
+	}
+	if got := d.listWebChats(t)[child.conversation(t)]; got.StoppedWithParent != nil {
+		t.Fatalf("withdrawn parent input must not enable Stop: %+v", got)
+	}
+	releaseResultGate(t, dir, "mixed-web")
+	waitChildTurnsEnded(t, conn, child.conversation(t), 3)
+}
+
 func TestUserSeesWhichChildrenStopOnTheParentReaches(t *testing.T) {
 	t.Parallel()
 	// Given a child that runs a parent turn, and a child that runs only a turn that the user started.
