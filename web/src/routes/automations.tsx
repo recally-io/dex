@@ -140,7 +140,7 @@ function AutomationsSection() {
         caption={`${on} of ${list.length} on. Open one to see its runs.`}
         // SAFETY: ToggleGroup values come only from the two Filter items below.
         action={
-          <Button size="sm" disabled={noModel} onClick={() => setCreate(true)}>
+          <Button disabled={noModel} onClick={() => setCreate(true)}>
             New routine
           </Button>
         }
