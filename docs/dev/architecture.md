@@ -779,9 +779,20 @@ final answer from the result and can call `session_read` for a cut text.
 
 Control passes a trusted input kind, the turn ID and the child title to the
 engine. The engine stores results as `dex.task_result` entries. The public
-projection replaces each result input with a `task` mark without the answer
-text. A failed result reply cannot retry the user message before the mark.
-Neither layer uses message text or an ID pattern to hide results. Child
+projection replaces each result input with a `task` mark. The mark holds the
+title, the outcome and the failure reason, and never the answer text. A failed
+result reply cannot retry the user message before the mark.
+Neither layer uses message text or an ID pattern to hide results.
+
+The web shows a child as a thread
+([ADR 0019](decisions/0019-show-child-sessions-as-threads.md)). The main
+transcript keeps one card at each `session_new` or `session_fork` call and one
+line at each `session_send` call. A result mark is one line with a "View thread"
+action. The card, the line and the action open a read-only side panel that
+shows the child's own transcript with the usual chat reads and stream. The web
+reads the child ID from the session tool result and finds the child of a result
+mark with `getTurnChat`. Channels have no thread, so a channel user sees only
+the reply of Main. Child
 conversations stay absent from dream inputs, and dream input selects only
 ordinary messages.
 

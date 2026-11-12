@@ -44,8 +44,12 @@ unhandled failed or blocked tasks, failed routine runs, and routines that need
 a model. Work shows sessions and routine runs across bots. Result details can
 create a writable Chat with the routine project and a quoted result through
 existing APIs. Routine history links to run transcripts and saved results.
-Successful `spawn_task` steps and task result marks link to task pages. Task
-conversations are read-only while queued or running and writable after they end.
+Each child session reads like a thread. The transcript shows one card at a
+`session_new`, `session_fork` or `spawn_task` call, one line at a `session_send`
+call, and one "replied · View thread" line at each result mark. A click opens the
+child as a read-only panel on the right, which covers the transcript on a narrow
+screen. Task conversations are read-only while queued or running and writable
+after they end.
 There is no Sessions tab. Legacy Sessions and transcript URLs remain readable.
 
 The old `/settings/<section>` addresses redirect to the new pages.

@@ -43,7 +43,7 @@ export function blocks(items: Item[]): Block[] {
 }
 
 // A string argument of a tool call, or an empty string when the call has no such string.
-const arg = (tool: ToolItem, key: string) => {
+export const arg = (tool: ToolItem, key: string) => {
   const value = tool.args[key];
 
   return typeof value === "string" ? value : "";
