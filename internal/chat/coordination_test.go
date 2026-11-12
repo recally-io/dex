@@ -391,7 +391,7 @@ func TestUserReconcilerShutdownJoinsColdAgentWorker(t *testing.T) {
 }
 
 func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
-	// Given an idle warm parent and its task waiting for a report.
+	// Given an idle warm parent and its child session that has not answered.
 	r := startNative(t, "echo")
 	warmOtherAgent(t, r)
 	parent, err := r.service.Main(t.Context(), "other")
@@ -403,16 +403,17 @@ func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
 	}
 	marker, taskRelease := filepath.Join(r.dir, "task-started"), filepath.Join(r.dir, "task-release")
 	defer func() { _ = os.WriteFile(taskRelease, nil, 0600) }()
-	task, err := r.service.SpawnTask(t.Context(), engine.TaskContext{AgentID: "other", ConversationID: parent.ExecutionID, SourceRequestID: "source", Key: "other/result"}, engine.SpawnTaskArgs{
-		Title: "Result", Goal: "touch " + marker + "; while [ ! -f " + taskRelease + " ]; do sleep 0.01; done; printf 'saved report'", Provider: "faux", ModelID: "bash",
+	_, err = r.service.ToolSessionNew(t.Context(), engine.TaskContext{AgentID: "other", ConversationID: parent.ExecutionID, SourceRequestID: "source", Key: "other/result"}, engine.SessionNewArgs{
+		Title: "Result", Message: "touch " + marker + "; while [ ! -f " + taskRelease + " ]; do sleep 0.01; done; printf 'saved report'", Provider: "faux", ModelID: "bash",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	turn := turnID("other/result")
 	if _, err := r.q.SettleSubmission(t.Context(), sqlc.SettleSubmissionParams{ID: "source", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.service.admit(t.Context(), taskInput(t, r, task.ID)); err != nil {
+	if err := r.service.admit(t.Context(), taskInput(t, r, turn)); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() bool { _, err := os.Stat(marker); return err == nil })
@@ -431,12 +432,12 @@ func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("cold worker did not reach MCP")
 	}
-	// When the real task finishes, its report wakes the parent without ordinary input.
+	// When the real child run finishes, its result wakes the parent without ordinary input.
 	if err := os.WriteFile(taskRelease, nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	awaitReceipt(t, r, task.ID)
-	resultID := "task:" + task.ID + ":result"
+	awaitReceipt(t, r, turn)
+	resultID := "result:" + turn
 	deadline := time.NewTimer(2 * time.Second)
 	defer deadline.Stop()
 	tick := time.NewTicker(10 * time.Millisecond)
@@ -448,7 +449,7 @@ func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
 			t.Fatal("task-result-only wake blocked by cold agent")
 		}
 	}
-	// Then the parent receives the saved report before the other agent opens.
+	// Then the parent receives the saved answer before the other agent opens.
 	if sub := receipt(t, r, resultID); !sub.AdmittedAt.Valid || !strings.Contains(sub.Answer.String, "saved report") {
 		t.Fatalf("parent result: %+v", sub)
 	}

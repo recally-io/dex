@@ -1,15 +1,8 @@
+-- Legacy task rows. Child sessions replace tasks (ADR 0015). Nothing writes these rows now.
+-- The web UI of the previous release still reads them until the cleanup removes the table.
+
 -- name: GetConversationByExecution :one
 SELECT * FROM conversations WHERE agent_id = ? AND execution_id = ?;
-
--- name: CreateTask :exec
-INSERT INTO tasks (id, parent_conversation_id, conversation_id, spawn_key, source_request_id, title, constraints_json, done_criteria_json, modifies_files, status, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?);
-
--- name: GetTask :one
-SELECT * FROM tasks WHERE id = ?;
-
--- name: GetTaskByKey :one
-SELECT * FROM tasks WHERE spawn_key = ?;
 
 -- name: ListAgentTasks :many
 SELECT t.id, t.parent_conversation_id, t.conversation_id, c.execution_id, t.title, t.status,
@@ -31,62 +24,21 @@ WHERE tasks.id = @task_id AND tasks.status IN ('done', 'failed', 'cancelled', 'i
 SELECT t.* FROM tasks t JOIN conversations c ON c.id = t.conversation_id
 WHERE t.id = ? AND c.agent_id = ?;
 
--- name: ListTasks :many
-SELECT t.* FROM tasks t
-WHERE t.parent_conversation_id = @parent_id AND
-(t.ended_at IS NULL OR t.id IN (SELECT recent.id FROM tasks recent WHERE recent.parent_conversation_id = @parent_id
-AND recent.ended_at IS NOT NULL ORDER BY recent.ended_at DESC, recent.id DESC LIMIT 10))
-ORDER BY t.created_at DESC, t.id DESC;
-
--- name: StartTask :execrows
-UPDATE tasks SET status = 'admitting', started_at = @now
-WHERE id = @id AND status = 'queued';
-
--- name: RunTask :execrows
-UPDATE tasks SET status = 'running'
-WHERE id = @id AND status = 'admitting';
-
--- name: ResetTaskAdmission :execrows
-UPDATE tasks SET status = 'queued', started_at = NULL
-WHERE id = ? AND status = 'admitting' AND ended_at IS NULL;
-
--- name: SettleTask :execrows
-UPDATE tasks SET status = ?, report = ?, ended_at = ?
-WHERE id = ? AND status IN ('queued', 'admitting', 'running');
-
--- name: ListActiveTasks :many
-SELECT * FROM tasks WHERE parent_conversation_id = ? AND status IN ('queued', 'admitting', 'running');
-
--- name: CreateTaskResult :exec
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
-SELECT @id, @conversation_id, @content, 'null', @source_key, source.origin, 'task_result', 'pending', @created_at
-FROM tasks t JOIN submissions source ON source.id = t.source_request_id
-WHERE t.id = @task_id
-ON CONFLICT DO NOTHING;
-
--- name: ListLiveTasks :many
-SELECT * FROM tasks WHERE status IN ('admitting', 'running');
-
 -- name: ListStopConversations :many
-SELECT * FROM conversations WHERE agent_id = @agent_id
-AND id = @chat_id
-ORDER BY id;
+-- Stop reaches the conversation and the children of it that have pending input that the parent
+-- started. A child with only user input is not reached.
+SELECT * FROM conversations WHERE conversations.agent_id = @agent_id
+AND (conversations.id = @chat_id OR (conversations.parent_id = @chat_id AND EXISTS (
+    SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
+        AND s.parent_request_id IS NOT NULL
+)))
+ORDER BY conversations.id;
 
 -- name: StopConversationSubmissions :execrows
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @now
 WHERE conversation_id = @chat_id AND status = 'pending';
 
--- name: StageTaskReport :execrows
-UPDATE tasks SET structured_report = @report
-WHERE tasks.id = @id AND tasks.conversation_id = @conversation_id
-AND status IN ('queued', 'admitting', 'running') AND structured_report = ''
-AND EXISTS (SELECT 1 FROM submissions s WHERE s.id = tasks.id AND s.status = 'pending');
-
--- name: GetTaskResultLabel :one
-SELECT t.id, t.title FROM submissions s
-JOIN tasks t ON s.id = 'task:' || t.id || ':result'
-WHERE s.id = @result_id AND s.conversation_id = @chat_id AND s.kind = 'task_result'
-AND t.parent_conversation_id = s.conversation_id;
-
--- name: GetTaskByConversation :one
-SELECT * FROM tasks WHERE conversation_id = ?;
+-- name: StopSubmission :execrows
+-- Stop ends one pending input that native execution withdrew.
+UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @now
+WHERE id = @id AND status = 'pending';

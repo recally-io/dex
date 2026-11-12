@@ -41,20 +41,20 @@ func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path s
 	switch {
 	case conv.ChannelKey == "main", strings.HasPrefix(conv.ChannelKey, "chat:"), strings.HasPrefix(conv.ChannelKey, "automation:"):
 	case strings.HasPrefix(conv.ChannelKey, "task:"):
-		task, err := q.GetTask(ctx, strings.TrimPrefix(conv.ChannelKey, "task:"))
+		// A conversation from before child sessions. Its parent link comes from the migration.
+	default:
+		return engine.ArtifactInfo{}, errors.New("this conversation cannot deliver files")
+	}
+	if conv.ParentID.Valid {
+		// Only a turn that the parent sent delivers to the parent. A user turn delivers in this
+		// conversation, like any chat.
+		source, err := q.GetSubmission(ctx, caller.SourceRequestID)
 		if err != nil {
 			return engine.ArtifactInfo{}, err
 		}
-		if task.ConversationID != conv.ID {
-			return engine.ArtifactInfo{}, errors.New("task conversation mismatch")
+		if source.ParentRequestID.Valid {
+			parent = conv.ParentID.Int64
 		}
-		// Only the delegated input delivers to the parent. A user message after the task ended
-		// delivers in this conversation, like any chat.
-		if caller.SourceRequestID == task.ID {
-			parent = task.ParentConversationID
-		}
-	default:
-		return engine.ArtifactInfo{}, errors.New("this conversation cannot deliver files")
 	}
 	if _, err := q.GetActiveArtifactInput(ctx, sqlc.GetActiveArtifactInputParams{ID: caller.SourceRequestID, ConversationID: conv.ID}); err != nil {
 		return engine.ArtifactInfo{}, errors.Join(errors.New("delivery requires an active input"), err)

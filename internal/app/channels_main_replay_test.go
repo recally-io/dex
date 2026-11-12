@@ -176,13 +176,7 @@ func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
 	if got := resultSubmission(t, conn, later); got.status != "pending" {
 		t.Fatalf("replayed Stop withdrew later running input: %+v", got)
 	}
-	var status string
-	if err := conn.QueryRowContext(t.Context(), "SELECT status FROM tasks WHERE title='Later task'").Scan(&status); err != nil {
-		t.Fatal(err)
-	}
-	if status != "running" {
-		t.Fatalf("replayed Stop cancelled later task: %s", status)
-	}
+	waitExecution(t, conn, main, "Later task", "running")
 
 	// Then both new processes remain alive and finish through the native engine.
 	for _, name := range []string{"later-turn", "later-task"} {
@@ -195,7 +189,7 @@ func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
 	d.setModel(t, "spawn")
 	releaseResultGate(t, dir, "later-task")
 	task := waitExecution(t, conn, main, "Later task", "done")
-	result := waitResultSubmission(t, conn, "task:"+task.ID+":result", "done")
+	result := waitResultSubmission(t, conn, task.ResultID, "done")
 	if !strings.Contains(result.answer, "gate released") {
 		t.Fatalf("later task answer missing: %+v", result)
 	}

@@ -33,7 +33,7 @@ func (s *Service) Create(ctx context.Context, agentID string) (Chat, error) {
 var ErrNotArchivable = errors.New("only a Chat session can be archived; Main always stays")
 
 // SetArchived archives or restores a Chat session. It changes only the list state: messages,
-// records, files and running work stay, and a task result still returns to the chat.
+// records, files and running work stay, and a child session result still returns to the chat.
 func (s *Service) SetArchived(ctx context.Context, agentID string, id int64, archived bool) (Chat, error) {
 	c, err := s.Get(ctx, agentID, id)
 	if err != nil {
@@ -56,9 +56,9 @@ func (s *Service) SetArchived(ctx context.Context, agentID string, id int64, arc
 // archive also dismisses the chat's question: nobody sees it any more. It takes the same writer
 // as ask_user, so a question cannot open after the archive commits.
 func (s *Service) archive(ctx context.Context, agentID string, id int64) error {
-	s.taskMu.Lock()
-	defer s.taskMu.Unlock()
-	tx, q, err := s.taskTransaction(ctx)
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, q, err := s.writeTransaction(ctx)
 	if err != nil {
 		return err
 	}
@@ -200,8 +200,7 @@ func inputOrigin(key string) string {
 	case strings.HasPrefix(key, "automation:"):
 		return "automation"
 	case strings.HasPrefix(key, "task:"):
-		// Send reaches a task conversation only when a person continues it after the task ended.
-		// The task's own input comes from spawnTask, which stores its own origin.
+		// A conversation from before child sessions. A person writes to it, as to a child session.
 		return "web"
 	case strings.HasPrefix(key, "dream:"):
 		return "dream"

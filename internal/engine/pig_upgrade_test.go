@@ -32,9 +32,9 @@ func TestUserUpgradesPiG053StoreWithoutLosingHistoryOrTaskBoundaries(t *testing.
 	chat := Ref{AgentID: "upgrade", ID: 2}
 	task := Ref{AgentID: "upgrade", ID: 29}
 	running := Ref{AgentID: "upgrade", ID: 41}
-	outcome, err := a.RecoveryOutcome(t.Context(), running, "legacy-running-input")
-	if err != nil || outcome != nil {
-		t.Fatalf("unfinished legacy task: %+v, %v", outcome, err)
+	recovered, err := a.RecoveryOutcome(t.Context(), running, "legacy-running-input")
+	if err != nil || recovered.State == RecoverySettled {
+		t.Fatalf("unfinished legacy task: %+v, %v", recovered, err)
 	}
 	if err := a.Recover(t.Context(), []Ref{running}); err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestUserUpgradesPiG053StoreWithoutLosingHistoryOrTaskBoundaries(t *testing.
 
 	// Then the old sealed task accepts continuation without restoring report or steer authority.
 	continued, err := a.Submit(t.Context(), task, Input{
-		RequestID: "task-after-upgrade", TaskContinuation: true, Options: coreOptions("tool"),
+		RequestID: "task-after-upgrade", Child: true, Options: coreOptions("tool"),
 		Content: `report_task {"outcome":"done","summary":"replace old report","cause":"","reproduction":[],"files":[],"openItems":[]}`,
 	})
 	if err != nil {
@@ -96,12 +96,7 @@ func TestUserUpgradesPiG053StoreWithoutLosingHistoryOrTaskBoundaries(t *testing.
 	if got := coreWait(t, continued); got.Status != "done" || !strings.HasPrefix(got.Answer, "tool error: ") {
 		t.Fatalf("continued task regained report authority: %+v", got)
 	}
-	if _, err := a.Submit(t.Context(), task, Input{
-		RequestID: "late-steer", Content: "replace goal", Steer: &TrustedTaskSteer{OriginalRequestID: "legacy-task-input"},
-	}); err == nil {
-		t.Fatal("upgrade reopened the sealed task")
-	}
-	interrupted, err := a.Submit(t.Context(), running, Input{RequestID: "legacy-running-input", Background: true})
+	interrupted, err := a.Submit(t.Context(), running, Input{RequestID: "legacy-running-input", Child: true})
 	if err != nil {
 		t.Fatal(err)
 	}

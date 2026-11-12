@@ -77,15 +77,12 @@ backend readiness and maintenance lifecycle.
 | Memory (git repo)                    | the agent's tools | `<data dir>/memory/`                                                       |
 | Skills and MCP servers               | the user's files  | `$HOME/.agents/`, `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/` |
 
-Control also owns internal delegation records (`tasks`). Each record
-has one task conversation and one delegated input. The conversation is read-only
-while the task is queued or running. After the task ends, the user can continue
-it and change its model and project. The original task record, report, and parent
-result stay unchanged. Background execution keeps bash and all coding tools. The engine
-owns its transcript and execution records. Business services do not query execution SQLite.
-The records retain the source submission, status, and report. A cancelled
-status records a cancellation request. It does not prove process exit. There
-is no user goal lifecycle or automatic retry chain.
+Control stores the parent of a child session in `conversations.parent_id` and the
+turn that created work for it in `submissions.parent_request_id`. A child session is a
+Chat that a parent session created. It keeps bash and all coding tools, and the user
+can write to it at any time. The engine owns its transcript and execution records.
+Business services do not query execution SQLite. There is no user goal lifecycle
+or automatic retry chain.
 
 Each agent has one main conversation with channel key `main`. The unique
 agent/key constraint makes `GET /api/agents/{agentId}/chats/main` safe to repeat.
@@ -104,10 +101,11 @@ main's model context or send its answers to main.
 
 `GET /api/agents/{agentId}/chats` lists session summaries
 by `updatedAt` descending, then ID descending. `updatedAt` is the latest
-conversation creation, input creation or settlement, or task start or end time.
-Task times apply only to the task's own conversation. List and detail use the
+conversation creation, or input creation or settlement. List and detail use the
 same rule. The list excludes main, old channel conversations, dreams and
-Chat sessions with no message. Task rows add `task: TaskSummary`, without report bodies. Running task rows also include the latest observed tool action, activity time, and earliest currently running tool start time when the task conversation view is already open in the engine. These three fields are in-memory only and disappear when the task settles; a restart interrupts running tasks and does not restore them. A structured report adds `reportOutcome` (`done`, `blocked`, or `failed`) regardless of task status. The activity tracker reads existing native views and never opens a Harness or `state.sqlite` while serving this list. The tracker observes activity only while a conversation view is open, so a cold agent has no activity data. A running task is considered potentially stalled by the client after five minutes without a tool or thirty minutes in a tool; these thresholds should change only when measured false positives or user needs justify it. The query does not read reports or transcripts. The active count includes tasks with status queued or running, and other busy sessions. Each row counts once. The legacy Sessions route remains readable for saved links.
+Chat sessions with no message. A child session is a row with `parentId`. A
+session from before child sessions keeps its frozen `task: TaskSummary`, without
+a report body. Its activity fields stay empty.
 
 Channel input enters the agent's main conversation. Chat and automation
 contexts stay separate. See [Product](../product.md#scope) for session behavior,
@@ -121,9 +119,9 @@ A browser reload discards these drafts.
 
 Every enqueue writes `submissions.origin`. Web input in main and Chat uses `web`.
 Channel input uses the exact peer, such as `telegram:7`, and always enters main.
-Automation, task input, and dream input use `automation`, `task`, and `dream`.
-A task result copies its source submission's origin in the same transaction
-that saves the report and inserts the result. A result chain thus keeps the
+Automation, parent turns to a child session, and dream input use `automation`, `task`, and `dream`.
+A child result copies the origin of the parent request in the same transaction
+that settles the child turn. A result chain thus keeps the
 first input's origin. Existing rows use `unknown`. The durable channel sender
 routes ordinary replies and task results by origin. Web input sends no channel reply.
 The engine stores origin with native input metadata. One projection exposes it
@@ -136,8 +134,8 @@ records the source agent and conversation. A project cwd does not widen this
 boundary. The agent copies a selected project file to its workspace first.
 Rooted filesystem operations prevent paths and symlinks from escaping the
 workspace. The API checks the agent and source or parent conversation before
-it serves a snapshot. Background task snapshots also appear in the parent
-conversation. `report_task.files` does not publish files. Only detected PNG,
+it serves a snapshot. Snapshots that a child delivers also appear in the parent
+conversation. A path in a result does not publish a file. Only detected PNG,
 JPEG, GIF, and WebP content is served inline. Other content is downloaded;
 Markdown is rendered as text by the client. HTML and SVG never run inline.
 Continue editing references the snapshot ID, name, and source. Main and Chat
@@ -152,8 +150,7 @@ each agent execution store. Run one dex process per data directory.
 One owner can create several agents. `GET /api/agents` returns
 `{agents: [Agent]}` in creation order. Each list entry has `activity` with
 `activeSessions`, `runningChannels`, and `enabledAutomations`. One SQL query
-counts sessions and automations across all agents. A task counts when queued or
-running; other visible sessions count when they have pending input. Each session
+counts sessions and automations across all agents. A child session counts when it has pending input, like any other visible session. Each session
 counts once. Channel counts come from the app registry. The web polls this
 list every three seconds and shares its cache across agent pages. The same
 response includes per-agent `inboxUnread`, `inboxFailed`, and `routineFailed`.
@@ -243,7 +240,7 @@ are read once as the narrower level. See [ADR 0010](decisions/0010-extension-lev
 Skills have a fourth, narrowest level: `.agents/skills` under the
 conversation's cwd. The skills prompt section reads that cwd from the request's
 execution environment, so it follows the conversation. Chat sessions store
-their `cwd` in `control.sqlite`. Empty uses the agent workspace. Every submit sets or clears the native cwd from that row. Tasks
+their `cwd` in `control.sqlite`. Empty uses the agent workspace. Every submit sets or clears the native cwd from that row. Child sessions
 copy the parent's cwd when they are created. The `project` prompt section
 states the current execution directory.
 
@@ -256,13 +253,13 @@ It checks each path and returns up to eight existing directories.
 The Chat picker uses these routes because a remote browser cannot select host paths.
 
 `PUT /api/agents/{agentId}/chats/{chatId}/project` changes the cwd for the
-next message. Main, Chat, and ended task conversations can set it. The API and `set_project`
+next message. Main, Chat, and child sessions can set it. The API and `set_project`
 tool share one path validator: trim, expand `~` or `~/`, require an existing
 absolute directory, and clean the path. Empty clears the override.
 The foreground tool writes control state before it commits native
 `harness.Configure`, so later tools in the same run use the new directory.
 Replay writes the same value. Main and Chat can use the tool; automation calls
-return an error. Delegated task inputs and dreams do not have it. Channel input
+return an error. Child sessions and dreams do not have it. Channel input
 uses Main's saved project. The Chat header refetches on tool
 completion and run completion. For a project cwd, native input uses absolute
 upload paths. The transcript keeps workspace-relative upload paths.
@@ -318,19 +315,19 @@ must be registered before a Harness resumes.
 See [ADR 0012](decisions/0012-agent-lifecycle-isolation.md) for this lifecycle
 change and [ADR 0011](decisions/0011-native-pig-runtime.md) for native execution.
 
-The task extension adds delegation tools and a `task-rules` section to
+The session extension adds the session tools and the `session-rules` section to
 foreground conversations, including main, Chat and automation sessions.
 Main input replaces the `work-loop` section with the `front-desk` section.
 Chat and automation sessions keep `work-loop`.
-Background executions and dreams have no delegation tools and neither section. A separate
-extension gives foreground conversations and background executions the `coding-skill`
-section. Go embeds the full
+Child sessions and dreams have no session tools and neither section. A child gets
+the `child-rules` section. A separate extension gives foreground conversations
+and child sessions the `coding-skill` section. Go embeds the full
 [built-in coding skill](../../internal/engine/skills/coding/SKILL.md) in the engine.
 It does not copy the skill into a user directory or add a new extension scope.
 The skill keeps implementation, fixes and tests in the main context. It
 requires a repository path, project rules, independent review, tests of the
-final revision, and evidence in the report. It requires serial writes
-or separate worktrees for tasks that change the same repository.
+final revision, and evidence in the answer. It requires serial writes
+or separate worktrees for children that change the same repository.
 
 ## Automations
 
@@ -447,7 +444,7 @@ the sidebar, the timeline header, and the composer.
 
 Main and Chat sessions default to the agent's model and thinking level. Saved
 session overrides apply from the next input, including channel input on Main.
-Ended task conversations also accept overrides. `chat.Service` resolves settings
+Child sessions also accept overrides. `chat.Service` resolves settings
 at each `submit`. Old channel chats cannot change their settings (403). An automation chat can; an automation that
 reuses its chat then runs with the chat's settings. The thinking levels and
 the `reasoning` and `input` of a model come from PiG AI model definitions; the model adapter sends the nearest level that the model
@@ -464,7 +461,7 @@ their models. A provider is one of:
   `/models` (OpenAI) or `/v1/models` (Anthropic) returns. A custom provider
   without a key sends the key `none`, for local servers.
 
-For task tools, custom `openai-responses` providers send `strict:false`.
+For session tools, custom `openai-responses` providers send `strict:false`.
 This keeps optional parameters optional at Responses endpoints.
 
 The engine keeps provider configuration and credentials in memory through its
@@ -493,7 +490,7 @@ conversation, while a chat ID names a business record in `control.sqlite`.
   input with a stable request ID and returns a `Submission`. `Submission.Wait`
   waits for the outcome. Canceling that wait does not cancel the execution.
 - `Abort`, `CheckIdle`, and `Reset` operate on one execution reference. Reset
-  uses a stable request ID. `Recover` registers task conversations that must
+  uses a stable request ID. `Recover` registers child conversations that must
   be isolated before Harness scheduling resumes.
 - `History(ctx, ref, before, limit)` returns typed `History`. `Watch(ctx, ref)`
   returns a typed initial `Snapshot` and an `Events` channel. `Watch.Close`
@@ -502,11 +499,11 @@ conversation, while a chat ID names a business record in `control.sqlite`.
 
 The engine serializes input, reset, and abort operations per execution. Native
 input metadata contains request ID, original content, origin, attachments,
-source, and optional task ID and title. `dex.user` and `dex.task_result` entries
+source, and optional turn ID and title of a result. `dex.user` and `dex.task_result` entries
 keep display facts with the durable input. `dex.withdrawn` entries preserve
 queued inputs that Stop removed. Withdrawn entries contribute no model text.
 
-Task tools call injected typed handlers in `internal/chat`. The engine does
+Session tools call injected typed handlers in `internal/chat`. The engine does
 not import the HTTP API package. Frontend `Item`, `Event`, `Retry`, and
 `History` types live in the engine and keep the HTTP JSON field names. JSON
 encoding occurs at the HTTP boundary.
@@ -574,156 +571,110 @@ a "no answer" reply.
 Main is a front desk. A person waits for each main reply. A channel receives
 the reply only when the turn ends, and later input waits for that turn. So main
 answers short requests directly. It sends work that needs many tool calls, long
-commands, code changes or research to `spawn_task`. It then ends the turn with
-a short reply. When the user writes while tasks run, main answers first and
-cancels and replaces a task whose goal changed.
+commands, code changes or research to a child session with `session_new`. It
+then ends the turn with a short reply. When the user writes while a child runs,
+main answers first and stops or steers a child whose goal changed.
 
-Each Chat and automation session runs one main agent loop. Main and each Chat have separate
-contexts. Skills, tools and the project directory provide capabilities. The main agent loop does ordinary work
-itself. It uses `spawn_task` only for independent parallel work, long commands
-whose output would flood its context, and independent review. It uses
-`list_tasks`, `get_task`, and `cancel_task` to manage that work.
-Each spawn creates one execution with fixed model and thinking settings.
-There is no goal acceptance lifecycle. The main agent checks saved records
-before it reports progress or starts another execution. The main agent owns
-implementation, independent review, fixes, final tests, and the user report.
-Background conversations cannot call delegation management tools. They can call
-`report_task` and use all coding tools, including bash. Control
-checks this boundary as well as the engine's tool list.
+Each Chat and automation session runs one main agent loop. The loop does
+ordinary work itself. It uses child sessions only for independent parallel work,
+long commands whose output would flood its context, and independent review.
+See [ADR 0015](decisions/0015-child-sessions.md).
 
-Creation checks source ownership, pending input, and deduplication in one SQLite write transaction. The durable spawn key is the agent ID plus PiG's tool task ID. Replay returns the same execution. There is no task capacity limit and no cwd lock. A task is queued only until its admission runs. Tasks that modify files in one cwd can run at the same time, so their changes can conflict; each task prompt says that other tasks may share the directory. Cancellation withdraws queued work or requests cancellation of running work. The main agent handles failure, retry, and continuation from saved artifacts.
-The prompt requires a record check before progress reports or follow-up work.
+A child session is a Chat with `conversations.parent_id`. It has its own context
+and runs at once. There is no count limit and no cwd lock. Children in one
+directory run at the same time, so the prompt tells the parent to give each
+writing child separate files or directories. The tools are:
 
-The goal is the content of the task's own submission. Each task also saves
-optional `constraints` and optional `doneCriteria` at creation. Spawn replay retains the original contract. The engine prompt
-includes that contract. Constraints are instructions; they do not restrict tools
-or provide a sandbox.
+- `session_new` creates a child and sends its first message.
+- `session_send` sends a message. An idle child starts a run. For a busy child,
+  mode `steer` joins the current run after its current tool step, and mode
+  `queue` (the default) runs after it.
+- `session_stop` withdraws queued input and stops the run. It is the same as
+  user Stop and has no result.
+- `session_fork` branches a child up to a finished answer, with the same parent.
+- `session_list` lists the children of the caller, or with scope `all` every
+  session of the bot except dreams.
+- `session_read` returns turns newest first: the input and the final answer of
+  each turn, cut at 4,000 characters. It does not return thinking, tool calls or
+  tool output. It reads any session of the same bot except dreams. `turn` with
+  `offset` reads the rest of a cut text.
+- `session_search` finds turns whose input or answer contains every word of a
+  query. It covers all sessions of the bot except dreams.
 
-Only background tasks have `report_task`. It stages one report with outcome
-`done`, `blocked`, or `failed`, a summary, a cause, reproduction commands with
-an explicit `ran` flag, files, and open items. As with `report_check`, the saved
-report is provisional until execution settles. Replaying the same report is
-safe. A different report cannot replace it. `get_task` returns the full contract
-and structured report by task ID. `hasStructuredReport` marks report presence.
-`goalMet` requires successful execution and a structured `done` report. It is
-a worker claim that the main agent must check against artifacts and tests.
-An execution without `report_task` retains its final answer and has
-`hasStructuredReport: false` and `goalMet: false`.
+Only a parent can send to, stop or fork a child. A child has no session tools,
+no routine tools and no `ask_user`: the engine removes them from every input of
+a conversation that has a parent, and the handlers refuse the call as well.
+A conversation that was a task before the upgrade is a child in the same way.
 
-Normal completion (`done`), execution failure (`failed`), and recovery
-interruption (`interrupted`) create a durable `task_result` submission in the
-same control transaction as settlement. The parent input keeps the existing
-4,000-character report truncation. The main agent reads the full report with
-`get_task` before follow-up work. For a follow-up such as “OK, fix it”, it
-reads the report again by ID and checks the current files before editing.
-The result
-enters the native follow-up Inbox even when its source is busy. There is no
-reject-when-busy mode or business retry queue for task results. Stop and
-directed cancellation set active executions to `cancelled`. Cancellation creates
-no result turn. Startup recovery reads each live task's native terminal outcome
-before any Harness resumes. A saved native completion or failure follows the
-normal settlement path and retains its report. An unfinished execution becomes
-`interrupted`, with durable abort intent and one parent result. That result tells
-the main agent to report the interruption and warn that side effects may exist.
-A terminal record and its saved report stay unchanged when a late
-execution outcome arrives.
+A tool call uses its bot ID and PiG's tool task ID as the turn ID. The turn
+is stored with `submissions.parent_request_id` in the same write transaction as
+the child. A replay finds the stored turn and changes nothing. Stop and the
+tool calls take the SQLite writer before they read.
 
-Control passes a trusted input kind, task ID, and task title to the engine.
-The engine stores internal results as `dex.task_result` entries. The public
-projection replaces each result input with a `task` mark that contains no
-report text. The mark needs no task lookup in `live.Hub`.
-The web groups output after that mark until the next user or task item.
-A failed result reply cannot retry the user message before the mark.
-Neither layer uses message text or an ID pattern to hide results. Ordinary
-user JSON still appears and can use the normal Retry action. Task conversations
-stay absent from dream inputs. The bot has no Sessions tab. The human can read their chat,
-history, and normal SSE stream. While the task is queued or running, web input
-and settings changes are refused. After it ends, the conversation accepts input
-and model and project overrides without changing the original task or result.
-Dream input selects only ordinary messages, so internal results in a source session
-cannot enter memory as user text.
-`GET /api/agents/{agentId}/tasks/{id}` returns one record with its report, times, and conversation
-ID. The task and session reads check the agent. Model task tools keep their
-parent conversation scope. HTTP endpoints request task cancellation and mark a
-finished task handled or restore it. There is no `GET /api/agents/{agentId}/tasks`
-list or separate task stream. Each writable session polls session summaries every 3 s. The legacy Sessions
-route remains available for saved links.
-A task URL fetches the task record and redirects to its conversation. That
-conversation uses the normal chat, history, and SSE paths.
-Successful `spawn_task` items carry the ID from the saved tool result. Result
-marks carry the ID and title saved in the native input metadata. The web links
-both labels by ID to `/a/{agentId}/tasks/{taskId}`. The web never matches tasks
-by title. The task URL redirects to the conversation, which is writable after
-the task ends. The four bot tabs are Chat, Routines,
-Extensions, and Settings. Task records need no list tab.
-The source session's normal SSE stream carries result marks and replies.
-A task started in Chat keeps that Chat as its parent. Its result returns to
-that Chat, with the source input's origin. Main does not receive the result.
+A turn that a parent sends has origin `task`, so it never goes to a user
+channel. A completed run with a parent input sends one `task_result`, including
+when a user started the run. A pure user run sends none. Control uses the child
+conversation and native Answer entry as a unique key. The first parent input
+to settle owns `result:<turn ID>`. A done native input without an Answer is an
+error. Each failed or interrupted parent input sends its own result; user inputs
+send none. A stopped, aborted or withdrawn input sends none. Result insertion
+and receipt settlement share a control transaction. Only an Answer key conflict
+is treated as already delivered.
 
-Result delivery uses the existing submission lifecycle. A provider failure
-leaves the result unanswered. Control never changes a settled submission back
-to pending, so no retry counter or delivery recovery state is needed. The
-main agent can read the saved report and choose the next action. A user Stop
-withdraws queued native results. The transcript shows their withdrawn state,
-and the saved report stays readable. A later greeting cannot revive those results.
-A new execution must check prior artifacts and side effects.
+The result names the child, its title, the turn and the outcome. It has the
+final answer cut at 4,000 characters, or the failure reason. A restart adds
+the number of queued inputs it withdrew. The result copies the origin of the
+parent request, so a Chat gets its own results and a channel peer gets the
+results of work that the peer started.
+The result enters the parent's follow-up inbox even when the parent is busy.
+Control never changes a settled submission back to pending, so there is no
+retry counter and no delivery recovery state. The parent reads the child's
+final answer from the result and can call `session_read` for a cut text.
 
-Web Stop covers only the selected writable session. Queued and running task
-conversations, old channel sessions, and automation sessions are read-only on
-the web. Ended task conversations accept user input.
-Channel `/stop` calls main Stop. It covers main input from every entry and
-tasks started in main. Chat, automation and other agents stay outside that scope.
-Channel `/clear` (alias `/new`) calls main Clear with the same busy check and reset ordering.
-It does not cancel background work. The result keeps the work's original peer.
-Stop withdraws pending ordinary input and results. The same transaction sets
-active background executions to `cancelled` and withdraws their own input.
-Stop and spawn acquire the SQLite writer before they read: spawn either commits
-first and is cancelled, or fails because its source is no longer pending.
-Submission, Stop, Clear, and reconciliation share a delivery lock per agent.
-Cancellation cannot pass an input that control still intends to submit.
-A slow admission or reload for one agent does not hold another agent's delivery
-lock. The short global receipt gate orders maintenance confirmation, as described
-in [Service and updates](#service-and-updates). Stop then requests cancellation
-through the engine for each execution reference. Pending cancellation intent
-stays in business storage until native abort succeeds. If model discovery is
-pending, Stop returns after it saves that intent. Reconciliation completes
-cancellation before it admits later input. Both cold recovery and ordinary
-Stop atomically withdraw queued input and save passive transcript entries.
-Those entries retain origin, attachments, and task labels without adding model
-context. Reconciliation retries cancellation after an error or restart.
-Late reports cannot change a terminal record or wake the model.
+Control passes a trusted input kind, the turn ID and the child title to the
+engine. The engine stores results as `dex.task_result` entries. The public
+projection replaces each result input with a `task` mark without the answer
+text. A failed result reply cannot retry the user message before the mark.
+Neither layer uses message text or an ID pattern to hide results. Child
+conversations stay absent from dream inputs, and dream input selects only
+ordinary messages.
 
-`POST /api/agents/{agentId}/chats/{chatId}/abort` returns `{status: "ok"}` after withdrawal and the
-cancellation requests. The composer keeps Stop available for queued input,
-an active answer, and active background work started by that conversation.
-Tasks from other conversations count in the bot's badge but cannot enable
-that session's Stop. Task summaries expose `parentConversationId` for this check.
-Stop needs no model. During a
-reconnect, the chat API's busy state keeps Stop available before the snapshot.
-The reply confirms the request. It does not prove process exit. Processes and
-remote work can continue. Cancellation does not undo file writes or remote
-actions. A directed cancellation of a completed execution leaves its report
-and saved result unchanged.
+A child is writable on the web at any time. A user message goes to the child
+like to any Chat and sends no result. Web Stop covers the selected session and
+its children that have pending input. Channel `/stop` calls main Stop with the
+same scope. Chat, automation and other agents stay outside it. `/clear` does not
+cancel children.
+Submission, Stop, Clear and reconciliation share a delivery lock per agent.
+Stop withdraws pending input of the session and of its children in one
+transaction, then requests cancellation through the engine for each execution.
+Pending cancellation intent stays in business storage until native abort
+succeeds. Reconciliation completes cancellation before it admits later input.
+Both cold recovery and ordinary Stop atomically withdraw queued input and save
+passive transcript entries that retain origin, attachments and labels without
+adding model context. A slow admission or reload for one agent does not hold
+another agent's delivery lock. The short global receipt gate orders maintenance
+confirmation, as described in [Service and updates](#service-and-updates).
+The reply of Stop confirms the request. It does not prove process exit.
+Processes and remote work can continue. Cancellation does not undo file writes
+or remote actions.
 
-At process start, control calls `Agents.RecoveryOutcome` with each live task's
-execution reference and stable request ID. The engine reads committed native
-submission and answer records through PiG storage without opening or resuming
-a Harness. Control never opens `state.sqlite`. Native terminal outcomes settle
-through the normal task transaction. Only unfinished executions become
-`interrupted`. Their abort intent, report, task receipt, and parent result commit
-together. Control then registers pending abort references with `Agents.Recover`
-before any Harness can resume. Recovery isolates those conversations, including
-cancelled tasks whose abort did not complete. A queued execution that never
-started can start for the first time. Repeated restarts retain one task record
-and one result input with request ID `task:<id>:result`. Native admission deduplicates
-that request ID. Completed results already saved for delivery retain their
-receipt state. Durable spawn replay returns the original task record.
+At process start, control reads the native state of every pending input in a
+child with a pending parent input, including admission gaps. The engine reads
+committed records without opening or resuming a Harness. Control never opens
+`state.sqlite`. A saved completion or failure settles through the normal
+transaction. If a parent input is placed in an unfinished run, recovery
+interrupts the placed inputs and withdraws queued and unadmitted inputs. Each
+placed parent input gets an interrupted result with the withdrawal count.
+Settlements, results, withdrawals and abort intent commit together before any
+Harness resumes. Recovery isolates those conversations. A second restart adds
+nothing. The parent reports the interruption and warns that side effects may
+exist.
 
 The SDK owns cancellation of run invocations and tools. Control does not track
 process trees or confirm exit. A normal local or MCP tool return can settle
 execution. An aborted MCP call ends the local wait and requests remote
 cancellation. It does not prove that the remote job stopped. Before another
-execution, the main agent must check reports, artifacts, and prior actions.
+turn, the parent must check artifacts and prior actions.
 
 Tools use the local `NodeExecutionEnv`, without a sandbox. CLI tools must be
 logged in and run in the foreground with non-interactive options. Detached
@@ -732,6 +683,12 @@ timeout. Its visible output keeps at most the last 2000 lines or 50 KiB,
 whichever limit comes first; complete output goes to a temporary file.
 A durable checkpoint does not attach a CLI after restart or guarantee that
 external actions occurred once.
+
+The `tasks` and `task_steer_receipts` tables stay in the schema while the web
+reads old task records, and no new code writes them. Old records keep their
+saved reports. A migration filled `parent_id` and `parent_request_id` for them,
+so each old task conversation is a child session. The old task endpoints serve
+those frozen records only.
 
 ## Attachments
 
@@ -1071,7 +1028,7 @@ the saved context token before each send, including after a restart.
 ## Failure behavior
 
 - **dex exits.** Native execution and business receipts remain in their
-  separate SQLite stores. The next start registers interrupted tasks before
+  separate SQLite stores. The next start registers interrupted child sessions before
   Harness resume and reconciles input admission and receipt outcomes. A stable
   request ID reacquires admitted work instead of creating another input.
   This does not guarantee that external tool actions occur once.
@@ -1170,7 +1127,7 @@ sandbox boundary; the model can read them through tools.
 ## Simplification review
 
 Keep the native execution boundary. The engine owns execution and transcript
-state. Business services own receipts, channel reply delivery, tasks, and
+state. Business services own receipts, channel reply delivery, child session links, and
 settings. Business code calls typed methods and never reads execution SQLite.
 The two stores retain separate responsibilities inside one process.
 

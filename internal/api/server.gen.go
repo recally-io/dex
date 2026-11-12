@@ -805,10 +805,13 @@ type Chat struct {
 	// Main This is the agent's main timeline.
 	Main bool `json:"main"`
 
+	// ParentId The session that created this child session. Absent on any other session.
+	ParentId *int64 `json:"parentId,omitempty"`
+
 	// Question The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
 	Question *ChatQuestion `json:"question,omitempty"`
 
-	// ReadOnly The web cannot send messages to this chat now. A delegated session is read-only while its task runs and writable after the task ends.
+	// ReadOnly The web cannot send messages to this chat now. A child session is writable at any time.
 	ReadOnly bool `json:"readOnly"`
 
 	// Settings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.

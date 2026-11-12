@@ -42,25 +42,19 @@ func startNative(t *testing.T, model string) *nativeTest {
 		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
 			return service.ToolReadDreamMessage(ctx, c, request)
 		},
-		Spawn: func(ctx context.Context, c engine.TaskContext, a engine.SpawnTaskArgs) (engine.TaskInfo, error) {
-			t, err := service.SpawnTask(ctx, c, a)
-			return engine.TaskInfo(t), err
-		},
-		List: func(ctx context.Context, c engine.TaskContext) ([]engine.TaskInfo, error) {
-			tasks, err := service.ToolListTasks(ctx, c)
-			out := make([]engine.TaskInfo, len(tasks))
-			for i, t := range tasks {
-				out[i] = engine.TaskInfo(t)
-			}
-			return out, err
-		},
-		Get: func(ctx context.Context, c engine.TaskContext, id string) (engine.TaskInfo, error) {
-			t, err := service.ToolGetTask(ctx, c, id)
-			return engine.TaskInfo(t), err
-		},
-		Cancel: func(ctx context.Context, c engine.TaskContext, id string) (engine.TaskInfo, error) {
-			t, err := service.ToolCancelTask(ctx, c, id)
-			return engine.TaskInfo(t), err
+		Sessions: engine.SessionTools{
+			New: func(ctx context.Context, c engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
+				return service.ToolSessionNew(ctx, c, a)
+			},
+			Send: func(ctx context.Context, c engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
+				return service.ToolSessionSend(ctx, c, a)
+			},
+			Stop: func(ctx context.Context, c engine.TaskContext, id string) (engine.SessionRef, error) {
+				return service.ToolSessionStop(ctx, c, id)
+			},
+			List: func(ctx context.Context, c engine.TaskContext, scope string) ([]engine.SessionInfo, error) {
+				return service.ToolSessionList(ctx, c, scope)
+			},
 		},
 	}})
 	if err != nil {

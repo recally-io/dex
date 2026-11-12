@@ -94,9 +94,9 @@ func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a engin
 		return engine.QuestionInfo{}, err
 	}
 	// Stop, Clear and archive take the same writer before they read.
-	s.taskMu.Lock()
-	defer s.taskMu.Unlock()
-	tx, q, err := s.taskTransaction(ctx)
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, q, err := s.writeTransaction(ctx)
 	if err != nil {
 		return engine.QuestionInfo{}, err
 	}
@@ -114,13 +114,13 @@ func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a engin
 	if err != nil {
 		return engine.QuestionInfo{}, err
 	}
-	if !Writable(conv.ChannelKey) || strings.HasPrefix(conv.ChannelKey, "task:") {
+	if !Writable(conv.ChannelKey) || conv.ParentID.Valid {
 		return engine.QuestionInfo{}, fmt.Errorf("%w: only Main and Chat sessions ask the user", ErrQuestionInvalid)
 	}
 	if conv.ArchivedAt.Valid {
 		return engine.QuestionInfo{}, fmt.Errorf("%w: the chat is archived", ErrQuestionClosed)
 	}
-	source, err := taskSource(ctx, q, r)
+	source, err := liveSource(ctx, q, r)
 	if err != nil {
 		return engine.QuestionInfo{}, err
 	}

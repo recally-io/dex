@@ -21,7 +21,9 @@ func reportOutcome(raw string) *api.TaskSummaryReportOutcome {
 	if raw == "" {
 		return nil
 	}
-	var report engine.TaskReport
+	var report struct {
+		Outcome string `json:"outcome"`
+	}
 	if err := json.Unmarshal([]byte(raw), &report); err != nil || report.Outcome == "" {
 		return nil
 	}
@@ -105,7 +107,7 @@ func (h *handler) CancelTask(ctx context.Context, req api.CancelTaskRequestObjec
 	if err != nil {
 		return nil, err
 	}
-	if _, err := h.Chats.CancelTask(ctx, agentID(ctx), t.ParentConversationID, req.TaskId); err != nil {
+	if err := h.Chats.Stop(ctx, agentID(ctx), t.ConversationID); err != nil {
 		return nil, err
 	}
 	t, err = h.Chats.TaskRecord(ctx, agentID(ctx), req.TaskId)

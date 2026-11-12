@@ -113,44 +113,37 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return chats.ToolReadDreamMessage(ctx, c, request)
 		},
 		DeliverArtifact: artifacts.Deliver,
-		ReportTask: func(ctx context.Context, c engine.TaskContext, r engine.TaskReport) error {
-			return chats.ToolReportTask(ctx, c, r)
-		},
 		ReportCheck: func(ctx context.Context, c engine.TaskContext, r engine.CheckReport) error {
 			return chats.ToolReportCheck(ctx, c, r)
 		},
 		SetProject: func(ctx context.Context, c engine.TaskContext, path string) (string, error) {
 			return chats.ToolSetProject(ctx, c, path)
 		},
-		Spawn: func(ctx context.Context, c engine.TaskContext, args engine.SpawnTaskArgs) (engine.TaskInfo, error) {
-			t, err := chats.SpawnTask(ctx, c, args)
-			return engine.TaskInfo(t), err
-		},
-		List: func(ctx context.Context, c engine.TaskContext) ([]engine.TaskInfo, error) {
-			tasks, err := chats.ToolListTasks(ctx, c)
-			if err != nil {
-				return nil, err
-			}
-			out := make([]engine.TaskInfo, len(tasks))
-			for i, t := range tasks {
-				out[i] = engine.TaskInfo(t)
-			}
-			return out, nil
-		},
-		Get: func(ctx context.Context, c engine.TaskContext, id string) (engine.TaskInfo, error) {
-			t, err := chats.ToolGetTask(ctx, c, id)
-			return engine.TaskInfo(t), err
+		Sessions: engine.SessionTools{
+			New: func(ctx context.Context, c engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
+				return chats.ToolSessionNew(ctx, c, a)
+			},
+			Send: func(ctx context.Context, c engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
+				return chats.ToolSessionSend(ctx, c, a)
+			},
+			Stop: func(ctx context.Context, c engine.TaskContext, id string) (engine.SessionRef, error) {
+				return chats.ToolSessionStop(ctx, c, id)
+			},
+			Fork: func(ctx context.Context, c engine.TaskContext, a engine.SessionForkArgs) (engine.SessionRef, error) {
+				return chats.ToolSessionFork(ctx, c, a)
+			},
+			List: func(ctx context.Context, c engine.TaskContext, scope string) ([]engine.SessionInfo, error) {
+				return chats.ToolSessionList(ctx, c, scope)
+			},
+			Read: func(ctx context.Context, c engine.TaskContext, a engine.SessionReadArgs) (engine.SessionPage, error) {
+				return chats.ToolSessionRead(ctx, c, a)
+			},
+			Search: func(ctx context.Context, c engine.TaskContext, a engine.SessionSearchArgs) ([]engine.SessionMatch, error) {
+				return chats.ToolSessionSearch(ctx, c, a)
+			},
 		},
 		AskUser: func(ctx context.Context, c engine.TaskContext, a engine.AskUserArgs) (engine.QuestionInfo, error) {
 			return chats.ToolAskUser(ctx, c, a)
-		},
-		Acknowledge: func(ctx context.Context, c engine.TaskContext, id string) (engine.TaskInfo, error) {
-			t, err := chats.ToolAcknowledgeTask(ctx, c, id)
-			return engine.TaskInfo(t), err
-		},
-		Cancel: func(ctx context.Context, c engine.TaskContext, id string) (engine.TaskInfo, error) {
-			t, err := chats.ToolCancelTask(ctx, c, id)
-			return engine.TaskInfo(t), err
 		},
 	}
 	routines := engine.RoutineTools{
@@ -202,7 +195,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err := prefs.ApplyOnePassword(ctx); err != nil {
 		return nil, err
 	}
-	if err := chats.RecoverTasks(ctx); err != nil {
+	if err := chats.RecoverSessions(ctx); err != nil {
 		return nil, err
 	}
 	discovery, err := prefs.RegisterProviders(runCtx)
@@ -210,7 +203,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
-	chats.ConfigureTasks(prefs.CheckChat)
+	chats.ConfigureSessions(prefs.CheckChat)
 	setFeishu := func(agentID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
 		manager := bots.Agent(agentID)
 		uploads := upload.New(agent.Home(cfg.DataDir, agentID))

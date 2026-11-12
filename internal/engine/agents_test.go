@@ -263,7 +263,7 @@ func TestUserRestartDoesNotRepeatBackgroundExecution(t *testing.T) {
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
 	a := coreEngine(t, config)
 	ref := coreCreate(t, a, "alpha", coreOptions("bash"))
-	input := Input{RequestID: "background", Content: "echo action >> actions; touch started; while :; do sleep 1; done", Kind: "message", Origin: "task", Source: "dex:alpha/task/1", Background: true, Options: coreOptions("bash")}
+	input := Input{RequestID: "background", Content: "echo action >> actions; touch started; while :; do sleep 1; done", Kind: "message", Origin: "task", Source: "dex:alpha/task/1", Child: true, Options: coreOptions("bash")}
 	original, err := a.Submit(t.Context(), ref, input)
 	if err != nil {
 		t.Fatal(err)

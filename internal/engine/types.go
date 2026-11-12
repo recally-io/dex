@@ -41,28 +41,17 @@ type Attachment struct {
 	Path     string `json:"path"`
 }
 
-// TrustedTaskSteer is only for the task control receipt path. The caller must
-// guarantee that each native request ID is uniquely bound to the same task and
-// content, including retries. Engine cannot recover withdrawn input content.
-// The task binding remains valid across successor runs until sealed.
-type TrustedTaskSteer struct {
-	OriginalRequestID string
-}
-
 type Input struct {
 	RequestID, Content, Kind, Origin, Source string
 	Attachments                              []Attachment
 	Options
 	Automation bool
-	Background bool
-	// Steer admits a trusted task control receipt without changing configuration.
-	Steer *TrustedTaskSteer
+	// Child marks an input to a conversation that has a parent. A child has no session tools and no
+	// routine tools, and it gets the child rules.
+	Child bool
 	// Main input comes from a person who waits for each reply.
 	Main              bool
 	TaskID, TaskTitle string
-	// TaskContinuation is a user message in the conversation of a task that has ended.
-	// It is a normal chat input: no task tools and no report_task duty.
-	TaskContinuation bool
 	// WhenBusy says what admission does while the conversation runs: "followUp" (the default)
 	// waits for the run to end, "steer" joins the run after its current tool step, and "reject"
 	// returns ErrBusy.
@@ -79,7 +68,10 @@ type InputMetadata struct {
 	TaskTitle   string       `json:"taskTitle,omitempty"`
 	Reason      string       `json:"reason,omitempty"`
 }
-type Outcome struct{ Status, Answer, Reason string }
+type Outcome struct {
+	Status, Answer, Reason string
+	AnswerID               int64
+}
 type Config struct {
 	DataDir, Home string
 	// BaseEnv is the tool environment when LoginEnv is nil or fails.

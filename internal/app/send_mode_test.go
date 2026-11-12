@@ -123,7 +123,7 @@ func TestUserSteerCanUseTaskTools(t *testing.T) {
 
 	// When the user steers the run to list tasks.
 	steerID := uuid.NewV7().String()
-	sendMode(t, d, chatID, steerID, "list_tasks {}", "steer", http.StatusAccepted)
+	sendMode(t, d, chatID, steerID, "session_list {}", "steer", http.StatusAccepted)
 	w := d.watch(t, chatID)
 	w.until(t, "steer item queued", queuedSteer(steerID))
 	run.open()

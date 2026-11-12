@@ -12,7 +12,7 @@ func TestUserBackgroundActivityTracksWithoutUserWatch(t *testing.T) {
 	ref := coreCreate(t, a, "alpha", coreOptions("bash"))
 	sub, err := a.Submit(t.Context(), ref, Input{
 		RequestID: "activity", Content: "printf activity; while :; do sleep 1; done", Kind: "message",
-		Origin: "task", Source: "dex:alpha/task/activity", Background: true, Options: coreOptions("bash"),
+		Origin: "task", Source: "dex:alpha/task/activity", Child: true, Options: coreOptions("bash"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +39,7 @@ func TestUserBackgroundActivityTracksWithoutUserWatch(t *testing.T) {
 	// When admission retries the same request, it reuses the running watch.
 	replay, err := a.Submit(t.Context(), ref, Input{
 		RequestID: "activity", Content: "printf activity; while :; do sleep 1; done", Kind: "message",
-		Origin: "task", Source: "dex:alpha/task/activity", Background: true, Options: coreOptions("bash"),
+		Origin: "task", Source: "dex:alpha/task/activity", Child: true, Options: coreOptions("bash"),
 	})
 	if err != nil || replay.ID != sub.ID {
 		t.Fatalf("replay: %+v %v", replay, err)

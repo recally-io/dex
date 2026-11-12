@@ -196,24 +196,23 @@ func TestUserChannelMainTaskResultsFollowTheirSource(t *testing.T) {
 			conn := sessionDB(t, d)
 			main := d.mainChat(t)
 			d.setModel(t, "spawn")
-			e.send(taskJSON(t, map[string]string{"title": "Channel result", "goal": taskGate(t, e.dir, "channel-result"), "provider": "faux", "modelId": "bash"}))
+			e.send(childJSON(t, map[string]string{"title": "Channel result", "message": taskGate(t, e.dir, "channel-result"), "provider": "faux", "modelId": "bash"}))
 			waitTaskFile(t, filepath.Join(e.dir, "channel-result.pid"))
 			var parent int64
-			if err := conn.QueryRowContext(t.Context(), "SELECT parent_conversation_id FROM tasks WHERE title='Channel result'").Scan(&parent); err != nil {
+			if err := conn.QueryRowContext(t.Context(), "SELECT parent_id FROM conversations WHERE title='Channel result'").Scan(&parent); err != nil {
 				t.Fatal(err)
 			}
 			if parent != main {
 				t.Fatalf("channel work parent=%d main=%d", parent, main)
 			}
 			work := waitExecution(t, conn, main, "Channel result", "running")
-			// A read-only task still waits while a modifying task holds the cwd.
 			releaseResultGate(t, e.dir, "channel-result")
-			web := d.send(t, main, taskJSON(t, map[string]any{"title": "Web result", "goal": "web report", "provider": "faux", "modelId": "echo", "modifiesFiles": false}))
+			web := d.send(t, main, childJSON(t, map[string]any{"title": "Web result", "message": "web report", "provider": "faux", "modelId": "echo"}))
 			waitResultSubmission(t, conn, web, "done")
 			webTask := waitExecution(t, conn, main, "Web result", "done")
-			webResult := waitResultSubmission(t, conn, "task:"+webTask.ID+":result", "done")
+			webResult := waitResultSubmission(t, conn, webTask.ResultID, "done")
 			// When the old channel work completes, its result returns to its source peer.
-			resultID := "task:" + work.ID + ":result"
+			resultID := work.ResultID
 			result := waitResultSubmission(t, conn, resultID, "done")
 			e.wait(t, result.answer)
 			assertSubmissionOrigin(t, conn, resultID, e.peer)
@@ -391,10 +390,10 @@ func TestUserChannelMainStopKeepsChatAndAutomationWork(t *testing.T) {
 	conn := sessionDB(t, d)
 	main := d.mainChat(t)
 	d.setModel(t, "spawn")
-	f.message(1, 42, 7, taskJSON(t, map[string]string{"title": "main task", "goal": taskGate(t, dir, "main-task"), "provider": "faux", "modelId": "bash"}))
+	f.message(1, 42, 7, childJSON(t, map[string]string{"title": "main task", "message": taskGate(t, dir, "main-task"), "provider": "faux", "modelId": "bash"}))
 	waitTaskFile(t, filepath.Join(dir, "main-task.pid"))
 	var parent int64
-	if err := conn.QueryRowContext(t.Context(), "SELECT parent_conversation_id FROM tasks WHERE title='main task'").Scan(&parent); err != nil {
+	if err := conn.QueryRowContext(t.Context(), "SELECT parent_id FROM conversations WHERE title='main task'").Scan(&parent); err != nil {
 		t.Fatal(err)
 	}
 	if parent != main {

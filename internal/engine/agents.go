@@ -34,6 +34,7 @@ type agentOpening struct {
 
 type agentResources struct {
 	harness harness.Harness
+	store   durable.Storage
 	loaded  *loadedExtensions
 }
 
@@ -74,7 +75,7 @@ type Agents struct {
 	mu               sync.Mutex
 	resources        map[string]*agentResources
 	activity         map[Ref]*activityRecord
-	activityWatches  map[Ref]int // internal watches per background conversation; at most one
+	activityWatches  map[Ref]int // internal watches per child conversation; at most one
 	opening          map[string]*agentOpening
 	recovering       map[string]map[durable.ConversationId]bool
 	serial           map[Ref]chan struct{}
@@ -286,7 +287,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		return nil, err
 	}
 	registry := harness.CreateRegistry()
-	extensions := []*durable.Extension{codingTools(loaded.Env), codingSkill(), routineExtension(agentID, a.config.Routines), taskExtension(agentID, a.config.Tasks), workLoopExtension(), artifactExtension(agentID, workspace, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
+	extensions := []*durable.Extension{codingTools(loaded.Env), codingSkill(), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), workLoopExtension(), artifactExtension(agentID, workspace, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
 	}), loaded.Extension}
 	if loaded.HasTools {
@@ -306,7 +307,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := registry.Install(askUserExtension(agentID, a.config.Tasks.AskUser)); err != nil {
 		return nil, err
 	}
-	if err := registry.Install(taskReportExtension(agentID, a.config.Tasks.ReportTask)); err != nil {
+	if err := registry.Install(childExtension()); err != nil {
 		return nil, err
 	}
 	if err := registry.Install(dreamMessageExtension(agentID, a.config.Tasks.ReadDreamMessage)); err != nil {
@@ -335,7 +336,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err != nil {
 		return nil, err
 	}
-	return &agentResources{harness: h, loaded: loaded}, nil
+	return &agentResources{harness: h, store: store, loaded: loaded}, nil
 }
 
 // Withdrawal and abort marks commit before the paused Harness can run saved work.
@@ -430,6 +431,27 @@ func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool) 
 			return nil, err
 		}
 		return &page.Items[0], nil
+	}
+	if entryID == 0 && !before {
+		// Zero means the newest finished answer.
+		var cursor durable.Cursor
+	scan:
+		for {
+			page, err := conversation.Entries(ctx, durable.EntryQuery{}, 100, cursor)
+			if err != nil {
+				return Ref{}, false, err
+			}
+			for _, e := range page.Items {
+				if finishedAnswer(e) {
+					entryID = int64(e.Id)
+					break scan
+				}
+			}
+			if page.Next == nil {
+				return Ref{}, false, fmt.Errorf("%w: the session has no finished answer to fork from", ErrInvalidInput)
+			}
+			cursor = *page.Next
+		}
 	}
 	entry, err := latest(entryID)
 	if err != nil {

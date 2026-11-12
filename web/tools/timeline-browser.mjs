@@ -461,83 +461,62 @@ try {
   await shot("03c-nothing-to-compact");
   results.push("/compact reports a short context");
 
-  // Given two same-title tasks, dispatch and result links use their saved IDs.
+  // Given two same-title child sessions, the parent keeps both and the user can open each one.
   await model("spawn");
-  await send(JSON.stringify({ title: "Check", goal: "saved report", provider: "faux", modelId: "echo" }));
+  await send(JSON.stringify({ title: "Check", message: "saved report", provider: "faux", modelId: "echo" }));
 
-  const done = await poll("completed task", async () =>
-    (await sessionTasks()).find((task) => task.status === "done"),
+  const done = await poll("completed child session", async () =>
+    (await childSessions()).find((child) => !child.busy && child.title === "Check"),
   );
 
   await ui(
-    "result and dispatch links",
-    `document.querySelectorAll('a[href="/a/default/tasks/${done.id}"]').length === 2`,
+    "result reaches the parent",
+    "document.body.innerText.includes('task-result:') && document.body.innerText.includes('saved report')",
   );
   const workGate = join(isolated, "work.gate");
   await send(
     JSON.stringify({
       title: "Check",
-      goal: `while ! test -f '${workGate}'; do sleep 0.05; done; echo work-released`,
+      message: `while ! test -f '${workGate}'; do sleep 0.05; done; echo work-released`,
       provider: "faux",
       modelId: "bash",
     }),
   );
 
-  const running = await poll("running task", async () =>
-    (await sessionTasks()).find((task) => task.status === "running"),
+  const running = await poll("running child session", async () =>
+    (await childSessions()).find((child) => child.busy && child.title === "Check"),
   );
 
   assert.notEqual(done.id, running.id);
+  assert.equal(done.parentId, running.parentId);
   await ui(
     "a working bot shows the working dot",
     '!!document.querySelector(\'aside a[href="/a/default"] [role="img"][aria-label="Working"]\')',
   );
-  await check(
-    "main Stop remains available after dispatch reply",
-    "!!document.querySelector('button[title=\"Stop this run and its background work\"]:not([inert] *)')",
-  );
-  await visit("/tasks");
+  await visit("/a/default/sessions");
   await ui(
-    "both task rows loaded",
-    `document.querySelectorAll('main a[href^="/a/default/tasks/"]:not([inert] *)').length === 2`,
+    "both child rows loaded",
+    `document.querySelectorAll('main a[href="/a/default/c/${done.id}"]:not([inert] *), main a[href="/a/default/c/${running.id}"]:not([inert] *)').length === 2`,
   );
-  await check(
-    "session rows keep newest activity first for same-title tasks",
-    `(() => { const links = [...document.querySelectorAll('main a[href^="/a/default/tasks/"]:not([inert] *)')]; return links.length === 2 && links[0].getAttribute('href') === '/a/default/tasks/${running.id}' && links[1].getAttribute('href') === '/a/default/tasks/${done.id}'; })()`,
-  );
-  await shot("04-tasks");
-  await visit(`/a/default/tasks/${running.id}`);
+  await shot("04-sessions");
+  await visit(`/a/default/c/${running.id}`);
   await ui(
-    "live task work",
-    `location.pathname === '/a/default/c/${running.conversationId}' && document.body.innerText.includes('You can chat here after the task ends.')`,
+    "live child work",
+    "!!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)') && !!document.querySelector('textarea:not([inert] *)')",
   );
-  await check(
-    "task work is read-only",
-    "!document.querySelector('textarea:not([inert] *)') && ![...document.querySelectorAll('button:not([inert] *)')].some(b => /^(Cancel|Retry|Send)$/.test(b.textContent.trim()))",
-  );
-  await shot("05-task-work");
-  await visit("/a/default");
-  await ui(
-    "stop background work",
-    "!!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *):not(:disabled)')",
-  );
+  await shot("05-child-work");
   await tap('button[aria-label="Stop run"]');
   await poll(
-    "background cancellation",
-    async () => (await api(`/api/agents/default/tasks/${running.id}`)).status === "cancelled",
+    "child Stop ends the run",
+    async () => !(await api(`/api/agents/default/chats/${running.id}`)).busy,
   );
-  await visit(`/a/default/tasks/${done.id}`);
+  await visit(`/a/default/c/${done.id}`);
   await ui(
-    "saved report",
-    `location.pathname === '/a/default/c/${done.conversationId}' && document.body.innerText.includes('echo: saved report')`,
-  );
-  await visit(`/a/default/c/${done.conversationId}`);
-  await ui(
-    "terminal task conversation is writable",
+    "saved answer",
     "document.body.innerText.includes('echo: saved report') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')",
   );
-  assert.equal((await api(`/api/agents/default/chats/${done.conversationId}`)).readOnly, false);
-  await shot("06-read-only");
+  assert.equal((await api(`/api/agents/default/chats/${done.id}`)).readOnly, false);
+  await shot("06-child-session");
 
   // Release reconciles a saved channel input through the real native admission path.
   await holdMaintenance();
@@ -554,7 +533,7 @@ try {
 
     const content = JSON.stringify({
       title: "Channel work",
-      goal: `while ! test -f '${channelGate}'; do sleep 0.05; done; echo channel-released`,
+      message: `while ! test -f '${channelGate}'; do sleep 0.05; done; echo channel-released`,
       provider: "faux",
       modelId: "bash",
     });
@@ -570,8 +549,8 @@ try {
 
   await api("/api/maintenance", undefined, "DELETE");
 
-  const channelTask = await poll("channel task running", async () =>
-    (await sessionTasks()).find((task) => task.status === "running"),
+  const channelChild = await poll("channel child session running", async () =>
+    (await childSessions()).find((child) => child.busy && child.title === "Channel work"),
   );
 
   await visit("/a/default");
@@ -587,13 +566,13 @@ try {
   await writeFile(channelGate, "release");
   await poll(
     "channel work completed",
-    async () => (await api(`/api/agents/default/tasks/${channelTask.id}`)).status === "done",
+    async () => !(await api(`/api/agents/default/chats/${channelChild.id}`)).busy,
   );
 
   // Sessions shares one list for real automation, channel, task and Chat contexts.
   await visit("/a/default/sessions");
   await ui("Sessions kind filter", "!!document.querySelector('select[aria-label=\"Kind\"]')");
-  await selectKind("Chat");
+  await selectKind("Automation");
   await ui(
     "empty kind filter",
     "document.body.innerText.includes('No sessions of this kind') && document.body.innerText.includes('Choose All kinds to see every session.') && document.body.innerText.includes('0 active · newest first')",
@@ -689,17 +668,17 @@ try {
   await sendFromComposer(
     JSON.stringify({
       title: "Session audit",
-      goal: `while ! test -f '${sessionTaskGate}'; do sleep 0.05; done; echo session-report`,
+      message: `while ! test -f '${sessionTaskGate}'; do sleep 0.05; done; echo session-report`,
       provider: "faux",
       modelId: "bash",
     }),
   );
 
-  const sessionTask = await poll("Chat background work", async () =>
-    (await sessionTasks()).find((task) => task.title === "Session audit" && task.status === "running"),
+  const sessionChild = await poll("Chat background work", async () =>
+    (await childSessions()).find((child) => child.title === "Session audit" && child.busy),
   );
 
-  assert.equal(sessionTask.parentConversationId, emptySession);
+  assert.equal(sessionChild.parentId, emptySession);
   await poll(
     "Chat dispatch reply settled",
     async () => !(await api(`/api/agents/default/chats/${emptySession}`)).busy,
@@ -718,8 +697,8 @@ try {
   await model("bash");
   await visit(`/a/default/c/${emptySession}`);
   await ui(
-    "Chat Stop covers its own background work",
-    "!!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
+    "Chat composer ready for its turn",
+    "!!document.querySelector('textarea:not(:disabled):not([inert] *)')",
   );
   const sessionTurnGate = join(isolated, "session-turn.gate");
   await sendFromComposer(
@@ -728,9 +707,7 @@ try {
   await poll("Chat turn is busy", async () => (await api(`/api/agents/default/chats/${emptySession}`)).busy);
 
   const allSessions = (await api("/api/agents/default/chats")).chats;
-  assert.ok(
-    allSessions.every((chat) => !chat.main && !("report" in (chat.task ?? {})) && !("items" in chat)),
-  );
+  assert.ok(allSessions.every((chat) => !chat.main && !chat.task && !("items" in chat)));
   await visit("/tasks");
   await ui(
     "old Tasks address redirects to Sessions",
@@ -741,9 +718,7 @@ try {
     "document.body.innerText.includes('2 active · newest first')",
   );
 
-  const targets = allSessions.map((chat) =>
-    chat.task ? `/a/default/tasks/${chat.task.id}` : `/a/default/c/${chat.id}`,
-  );
+  const targets = allSessions.map((chat) => `/a/default/c/${chat.id}`);
 
   assert.deepEqual(
     await evaluate(
@@ -753,17 +728,18 @@ try {
     "Sessions keeps the server's activity order",
   );
 
-  for (const [kind, active, count] of [
-    // The Chat and its two forks.
-    ["Chat", 1, 3],
-    ["Task", 1, 4],
-    ["Automation", 0, 1],
-    ["All kinds", 2, allSessions.length],
-  ]) {
+  // A child session is a Chat row. Counts come from the server list, so a new fixture cannot drift them.
+  const kindOf = (chat) =>
+    chat.channel === "web" ? "Chat" : chat.channel === "automation" ? "Automation" : "Channel";
+
+  for (const kind of ["Chat", "Automation", "All kinds"]) {
+    const rows = allSessions.filter((chat) => kind === "All kinds" || kindOf(chat) === kind);
+    const active = rows.filter((chat) => chat.busy).length;
+    assert.ok(rows.length > 0, `${kind} has rows`);
     await selectKind(kind);
     await ui(
       `filter ${kind}`,
-      `document.body.innerText.includes('${active} active · newest first') && document.querySelectorAll('main li:not([inert] *)').length === ${count}`,
+      `document.body.innerText.includes('${active} active · newest first') && document.querySelectorAll('main li:not([inert] *)').length === ${rows.length}`,
     );
     results.push(`${kind} filter counts only its visible active rows`);
   }
@@ -787,9 +763,9 @@ try {
         "!!document.querySelector('textarea:not(:disabled):not([inert] *)') && !!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
       ],
       [
-        "task",
-        `/a/default/tasks/${sessionTask.id}`,
-        "document.body.innerText.includes('You can chat here after the task ends.')",
+        "child",
+        `/a/default/c/${sessionChild.id}`,
+        "!!document.querySelector('textarea:not([inert] *)') && !!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
       ],
       [
         "new-session",
@@ -820,7 +796,7 @@ try {
   await writeFile(sessionTaskGate, "release");
   await poll(
     "Chat report saved",
-    async () => (await api(`/api/agents/default/tasks/${sessionTask.id}`)).status === "done",
+    async () => !(await api(`/api/agents/default/chats/${sessionChild.id}`)).busy,
   );
   await visit(`/a/default/c/${emptySession}`);
   await ui(
@@ -842,31 +818,32 @@ try {
   await sendFromComposer(
     JSON.stringify({
       title: "Session Stop check",
-      goal: `while ! test -f '${stopGate}'; do sleep 0.05; done`,
+      message: `while ! test -f '${stopGate}'; do sleep 0.05; done`,
       provider: "faux",
       modelId: "bash",
     }),
   );
 
-  const stopTask = await poll("Chat task before Stop", async () =>
-    (await sessionTasks()).find((task) => task.title === "Session Stop check" && task.status === "running"),
+  const stopChild = await poll("Chat child session before Stop", async () =>
+    (await childSessions()).find((child) => child.title === "Session Stop check" && child.busy),
   );
 
   await poll(
     "Chat dispatch finished before Stop",
     async () => !(await api(`/api/agents/default/chats/${emptySession}`)).busy,
   );
+  await visit(`/a/default/c/${stopChild.id}`);
   await ui(
-    "Chat Stop remains after dispatch",
+    "child Stop is available",
     "!!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
   );
   await tap('button[aria-label="Stop run"]');
   await poll(
-    "Chat Stop cancels its task",
-    async () => (await api(`/api/agents/default/tasks/${stopTask.id}`)).status === "cancelled",
+    "child Stop ends its run",
+    async () => !(await api(`/api/agents/default/chats/${stopChild.id}`)).busy,
   );
   results.push(
-    "Chat context, title, Clear, history, task return, Stop and main Stop scope use the selected session",
+    "Chat context, title, Clear, history, child result, child Stop and main Stop scope use the selected session",
   );
 
   // Saved channel inputs use real reconciliation. Go tests cover each platform boundary.
@@ -1778,8 +1755,8 @@ async function model(modelId) {
   await api("/api/agents/default", { ...agent, provider: "faux", modelId }, "PUT");
 }
 
-async function sessionTasks() {
-  return (await api("/api/agents/default/chats")).chats.flatMap((chat) => (chat.task ? [chat.task] : []));
+async function childSessions() {
+  return (await api("/api/agents/default/chats")).chats.filter((chat) => chat.parentId);
 }
 
 async function selectKind(kind) {
