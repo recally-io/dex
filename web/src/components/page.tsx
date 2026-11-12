@@ -150,7 +150,7 @@ export function FramedPage(props: PageProps) {
 
   return (
     <MainPane headerTitle={headerTitle}>
-      <div className="mx-auto w-full max-w-[1120px] px-6 py-8">
+      <div className="w-full max-w-[816px] px-6 py-8">
         <header className="mb-8 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
           <div className="min-w-0">
             {eyebrow ? <div className="mb-2 text-[12px] text-muted-foreground">{eyebrow}</div> : null}
@@ -186,7 +186,7 @@ export function FramedPage(props: PageProps) {
 function PanePage({ eyebrow, title, description, badge, actions, toolbar, children }: PageProps) {
   return (
     <MainPane>
-      <div className="mx-auto w-full max-w-[1120px] px-6 pt-6 pb-10">
+      <div className="w-full max-w-[816px] px-6 pt-6 pb-10">
         <header className="mb-6 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
           <div className="min-w-0">
             {eyebrow ? <div className="mb-2 text-[12px] text-muted-foreground">{eyebrow}</div> : null}
@@ -252,9 +252,7 @@ export function Section({
 
 /** The white hairline card that holds the content of a section. */
 export function Panel({ className, children }: { className?: string; children: ReactNode }) {
-  return (
-    <div className={cn("overflow-hidden rounded-window bg-card shadow-card", className)}>{children}</div>
-  );
+  return <div className={cn("overflow-hidden rounded-card bg-card shadow-card", className)}>{children}</div>;
 }
 
 /** Label-left and value-right rows, like upstream TextRow, divided by hairlines. Labels are unique. */
