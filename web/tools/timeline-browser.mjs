@@ -680,6 +680,78 @@ try {
   await writeFile(ownGate, "release");
   await poll("the user turn ends", async () => !(await api(`/api/agents/default/chats/${steered.id}`)).busy);
 
+  // A parent-started run with user input has no parent Stop until another parent input is queued.
+  const mixedGate = join(isolated, "mixed-stop.gate");
+  await send(
+    JSON.stringify({
+      title: "Mixed Stop",
+      message: `while ! test -f '${mixedGate}'; do sleep 0.05; done; echo mixed-run`,
+      provider: "faux",
+      modelId: "bash",
+    }),
+  );
+
+  const mixed = await poll("mixed child running", async () =>
+    (await childSessions()).find((child) => child.title === "Mixed Stop" && child.busy),
+  );
+
+  await poll(
+    "parent idle after mixed child start",
+    async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy,
+  );
+  await api(`/api/agents/default/chats/${mixed.id}/messages`, { id: randomUUID(), text: "echo mixed-user" });
+  assert.equal((await childSessions()).find((child) => child.id === mixed.id).stoppedWithParent, undefined);
+  await ui(
+    "no Stop for a placed parent input",
+    "!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
+  );
+  await send(
+    JSON.stringify({ tool: "session_send", id: String(mixed.id), message: "echo mixed-parent-queued" }),
+  );
+  await poll(
+    "parent idle after queueing",
+    async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy,
+  );
+  await poll("queued parent input enables Stop", async () =>
+    (await childSessions()).find((child) => child.id === mixed.id && child.stoppedWithParent),
+  );
+  await ui(
+    "Stop for queued parent input",
+    "!!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
+  );
+  await tap('button[aria-label="Stop run"]');
+  await poll(
+    "queued parent input withdrawn",
+    async () =>
+      withControlDB((db) =>
+        db
+          .prepare("SELECT status, reason FROM submissions WHERE conversation_id = ? AND content = ?")
+          .get(mixed.id, "echo mixed-parent-queued"),
+      )?.reason === "stopped",
+  );
+
+  const mixedRows = withControlDB((db) =>
+    db
+      .prepare(
+        "SELECT status, reason FROM submissions WHERE conversation_id = ? AND kind = 'message' ORDER BY rowid",
+      )
+      .all(mixed.id),
+  );
+
+  assert.deepEqual(
+    mixedRows.map((row) => row.status),
+    ["pending", "pending", "unanswered"],
+  );
+  assert.equal((await childSessions()).find((child) => child.id === mixed.id).stoppedWithParent, undefined);
+  await ui(
+    "Stop disappears after withdrawal",
+    "!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
+  );
+  await writeFile(mixedGate, "release");
+  await poll("mixed child ends", async () => !(await api(`/api/agents/default/chats/${mixed.id}`)).busy);
+  await poll("mixed result ends", async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy);
+  results.push("parent Stop tracks withdrawable mixed child input");
+
   // Release reconciles a saved channel input through the real native admission path.
   await holdMaintenance();
   const channelGate = join(isolated, "channel.gate");
