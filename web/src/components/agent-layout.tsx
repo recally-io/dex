@@ -1,87 +1,38 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { AgentContext, useAgentSettings, useAgentId } from "../lib/agent-scope";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
+import type { Chat } from "../api/generated/types.gen";
 import { useQuery } from "@tanstack/react-query";
 
 import {
   getChatOptions,
   getMainChatOptions,
   listAgentsOptions,
-  listChatsOptions,
+  listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
-import { instructionsDirty } from "../lib/instructions";
+import { findModel, thinkingNames } from "../lib/agent";
 import { sessionKind } from "../lib/sessions";
-import { useApp } from "../lib/app-state";
-import { MainTimeline } from "../routes/chat";
-import { SlidersHorizontal } from "lucide-react";
-import { SessionsPanel, SessionsButton } from "./agent/sessions-panel";
-import { IconButton } from "./icon-button";
+import { ChatTitle, MainTimeline } from "../routes/chat";
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import { AgentAvatar } from "./agent-avatar";
 import { Failure, Loading } from "./feedback";
-import { Badge } from "./ui/badge";
-import { ChatSettingsContext, InPaneContext, MainPane, PageHeader } from "./page";
+import { ChatSettingsContext, InPaneContext, MainPane, MenuButton } from "./page";
 import { cn } from "../lib/utils";
 
-/** The first path segment of each agent tab, with the segments of the pages that open from it. */
-type AgentTab = {
-  to:
-    | "/a/$agentId"
-    | "/a/$agentId/instructions"
-    | "/a/$agentId/channels"
-    | "/a/$agentId/automations"
-    | "/a/$agentId/sessions"
-    | "/a/$agentId/extensions"
-    | "/a/$agentId/agent";
-  label: string;
-  segments: (string | undefined)[];
-};
-
-const tabs: AgentTab[] = [
-  { to: "/a/$agentId", label: "Chat", segments: [undefined] },
-  { to: "/a/$agentId/automations", label: "Routines", segments: ["automations"] },
-  {
-    to: "/a/$agentId/agent",
-    label: "Settings",
-    segments: ["agent", "instructions", "channels", "extensions"],
-  },
-];
-
-const sessionsKey = "dex-sessions-panel";
-
-/** Below md the side panel covers the page, so it starts closed and closes on navigation. */
-const narrow = () => window.matchMedia("(max-width: 767px)").matches;
-
-/** The Sessions sidebar starts closed. The choice stays in this browser. */
-function useSessionsOpen() {
-  const [open, setOpen] = useState(() => !narrow() && localStorage.getItem(sessionsKey) === "open");
-
-  function set(next: boolean) {
-    localStorage.setItem(sessionsKey, next ? "open" : "closed");
-    setOpen(next);
-  }
-
-  return [open, set] as const;
-}
-
-/** Activity reads the bot list cache. Shell owns its polling interval. */
-export function useAgentActivity() {
-  const agentId = useAgentId();
-  const agents = useQuery(listAgentsOptions());
-  const activity = agents.data?.agents.find((agent) => agent.id === agentId)?.activity;
-
-  return {
-    channels: activity?.runningChannels ?? 0,
-    automations: activity?.enabledAutomations ?? 0,
-    active: activity?.activeSessions ?? 0,
-    routineFailed: activity?.routineFailed ?? false,
-  };
-}
+/** The name of each page under a bot that is not a chat. */
+const pageNames = new Map([
+  ["automations", "Routines"],
+  ["agent", "Settings"],
+  ["instructions", "Settings"],
+  ["channels", "Settings"],
+  ["extensions", "Settings"],
+  ["sessions", "All sessions"],
+]);
 
 /**
- * The page of one bot: its name, a tab for each part of it, and its model. Everything that
- * belongs to the bot is a tab here, so the sidebar only holds the list of bots and the global
- * settings. The main timeline stays mounted under the other tabs, so its stream and the
+ * The page of one bot: a header that names the open page, and the page. The bot column holds the
+ * way to each page. The main timeline stays mounted under the other pages, so its stream and the
  * unsent message survive a visit to them.
  */
 export function AgentLayout() {
@@ -138,176 +89,98 @@ function AgentPane({ settings }: { settings: Settings }) {
   const onMain = segment === undefined;
   const openChat = segment === "c" ? Number(chatSegment) : 0;
 
-  // The chat page reads the same query, so this adds no request. A writable Chat belongs to the
-  // Chat tab, next to Main. Routine transcripts open under Routines.
+  // The chat page reads the same query, so this adds no request.
   const chat = useQuery({
     ...getChatOptions({ path: { agentId, chatId: openChat } }),
     enabled: openChat > 0,
   });
 
-  const chats = useQuery({ ...listChatsOptions({ path: { agentId } }) });
   const main = useQuery({ ...getMainChatOptions({ path: { agentId } }), enabled: openChat === 0 });
-  const shown = openChat > 0 ? chat.data : main.data;
-  // A dot on the button tells that the open chat does not simply follow the bot.
-  const ownSettings = !!shown && !!(shown.cwd || shown.settings.modelId || shown.settings.thinkingLevel);
-
-  const webChat = chat.data ? sessionKind(chat.data) === "Chat" : false;
-
-  const current =
-    webChat || segment === "tasks"
-      ? tabs[0]
-      : segment === "c"
-        ? tabs[1]
-        : tabs.find((tab) => tab.segments.includes(segment));
-
-  const onChatTab = current === tabs[0];
-  const [sessionsOpen, setSessionsOpen] = useSessionsOpen();
+  const shown = onMain ? main.data : openChat > 0 ? chat.data : undefined;
+  // Main and a writable Chat have settings of their own. A routine transcript does not.
+  const writable = shown ? ["Main", "Chat"].includes(sessionKind(shown)) : false;
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [panelPath, setPanelPath] = useState(path);
-
-  if (panelPath !== path) {
-    setPanelPath(path);
-
-    if (narrow() && sessionsOpen) setSessionsOpen(false);
-  }
-
-  const { draft } = useApp();
-  const dirty = instructionsDirty(draft, settings.agent.instructions);
-  const activity = useAgentActivity();
-
-  const counts = new Map([["Routines", activity.automations]]);
-
-  const nav = useRef<HTMLElement>(null);
-
-  const label = current?.label;
-
-  // Counts and viewport changes can move the active tab after the first render.
-  useEffect(() => {
-    const element = nav.current;
-
-    if (!element) return;
-
-    const center = () =>
-      element.querySelector(`[data-tab="${label}"]`)?.scrollIntoView({ block: "nearest", inline: "center" });
-
-    const observer = new ResizeObserver(center);
-    observer.observe(element);
-
-    for (const tab of element.children) observer.observe(tab);
-    center();
-
-    return () => observer.disconnect();
-  }, [label]);
 
   return (
     <InPaneContext.Provider value>
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background lg:border-l lg:border-border">
-        <PageHeader
-          title={settings.agent.name}
-          // The other tabs open with their own page heading.
-          heading={false}
-          badge={
-            dirty ? (
-              <Badge
-                variant="outline"
-                className="hidden h-5 shrink-0 border-orange bg-orange-tint px-2 text-[11px] text-foreground sm:inline-flex"
-              >
-                Instructions draft
-              </Badge>
-            ) : null
-          }
-          avatar={
-            <AgentAvatar
-              agent={settings.agent}
-              className="hidden size-5 rounded-control text-[11px] sm:flex"
+      <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+        {/* The bot column names the bot and holds the way to its pages, so the header names only
+         * the open page. Below lg the column sits in the drawer, so the avatar still names the bot. */}
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border pr-2 pl-3 sm:pl-4">
+          <MenuButton />
+          <AgentAvatar agent={settings.agent} className="size-5 rounded-control text-[11px] lg:hidden" />
+          {shown ? (
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <ChatTitle chat={shown} heading />
+            </div>
+          ) : (
+            <span className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em]">
+              {pageNames.get(segment ?? "") ?? ""}
+            </span>
+          )}
+          {shown && writable ? (
+            <ChatSettingsButton
+              chat={shown}
+              settings={settings}
+              open={settingsOpen}
+              onClick={() => setSettingsOpen(!settingsOpen)}
             />
-          }
-          tabs={
-            <nav
-              ref={nav}
-              aria-label={`${settings.agent.name} sections`}
-              className="-mb-px flex min-w-0 flex-1 gap-0.5 self-stretch overflow-x-auto [scrollbar-width:none]"
-            >
-              {tabs.map((tab) => (
-                <Link
-                  key={tab.label}
-                  activeOptions={{ exact: true }}
-                  to={tab.to}
-                  params={{ agentId }}
-                  data-tab={tab.label}
-                  aria-current={tab === current ? "page" : undefined}
-                  className={cn(
-                    "relative flex shrink-0 items-center gap-1 px-1.5 text-[12.5px] sm:gap-1.5 sm:px-2.5 whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground",
-                    "after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full",
-                    "aria-[current=page]:font-medium aria-[current=page]:text-foreground aria-[current=page]:after:bg-foreground",
-                  )}
-                >
-                  {tab.label}
-                  {counts.get(tab.label) ? (
-                    <span className="text-[11px] text-muted-foreground tabular-nums">
-                      {counts.get(tab.label)}
-                    </span>
-                  ) : null}
-                  {tab.label === "Settings" && dirty ? (
-                    <span
-                      role="img"
-                      aria-label="Unsaved instructions draft"
-                      className="size-1.5 rounded-full bg-orange"
-                    />
-                  ) : null}
-                  {tab.label === "Routines" && activity.routineFailed ? (
-                    <span
-                      role="img"
-                      aria-label="Latest routine run failed"
-                      className="size-1.5 rounded-full bg-red"
-                    />
-                  ) : null}
-                </Link>
-              ))}
-            </nav>
-          }
-          actions={
-            onChatTab ? (
-              <>
-                {segment === "tasks" ? null : (
-                  <IconButton
-                    label={ownSettings ? "Chat settings, changed for this chat" : "Chat settings"}
-                    aria-pressed={settingsOpen}
-                    onClick={() => setSettingsOpen(!settingsOpen)}
-                    className="relative"
-                  >
-                    <SlidersHorizontal size={16} />
-                    {ownSettings ? (
-                      <span
-                        aria-hidden
-                        className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary"
-                      />
-                    ) : null}
-                  </IconButton>
-                )}
-                <SessionsButton
-                  chats={chats.data?.chats ?? []}
-                  open={sessionsOpen}
-                  onClick={() => setSessionsOpen(!sessionsOpen)}
-                />
-              </>
-            ) : null
-          }
-        />
-        <div className="flex min-h-0 flex-1">
-          <div className="flex min-w-0 flex-1 flex-col">
-            <ChatSettingsContext.Provider value={settingsOpen}>
-              <div inert={!onMain} className={cn("min-h-0 flex-1 flex-col", onMain ? "flex" : "hidden")}>
-                <MainTimeline settings={settings} visible={onMain} />
-              </div>
-              {!onMain ? <Outlet /> : null}
-            </ChatSettingsContext.Provider>
-          </div>
-          {onChatTab ? (
-            <SessionsPanel chatId={openChat} open={sessionsOpen} onClose={() => setSessionsOpen(false)} />
           ) : null}
-        </div>
+        </header>
+        <ChatSettingsContext.Provider value={settingsOpen}>
+          <div inert={!onMain} className={cn("min-h-0 flex-1 flex-col", onMain ? "flex" : "hidden")}>
+            <MainTimeline settings={settings} />
+          </div>
+          {!onMain ? <Outlet /> : null}
+        </ChatSettingsContext.Provider>
       </section>
     </InPaneContext.Provider>
+  );
+}
+
+/**
+ * Names the model and thinking level that answer the next message in the open chat, and opens
+ * the row that changes them. A dot tells that the chat has its own values.
+ */
+function ChatSettingsButton({
+  chat,
+  settings,
+  open,
+  onClick,
+}: {
+  chat: Chat;
+  settings: Settings;
+  open: boolean;
+  onClick: () => void;
+}) {
+  const models = useQuery(listModelsOptions());
+  const own = chat.settings;
+  const bot = findModel(settings.agent.provider, settings.agent.modelId, models.data?.models);
+  const effective = own.modelId ? findModel(own.provider ?? "", own.modelId, models.data?.models) : bot;
+  const thinking = own.thinkingLevel ?? settings.agent.thinkingLevel;
+
+  const text = effective.model?.reasoning
+    ? `${effective.label} · ${thinkingNames[thinking]}`
+    : effective.label;
+
+  const changed = !!(chat.cwd || own.modelId || own.thinkingLevel);
+  const label = `Chat settings${changed ? ", changed for this chat" : ""}: ${text}`;
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={open}
+      title={label}
+      onClick={onClick}
+      className="relative flex h-8 max-w-[45%] shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
+    >
+      <SlidersHorizontal size={15} aria-hidden className="shrink-0 sm:hidden" />
+      <span className="truncate max-sm:hidden">{text}</span>
+      <ChevronDown size={13} aria-hidden className="shrink-0 max-sm:hidden" />
+      {changed ? (
+        <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
+      ) : null}
+    </button>
   );
 }

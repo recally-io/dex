@@ -1,9 +1,14 @@
 import { createContext, useContext, useId, type ReactNode } from "react";
-import { Menu } from "lucide-react";
+import { Menu, PanelLeft } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
 
-export const ShellContext = createContext({ openDrawer: () => {}, attention: false });
+export const ShellContext = createContext<{
+  openDrawer: () => void;
+  attention: boolean;
+  /** The bot column, which only a bot page has. */
+  column?: { open: boolean; toggle: () => void };
+}>({ openDrawer: () => {}, attention: false });
 
 export type PageHeaderProps = {
   title: ReactNode;
@@ -13,7 +18,6 @@ export type PageHeaderProps = {
   /** A link back to the parent page, shown before the title. */
   crumb?: ReactNode;
   badge?: ReactNode;
-  tabs?: ReactNode;
   actions?: ReactNode;
   /** False where the page sits inside another pane that has its own drawer button. */
   menu?: boolean;
@@ -27,7 +31,6 @@ export function PageHeader({
   avatar,
   crumb,
   badge,
-  tabs,
   actions,
   menu = true,
   className,
@@ -55,48 +58,57 @@ export function PageHeader({
         id={heading ? "page-title" : undefined}
         tabIndex={heading ? -1 : undefined}
         // The global heading font is for page headings; the bar keeps the body face on every page.
-        // On a phone the tabs and actions need the width, and the avatar still names the bot.
-        className={cn(
-          "max-w-[40%] min-w-0 shrink-0 truncate font-sans text-[14px] font-semibold tracking-[-0.01em] text-foreground outline-none sm:max-w-[200px]",
-          tabs && avatar ? "max-sm:sr-only" : "",
-        )}
+        className="max-w-[60%] min-w-0 shrink-0 truncate font-sans text-[14px] font-semibold tracking-[-0.01em] text-foreground outline-none"
       >
         {title}
       </Title>
       {badge}
-      {tabs ? <>{tabs}</> : <span className="min-w-0 flex-1" />}
+      <span className="min-w-0 flex-1" />
       {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
     </header>
   );
 }
 
-/** The drawer button for screens below lg. */
+/**
+ * The first control of the header. Below lg it opens the drawer. From lg on, a bot page uses the
+ * same place to hide or show its bot column.
+ */
 export function MenuButton() {
-  const { openDrawer, attention } = useContext(ShellContext);
+  const { openDrawer, attention, column } = useContext(ShellContext);
+  const columnLabel = column?.open ? "Hide bot column" : "Show bot column";
 
   return (
-    <button
-      type="button"
-      aria-label={attention ? "Open navigation, another bot needs you" : "Open navigation"}
-      onClick={openDrawer}
-      className="relative -ml-1 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
-    >
-      <Menu size={18} />
-      {attention ? (
-        <span
-          aria-hidden
-          className="absolute top-1.5 right-1.5 size-2 rounded-full bg-orange ring-2 ring-background"
-        />
+    <>
+      {column ? (
+        <button
+          type="button"
+          aria-label={columnLabel}
+          aria-expanded={column.open}
+          title={columnLabel}
+          onClick={column.toggle}
+          className="-ml-1 hidden size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:flex"
+        >
+          <PanelLeft size={16} />
+        </button>
       ) : null}
-    </button>
+      <button
+        type="button"
+        aria-label={attention ? "Open navigation, another bot needs you" : "Open navigation"}
+        onClick={openDrawer}
+        className="relative -ml-1 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
+      >
+        <Menu size={18} />
+        {attention ? (
+          <span
+            aria-hidden
+            className="absolute top-1.5 right-1.5 size-2 rounded-full bg-orange ring-2 ring-background"
+          />
+        ) : null}
+      </button>
+    </>
   );
 }
 
-/** A panel at the right of the bot pane. Below md it covers the pane as a full-screen sheet. */
-export const sidePanel =
-  "fixed inset-0 z-40 flex flex-col bg-background md:static md:z-auto md:shrink-0 md:border-l md:border-border";
-
-/** True inside the bot pane, which already draws the frame and the drawer button. */
 /**
  * The model, thinking level and project of the open chat change seldom, so their row shows only
  * after the bot header's Chat settings button asks for it. The chat page renders the row.

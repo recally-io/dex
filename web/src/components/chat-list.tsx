@@ -87,7 +87,7 @@ const menuPopup =
   "w-[180px] origin-(--transform-origin) animate-[pop-in_160ms_var(--ease-out-strong)_both] rounded-card bg-card p-1 shadow-raised outline-none";
 
 /**
- * The session list of the Sessions panel. Main is the bot's one timeline: it comes first and has
+ * The Chats list of the bot column. Main is the bot's one timeline: it comes first and has
  * no menu. Chat sessions and child sessions follow in date groups, newest activity first, and
  * archived ones go last. A busy session has a dot, and a stalled one says so. Today starts open;
  * each group shows five sessions until the user asks for more.

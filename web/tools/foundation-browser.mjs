@@ -384,18 +384,12 @@ async function projectEvidence(theme, size) {
   };
 }
 async function composerEvidence(theme) {
-  const sessionsToggle = `document.querySelector('header button[aria-label^="Sessions"]')`;
-  await waitFor("Sessions toggle", () => evaluate(`!!${sessionsToggle}`));
-  await evaluate(`${sessionsToggle}?.focus()`);
-  await press("Enter", "Enter", 13, "\\r");
-  if (!(await evaluate(`!!document.querySelector('aside[aria-label="Sessions"]')`)))
-    await evaluate(`${sessionsToggle}?.click()`);
-  await waitFor("Sessions sidebar", () =>
-    evaluate(`!!document.querySelector('aside[aria-label="Sessions"]')`),
+  await waitFor("bot column", () =>
+    evaluate(`!!document.querySelector('aside[aria-label="Bot navigation"] section[aria-label="Chats"]')`),
   );
   const textarea = `document.querySelector('textarea[aria-label^="Message"]')`;
   await evaluate(`${textarea}?.focus()`);
-  await typeText("draft survives sidebar switch");
+  await typeText("draft survives a page switch");
   await delay(100);
   const root = (await call("DOM.getDocument")).root.nodeId;
   const input = await call("DOM.querySelector", { nodeId: root, selector: 'input[type="file"]' });
@@ -575,11 +569,11 @@ try {
             });
             assert.equal(
               await evaluate(`(() => {
-              const nav = document.querySelector('nav[aria-label$=" sections"]');
-              return !!nav && nav.scrollWidth <= nav.clientWidth && [...nav.querySelectorAll('[data-tab]')].every(tab => tab.getBoundingClientRect().right <= nav.getBoundingClientRect().right);
+              const header = document.querySelector('main header');
+              return !!header && [...header.querySelectorAll('a, button, h1')].every(node => node.getBoundingClientRect().right <= innerWidth + 1);
             })()`),
               true,
-              `All bot tabs fit at ${mobileWidth}px`,
+              `The chat header fits at ${mobileWidth}px`,
             );
           }
         }
@@ -703,14 +697,14 @@ try {
       mobile: false,
     });
     await navigate("/a/default");
-    await waitFor("three tabs", () =>
-      evaluate("document.querySelectorAll('nav[aria-label$=sections] a').length === 3"),
+    await waitFor("bot column links", () =>
+      evaluate("document.querySelectorAll('aside[aria-label=\"Bot navigation\"] a[data-tab]').length === 2"),
     );
     assert.deepEqual(
       await evaluate(
-        "[...document.querySelectorAll('nav[aria-label$=sections] a')].map(a => a.textContent.trim().replace(/\\s*\\d+$/, ''))",
+        "[...document.querySelectorAll('aside[aria-label=\"Bot navigation\"] a[data-tab]')].map(a => a.dataset.tab)",
       ),
-      ["Chat", "Routines", "Settings"],
+      ["Settings", "Routines"],
     );
     await navigate(`/inbox/${resultRun}`);
     await waitFor("result detail ready", () =>
