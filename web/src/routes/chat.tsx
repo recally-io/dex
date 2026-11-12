@@ -1,6 +1,6 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
-import { useContext, useEffect, useState, useRef } from "react";
+import { useContext, useEffect, useMemo, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowDown, Clock, GitBranch, Lock, Send } from "lucide-react";
@@ -32,6 +32,9 @@ import { chatDraftEvent, putChatDraft, takeChatDraft } from "../lib/chat-draft";
 import { Composer, type SendMode } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
 import { QuestionCard } from "../components/agent/question-card";
+import { ThreadContext } from "../components/agent/thread";
+import { ThreadPanel } from "../components/agent/thread-panel";
+import type { ThreadRef } from "../lib/threads";
 import {
   RetryNotice,
   Transcript,
@@ -285,6 +288,8 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
 
   const settingsOpen = useContext(ChatSettingsContext);
   const [jump, setJump] = useState(false);
+  const [thread, setThread] = useState<ThreadRef | null>(null);
+  const threads = useMemo(() => ({ open: setThread }), []);
   const [announcement, setAnnouncement] = useState("");
   const clear = useClearContext(chatId, state.running, () => setAnnouncement("Context cleared."));
   const wasRunning = useRef(false);
@@ -732,122 +737,125 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
             </div>
           </div>
         ) : null}
-        <div className="flex min-h-0 flex-1">
-          <div className="relative flex min-w-0 flex-1 flex-col">
-            <div
-              ref={scroller}
-              className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", blank && "hidden")}
-              onScroll={() => {
-                const el = scroller.current;
-
-                if (el) {
-                  pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
-                  setJump(!pinned.current);
-                }
-              }}
-            >
-              <div className="mx-auto flex min-h-full w-full max-w-[760px] flex-col justify-end gap-3 px-4 py-8 sm:px-8">
-                {transcript}
-              </div>
-            </div>
-            {readOnly ? null : (
+        <ThreadContext.Provider value={threads}>
+          <div className="relative flex min-h-0 flex-1">
+            <div className="relative flex min-w-0 flex-1 flex-col">
               <div
-                className={cn(
-                  "shrink-0 px-3 pb-3 sm:px-8 sm:pb-5",
-                  blank && "flex min-h-0 flex-1 items-center",
-                )}
+                ref={scroller}
+                className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", blank && "hidden")}
+                onScroll={() => {
+                  const el = scroller.current;
+
+                  if (el) {
+                    pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+                    setJump(!pinned.current);
+                  }
+                }}
               >
-                <div className="relative mx-auto w-full max-w-[760px]">
-                  {blank ? (
-                    <div className="mb-4 px-2">
-                      <p className="text-[20px] leading-tight font-semibold tracking-[-0.01em] text-foreground">
-                        {`What should ${settings.agent.name} do?`}
-                      </p>
-                      <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-                        {chat.data?.main
-                          ? null
-                          : "This session has its own context. It does not see the main timeline. "}
-                        Tools run on this computer without a sandbox.
-                      </p>
-                    </div>
-                  ) : null}
-                  {jump ? (
-                    <Button
-                      size="icon-lg"
-                      variant="secondary"
-                      aria-label="Jump to latest"
-                      title="Jump to latest"
-                      className="absolute -top-12 right-0 rounded-full shadow-card"
-                      onClick={() => {
-                        pinned.current = true;
-                        setJump(false);
-                        scroller.current?.scrollTo({
-                          top: scroller.current.scrollHeight,
-                          behavior: "smooth",
-                        });
-                      }}
-                    >
-                      <ArrowDown className="size-4" />
-                    </Button>
-                  ) : null}
-                  {composer}
-                  {blank ? (
-                    <div className="mt-6">
-                      <p className="mb-1 px-2 text-[12px] font-medium text-muted-foreground">
-                        This bot so far
-                      </p>
-                      <ul className="text-[13px]">
-                        <li className="flex items-baseline gap-3 border-t border-border px-2 py-2 first:border-t-0">
-                          <span className="min-w-0 flex-1 text-muted-foreground">Model</span>
-                          <span className={model.ok ? "text-foreground" : "text-muted-foreground"}>
-                            {model.ok ? model.label : "None chosen"}
-                          </span>
-                        </li>
-                        <li className="flex items-baseline gap-3 border-t border-border px-2 py-2">
-                          <span className="min-w-0 flex-1 text-muted-foreground">Channels</span>
-                          <span className="text-foreground">
-                            {channelsRunning ? `${channelsRunning} connected` : "None connected"}
-                          </span>
-                        </li>
-                        <li className="flex items-baseline gap-3 border-t border-border px-2 py-2">
-                          <span className="min-w-0 flex-1 text-muted-foreground">Sessions</span>
-                          <span className="text-foreground tabular-nums">
-                            {sessions.data?.chats.length ?? 0}
-                          </span>
-                        </li>
-                      </ul>
-                    </div>
-                  ) : null}
-                  {blank && recent.length ? (
-                    <div className="mt-6">
-                      <p className="mb-1 px-2 text-[12px] font-medium text-muted-foreground">
-                        Recent in this bot
-                      </p>
-                      <ul>
-                        {recent.map((item) => (
-                          <li key={item.id}>
-                            <Link
-                              to="/a/$agentId/c/$chatId"
-                              params={{ agentId, chatId: String(item.id) }}
-                              className="flex items-baseline gap-3 rounded-md px-2 py-2 hover:bg-accent"
-                            >
-                              <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">
-                                {item.title || "New session"}
-                              </span>
-                              <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
-                                {sessionTime(item.updatedAt)}
-                              </span>
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
+                <div className="mx-auto flex min-h-full w-full max-w-[760px] flex-col justify-end gap-3 px-4 py-8 sm:px-8">
+                  {transcript}
                 </div>
               </div>
-            )}
+              {readOnly ? null : (
+                <div
+                  className={cn(
+                    "shrink-0 px-3 pb-3 sm:px-8 sm:pb-5",
+                    blank && "flex min-h-0 flex-1 items-center",
+                  )}
+                >
+                  <div className="relative mx-auto w-full max-w-[760px]">
+                    {blank ? (
+                      <div className="mb-4 px-2">
+                        <p className="text-[20px] leading-tight font-semibold tracking-[-0.01em] text-foreground">
+                          {`What should ${settings.agent.name} do?`}
+                        </p>
+                        <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                          {chat.data?.main
+                            ? null
+                            : "This session has its own context. It does not see the main timeline. "}
+                          Tools run on this computer without a sandbox.
+                        </p>
+                      </div>
+                    ) : null}
+                    {jump ? (
+                      <Button
+                        size="icon-lg"
+                        variant="secondary"
+                        aria-label="Jump to latest"
+                        title="Jump to latest"
+                        className="absolute -top-12 right-0 rounded-full shadow-card"
+                        onClick={() => {
+                          pinned.current = true;
+                          setJump(false);
+                          scroller.current?.scrollTo({
+                            top: scroller.current.scrollHeight,
+                            behavior: "smooth",
+                          });
+                        }}
+                      >
+                        <ArrowDown className="size-4" />
+                      </Button>
+                    ) : null}
+                    {composer}
+                    {blank ? (
+                      <div className="mt-6">
+                        <p className="mb-1 px-2 text-[12px] font-medium text-muted-foreground">
+                          This bot so far
+                        </p>
+                        <ul className="text-[13px]">
+                          <li className="flex items-baseline gap-3 border-t border-border px-2 py-2 first:border-t-0">
+                            <span className="min-w-0 flex-1 text-muted-foreground">Model</span>
+                            <span className={model.ok ? "text-foreground" : "text-muted-foreground"}>
+                              {model.ok ? model.label : "None chosen"}
+                            </span>
+                          </li>
+                          <li className="flex items-baseline gap-3 border-t border-border px-2 py-2">
+                            <span className="min-w-0 flex-1 text-muted-foreground">Channels</span>
+                            <span className="text-foreground">
+                              {channelsRunning ? `${channelsRunning} connected` : "None connected"}
+                            </span>
+                          </li>
+                          <li className="flex items-baseline gap-3 border-t border-border px-2 py-2">
+                            <span className="min-w-0 flex-1 text-muted-foreground">Sessions</span>
+                            <span className="text-foreground tabular-nums">
+                              {sessions.data?.chats.length ?? 0}
+                            </span>
+                          </li>
+                        </ul>
+                      </div>
+                    ) : null}
+                    {blank && recent.length ? (
+                      <div className="mt-6">
+                        <p className="mb-1 px-2 text-[12px] font-medium text-muted-foreground">
+                          Recent in this bot
+                        </p>
+                        <ul>
+                          {recent.map((item) => (
+                            <li key={item.id}>
+                              <Link
+                                to="/a/$agentId/c/$chatId"
+                                params={{ agentId, chatId: String(item.id) }}
+                                className="flex items-baseline gap-3 rounded-md px-2 py-2 hover:bg-accent"
+                              >
+                                <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">
+                                  {item.title || "New session"}
+                                </span>
+                                <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
+                                  {sessionTime(item.updatedAt)}
+                                </span>
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </div>
+            {thread ? <ThreadPanel thread={thread} onClose={() => setThread(null)} /> : null}
           </div>
-        </div>
+        </ThreadContext.Provider>
         {status}
       </section>
     </>

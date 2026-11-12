@@ -5,31 +5,23 @@ import {
   CodeXml,
   Copy,
   CornerDownLeft,
-  CornerDownRight,
   FileText,
   GitBranch,
   SquarePen,
 } from "lucide-react";
 import { useAgentId } from "../../lib/agent-scope";
 import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
 import { formatSize, isImage } from "../../lib/attachments";
-import {
-  blocks,
-  describeTool,
-  dispatch,
-  seconds,
-  stepTitle,
-  type ContentBlock,
-  type Step,
-} from "../../lib/tools";
+import { blocks, describeTool, seconds, stepTitle, type ContentBlock, type Step } from "../../lib/tools";
 import { remarkStrong, strongText } from "../../lib/strong";
 import { retryMessage } from "../../lib/chat-state";
 import { Button } from "../ui/button";
 import { Spinner } from "../feedback";
+import { ResultLine, ThreadEntry } from "./thread";
+import { threadCall } from "../../lib/threads";
 import { cn } from "../../lib/utils";
 
 const markdown: Components = {
@@ -279,10 +271,51 @@ function StepLine({
 }
 
 /**
- * The thoughts and tool calls between two answers, as one collapsed row. The row opens by itself
- * only when a call failed. thinking is true while the last step is a thought that streams.
+ * The thoughts and tool calls between two answers. Each session call shows as a thread card or
+ * line in its place in the order. The steps between cards fold into collapsed rows.
  */
 export function Steps({
+  steps,
+  memory,
+  thinking = false,
+}: {
+  steps: Step[];
+  memory?: string;
+  thinking?: boolean;
+}) {
+  const parts: ({ card: ToolItem } | { rest: Step[] })[] = [];
+
+  for (const step of steps) {
+    const last = parts.at(-1);
+
+    if (step.kind === "tool" && threadCall(step)) parts.push({ card: step });
+    else if (last && "rest" in last) last.rest.push(step);
+    else parts.push({ rest: [step] });
+  }
+
+  return (
+    <div className="flex w-full flex-col">
+      {parts.map((part, i) =>
+        "card" in part ? (
+          <ThreadEntry key={part.card.id} tool={part.card} />
+        ) : (
+          <StepsRow
+            key={part.rest[0].id}
+            steps={part.rest}
+            memory={memory}
+            thinking={thinking && i === parts.length - 1}
+          />
+        ),
+      )}
+    </div>
+  );
+}
+
+/**
+ * Consecutive thoughts and tool calls, as one collapsed row. The row opens by itself
+ * only when a call failed. thinking is true while the last step is a thought that streams.
+ */
+function StepsRow({
   steps,
   memory,
   thinking = false,
@@ -304,23 +337,6 @@ export function Steps({
 
   return (
     <div className="flex w-full flex-col">
-      {steps.map((step) => {
-        if (step.kind !== "tool") return null;
-        const detail = dispatch(step);
-
-        if (!detail) return null;
-
-        return (
-          <section key={step.id} className="my-2 min-w-0 rounded-md border p-3 text-sm">
-            <div className="font-semibold">
-              {detail.status}: {detail.title}
-            </div>
-            {detail.message ? (
-              <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{detail.message}</p>
-            ) : null}
-          </section>
-        );
-      })}
       <button
         type="button"
         aria-expanded={expanded}
@@ -596,8 +612,6 @@ export function TranscriptItem({
   /** The answer ends its turn. Only such an answer has actions, so a turn reads as one unit. */
   ending?: boolean;
 }) {
-  const agentId = useAgentId();
-
   switch (item.kind) {
     case "boundary":
       return (
@@ -691,21 +705,7 @@ export function TranscriptItem({
     }
 
     case "task":
-      return (
-        <header className="flex min-w-0 items-start gap-2 text-[13px] leading-5">
-          <CornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
-          <h3 className="min-w-0 [overflow-wrap:anywhere]">
-            <span className="mr-1.5 font-medium text-muted-foreground">Session result</span>
-            <Link
-              to="/a/$agentId/tasks/$turnId"
-              params={{ agentId, turnId: item.taskId }}
-              className="font-semibold text-foreground decoration-ring underline-offset-3 hover:underline"
-            >
-              {item.title}
-            </Link>
-          </h3>
-        </header>
-      );
+      return <ResultLine item={item} />;
     case "assistant":
       if (!live && !item.text.trim()) return null;
 
@@ -850,17 +850,6 @@ export function Transcript({
         className="mt-5 flex min-w-0 flex-col gap-3 first:mt-0"
       >
         <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />
-        {block.item.status && block.item.status !== "done" ? (
-          <p className="text-sm text-muted-foreground">
-            {block.item.status}
-            {block.item.reason ? `: ${block.item.reason}` : ""}
-          </p>
-        ) : null}
-        {block.item.text ? (
-          <div className="rounded-md border p-3 text-sm">
-            <Markdown text={block.item.text} />
-          </div>
-        ) : null}
         {/* The main agent answers the user here; indenting it made the reply read as background output. */}
         {block.blocks.length ? (
           <div className="flex min-w-0 flex-col gap-3">{block.blocks.map(content)}</div>

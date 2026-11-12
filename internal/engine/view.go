@@ -163,17 +163,16 @@ func userItem(m InputMetadata, id string, at int64, text string) Item {
 	}
 	if m.TaskID != "" || m.Kind == "dex.task_result" {
 		item := Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle}
+		// The answer stays out of the projection. The user reads it in the child session.
 		var body struct {
 			Result struct {
 				Outcome string `json:"outcome"`
-				Answer  string `json:"answer"`
 				Reason  string `json:"reason"`
-				Report  string `json:"report"`
 				Status  string `json:"status"`
 			} `json:"task-result"`
 		}
 		if json.Unmarshal([]byte(text), &body) == nil {
-			item.Text, item.Status, item.Reason = cmp.Or(body.Result.Answer, body.Result.Report), cmp.Or(body.Result.Outcome, body.Result.Status), body.Result.Reason
+			item.Status, item.Reason = cmp.Or(body.Result.Outcome, body.Result.Status), body.Result.Reason
 		}
 		return item
 	}

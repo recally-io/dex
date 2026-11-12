@@ -43,27 +43,11 @@ export function blocks(items: Item[]): Block[] {
 }
 
 // A string argument of a tool call, or an empty string when the call has no such string.
-const arg = (tool: ToolItem, key: string) => {
+export const arg = (tool: ToolItem, key: string) => {
   const value = tool.args[key];
 
   return typeof value === "string" ? value : "";
 };
-
-// Session tools and legacy task calls keep their original arguments in the transcript.
-export function dispatch(tool: ToolItem) {
-  if (!["session_new", "session_send", "session_fork", "spawn_task"].includes(tool.name)) return undefined;
-
-  return {
-    title: arg(tool, "title") || (tool.name === "session_send" ? "Continue session" : "Branch session"),
-    message: arg(tool, "message") || arg(tool, "goal"),
-    status:
-      tool.status === "error"
-        ? "Session dispatch failed"
-        : tool.status === "running"
-          ? "Dispatching session"
-          : "Session dispatched",
-  };
-}
 
 // The memory folder is <data dir>/memory. Without the data dir, no call counts as a memory call.
 function inMemory(path: string, memory?: string) {

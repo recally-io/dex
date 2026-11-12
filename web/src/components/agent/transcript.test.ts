@@ -1,4 +1,5 @@
 import { createElement, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { expect, test } from "vite-plus/test";
@@ -109,7 +110,7 @@ test("user sees which child session returned after a topic change", async () => 
 test("user sees two returned results as separate groups", async () => {
   // Given two results that arrive together.
   const items: Item[] = [
-    { kind: "task", id: "result-1", taskId: "task-1", title: "Access logs", text: "Child report" },
+    { kind: "task", id: "result-1", taskId: "task-1", title: "Access logs" },
     { kind: "assistant", id: "a1", text: "First report" },
     {
       kind: "task",
@@ -132,28 +133,10 @@ test("user sees two returned results as separate groups", async () => {
     createElement(Transcript, { items, running: false, retry: () => {}, canRetry: false }),
   );
 
-  expect(html).toContain("Child report");
-  expect(html).toContain("interrupted: Restarted");
-});
-
-test("user sees a pending dispatch and a legacy task", async () => {
-  const pending = {
-    ...tool("pending", "running", ""),
-    name: "session_new",
-    args: { title: "Check", message: "Look" },
-  };
-
-  const legacy = {
-    ...tool("legacy", "done", ""),
-    name: "spawn_task",
-    args: { title: "Old task", goal: "Old goal" },
-  };
-
-  const html = await render(createElement(Steps, { steps: [pending, legacy] }));
-
-  expect(html).toContain("Dispatching session: Check");
-  expect(html).toContain("Session dispatched: Old task");
-  expect(html).toContain("Old goal");
+  // Each result is one line. A turn that did not finish says why on its line.
+  expect(html).toContain("Access logs</span> replied");
+  expect(html).toContain("Error logs</span> interrupted: Restarted");
+  expect(html.match(/View thread/g)).toHaveLength(2);
 });
 
 test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", async (text) => {
@@ -173,7 +156,6 @@ test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", asyn
   );
 
   expect(html).toContain("Check logs");
-  expect(html).toContain("Check the saved logs");
   expect(html).not.toContain('aria-label="Copy answer"');
 });
 
@@ -187,7 +169,9 @@ test("memory calls read as memory use", async () => {
 
 async function render(children: ReactNode) {
   const router = createRouter({
-    routeTree: createRootRoute({ component: () => children }),
+    routeTree: createRootRoute({
+      component: () => createElement(QueryClientProvider, { client: new QueryClient() }, children),
+    }),
     history: createMemoryHistory({ initialEntries: ["/"] }),
   });
 

@@ -438,11 +438,7 @@ export type TaskItem = {
     at?: number;
     title: string;
     /**
-     * The child session's final answer, when available.
-     */
-    text?: string;
-    /**
-     * The outcome of the child session turn.
+     * The outcome of the child session turn. The answer stays in the child session.
      */
     status?: string;
     /**

@@ -84,17 +84,18 @@ func TestUserTranscriptToolEndBeforeResult(t *testing.T) {
 	}
 }
 
-func TestUserSeesLegacyAndFailedTaskResults(t *testing.T) {
+func TestUserSeesStatusOfLegacyAndFailedTaskResults(t *testing.T) {
+	// The projection keeps the answer out. The child session holds it.
 	for _, tc := range []struct {
-		name, content, wantText, wantStatus, wantReason string
+		name, content, wantStatus, wantReason string
 	}{
-		{"legacy", `{"task-result":{"status":"done","report":"old report"}}`, "old report", "done", ""},
-		{"failed", `{"task-result":{"outcome":"failed","reason":"model down"}}`, "", "failed", "model down"},
+		{"legacy", `{"task-result":{"status":"done","report":"old report"}}`, "done", ""},
+		{"failed", `{"task-result":{"outcome":"failed","reason":"model down"}}`, "failed", "model down"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			entry := transcriptEntry(1, "dex.task_result", ai.UserMessage{Content: ai.UserText(tc.content)}, delta.JsonObjectOf("requestId", "result-1", "taskId", "task-1", "taskTitle", "Inspect"))
 			item := (projection{entries: []durable.EntryRecord{entry}}).event().Items[0]
-			if item.Text != tc.wantText || item.Status != tc.wantStatus || item.Reason != tc.wantReason {
+			if item.Text != "" || item.Status != tc.wantStatus || item.Reason != tc.wantReason {
 				t.Fatalf("result = %#v", item)
 			}
 		})
@@ -105,7 +106,7 @@ func TestUserTranscriptResetHistoryAndTaskMarkers(t *testing.T) {
 	// Given a reset, a durable task marker, and its answer in unordered snapshot entries.
 	reset := transcriptEntry(21, "pi.reset", nil, delta.JsonObjectOf("at", float64(7)))
 	reset.Head = new(durable.EntryId(21))
-	task := transcriptEntry(22, "dex.task_result", ai.UserMessage{Content: ai.UserText(`{"task-result":{"session":"7","title":"Inspect","turn":"task-1","outcome":"done","answer":"The check passed."}}`), Timestamp: 8}, delta.JsonObjectOf("requestId", "result-1", "taskId", "task-1", "taskTitle", "Inspect"))
+	task := transcriptEntry(22, "dex.task_result", ai.UserMessage{Content: ai.UserText(`{"task-result":{"session":"7","title":"Inspect","turn":"task-1","outcome":"done","answer":"private report"}}`), Timestamp: 8}, delta.JsonObjectOf("requestId", "result-1", "taskId", "task-1", "taskTitle", "Inspect"))
 	answer := transcriptEntry(23, "pi.assistant", transcriptAssistant("checked"), nil)
 	p := projection{entries: []durable.EntryRecord{task, answer, reset}}
 	snapshot := p.event()
@@ -115,7 +116,7 @@ func TestUserTranscriptResetHistoryAndTaskMarkers(t *testing.T) {
 	if got := snapshot.Items[0]; got.Kind != "boundary" || got.Boundary != "reset" || got.At != 7 {
 		t.Fatalf("reset = %#v", got)
 	}
-	if got := snapshot.Items[1]; got.Kind != "task" || got.TaskID != "task-1" || got.Title != "Inspect" || got.Text != "The check passed." {
+	if got := snapshot.Items[1]; got.Kind != "task" || got.TaskID != "task-1" || got.Title != "Inspect" || got.Text != "" || got.Status != "done" {
 		t.Fatalf("task = %#v", got)
 	}
 	// An older page and an active snapshot assign the same committed ID.

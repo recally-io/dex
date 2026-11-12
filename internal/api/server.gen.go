@@ -1154,15 +1154,12 @@ type TaskItem struct {
 	// Reason The reason the child session turn failed or was interrupted.
 	Reason *string `json:"reason,omitempty"`
 
-	// Status The outcome of the child session turn.
+	// Status The outcome of the child session turn. The answer stays in the child session.
 	Status *string `json:"status,omitempty"`
 
 	// TaskId The input ID of the child session turn, or the ID of an old task. getTurnChat finds its session.
 	TaskId string `json:"taskId"`
-
-	// Text The child session's final answer, when available.
-	Text  *string `json:"text,omitempty"`
-	Title string  `json:"title"`
+	Title  string `json:"title"`
 }
 
 // TaskItemKind defines model for TaskItem.Kind.
