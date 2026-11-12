@@ -237,17 +237,20 @@ a {
   cursor: pointer;
 }
 
-:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
+/* In the base layer, so an element's own outline-none utility (a skip target, a dialog) wins. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
 
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible,
-[contenteditable]:focus-visible {
-  outline: none;
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  [contenteditable]:focus-visible {
+    outline: none;
+  }
 }
 
 /* ── shared keyframes ─────────────────────────────────── */
@@ -407,6 +410,9 @@ select:focus-visible,
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    /* A thin overlay-style scrollbar: a visible track would draw a second line beside a panel border. */
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent) transparent;
   }
   body {
     @apply bg-background text-foreground;

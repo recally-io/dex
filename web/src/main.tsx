@@ -78,7 +78,7 @@ const channels = agentPage("/channels", ChannelsPage);
 const automations = agentPage("/automations", AutomationsPage);
 
 // Needs you, Work, Automations and the Inbox list were global pages. Each bot now shows its own
-// items: questions in its Sessions panel, routines and their results under Routines. Secrets split into
+// items: questions in its bot column, routines and their results under Routines. Secrets split into
 // the global Environment page and the Tools tab of each bot.
 const retired = <P extends string>(path: P, href: string) =>
   createRoute({

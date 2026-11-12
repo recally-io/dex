@@ -13,7 +13,6 @@ export type PageHeaderProps = {
   /** A link back to the parent page, shown before the title. */
   crumb?: ReactNode;
   badge?: ReactNode;
-  tabs?: ReactNode;
   actions?: ReactNode;
   /** False where the page sits inside another pane that has its own drawer button. */
   menu?: boolean;
@@ -27,7 +26,6 @@ export function PageHeader({
   avatar,
   crumb,
   badge,
-  tabs,
   actions,
   menu = true,
   className,
@@ -55,16 +53,12 @@ export function PageHeader({
         id={heading ? "page-title" : undefined}
         tabIndex={heading ? -1 : undefined}
         // The global heading font is for page headings; the bar keeps the body face on every page.
-        // On a phone the tabs and actions need the width, and the avatar still names the bot.
-        className={cn(
-          "max-w-[40%] min-w-0 shrink-0 truncate font-sans text-[14px] font-semibold tracking-[-0.01em] text-foreground outline-none sm:max-w-[200px]",
-          tabs && avatar ? "max-sm:sr-only" : "",
-        )}
+        className="max-w-[60%] min-w-0 shrink-0 truncate font-sans text-[14px] font-semibold tracking-[-0.01em] text-foreground outline-none"
       >
         {title}
       </Title>
       {badge}
-      {tabs ? <>{tabs}</> : <span className="min-w-0 flex-1" />}
+      <span className="min-w-0 flex-1" />
       {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
     </header>
   );
@@ -91,10 +85,6 @@ export function MenuButton() {
     </button>
   );
 }
-
-/** A panel at the right of the bot pane. Below md it covers the pane as a full-screen sheet. */
-export const sidePanel =
-  "fixed inset-0 z-40 flex flex-col bg-background md:static md:z-auto md:shrink-0 md:border-l md:border-border";
 
 /** True inside the bot pane, which already draws the frame and the drawer button. */
 /**

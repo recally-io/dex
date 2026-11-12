@@ -41,7 +41,7 @@ import {
 import type { SlashCommand } from "../components/slash-commands";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
-import { ChatSettingsContext, InPaneContext, MainPane, Note, PageHeader } from "../components/page";
+import { ChatSettingsContext, MainPane, Note } from "../components/page";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { cn, newId } from "../lib/utils";
@@ -71,7 +71,7 @@ export function ChatPage({ chatId }: { chatId?: number }) {
   );
 }
 
-export function MainTimeline({ settings, visible = true }: { settings: Settings; visible?: boolean }) {
+export function MainTimeline({ settings }: { settings: Settings }) {
   const agentId = useAgentId();
   const main = useQuery(getMainChatOptions({ path: { agentId } }));
 
@@ -84,7 +84,7 @@ export function MainTimeline({ settings, visible = true }: { settings: Settings;
       <Failure title="Could not open the timeline" error={main.error} retry={() => void main.refetch()} />
     </MainPane>
   ) : (
-    <Chat key={main.data.id} chatId={main.data.id} settings={settings} main visible={visible} />
+    <Chat key={main.data.id} chatId={main.data.id} settings={settings} main />
   );
 }
 
@@ -106,7 +106,7 @@ function ParentLink({
   const name = parentAgentName ? `${title} in ${parentAgentName}` : title;
 
   const className =
-    "max-w-56 shrink-0 truncate text-[12.5px] text-muted-foreground hover:text-foreground hover:underline";
+    "max-w-56 min-w-0 truncate text-[12.5px] text-muted-foreground hover:text-foreground hover:underline";
 
   return parent.data?.main ? (
     <Link to="/a/$agentId" params={{ agentId }} className={className}>
@@ -116,6 +116,52 @@ function ParentLink({
     <Link to="/a/$agentId/c/$chatId" params={{ agentId, chatId: String(parentId) }} className={className}>
       Started by {name}
     </Link>
+  );
+}
+
+/**
+ * The open chat's place in the bot header: a link back to its parent page, its title, and where it
+ * came from. The title is the page heading while its tab shows.
+ */
+export function ChatTitle({ chat, heading }: { chat: ChatInfo; heading: boolean }) {
+  const agentId = useAgentId();
+  const switchable = ["Main", "Chat"].includes(sessionKind(chat));
+  const crumb = "shrink-0 text-[13px] text-muted-foreground hover:text-foreground hover:underline";
+
+  return (
+    <>
+      {chat.main ? null : (
+        <>
+          {switchable ? (
+            <Link to="/a/$agentId" params={{ agentId }} className={crumb}>
+              Main
+            </Link>
+          ) : (
+            <Link to="/a/$agentId/automations" params={{ agentId }} className={crumb}>
+              Routines
+            </Link>
+          )}
+          <span aria-hidden className="text-ring">
+            /
+          </span>
+        </>
+      )}
+      <h1
+        id={heading ? "page-title" : undefined}
+        tabIndex={-1}
+        className="min-w-0 truncate text-[13px] font-medium outline-none"
+      >
+        {chat.main ? "Main" : chat.title || (switchable ? "New chat" : "New session")}
+      </h1>
+      {switchable ? null : <OriginPill chat={chat} />}
+      {!chat.main && switchable && chat.parentId !== undefined ? (
+        <ParentLink
+          parentId={chat.parentId}
+          parentAgentId={chat.parentAgentId}
+          parentAgentName={chat.parentAgentName}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -180,17 +226,7 @@ function OriginPill({ chat }: { chat: ChatInfo }) {
   return null;
 }
 
-function Chat({
-  chatId,
-  settings,
-  main = false,
-  visible = true,
-}: {
-  chatId: number;
-  settings: Settings;
-  main?: boolean;
-  visible?: boolean;
-}) {
+function Chat({ chatId, settings, main = false }: { chatId: number; settings: Settings; main?: boolean }) {
   const agentId = useAgentId();
 
   const { chat, state, setState, queued, setQueued, connection, streamError, reconnect } =
@@ -247,7 +283,6 @@ function Chat({
     return () => window.removeEventListener(chatDraftEvent, receiveDraft);
   }, [agentId, chatId, setDraft]);
 
-  const embedded = useContext(InPaneContext);
   const settingsOpen = useContext(ChatSettingsContext);
   const [jump, setJump] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -680,80 +715,23 @@ function Chat({
 
   return (
     <>
-      <section
-        className={cn(
-          "flex min-w-0 flex-1 flex-col overflow-hidden bg-background",
-          embedded ? "min-h-0" : "lg:border-l lg:border-border",
-        )}
-      >
-        {chat.data && switchable ? (
-          <>
-            <header className="flex min-w-0 items-center gap-2 border-b border-border px-4 py-2">
-              {!chat.data.main ? (
-                <>
-                  <Link
-                    to="/a/$agentId"
-                    params={{ agentId }}
-                    className="shrink-0 text-sm text-muted-foreground hover:text-foreground hover:underline"
-                  >
-                    Main
-                  </Link>
-                  <span aria-hidden className="text-ring">
-                    /
-                  </span>
-                </>
-              ) : null}
-              <h1
-                id={visible ? "page-title" : undefined}
-                tabIndex={-1}
-                className="min-w-0 flex-1 truncate text-sm font-medium"
-              >
-                {chat.data.main ? "Main" : chat.data.title || "New chat"}
-              </h1>
-              {!chat.data.main && chat.data.parentId !== undefined ? (
-                <ParentLink
-                  parentId={chat.data.parentId}
-                  parentAgentId={chat.data.parentAgentId}
-                  parentAgentName={chat.data.parentAgentName}
-                />
-              ) : null}
-            </header>
-            {settingsOpen ? (
-              <div
-                role="region"
-                aria-label="Chat settings"
-                className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-muted/40 px-4 py-1.5"
-              >
-                <p className="min-w-0 basis-56 flex-1 text-[12px] text-muted-foreground">
-                  {chat.data.main
-                    ? "Changes apply from the next message, including channel messages."
-                    : "Changes apply from the next message in this chat."}
-                </p>
-                <div className="min-w-0 max-w-full">
-                  <SessionSettings chat={chat.data} settings={settings} />
-                </div>
-              </div>
-            ) : null}
-          </>
-        ) : (
-          <PageHeader
-            heading
-            menu={!embedded}
-            title={chat.data?.title || "New session"}
-            crumb={
-              chat.data ? (
-                <Link
-                  to="/a/$agentId/automations"
-                  params={{ agentId }}
-                  className="shrink-0 text-[13px] text-muted-foreground hover:text-foreground hover:underline"
-                >
-                  Routines
-                </Link>
-              ) : null
-            }
-            badge={chat.data ? <OriginPill chat={chat.data} /> : null}
-          />
-        )}
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+        {chat.data && switchable && settingsOpen ? (
+          <div
+            role="region"
+            aria-label="Chat settings"
+            className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-muted/40 px-4 py-1.5"
+          >
+            <p className="min-w-0 basis-56 flex-1 text-[12px] text-muted-foreground">
+              {chat.data.main
+                ? "Changes apply from the next message, including channel messages."
+                : "Changes apply from the next message in this chat."}
+            </p>
+            <div className="min-w-0 max-w-full">
+              <SessionSettings chat={chat.data} settings={settings} />
+            </div>
+          </div>
+        ) : null}
         <div className="flex min-h-0 flex-1">
           <div className="relative flex min-w-0 flex-1 flex-col">
             <div

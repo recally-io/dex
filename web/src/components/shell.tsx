@@ -1,10 +1,10 @@
 import { AgentContext } from "../lib/agent-scope";
 import { AgentAvatar } from "./agent-avatar";
-import { DexMark } from "./dex-mark";
 import { AgentCreateDialog } from "./agent-create-dialog";
+import { BotColumn } from "./bot-column";
 import type { Agent } from "../api/generated/types.gen";
 import { botStatus, workOptions, type BotStatus } from "../lib/work";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogClose, DialogContent } from "./ui/dialog";
@@ -20,7 +20,7 @@ import { cn } from "../lib/utils";
 
 const sidebarKey = "dex-sidebar";
 
-/** The sidebar starts expanded. The choice stays in this browser. */
+/** The bot column starts open. The choice stays in this browser. */
 function useSidebarOpen() {
   const [open, setOpen] = useState(() => localStorage.getItem(sidebarKey) !== "collapsed");
 
@@ -54,7 +54,7 @@ export function Shell() {
   const [lastAgent, setLastAgent] = useState("default");
   const routeAgent = path.match(/^\/a\/([^/]+)/)?.[1];
   const current = routeAgent ?? lastAgent;
-  // The drawer button shows when another bot needs you. The current bot shows its own in the Sessions panel.
+  // The drawer button shows when another bot needs you. The current bot shows its own in the bot column.
   const attention = [...statuses].some(([id, status]) => id !== current && status === "needs");
   const shell = useMemo(() => ({ openDrawer: () => setMenu(true), attention }), [attention]);
   useSystemTheme();
@@ -93,13 +93,18 @@ export function Shell() {
         >
           Skip to content
         </a>
-        <Sidebar
+        <Rail
           path={path}
           statuses={statuses}
-          collapsed={!sidebarOpen}
-          onToggle={toggleSidebar}
-          className="hidden pt-0.5 lg:flex"
+          columnOpen={sidebarOpen}
+          onToggle={routeAgent ? toggleSidebar : undefined}
+          className="hidden lg:flex"
         />
+        {routeAgent && sidebarOpen ? (
+          <AgentContext.Provider value={routeAgent}>
+            <BotColumn path={path} className="hidden lg:flex" />
+          </AgentContext.Provider>
+        ) : null}
         <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 outline-none">
           <AgentContext.Provider value={routeAgent ?? lastAgent}>
             <Outlet />
@@ -110,15 +115,25 @@ export function Shell() {
         <DialogContent
           showCloseButton={false}
           aria-label="Navigation"
-          className="fixed inset-y-0 left-0 top-0 z-50 flex h-full w-[272px] max-w-[85vw] translate-x-0 translate-y-0 animate-[drawer-in_240ms_var(--ease-out-strong)_both] flex-col rounded-none bg-sidebar p-0 py-2 shadow-raised outline-none lg:hidden"
+          className="fixed inset-y-0 left-0 top-0 z-50 flex h-full w-auto max-w-[92vw] translate-x-0 translate-y-0 animate-[drawer-in_240ms_var(--ease-out-strong)_both] flex-row gap-0 rounded-none bg-sidebar p-0 shadow-raised outline-none lg:hidden"
         >
-          <DialogClose
-            aria-label="Close navigation"
-            className="absolute top-2.5 right-2 z-20 flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <X size={18} />
-          </DialogClose>
-          <Sidebar path={path} statuses={statuses} className="w-full" />
+          <Rail
+            path={path}
+            statuses={statuses}
+            top={
+              <DialogClose
+                aria-label="Close navigation"
+                className="mt-1.5 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <X size={18} />
+              </DialogClose>
+            }
+          />
+          {routeAgent ? (
+            <AgentContext.Provider value={routeAgent}>
+              <BotColumn path={path} className="max-w-[calc(92vw-3.5rem)]" />
+            </AgentContext.Provider>
+          ) : null}
         </DialogContent>
       </Dialog>
     </ShellContext.Provider>
@@ -126,22 +141,25 @@ export function Shell() {
 }
 
 /**
- * The sidebar lists the bots and the global settings. Work happens inside a bot: its Main, its
- * Sessions panel and its Routines. Each row shows one status, so a bot that needs you stands out.
- * One list of bots fits while there are few; a global inbox comes back if bots outgrow it (~6).
+ * The rail lists the bots as avatars and links to the global settings. Everything inside one bot
+ * sits in its bot column, so the rail stays one narrow strip. Each avatar shows one status, so a
+ * bot that needs you stands out. One strip fits while there are few bots; a global inbox comes
+ * back if bots outgrow it (~6).
  */
-function Sidebar({
+function Rail({
   path,
   statuses,
-  className,
-  collapsed = false,
+  top,
+  columnOpen = true,
   onToggle,
+  className,
 }: {
   path: string;
   statuses: Map<string, BotStatus>;
-  className?: string;
-  collapsed?: boolean;
+  top?: ReactNode;
+  columnOpen?: boolean;
   onToggle?: () => void;
+  className?: string;
 }) {
   const settings = useQuery(getSettingsOptions());
   const agents = useQuery(listAgentsOptions());
@@ -156,32 +174,18 @@ function Sidebar({
   const iconButton =
     "relative flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground";
 
-  const footerRow =
-    "relative flex h-9 w-full items-center gap-2 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground";
-
   const errorLabel = `${providerErrors} ${providerErrors === 1 ? "provider needs" : "providers need"} attention`;
 
   return (
     <aside
       aria-label="Bots"
       className={cn(
-        "flex h-full shrink-0 flex-col transition-[width] duration-150 ease-out motion-reduce:transition-none",
-        collapsed ? "w-14 items-center" : "w-[240px]",
+        "flex h-full w-14 shrink-0 flex-col items-center border-r border-border bg-sidebar",
         className,
       )}
     >
-      <div
-        className={cn("mt-1 mb-2 flex h-10 items-center gap-2", collapsed ? "justify-center" : "mx-2 px-2")}
-      >
-        <DexMark />
-        {collapsed ? null : <span className="text-[14px] font-semibold text-foreground">dex</span>}
-      </div>
-      <div
-        className={cn(
-          "flex min-h-0 flex-col gap-0.5 overflow-y-auto",
-          collapsed ? "items-center px-1" : "px-2",
-        )}
-      >
+      {top}
+      <div className="flex min-h-0 flex-col items-center gap-1 overflow-y-auto px-1 pt-2.5">
         {list.map((agent) => (
           // The row reads its own bot's draft from app state, so it renders inside that bot's scope.
           <AgentContext.Provider key={agent.id} value={agent.id!}>
@@ -189,25 +193,21 @@ function Sidebar({
               agent={agent}
               status={statuses.get(agent.id!)}
               current={a === "a" && agent.id === selected}
-              collapsed={collapsed}
             />
           </AgentContext.Provider>
         ))}
         <button
           type="button"
           aria-label="New bot"
-          title={collapsed ? "New bot" : undefined}
+          title="New bot"
           onClick={() => setCreating(true)}
-          className={collapsed ? iconButton : footerRow}
+          className={iconButton}
         >
-          <span className="flex size-6 shrink-0 items-center justify-center">
-            <Plus size={15} />
-          </span>
-          {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">New bot</span>}
+          <Plus size={15} />
         </button>
         {agents.isError ? (
-          <p role="alert" className={cn("text-xs text-red", collapsed ? "px-1 text-center" : "px-2")}>
-            {collapsed ? "Error" : "Could not load bots."}
+          <p role="alert" className="px-1 text-center text-xs text-red">
+            Error
           </p>
         ) : null}
       </div>
@@ -218,47 +218,33 @@ function Sidebar({
       ) : null}
       <div className="flex-1" />
 
-      <div
-        className={cn(
-          "mt-2 flex w-full shrink-0 flex-col gap-0.5 border-t border-border py-2",
-          collapsed ? "items-center px-2" : "px-2",
-        )}
-      >
+      <div className="mt-2 flex w-full shrink-0 flex-col items-center gap-0.5 px-2 py-2">
         <Link
           to="/providers"
           aria-current={onSettings ? "page" : undefined}
-          aria-label={collapsed ? "Settings" : undefined}
-          title={collapsed ? (providerErrors ? `Settings · ${errorLabel}` : "Settings") : undefined}
-          className={cn(
-            collapsed ? iconButton : footerRow,
-            "aria-[current=page]:bg-accent aria-[current=page]:text-foreground",
-          )}
+          aria-label="Settings"
+          title={providerErrors ? `Settings · ${errorLabel}` : "Settings"}
+          className={cn(iconButton, "aria-[current=page]:bg-accent aria-[current=page]:text-foreground")}
         >
-          <span className="flex size-6 shrink-0 items-center justify-center">
-            <Settings size={15} />
-          </span>
-          {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">Settings</span>}
+          <Settings size={15} />
           {providerErrors ? (
             <span
               role="img"
               aria-label={errorLabel}
-              className={cn("size-1.5 rounded-full bg-red", collapsed && "absolute top-1.5 right-1.5")}
+              className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-red"
             />
           ) : null}
         </Link>
         {onToggle ? (
           <button
             type="button"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-expanded={!collapsed}
-            title={collapsed ? "Expand sidebar" : undefined}
+            aria-label={columnOpen ? "Hide bot column" : "Show bot column"}
+            aria-expanded={columnOpen}
+            title={columnOpen ? "Hide bot column" : "Show bot column"}
             onClick={onToggle}
-            className={collapsed ? iconButton : footerRow}
+            className={iconButton}
           >
-            <span className="flex size-6 shrink-0 items-center justify-center">
-              <PanelLeft size={15} />
-            </span>
-            {collapsed ? null : <span className="min-w-0 flex-1 truncate text-left">Collapse</span>}
+            <PanelLeft size={15} />
           </button>
         ) : null}
       </div>
@@ -268,7 +254,7 @@ function Sidebar({
 
 const statusLabel = { needs: "Needs you", working: "Working" } as const;
 
-function StatusDot({ status, floating = false }: { status: BotStatus; floating?: boolean }) {
+function StatusDot({ status }: { status: BotStatus }) {
   if (!status) return null;
 
   return (
@@ -277,25 +263,14 @@ function StatusDot({ status, floating = false }: { status: BotStatus; floating?:
       aria-label={statusLabel[status]}
       title={statusLabel[status]}
       className={cn(
-        "size-2 shrink-0 rounded-full",
+        "absolute right-1 bottom-1 size-2 shrink-0 rounded-full ring-2 ring-sidebar",
         status === "needs" ? "bg-orange" : "bg-primary",
-        floating && "absolute right-1 bottom-1 ring-2 ring-sidebar",
       )}
     />
   );
 }
 
-function AgentRow({
-  agent,
-  status,
-  current,
-  collapsed,
-}: {
-  agent: Agent;
-  status: BotStatus;
-  current: boolean;
-  collapsed: boolean;
-}) {
+function AgentRow({ agent, status, current }: { agent: Agent; status: BotStatus; current: boolean }) {
   const { draft } = useApp();
   // An unsaved instructions draft survives a bot switch, so the row keeps a mark until it is saved.
   const dirty = instructionsDirty(draft, agent.instructions);
@@ -309,23 +284,12 @@ function AgentRow({
       to="/a/$agentId"
       params={{ agentId: agent.id! }}
       aria-current={current ? "page" : undefined}
-      aria-label={collapsed ? label : undefined}
-      title={collapsed ? label : undefined}
-      className={cn(
-        "relative flex shrink-0 items-center rounded-md hover:bg-accent aria-[current=page]:bg-accent",
-        collapsed ? "size-9 justify-center" : "h-10 gap-2.5 px-2",
-      )}
+      aria-label={label}
+      title={label}
+      className="relative flex size-10 shrink-0 items-center justify-center rounded-md hover:bg-accent aria-[current=page]:bg-accent"
     >
-      <AgentAvatar agent={agent} />
-      {collapsed ? null : (
-        <>
-          <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-foreground">
-            {agent.name}
-          </span>
-          {dirty ? <span className="shrink-0 text-[11.5px] text-orange">Draft</span> : null}
-        </>
-      )}
-      <StatusDot status={status} floating={collapsed} />
+      <AgentAvatar agent={agent} className="size-7 text-[13px]" />
+      <StatusDot status={status} />
     </Link>
   );
 }
