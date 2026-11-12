@@ -145,7 +145,7 @@ export type MessageInput = {
      */
     answersQuestionId?: string;
     /**
-     * What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retried request keeps the mode of the first one. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
+     * What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
      *
      */
     mode?: 'followUp' | 'steer' | 'reject';
@@ -2505,6 +2505,10 @@ export type ContinueChatResponse = ContinueChatResponses[keyof ContinueChatRespo
 
 export type ForkChatData = {
     body: {
+        /**
+         * Optional client UUID for safe retries.
+         */
+        id?: string;
         entryId: number;
         /**
          * End the history just before the entry.
@@ -2532,6 +2536,10 @@ export type ForkChatErrors = {
      * The request failed.
      */
     404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
 };
 
 export type ForkChatError = ForkChatErrors[keyof ForkChatErrors];
@@ -2549,6 +2557,10 @@ export type ForkChatResponse = ForkChatResponses[keyof ForkChatResponses];
 
 export type CompactChatData = {
     body?: {
+        /**
+         * Optional client UUID for safe retries.
+         */
+        id?: string;
         /**
          * What the summary must keep.
          */

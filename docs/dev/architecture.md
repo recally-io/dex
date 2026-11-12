@@ -142,6 +142,13 @@ The engine stores origin with native input metadata. One projection exposes it
 in queued input, snapshots, live events, and history pages. The web shows the
 channel name beside each channel input.
 
+The first input owns a run. Its origin selects the reply recipient, and its
+receipt is the source for tool calls. A steered input adds content only. It does
+not change the recipient or grant or remove tool authority. Web input and a
+parent's `session_send` can steer. Channel, automation and dream inputs always
+use `followUp`. Bot and routine management check the source input, not the
+steered input.
+
 An agent calls `deliver_file` with a workspace-relative path to publish one
 regular file. The tool copies at most 20 MiB to an immutable snapshot and
 records the source agent and conversation. A project cwd does not widen this
@@ -568,7 +575,21 @@ Source: [message-flow.puml](../../assets/src/message-flow.puml)
    confirmed reply parts. A restart reacquires native outcomes by request ID;
    it does not restart a second execution loop in control.
 
+A fork request can carry a UUID. Control commits its receipt with the new Chat.
+A retry with the same source and boundary returns that Chat; a mismatch returns
+`409`. A concurrent retry can create an extra native conversation before control
+rejects its receipt. That conversation has no control reference and is invisible.
+
+Manual compact with a UUID runs at most once per ID. Control records the chat and
+instructions before the native call. The native transaction commits a request
+record with the compaction task. Every retry calls native admission again, so a
+control receipt alone cannot suppress a task that did not commit. A synchronous
+failure can be retried with the same ID. A crash after native commit does not
+create a second task. The control receipt also prevents reuse across agents.
+
 A client retry with the same UUID reuses the input intent and native admission.
+The chat, input kind, text, attachments and send mode must match the first request.
+An omitted mode is the same as `followUp`. A mismatch returns `409`.
 The two stores do not share a transaction. Stable request IDs and receipt
 reconciliation cover the gap between their commits.
 

@@ -86,7 +86,7 @@ func New(cfg Config) http.Handler {
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
-				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid):
+				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
@@ -96,7 +96,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived):
 				status = http.StatusNotFound
-			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
+			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -840,9 +840,16 @@ func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestO
 }
 
 func (h *handler) CompactChat(ctx context.Context, req api.CompactChatRequestObject) (api.CompactChatResponseObject, error) {
-	instructions := ""
+	instructions, requestID := "", ""
 	if req.Body != nil {
 		instructions = strings.TrimSpace(deref(req.Body.Instructions))
+		if req.Body.Id != nil {
+			id, err := uuid.Parse(*req.Body.Id)
+			if err != nil {
+				return nil, errors.Join(errInvalid, err)
+			}
+			requestID = id.String()
+		}
 	}
 	if utf8.RuneCountInString(instructions) > maxMessage {
 		return nil, errors.Join(errInvalid, errors.New("the instructions must have at most 32000 characters"))
@@ -850,7 +857,7 @@ func (h *handler) CompactChat(ctx context.Context, req api.CompactChatRequestObj
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Compact(ctx, agentID(ctx), req.ChatId, instructions); err != nil {
+	if err := h.Chats.Compact(ctx, agentID(ctx), req.ChatId, instructions, requestID); err != nil {
 		return nil, err
 	}
 	return api.CompactChat202Response{}, nil
@@ -863,7 +870,15 @@ func (h *handler) ForkChat(ctx context.Context, req api.ForkChatRequestObject) (
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	fork, err := h.Chats.Fork(ctx, agentID(ctx), req.ChatId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before)
+	requestID := ""
+	if req.Body.Id != nil {
+		id, err := uuid.Parse(*req.Body.Id)
+		if err != nil {
+			return nil, errors.Join(errInvalid, err)
+		}
+		requestID = id.String()
+	}
+	fork, err := h.Chats.Fork(ctx, agentID(ctx), req.ChatId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before, requestID)
 	if err != nil {
 		return nil, err
 	}

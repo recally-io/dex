@@ -84,6 +84,12 @@ type ChannelPeer struct {
 	ChannelKey string `json:"channel_key"`
 }
 
+type CompactReceipt struct {
+	ID             string `json:"id"`
+	ConversationID int64  `json:"conversation_id"`
+	Instructions   string `json:"instructions"`
+}
+
 type Conversation struct {
 	ID            int64         `json:"id"`
 	AgentID       string        `json:"agent_id"`
@@ -117,6 +123,14 @@ type FeishuSetting struct {
 	OwnerID          string `json:"owner_id"`
 	PairingCode      string `json:"pairing_code"`
 	PairingExpiresAt int64  `json:"pairing_expires_at"`
+}
+
+type ForkReceipt struct {
+	ID          string `json:"id"`
+	SourceID    int64  `json:"source_id"`
+	EntryID     int64  `json:"entry_id"`
+	BeforeEntry int64  `json:"before_entry"`
+	ForkID      int64  `json:"fork_id"`
 }
 
 type OnePassword struct {

@@ -231,6 +231,9 @@ func (s *Service) reconcileAgent(ctx context.Context, agentID string) error {
 	return errors.Join(errs...)
 }
 
+// ErrMessageID means a message ID was reused for a different request.
+var ErrMessageID = errors.New("the message ID belongs to another input")
+
 // Post stores the message id with content on channelKey and returns the chat ID. It does not wait
 // for the answer. A new chat gets the title title, or the start of content when title is empty.
 // When the agent has no model, it stores nothing and returns ErrNoModel. A message with an ID that
@@ -351,6 +354,21 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		if err != nil {
 			return 0, err
 		}
+		if created == 0 {
+			prior, priorErr := q.GetSubmission(ctx, m.ID)
+			if priorErr != nil && !errors.Is(priorErr, sql.ErrNoRows) {
+				return 0, priorErr
+			}
+			if priorErr == nil {
+				original, err := originalMessageContent(ctx, q, prior, m.AnswersQuestion)
+				if err != nil {
+					return 0, err
+				}
+				if prior.ConversationID != conv.ID || prior.Kind != "message" || original != m.Content || prior.Attachments != string(attachments) || cmp.Or(prior.WhenBusy, "followUp") != cmp.Or(m.WhenBusy, "followUp") {
+					return 0, ErrMessageID
+				}
+			}
+		}
 		if answers && created > 0 {
 			bound, err := q.AnswerQuestion(ctx, sqlc.AnswerQuestionParams{ID: m.AnswersQuestion, AgentID: agentID, ConversationID: conv.ID, SubmissionID: sql.NullString{String: m.ID, Valid: true}, Outcome: decision.Outcome})
 			if err != nil {
@@ -419,6 +437,34 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		return chatID, nil
 	}
 	return chatID, receiptError(sub)
+}
+
+// originalMessageContent removes the wrapper stored around an answer to a question.
+func originalMessageContent(ctx context.Context, q *sqlc.Queries, prior sqlc.Submission, questionID string) (string, error) {
+	question, err := q.GetQuestionByAnswer(ctx, sql.NullString{String: prior.ID, Valid: true})
+	if errors.Is(err, sql.ErrNoRows) && questionID != "" {
+		question, err = q.GetQuestion(ctx, questionID)
+		if err == nil && question.ConversationID != prior.ConversationID {
+			err = sql.ErrNoRows
+		}
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		if questionID != "" {
+			return "", ErrMessageID
+		}
+		return prior.Content, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	content, wasAnswer := strings.CutPrefix(prior.Content, answerPrefix+question.Text+"\n")
+	if wasAnswer != (questionID != "") || (wasAnswer && question.ID != questionID) {
+		return "", ErrMessageID
+	}
+	if question.Outcome.Valid && wasAnswer {
+		content = strings.TrimSuffix(content, outcomeSeparator+question.Outcome.String)
+	}
+	return content, nil
 }
 
 // rejectedBusy is the receipt reason of a reject input that arrived while the chat was busy.

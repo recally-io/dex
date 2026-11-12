@@ -75,7 +75,8 @@ func TestUserWithdrawsQueuedMessageAndItNeverRuns(t *testing.T) {
 	d.send(t, chatID, first.command)
 	first.waitStarted(t)
 	ran := filepath.Join(t.TempDir(), "second-ran")
-	secondID := d.send(t, chatID, fmt.Sprintf("touch '%s'; echo second", ran))
+	secondText := fmt.Sprintf("touch '%s'; echo second", ran)
+	secondID := d.send(t, chatID, secondText)
 	w := d.watch(t, chatID)
 	w.until(t, "second message queued", queuedItem(secondID))
 
@@ -109,8 +110,11 @@ func TestUserWithdrawsQueuedMessageAndItNeverRuns(t *testing.T) {
 		t.Fatalf("receipt: %s %s", status, reason)
 	}
 
-	// When the client retries the same message ID, then it does not run either.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", chatID), map[string]string{"id": secondID, "text": "echo retried"}, nil, http.StatusAccepted)
+	// When the client retries the same request, then it does not run either. The same ID with
+	// another text is not a retry.
+	messages := fmt.Sprintf("/api/agents/default/chats/%d/messages", chatID)
+	d.must(t, http.MethodPost, messages, map[string]string{"id": secondID, "text": secondText}, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, messages, map[string]string{"id": secondID, "text": "echo retried"}, nil, http.StatusConflict)
 	d.send(t, chatID, "echo last")
 	w.until(t, "last message runs", answered("bash: last"))
 	if status, reason, _ := receiptState(t, conn, secondID); status != "unanswered" || reason != "withdrawn" {

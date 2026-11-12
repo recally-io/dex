@@ -954,14 +954,14 @@ type MessageInput struct {
 	// Id A new UUID from the client. A retried request uses the same ID.
 	Id string `json:"id"`
 
-	// Mode What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retried request keeps the mode of the first one. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
+	// Mode What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
 	Mode *MessageInputMode `json:"mode,omitempty"`
 
 	// Text 1 to 32000 characters. It can be empty when the message has an attachment.
 	Text string `json:"text"`
 }
 
-// MessageInputMode What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retried request keeps the mode of the first one. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
+// MessageInputMode What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
 type MessageInputMode string
 
 // Model defines model for Model.
@@ -1308,6 +1308,9 @@ type ClearContextJSONBody struct {
 
 // CompactChatJSONBody defines parameters for CompactChat.
 type CompactChatJSONBody struct {
+	// Id Optional client UUID for safe retries.
+	Id *string `json:"id,omitempty"`
+
 	// Instructions What the summary must keep.
 	Instructions *string `json:"instructions,omitempty"`
 }
@@ -1323,6 +1326,9 @@ type ForkChatJSONBody struct {
 	// Before End the history just before the entry.
 	Before  *bool `json:"before,omitempty"`
 	EntryId int64 `json:"entryId"`
+
+	// Id Optional client UUID for safe retries.
+	Id *string `json:"id,omitempty"`
 }
 
 // GetChatHistoryParams defines parameters for GetChatHistory.
@@ -6493,6 +6499,20 @@ func (response ForkChat404JSONResponse) VisitForkChatResponse(w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForkChat409JSONResponse Error
+
+func (response ForkChat409JSONResponse) VisitForkChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

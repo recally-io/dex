@@ -823,7 +823,7 @@ export const setChatSettingsMutation = (options?: Partial<Options<SetChatSetting
 };
 
 /**
- * Stores a message in a web chat and returns. A message with an ID that exists already is not stored again. The answer comes through the event stream. 409 when the agent has no model, or when the mode is reject and the agent is working in the chat. Main and Chat sessions take web messages. Automation and channel sessions return 403.
+ * Stores a message in a web chat and returns. An identical retry of an accepted message returns 202 with the same submissionId. A retry with the same ID and different text, attachments, mode, or chat returns 409. The answer comes through the event stream. 409 when the agent has no model, or when the mode is reject and the agent is working in the chat. Main and Chat sessions take web messages. Automation and channel sessions return 403.
  *
  */
 export const sendMessageMutation = (options?: Partial<Options<SendMessageData>>): UseMutationOptions<SendMessageResponse, SendMessageError, Options<SendMessageData>> => {
@@ -859,7 +859,7 @@ export const withdrawMessageMutation = (options?: Partial<Options<WithdrawMessag
 };
 
 /**
- * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again; the same UUID with another handoff returns 400. Refuses a busy session without a change. Automation and channel sessions return 403.
+ * Stores a context reset in this writable session's delivery queue. A repeated UUID does not reset again; the same UUID with another handoff or chat returns 409. Refuses a busy session without a change. Automation and channel sessions return 403.
  *
  */
 export const clearContextMutation = (options?: Partial<Options<ClearContextData>>): UseMutationOptions<ClearContextResponse, ClearContextError, Options<ClearContextData>> => {
@@ -895,7 +895,7 @@ export const continueChatMutation = (options?: Partial<Options<ContinueChatData>
 };
 
 /**
- * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. Each call creates another Chat. 400 when the entry is not in this session or cannot start a fork. Automation and channel sessions return 403.
+ * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork. Automation and channel sessions return 403.
  *
  */
 export const forkChatMutation = (options?: Partial<Options<ForkChatData>>): UseMutationOptions<ForkChatResponse, ForkChatError, Options<ForkChatData>> => {
@@ -913,7 +913,7 @@ export const forkChatMutation = (options?: Partial<Options<ForkChatData>>): UseM
 };
 
 /**
- * Summarizes the older context of this writable session. It also works while the session runs; the summary joins the context at the next boundary, and Stop drops a summary that still waits. The timeline shows a pending, then a queued compaction boundary, then the summary, "nothing to compact", or the failure. Each call starts a new compaction. 409 when the session never ran. Automation and channel sessions return 403.
+ * Summarizes the older context of this writable session. It also works while the session runs; the summary joins the context at the next boundary, and Stop drops a summary that still waits. The timeline shows a pending, then a queued compaction boundary, then the summary, "nothing to compact", or the failure. Without an id each call starts a new compaction. A retry with the same id starts at most one compaction. Different instructions or chat return 409. 409 when the session never ran. Automation and channel sessions return 403.
  *
  */
 export const compactChatMutation = (options?: Partial<Options<CompactChatData>>): UseMutationOptions<unknown, CompactChatError, Options<CompactChatData>> => {

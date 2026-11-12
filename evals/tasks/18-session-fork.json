@@ -1,0 +1,6 @@
+{
+  "id": "18-session-fork",
+  "sessionOperation": "fork",
+  "prompt": "Remember the code word KIWI. Confirm that you will remember it in this chat.",
+  "rubric": "Check the session operation, persisted history and final answer."
+}

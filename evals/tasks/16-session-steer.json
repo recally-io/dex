@@ -1,0 +1,6 @@
+{
+  "id": "16-session-steer",
+  "sessionOperation": "steer",
+  "prompt": "Run the bash command `sleep 20; echo first-step` exactly once. Wait for it to finish, then give a short final answer. Do not delegate.",
+  "rubric": "Check the session operation, persisted history and final answer."
+}

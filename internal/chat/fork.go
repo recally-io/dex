@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"uuid"
 
@@ -21,7 +22,7 @@ type Origin struct {
 // to the entry before it. The fork takes the source's model, thinking level and project, and it
 // does not run. A running source contributes only its committed entries. When nothing comes
 // before entryID, the fork is an empty Chat with the same settings. Files on disk stay as they are.
-func (s *Service) Fork(ctx context.Context, agentID string, chatID, entryID int64, before bool) (Chat, error) {
+func (s *Service) Fork(ctx context.Context, agentID string, chatID, entryID int64, before bool, requestID string) (Chat, error) {
 	c, err := s.Get(ctx, agentID, chatID)
 	if err != nil {
 		return Chat{}, err
@@ -29,15 +30,51 @@ func (s *Service) Fork(ctx context.Context, agentID string, chatID, entryID int6
 	if !c.Writable {
 		return Chat{}, ErrNotFound
 	}
+	if requestID != "" {
+		if receipt, err := s.q.GetForkReceipt(ctx, requestID); err == nil {
+			return s.forkReplay(ctx, agentID, receipt, chatID, entryID, before)
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return Chat{}, err
+		}
+	}
 	conv, err := s.q.GetConversation(ctx, chatID)
 	if err != nil {
 		return Chat{}, err
 	}
-	fork, err := s.fork(ctx, conv, entryID, before, nil)
+	var store func(context.Context, *sqlc.Queries, sqlc.Conversation) error
+	if requestID != "" {
+		store = func(ctx context.Context, q *sqlc.Queries, fork sqlc.Conversation) error {
+			created, err := q.CreateForkReceipt(ctx, sqlc.CreateForkReceiptParams{ID: requestID, SourceID: chatID, EntryID: entryID, BeforeEntry: boolInt(before), ForkID: fork.ID})
+			if err == nil && created == 0 {
+				return errRepeatedFork
+			}
+			return err
+		}
+	}
+	fork, err := s.fork(ctx, conv, entryID, before, store)
+	if errors.Is(err, errRepeatedFork) {
+		receipt, err := s.q.GetForkReceipt(ctx, requestID)
+		if err != nil {
+			return Chat{}, err
+		}
+		return s.forkReplay(ctx, agentID, receipt, chatID, entryID, before)
+	}
 	if err != nil {
 		return Chat{}, err
 	}
 	return s.Get(ctx, agentID, fork.ID)
+}
+
+// ErrOperationID means an operation ID was reused for different parameters.
+var ErrOperationID = errors.New("the operation ID belongs to another request")
+
+var errRepeatedFork = errors.New("fork receipt already exists")
+
+func (s *Service) forkReplay(ctx context.Context, agentID string, receipt sqlc.ForkReceipt, chatID, entryID int64, before bool) (Chat, error) {
+	if receipt.SourceID != chatID || receipt.EntryID != entryID || receipt.BeforeEntry != boolInt(before) {
+		return Chat{}, ErrOperationID
+	}
+	return s.Get(ctx, agentID, receipt.ForkID)
 }
 
 // fork copies the history of conv into a new Chat that has the parent of conv. The optional store

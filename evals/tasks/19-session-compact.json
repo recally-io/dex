@@ -1,0 +1,6 @@
+{
+  "id": "19-session-compact",
+  "sessionOperation": "compact",
+  "prompt": "My favorite color is TEAL. Remember this fact and acknowledge it briefly.",
+  "rubric": "Check the session operation, persisted history and final answer."
+}

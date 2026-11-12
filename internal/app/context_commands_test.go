@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"uuid"
 )
@@ -49,7 +50,7 @@ func TestUserClearsContextWithHandoff(t *testing.T) {
 	id := uuid.NewV7().String()
 	d.must(t, http.MethodPost, chatPath(chatID, "clear"), map[string]string{"id": id, "handoff": "  keep the blue plan  "}, nil, http.StatusAccepted)
 	// The same reset ID with another handoff is another request.
-	d.must(t, http.MethodPost, chatPath(chatID, "clear"), map[string]string{"id": id, "handoff": "other"}, nil, http.StatusBadRequest)
+	d.must(t, http.MethodPost, chatPath(chatID, "clear"), map[string]string{"id": id, "handoff": "other"}, nil, http.StatusConflict)
 
 	// Then the reset boundary shows the handoff and no run starts.
 	w.until(t, "reset with handoff", func(tr *transcript) bool {
@@ -64,6 +65,66 @@ func TestUserClearsContextWithHandoff(t *testing.T) {
 	// When the user sends the next message, then the model reads the handoff and not the old topic.
 	d.send(t, chatID, "next")
 	w.until(t, "answer after handoff", answered(`context: ["keep the blue plan","next"]`))
+}
+
+func TestUserCompactReplayRunsOnce(t *testing.T) {
+	t.Parallel()
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "echo")
+	chatID := d.newSession(t).ID
+	w := d.watch(t, chatID)
+	d.send(t, chatID, "short")
+	w.until(t, "answer", answered("echo: short"))
+	d.waitSettled(t, chatID)
+	id := uuid.NewV7().String()
+	body := map[string]string{"id": id, "instructions": "keep notes"}
+	var results [4]int
+	var wg sync.WaitGroup
+	for i := range results {
+		wg.Go(func() { results[i], _ = d.call(t, http.MethodPost, chatPath(chatID, "compact"), body) })
+	}
+	wg.Wait()
+	for _, status := range results {
+		if status != http.StatusAccepted {
+			t.Fatalf("concurrent compact statuses = %v", results)
+		}
+	}
+	w.until(t, "compaction result", compaction("nothing"))
+	d.must(t, http.MethodPost, chatPath(chatID, "compact"), body, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, chatPath(chatID, "compact"), map[string]string{"id": id, "instructions": "different"}, nil, http.StatusConflict)
+	other := d.newSession(t).ID
+	d.send(t, other, "another chat")
+	d.watch(t, other).until(t, "other answer", answered("echo: another chat"))
+	d.waitSettled(t, other)
+	d.must(t, http.MethodPost, chatPath(other, "compact"), body, nil, http.StatusConflict)
+	d.send(t, chatID, "after")
+	w.until(t, "next answer", answered("echo: after"))
+	count := 0
+	for _, item := range w.tr.items {
+		if item.Kind == "boundary" && item.Boundary == "compaction" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("compaction boundaries = %d", count)
+	}
+}
+
+func TestUserCompactRetryAfterSynchronousFailure(t *testing.T) {
+	t.Parallel()
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "echo")
+	chatID := d.newSession(t).ID
+	w := d.watch(t, chatID)
+	d.send(t, chatID, "short")
+	w.until(t, "answer", answered("echo: short"))
+	d.waitSettled(t, chatID)
+	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "", "modelId": "", "thinkingLevel": "off"}, nil)
+	body := map[string]string{"id": uuid.NewV7().String()}
+	d.must(t, http.MethodPost, chatPath(chatID, "compact"), body, nil, http.StatusConflict)
+	d.setModel(t, "echo")
+	d.must(t, http.MethodPost, chatPath(chatID, "compact"), body, nil, http.StatusAccepted)
+	w.until(t, "compaction after retry", compaction("nothing"))
 }
 
 func TestUserCompactsChat(t *testing.T) {
@@ -110,6 +171,41 @@ func (d *dex) fillContext(t *testing.T, w *watcher, chatID int64) {
 		before := countKind(&w.tr, "assistant")
 		d.send(t, chatID, strings.Repeat(word+" ", 30000/(len(word)+1)))
 		w.until(t, word+" answer", func(tr *transcript) bool { return !tr.running && countKind(tr, "assistant") > before })
+	}
+}
+
+func TestUserCompactReplayDuringRunJoinsOnce(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	chatID := d.newSession(t).ID
+	w := d.watch(t, chatID)
+	d.fillContext(t, w, chatID)
+	d.setModel(t, "bash")
+	gate := taskGate(t, dir, "compact-replay")
+	d.send(t, chatID, gate)
+	waitTaskFile(t, filepath.Join(dir, "compact-replay.pid"))
+	d.setModel(t, "section")
+	body := map[string]string{"id": uuid.NewV7().String(), "instructions": "keep the words"}
+	d.must(t, http.MethodPost, chatPath(chatID, "compact"), body, nil, http.StatusAccepted)
+	w.until(t, "queued compaction", func(tr *transcript) bool {
+		return tr.running && compaction("queued")(tr)
+	})
+	d.must(t, http.MethodPost, chatPath(chatID, "compact"), body, nil, http.StatusAccepted)
+	if err := os.WriteFile(filepath.Join(dir, "compact-replay.gate"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w.until(t, "one placed summary", func(tr *transcript) bool {
+		return !tr.running && !compaction("queued")(tr) && compaction("")(tr)
+	})
+	count := 0
+	for _, item := range w.tr.items {
+		if item.Kind == "boundary" && item.Boundary == "compaction" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("compaction boundaries = %d", count)
 	}
 }
 

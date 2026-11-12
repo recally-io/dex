@@ -131,7 +131,7 @@ func TestUserClearsEmptyMainWithoutModel(t *testing.T) {
 	inputID := d.send(t, id, "keep this input")
 	waitResultSubmission(t, conn, inputID, "done")
 	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", id), map[string]string{"id": inputID})
-	if status != http.StatusBadRequest || !strings.Contains(raw, "another input") {
+	if status != http.StatusConflict || !strings.Contains(raw, "another input") {
 		t.Fatalf("request ID collision: %d %s", status, raw)
 	}
 }
