@@ -150,6 +150,47 @@ func TestUserRestartSendsInterruptedResultForEachPlacedParentInput(t *testing.T)
 	}
 }
 
+func TestUserRestartKeepsDoneAnswerSeparateFromInterruptedRun(t *testing.T) {
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := controlWriteDB(t, dir)
+	parent := newParent(t, d)
+	execSQL(t, conn, `CREATE TRIGGER hold_child_receipts BEFORE UPDATE OF status ON submissions WHEN OLD.parent_request_id IS NOT NULL BEGIN SELECT RAISE(FAIL, 'hold receipts'); END`)
+	child := spawnChild(t, d, parent, "Separate outcomes", "echo completed", "bash")
+	d.watch(t, child.conversation(t)).until(t, "native first answer", answeredWith("bash: completed"))
+	var ref childRef
+	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": taskGate(t, dir, "separate-first")}), &ref)
+	waitTaskFile(t, filepath.Join(dir, "separate-first.pid"))
+	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": taskGate(t, dir, "separate-steer"), "mode": "steer"}), &ref)
+	releaseResultGate(t, dir, "separate-first")
+	waitTaskFile(t, filepath.Join(dir, "separate-steer.pid"))
+	for _, message := range []string{"echo queued-one", "echo queued-two"} {
+		toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": message}), &ref)
+	}
+	d.stop()
+	execSQL(t, conn, `DROP TRIGGER hold_child_receipts`)
+	d = startDex(t, dir, "")
+	turns := waitChildTurnsEnded(t, conn, child.conversation(t), 5)
+	rows := resultRows(t, conn, parent)
+	counts := map[string]int{}
+	for _, row := range rows {
+		body := resultBody(t, row.content)
+		outcome, _ := body["outcome"].(string)
+		counts[outcome]++
+		if outcome == "interrupted" && body["withdrawn"] != float64(2) {
+			t.Fatalf("wrong withdrawal count: %v", body)
+		}
+	}
+	if len(rows) != 3 || counts["done"] != 1 || counts["interrupted"] != 2 {
+		t.Fatalf("outcomes merged: turns=%+v results=%+v", turns, rows)
+	}
+	d.stop()
+	startDex(t, dir, "")
+	if rows := resultRows(t, conn, parent); len(rows) != 3 {
+		t.Fatalf("second restart added results: %+v", rows)
+	}
+}
+
 func TestUserRestartAfterASharedAnswerSendsOneResult(t *testing.T) {
 	t.Parallel()
 	// Given a run that a parent steer joined and that answered natively, while the control database
@@ -378,6 +419,13 @@ func TestUserFirstSettledParentInputOwnsSharedAnswer(t *testing.T) {
 			body := resultBody(t, rows[0].content)
 			if rows[0].id != "result:"+winner || body["turn"] != winner {
 				t.Fatalf("wrong result owner: %+v, turns=%+v", rows[0], turns)
+			}
+			var resultOrigin, sourceOrigin string
+			if err := conn.QueryRowContext(t.Context(), `SELECT result.origin, source.origin FROM submissions result JOIN submissions turn ON turn.id = ? JOIN submissions source ON source.id = turn.parent_request_id WHERE result.id = ?`, winner, rows[0].id).Scan(&resultOrigin, &sourceOrigin); err != nil {
+				t.Fatal(err)
+			}
+			if resultOrigin != sourceOrigin {
+				t.Fatalf("winner origin %q, result origin %q", sourceOrigin, resultOrigin)
 			}
 			answer, _ := body["answer"].(string)
 			if !strings.Contains(answer, "turn "+winner+", offset 4000") {
