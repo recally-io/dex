@@ -258,8 +258,11 @@ process exit. Processes and remote work can continue. Prior actions are not
 undone.
 
 Normal completion and execution failure return a report to the main agent.
-Stop and cancellation do not create a result turn. A restart interruption
-creates one durable result that warns that side effects may exist.
+A completed run that holds parent input returns its answer once. A failed run
+returns one report for each parent input in it. Stop and cancellation do not
+create a result turn. A restart interruption creates one durable result for
+each parent input that the run held, and the result warns that side effects
+may exist.
 A saved report stays unchanged after cancellation or a late execution event.
 The system does not retry failed execution or result delivery. The main agent
 reads saved records and artifacts, then decides whether to retry or continue
