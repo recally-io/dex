@@ -113,7 +113,7 @@ func (q *Queries) DeleteBackgroundCommand(ctx context.Context, id string) error 
 
 const finishBackgroundCommand = `-- name: FinishBackgroundCommand :execrows
 UPDATE background_commands SET state = ?1, exit_status = ?2, reason = ?3, ended_at = ?4
-WHERE id = ?5 AND state = 'running'
+WHERE id = ?5 AND state IN ('starting', 'running')
 `
 
 type FinishBackgroundCommandParams struct {

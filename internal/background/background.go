@@ -60,6 +60,8 @@ const (
 	// reasonShutdown is the end that dex causes when it closes, so a restart never leaves a
 	// process that no tool can stop.
 	reasonShutdown = "shutdown"
+	// reasonStartFailed is the end of a command that dex started and could not track.
+	reasonStartFailed = "start_failed"
 )
 
 var (
@@ -108,8 +110,10 @@ const (
 	batchLines = 50
 	batchBytes = 8 << 10
 	// A line is cut here. The rest of it is in the output file.
-	longestLine = 64 << 10
-	sizePoll    = 250 * time.Millisecond
+	longestLine     = 64 << 10
+	endAttempts     = 5
+	endRetryBackoff = 100 * time.Millisecond
+	sizePoll        = 250 * time.Millisecond
 )
 
 // StartParams describe one command.
@@ -186,9 +190,13 @@ type proc struct {
 	exited chan struct{} // closed when the leader is reaped
 	done   chan struct{} // closed when the final state is stored
 
+	// mu guards the fields below. sweeping is set once supervise owns the group: from then on terminate
+	// sends no signal, so a late signal cannot reach a group that dex already ended.
 	mu          sync.Mutex
 	reason      string
 	terminating bool
+	sweeping    bool
+	termAt      time.Time // when terminate sent the first SIGTERM
 
 	// Lines state. eventMu orders wake-ups.
 	eventMu      sync.Mutex
@@ -268,18 +276,6 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 		return sqlc.BackgroundCommand{}, fmt.Errorf("%w: the call key is in use", ErrInvalid)
 	}
 	started, err := m.launch(ctx, p, cwd, output)
-	if err == nil {
-		_, err = m.q.MarkBackgroundCommandRunning(ctx, sqlc.MarkBackgroundCommandRunningParams{
-			ID: id, Pid: int64(started.cmd.Process.Pid), Pgid: int64(started.cmd.Process.Pid), StartedAt: m.now().UnixMilli(),
-		})
-		if err != nil {
-			// Nothing tracks the process, so it must not run on.
-			signal(started, syscall.SIGKILL)
-			if started.pipe != nil {
-				_ = started.pipe.Close()
-			}
-		}
-	}
 	if err != nil {
 		// The command never ran, so no row stays and a replayed call can try again.
 		if derr := m.q.DeleteBackgroundCommand(context.WithoutCancel(ctx), id); derr != nil {
@@ -287,8 +283,12 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 		}
 		return sqlc.BackgroundCommand{}, err
 	}
-	row, err := m.q.GetBackgroundCommand(ctx, id)
+	// The process runs. From here the row stays, so the call key stays used and a replay never
+	// starts a second process, and the writes ignore the cancel of the tool call.
+	dbctx := context.WithoutCancel(ctx)
+	row, err := m.markRunning(dbctx, id, started)
 	if err != nil {
+		m.abandon(dbctx, started, id)
 		return sqlc.BackgroundCommand{}, err
 	}
 	started.row = row
@@ -296,6 +296,31 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 	// supervise outlives the tool call that started the command, so it takes no context from it.
 	m.wg.Go(func() { m.supervise(started, p.Timeout) }) //nolint:contextcheck // lifetime is the manager's, not the call's
 	return row, nil
+}
+
+func (m *Manager) markRunning(ctx context.Context, id string, started *proc) (sqlc.BackgroundCommand, error) {
+	pid := int64(started.cmd.Process.Pid)
+	if _, err := m.q.MarkBackgroundCommandRunning(ctx, sqlc.MarkBackgroundCommandRunningParams{ID: id, Pid: pid, Pgid: pid, StartedAt: m.now().UnixMilli()}); err != nil {
+		return sqlc.BackgroundCommand{}, err
+	}
+	return m.q.GetBackgroundCommand(ctx, id)
+}
+
+// abandon ends a process that no supervisor follows, because the row could not be stored as running.
+// The row stays with the state stopped, so the replay of the call finds it.
+func (m *Manager) abandon(ctx context.Context, started *proc, id string) {
+	signal(started, syscall.SIGKILL)
+	<-started.exited
+	if started.pipe != nil {
+		_ = started.pipe.Close()
+	}
+	_, err := m.q.FinishBackgroundCommand(ctx, sqlc.FinishBackgroundCommandParams{
+		ID: id, State: StateStopped, ExitStatus: sql.NullInt64{Int64: int64(exitStatus(started.cmd.ProcessState)), Valid: true}, Reason: reasonStartFailed, EndedAt: sql.NullInt64{Int64: m.now().UnixMilli(), Valid: true},
+	})
+	if err != nil {
+		// The row stays in state starting, and the next start of dex marks it unknown.
+		slog.Error("store background command that lost its supervisor", "id", id, "err", err)
+	}
 }
 
 // launch starts the process. A lines command writes stdout to a pipe that dex reads. Every other
@@ -415,6 +440,33 @@ func exitStatus(state *os.ProcessState) int {
 	return state.ExitCode()
 }
 
+// storeEnd writes the final state and the end wake-up in one transaction. It reports whether it
+// stored a wake-up.
+func (m *Manager) storeEnd(ctx context.Context, p *proc, state string, status int, reason string, wake *sqlc.CreateBackgroundWakeParams) (bool, error) {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Take the writer before any read, as the chat service does, so that this transaction cannot
+	// fail on an upgrade of its lock.
+	if _, err := tx.ExecContext(ctx, "UPDATE conversations SET id = id WHERE 0"); err != nil {
+		return false, err
+	}
+	q := m.q.WithTx(tx)
+	changed, err := q.FinishBackgroundCommand(ctx, sqlc.FinishBackgroundCommandParams{
+		ID: p.row.ID, State: state, ExitStatus: sql.NullInt64{Int64: int64(status), Valid: true}, Reason: reason, EndedAt: sql.NullInt64{Int64: m.now().UnixMilli(), Valid: true},
+	})
+	if err != nil || changed == 0 || wake == nil {
+		return false, errors.Join(err, tx.Commit())
+	}
+	stored, err := q.CreateBackgroundWake(ctx, *wake)
+	if err != nil {
+		return false, err
+	}
+	return stored > 0, tx.Commit()
+}
+
 // finish stores the final state and the end wake-up in one transaction, so a crash cannot leave
 // an ended row without its wake-up.
 func (m *Manager) finish(p *proc, state string, status int, reason string) {
@@ -428,30 +480,19 @@ func (m *Manager) finish(p *proc, state string, status int, reason string) {
 			wake = &params
 		}
 	}
-	woke, err := func() (bool, error) {
-		tx, err := m.db.BeginTx(ctx, nil)
-		if err != nil {
-			return false, err
+	// A busy database is the credible failure, so a few attempts with backoff are enough. After the
+	// last one the row stays running until the next start marks it unknown.
+	var woke bool
+	var err error
+	for attempt, backoff := 0, endRetryBackoff; attempt < endAttempts; attempt, backoff = attempt+1, backoff*2 {
+		if attempt > 0 {
+			time.Sleep(backoff)
 		}
-		defer func() { _ = tx.Rollback() }()
-		// Take the writer before any read, as the chat service does, so that this transaction cannot
-		// fail on an upgrade of its lock.
-		if _, err := tx.ExecContext(ctx, "UPDATE conversations SET id = id WHERE 0"); err != nil {
-			return false, err
+		if woke, err = m.storeEnd(ctx, p, state, status, reason, wake); err == nil {
+			break
 		}
-		q := m.q.WithTx(tx)
-		changed, err := q.FinishBackgroundCommand(ctx, sqlc.FinishBackgroundCommandParams{
-			ID: p.row.ID, State: state, ExitStatus: sql.NullInt64{Int64: int64(status), Valid: true}, Reason: reason, EndedAt: sql.NullInt64{Int64: m.now().UnixMilli(), Valid: true},
-		})
-		if err != nil || changed == 0 || wake == nil {
-			return false, errors.Join(err, tx.Commit())
-		}
-		stored, err := q.CreateBackgroundWake(ctx, *wake)
-		if err != nil {
-			return false, err
-		}
-		return stored > 0, tx.Commit()
-	}()
+		slog.Warn("store background command end", "id", p.row.ID, "attempt", attempt+1, "err", err)
+	}
 	if err != nil {
 		slog.Error("store background command end", "id", p.row.ID, "err", err)
 		return
@@ -464,16 +505,29 @@ func (m *Manager) finish(p *proc, state string, status int, reason string) {
 // sweep ends the process group after its leader exited: SIGTERM, then SIGKILL after the grace
 // period. A group ID stays in use while a member runs, so a signal cannot reach an unrelated
 // process until the last member is gone. sweep stops signalling when the group is empty.
+//
+// The leader is reaped, so its PID can be reused once the group is empty. A signal that arrives in
+// that window could hit another group. dex accepts it: closing it needs delayed reaping.
 func (m *Manager) sweep(p *proc) {
+	p.mu.Lock()
+	p.sweeping = true
+	termAt := p.termAt
+	p.mu.Unlock()
 	if !groupAlive(p) {
 		return
 	}
-	signal(p, syscall.SIGTERM)
-	if waitGroupGone(p, m.limits.Grace) {
+	if termAt.IsZero() {
+		signal(p, syscall.SIGTERM)
+		termAt = time.Now()
+	}
+	// A stop that sent SIGTERM before the leader ended has used part of the grace already.
+	if waitGroupGone(p, time.Until(termAt.Add(m.limits.Grace))) {
 		return
 	}
 	signal(p, syscall.SIGKILL)
-	waitGroupGone(p, time.Second)
+	if !waitGroupGone(p, time.Second) {
+		slog.Warn("background process group survives SIGKILL", "id", p.row.ID, "pgid", p.cmd.Process.Pid)
+	}
 }
 
 func groupAlive(p *proc) bool {
@@ -491,31 +545,35 @@ func waitGroupGone(p *proc, limit time.Duration) bool {
 	return true
 }
 
-// terminate sends SIGTERM to the process group of a running leader, and SIGKILL after the grace
-// period unless the leader ended first: from then on supervise owns the group and sweeps it. The
-// first reason wins. It does nothing when the leader has already ended.
+// terminate sends SIGTERM to the process group, and SIGKILL after the grace period unless supervise
+// took the group first: once the leader ended, supervise sweeps the group and terminate sends no
+// signal. The first reason wins, until the final state is stored.
 func (m *Manager) terminate(p *proc, reason string) {
 	select {
-	case <-p.exited:
+	case <-p.done:
 		return
 	default:
 	}
 	p.mu.Lock()
-	first := !p.terminating
-	p.terminating = true
+	defer p.mu.Unlock()
 	if p.reason == "" {
 		p.reason = reason
 	}
-	p.mu.Unlock()
-	if !first {
+	if p.terminating || p.sweeping {
 		return
 	}
+	p.terminating = true
+	p.termAt = time.Now()
 	signal(p, syscall.SIGTERM)
 	m.wg.Go(func() {
 		select {
 		case <-p.exited:
 		case <-time.After(m.limits.Grace):
-			signal(p, syscall.SIGKILL)
+			p.mu.Lock()
+			defer p.mu.Unlock()
+			if !p.sweeping {
+				signal(p, syscall.SIGKILL)
+			}
 		}
 	})
 }

@@ -871,16 +871,20 @@ binds a tool call to its session.
   SIGTERM to the process group and SIGKILL after 5 s.
 - A command owns its whole process group. When the shell leader exits, dex ends
   the rest of the group (SIGTERM, then SIGKILL after 5 s) before it stores the
-  final state. The delayed SIGKILL goes out only while dex still owns the
-  group, so it cannot hit a reused group ID.
+  final state. Once that sweep starts, dex sends no other signal to the group, so
+  a late SIGKILL cannot hit a reused group ID. A short window remains between
+  the end of the last member and the end of the sweep: dex accepts it. A stop
+  that arrives during the sweep still sets the reason, so the final state is
+  `stopped`. A stop that sent SIGTERM before the leader ended counts toward the
+  5 s grace of the sweep.
 
 `background_commands` in `control.sqlite` has one row for each command: the
 session, the starting input, the wake mode, the label, the command, the working
 directory, the output path, the PID, the process group ID, the time that dex
 recorded for the start (not an OS identity), the state, the exit status and the
 reason. The state is `starting`, `running`, `exited`, `stopped`, `timed_out` or
-`unknown`. The reason is `stop`, `shutdown`, `timeout`, `output_limit` or
-`rate_limit`.
+`unknown`. The reason is `stop`, `shutdown`, `timeout`, `output_limit`,
+`rate_limit` or `start_failed`.
 
 The tool call key is unique. `background_start` stores the row in state
 `starting` before it starts the process, then stores the PID and `running`. A
@@ -889,7 +893,12 @@ between the process start and the row write cannot run a command twice. After
 the row is stored, the start checks the session again. If a stop withdrew the
 session in between, dex stops the new command at once. The final state and the
 end wake-up are one transaction, so an ended row always has its wake-up. A
-failed write of a `lines` batch can lose that batch: dex does not retry it.
+failed write of a `lines` batch can lose that batch: dex does not retry it. dex
+retries the end transaction up to 5 times with backoff (100 ms, doubling), then
+logs the failure and leaves the row for the next start to mark `unknown`. If the
+process started and its row cannot become `running`, dex ends the process and
+keeps the row as `stopped` with reason `start_failed`, so the call key stays
+used.
 
 A wake-up is a durable input of kind `task_result` in the owning session, as
 the result of a child session is. Its ID is `background:<id>:<n>` or

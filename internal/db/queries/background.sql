@@ -37,7 +37,7 @@ WHERE c.agent_id = ? AND b.state IN ('starting', 'running');
 
 -- name: FinishBackgroundCommand :execrows
 UPDATE background_commands SET state = @state, exit_status = @exit_status, reason = @reason, ended_at = @ended_at
-WHERE id = @id AND state = 'running';
+WHERE id = @id AND state IN ('starting', 'running');
 
 -- name: MarkBackgroundCommandsUnknown :execrows
 UPDATE background_commands SET state = 'unknown' WHERE state IN ('starting', 'running');

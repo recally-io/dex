@@ -329,3 +329,103 @@ func TestDexStopsItsCommandsWhenItShutsDown(t *testing.T) {
 		t.Fatalf("start after Close: %v", err)
 	}
 }
+
+func TestAStartThatCannotStoreRunningKeepsItsRowAndEndsTheProcess(t *testing.T) {
+	t.Parallel()
+	// Given a database that refuses the write of the state running, after the process started.
+	f := newFixture(t, background.Limits{})
+	if _, err := f.conn.ExecContext(t.Context(), `CREATE TRIGGER refuse_running BEFORE UPDATE ON background_commands WHEN NEW.state = 'running' BEGIN SELECT RAISE(ABORT, 'refused'); END`); err != nil {
+		t.Fatal(err)
+	}
+	p := f.params("sleep 300", background.WakeExit)
+	// When the start runs.
+	if _, err := f.m.Start(t.Context(), p); err == nil {
+		t.Fatal("start succeeded without a stored running state")
+	}
+	// Then the row stays, ended as stopped, and no supervisor or process remains.
+	var id, state, reason string
+	if err := f.conn.QueryRowContext(t.Context(), `SELECT id, state, reason FROM background_commands`).Scan(&id, &state, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if state != background.StateStopped || reason != "start_failed" {
+		t.Fatalf("state %s, reason %s", state, reason)
+	}
+	// And the replay of the call finds that row and starts no second process.
+	if err := os.RemoveAll(filepath.Join(f.dir, "out")); err != nil {
+		t.Fatal(err)
+	}
+	row, err := f.m.Start(t.Context(), p)
+	if err != nil || row.ID != id {
+		t.Fatalf("replay: %+v, %v", row, err)
+	}
+	if _, err := os.Stat(filepath.Join(f.dir, "out")); err == nil {
+		t.Fatal("the replay started a process")
+	}
+}
+
+func TestAnEndThatMeetsABusyDatabaseIsStoredOnRetry(t *testing.T) {
+	t.Parallel()
+	// Given a manager whose database gives up on a lock after 10 ms, and a command that waits for a gate.
+	f := newFixture(t, background.Limits{})
+	short, err := sql.Open("sqlite", "file:"+filepath.Join(f.dir, "control.sqlite")+"?_pragma=busy_timeout(10)&_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = short.Close() })
+	m := background.New(short, time.Now, background.Limits{}, nil)
+	t.Cleanup(m.Close)
+	gate := filepath.Join(f.dir, "gate")
+	row, err := m.Start(t.Context(), f.params("until test -f "+gate+"; do sleep 0.02; done", background.WakeExit))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// When another writer holds the lock while the command ends.
+	lock, err := f.conn.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lock.ExecContext(t.Context(), "BEGIN IMMEDIATE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(gate, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(250 * time.Millisecond)
+	if _, err := lock.ExecContext(t.Context(), "ROLLBACK"); err != nil {
+		t.Fatal(err)
+	}
+	_ = lock.Close()
+	// Then a later attempt stores the end and its wake-up.
+	f.waitExited(row.ID)
+	if got := f.wakes(); len(got) != 1 {
+		t.Fatalf("wake-ups: %+v", got)
+	}
+}
+
+func TestAStopDuringTheSweepEndsTheCommandAsStopped(t *testing.T) {
+	t.Parallel()
+	// Given a command whose shell exited and left a member that ignores SIGTERM, so the sweep waits.
+	f := newFixture(t, background.Limits{Grace: 1500 * time.Millisecond})
+	leader, member := filepath.Join(f.dir, "leader.pid"), filepath.Join(f.dir, "member.pid")
+	row := f.start(fmt.Sprintf("echo $$ > %s; trap '' TERM; sleep 300 & echo $! > %s; exit 0", leader, member), background.WakeExit)
+	leaderPID, memberPID := readPID(t, leader), readPID(t, member)
+	deadline := time.Now().Add(10 * time.Second)
+	for !gone(leaderPID) {
+		if time.Now().After(deadline) {
+			t.Fatal("the leader did not exit")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	// When the user stops the command in that wait.
+	stopped, err := f.m.Stop(t.Context(), f.conv, row.ID)
+	// Then the final state is stopped, no wake-up tells the user what they did, and the member is gone.
+	if err != nil || stopped.State != background.StateStopped || stopped.Reason != "stop" {
+		t.Fatalf("stop: %+v, %v", stopped, err)
+	}
+	if !gone(memberPID) {
+		t.Fatal("the member survives")
+	}
+	if got := f.wakes(); len(got) != 0 {
+		t.Fatalf("wake-ups: %+v", got)
+	}
+}
