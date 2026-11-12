@@ -55,10 +55,12 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 	if archived, err := q.ConversationAgentArchived(ctx, link.ParentID.Int64); err != nil || archived != 0 {
 		return 0, err
 	}
-	// The result of the input that started the run covers the inputs that joined it.
 	outcome, send := resultOutcome(event)
-	if !send || event.Covered {
+	if !send {
 		return 0, nil
+	}
+	if outcome == "done" && event.AnswerID == 0 {
+		return 0, errors.New("completed native input has no answer ID")
 	}
 	body := sessionResult{Session: strconv.FormatInt(link.ChildID, 10), Title: link.Title, Turn: turn, Outcome: outcome, Reason: event.Reason, Withdrawn: withdrawn}
 	if outcome == "done" {
@@ -73,7 +75,7 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 	if err != nil {
 		return 0, err
 	}
-	created, err := q.CreateTurnResult(ctx, sqlc.CreateTurnResultParams{ID: "result:" + turn, TurnID: turn, Content: string(content), CreatedAt: s.now().UnixMilli()})
+	created, err := q.CreateTurnResult(ctx, sqlc.CreateTurnResultParams{ID: "result:" + turn, TurnID: turn, Content: string(content), CreatedAt: s.now().UnixMilli(), NativeAnswerID: sql.NullInt64{Int64: event.AnswerID, Valid: outcome == "done"}})
 	if err != nil || created == 0 {
 		return 0, err
 	}

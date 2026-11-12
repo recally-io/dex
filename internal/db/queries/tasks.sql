@@ -35,8 +35,10 @@ AND (conversations.id = @chat_id OR (conversations.parent_id = @chat_id AND EXIS
 ORDER BY conversations.id;
 
 -- name: StopConversationSubmissions :execrows
--- A child that Stop reaches through its parent keeps its pending user input. Stop on the child
--- itself ends all of it.
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @now
-WHERE conversation_id = @chat_id AND status = 'pending'
-    AND (CAST(@parent_only AS INTEGER) = 0 OR parent_request_id IS NOT NULL);
+WHERE conversation_id = @chat_id AND status = 'pending';
+
+-- name: StopSubmission :execrows
+-- Stop ends one pending input that native execution withdrew.
+UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @now
+WHERE id = @id AND status = 'pending';

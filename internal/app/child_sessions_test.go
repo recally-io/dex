@@ -272,12 +272,12 @@ func TestUserSteeredChildInputSendsNoSecondResult(t *testing.T) {
 	var ref childRef
 	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "echo steered", "mode": "steer"}), &ref)
 	releaseResultGate(t, dir, "steer")
-	// Then the shared run sends one result, which is the result of the run starter.
+	// Then the first parent input to settle owns the shared run's one result.
 	waitDoneChildTurns(t, conn, child.conversation(t), 2)
 	rows := waitResults(t, conn, parent, 1)
 	turns := childTurns(t, conn, child.conversation(t))
-	if rows[0].id != "result:"+turns[0].id {
-		t.Fatalf("result %q is not the result of the starter %q", rows[0].id, turns[0].id)
+	if rows[0].id != "result:"+turns[0].id && rows[0].id != "result:"+turns[1].id {
+		t.Fatalf("result %q does not belong to either input: %+v", rows[0].id, turns)
 	}
 	// And a later turn gives the second result, so the steer did not hold one back.
 	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "echo later"}), &ref)

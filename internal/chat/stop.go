@@ -7,15 +7,21 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
 )
 
-// Stop withdraws this conversation's input and requests cancellation of its runs. For each child
-// session of the conversation it does the same for the input that the parent started and for the run
-// that holds it. A child's own pending user input is not withdrawn.
+// Stop withdraws this conversation's input and requests cancellation of its runs. Each child session
+// that holds input that the parent started is stopped as a whole, or not at all:
+//
+//   - A child without pending user input is stopped like the conversation: its input is withdrawn
+//     and its run is aborted.
+//   - A child with pending user input, running or queued, keeps its run, because native abort cannot
+//     spare queued input. Stop withdraws only the parent input that is still queued. A run that the
+//     parent started continues, and its result can start a new parent turn after Stop.
 func (s *Service) Stop(ctx context.Context, agentID string, id int64) error {
 	_, err := s.stop(ctx, agentID, id, nil, nil)
 	return err
@@ -79,7 +85,8 @@ type withdrawal struct {
 }
 
 // Withdraw takes the writer before reading. The first commit defines Stop's scope: the conversation
-// and the child sessions of it that have pending input.
+// and the child sessions of it that have pending input of the parent. The writer also admits user
+// input, so a child is either stopped as a whole or has the user input that this read saw.
 func (s *Service) withdraw(ctx context.Context, agentID string, id int64, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall) (withdrawal, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -107,7 +114,19 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 	var targets []engine.Ref
 	now := sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}
 	for _, c := range conversations {
-		if _, err := q.StopConversationSubmissions(ctx, sqlc.StopConversationSubmissionsParams{ChatID: c.ID, Now: now, ParentOnly: boolInt(c.ID != id)}); err != nil {
+		if c.ID != id {
+			pending, err := q.ListChildPending(ctx, c.ID)
+			if err != nil {
+				return withdrawal{}, err
+			}
+			if slices.ContainsFunc(pending, func(p sqlc.ListChildPendingRow) bool { return !p.FromParent }) {
+				if err := s.withdrawQueuedParentInputs(ctx, q, agentID, c, pending, now); err != nil {
+					return withdrawal{}, err
+				}
+				continue
+			}
+		}
+		if _, err := q.StopConversationSubmissions(ctx, sqlc.StopConversationSubmissionsParams{ChatID: c.ID, Now: now}); err != nil {
 			return withdrawal{}, err
 		}
 		if err := q.RequestExecutionAbort(ctx, c.ID); err != nil {
@@ -142,6 +161,31 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		return withdrawal{}, err
 	}
 	return withdrawal{conversations: conversations, targets: targets}, nil
+}
+
+// withdrawQueuedParentInputs withdraws the parent input of a child that native execution still
+// holds in its queue. A placed input is part of a run and keeps running. A failed withdrawal fails
+// Stop, so the user can repeat it. A pending input that native execution never saw has no run, and
+// its receipt settles at once.
+func (s *Service) withdrawQueuedParentInputs(ctx context.Context, q *sqlc.Queries, agentID string, c sqlc.Conversation, pending []sqlc.ListChildPendingRow, now sql.NullInt64) error {
+	for _, p := range pending {
+		if !p.FromParent {
+			continue
+		}
+		if c.ExecutionID.Valid {
+			outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID.Int64}, p.ID)
+			if err != nil {
+				return err
+			}
+			if outcome == engine.Placed {
+				continue
+			}
+		}
+		if _, err := q.StopSubmission(ctx, sqlc.StopSubmissionParams{ID: p.ID, Now: now}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // abort completes only after native cancellation and its durable acknowledgement.

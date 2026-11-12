@@ -70,9 +70,7 @@ type InputMetadata struct {
 }
 type Outcome struct {
 	Status, Answer, Reason string
-	// Covered is true when an earlier input of the same run started it, so the outcome of that
-	// input speaks for this one. It is set only for inputs of child sessions.
-	Covered bool
+	AnswerID               int64
 }
 type Config struct {
 	DataDir, Home string
