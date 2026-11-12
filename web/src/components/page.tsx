@@ -294,7 +294,7 @@ export function Note({ children, tone = "neutral" }: { children: ReactNode; tone
   return (
     <div
       className={cn(
-        "rounded-md px-3.5 py-2.5 text-[12.5px] leading-relaxed",
+        "rounded-card px-3.5 py-2.5 text-[12.5px] leading-relaxed",
         tone === "warn" ? "bg-orange-tint text-foreground" : "bg-muted text-muted-foreground shadow-card",
       )}
     >
