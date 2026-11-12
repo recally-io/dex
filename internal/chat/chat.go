@@ -360,23 +360,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				return 0, priorErr
 			}
 			if priorErr == nil {
-				original := prior.Content
-				question, questionErr := q.GetQuestionByAnswer(ctx, sql.NullString{String: m.ID, Valid: true})
-				if errors.Is(questionErr, sql.ErrNoRows) && m.AnswersQuestion != "" {
-					// A withdrawn answer can be replaced by a later answer to the same question.
-					question, questionErr = q.GetQuestion(ctx, m.AnswersQuestion)
-					if questionErr == nil && question.ConversationID != prior.ConversationID {
-						questionErr = sql.ErrNoRows
-					}
-				}
-				if questionErr != nil && !errors.Is(questionErr, sql.ErrNoRows) {
-					return 0, questionErr
-				}
-				if questionErr == nil {
-					original = strings.TrimPrefix(original, answerPrefix+question.Text+"\n")
-					if question.Outcome.Valid {
-						original = strings.TrimSuffix(original, outcomeSeparator+question.Outcome.String)
-					}
+				original, err := originalMessageContent(ctx, q, prior, m.AnswersQuestion)
+				if err != nil {
+					return 0, err
 				}
 				if prior.ConversationID != conv.ID || prior.Kind != "message" || original != m.Content || prior.Attachments != string(attachments) || cmp.Or(prior.WhenBusy, "followUp") != cmp.Or(m.WhenBusy, "followUp") {
 					return 0, ErrMessageID
@@ -451,6 +437,28 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		return chatID, nil
 	}
 	return chatID, receiptError(sub)
+}
+
+// originalMessageContent removes the wrapper stored around an answer to a question.
+func originalMessageContent(ctx context.Context, q *sqlc.Queries, prior sqlc.Submission, questionID string) (string, error) {
+	question, err := q.GetQuestionByAnswer(ctx, sql.NullString{String: prior.ID, Valid: true})
+	if errors.Is(err, sql.ErrNoRows) && questionID != "" {
+		question, err = q.GetQuestion(ctx, questionID)
+		if err == nil && question.ConversationID != prior.ConversationID {
+			err = sql.ErrNoRows
+		}
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return prior.Content, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	content := strings.TrimPrefix(prior.Content, answerPrefix+question.Text+"\n")
+	if question.Outcome.Valid {
+		content = strings.TrimSuffix(content, outcomeSeparator+question.Outcome.String)
+	}
+	return content, nil
 }
 
 // rejectedBusy is the receipt reason of a reject input that arrived while the chat was busy.
