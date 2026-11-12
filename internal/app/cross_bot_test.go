@@ -433,6 +433,53 @@ func (s *bots) webList(agent string) map[int64]crossBotChat {
 	return out
 }
 
+func TestUserParentsWithdrawMixedInputInEachOthersBotsWithoutDeadlock(t *testing.T) {
+	t.Parallel()
+	// Given a parent chat in each bot, each with a gated child in the other bot that also holds a
+	// queued user input and a queued parent input. Stop then calls the native queue of the other bot
+	// while it holds the control writer.
+	s := startBots(t)
+	parents := []botChat{s.chat("default"), s.chat(s.b.ID)}
+	targets := []string{s.b.ID, "default"}
+	children := make([]int64, len(parents))
+	for i, parent := range parents {
+		name := fmt.Sprintf("mixed-%d", i)
+		child := parent.newChild(map[string]any{"bot": targets[i], "title": name, "message": taskGate(t, s.dir, name), "provider": "faux", "modelId": "bash"})
+		children[i] = child.conversation(t)
+		waitTaskFile(t, filepath.Join(s.dir, name+".pid"))
+		botChat{bots: s, agent: targets[i], id: children[i]}.send("echo user queued")
+		parent.operate("session_send", map[string]any{"id": child.ID, "message": "echo parent queued"})
+	}
+	// When both parents are stopped at once, while the user writes to both children,
+	var wg sync.WaitGroup
+	statuses := make([]int, len(parents))
+	for i, parent := range parents {
+		wg.Go(func() {
+			// Goroutines must not call t.Fatal: the status is checked after Wait.
+			statuses[i], _ = s.d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/abort", parent.agent, parent.id), nil)
+		})
+		wg.Go(func() {
+			_, _ = s.d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/messages", targets[i], children[i]), map[string]string{"id": uuid.NewV7().String(), "text": "echo user later"})
+		})
+	}
+	wg.Wait()
+	if statuses[0] != http.StatusOK || statuses[1] != http.StatusOK {
+		t.Fatalf("abort statuses: %v", statuses)
+	}
+	// Then each Stop withdrew only the queued parent input, and the parent runs go on.
+	for i, child := range children {
+		turns := childTurns(t, s.conn, child)
+		if len(turns) < 3 || turns[0].status != "pending" || turns[1].status != "pending" || turns[2].status != "unanswered" || turns[2].reason != "stopped" {
+			t.Fatalf("child %d after Stop: %+v", i, turns)
+		}
+	}
+	// And every run ends after its gate opens.
+	for i, child := range children {
+		releaseResultGate(t, s.dir, fmt.Sprintf("mixed-%d", i))
+		waitChildTurnsEnded(t, s.conn, child, len(childTurns(t, s.conn, child)))
+	}
+}
+
 func TestUserSeesParentStopReachAChildInAnotherBot(t *testing.T) {
 	t.Parallel()
 	// Given a parent turn that runs in another bot.
