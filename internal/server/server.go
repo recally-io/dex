@@ -291,6 +291,9 @@ func chatView(c chat.Chat) api.Chat {
 	if c.ParentID != 0 {
 		out.ParentId = &c.ParentID
 	}
+	if c.StoppedByParent {
+		out.StoppedWithParent = &c.StoppedByParent
+	}
 	if c.AgentID != "" {
 		out.AgentId, out.AgentName = &c.AgentID, &c.AgentName
 	}

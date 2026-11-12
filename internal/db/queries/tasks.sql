@@ -15,9 +15,21 @@ OR (conversations.parent_id = @chat_id AND EXISTS (
 ))
 ORDER BY conversations.id;
 
+-- name: ListChildrenStoppedByParent :many
+-- The children that Stop on their parent reaches. Keep the rule equal to ListStopConversations: the
+-- web UI shows Stop on a parent page only for these.
+SELECT conversations.id FROM conversations
+JOIN conversations parent ON parent.id = conversations.parent_id
+WHERE (conversations.agent_id = @agent_id OR parent.agent_id = @agent_id) AND EXISTS (
+    SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
+        AND s.parent_request_id IS NOT NULL
+);
+
 -- name: StopConversationSubmissions :execrows
--- A child that Stop reaches through its parent keeps its pending user input. Stop on the child
--- itself ends all of it.
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @now
-WHERE conversation_id = @chat_id AND status = 'pending'
-    AND (CAST(@parent_only AS INTEGER) = 0 OR parent_request_id IS NOT NULL);
+WHERE conversation_id = @chat_id AND status = 'pending';
+
+-- name: StopSubmission :execrows
+-- Stop ends one pending input that native execution withdrew.
+UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = @now
+WHERE id = @id AND status = 'pending';

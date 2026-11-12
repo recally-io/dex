@@ -540,6 +540,18 @@ try {
     "the Sessions panel has no task rows, Stop, Mark handled or Completed group",
     `(() => { const panel = document.querySelector('aside[aria-label="Sessions"]'); return !/Mark handled|Mark all handled|Completed|Open full record|step/i.test(panel.innerText) && ![...panel.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Stop'); })()`,
   );
+  // The API data stays the same. Only the clock of the page moves 31 min, with no click, and the
+  // running child, which holds one tool, turns Stalled.
+  await advanceClock(31 * 60 * 1000);
+  await ui(
+    "the panel turns the running child to Stalled when only the clock moves",
+    `!!document.querySelector('aside[aria-label="Sessions"] a[href="/a/default/c/${running.id}"] [role="img"][aria-label="Stalled"]')`,
+  );
+  await restoreClock();
+  await ui(
+    "the panel shows Running again when the clock is real",
+    `!!document.querySelector('aside[aria-label="Sessions"] a[href="/a/default/c/${running.id}"] [role="img"][aria-label="Running"]')`,
+  );
   await shot("04-sessions-panel");
   await tap('button[aria-label="Close sessions"]');
   await visit("/tasks");
@@ -551,6 +563,12 @@ try {
     "session rows keep newest activity first, and show the running state and the parent",
     `(() => { const links = [...document.querySelectorAll('main li:not([inert] *) a')].map((a) => a.getAttribute('href')); const row = document.querySelector('main a[href="/a/default/c/${running.id}"]:not([inert] *)').closest('li'); return links.indexOf('/a/default/c/${running.id}') >= 0 && links.indexOf('/a/default/c/${running.id}') < links.indexOf('/a/default/c/${done.id}') && row.innerText.includes('Started by Main') && row.innerText.includes('Running'); })()`,
   );
+  await advanceClock(31 * 60 * 1000);
+  await ui(
+    "the Sessions page turns the running child to Stalled when only the clock moves",
+    `document.querySelector('main a[href="/a/default/c/${running.id}"]:not([inert] *)').closest('li').innerText.includes('Stalled')`,
+  );
+  await restoreClock();
   await shot("04-sessions");
   await visit("/a/default");
   await ui(
@@ -580,16 +598,27 @@ try {
     "a running child is a normal chat with Stop",
     `location.pathname === '/a/default/c/${steered.id}' && document.body.innerText.includes('Started by Main') && !!document.querySelector('textarea:not(:disabled):not([inert] *)') && !!document.querySelector('button[aria-label="Stop run"]:not([inert] *)')`,
   );
-  await evaluate("document.querySelector('textarea:not([inert] *)').focus()");
+  // After a redirect, the shell moves focus to the page title in an animation frame. A headless page
+  // draws that frame late, so draw one with a screenshot and wait for the title to take focus.
+  await shot("05-child-opened");
+  await ui("the page title takes focus after the redirect", "document.activeElement?.id === 'page-title'");
+  // Then the user clicks the composer and types. The focus must stay there, also across a screenshot.
+  await tap("textarea:not([inert] *)");
+  await check("a click puts the focus in the composer", "document.activeElement?.tagName === 'TEXTAREA'");
   await call("Input.insertText", { text: "echo steered-child" });
   await ui(
     "the draft shows the steer button",
     "!!document.querySelector('button[aria-label=\"Steer this run\"]:not([inert] *)')",
   );
+  await check(
+    "the composer keeps the focus before the screenshot",
+    "document.activeElement?.tagName === 'TEXTAREA'",
+  );
   await shot("05-child-steer-draft");
-  // Without this line, Enter fails in headless Chrome: the shell moves focus to the page title in an
-  // animation frame after the redirect, and the screenshot above produces that frame late.
-  await evaluate("document.querySelector('textarea:not([inert] *)').focus()");
+  await check(
+    "the composer keeps the focus after the screenshot",
+    "document.activeElement?.tagName === 'TEXTAREA'",
+  );
   await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter" });
   await call("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter" });
   await ui(
@@ -602,8 +631,54 @@ try {
     "document.body.innerText.includes('bash: steered-child') && !document.body.innerText.includes('bash: child-gate')",
   );
   await poll("steered child idle", async () => !(await api(`/api/agents/default/chats/${steered.id}`)).busy);
+  // One Enter sends one input: one stored row, and one answer on the page.
+  assert.equal(
+    withControlDB(
+      (db) =>
+        db
+          .prepare("SELECT count(*) AS n FROM submissions WHERE conversation_id = ? AND content = ?")
+          .get(steered.id, "echo steered-child").n,
+    ),
+    1,
+  );
+  await check(
+    "the steer was sent once and answered once",
+    "document.body.innerText.split('bash: steered-child').length === 2",
+  );
   await shot("06b-child-steered");
   results.push("a running child takes a steer from its composer");
+
+  // A run that the user started in a child is not work of the parent. Stop on the parent leaves it,
+  // so the parent page offers no Stop for it.
+  const ownGate = join(isolated, "child-own.gate");
+  await api(`/api/agents/default/chats/${steered.id}/messages`, {
+    id: randomUUID(),
+    text: `while ! test -f '${ownGate}'; do sleep 0.05; done; echo own-run`,
+  });
+  await poll(
+    "the child runs the user turn",
+    async () => (await api(`/api/agents/default/chats/${steered.id}`)).busy,
+  );
+  await visit("/a/default");
+
+  const listedOwn = await poll("the list shows the child busy", async () =>
+    (await childSessions()).find((child) => child.id === steered.id && child.busy),
+  );
+
+  assert.equal(listedOwn.stoppedWithParent, undefined);
+  // The panel has the running dot, so the list has loaded and the parent page had time to read it.
+  await tap('header button[aria-label^="Sessions"]');
+  await ui(
+    "the panel shows the child of the user turn as running",
+    `!!document.querySelector('aside[aria-label="Sessions"] a[href="/a/default/c/${steered.id}"] [role="img"][aria-label="Running"]')`,
+  );
+  await check(
+    "the parent page has no Stop for a child run that the user started",
+    "!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')",
+  );
+  await tap('button[aria-label="Close sessions"]');
+  await writeFile(ownGate, "release");
+  await poll("the user turn ends", async () => !(await api(`/api/agents/default/chats/${steered.id}`)).busy);
 
   // A child session in another bot shows in the lists of its parent with its bot, and the result
   // mark of the parent opens it in that bot.
@@ -990,6 +1065,42 @@ try {
   results.push(
     "Chat context, title, Clear, history, child result, Stop and main Stop scope use the selected session",
   );
+
+  // A child of a Chat names that Chat as its parent, also after the user archived the Chat.
+  await model("spawn");
+  const orphanParent = await api("/api/agents/default/chats", {}, "POST");
+
+  await api(`/api/agents/default/chats/${orphanParent.id}/messages`, {
+    id: randomUUID(),
+    text: JSON.stringify({
+      title: "Orphan check",
+      message: "echo orphan",
+      provider: "faux",
+      modelId: "echo",
+    }),
+  });
+
+  const orphan = await poll("child of a Chat", async () =>
+    (await childSessions()).find(
+      (child) => child.title === "Orphan check" && child.parentId === orphanParent.id && !child.busy,
+    ),
+  );
+
+  await poll(
+    "the parent Chat is idle",
+    async () => !(await api(`/api/agents/default/chats/${orphanParent.id}`)).busy,
+  );
+  await api(`/api/agents/default/chats/${orphanParent.id}/archive`, undefined, "PUT");
+
+  const orphanParentTitle =
+    (await api(`/api/agents/default/chats/${orphanParent.id}`)).title || "New session";
+
+  await visit("/tasks");
+  await ui(
+    "the child of an archived Chat names that Chat",
+    `(() => { const row = document.querySelector('main a[href="/a/default/c/${orphan.id}"]:not([inert] *)')?.closest('li'); return !!row && row.innerText.includes(${JSON.stringify(`Started by ${orphanParentTitle}`)}) && !row.innerText.includes('Started by Main'); })()`,
+  );
+  results.push("a child of an archived Chat names its parent");
 
   // Saved channel inputs use real reconciliation. Go tests cover each platform boundary.
   await model("echo");
@@ -1897,6 +2008,15 @@ async function holdMaintenance() {
 async function model(modelId) {
   const agent = await api("/api/agents/default");
   await api("/api/agents/default", { ...agent, provider: "faux", modelId }, "PUT");
+}
+
+// Moves only the clock that the page reads. The API data and the timers stay as they are.
+async function advanceClock(ms) {
+  await evaluate(`window.__realNow ??= Date.now; Date.now = () => window.__realNow() + ${ms}; true`);
+}
+
+async function restoreClock() {
+  await evaluate("if (window.__realNow) Date.now = window.__realNow; true");
 }
 
 async function childSessions() {

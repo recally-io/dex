@@ -96,6 +96,10 @@ export type Chat = {
      * The earliest start of a tool that runs now. Only the session list sets it, and only while the session is busy and runs a tool.
      */
     toolStartedAt?: number;
+    /**
+     * True when Stop on the parent session would act on this child, because the child has pending input that the parent sent. Only the session list sets it.
+     */
+    stoppedWithParent?: boolean;
 };
 
 /**

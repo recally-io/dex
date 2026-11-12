@@ -34,6 +34,25 @@ export function startedBy(
   return chat.agentName ? `${parent} · ${chat.agentName}` : parent;
 }
 
+/**
+ * The name that a child row shows after "Started by". Main is not in the session list, so only its
+ * ID says Main. The list must hold archived sessions too: an archived parent keeps its title.
+ */
+export function parentName(
+  chat: Pick<Chat, "parentId" | "parentAgentName" | "agentName">,
+  mainId: number | undefined,
+  all: Pick<Chat, "id" | "title">[],
+) {
+  if (chat.parentId === undefined) return undefined;
+
+  const parent = all.find((item) => item.id === chat.parentId);
+
+  const title =
+    chat.parentId === mainId ? "Main" : parent === undefined ? undefined : parent.title || "New session";
+
+  return startedBy(chat, title);
+}
+
 export function activeSessionCount(sessions: Pick<Chat, "busy">[]) {
   return sessions.filter((chat) => chat.busy).length;
 }

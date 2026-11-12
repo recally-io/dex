@@ -411,12 +411,13 @@ func TestUserStopWithdrawsInputThatAnotherBotAdmits(t *testing.T) {
 // crossBotChat is a session in the list of the web API. The bot fields are set only when the session
 // or its parent belongs to another bot than the one in the path.
 type crossBotChat struct {
-	ID              int64  `json:"id"`
-	ParentID        *int64 `json:"parentId"`
-	AgentID         string `json:"agentId"`
-	AgentName       string `json:"agentName"`
-	ParentAgentID   string `json:"parentAgentId"`
-	ParentAgentName string `json:"parentAgentName"`
+	ID                int64  `json:"id"`
+	ParentID          *int64 `json:"parentId"`
+	AgentID           string `json:"agentId"`
+	AgentName         string `json:"agentName"`
+	ParentAgentID     string `json:"parentAgentId"`
+	ParentAgentName   string `json:"parentAgentName"`
+	StoppedWithParent *bool  `json:"stoppedWithParent"`
 }
 
 func (s *bots) webList(agent string) map[int64]crossBotChat {
@@ -430,6 +431,32 @@ func (s *bots) webList(agent string) map[int64]crossBotChat {
 		out[c.ID] = c
 	}
 	return out
+}
+
+func TestUserSeesParentStopReachAChildInAnotherBot(t *testing.T) {
+	t.Parallel()
+	// Given a parent turn that runs in another bot.
+	s := startBots(t)
+	parent := s.chat("default")
+	child := parent.newChild(map[string]any{"bot": "Coder", "title": "Cross stop", "message": taskGate(t, s.dir, "cross-stop"), "provider": "faux", "modelId": "bash"})
+	id := child.conversation(t)
+	waitTaskFile(t, filepath.Join(s.dir, "cross-stop.pid"))
+
+	// When each bot lists the child, both lists show that parent Stop reaches it.
+	for _, agent := range []string{"default", s.b.ID} {
+		got := s.webList(agent)[id]
+		if got.StoppedWithParent == nil || !*got.StoppedWithParent {
+			t.Fatalf("child in list of %s: %+v", agent, got)
+		}
+	}
+	// Then parent Stop ends the turn and removes the mark from both lists.
+	s.d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent.id), nil, nil)
+	waitChildTurnsEnded(t, s.conn, id, 1)
+	for _, agent := range []string{"default", s.b.ID} {
+		if got := s.webList(agent)[id]; got.StoppedWithParent != nil {
+			t.Fatalf("stopped child in list of %s: %+v", agent, got)
+		}
+	}
 }
 
 func TestUserWebSeesAChildInAnotherBotWithItsBots(t *testing.T) {

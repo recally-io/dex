@@ -5,17 +5,19 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { ChevronRight, MessageCircle, Clock3, Plus } from "lucide-react";
 import type { Chat } from "../api/generated/types.gen";
 import {
+  getMainChatOptions,
   getTurnChatOptions,
   listChatsOptions,
   createChatMutation,
 } from "../api/generated/@tanstack/react-query.gen";
+import { useNow } from "../lib/clock";
 import {
   activeSessionCount,
   isStalled,
+  parentName,
   sessionAgentId,
   sessionKind,
   sessionTime,
-  startedBy,
 } from "../lib/sessions";
 import { refreshChats } from "../lib/queries";
 import { Empty, FramedPage, Panel, Section } from "../components/page";
@@ -34,6 +36,7 @@ export function SessionsPage() {
     refetchInterval: 3000,
   });
 
+  const main = useQuery(getMainChatOptions({ path: { agentId } }));
   const navigate = useNavigate();
 
   const create = useMutation({
@@ -47,9 +50,9 @@ export function SessionsPage() {
   const [kind, setKind] = useState("All kinds");
   const name = settings.data?.agent.name ?? "dex";
   // Archived Chats live in the Chats sidebar of the Chat tab, not here.
-  const all = (sessions.data?.chats ?? []).filter((chat) => !chat.archivedAt);
+  const everyChat = sessions.data?.chats ?? [];
+  const all = everyChat.filter((chat) => !chat.archivedAt);
   const list = all.filter((chat) => kind === "All kinds" || sessionKind(chat) === kind);
-  const titles = new Map(all.map((chat) => [chat.id, chat.title || "New session"]));
 
   return (
     <FramedPage
@@ -98,14 +101,7 @@ export function SessionsPage() {
           <Panel>
             <ul>
               {list.map((chat) => (
-                <SessionRow
-                  key={chat.id}
-                  chat={chat}
-                  parent={startedBy(
-                    chat,
-                    chat.parentId === undefined ? undefined : (titles.get(chat.parentId) ?? "Main"),
-                  )}
-                />
+                <SessionRow key={chat.id} chat={chat} parent={parentName(chat, main.data?.id, everyChat)} />
               ))}
             </ul>
           </Panel>
@@ -127,7 +123,8 @@ function SessionRow({ chat, parent }: { chat: Chat; parent?: string }) {
   const agentId = useAgentId();
   const kind = sessionKind(chat);
   const Icon = kind === "Chat" ? MessageCircle : Clock3;
-  const stalled = isStalled(chat);
+  const now = useNow();
+  const stalled = isStalled(chat, now);
 
   return (
     <li className="flex items-center gap-3 border-t border-border px-4 py-3.5 first:border-t-0">

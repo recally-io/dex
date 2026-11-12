@@ -106,17 +106,36 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			return nil, err
 		}
 		kind := inputEntryKind(input)
-		metadata := InputMetadata{RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
-		data, err := durable.ToJsonValue(metadata)
-		if err != nil {
+		whenBusy := durable.WhenBusy(cmp.Or(input.WhenBusy, string(durable.WhenBusyFollowUp)))
+		// The run peers and the admission share one commit, so they describe the same moment.
+		var id durable.SubmissionId
+		_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+			metadata := InputMetadata{RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
+			if input.Child {
+				var err error
+				if metadata.RunPeers, err = runPeers(tx, conversation.Id(), whenBusy); err != nil {
+					return nil, err
+				}
+			}
+			data, err := durable.ToJsonValue(metadata)
+			if err != nil {
+				return nil, err
+			}
+			draft := durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"))), WhenBusy: whenBusy, InputEntry: &durable.InputEntry{Kind: kind, Data: data}}
+			id, err = conversation.SubmitIn(tx, draft)
 			return nil, err
-		}
-		draft := durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"))), WhenBusy: durable.WhenBusy(cmp.Or(input.WhenBusy, string(durable.WhenBusyFollowUp))), InputEntry: &durable.InputEntry{Kind: kind, Data: data}}
-		native, err = conversation.Submit(ctx, draft)
+		})
 		if err != nil {
 			if _, ok := errors.AsType[*durable.ConversationBusy](err); ok {
 				return nil, errors.Join(ErrBusy, err)
 			}
+			return nil, err
+		}
+		h, err := a.harness(ctx, ref.AgentID)
+		if err != nil {
+			return nil, err
+		}
+		if native, err = h.Submission(ctx, id); err != nil {
 			return nil, err
 		}
 	}

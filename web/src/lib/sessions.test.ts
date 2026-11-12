@@ -4,6 +4,7 @@ import {
   activeSessionCount,
   formatDuration,
   isStalled,
+  parentName,
   sessionAgentId,
   sessionKind,
   startedBy,
@@ -41,6 +42,22 @@ test("user sees factual durations", () => {
   expect(formatDuration(48_000)).toBe("48 s");
   expect(formatDuration(312_000)).toBe("5 min 12 s");
   expect(formatDuration(3_840_000)).toBe("1 h 4 min");
+});
+
+test("a child row names its parent by ID: Main only for the ID of Main, and an archived parent keeps its title", () => {
+  const all = [
+    { id: 2, title: "Review" },
+    { id: 4, title: "" },
+  ];
+
+  expect(parentName({ parentId: undefined }, 1, all)).toBeUndefined();
+  expect(parentName({ parentId: 1 }, 1, all)).toBe("Main");
+  expect(parentName({ parentId: 2 }, 1, all)).toBe("Review");
+  expect(parentName({ parentId: 4 }, 1, all)).toBe("New session");
+  // A parent that the list does not hold is not Main.
+  expect(parentName({ parentId: 9 }, 1, all)).toBe("a chat");
+  expect(parentName({ parentId: 2, agentName: "Coder" }, 1, all)).toBe("Review · Coder");
+  expect(parentName({ parentId: 9, parentAgentName: "Dex" }, 1, all)).toBe("Dex");
 });
 
 test("a child session in another bot opens in that bot and names it", () => {

@@ -53,14 +53,13 @@ to read in an afternoon.
   Chat tab, the header has Chat settings and a Sessions button. Chat settings
   shows a row with the project, model and thinking level of the open chat; a dot
   on the button tells that the chat has its own values. The Sessions button
-  shows how many items need the user and how many tasks run. It opens the
-  Sessions panel: Needs you, Running, Chats, and Completed. The Chats section
-  has New chat. Main comes first and cannot be archived. Chat sessions follow in
+  shows how many items need the user and how many sessions run. It opens the
+  Sessions panel: Needs you and the session list. The list has New chat. Main comes first and cannot be archived. Chat sessions follow in
   date groups by latest activity: Today, Yesterday, Previous 7 days, Previous
   30 days, then one group per month. Archived chats come last. Only Today
   starts open, and each group shows five chats until the user asks for more.
   The row menu and a right-click archive or restore a Chat. Archiving keeps the
-  messages, records and files; a task result still returns to the chat.
+  messages, records and files; a child session's result still returns to the chat.
   New chat does not reuse an archived
   empty chat. The Sessions panel starts closed, and the browser keeps the user's choice.
   The left sidebar lists only the bots. The user talks to a bot, and the bot
@@ -86,7 +85,7 @@ to read in an afternoon.
   long commands whose output would flood the context, and independent review.
   Each execution has one input and fixed model settings. The main agent
   handles implementation, review findings, tests, and the final answer.
-  Each task starts as soon as it is created. There is no limit on the number of tasks, and tasks in one directory run at the same time. Cancellation withdraws queued work or requests cancellation of running work, and a tool may still complete actions. Background execution cannot delegate more work. The main agent handles failures and decides the
+  Each child session starts as soon as it is created. There is no limit on the number of child sessions, and sessions in one directory run at the same time. Stop on a parent withdraws the work that the parent sent and requests cancellation of its running work, and a tool may still complete actions. A child session cannot delegate more work. The main agent handles failures and decides the
   next action.
 - Telegram setup: save a bot token, then open a single-use pairing link to
   allow the owner's account while the bot has no owner. Links expire after
@@ -112,10 +111,10 @@ to read in an afternoon.
   Reply delivery resumes after a restart and skips confirmed
   parts. A crash after remote success can duplicate one part. Bot settings
   show each channel's runtime status and setup.
-- Agents can deliver files from main, Chat, Routine runs, and background tasks.
+- Agents can deliver files from main, Chat, Routine runs, and child sessions.
   Dex stores each delivery as an immutable snapshot of at most 20 MiB. The user
   can preview Markdown and safe raster images in Dex and download other files.
-  Task deliveries appear in the task record and the parent conversation.
+  A delivery of a child session appears in that session and in its parent conversation.
   Continue editing adds the snapshot ID, name, and source to a writable Chat.
   A new delivery is required to publish later changes.
 - In main and Chat sessions, the user can attach files and images (at most 10 per
@@ -191,47 +190,60 @@ hear it with the composer.
 The web chat marks a delegation with the work's title. A returned result has
 a named label and a thin line that groups its replies and tool calls. The mark
 shows where the report belongs; it does not confirm that the work reached its goal.
-The chat does not show the internal report as input. Read-only task records
-give the human the saved report, status, times, and work transcript.
-The bot has no Sessions tab. The Sessions panel lists writable Chats and
-links to All sessions, the full session list of the bot. On a phone, the
-Sessions panel opens as a full-screen sheet. A child session that runs in
-another bot shows in the panel and in All sessions of its parent bot, with the
-name of its bot, and opens under that bot. Its own bot shows the bot of the
-parent.
+The chat does not show the internal report as input. The user opens the
+child session to read its full work.
+The bot has no Sessions tab. The Sessions panel lists Chats and child sessions,
+newest activity first, and links to All sessions, the full session list of the
+bot. A child session is a Chat session with a parent. Its row shows "Started by"
+and the name of the parent: Main, or the title of a Chat, also when that Chat is
+archived. The panel has no task rows, no step preview, no Stop on a row, no Mark
+handled and no Completed group. On a phone, the Sessions panel opens as a
+full-screen sheet.
+A busy session shows a dot in the panel and a Running badge in All sessions. The
+dot and the badge change to Stalled when the session shows no sign of work: a
+tool has run for more than 30 minutes, or no tool runs and the engine saw no
+activity for 5 minutes. The hint checks the time every 15 seconds, so it appears
+with no click.
+A child session that runs in another bot appears in the parent bot’s panel and
+All sessions list. The row names its bot and opens in that bot. The child bot
+names the parent bot.
 Routine run history links to read-only automation transcripts.
 Old channel transcript URLs remain readable. The legacy Sessions URL remains
 available for saved links.
-Named dispatch and result labels open the task by its ID.
-Done means that the task returned a report. It does not prove goal completion.
-The user can request cancellation and mark a finished task handled. The UI does
-not show progress percentages.
+Named dispatch and result labels open the child session that holds the turn. An
+old `/tasks/<id>` link, with or without the bot prefix, opens the session of that
+old task in the same way. The UI has no Task page and no Task kind in the filter.
+A result shows that the child returned a report. It does not prove goal
+completion. The UI does not show progress percentages.
 
 `New chat` in the Sessions panel opens a writable Chat
 with its own model context. It reuses the
 newest empty Chat, so an abandoned click leaves no list row. The first message
 sets the title. Chat defaults to the bot's model settings and uses its instructions and shared memory.
 A saved session model or thinking level override applies from the next input.
-Chat does not read the main timeline's context. A task started in Chat returns
+Chat does not read the main timeline's context. A child session started in Chat returns
 its result to that Chat. `/clear`, `/compact`, Stop and earlier messages work within
-the selected session. Other sessions cannot enable its Stop.
+the selected session. Other sessions cannot enable its Stop, except that the Stop of a parent covers
+the work that the parent sent to a child, as the Stop rule below says.
 Each finished answer shows Copy and, when it waits for no tool result, Fork
 from here. Each sent message shows Copy and Edit in new chat, which opens a fork
 that ends before the message and puts the message text, without attachments,
 in the composer. A fork is a new Chat with the source's model, thinking level
 and project. It does not run until the user sends a message, and it names its
-source. The source stays unchanged, and files on disk are not rolled back. Task conversations are
-read-only while queued or running. After the task ends, the user can send messages
-and change the conversation's model and project. The original task record, report,
-and parent result stay unchanged. Automation transcripts stay read-only.
-Main stays the default view. A Chat session opens
-under the Chat tab. Task pages open under Chat. Automation transcripts open under Routines.
+source. The source stays unchanged, and files on disk are not rolled back. A child
+session is a normal chat page with the normal composer and a link to its parent.
+The user can send messages to it at any time, also while it runs: Enter steers
+the run, like in any Chat. The user can change its model and project. Its result
+in the parent stays unchanged. Automation transcripts stay read-only.
+Main stays the default view. A Chat session or a child session opens
+under the Chat tab. Automation transcripts open under Routines.
 
 A bot needs the user when it has an open question, an unhandled failed or
-blocked task, a failed routine run that is not handled, or a routine that needs
-a model. The Needs you section of the Sessions panel lists each item and opens
-the place to act on it. Mark all handled in that section marks every
-finished task that needs the user as handled. There is no cross-bot list.
+failed routine run that is not handled, or a routine that needs a model. The
+Needs you section of the Sessions panel lists each item and opens the place to
+act on it. A failed child session goes to its parent, which tells the user; it
+is not a Needs you item. Mark handled applies to a failed routine run only.
+There is no cross-bot list.
 Routine result records include settled `changed` or `failed` outcomes without a
 duplicate mark. Unknown and `unchanged` outcomes stay in run history. Opening
 a result marks it read. Marking it handled dismisses it. Both states survive restart.
@@ -270,9 +282,15 @@ cannot quote, so a WeChat user answers in the web. Tasks, automations and dreams
 cannot ask. The web shows an answer as the question in muted text above the answer.
 
 Web Stop stays in the composer for queued input, an active answer, and active
-background work. Stop covers the selected writable session and its background
-work. Queued and running task conversations and Automation transcripts are
-read-only. Stop needs no model.
+background work. Stop covers the selected writable session. On a parent, it
+also covers each child that has pending input that the parent sent. The session
+list marks those children (`stoppedWithParent`), and the parent page shows Stop
+only for them. A child that also has pending user input keeps its run, and
+Stop withdraws only the parent input that is still queued. A run that the user
+started in a child is not covered: the parent page shows no Stop for it, and the
+user stops it in the child. Stop on a child
+ends all pending input of that child. Automation transcripts are read-only.
+Stop needs no model.
 Stop withdraws pending input and results, records cancellation, and requests
 SDK cancellation once. The reply confirms the request. It does not confirm
 process exit. Processes and remote work can continue. Prior actions are not
@@ -318,7 +336,7 @@ Each agent reads skills, `mcp.json`, and `.env` from three `.agents/`
 directories: the user home, the resolved dex data directory, and the agent
 home (`<data dir>/agents/<id>`). The narrower level wins. Tools start
 in the agent workspace by default. Main and Chat sessions can select an existing
-project directory in the header or with `set_project`. An ended task conversation
+project directory in the header or with `set_project`. A child session
 can also change its project through the API. The header picker
 browses directories on the dex host and offers up to eight recent projects
 for the current agent. The directory applies
@@ -326,9 +344,9 @@ from the next message after an API change. A tool change also applies to
 later tools in the same run. Clear the project to return to the agent
 workspace. An automation can set its project directory in its dialog. The
 directory applies on every run, including a reused session. Channel input uses
-Main's project. Tasks inherit their parent session's directory. A child session in
-another bot starts in the workspace of that bot. A running task
-and a dream cannot set a project. Project skills come from
+Main's project. Child sessions inherit their parent session's directory. A child
+session in another bot starts in the workspace of that bot. A dream cannot set a
+project. Project skills come from
 `<cwd>/.agents/skills/`. Memory stays in `<data dir>/memory`.
 
 The system prompt always includes a guide to these files, even with no

@@ -44,6 +44,40 @@ func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConvers
 	return i, err
 }
 
+const listChildrenStoppedByParent = `-- name: ListChildrenStoppedByParent :many
+SELECT conversations.id FROM conversations
+JOIN conversations parent ON parent.id = conversations.parent_id
+WHERE (conversations.agent_id = ?1 OR parent.agent_id = ?1) AND EXISTS (
+    SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
+        AND s.parent_request_id IS NOT NULL
+)
+`
+
+// The children that Stop on their parent reaches. Keep the rule equal to ListStopConversations: the
+// web UI shows Stop on a parent page only for these.
+func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID string) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listChildrenStoppedByParent, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStopConversations = `-- name: ListStopConversations :many
 SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id FROM conversations
 WHERE (conversations.id = ?1 AND conversations.agent_id = ?2)
@@ -102,19 +136,34 @@ func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConvers
 const stopConversationSubmissions = `-- name: StopConversationSubmissions :execrows
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = ?1
 WHERE conversation_id = ?2 AND status = 'pending'
-    AND (CAST(?3 AS INTEGER) = 0 OR parent_request_id IS NOT NULL)
 `
 
 type StopConversationSubmissionsParams struct {
-	Now        sql.NullInt64 `json:"now"`
-	ChatID     int64         `json:"chat_id"`
-	ParentOnly int64         `json:"parent_only"`
+	Now    sql.NullInt64 `json:"now"`
+	ChatID int64         `json:"chat_id"`
 }
 
-// A child that Stop reaches through its parent keeps its pending user input. Stop on the child
-// itself ends all of it.
 func (q *Queries) StopConversationSubmissions(ctx context.Context, arg StopConversationSubmissionsParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, stopConversationSubmissions, arg.Now, arg.ChatID, arg.ParentOnly)
+	result, err := q.db.ExecContext(ctx, stopConversationSubmissions, arg.Now, arg.ChatID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const stopSubmission = `-- name: StopSubmission :execrows
+UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = ?1
+WHERE id = ?2 AND status = 'pending'
+`
+
+type StopSubmissionParams struct {
+	Now sql.NullInt64 `json:"now"`
+	ID  string        `json:"id"`
+}
+
+// Stop ends one pending input that native execution withdrew.
+func (q *Queries) StopSubmission(ctx context.Context, arg StopSubmissionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, stopSubmission, arg.Now, arg.ID)
 	if err != nil {
 		return 0, err
 	}

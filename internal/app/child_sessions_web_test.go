@@ -19,6 +19,8 @@ type webChat struct {
 	// The list sets the activity fields while a session is busy.
 	LastActivityAt *int64 `json:"lastActivityAt"`
 	ToolStartedAt  *int64 `json:"toolStartedAt"`
+	// The list sets it when Stop on the parent would act on the child.
+	StoppedWithParent *bool `json:"stoppedWithParent"`
 }
 
 func (d *dex) listWebChats(t *testing.T) map[int64]webChat {
@@ -149,4 +151,40 @@ func TestUserSeesBusyChildActivityInTheSessionList(t *testing.T) {
 		done := d.listWebChats(t)[child.conversation(t)]
 		return !done.Busy && done.LastActivityAt == nil && done.ToolStartedAt == nil, fmt.Sprintf("%+v", done)
 	})
+}
+
+func TestUserSeesWhichChildrenStopOnTheParentReaches(t *testing.T) {
+	t.Parallel()
+	// Given a child that runs a parent turn, and a child that runs only a turn that the user started.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	parent := newParent(t, d)
+	reached := spawnChild(t, d, parent, "Parent turn", taskGate(t, dir, "reached"), "bash")
+	waitTaskFile(t, filepath.Join(dir, "reached.pid"))
+	alone := spawnChild(t, d, parent, "User turn", "echo first", "bash")
+	waitDoneChildTurns(t, conn, alone.conversation(t), 1)
+	d.send(t, alone.conversation(t), taskGate(t, dir, "alone"))
+	waitTaskFile(t, filepath.Join(dir, "alone.pid"))
+
+	// When the web reads the session list, then only the first child is marked.
+	listed := d.listWebChats(t)
+	if got := listed[reached.conversation(t)]; !got.Busy || got.StoppedWithParent == nil || !*got.StoppedWithParent {
+		t.Fatalf("child of a parent turn: %+v", got)
+	}
+	if got := listed[alone.conversation(t)]; !got.Busy || got.StoppedWithParent != nil {
+		t.Fatalf("child of a user turn: %+v", got)
+	}
+
+	// And the mark is the effect of Stop: it ends the first child and leaves the second.
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent), nil, nil)
+	waitChildTurnsEnded(t, conn, reached.conversation(t), 1)
+	if turns := childTurns(t, conn, alone.conversation(t)); turns[1].status != "pending" {
+		t.Fatalf("the stop of the parent ended the turn of the user: %+v", turns[1])
+	}
+	if got := d.listWebChats(t)[reached.conversation(t)]; got.Busy || got.StoppedWithParent != nil {
+		t.Fatalf("stopped child: %+v", got)
+	}
+	releaseResultGate(t, dir, "alone")
+	waitDoneChildTurns(t, conn, alone.conversation(t), 2)
 }
