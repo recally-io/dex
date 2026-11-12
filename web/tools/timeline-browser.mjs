@@ -418,6 +418,122 @@ try {
   );
   results.push("Enter steers a running chat and the run answers once");
 
+  // A held tool keeps the first reply busy while the user queues and removes messages.
+  await poll(
+    "steer settled before queue checks",
+    async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy,
+  );
+  const queueGate = join(isolated, "queue.gate");
+  const followGate = join(isolated, "follow.gate");
+  const firstCommand = `while ! test -f '${queueGate}'; do sleep 0.05; done; echo queue-first`;
+  const followCommand = `while ! test -f '${followGate}'; do sleep 0.05; done; echo queue-follow`;
+  const removedCommand = "echo queue-removed";
+  await sendFromComposer(firstCommand);
+  await ui("queue run active", "!!document.querySelector('button[aria-label=\"Stop run\"]:not([inert] *)')");
+  await typeDraft(followCommand);
+  await tap('[aria-label="Choose when to send"]');
+  await ui(
+    "queue mode offered",
+    "!![...document.querySelectorAll('[role=menuitemradio]')].find(e => e.innerText.includes('Queue'))",
+  );
+  await evaluate(
+    "[...document.querySelectorAll('[role=menuitemradio]')].find(e => e.innerText.includes('Queue')).click()",
+  );
+  await key("Enter");
+  await ui(
+    "follow-up queued",
+    "document.body.innerText.includes('Queued · runs after the current reply') && document.body.innerText.includes('echo queue-follow')",
+  );
+
+  const followMessage = await poll("follow-up accepted", () =>
+    messages.find((entry) => entry.request.text === followCommand && entry.status === 202),
+  );
+
+  assert.equal(followMessage.request.mode, "followUp");
+  await check(
+    "follow-up waits while the first tool runs",
+    "!document.body.innerText.includes('bash: queue-first') && !document.body.innerText.includes('bash: queue-follow')",
+  );
+
+  await sendFromComposer(removedCommand);
+
+  const removedMessage = await poll("removable message accepted", () =>
+    messages.find((entry) => entry.request.text === removedCommand && entry.status === 202),
+  );
+
+  assert.equal(removedMessage.request.mode, "followUp");
+  await ui(
+    "queued message has Remove",
+    `(() => { const item = [...document.querySelectorAll('main div')].find(e => e.textContent === ${JSON.stringify(removedCommand)}); return !!item?.parentElement.querySelector('button') && item.parentElement.innerText.includes('Queued · runs after the current reply'); })()`,
+  );
+  await evaluate(
+    `(() => { const item = [...document.querySelectorAll('main div')].find(e => e.textContent === ${JSON.stringify(removedCommand)}); [...item.parentElement.querySelectorAll('button')].find(b => b.textContent.trim() === 'Remove').click(); })()`,
+  );
+  await ui(
+    "removed message leaves queue",
+    `!document.body.innerText.includes(${JSON.stringify(removedCommand)})`,
+  );
+
+  const withdrawn = await api(
+    `/api/agents/default/chats/${main.id}/messages/${removedMessage.request.id}/withdraw`,
+    undefined,
+    "POST",
+  );
+
+  assert.equal(withdrawn.text, removedCommand, "repeated withdrawal returns the removed message");
+
+  // Reject is an API-only mode: the composer offers Steer and Queue, not Reject.
+  const rejectedText = "echo queue-rejected";
+
+  const rejected = await fetch(`${base}/api/agents/default/chats/${main.id}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: randomUUID(), text: rejectedText, mode: "reject" }),
+  });
+
+  const rejection = await rejected.json();
+  assert.equal(rejected.status, 409, JSON.stringify(rejection));
+  assert.match(JSON.stringify(rejection), /busy|working/i);
+  await check(
+    "rejected input does not appear in the queue",
+    `!document.body.innerText.includes(${JSON.stringify(rejectedText)})`,
+  );
+
+  await writeFile(queueGate, "release");
+  await ui(
+    "first answer precedes follow-up",
+    "document.body.innerText.includes('bash: queue-first') && document.body.innerText.includes('echo queue-follow') && !document.body.innerText.includes('bash: queue-follow')",
+  );
+  await ui(
+    "started follow-up leaves queue",
+    "document.body.innerText.includes('bash: queue-first') && !document.body.innerText.includes('Queued · runs after the current reply')",
+  );
+
+  const startedWithdrawal = await fetch(
+    `${base}/api/agents/default/chats/${main.id}/messages/${followMessage.request.id}/withdraw`,
+    { method: "POST" },
+  );
+
+  assert.equal(startedWithdrawal.status, 409, "a started message cannot be withdrawn");
+  await writeFile(followGate, "release");
+  await ui("follow-up completes", "document.body.innerText.includes('bash: queue-follow')");
+  await poll("queue run settled", async () => !(await api(`/api/agents/default/chats/${main.id}`)).busy);
+  await reload();
+  await ui(
+    "queue history restored",
+    "document.body.innerText.includes('bash: queue-first') && document.body.innerText.includes('bash: queue-follow')",
+  );
+  await check(
+    "removed and rejected messages never run",
+    "!document.body.innerText.includes('bash: queue-removed') && !document.body.innerText.includes('queue-rejected') && document.body.innerText.indexOf('bash: queue-first') < document.body.innerText.indexOf('bash: queue-follow')",
+  );
+  const queueHistory = await api(`/api/agents/default/chats/${main.id}/history?before=2147483647`);
+  assert.ok(!JSON.stringify(queueHistory).includes("bash: queue-removed"));
+  assert.ok(!JSON.stringify(queueHistory).includes(rejectedText));
+  results.push("follow-up waits, runs after the first reply, and cannot be withdrawn after it starts");
+  results.push("Remove withdraws a queued web message before it runs");
+  results.push("reject returns 409 while busy and never queues or runs the message");
+
   // Retry on a stopped run continues the same run and does not send the message again.
   const retryGate = join(isolated, "retry.gate");
   const retryCommand = `while ! test -f '${retryGate}'; do sleep 0.05; done; echo retry-gate`;
