@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/background"
@@ -257,6 +258,49 @@ func TestUserGetsBatchedWakeUpsForTheLinesOfAWatch(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), "ignored") || !strings.Contains(string(data), "deploy: fail") {
 		t.Fatalf("output file %q: %v", data, err)
 	}
+}
+
+func TestUserGetsTheLinesOfAWatchWhileTheDatabaseIsBusy(t *testing.T) {
+	t.Parallel()
+	// Given a watch that prints a line when a gate opens.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	chat := bgChat(t, d)
+	gate, last := filepath.Join(dir, "line.gate"), filepath.Join(dir, "end.gate")
+	command := fmt.Sprintf("until test -f %s; do sleep 0.05; done; echo 'lint: pass'; until test -f %s; do sleep 0.05; done", gate, last)
+	bgStart(t, d, chat, map[string]any{"command": command, "wake": "lines"})
+	// And another writer that holds the database longer than the busy timeout of 5 seconds.
+	writer, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = writer.Close() })
+	lock, err := writer.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lock.ExecContext(t.Context(), "BEGIN IMMEDIATE"); err != nil {
+		t.Fatal(err)
+	}
+	// When the line arrives while the database is busy, and the writer lets go after 12 seconds.
+	if err := os.WriteFile(gate, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(12 * time.Second)
+	if _, err := lock.ExecContext(t.Context(), "ROLLBACK"); err != nil {
+		t.Fatal(err)
+	}
+	_ = lock.Close()
+	// Then the session still gets the line.
+	first := waitWakes(t, conn, chat, 1)[0]
+	if first.result.Event != "lines" || strings.Join(first.result.Lines, "|") != "lint: pass" {
+		t.Fatalf("wake-up: %+v", first.result)
+	}
+	if err := os.WriteFile(last, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	waitWakes(t, conn, chat, 2)
 }
 
 func TestUserGetsAWakeUpWhenAWatchPassesItsTimeout(t *testing.T) {
