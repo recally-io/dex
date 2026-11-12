@@ -124,8 +124,13 @@ WHERE s.status = 'pending'
 ORDER BY s.rowid;
 
 -- name: ListChats :many
+-- The sessions of one bot, and the children of its sessions that belong to another bot.
 SELECT
     c.id,
+    c.agent_id,
+    a.name AS agent_name,
+    p.agent_id AS parent_agent_id,
+    pa.name AS parent_agent_name,
     c.channel_key,
     c.title,
     c.model_provider,
@@ -142,8 +147,11 @@ SELECT
     ) AS INTEGER) AS updated_at,
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
+JOIN agents a ON a.id = c.agent_id
+LEFT JOIN conversations p ON p.id = c.parent_id
+LEFT JOIN agents pa ON pa.id = p.agent_id
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE c.agent_id = ?
+WHERE (c.agent_id = @agent_id OR p.agent_id = @agent_id)
     AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
     AND (c.channel_key NOT LIKE 'chat:%' OR c.forked_from IS NOT NULL OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
@@ -154,6 +162,8 @@ ORDER BY updated_at DESC, c.id DESC;
 -- name: GetChat :one
 SELECT
     c.id,
+    p.agent_id AS parent_agent_id,
+    pa.name AS parent_agent_name,
     c.channel_key,
     c.title,
     c.model_provider,
@@ -176,6 +186,8 @@ SELECT
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN conversations f ON f.id = c.forked_from
+LEFT JOIN conversations p ON p.id = c.parent_id
+LEFT JOIN agents pa ON pa.id = p.agent_id
 WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id;
 

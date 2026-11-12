@@ -45,7 +45,9 @@ func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConvers
 }
 
 const listChildrenStoppedByParent = `-- name: ListChildrenStoppedByParent :many
-SELECT conversations.id FROM conversations WHERE conversations.agent_id = ? AND conversations.parent_id IS NOT NULL AND EXISTS (
+SELECT conversations.id FROM conversations
+JOIN conversations parent ON parent.id = conversations.parent_id
+WHERE (conversations.agent_id = ?1 OR parent.agent_id = ?1) AND EXISTS (
     SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
         AND s.parent_request_id IS NOT NULL
 )
@@ -77,23 +79,24 @@ func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID strin
 }
 
 const listStopConversations = `-- name: ListStopConversations :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id FROM conversations WHERE conversations.agent_id = ?1
-AND (conversations.id = ?2 OR (conversations.parent_id = ?2 AND EXISTS (
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id FROM conversations
+WHERE (conversations.id = ?1 AND conversations.agent_id = ?2)
+OR (conversations.parent_id = ?1 AND EXISTS (
     SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
         AND s.parent_request_id IS NOT NULL
-)))
+))
 ORDER BY conversations.id
 `
 
 type ListStopConversationsParams struct {
-	AgentID string `json:"agent_id"`
 	ChatID  int64  `json:"chat_id"`
+	AgentID string `json:"agent_id"`
 }
 
 // Stop reaches the conversation and the children of it that have pending input that the parent
-// started. A child with only user input is not reached.
+// started, whatever bot the child belongs to. A child with only user input is not reached.
 func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConversationsParams) ([]Conversation, error) {
-	rows, err := q.db.QueryContext(ctx, listStopConversations, arg.AgentID, arg.ChatID)
+	rows, err := q.db.QueryContext(ctx, listStopConversations, arg.ChatID, arg.AgentID)
 	if err != nil {
 		return nil, err
 	}

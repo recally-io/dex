@@ -108,10 +108,18 @@ from before child sessions has the same shape. While a session is busy, the list
 adds `lastActivityAt` and `toolStartedAt` from the engine. The web uses them to
 show a stalled hint. Detail does not carry them.
 
+The list of a bot also holds the children of its sessions that belong to another
+bot. Such a child has `agentId` and `agentName`, and its row opens under that bot.
+A child row names the bot of its parent in `parentAgentId` and `parentAgentName`
+when the parent belongs to another bot than the one in the path. Detail has the
+parent fields.
+
 `GET /api/agents/{agentId}/turns/{turnId}` returns the session that holds a
 turn. Result links and old `/tasks/<id>` links name a turn, because the ID of an
 old task is the ID of its first input. The route returns `404` for an unknown
-turn and for the turn of another agent.
+turn and for the turn of another agent, except a turn of a child of a session of
+this agent in another bot. That child names its bot in `agentId`, and the web
+opens it under that bot.
 
 Channel input enters the agent's main conversation. Chat and automation
 contexts stay separate. See [Product](../product.md#scope) for session behavior,
@@ -591,26 +599,73 @@ and runs at once. There is no count limit and no cwd lock. Children in one
 directory run at the same time, so the prompt tells the parent to give each
 writing child separate files or directories. The tools are:
 
-- `session_new` creates a child and sends its first message.
+- `session_new` creates a child and sends its first message. With `bot` (an ID
+  or a name) the child belongs to another bot. See "Cross-bot sessions" below.
 - `session_send` sends a message. An idle child starts a run. For a busy child,
   mode `steer` joins the current run after its current tool step, and mode
   `queue` (the default) runs after it.
 - `session_stop` withdraws queued input and stops the run. It is the same as
   user Stop and has no result.
 - `session_fork` branches a child up to a finished answer, with the same parent.
-- `session_list` lists the children of the caller, or with scope `all` every
-  session of the bot except dreams.
+- `session_list` lists the children of the caller, whatever their bot, and with
+  scope `all` also the sessions of one bot, except dreams. `bot` selects those
+  other sessions: empty (the bot of the caller), `all`, or a bot ID or name. It
+  never hides a child of the caller. Each row names its bot.
 - `session_read` returns turns newest first: the input and the final answer of
   each turn, cut at 4,000 characters. It does not return thinking, tool calls or
-  tool output. It reads any session of the same bot except dreams. `turn` with
+  tool output. It reads any session of any bot except dreams. `turn` with
   `offset` reads the rest of a cut text.
 - `session_search` finds turns whose input or answer contains every word of a
-  query. It covers all sessions of the bot except dreams.
+  query, in sessions except dreams. `bot` is empty (the bot of the caller),
+  `all`, or a bot ID or name.
+
+Each session, list row and match names its bot (`bot` and `botId`).
 
 Only a parent can send to, stop or fork a child. A child has no session tools,
 no routine tools and no `ask_user`: the engine removes them from every input of
 a conversation that has a parent, and the handlers refuse the call as well.
 A conversation that was a task before the upgrade is a child in the same way.
+
+### Cross-bot sessions
+
+[ADR 0016](decisions/0016-cross-bot-sessions.md) lets a child belong to another
+bot. Control keeps these rules, and a reviewer must check each new cross-bot path
+against them:
+
+- Ownership is `child.parent_id = caller conversation`. It does not depend on the
+  bot of the child. `childOf` is the only check for `session_send`,
+  `session_stop` and `session_fork`. A conversation that is not the parent, in
+  any bot, gets "not found".
+- `session_new` with `bot` creates the conversation under the target bot. The
+  child takes the model, thinking level and workspace defaults of that bot, not
+  the settings of the parent. Admission reads the agent of the child, so the
+  child runs with the instructions, memory section, skills, MCP servers and
+  `.env` of that bot. A child still cannot create children.
+- A result goes to `conversations.parent_id` in the settlement transaction, in the
+  bot of the parent. Admission of the bot of the parent takes it from the
+  database, as for a result from the same bot.
+- Locks. No call path holds two delivery gates. A session tool runs in the run of
+  its conversation and holds no gate. `session_stop` takes the gate of the bot of
+  the child, as a Stop in that bot does. A Stop takes the gate of the stopped
+  conversation only. It withdraws the input that the parent started in the
+  children, in every bot, in one transaction, and it aborts only the executions of its own bot. The
+  abort of a child in another bot stays a durable `abort_pending` request. The
+  reconciliation of that bot, under its own gate, carries it out. Two parents
+  in two bots that stop each other's children therefore cannot wait for each
+  other's gate. `settleNative` takes the gate of the bot of the child only for an
+  aborted run, and the result for the parent is a database write without a gate.
+- Restart recovery settles the admitted inputs of each child under the agent of
+  the child, and sends the one `interrupted` result to the parent in its bot.
+- `session_read` reads any session except dreams. `session_search` reads one
+  bot, or all bots with `all`. `session_list` always shows the children of the
+  caller and takes `bot` for the other sessions. The default is the bot of the
+  caller. A name is not unique: an ambiguous name is an error that lists the
+  IDs.
+- A file that a child in another bot delivers stays in the home of the bot of
+  the child. Its row names that bot in `artifacts.agent_id`. The row shows the
+  file in the parent conversation when the turn came from the parent, so the API
+  of the parent bot lists the file and opens it from the home that the row
+  names. Control does not copy the file.
 
 A tool call uses its bot ID and PiG's tool task ID as the turn ID. The turn
 is stored with `submissions.parent_request_id` in the same write transaction as
@@ -648,11 +703,13 @@ ordinary messages.
 A child is writable on the web at any time. A user message goes to the child
 like to any Chat and sends no result. Web Stop covers the selected session and
 its children that have pending input. Channel `/stop` calls main Stop with the
-same scope. Chat, automation and other agents stay outside it. `/clear` does not
+same scope. Other Chats, automations and other agents stay outside it. The
+scope includes children in other bots. `/clear` does not
 cancel children.
 Submission, Stop, Clear and reconciliation share a delivery lock per agent.
 Stop withdraws pending input of the session and of its children in one
-transaction, then requests cancellation through the engine for each execution.
+transaction, then requests cancellation through the engine for each execution
+of its own bot. A child in another bot waits for the reconciliation of its bot.
 Pending cancellation intent stays in business storage until native abort
 succeeds. Reconciliation completes cancellation before it admits later input.
 Both cold recovery and ordinary Stop atomically withdraw queued input and save

@@ -11,7 +11,14 @@ import {
   createChatMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { useNow } from "../lib/clock";
-import { activeSessionCount, isStalled, parentName, sessionKind, sessionTime } from "../lib/sessions";
+import {
+  activeSessionCount,
+  isStalled,
+  parentName,
+  sessionAgentId,
+  sessionKind,
+  sessionTime,
+} from "../lib/sessions";
 import { refreshChats } from "../lib/queries";
 import { Empty, FramedPage, Panel, Section } from "../components/page";
 import { Failure, Loading } from "../components/feedback";
@@ -124,7 +131,7 @@ function SessionRow({ chat, parent }: { chat: Chat; parent?: string }) {
       <Icon size={16} className="mt-0.5 shrink-0 self-start text-muted-foreground" />
       <Link
         to="/a/$agentId/c/$chatId"
-        params={{ agentId, chatId: String(chat.id) }}
+        params={{ agentId: sessionAgentId(chat, agentId), chatId: String(chat.id) }}
         className="min-w-0 flex-1 hover:underline"
       >
         <span className="block text-[13.5px] font-medium text-foreground [overflow-wrap:anywhere]">
@@ -153,7 +160,14 @@ export function TurnPage({ turnId }: { turnId: string }) {
   const turn = useQuery(getTurnChatOptions({ path: { agentId, turnId } }));
 
   if (turn.data)
-    return <Navigate to="/a/$agentId/c/$chatId" params={{ agentId, chatId: String(turn.data.id) }} replace />;
+    // A result of a child in another bot opens the session in that bot.
+    return (
+      <Navigate
+        to="/a/$agentId/c/$chatId"
+        params={{ agentId: sessionAgentId(turn.data, agentId), chatId: String(turn.data.id) }}
+        replace
+      />
+    );
 
   return (
     <FramedPage title="Session">

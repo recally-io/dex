@@ -98,7 +98,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 	if call != nil {
 		prior, err := q.GetRoutineToolOperation(ctx, call.task.Key)
 		if err == nil {
-			if prior.AgentID != agentID || prior.ConversationID != call.parent || prior.SourceRequestID != call.task.SourceRequestID || prior.Action != toolStopAction {
+			if prior.AgentID != call.task.AgentID || prior.ConversationID != call.parent || prior.SourceRequestID != call.task.SourceRequestID || prior.Action != toolStopAction {
 				return withdrawal{}, fmt.Errorf("%w: tool key belongs to another operation", ErrSessionInvalid)
 			}
 			return withdrawal{stored: prior.Result}, nil
@@ -120,7 +120,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 				return withdrawal{}, err
 			}
 			if slices.ContainsFunc(pending, func(p sqlc.ListChildPendingRow) bool { return !p.FromParent }) {
-				if err := s.withdrawQueuedParentInputs(ctx, q, agentID, c, pending, now); err != nil {
+				if err := s.withdrawQueuedParentInputs(ctx, q, c, pending, now); err != nil {
 					return withdrawal{}, err
 				}
 				continue
@@ -135,7 +135,10 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		if err := q.DismissQuestions(ctx, sqlc.DismissQuestionsParams{ConversationID: c.ID, Now: now}); err != nil {
 			return withdrawal{}, err
 		}
-		if c.ExecutionID.Valid {
+		// A child of another bot is not aborted here. Its bot has its own delivery gate, and this call
+		// holds one gate only. The abort request above is durable, and the dispatcher of that bot
+		// carries it out. Holding two gates could deadlock two parents that stop each other's children.
+		if c.ExecutionID.Valid && c.AgentID == agentID {
 			targets = append(targets, engine.Ref{AgentID: agentID, ID: c.ExecutionID.Int64})
 		}
 	}
@@ -153,7 +156,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		if err != nil {
 			return withdrawal{}, err
 		}
-		if err := q.CreateRoutineToolOperation(ctx, sqlc.CreateRoutineToolOperationParams{Key: call.task.Key, AgentID: agentID, ConversationID: call.parent, SourceRequestID: call.task.SourceRequestID, Action: toolStopAction, Result: string(data)}); err != nil {
+		if err := q.CreateRoutineToolOperation(ctx, sqlc.CreateRoutineToolOperationParams{Key: call.task.Key, AgentID: call.task.AgentID, ConversationID: call.parent, SourceRequestID: call.task.SourceRequestID, Action: toolStopAction, Result: string(data)}); err != nil {
 			return withdrawal{}, err
 		}
 	}
@@ -166,14 +169,15 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 // withdrawQueuedParentInputs withdraws the parent input of a child that native execution still
 // holds in its queue. A placed input is part of a run and keeps running. A failed withdrawal fails
 // Stop, so the user can repeat it. A pending input that native execution never saw has no run, and
-// its receipt settles at once.
-func (s *Service) withdrawQueuedParentInputs(ctx context.Context, q *sqlc.Queries, agentID string, c sqlc.Conversation, pending []sqlc.ListChildPendingRow, now sql.NullInt64) error {
+// its receipt settles at once. The native queue belongs to the bot of the child, which can differ
+// from the bot of the parent.
+func (s *Service) withdrawQueuedParentInputs(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation, pending []sqlc.ListChildPendingRow, now sql.NullInt64) error {
 	for _, p := range pending {
 		if !p.FromParent {
 			continue
 		}
 		if c.ExecutionID.Valid {
-			outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID.Int64}, p.ID)
+			outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}, p.ID)
 			if err != nil {
 				return err
 			}

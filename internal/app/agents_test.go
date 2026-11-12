@@ -242,7 +242,7 @@ func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
 	d.must(t, http.MethodPost, fmt.Sprintf("%s/chats/%d/messages", base, main.ID), map[string]string{"id": uuid.NewV7().String(), "text": text}, nil, http.StatusAccepted)
 	conn := taskResultDB(t, dir)
 	rows := waitResults(t, conn, main.ID, 1)
-	// Then only B can see the child, and the result names it.
+	// Then only B owns the child, and the result names it.
 	child := resultBody(t, rows[0].content)["session"].(string)
 	if resultBody(t, rows[0].content)["answer"] != "echo: B report" {
 		t.Fatalf("result=%+v", rows[0])
@@ -251,8 +251,12 @@ func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
 	if err := conn.QueryRowContext(t.Context(), "SELECT agent_id FROM conversations WHERE id = ?", child).Scan(&agent); err != nil || agent != b.ID {
 		t.Fatalf("child agent=%q err=%v", agent, err)
 	}
-	if got := callSessionTool(t, d, d.mainChat(t), "session_read", map[string]any{"id": child}); !strings.Contains(got, "not found") {
-		t.Fatalf("the default agent read a child of B: %s", got)
+	// Reading is open across bots (ADR 0016), but the default agent cannot write to the child.
+	if got := callSessionTool(t, d, d.mainChat(t), "session_read", map[string]any{"id": child}); !strings.Contains(got, "B report") || !strings.Contains(got, `"bot":"B"`) {
+		t.Fatalf("the default agent could not read a child of B: %s", got)
+	}
+	if got := callSessionTool(t, d, d.mainChat(t), "session_send", map[string]any{"id": child, "message": "intrude"}); !strings.Contains(got, "not found") {
+		t.Fatalf("the default agent wrote to a child of B: %s", got)
 	}
 	// And B can run and remove its automation without changing the default list.
 	d.must(t, http.MethodPut, base, map[string]string{"name": "B", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)

@@ -671,6 +671,12 @@ type Channels = agent.Channels
 
 // Chat defines model for Chat.
 type Chat struct {
+	// AgentId The bot that owns this session. Only on a child session that belongs to another bot than the one in the request path. The list of the parent shows it.
+	AgentId *string `json:"agentId,omitempty"`
+
+	// AgentName The name of the bot in agentId. Present with agentId.
+	AgentName *string `json:"agentName,omitempty"`
+
 	// ArchivedAt When the user archived this Chat session, in Unix milliseconds. Absent when the session is not archived.
 	ArchivedAt *int64 `json:"archivedAt,omitempty"`
 
@@ -696,6 +702,12 @@ type Chat struct {
 
 	// Main This is the agent's main timeline.
 	Main bool `json:"main"`
+
+	// ParentAgentId The bot of the parent session. Only on a child session whose parent belongs to another bot than the one in the request path.
+	ParentAgentId *string `json:"parentAgentId,omitempty"`
+
+	// ParentAgentName The name of the bot in parentAgentId. Present with parentAgentId.
+	ParentAgentName *string `json:"parentAgentName,omitempty"`
 
 	// ParentId The session that created this child session. Absent on any other session.
 	ParentId *int64 `json:"parentId,omitempty"`

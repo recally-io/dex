@@ -132,8 +132,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			Fork: func(ctx context.Context, c engine.TaskContext, a engine.SessionForkArgs) (engine.SessionRef, error) {
 				return chats.ToolSessionFork(ctx, c, a)
 			},
-			List: func(ctx context.Context, c engine.TaskContext, scope string) ([]engine.SessionInfo, error) {
-				return chats.ToolSessionList(ctx, c, scope)
+			List: func(ctx context.Context, c engine.TaskContext, a engine.SessionListArgs) ([]engine.SessionInfo, error) {
+				return chats.ToolSessionList(ctx, c, a)
 			},
 			Read: func(ctx context.Context, c engine.TaskContext, a engine.SessionReadArgs) (engine.SessionPage, error) {
 				return chats.ToolSessionRead(ctx, c, a)

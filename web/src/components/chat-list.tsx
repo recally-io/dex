@@ -15,7 +15,7 @@ import { useAgentId } from "../lib/agent-scope";
 import { useApp } from "../lib/app-state";
 import { errorText, refreshChats } from "../lib/queries";
 import { useNow } from "../lib/clock";
-import { isStalled, parentName, sessionKind } from "../lib/sessions";
+import { isStalled, parentName, sessionAgentId, sessionKind } from "../lib/sessions";
 import { cn } from "../lib/utils";
 import { Button, buttonVariants } from "./ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
@@ -53,7 +53,11 @@ function useArchive(openChat: number) {
   const archive = useMutation({ ...archiveChatMutation(), onSuccess: done, onError: fail });
   const restore = useMutation({ ...unarchiveChatMutation(), onSuccess: done, onError: fail });
 
-  return (chat: Chat) => (chat.archivedAt ? restore : archive).mutate({ path: { agentId, chatId: chat.id } });
+  // A child in another bot is archived in that bot.
+  return (chat: Chat) =>
+    (chat.archivedAt ? restore : archive).mutate({
+      path: { agentId: sessionAgentId(chat, agentId), chatId: chat.id },
+    });
 }
 
 /** ChatGPT-style buckets by latest activity: recent days first, then one per month. */
@@ -253,7 +257,7 @@ function ChatRow({
       <ContextMenuTrigger className="group relative flex min-w-0 items-center">
         <Link
           to="/a/$agentId/c/$chatId"
-          params={{ agentId, chatId: String(chat.id) }}
+          params={{ agentId: sessionAgentId(chat, agentId), chatId: String(chat.id) }}
           aria-current={current ? "page" : undefined}
           className={cn(
             buttonVariants({ variant: "ghost", size: "sm" }),

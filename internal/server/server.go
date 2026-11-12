@@ -2,6 +2,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json/v2"
@@ -293,6 +294,12 @@ func chatView(c chat.Chat) api.Chat {
 	if c.StoppedByParent {
 		out.StoppedWithParent = &c.StoppedByParent
 	}
+	if c.AgentID != "" {
+		out.AgentId, out.AgentName = &c.AgentID, &c.AgentName
+	}
+	if c.ParentAgentID != "" {
+		out.ParentAgentId, out.ParentAgentName = &c.ParentAgentID, &c.ParentAgentName
+	}
 	if o := c.ForkedFrom; o != nil {
 		out.ForkedFrom = &api.ChatOrigin{Id: o.ID, Title: o.Title, Main: o.Main}
 	}
@@ -339,12 +346,14 @@ func (h *handler) listChats(ctx context.Context, agentID string) (api.ListChats2
 		if !c.Busy {
 			continue
 		}
-		full, err := h.Chats.Get(ctx, agentID, c.ID)
+		// A child in another bot belongs to that bot.
+		owner := cmp.Or(c.AgentID, agentID)
+		full, err := h.Chats.Get(ctx, owner, c.ID)
 		if err != nil {
 			return api.ListChats200JSONResponse{}, err
 		}
 		if full.ExecutionID > 0 {
-			refOf[i] = engine.Ref{AgentID: agentID, ID: full.ExecutionID}
+			refOf[i] = engine.Ref{AgentID: owner, ID: full.ExecutionID}
 			refs = append(refs, refOf[i])
 		}
 	}
@@ -556,7 +565,7 @@ func (h *handler) ListArtifacts(ctx context.Context, req api.ListArtifactsReques
 	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
 		return nil, err
 	}
-	rows, err := h.Artifacts.List(ctx, agentID(ctx), req.ChatId)
+	rows, err := h.Artifacts.List(ctx, req.ChatId)
 	if err != nil {
 		return nil, err
 	}
@@ -571,11 +580,11 @@ func (h *handler) GetArtifact(ctx context.Context, req api.GetArtifactRequestObj
 	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
 		return nil, err
 	}
-	a, err := h.Artifacts.Get(ctx, agentID(ctx), req.ChatId, req.ArtifactId)
+	a, err := h.Artifacts.Get(ctx, req.ChatId, req.ArtifactId)
 	if err != nil {
 		return nil, err
 	}
-	f, err := artifact.Open(agent.Home(h.DataDir, agentID(ctx)), a.ID)
+	f, err := artifact.Open(agent.Home(h.DataDir, a.AgentID), a.ID)
 	if err != nil {
 		return nil, err
 	}

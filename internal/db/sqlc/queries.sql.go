@@ -624,6 +624,8 @@ func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRu
 const getChat = `-- name: GetChat :one
 SELECT
     c.id,
+    p.agent_id AS parent_agent_id,
+    pa.name AS parent_agent_name,
     c.channel_key,
     c.title,
     c.model_provider,
@@ -646,6 +648,8 @@ SELECT
 FROM conversations c
 LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN conversations f ON f.id = c.forked_from
+LEFT JOIN conversations p ON p.id = c.parent_id
+LEFT JOIN agents pa ON pa.id = p.agent_id
 WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id
 `
@@ -657,6 +661,8 @@ type GetChatParams struct {
 
 type GetChatRow struct {
 	ID              int64          `json:"id"`
+	ParentAgentID   sql.NullString `json:"parent_agent_id"`
+	ParentAgentName sql.NullString `json:"parent_agent_name"`
 	ChannelKey      string         `json:"channel_key"`
 	Title           string         `json:"title"`
 	ModelProvider   string         `json:"model_provider"`
@@ -679,6 +685,8 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 	var i GetChatRow
 	err := row.Scan(
 		&i.ID,
+		&i.ParentAgentID,
+		&i.ParentAgentName,
 		&i.ChannelKey,
 		&i.Title,
 		&i.ModelProvider,
@@ -1088,6 +1096,10 @@ func (q *Queries) ListAutomations(ctx context.Context, agentID string) ([]Automa
 const listChats = `-- name: ListChats :many
 SELECT
     c.id,
+    c.agent_id,
+    a.name AS agent_name,
+    p.agent_id AS parent_agent_id,
+    pa.name AS parent_agent_name,
     c.channel_key,
     c.title,
     c.model_provider,
@@ -1104,8 +1116,11 @@ SELECT
     ) AS INTEGER) AS updated_at,
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM conversations c
+JOIN agents a ON a.id = c.agent_id
+LEFT JOIN conversations p ON p.id = c.parent_id
+LEFT JOIN agents pa ON pa.id = p.agent_id
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE c.agent_id = ?
+WHERE (c.agent_id = ?1 OR p.agent_id = ?1)
     AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
     AND (c.channel_key NOT LIKE 'chat:%' OR c.forked_from IS NOT NULL OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
@@ -1115,20 +1130,25 @@ ORDER BY updated_at DESC, c.id DESC
 `
 
 type ListChatsRow struct {
-	ID            int64         `json:"id"`
-	ChannelKey    string        `json:"channel_key"`
-	Title         string        `json:"title"`
-	ModelProvider string        `json:"model_provider"`
-	ModelID       string        `json:"model_id"`
-	ThinkingLevel string        `json:"thinking_level"`
-	Cwd           string        `json:"cwd"`
-	CreatedAt     int64         `json:"created_at"`
-	ArchivedAt    sql.NullInt64 `json:"archived_at"`
-	ParentID      sql.NullInt64 `json:"parent_id"`
-	UpdatedAt     int64         `json:"updated_at"`
-	Pending       int64         `json:"pending"`
+	ID              int64          `json:"id"`
+	AgentID         string         `json:"agent_id"`
+	AgentName       string         `json:"agent_name"`
+	ParentAgentID   sql.NullString `json:"parent_agent_id"`
+	ParentAgentName sql.NullString `json:"parent_agent_name"`
+	ChannelKey      string         `json:"channel_key"`
+	Title           string         `json:"title"`
+	ModelProvider   string         `json:"model_provider"`
+	ModelID         string         `json:"model_id"`
+	ThinkingLevel   string         `json:"thinking_level"`
+	Cwd             string         `json:"cwd"`
+	CreatedAt       int64          `json:"created_at"`
+	ArchivedAt      sql.NullInt64  `json:"archived_at"`
+	ParentID        sql.NullInt64  `json:"parent_id"`
+	UpdatedAt       int64          `json:"updated_at"`
+	Pending         int64          `json:"pending"`
 }
 
+// The sessions of one bot, and the children of its sessions that belong to another bot.
 func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listChats, agentID)
 	if err != nil {
@@ -1140,6 +1160,10 @@ func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow
 		var i ListChatsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.AgentID,
+			&i.AgentName,
+			&i.ParentAgentID,
+			&i.ParentAgentName,
 			&i.ChannelKey,
 			&i.Title,
 			&i.ModelProvider,

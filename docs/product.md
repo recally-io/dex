@@ -30,7 +30,8 @@ to read in an afternoon.
   instructions, conversations, automations, and workspace directory. The API
   can create, list, read, and update agents. Each agent's API paths include its
   ID, including default. Old API aliases return 404. Global settings contain no
-  implicit agent. A resource from another agent returns 404. The web sidebar lists agents
+  implicit agent. A resource from another agent returns 404. The session tools
+  are the exception (see "Cross-bot sessions"). The web sidebar lists agents
   with default first. Its `+` dialog creates an agent with a name and model,
   then opens its empty timeline. Providers stay global. Each agent has its own channels.
 - Durable conversations: control stores each message before delivery. Saved
@@ -154,6 +155,23 @@ to read in an afternoon.
   the current project directory unless the owner selects another directory.
   Replaying one tool call does not create another routine, start another run,
   or move the schedule again. There is no routine deletion tool.
+- Cross-bot sessions ([ADR 0016](dev/decisions/0016-cross-bot-sessions.md)). One
+  owner has all the bots, so a bot can give work to another bot. `session_new`
+  with `bot` (an ID or a name) creates a child session in that bot. The child
+  runs with the instructions, model, memory section, skills, MCP servers, `.env`,
+  and workspace of that bot. This gives the caller the tools and credentials of
+  that bot, and the owner accepts it. The result comes back to the conversation
+  that created the child. Only that conversation can send to, stop, or fork the
+  child, whatever bot the child belongs to. A child cannot create children, so
+  bots cannot delegate in a loop. Any session of any bot can be read, except
+  dreams. `session_search` and `session_list` cover the current bot by default,
+  all bots with `all`, or one bot by ID or name, and each result names its bot.
+  `session_list` always shows the children of the conversation, whatever their
+  bot.
+  A file that a child delivers in a turn of its parent shows in the parent
+  conversation, also when the child belongs to another bot. Bot
+  isolation holds for everything else: the API returns 404 for another bot's
+  resources, and channels, routines, and `.env` stay with their bot.
 
 Inputs store their origin. Web input uses `web`. Channel input uses the exact
 peer, such as `telegram:7`. A background result keeps the origin of its source
@@ -186,6 +204,9 @@ dot and the badge change to Stalled when the session shows no sign of work: a
 tool has run for more than 30 minutes, or no tool runs and the engine saw no
 activity for 5 minutes. The hint checks the time every 15 seconds, so it appears
 with no click.
+A child session that runs in another bot appears in the parent bot’s panel and
+All sessions list. The row names its bot and opens in that bot. The child bot
+names the parent bot.
 Routine run history links to read-only automation transcripts.
 Old channel transcript URLs remain readable. The legacy Sessions URL remains
 available for saved links.
@@ -327,8 +348,9 @@ from the next message after an API change. A tool change also applies to
 later tools in the same run. Clear the project to return to the agent
 workspace. An automation can set its project directory in its dialog. The
 directory applies on every run, including a reused session. Channel input uses
-Main's project. Child sessions inherit their parent session's directory. A dream
-cannot set a project. Project skills come from
+Main's project. Child sessions inherit their parent session's directory. A child
+session in another bot starts in the workspace of that bot. A dream cannot set a
+project. Project skills come from
 `<cwd>/.agents/skills/`. Memory stays in `<data dir>/memory`.
 
 The system prompt always includes a guide to these files, even with no

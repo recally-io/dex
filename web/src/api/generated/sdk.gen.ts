@@ -465,7 +465,7 @@ export const updateAgent = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Find the session that holds one input. A result in a parent session and an old `/tasks/<id>` link name a turn of a child session by its input ID. A task from before child sessions uses its task ID, which is the ID of its first input. Reads inputs of any session of this agent, and returns 404 for another agent's input.
+ * Find the session that holds one input. A result in a parent session and an old `/tasks/<id>` link name a turn of a child session by its input ID. A task from before child sessions uses its task ID, which is the ID of its first input. Reads inputs of any session of this agent, and of a child session of this agent's sessions in another bot. That child names its bot in `agentId`. It returns 404 for any other input of another agent.
  *
  */
 export const getTurnChat = <ThrowOnError extends boolean = false>(options: Options<GetTurnChatData, ThrowOnError>): RequestResult<GetTurnChatResponses, GetTurnChatErrors, ThrowOnError> => (options.client ?? client).get<GetTurnChatResponses, GetTurnChatErrors, ThrowOnError>({

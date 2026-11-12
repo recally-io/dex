@@ -44,33 +44,84 @@ func turnID(key string) string {
 	return hex.EncodeToString(sum[:16])
 }
 
-func sessionRef(c sqlc.Conversation, pending int64) engine.SessionRef {
+func sessionRef(c sqlc.Conversation, bot string, pending int64) engine.SessionRef {
 	state := "idle"
 	if pending > 0 {
 		state = "running"
 	}
-	return engine.SessionRef{ID: strconv.FormatInt(c.ID, 10), Title: c.Title, State: state}
+	return engine.SessionRef{ID: strconv.FormatInt(c.ID, 10), Title: c.Title, State: state, Bot: bot, BotID: c.AgentID}
 }
 
 func (s *Service) ref(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation) (engine.SessionRef, error) {
 	pending, err := q.PendingCount(ctx, c.ID)
-	return sessionRef(c, pending), err
+	if err != nil {
+		return engine.SessionRef{}, err
+	}
+	bot, err := q.GetAgent(ctx, c.AgentID)
+	return sessionRef(c, bot.Name, pending), err
 }
 
-// childOf returns the child of parent that the model named.
+// childOf returns the child of parent that the model named. The ownership rule is the parent
+// link alone: the child can belong to any bot (ADR 0016).
 func (s *Service) childOf(ctx context.Context, q *sqlc.Queries, parent sqlc.Conversation, id string) (sqlc.Conversation, error) {
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return sqlc.Conversation{}, ErrSessionNotFound
 	}
 	c, err := q.GetConversation(ctx, n)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && (c.AgentID != parent.AgentID || c.ParentID.Int64 != parent.ID || !c.ParentID.Valid)) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (!c.ParentID.Valid || c.ParentID.Int64 != parent.ID)) {
 		return c, ErrSessionNotFound
 	}
 	return c, err
 }
 
 var errRepeatedTurn = errors.New("a call with this key stored its turn already")
+
+// resolveBot finds the bot that the model named by ID or by name. A name is not unique, so an
+// ambiguous name is an error that lists the IDs.
+func resolveBot(ctx context.Context, q *sqlc.Queries, name string) (sqlc.Agent, error) {
+	bot, err := q.GetAgent(ctx, name)
+	if err == nil || !errors.Is(err, sql.ErrNoRows) {
+		return bot, err
+	}
+	bots, err := q.ListAgents(ctx)
+	if err != nil {
+		return bot, err
+	}
+	var named []sqlc.Agent
+	for _, b := range bots {
+		if strings.EqualFold(b.Name, name) {
+			named = append(named, b)
+		}
+	}
+	switch len(named) {
+	case 0:
+		return bot, fmt.Errorf("%w: no bot has the ID or the name %q", ErrSessionInvalid, name)
+	case 1:
+		return named[0], nil
+	}
+	ids := make([]string, len(named))
+	for i, b := range named {
+		ids[i] = b.ID
+	}
+	return bot, fmt.Errorf("%w: %d bots have the name %q, use one of the IDs %s", ErrSessionInvalid, len(named), name, strings.Join(ids, ", "))
+}
+
+// allBots is the value of the bot argument of session_list and session_search for every bot.
+const allBots = "all"
+
+// botFilter returns the bots that a list or a search covers: the caller's bot when the argument is
+// empty, every bot for "all", or the one that the argument names.
+func botFilter(ctx context.Context, q *sqlc.Queries, current, name string) (agentID string, all bool, err error) {
+	switch name = strings.TrimSpace(name); name {
+	case "":
+		return current, false, nil
+	case allBots:
+		return "", true, nil
+	}
+	bot, err := resolveBot(ctx, q, name)
+	return bot.ID, false, err
+}
 
 // repeatedTurn finds the conversation of a turn that a replayed tool call stored already.
 func repeatedTurn(ctx context.Context, q *sqlc.Queries, turn string, parent sqlc.Conversation) (sqlc.Conversation, bool, error) {
@@ -116,11 +167,22 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a en
 		}
 		return s.ref(ctx, s.q, c)
 	}
-	agent, err := s.q.GetAgent(ctx, r.AgentID)
+	target, err := s.q.GetAgent(ctx, r.AgentID)
 	if err != nil {
 		return engine.SessionRef{}, err
 	}
-	settings := Settings{Provider: cmp.Or(parent.ModelProvider, agent.ModelProvider), ModelID: cmp.Or(parent.ModelID, agent.ModelID), ThinkingLevel: cmp.Or(a.ThinkingLevel, parent.ThinkingLevel, agent.ThinkingLevel)}
+	if name := strings.TrimSpace(a.Bot); name != "" {
+		if target, err = resolveBot(ctx, s.q, name); err != nil {
+			return engine.SessionRef{}, err
+		}
+	}
+	// A child in the same bot starts from the settings and the project of its parent. A child in
+	// another bot starts from the defaults and the workspace of that bot.
+	inherited := parent
+	if target.ID != r.AgentID {
+		inherited = sqlc.Conversation{}
+	}
+	settings := Settings{Provider: cmp.Or(inherited.ModelProvider, target.ModelProvider), ModelID: cmp.Or(inherited.ModelID, target.ModelID), ThinkingLevel: cmp.Or(a.ThinkingLevel, inherited.ThinkingLevel, target.ThinkingLevel)}
 	if a.Provider != "" || a.ModelID != "" {
 		if a.Provider == "" || a.ModelID == "" {
 			return engine.SessionRef{}, fmt.Errorf("%w: give provider and modelId together", ErrSessionInvalid)
@@ -135,7 +197,7 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a en
 			return engine.SessionRef{}, err
 		}
 	}
-	cwd := parent.Cwd
+	cwd := inherited.Cwd
 	if a.Cwd != "" {
 		if cwd, err = ProjectPath(a.Cwd); err != nil {
 			return engine.SessionRef{}, err
@@ -159,7 +221,7 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a en
 	}
 	now := s.now().UnixMilli()
 	child, err := q.CreateChildConversation(ctx, sqlc.CreateChildConversationParams{
-		AgentID: r.AgentID, ChannelKey: ChatPrefix + uuid.NewV7().String(), Title: a.Title,
+		AgentID: target.ID, ChannelKey: ChatPrefix + uuid.NewV7().String(), Title: a.Title,
 		ModelProvider: settings.Provider, ModelID: settings.ModelID, ThinkingLevel: settings.ThinkingLevel, Cwd: cwd,
 		ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}, CreatedAt: now,
 	})
@@ -175,7 +237,7 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a en
 	s.signal(child.ID)
 	s.signal(parent.ID)
 	s.Wake()
-	return sessionRef(child, 1), nil
+	return sessionRef(child, target.Name, 1), nil
 }
 
 func (s *Service) ToolSessionSend(ctx context.Context, r engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
@@ -218,13 +280,17 @@ func (s *Service) ToolSessionSend(ctx context.Context, r engine.TaskContext, a e
 	if _, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: child.ID, Content: a.Message, WhenBusy: whenBusy, ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: s.now().UnixMilli()}); err != nil {
 		return engine.SessionRef{}, err
 	}
+	bot, err := q.GetAgent(ctx, child.AgentID)
+	if err != nil {
+		return engine.SessionRef{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return engine.SessionRef{}, err
 	}
 	s.signal(child.ID)
 	s.signal(parent.ID)
 	s.Wake()
-	return sessionRef(child, 1), nil
+	return sessionRef(child, bot.Name, 1), nil
 }
 
 func (s *Service) ToolSessionStop(ctx context.Context, r engine.TaskContext, id string) (engine.SessionRef, error) {
@@ -236,7 +302,7 @@ func (s *Service) ToolSessionStop(ctx context.Context, r engine.TaskContext, id 
 	if err != nil {
 		return engine.SessionRef{}, err
 	}
-	stored, err := s.stop(ctx, r.AgentID, child.ID, nil, &stopCall{task: r, parent: parent.ID, child: child})
+	stored, err := s.stop(ctx, child.AgentID, child.ID, nil, &stopCall{task: r, parent: parent.ID, child: child})
 	if err != nil {
 		return engine.SessionRef{}, err
 	}
@@ -289,40 +355,44 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a e
 	}
 	s.signal(parent.ID)
 	s.Wake()
-	return sessionRef(fork, 1), nil
+	return s.ref(ctx, s.q, fork)
 }
 
-// readable returns a session that the tools of a bot may read: any session of the bot except a dream.
-func (s *Service) readable(ctx context.Context, agentID, id string) (sqlc.Conversation, error) {
+// readable returns a session that a tool may read: any session of any bot except a dream.
+func (s *Service) readable(ctx context.Context, id string) (sqlc.Conversation, error) {
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return sqlc.Conversation{}, ErrSessionNotFound
 	}
 	c, err := s.q.GetConversation(ctx, n)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && (c.AgentID != agentID || strings.HasPrefix(c.ChannelKey, dream.Channel))) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && strings.HasPrefix(c.ChannelKey, dream.Channel)) {
 		return c, ErrSessionNotFound
 	}
 	return c, err
 }
 
-func (s *Service) ToolSessionList(ctx context.Context, r engine.TaskContext, scope string) ([]engine.SessionInfo, error) {
+func (s *Service) ToolSessionList(ctx context.Context, r engine.TaskContext, a engine.SessionListArgs) ([]engine.SessionInfo, error) {
 	caller, err := s.toolCaller(ctx, r)
 	if err != nil {
 		return nil, err
 	}
-	switch scope {
+	switch a.Scope {
 	case "", "children", "all":
 	default:
 		return nil, fmt.Errorf("%w: scope is children or all", ErrSessionInvalid)
 	}
-	rows, err := s.q.ListSessions(ctx, sqlc.ListSessionsParams{AgentID: r.AgentID, AllSessions: boolInt(scope == "all"), ParentID: sql.NullInt64{Int64: caller.ID, Valid: true}, MaxRows: listLimit})
+	agentID, all, err := botFilter(ctx, s.q, caller.AgentID, a.Bot)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.q.ListSessions(ctx, sqlc.ListSessionsParams{AgentID: agentID, AllBots: boolInt(all), AllSessions: boolInt(a.Scope == "all"), ParentID: sql.NullInt64{Int64: caller.ID, Valid: true}, MaxRows: listLimit})
 	if err != nil {
 		return nil, err
 	}
 	out := make([]engine.SessionInfo, 0, len(rows))
 	for _, row := range rows {
 		info := engine.SessionInfo{
-			SessionRef: sessionRef(sqlc.Conversation{ID: row.ID, Title: row.Title}, row.Pending),
+			SessionRef: sessionRef(sqlc.Conversation{ID: row.ID, Title: row.Title, AgentID: row.AgentID}, row.AgentName, row.Pending),
 			Provider:   row.ModelProvider, ModelID: row.ModelID,
 		}
 		if row.ParentID.Valid {
@@ -342,19 +412,18 @@ func (s *Service) ToolSessionList(ctx context.Context, r engine.TaskContext, sco
 }
 
 func (s *Service) ToolSessionRead(ctx context.Context, r engine.TaskContext, a engine.SessionReadArgs) (engine.SessionPage, error) {
-	caller, err := s.toolCaller(ctx, r)
+	if _, err := s.toolCaller(ctx, r); err != nil {
+		return engine.SessionPage{}, err
+	}
+	conv, err := s.readable(ctx, a.ID)
 	if err != nil {
 		return engine.SessionPage{}, err
 	}
-	conv, err := s.readable(ctx, caller.AgentID, a.ID)
+	ref, err := s.ref(ctx, s.q, conv)
 	if err != nil {
 		return engine.SessionPage{}, err
 	}
-	pending, err := s.q.PendingCount(ctx, conv.ID)
-	if err != nil {
-		return engine.SessionPage{}, err
-	}
-	page := engine.SessionPage{SessionRef: sessionRef(conv, pending)}
+	page := engine.SessionPage{SessionRef: ref}
 	if a.Turn != "" {
 		return s.readText(ctx, conv, page, a)
 	}
@@ -473,10 +542,14 @@ func (s *Service) ToolSessionSearch(ctx context.Context, r engine.TaskContext, a
 	if len(words) == 0 || len(words) > maxSearchWords {
 		return nil, fmt.Errorf("%w: the query has 1 to %d words", ErrSessionInvalid, maxSearchWords)
 	}
-	params := sqlc.SearchTurnsParams{AgentID: caller.AgentID, MaxRows: int64(cmp.Or(a.Limit, 20))}
 	if a.Limit < 0 || a.Limit > 50 {
 		return nil, fmt.Errorf("%w: limit is 1 to 50", ErrSessionInvalid)
 	}
+	agentID, all, err := botFilter(ctx, s.q, caller.AgentID, a.Bot)
+	if err != nil {
+		return nil, err
+	}
+	params := sqlc.SearchTurnsParams{AgentID: agentID, AllBots: boolInt(all), MaxRows: int64(cmp.Or(a.Limit, 20))}
 	for i, slot := range []*string{&params.W1, &params.W2, &params.W3, &params.W4, &params.W5, &params.W6} {
 		if i < len(words) {
 			*slot = words[i]
@@ -502,7 +575,7 @@ func (s *Service) ToolSessionSearch(ctx context.Context, r engine.TaskContext, a
 	}
 	matches := make([]engine.SessionMatch, 0, len(rows))
 	for _, row := range rows {
-		match := engine.SessionMatch{Session: strconv.FormatInt(row.ConversationID, 10), Title: row.Title, Turn: row.ID, At: row.CreatedAt}
+		match := engine.SessionMatch{Session: strconv.FormatInt(row.ConversationID, 10), Title: row.Title, Bot: row.AgentName, BotID: row.AgentID, Turn: row.ID, At: row.CreatedAt}
 		match.Field, match.Snippet = firstMatch(words, row.Content, row.Answer.String)
 		matches = append(matches, match)
 	}

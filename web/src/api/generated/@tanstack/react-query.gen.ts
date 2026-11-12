@@ -592,7 +592,7 @@ export const updateAgentMutation = (options?: Partial<Options<UpdateAgentData>>)
 export const getTurnChatQueryKey = (options: Options<GetTurnChatData>) => createQueryKey('getTurnChat', options);
 
 /**
- * Find the session that holds one input. A result in a parent session and an old `/tasks/<id>` link name a turn of a child session by its input ID. A task from before child sessions uses its task ID, which is the ID of its first input. Reads inputs of any session of this agent, and returns 404 for another agent's input.
+ * Find the session that holds one input. A result in a parent session and an old `/tasks/<id>` link name a turn of a child session by its input ID. A task from before child sessions uses its task ID, which is the ID of its first input. Reads inputs of any session of this agent, and of a child session of this agent's sessions in another bot. That child names its bot in `agentId`. It returns 404 for any other input of another agent.
  *
  */
 export const getTurnChatOptions = (options: Options<GetTurnChatData>) => queryOptions<GetTurnChatResponse, GetTurnChatError, GetTurnChatResponse, ReturnType<typeof getTurnChatQueryKey>>({
