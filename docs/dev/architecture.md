@@ -365,14 +365,13 @@ foreground conversations, including main, Chat and automation sessions.
 Main input replaces the `work-loop` section with the `front-desk` section.
 Chat and automation sessions keep `work-loop`.
 Child sessions and dreams have no session tools and neither section. A child gets
-the `child-rules` section. A separate extension gives foreground conversations
-and child sessions the `coding-skill` section. Go embeds the full
-[built-in coding skill](../../internal/engine/skills/coding/SKILL.md) in the engine.
-It does not copy the skill into a user directory or add a new extension scope.
-The skill keeps implementation, fixes and tests in the main context. It
-requires a repository path, project rules, independent review, tests of the
-final revision, and evidence in the answer. It requires serial writes
-or separate worktrees for children that change the same repository.
+the `child-rules` section.
+The engine has no built-in coding skill. The usage of the session tools is in
+the descriptions of the tools. Examples are the continue-in-context rule of
+`session_send`, the concurrency of children in `session_new`, and the no-retry
+rule. A `coding` skill that the user writes is an ordinary skill and is listed
+with the others.
+See [ADR 0018](decisions/0018-no-builtin-coding-skill-and-supervised-processes.md).
 
 ## Automations
 
@@ -780,9 +779,20 @@ final answer from the result and can call `session_read` for a cut text.
 
 Control passes a trusted input kind, the turn ID and the child title to the
 engine. The engine stores results as `dex.task_result` entries. The public
-projection replaces each result input with a `task` mark without the answer
-text. A failed result reply cannot retry the user message before the mark.
-Neither layer uses message text or an ID pattern to hide results. Child
+projection replaces each result input with a `task` mark. The mark holds the
+title, the outcome and the failure reason, and never the answer text. A failed
+result reply cannot retry the user message before the mark.
+Neither layer uses message text or an ID pattern to hide results.
+
+The web shows a child as a thread
+([ADR 0019](decisions/0019-show-child-sessions-as-threads.md)). The main
+transcript keeps one card at each `session_new` or `session_fork` call and one
+line at each `session_send` call. A result mark is one line with a "View thread"
+action. The card, the line and the action open a read-only side panel that
+shows the child's own transcript with the usual chat reads and stream. The web
+reads the child ID from the session tool result and finds the child of a result
+mark with `getTurnChat`. Channels have no thread, so a channel user sees only
+the reply of Main. Child
 conversations stay absent from dream inputs, and dream input selects only
 ordinary messages.
 
@@ -826,9 +836,11 @@ cancellation. It does not prove that the remote job stopped. Before another
 turn, the parent must check artifacts and prior actions.
 
 Tools use the local `NodeExecutionEnv`, without a sandbox. CLI tools must be
-logged in and run in the foreground with non-interactive options. Detached
-processes and daemons are outside the supported lifecycle. Long work uses
-[background commands](#background-commands), which dex tracks. Bash has no default
+logged in and run in the foreground with non-interactive options. Long work
+uses [background commands](#background-commands), which dex tracks. Any other
+process must not outlive its turn. A turn can start and supervise a process,
+such as a worker in a Rex tab, but must stop it before the final answer
+([ADR 0018](decisions/0018-no-builtin-coding-skill-and-supervised-processes.md)). Bash has no default
 timeout. Its visible output keeps at most the last 2000 lines or 50 KiB,
 whichever limit comes first; complete output goes to a temporary file.
 A durable checkpoint does not attach a CLI after restart or guarantee that

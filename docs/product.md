@@ -269,9 +269,8 @@ remains. If the user has changed topics, the reply gives a brief update about
 the earlier work. Channel replies also name the work because channels do not
 show the web result group.
 The main agent checks saved execution records before it reports progress or
-starts follow-up work. The built-in coding skill requires a repository path,
-project rules, independent review, tests of the final revision, and evidence.
-Writes to one repository must run in order or in separate worktrees.
+starts follow-up work. dex has no built-in coding skill. A user who wants a coding method writes a
+skill, for example `coding`, in the dex or agent directory.
 
 A queued message in the web shows Edit and Remove until its run starts. Remove
 withdraws it. Edit withdraws it and puts the text and files back in the box.
@@ -326,6 +325,8 @@ its report. CLI tools must be logged in and run without user input. Long work
 runs as a background command (`background_start`): dex tracks it, wakes the
 session when it ends, and ends it when the session stops or dex shuts
 down. A crash of dex can leave the process; the command then shows as unknown.
+A turn can supervise another process it started, such as a worker in a terminal
+tab, but must stop it before the final answer.
 
 Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,
 background tasks, timers, skills, and MCP servers are available.
