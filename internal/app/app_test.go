@@ -757,6 +757,67 @@ func TestUserAddsCustomProviders(t *testing.T) {
 	}
 }
 
+func TestUserListsProviderModelsThenEnablesSome(t *testing.T) {
+	t.Parallel()
+	// Given an OpenAI-compatible gateway with three models
+	url := fakeModelsEndpoint(t, "/models", "Authorization", "Bearer k1",
+		`{"data":[{"id":"a"},{"id":"b","display_name":"Model B"},{"id":"c"}]}`)
+	d := startDex(t, t.TempDir(), "")
+
+	// When the user enters the endpoint in the dialog, before a save
+	type listed struct {
+		Models []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	var list listed
+	d.must(t, http.MethodPost, "/api/settings/provider-models", map[string]any{
+		"api": "openai-completions", "baseUrl": url, "apiKey": "k1",
+	}, &list)
+
+	// Then dex shows the models of the endpoint and saves nothing
+	if len(list.Models) != 3 || list.Models[1].ID != "b" || list.Models[1].Name != "Model B" {
+		t.Fatalf("listed = %+v", list.Models)
+	}
+	if got := d.models(t); slices.ContainsFunc(got, func(m string) bool { return strings.HasPrefix(m, "gw/") }) {
+		t.Fatalf("a listing added models: %q", got)
+	}
+
+	// When the user enables two of them and saves
+	d.must(t, http.MethodPut, "/api/settings/providers/gw", map[string]any{
+		"api": "openai-completions", "name": "Gateway", "baseUrl": url, "apiKey": "k1", "models": []string{"a", "c"},
+	}, nil)
+
+	// Then only those two models are available
+	var own []string
+	for _, m := range d.models(t) {
+		if strings.HasPrefix(m, "gw/") {
+			own = append(own, m)
+		}
+	}
+	if !slices.Equal(own, []string{"gw/a", "gw/c"}) {
+		t.Fatalf("gw models = %q", own)
+	}
+
+	// When the user edits the provider later, the dialog lists the models again with the saved key
+	list = listed{}
+	d.must(t, http.MethodPost, "/api/settings/provider-models", map[string]any{
+		"providerId": "gw", "api": "openai-completions", "baseUrl": url,
+	}, &list)
+	if len(list.Models) != 3 {
+		t.Fatalf("listed with the saved key = %+v", list.Models)
+	}
+
+	// When the endpoint refuses the key, the user sees why
+	status, raw := d.call(t, http.MethodPost, "/api/settings/provider-models", map[string]any{
+		"api": "openai-completions", "baseUrl": url, "apiKey": "wrong",
+	})
+	if status != http.StatusBadRequest || !strings.Contains(raw, "HTTP 401") {
+		t.Fatalf("wrong key: %d %s", status, raw)
+	}
+}
+
 func TestProviderWhoseModelListFailsIsSavedWithAnError(t *testing.T) {
 	t.Parallel()
 	// Given an endpoint that refuses the key

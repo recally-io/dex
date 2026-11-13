@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -175,6 +176,55 @@ try {
     results.push("Providers from the default bot removes the models of both users and preserves default");
   }
 
+  if (scenario === "all" || scenario === "provider-models") {
+    // A custom endpoint is a system boundary, so a local server stands in for it.
+    const endpoint = createHttpServer((request, response) => {
+      response.writeHead(request.url === "/v1/models" ? 200 : 404, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ data: [{ id: "model-a" }, { id: "model-b" }, { id: "model-c" }] }));
+    });
+
+    await new Promise((done) => endpoint.listen(0, "127.0.0.1", done));
+
+    try {
+      await visit("/providers");
+      await click("Add provider");
+      await tap('[role="dialog"] button[aria-label="Custom endpoint"]');
+      await type('[role="dialog"] input[placeholder="LM Studio"]', "Lan");
+      // The default API is the first by name, Anthropic Messages, which asks <base>/v1/models.
+      await evaluate(`(() => {
+        const select = document.querySelector('[role="dialog"] select');
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, "openai-completions");
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      })()`);
+      await type('[role="dialog"] input[type="url"]', `http://127.0.0.1:${endpoint.address().port}/v1`);
+      await poll("models listed without a save", () =>
+        evaluate("document.querySelector('[role=\"dialog\"]').innerText.includes('3 listed')"),
+      );
+      assert.equal(
+        (await api("/api/settings")).providers.some((p) => p.id === "lan"),
+        false,
+        "a listing must not save the provider",
+      );
+      // A click on one model while all models are enabled keeps the other models.
+      await evaluate(
+        `[...document.querySelectorAll('[role="dialog"] input[type="checkbox"]')].find(i => i.parentElement.textContent.includes('model-b')).click()`,
+      );
+      await click("Save provider");
+
+      const saved = await poll("subset saved", async () =>
+        (await api("/api/settings")).providers.find((p) => p.id === "lan"),
+      );
+
+      assert.deepEqual(saved.models, ["model-a", "model-c"]);
+      results.push({
+        scenario: "listed provider models before save and enabled a subset",
+        models: saved.models,
+      });
+    } finally {
+      endpoint.close();
+    }
+  }
+
   if (scenario === "all" || scenario === "session") {
     const agent = await api("/api/agents/default");
     await api("/api/agents/default", { ...agent, provider: "faux", modelId: "think" }, "PUT");
@@ -310,6 +360,12 @@ async function visit(path) {
 async function tap(selector) {
   await poll(`target ${selector}`, () => evaluate(`!!document.querySelector(${JSON.stringify(selector)})`));
   await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+}
+
+async function type(selector, text) {
+  await poll(`target ${selector}`, () => evaluate(`!!document.querySelector(${JSON.stringify(selector)})`));
+  await evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);
+  await call("Input.insertText", { text });
 }
 
 async function click(text) {
