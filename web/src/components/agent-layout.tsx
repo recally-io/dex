@@ -9,12 +9,11 @@ import {
   getChatOptions,
   getMainChatOptions,
   listAgentsOptions,
-  listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
-import { findModel, thinkingNames } from "../lib/agent";
 import { sessionKind } from "../lib/sessions";
 import { ChatTitle, MainTimeline } from "../routes/chat";
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { AgentAvatar } from "./agent-avatar";
 import { Failure, Loading } from "./feedback";
 import { ChatSettingsContext, InPaneContext, MainPane, MenuButton, ShellContext } from "./page";
@@ -125,7 +124,6 @@ function AgentPane({ settings }: { settings: Settings }) {
           {shown && writable ? (
             <ChatSettingsButton
               chat={shown}
-              settings={settings}
               open={settingsOpen}
               onClick={() => setSettingsOpen(!settingsOpen)}
             />
@@ -142,49 +140,28 @@ function AgentPane({ settings }: { settings: Settings }) {
   );
 }
 
-/**
- * Names the model and thinking level that answer the next message in the open chat, and opens
- * the row that changes them. A dot tells that the chat has its own values.
- */
-function ChatSettingsButton({
-  chat,
-  settings,
-  open,
-  onClick,
-}: {
-  chat: Chat;
-  settings: Settings;
-  open: boolean;
-  onClick: () => void;
-}) {
-  const models = useQuery(listModelsOptions());
-  const own = chat.settings;
-  const bot = findModel(settings.agent.provider, settings.agent.modelId, models.data?.models);
-  const effective = own.modelId ? findModel(own.provider ?? "", own.modelId, models.data?.models) : bot;
-  const thinking = own.thinkingLevel ?? settings.agent.thinkingLevel;
-
-  const text = effective.model?.reasoning
-    ? `${effective.label} · ${thinkingNames[thinking]}`
-    : effective.label;
-
-  const changed = !!(chat.cwd || own.modelId || own.thinkingLevel);
-  const label = `Chat settings${changed ? ", changed for this chat" : ""}: ${text}`;
+/** Opens session controls. A dot marks a session override. */
+function ChatSettingsButton({ chat, open, onClick }: { chat: Chat; open: boolean; onClick: () => void }) {
+  const changed = !!(chat.cwd || chat.settings.modelId || chat.settings.thinkingLevel);
 
   return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={open}
-      title={label}
-      onClick={onClick}
-      className="relative flex h-8 max-w-[45%] shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
-    >
-      <SlidersHorizontal size={15} aria-hidden className="shrink-0 sm:hidden" />
-      <span className="truncate max-sm:hidden">{text}</span>
-      <ChevronDown size={13} aria-hidden className="shrink-0 max-sm:hidden" />
-      {changed ? (
-        <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
-      ) : null}
-    </button>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Chat more"
+        title="Chat more"
+        className="relative flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+      >
+        <MoreHorizontal size={16} />
+        {changed ? (
+          <span
+            aria-label="Changed for this chat"
+            className="absolute top-1 right-1 size-1.5 rounded-full bg-primary"
+          />
+        ) : null}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onClick}>{open ? "Hide chat settings" : "Chat settings"}</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -93,11 +93,36 @@ export function Shell() {
     if (shown.current === path) return;
     shown.current = path;
 
-    const frame = requestAnimationFrame(() =>
-      document.querySelector<HTMLElement>('[id="page-title"]')?.focus(),
-    );
+    // A redirected page can load its heading after the first frame. Stop waiting if the user
+    // starts navigating, so a late heading cannot take focus away from their next action.
+    const observer = new MutationObserver(() => focusTitle());
 
-    return () => cancelAnimationFrame(frame);
+    const stop = () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      document.removeEventListener("focusin", stop);
+      document.removeEventListener("pointerdown", stop);
+      document.removeEventListener("keydown", stop);
+    };
+
+    const focusTitle = () => {
+      const title = document.querySelector<HTMLElement>('#main [id="page-title"]:not([inert] *)');
+
+      if (!title) return;
+      stop();
+      title.focus();
+    };
+
+    document.addEventListener("focusin", stop);
+    document.addEventListener("pointerdown", stop);
+    document.addEventListener("keydown", stop);
+
+    const frame = requestAnimationFrame(() => {
+      observer.observe(document.getElementById("main")!, { childList: true, subtree: true });
+      focusTitle();
+    });
+
+    return stop;
   }, [path]);
 
   return (

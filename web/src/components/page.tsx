@@ -116,7 +116,7 @@ export function MenuButton() {
 
 /**
  * The model, thinking level and project of the open chat change seldom, so their row shows only
- * after the bot header's Chat settings button asks for it. The chat page renders the row.
+ * after the chat header's More menu opens it. The chat page renders the row.
  */
 export const ChatSettingsContext = createContext(false);
 

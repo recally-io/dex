@@ -164,7 +164,9 @@ try {
     `(() => {
     const nav = document.querySelector('aside[aria-label="Sidebar"]');
     return !!nav.querySelector('nav[aria-label="Bots"] a[href="/a/default"][aria-current="page"]') &&
-      !!nav.querySelector('button[aria-label^="More"]') && !!nav.querySelector('button[aria-label="New bot"]') &&
+      !!nav.querySelector('a[href="/providers"]') && !!nav.querySelector('a[href="/about"]') &&
+      !nav.querySelector('button[aria-label^="More"]') && !nav.querySelector('a[data-tab="Main"]') &&
+      !!nav.querySelector('button[aria-label="New bot"]') &&
       !nav.querySelector('a[href="/work"], a[href="/needs-you"], a[href="/automations"], input');
   })()`,
   );
@@ -174,8 +176,8 @@ try {
   );
   await shot("01-empty");
   await check(
-    "main's header has Chat settings, and the bot column lists its sessions",
-    "!document.querySelector('header nav') && !!document.querySelector('aside[aria-label=\"Sidebar\"] a[data-tab=\"Main\"]') && !!document.querySelector('header button[aria-label^=\"Chat settings\"]') && !document.querySelector('[role=region][aria-label=\"Chat settings\"]')",
+    "main has a compact menu and no expanded sidebar",
+    "!document.querySelector('header nav') && !document.querySelector('aside[aria-label=\"Sidebar\"] a[data-tab=\"Main\"]') && !!document.querySelector('header button[aria-label=\"Chat more\"]') && !document.querySelector('[role=region][aria-label=\"Chat settings\"]')",
   );
   const main = await api("/api/agents/default/chats/main");
   await visit("/a/default/sessions");
@@ -655,27 +657,15 @@ try {
     "main Stop remains available after dispatch reply",
     "!!document.querySelector('button[title=\"Stop this run and its background work\"]:not([inert] *)')",
   );
-  // The bot column lists the running child with a running dot and the name of its parent.
-  await ui(
-    "the bot column lists the running child",
-    `(() => { const row = document.querySelector('aside[aria-label="Sidebar"] a[href="/a/default/c/${running.id}"]'); return !!row && !!row.querySelector('[role="img"][aria-label="Running"]') && row.innerText.includes('Started by Main'); })()`,
+  await check(
+    "the sidebar does not expand the running child",
+    `!document.querySelector('aside[aria-label="Sidebar"] a[href="/a/default/c/${running.id}"]')`,
   );
   await check(
     "the bot column has no task rows, Stop, Mark handled or Completed group",
     `(() => { const panel = document.querySelector('aside[aria-label="Sidebar"]'); return !/Mark handled|Mark all handled|Completed|Open full record|step/i.test(panel.innerText) && ![...panel.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Stop'); })()`,
   );
-  // The API data stays the same. Only the clock of the page moves 31 min, with no click, and the
-  // running child, which holds one tool, turns Stalled.
-  await advanceClock(31 * 60 * 1000);
-  await ui(
-    "the panel turns the running child to Stalled when only the clock moves",
-    `!!document.querySelector('aside[aria-label="Sidebar"] a[href="/a/default/c/${running.id}"] [role="img"][aria-label="Stalled"]')`,
-  );
-  await restoreClock();
-  await ui(
-    "the panel shows Running again when the clock is real",
-    `!!document.querySelector('aside[aria-label="Sidebar"] a[href="/a/default/c/${running.id}"] [role="img"][aria-label="Running"]')`,
-  );
+
   await shot("04-sessions-panel");
   await visit("/tasks");
   await ui(
@@ -724,7 +714,9 @@ try {
   // After a redirect, the shell moves focus to the page title in an animation frame. A headless page
   // draws that frame late, so draw one with a screenshot and wait for the title to take focus.
   await shot("05-child-opened");
+
   await ui("the page title takes focus after the redirect", "document.activeElement?.id === 'page-title'");
+
   // Then the user clicks the composer and types. The focus must stay there, also across a screenshot.
   await tap("textarea:not([inert] *)");
   await check("a click puts the focus in the composer", "document.activeElement?.tagName === 'TEXTAREA'");
@@ -794,10 +786,9 @@ try {
   );
 
   assert.equal(listedOwn.stoppedWithParent, undefined);
-  // The panel has the running dot, so the list has loaded and the parent page had time to read it.
   await ui(
-    "the panel shows the child of the user turn as running",
-    `!!document.querySelector('aside[aria-label="Sidebar"] a[href="/a/default/c/${steered.id}"] [role="img"][aria-label="Running"]')`,
+    "the bot shows work in progress",
+    `!!document.querySelector('aside a[href="/a/default"] [aria-label="Working"]')`,
   );
   await check(
     "the parent page has no Stop for a child run that the user started",
@@ -833,9 +824,9 @@ try {
   );
 
   assert.equal(crossChild.agentName, "Coder");
-  await ui(
-    "the bot column lists the child in another bot with its bot, and the link opens it there",
-    `(() => { const row = document.querySelector('aside[aria-label="Sidebar"] a[href="/a/${coder.id}/c/${crossChild.id}"]'); return !!row && row.innerText.includes('Started by Main') && row.innerText.includes('Coder'); })()`,
+  await check(
+    "the sidebar does not expand cross-bot children",
+    `!document.querySelector('aside[aria-label="Sidebar"] a[href="/a/${coder.id}/c/${crossChild.id}"]')`,
   );
   await shot("06c-cross-bot-panel");
   await ui("result line of the child in another bot offers its thread", `${viewThreadButtons}.length > 0`);
@@ -850,13 +841,42 @@ try {
     `location.pathname === '/a/${coder.id}/c/${crossChild.id}' && document.body.innerText.includes('echo: hello coder') && document.body.innerText.includes('Started by Main in ${parentBot}') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
   );
   await shot("06c-cross-bot-child");
-  await visit(`/a/${coder.id}/sessions`);
+  // Open All sessions from the parent bot, then archive the cross-bot child in its owning bot.
+  await tap('aside a[href="/a/default"]');
+  await tap('aside a[href="/a/default"] + button[aria-label^="Bot menu"]');
   await ui(
-    "the Sessions page of the child bot names the bot of the parent",
-    `document.body.innerText.includes('Cross-bot check') && document.body.innerText.includes('Started by ${parentBot}')`,
+    "All sessions menu item",
+    `!!document.querySelector('[role="menu"] a[href="/a/default/sessions"]')`,
   );
-  // The child leaves the lists that later checks count.
-  await api(`/api/agents/${coder.id}/chats/${crossChild.id}/archive`, undefined, "PUT");
+  await tap('[role="menu"] a[href="/a/default/sessions"]');
+  const crossRow = `main a[href="/a/${coder.id}/c/${crossChild.id}"]`;
+  await ui("cross-bot child in parent sessions", `!!document.querySelector('${crossRow}')`);
+  await tap(`main li:has(a[href="/a/${coder.id}/c/${crossChild.id}"]) button`);
+  await poll(
+    "cross-bot archive uses owner",
+    async () => !!(await api(`/api/agents/${coder.id}/chats/${crossChild.id}`)).archivedAt,
+  );
+  await ui("archived child leaves active sessions", `!document.querySelector('${crossRow}')`);
+  await tap('main button[aria-expanded="false"]:not([inert] *)');
+  await ui(
+    "archived child is listed",
+    `!!document.querySelector('${crossRow}') && document.querySelector('${crossRow}').closest('li').innerText.includes('Restore')`,
+  );
+  await tap(`main li:has(a[href="/a/${coder.id}/c/${crossChild.id}"]) button`);
+  await poll(
+    "cross-bot restore uses owner",
+    async () => !(await api(`/api/agents/${coder.id}/chats/${crossChild.id}`)).archivedAt,
+  );
+  await ui(
+    "restored child returns to active sessions",
+    `!!document.querySelector('${crossRow}') && document.querySelector('${crossRow}').closest('li').innerText.includes('Archive')`,
+  );
+  // Leave the child archived so later list counts stay unchanged.
+  await tap(`main li:has(a[href="/a/${coder.id}/c/${crossChild.id}"]) button`);
+  await poll(
+    "cross-bot child archived again",
+    async () => !!(await api(`/api/agents/${coder.id}/chats/${crossChild.id}`)).archivedAt,
+  );
   results.push("a child in another bot shows with its bot, and its thread panel link opens it there");
 
   // A parent-started run with user input has no parent Stop until another parent input is queued.
@@ -996,7 +1016,7 @@ try {
   await model("echo");
 
   const automation = await api("/api/agents/default/automations", {
-    name: "Daily review",
+    name: `Daily review ${"W".repeat(45)}`,
     prompt: "review the session checks",
     session: "new",
     enabled: true,
@@ -1375,38 +1395,74 @@ try {
     await shot(`12-channel-sessions-${label}`);
   }
 
-  // The open bot in the sidebar holds Main and Routines as rows. Its Settings sit in its ⋯ menu.
-  const tab = (label) => `aside[aria-label="Sidebar"] a[data-tab="${label === "Chat" ? "Main" : label}"]`;
+  // The bot row opens Main; the bot menu holds its other pages and attention items.
+  const tab = () => `aside[aria-label="Sidebar"] a[href="/a/default"]`;
   const botMenu = 'aside[aria-label="Sidebar"] button[aria-label^="Bot menu"]';
 
   // The channel widths above leave a phone viewport behind; the bot column shows on a desktop one.
   await viewport(1280, 900);
   await visit("/a/default");
   await check(
-    "the open bot lists Main and Routines, and Main is current",
-    `[...document.querySelectorAll('aside[aria-label="Sidebar"] a[data-tab]')].map(a => a.dataset.tab).join(',') === 'Main,Routines' &&
-      document.querySelector('${tab("Chat")}').getAttribute('aria-current') === 'page'`,
+    "the bot row is current without expanded pages",
+    `!document.querySelector('aside[aria-label="Sidebar"] a[data-tab]') && document.querySelector('${tab("Chat")}').getAttribute('aria-current') === 'page'`,
   );
-
-  const automationsOn = (await api("/api/agents/default/automations")).automations.filter(
-    (a) => a.enabled,
-  ).length;
 
   // The echo model never reports a check, so the Daily review run above failed and is not done yet.
   await ui(
-    "the Routines link counts the routines that are on, and a failed routine run marks the bot row",
-    `document.querySelector('${tab("Routines")}').getAttribute('aria-label').startsWith('Routines${automationsOn ? `, ${automationsOn} on` : ""}') &&
-      document.querySelector('nav[aria-label="Bots"] a[href="/a/default"] [role="img"]')?.getAttribute('aria-label') === 'Needs you' &&
+    "a failed routine run marks the bot row",
+    `document.querySelector('nav[aria-label="Bots"] a[href="/a/default"] [role="img"]')?.getAttribute('aria-label') === 'Needs you' &&
       !/active|channels? on|Idle/.test(document.querySelector('nav[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-label'))`,
   );
+
   // Every orange dot has a place to act on it: the open bot lists the failed run.
+  const enabledRoutines = (await api("/api/agents/default/automations")).automations.filter(
+    (a) => a.enabled,
+  ).length;
+
+  await tap(botMenu);
   await ui(
-    "the open bot lists a failed routine run under Needs you",
-    `[...document.querySelectorAll('section[aria-label="Needs you"] a[href^="/inbox/"]')].some(a => a.textContent.includes('Daily review') && a.textContent.includes('Routine run failed'))`,
+    "Routines menu preserves count and failure",
+    `(() => { const a = document.querySelector('[role="menu"] a[href="/a/default/automations"]'); return a?.getAttribute('aria-label') === ${JSON.stringify(`Routines${enabledRoutines ? `, ${enabledRoutines} on` : ""}, latest run failed`)} && ${enabledRoutines ? `a.textContent.includes('${enabledRoutines}')` : "true"} && !!a.querySelector('[aria-label="Latest routine run failed"]'); })()`,
   );
+  await ui(
+    "the bot menu lists the failed routine run",
+    `[...document.querySelectorAll('[role="menu"] a[href^="/inbox/"]')].some(a => a.textContent.includes('Daily review') && a.textContent.includes('Routine run failed'))`,
+  );
+  await tap(botMenu);
+  await viewport(320, 844);
+  await tap('button[aria-label^="Open navigation"]');
+  await ui("mobile navigation opens", `!!document.querySelector('[role="dialog"][aria-label="Navigation"]')`);
+  await tap('[role="dialog"] a[href="/a/default"] + button[aria-label^="Bot menu"]');
+  await ui("mobile failed result menu", `!!document.querySelector('[role="menu"] a[href^="/inbox/"]')`);
+  await check(
+    "long attention title stays inside mobile menu",
+    `(() => { const menu = document.querySelector('[role="menu"]'); const link = menu.querySelector('a[href^="/inbox/"]'); const title = link.querySelector('span span'); const m = menu.getBoundingClientRect(); const l = link.getBoundingClientRect(); const t = title.getBoundingClientRect(); return m.left >= 0 && m.right <= innerWidth && l.left >= m.left && l.right <= m.right && t.right <= l.right && title.scrollWidth > title.clientWidth; })()`,
+  );
+  await ui(
+    "mobile menu finishes opening",
+    `document.querySelector('[role="menu"]').getAnimations({ subtree: true }).every(a => a.playState !== 'running') && document.querySelector('[role="dialog"]').getAnimations({ subtree: true }).every(a => a.playState !== 'running')`,
+  );
+  await tap('[role="menu"] a[href^="/inbox/"]');
+  await ui("failed result opens from mobile menu", `location.pathname.startsWith('/inbox/')`);
+  await viewport(1280, 900);
+  await ui(
+    "desktop sidebar returns",
+    `!!document.querySelector('aside[aria-label="Sidebar"] a[href="/a/default"]')`,
+  );
+  await tap('aside[aria-label="Sidebar"] a[href="/a/default"]');
+  await ui(
+    "main after failed result",
+    `location.pathname === '/a/default' && !!document.querySelector('textarea[aria-label^="Message"]:not([inert] *)')`,
+  );
+  await ui("mobile drawer closes", `!document.querySelector('[role="dialog"]')`);
   await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').dataset.probe = 'kept'");
-  await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').focus()");
+  await tap('textarea[aria-label^="Message"]:not([inert] *)');
+  await ui("composer receives focus", `document.activeElement?.matches('textarea[aria-label^="Message"]')`);
   await call("Input.insertText", { text: "unsent words" });
+  await ui(
+    "unsent draft entered",
+    `document.querySelector('textarea[aria-label^="Message"]:not([inert] *)')?.value === 'unsent words'`,
+  );
 
   // The sidebar hides itself, and the first header button shows it again with focus.
   await tap('aside[aria-label="Sidebar"] button[aria-label="Hide sidebar"]');
@@ -1418,15 +1474,19 @@ try {
   await ui("the header button shows the sidebar", `!!document.querySelector('aside[aria-label="Sidebar"]')`);
 
   // Routines opens its page, and the bot's row stays current.
-  await tap(tab("Routines"));
+  await tap(botMenu);
+  await ui(
+    "Routines menu item",
+    `!!document.querySelector('[role="menu"] a[href="/a/default/automations"]')`,
+  );
+  await tap('[role="menu"] a[href="/a/default/automations"]');
   await ui(
     "the Routines row opens /a/default/automations",
     "location.pathname === '/a/default/automations' && document.querySelector('#page-title')?.textContent === 'Routines'",
   );
   await check(
-    "the Routines row is current, and so is the bot's row",
-    `document.querySelector('${tab("Routines")}').getAttribute('aria-current') === 'page' &&
-      document.querySelector('nav[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-current') === 'page'`,
+    "the bot row stays current on Routines",
+    `document.querySelector('nav[aria-label="Bots"] a[href="/a/default"]').getAttribute('aria-current') === 'page'`,
   );
   // Settings opens from the bot's ⋯, which stays lit there.
   await openBotSettings('aside[aria-label="Sidebar"]');
@@ -1447,8 +1507,8 @@ try {
   await tap(tab("Chat"));
   await ui(
     "the main timeline kept its composer and the unsent message",
-    `location.pathname === '/a/default' && document.querySelector('textarea[aria-label^="Message"]').dataset.probe === 'kept' &&
-      document.querySelector('textarea[aria-label^="Message"]').value === 'unsent words'`,
+    `location.pathname === '/a/default' && document.querySelector('textarea[aria-label^="Message"]:not([inert] *)').dataset.probe === 'kept' &&
+      document.querySelector('textarea[aria-label^="Message"]:not([inert] *)').value === 'unsent words'`,
   );
   await evaluate(
     "(() => { const t = document.querySelector('textarea[aria-label^=\"Message\"]'); t.select(); document.execCommand('delete'); })()",
@@ -1487,11 +1547,10 @@ try {
   const settingsRow = '[role="region"][aria-label="Chat settings"]';
 
   const openChatSettings = async () => {
-    await ui(
-      "Chat settings button",
-      `!!document.querySelector('header button[aria-label^="Chat settings"]')`,
-    );
-    await tap('header button[aria-label^="Chat settings"]');
+    await ui("Chat settings button", `!!document.querySelector('header button[aria-label="Chat more"]')`);
+    await tap('header button[aria-label="Chat more"]');
+    await ui("chat settings menu item", `!!document.querySelector('[role="menuitem"]')`);
+    await tap('[role="menuitem"]');
     await ui("Chat settings row", `!!document.querySelector('${settingsRow}')`);
   };
 
@@ -1642,7 +1701,7 @@ try {
   await tap(defaultLink);
   await ui(
     "default composer restored",
-    `document.querySelector('${visibleComposer}')?.value === 'default unsent text'`,
+    `location.pathname === '/a/default' && document.querySelector('${visibleComposer}')?.value === 'default unsent text'`,
   );
   await check(
     "default timeline excludes second agent messages and keeps its upload",
@@ -1661,7 +1720,7 @@ try {
   await tap(secondLink);
   await ui(
     "second composer restored",
-    `document.querySelector('${visibleComposer}')?.value === 'second unsent text'`,
+    `location.pathname === '${secondPath}' && document.querySelector('${visibleComposer}')?.value === 'second unsent text'`,
   );
   await check(
     "second composer excludes default attachments",
@@ -1959,12 +2018,12 @@ try {
   await botSettingsPage("extensions");
   await ui(
     "returned to current agent extensions",
-    `location.pathname === '/a/${second.id}/extensions' && document.querySelector('aside[aria-label="Sidebar"] button[aria-label^="Bot menu"]').hasAttribute('data-current')`,
+    `location.pathname === '/a/${second.id}/extensions' && document.querySelector('aside[aria-label="Sidebar"] a[aria-current="page"] + button[aria-label^="Bot menu"]').hasAttribute('data-current')`,
   );
   await viewport(390, 844);
   // On a phone the bot column sits in the drawer.
   await tap('button[aria-label^="Open navigation"]');
-  await tap(`[role=dialog] ${tab("Chat")}`);
+  await tap(`[role=dialog] a[href="${secondPath}"]`);
   await ui(
     "second timeline restored on phone",
     `location.pathname === '${secondPath}' && document.querySelector('${visibleComposer}')?.value === 'second unsent text' && document.body.innerText.includes('echo: only the second agent sees this')`,
@@ -2021,11 +2080,12 @@ try {
   const lastAgentPath = `/a/${connectionAgents.at(-1).id}`;
 
   // A full page navigation would close the streams and hide a connection leak.
+  await tap(`aside a[href="${lastAgentPath}"] + button[aria-label^="Bot menu"]`);
   await ui(
-    "the open bot lists Main",
-    `!!document.querySelector('aside[aria-label="Sidebar"] a[data-tab="Main"]')`,
+    "new chat menu item",
+    `!![...document.querySelectorAll('[role="menuitem"]')].find(e => e.textContent.trim() === 'New chat')`,
   );
-  await click("New chat");
+  await tap('[role="menuitem"]');
   await ui(
     "New session works after seven agent switches",
     `location.pathname.startsWith('${lastAgentPath}/c/') && document.querySelector('#page-title')?.textContent === 'New chat'`,
@@ -2061,6 +2121,52 @@ try {
   await visit("/secrets");
   await ui("secrets redirects to environment", "location.pathname === '/environment'");
   results.push("/secrets redirects to /environment");
+
+  // A real question with a long session title remains usable in the narrow drawer.
+  const questionBot = await api("/api/agents", {
+    name: "Question bot",
+    provider: "faux",
+    modelId: "tool",
+    thinkingLevel: "off",
+    instructions: "",
+  });
+
+  const questionChat = await api(`/api/agents/${questionBot.id}/chats`, {});
+
+  await api(`/api/agents/${questionBot.id}/chats/${questionChat.id}/messages`, {
+    id: randomUUID(),
+    text: `ask_user ${JSON.stringify({ question: "W".repeat(100), options: ["Yes", "No"] })}`,
+  });
+  await poll(
+    "long-title question opens",
+    async () =>
+      (await api(`/api/agents/${questionBot.id}/chats/${questionChat.id}`)).question?.status === "open",
+  );
+  await viewport(320, 844);
+  await tap('button[aria-label^="Open navigation"]');
+  await ui(
+    "question bot in drawer",
+    `!!document.querySelector('[role="dialog"] a[href="/a/${questionBot.id}"]')`,
+  );
+  await tap(`[role="dialog"] a[href="/a/${questionBot.id}"] + button[aria-label^="Bot menu"]`);
+  const questionLink = `[role="menu"] a[href="/a/${questionBot.id}/c/${questionChat.id}"]`;
+  await ui("question appears in bot menu", `!!document.querySelector('${questionLink}')`);
+  await check(
+    "long question chat title is truncated within mobile menu",
+    `(() => { const link = document.querySelector('${questionLink}'); const menu = link.closest('[role="menu"]'); const title = link.querySelector('span span'); const m = menu.getBoundingClientRect(); const l = link.getBoundingClientRect(); const t = title.getBoundingClientRect(); return m.left >= 0 && m.right <= innerWidth && l.right <= m.right && t.right <= l.right && title.scrollWidth > title.clientWidth && link.innerText.includes('Asks you a question'); })()`,
+  );
+  await ui(
+    "question menu finishes opening",
+    `document.querySelector('[role="menu"]').getAnimations({ subtree: true }).every(a => a.playState !== 'running') && document.querySelector('[role="dialog"]').getAnimations({ subtree: true }).every(a => a.playState !== 'running')`,
+  );
+  await tap(questionLink);
+  await ui(
+    "question link opens its chat",
+    `location.pathname === '/a/${questionBot.id}/c/${questionChat.id}'`,
+  );
+  await shot("17-long-question-mobile");
+  results.push("long question title fits the mobile bot menu and opens its chat");
+
   await writeFile(
     join(artifacts, "browser-results.json"),
     JSON.stringify(
@@ -2092,7 +2198,17 @@ try {
     await shot("failure").catch(() => {});
     await writeFile(
       join(artifacts, "failure.txt"),
-      String(error) + "\n" + (await evaluate("document.body.innerText").catch(() => "")),
+      String(error) +
+        "\n" +
+        JSON.stringify(
+          await evaluate(
+            `({ path: location.pathname, active: document.activeElement?.outerHTML.slice(0, 500), composers: [...document.querySelectorAll('textarea')].map(t => ({value: t.value, label: t.getAttribute('aria-label'), inert: !!t.closest('[inert]'), probe: t.dataset.probe})) })`,
+          ).catch(() => ({})),
+          null,
+          2,
+        ) +
+        "\n" +
+        (await evaluate("document.body.innerText").catch(() => "")),
     );
   }
 
@@ -2342,18 +2458,19 @@ async function clickLabel(label) {
   );
 }
 
-/** Opens a global page from the ⋯ at the top of the sidebar inside `scope`. */
+/** Opens a global page from the sidebar footer inside `scope`. */
 async function openGlobal(scope, path) {
-  await tap(`${scope} button[aria-label^="More"]`);
-  await ui("the sidebar menu opens", `!!document.querySelector('[role="menu"] a[href="${path}"]')`);
-  await tap(`[role="menu"] a[href="${path}"]`);
+  await tap(`${scope} a[href="${path}"]`);
 }
 
 /** Opens the open bot's Settings from its ⋯ in the sidebar inside `scope`. */
 async function openBotSettings(scope) {
-  await tap(`${scope} button[aria-label^="Bot menu"]`);
-  await ui("the bot menu opens", `!!document.querySelector('[role="menu"] a[data-tab="Settings"]')`);
-  await tap('[role="menu"] a[data-tab="Settings"]');
+  const botPath = await evaluate(`'/' + location.pathname.split('/').filter(Boolean).slice(0, 2).join('/')`);
+  const settingsLink = `[role="menu"] a[href="${botPath}/agent"]`;
+
+  await tap(`${scope} a[href="${botPath}"] + button[aria-label^="Bot menu"]`);
+  await ui("the bot menu opens", `!!document.querySelector('${settingsLink}')`);
+  await tap(settingsLink);
 }
 
 async function tap(selector) {
