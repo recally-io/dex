@@ -972,6 +972,12 @@ updates the backend implementation of ADR 0003.
 - The [Go projection](../../internal/engine/view.go) renders immutable native
   conversation revisions. Each revision includes entries, the live partial,
   tool state, retry state, and the full Inbox. The renderer also serves history.
+- A first snapshot holds the last 20 turns of the active context. A turn
+  starts at an input or a context boundary, and its tool steps count once
+  because they fold into one row. When those turns hold more than 300 entries,
+  the window starts at the history boundary before the last 300 entries.
+  `historyBefore` points at the first entry of the window, and older entries
+  load as history. The window start stays fixed for one subscription.
 - A text-only increase sends `append`. Other item changes send `item`.
   Removal, reordering, a committed partial ID change, or a new history boundary
   sends a replacement `snapshot`. Running and retry changes send `run`.

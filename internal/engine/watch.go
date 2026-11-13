@@ -107,9 +107,13 @@ func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
 	return w, nil
 }
 
-// snapshotEntries is the minimum number of recent entries in a first snapshot. It matches the
-// default history page. Older entries load as history.
-const snapshotEntries = 100
+// snapshotTurns is the number of recent turns in a first snapshot. Older turns load as history.
+// A turn counts once however many tool calls it has, because its steps fold into one row.
+const snapshotTurns = 20
+
+// snapshotEntries caps the window for a long turn, such as a child session that runs hundreds of
+// tool calls for one input. Each committed step of a run sends the window again.
+const snapshotEntries = 300
 
 // activeContext keeps the recent window of the active context without retaining archived history.
 // Entries are immutable, so a read pinned to the view's tail matches that revision's docs.
@@ -146,21 +150,30 @@ func (active *activeContext) project(ctx context.Context, conversation harness.C
 	return event, err
 }
 
-// windowStart returns the first entry of the recent window, or 0 when the context fits. Like a
-// history page, the window starts at a history boundary, so a tool result keeps its call.
+// windowStart returns the first entry of the last snapshotTurns turns, or 0 when the context has
+// no more turns. When those turns hold more than snapshotEntries entries, the window starts at the
+// history boundary before the cap, so a tool result keeps its call.
 func windowStart(entries []durable.EntryRecord) durable.EntryId {
-	if len(entries) <= snapshotEntries {
-		return 0
-	}
 	sorted := slices.SortedFunc(slices.Values(entries), func(a, b durable.EntryRecord) int { return cmp.Compare(a.Id, b.Id) })
-	i := len(sorted) - snapshotEntries
-	for i > 0 && !historyBoundary(sorted[i]) {
-		i--
+	start, turns := 0, 0
+	for i := len(sorted) - 1; i > 0 && turns < snapshotTurns; i-- {
+		if turnStart(sorted[i]) {
+			start, turns = i, turns+1
+		}
 	}
-	if i == 0 {
+	if turns < snapshotTurns {
+		start = 0
+	}
+	if len(sorted)-start > snapshotEntries {
+		start = len(sorted) - snapshotEntries
+		for start > 0 && !historyBoundary(sorted[start]) {
+			start--
+		}
+	}
+	if start == 0 {
 		return 0
 	}
-	return sorted[i].Id
+	return sorted[start].Id
 }
 
 func projectView(view harness.ConversationView) (Event, error) {

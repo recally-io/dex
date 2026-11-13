@@ -44,11 +44,22 @@ func (a *Agents) History(ctx context.Context, ref Ref, before int64, limit int) 
 	return out, nil
 }
 
+// historyBoundary reports an entry that a page can start at: a tool result never starts a page
+// without its call.
 func historyBoundary(e durable.EntryRecord) bool {
+	return turnStart(e) || answer(e)
+}
+
+// turnStart reports an input or a context boundary, which starts a turn of the transcript.
+func turnStart(e durable.EntryRecord) bool {
 	switch e.Kind {
 	case "dex.user", "dex.task_result", "dex.withdrawn", "pi.user", "pi.reset", "pi.compaction", CompactionNoteKind:
 		return true
 	}
+	return false
+}
+
+func answer(e durable.EntryRecord) bool {
 	if len(e.Model) > 0 {
 		_, ok := e.Model[0].(ai.AssistantMessage)
 		return ok
