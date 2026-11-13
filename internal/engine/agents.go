@@ -42,6 +42,7 @@ type activityRecord struct {
 	lastAction     string
 	lastActivityAt int64
 	toolStarted    map[string]int64
+	runningTools   []RunningTool
 }
 
 // Activity is the in-memory activity snapshot for already-open conversations.
@@ -55,7 +56,7 @@ func (a *Agents) Activity(refs []Ref) map[Ref]Activity {
 		if r == nil || r.lastActivityAt == 0 {
 			continue
 		}
-		activity := Activity{LastAction: r.lastAction, LastActivityAt: new(r.lastActivityAt)}
+		activity := Activity{LastAction: r.lastAction, LastActivityAt: new(r.lastActivityAt), RunningTools: append([]RunningTool(nil), r.runningTools...)}
 		for _, started := range r.toolStarted {
 			if activity.ToolStartedAt == nil || started < *activity.ToolStartedAt {
 				activity.ToolStartedAt = new(started)

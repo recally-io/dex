@@ -140,15 +140,23 @@ type SessionInfo struct {
 	LastTurn *SessionTurn `json:"lastTurn,omitempty"`
 }
 
+// SessionActivity reports the last live observation without tool inputs or outputs.
+type SessionActivity struct {
+	Available      bool          `json:"available"`
+	LastObservedAt *int64        `json:"lastObservedAt,omitempty"`
+	RunningTools   []RunningTool `json:"runningTools"`
+}
+
 // SessionPage is a page of turns, newest first. Next is the Before value of the next page. Text is
 // set instead of Turns when the call reads the rest of one cut text.
 type SessionPage struct {
 	SessionRef
-	Turns      []SessionTurn `json:"turns,omitempty"`
-	Next       string        `json:"next,omitempty"`
-	Text       string        `json:"text,omitempty"`
-	NextOffset int           `json:"nextOffset,omitzero"`
-	HasMore    bool          `json:"hasMore,omitzero"`
+	Activity   *SessionActivity `json:"activity,omitempty"`
+	Turns      []SessionTurn    `json:"turns,omitempty"`
+	Next       string           `json:"next,omitempty"`
+	Text       string           `json:"text,omitempty"`
+	NextOffset int              `json:"nextOffset,omitzero"`
+	HasMore    bool             `json:"hasMore,omitzero"`
 }
 
 type SessionMatch struct {
@@ -298,7 +306,7 @@ func sessionReadExtension(agentID string, handlers TaskTools) *durable.Extension
 					Sessions []SessionInfo `json:"sessions"`
 				}{Sessions: list}, err
 			}),
-		sessionTool(agentID, "session_read", "Read the turns of any session of any bot: the input message and the final answer of each turn, newest first. It does not return thinking, tool calls, or tool output. Each text is cut at 4000 characters. Pass before (a turn ID from next) to read older turns. Call it for a result only when the result is cut. Pass turn and offset to read the rest of one cut text; field is answer (the default) or input.",
+		sessionTool(agentID, "session_read", "Read the turns of any session of any bot: the input message and the final answer of each turn, newest first. For a running session, activity says whether live data is available. For an observed child, it lists safe tool names and first-observed times, without tool inputs or outputs. It does not return thinking, tool arguments, or tool output. Each text is cut at 4000 characters. Pass before (a turn ID from next) to read older turns. Use it to inspect a stalled child or read a cut result. Pass turn and offset to read the rest of one cut text; field is answer (the default) or input.",
 			objectSchema([]string{"id"}, map[string]any{
 				"id":     map[string]any{"type": "string", "minLength": 1},
 				"before": map[string]any{"type": "string"},
@@ -332,7 +340,7 @@ const workLoopRules = `You are the main agent loop of this conversation. Do the 
 
 To continue work that a child session already did, call session_send on the same child. It keeps its context and does not read the repository again. To branch from a child that has the context you need, call session_fork. Use session_new only for unrelated or parallel work.
 
-When child sessions are running, continue any independent local work that remains in scope. When no local work remains, send one brief reply that names the child sessions and says that you will report back. Do not poll to wait for results. Results arrive as separate inputs. Call session_read only when a result is cut. Before you ask the user to repeat earlier context, call session_search and session_read to look for it. Search another bot or all bots with the bot argument.
+When child sessions are running, continue any independent local work that remains in scope. When no local work remains, send one brief reply that names the child sessions and says that you will report back. Do not poll to wait for results. Results arrive as separate inputs. Call session_read to inspect a stalled child or read a cut result. Before you ask the user to repeat earlier context, call session_search and session_read to look for it. Search another bot or all bots with the bot argument.
 
 To give work to another bot, call session_new with bot. The child runs with the instructions, model, skills, MCP servers, environment, and workspace of that bot, so choose it for its skills or credentials. You can send to, stop, and fork that child with its ID. session_list shows it with its bot name.`
 
@@ -342,7 +350,7 @@ const frontDeskRules = `You are the front desk of this conversation. A person wa
 
 Answer in this conversation when the answer needs only a few fast steps, for example a fact, a memory lookup, a short file read, or one quick command. Use session_new for work that needs many tool calls, long commands, code changes, or research. A child session cannot see this conversation, so give it the repository path, the required context, the owned files, and the completion criteria in its message. A child session has the coding tools, including bash, but cannot create or manage sessions. Constraints in a message are prompt instructions and do not restrict tools. After session_new, end the turn with one or two sentences that name the work and say that you will report back. Do not do the delegated work here. Do not poll to wait for results. Results arrive as separate inputs.
 
-When the user writes while child sessions run, answer the new message first. If the message changes the work of a child, send it to the same child with session_send. Mode steer changes the current run after its current tool step. Mode queue runs the message after the current run. To branch from a child that has the context you need, call session_fork. Use session_new only for unrelated or parallel work. Call session_stop only when the user wants the work to stop. Call session_read only when a result is cut. Before you ask the user to repeat earlier context, call session_search and session_read to look for it. Search another bot or all bots with the bot argument. To give work to another bot, call session_new with bot: the child runs with the instructions, skills, MCP servers, environment, and workspace of that bot. You can send to, stop, and fork that child with its ID. session_list shows it with its bot name. Tell the user what you changed.`
+When the user writes while child sessions run, answer the new message first. If the message changes the work of a child, send it to the same child with session_send. Mode steer changes the current run after its current tool step. Mode queue runs the message after the current run. To branch from a child that has the context you need, call session_fork. Use session_new only for unrelated or parallel work. Call session_stop only when the user wants the work to stop. Call session_read to inspect a stalled child or read a cut result. Before you ask the user to repeat earlier context, call session_search and session_read to look for it. Search another bot or all bots with the bot argument. To give work to another bot, call session_new with bot: the child runs with the instructions, skills, MCP servers, environment, and workspace of that bot. You can send to, stop, and fork that child with its ID. session_list shows it with its bot name. Tell the user what you changed.`
 
 // childRules are the rules of every conversation that has a parent.
 const childRules = `This is a child session. Another session sent the first message, and that session or the user can send more messages later. Do each message as a complete job with the coding tools, including bash. You cannot create or manage sessions. Constraints in a message are instructions and do not restrict tools. Use foreground, non-interactive commands for ordinary CLI work. Do not leave processes running after the turn ends. A process that you start and supervise in the same turn, such as a worker in a Rex tab, is allowed. Stop it and close its tab before the final answer. Before new work, check for processes or tabs that an earlier interrupted turn left. Never claim that a failed or unrun check passed. End each turn with a final answer that has these parts: what changed, commands you ran and their results, files you changed, and open items. The parent session decides the next action. To find context, call session_search and session_read: they read any session of any bot, also the parent session.`

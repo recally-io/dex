@@ -193,7 +193,7 @@ func TestAReplayAfterACrashBeforeTheProcessStartsNeverRunsTheCommand(t *testing.
 	// When the tool call replays after the restart.
 	row, err := f.m.Start(t.Context(), p)
 	// Then it gets the stored row, and no process starts: the output file that a start creates first does not exist.
-	if err != nil || row.ID != "crashed" || row.State != background.StateStarting {
+	if err != nil || row.ID != "crashed" || row.State != background.StateStarting || row.TimeoutMs.Valid {
 		t.Fatalf("replay: %+v, %v", row, err)
 	}
 	if _, err := os.Stat(filepath.Join(f.dir, "out")); err == nil {
@@ -205,6 +205,37 @@ func TestAReplayAfterACrashBeforeTheProcessStartsNeverRunsTheCommand(t *testing.
 	}
 	if state, _ := f.state("crashed"); state != background.StateUnknown {
 		t.Fatalf("state after recovery: %s", state)
+	}
+}
+
+func TestUserGetsATimeoutWakeForEitherDefault(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{background.WakeExit, background.WakeLines} {
+		t.Run(mode, func(t *testing.T) {
+			// Given short defaults and a real command that waits indefinitely.
+			f := newFixture(t, background.Limits{ExitTimeout: time.Second, LinesTimeout: time.Second})
+			p := f.params("sleep 300", mode)
+			row, err := f.m.Start(t.Context(), p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// When the default timeout ends the command, the durable wake reports the timeout.
+			wakes := f.waitWakes(1)
+			if state, reason := f.state(row.ID); state != background.StateTimedOut || reason != "timeout" {
+				t.Fatalf("state %s, reason %s", state, reason)
+			}
+			if wakes[0].ID != "background:"+row.ID+":end" || wakes[0].Body.Result.Event != "timed_out" {
+				t.Fatalf("wake-ups: %+v", wakes)
+			}
+			// Then a replay returns the ended command and does not create another wake-up.
+			replay, err := f.m.Start(t.Context(), p)
+			if err != nil || replay.ID != row.ID || replay.State != background.StateTimedOut {
+				t.Fatalf("replay: %+v, %v", replay, err)
+			}
+			if got := f.wakes(); len(got) != 1 {
+				t.Fatalf("replay wake-ups: %+v", got)
+			}
+		})
 	}
 }
 

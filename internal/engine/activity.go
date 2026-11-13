@@ -59,6 +59,7 @@ func (a *Agents) startActivityWatch(ctx context.Context, ref Ref, conversation h
 	closed := false
 	native.Start(func(_ context.Context, call chord.WatchCall[harness.ConversationView]) error {
 		if call.Kind != chord.WatchCallValue {
+			cancel()
 			return call.Error
 		}
 		chord.DeliveryEntered()
@@ -67,7 +68,11 @@ func (a *Agents) startActivityWatch(ctx context.Context, ref Ref, conversation h
 		if closed {
 			return watchCtx.Err()
 		}
-		return update(call.Value)
+		err := update(call.Value)
+		if err != nil {
+			cancel()
+		}
+		return err
 	})
 	go func() {
 		defer close(done)
@@ -100,12 +105,19 @@ func (a *Agents) updateActivity(ref Ref, event Event, view harness.ConversationV
 		return
 	}
 	var live harness.LiveState
-	if doc, ok := view.Docs.Get("pi.live"); ok {
-		var err error
-		live, err = durable.FromJsonValue[harness.LiveState](doc)
-		if err != nil {
-			return
-		}
+	doc, ok := view.Docs.Get("pi.live")
+	if !ok {
+		a.mu.Lock()
+		delete(a.activity, ref)
+		a.mu.Unlock()
+		return
+	}
+	live, err := durable.FromJsonValue[harness.LiveState](doc)
+	if err != nil {
+		a.mu.Lock()
+		delete(a.activity, ref)
+		a.mu.Unlock()
+		return
 	}
 	current := map[string]int64{}
 	a.mu.Lock()
@@ -133,8 +145,24 @@ func (a *Agents) updateActivity(ref Ref, event Event, view harness.ConversationV
 			break
 		}
 	}
-	a.activity[ref] = &activityRecord{lastAction: lastAction, lastActivityAt: observedAt, toolStarted: current}
+	var running []RunningTool
+	for _, slot := range live.Tools {
+		if slot.Status == harness.ToolSlotRunning {
+			running = append(running, RunningTool{Name: safeToolName(slot.Name), FirstObservedAt: current[slot.CallId]})
+		}
+	}
+	a.activity[ref] = &activityRecord{lastAction: lastAction, lastActivityAt: observedAt, toolStarted: current, runningTools: running}
 	a.mu.Unlock()
+}
+
+// Tool names from extensions and unoffered calls can contain private data.
+func safeToolName(name string) string {
+	switch name {
+	case "bash", "read", "write", "edit", "grep", "find", "ls":
+		return name
+	default:
+		return "other"
+	}
 }
 
 func shortAction(name string, args map[string]any) string {
