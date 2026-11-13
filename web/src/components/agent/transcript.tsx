@@ -11,7 +11,7 @@ import {
   SquarePen,
 } from "lucide-react";
 import { useAgentId } from "../../lib/agent-scope";
-import { useEffect, useState, type ReactNode } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
@@ -893,7 +893,9 @@ export function RetryNotice({ retry }: { retry: Retry }) {
   );
 }
 
-export function Markdown({ text }: { text: string }) {
+// Parsing is the main render cost of a long transcript. A keystroke or a streamed token re-renders
+// the transcript, so each answer parses again only when its text changes.
+export const Markdown = memo(function Markdown({ text }: { text: string }) {
   return (
     <div className="max-w-[680px] text-[15px] leading-[1.75] text-foreground [overflow-wrap:anywhere] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
       <ReactMarkdown remarkPlugins={[remarkGfm, remarkStrong]} components={markdown}>
@@ -901,4 +903,4 @@ export function Markdown({ text }: { text: string }) {
       </ReactMarkdown>
     </div>
   );
-}
+});
