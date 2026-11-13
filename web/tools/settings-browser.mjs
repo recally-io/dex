@@ -190,6 +190,12 @@ try {
       await click("Add provider");
       await tap('[role="dialog"] button[aria-label="Custom endpoint"]');
       await type('[role="dialog"] input[placeholder="LM Studio"]', "Lan");
+      // The default API is the first by name, Anthropic Messages, which asks <base>/v1/models.
+      await evaluate(`(() => {
+        const select = document.querySelector('[role="dialog"] select');
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, "openai-completions");
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      })()`);
       await type('[role="dialog"] input[type="url"]', `http://127.0.0.1:${endpoint.address().port}/v1`);
       await poll("models listed without a save", () =>
         evaluate(
