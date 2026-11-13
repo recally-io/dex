@@ -121,7 +121,8 @@ func TestUserNativeTranscriptSubscriptionsAndHistory(t *testing.T) {
 	t.Logf("received %d native transcript events", len(observed))
 }
 
-func TestUserWatchRetainsTimelineBeyondDefaultWindow(t *testing.T) {
+func TestUserWatchShowsRecentWindowAndPagesTheRest(t *testing.T) {
+	// Given an active context of 121 entries, with a tool call and its result near the window start.
 	ctx := t.Context()
 	dir := t.TempDir()
 	agents, err := New(Config{DataDir: filepath.Join(dir, "data"), Home: filepath.Join(dir, "home"), FakeModel: true})
@@ -137,14 +138,31 @@ func TestUserWatchRetainsTimelineBeyondDefaultWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var kept durable.EntryId
+	user := durable.EntryDraft{Kind: "pi.user", Model: []ai.Message{ai.UserMessage{Content: ai.UserText("hello")}}}
+	call := transcriptAssistant("")
+	call.Content = []ai.AssistantContentBlock{ai.ToolCall{ID: "call", Name: "bash", Arguments: map[string]any{"command": "pwd"}}}
+	var callID, kept durable.EntryId
 	_, err = conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
-		for i := range 120 {
-			entry, err := tx.AppendEntry(conversation.Id(), durable.EntryDraft{Kind: "pi.user", Model: []ai.Message{ai.UserMessage{Content: ai.UserText("hello")}}})
+		for range 20 {
+			if _, err := tx.AppendEntry(conversation.Id(), user); err != nil {
+				return nil, err
+			}
+		}
+		entry, err := tx.AppendEntry(conversation.Id(), durable.EntryDraft{Kind: "pi.assistant", Model: []ai.Message{call}})
+		if err != nil {
+			return nil, err
+		}
+		callID = entry.Id
+		result := ai.ToolResultMessage{ToolCallID: "call", Content: []ai.ToolResultMessageContent{ai.TextContent{Text: "/workspace"}}}
+		if _, err := tx.AppendEntry(conversation.Id(), durable.EntryDraft{Kind: "pi.toolResult", Model: []ai.Message{result}}); err != nil {
+			return nil, err
+		}
+		for i := range 99 {
+			entry, err := tx.AppendEntry(conversation.Id(), user)
 			if err != nil {
 				return nil, err
 			}
-			if i == 100 {
+			if i == 79 {
 				kept = entry.Id
 			}
 		}
@@ -153,14 +171,29 @@ func TestUserWatchRetainsTimelineBeyondDefaultWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// When the user opens the chat.
 	watch, err := agents.Watch(ctx, ref)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer watch.Close()
-	if len(watch.Snapshot.Items) != 120 {
-		t.Fatalf("timeline has %d items, want 120", len(watch.Snapshot.Items))
+	// Then the snapshot holds the recent window, which starts at the call, not at its result.
+	items := watch.Snapshot.Items
+	if len(items) != 100 || items[0].ID != "call" || items[0].Status != "done" || items[0].Output != "/workspace" {
+		t.Fatalf("window has %d items, first = %#v", len(items), items[0])
 	}
+	if watch.Snapshot.HistoryBefore != int64(callID) {
+		t.Fatalf("historyBefore = %d, want %d", watch.Snapshot.HistoryBefore, callID)
+	}
+	// And the earlier entries stay available as history.
+	history, err := agents.History(ctx, ref, watch.Snapshot.HistoryBefore, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history.Items) != 20 || history.NextBefore != 0 {
+		t.Fatalf("history has %d items, nextBefore %d", len(history.Items), history.NextBefore)
+	}
+	// When a later compaction keeps a short context, a new reader gets all of it.
 	_, err = conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
 		_, err := tx.AppendEntry(conversation.Id(), durable.EntryDraft{Kind: "pi.compaction", Head: &kept})
 		return nil, err

@@ -1,10 +1,12 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sync"
 
 	"github.com/MichaelKinsy/PiG/chord"
@@ -105,12 +107,19 @@ func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
 	return w, nil
 }
 
-// activeContext keeps the full active context without retaining archived history.
+// snapshotEntries is the minimum number of recent entries in a first snapshot. It matches the
+// default history page. Older entries load as history.
+const snapshotEntries = 100
+
+// activeContext keeps the recent window of the active context without retaining archived history.
 // Entries are immutable, so a read pinned to the view's tail matches that revision's docs.
 // Refresh on entry changes only; streamed tokens reuse the same entries.
 type activeContext struct {
 	tail    durable.EntryId
 	entries []durable.EntryRecord
+	// from is the first entry of the window, or 0 for the full context. It is fixed for the
+	// subscription, so a later snapshot keeps the history cursor of the client.
+	from durable.EntryId
 }
 
 func (active *activeContext) project(ctx context.Context, conversation harness.Conversation, view harness.ConversationView) (Event, error) {
@@ -121,11 +130,37 @@ func (active *activeContext) project(ctx context.Context, conversation harness.C
 			if err != nil {
 				return Event{}, err
 			}
-			active.tail, active.entries = tail, context.Entries
+			entries := context.Entries
+			if active.tail == 0 {
+				active.from = windowStart(entries)
+			}
+			if active.from > 0 {
+				entries = slices.DeleteFunc(entries, func(e durable.EntryRecord) bool { return e.Id < active.from })
+			}
+			active.tail, active.entries = tail, entries
 		}
 	}
 	view.Entries = active.entries
-	return projectView(view)
+	event, err := projectView(view)
+	event.HistoryBefore = max(event.HistoryBefore, int64(active.from))
+	return event, err
+}
+
+// windowStart returns the first entry of the recent window, or 0 when the context fits. Like a
+// history page, the window starts at a history boundary, so a tool result keeps its call.
+func windowStart(entries []durable.EntryRecord) durable.EntryId {
+	if len(entries) <= snapshotEntries {
+		return 0
+	}
+	sorted := slices.SortedFunc(slices.Values(entries), func(a, b durable.EntryRecord) int { return cmp.Compare(a.Id, b.Id) })
+	i := len(sorted) - snapshotEntries
+	for i > 0 && !historyBoundary(sorted[i]) {
+		i--
+	}
+	if i == 0 {
+		return 0
+	}
+	return sorted[i].Id
 }
 
 func projectView(view harness.ConversationView) (Event, error) {
