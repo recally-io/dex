@@ -385,7 +385,9 @@ async function projectEvidence(theme, size) {
 }
 async function composerEvidence(theme) {
   await waitFor("open bot in the sidebar", () =>
-    evaluate(`!!document.querySelector('aside[aria-label="Sidebar"] a[data-tab="Main"]')`),
+    evaluate(
+      `!!document.querySelector('aside[aria-label="Sidebar"] a[href="/a/default"][aria-current="page"]')`,
+    ),
   );
   const textarea = `document.querySelector('textarea[aria-label^="Message"]')`;
   await evaluate(`${textarea}?.focus()`);
@@ -438,7 +440,7 @@ async function composerEvidence(theme) {
     10000,
   );
   await capture(`${theme}-chat-composer-running.png`);
-  const menu = `document.querySelector('button[aria-label*="more actions"]')`;
+  const menu = `document.querySelector('aside a[aria-current="page"] + button[aria-label^="Bot menu"]')`;
   await waitFor("row menu button", () => evaluate(`!!${menu}`));
   await evaluate(`${menu}?.focus()`);
   await press("Enter", "Enter", 13, "\\r");
@@ -698,13 +700,15 @@ try {
     });
     await navigate("/a/default");
     await waitFor("open bot rows", () =>
-      evaluate("document.querySelectorAll('aside[aria-label=\"Sidebar\"] a[data-tab]').length === 2"),
+      evaluate(
+        '!!document.querySelector(\'aside[aria-label="Sidebar"] a[href="/a/default"][aria-current="page"]\')',
+      ),
     );
     assert.deepEqual(
       await evaluate(
         "[...document.querySelectorAll('aside[aria-label=\"Sidebar\"] a[data-tab]')].map(a => a.dataset.tab)",
       ),
-      ["Main", "Routines"],
+      [],
     );
     await navigate(`/inbox/${resultRun}`);
     await waitFor("result detail ready", () =>

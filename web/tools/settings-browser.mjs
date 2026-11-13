@@ -149,11 +149,7 @@ try {
 
     // Opened from the default bot, Providers still lists every bot that uses the provider.
     await visit("/a/default");
-    await tap('aside[aria-label="Sidebar"] button[aria-label^="More"]');
-    await poll("user menu open", () =>
-      evaluate(`!!document.querySelector('[role="menu"] a[href="/providers"]')`),
-    );
-    await tap('[role="menu"] a[href="/providers"]');
+    await tap('aside[aria-label="Sidebar"] a[href="/providers"]');
     await poll("client navigation to providers", () => evaluate("location.pathname === '/providers'"));
     await poll("provider users shown", () =>
       evaluate("document.body.innerText.includes('Used by Audit Bot, Second Audit Bot')"),
@@ -230,11 +226,17 @@ try {
     await api("/api/agents/default", { ...agent, provider: "faux", modelId: "think" }, "PUT");
     const chat = await api("/api/agents/default/chats", {}, "POST");
     await visit(`/a/default/c/${chat.id}`);
-    // The session controls show after the header's Chat settings button opens their row.
+    // The session controls show after the chat header's More menu opens their row.
     await poll("chat settings button", () =>
-      evaluate("!!document.querySelector('header button[aria-label^=\"Chat settings\"]')"),
+      evaluate("!!document.querySelector('header button[aria-label=\"Chat more\"]')"),
     );
-    await tap('header button[aria-label^="Chat settings"]');
+    await tap('header button[aria-label="Chat more"]');
+    await poll("chat settings menu", () =>
+      evaluate(
+        '!![...document.querySelectorAll(\'[role="menuitem"]\')].find(e => e.textContent === "Chat settings")',
+      ),
+    );
+    await tap('[role="menuitem"]');
     await poll("session controls", () =>
       evaluate("!!document.querySelector('button[aria-label=\"Set thinking level\"]:not([inert] *)')"),
     );

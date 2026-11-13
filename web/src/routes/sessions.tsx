@@ -9,6 +9,8 @@ import {
   getTurnChatOptions,
   listChatsOptions,
   createChatMutation,
+  archiveChatMutation,
+  unarchiveChatMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { useNow } from "../lib/clock";
 import {
@@ -48,8 +50,8 @@ export function SessionsPage() {
   });
 
   const [kind, setKind] = useState("All kinds");
+  const [archivedOpen, setArchivedOpen] = useState(false);
   const name = settings.data?.agent.name ?? "dex";
-  // Archived Chats live in the Chats sidebar of the Chat tab, not here.
   const everyChat = sessions.data?.chats ?? [];
   const all = everyChat.filter((chat) => !chat.archivedAt);
   const list = all.filter((chat) => kind === "All kinds" || sessionKind(chat) === kind);
@@ -114,6 +116,37 @@ export function SessionsPage() {
           </Empty>
         )}
       </Section>
+      {everyChat.some((chat) => chat.archivedAt) ? (
+        <Section
+          title="Archived"
+          action={
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-expanded={archivedOpen}
+              onClick={() => setArchivedOpen(!archivedOpen)}
+            >
+              {archivedOpen ? "Hide archived" : "Show archived"}
+            </Button>
+          }
+        >
+          {archivedOpen ? (
+            <Panel>
+              <ul>
+                {everyChat
+                  .filter((chat) => chat.archivedAt)
+                  .map((chat) => (
+                    <SessionRow
+                      key={chat.id}
+                      chat={chat}
+                      parent={parentName(chat, main.data?.id, everyChat)}
+                    />
+                  ))}
+              </ul>
+            </Panel>
+          ) : null}
+        </Section>
+      ) : null}
     </FramedPage>
   );
 }
@@ -125,6 +158,11 @@ function SessionRow({ chat, parent }: { chat: Chat; parent?: string }) {
   const Icon = kind === "Chat" ? MessageCircle : Clock3;
   const now = useNow();
   const stalled = isStalled(chat, now);
+
+  const changeArchive = useMutation({
+    ...(chat.archivedAt ? unarchiveChatMutation() : archiveChatMutation()),
+    onSuccess: () => refreshChats(agentId),
+  });
 
   return (
     <li className="flex items-center gap-3 border-t border-border px-4 py-3.5 first:border-t-0">
@@ -148,6 +186,23 @@ function SessionRow({ chat, parent }: { chat: Chat; parent?: string }) {
         >
           {stalled ? "Stalled" : "Running"}
         </Badge>
+      ) : null}
+      {kind === "Chat" ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={changeArchive.isPending}
+          onClick={() =>
+            changeArchive.mutate({ path: { agentId: sessionAgentId(chat, agentId), chatId: chat.id } })
+          }
+        >
+          {chat.archivedAt ? "Restore" : "Archive"}
+        </Button>
+      ) : null}
+      {changeArchive.isError ? (
+        <span role="alert" className="text-xs text-red">
+          Could not change session.
+        </span>
       ) : null}
       <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
     </li>
