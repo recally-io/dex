@@ -217,6 +217,27 @@ paths:
               schema: { $ref: "#/components/schemas/ModelList" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/settings/provider-models:
+    post:
+      operationId: listProviderModels
+      description: >
+        Lists the models of a custom provider endpoint and saves nothing. An
+        empty apiKey uses the saved key of the custom provider providerId.
+        400 when the endpoint does not give a model list.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderModelsInput" }
+      responses:
+        "200":
+          description: The models of the endpoint.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderModelList" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/settings/providers/{providerId}:
     parameters:
       - name: providerId
@@ -2416,7 +2437,7 @@ components:
         keySet: { type: boolean }
         models:
           type: array
-          description: Fixed model IDs; empty means the endpoint lists them.
+          description: The enabled model IDs; empty enables all models that the endpoint lists.
           items: { type: string }
         modelCount:
           type: integer
@@ -2437,7 +2458,38 @@ components:
           description: Write-only. Empty keeps the saved key.
         models:
           type: array
+          description: >
+            The enabled model IDs. Empty enables all models that the endpoint
+            lists.
           items: { type: string }
+
+    ProviderModelsInput:
+      type: object
+      required: [api, baseUrl]
+      properties:
+        providerId:
+          type: string
+          description: A saved custom provider whose key to use when apiKey is empty.
+        api: { type: string }
+        baseUrl: { type: string }
+        apiKey:
+          type: string
+          description: Write-only.
+
+    ProviderModelList:
+      type: object
+      required: [models]
+      properties:
+        models:
+          type: array
+          items: { $ref: "#/components/schemas/ProviderModel" }
+
+    ProviderModel:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
 
     ProviderInfo:
       type: object

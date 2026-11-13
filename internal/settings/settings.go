@@ -240,6 +240,33 @@ func (s *Service) SetProvider(ctx context.Context, p Provider) (Provider, error)
 	return result, nil
 }
 
+// ListProviderModels lists the models of the endpoint of custom provider p and saves nothing.
+// An empty APIKey uses the saved key of the custom provider p.ID. A failed listing wraps
+// ErrInvalid, because the user can fix it in the input.
+func (s *Service) ListProviderModels(ctx context.Context, p Provider) ([]engine.ListedModel, error) {
+	if _, ok := APIs[p.API]; !ok {
+		return nil, fmt.Errorf("%w: unknown API %q", ErrInvalid, p.API)
+	}
+	if err := checkBaseURL(p.BaseURL); err != nil {
+		return nil, err
+	}
+	if p.APIKey == "" && p.ID != "" {
+		saved, err := s.q.GetProvider(ctx, p.ID)
+		switch {
+		// A built-in key must not go to a custom URL.
+		case err == nil && saved.Api != "":
+			p.APIKey = saved.ApiKey
+		case err != nil && !errors.Is(err, sql.ErrNoRows):
+			return nil, err
+		}
+	}
+	models, err := engine.ListProviderModels(ctx, engine.ProviderSettings{ID: p.ID, API: p.API, BaseURL: p.BaseURL, APIKey: p.APIKey})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	return models, nil
+}
+
 // DeleteProvider removes provider id.
 func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 	s.mu.Lock()

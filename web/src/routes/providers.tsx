@@ -213,7 +213,7 @@ function ProviderCard({
         </span>
       ) : (
         <span key="m" className="font-mono text-[12px] tabular-nums">
-          {own?.length ?? p.modelCount ?? 0} {p.models.length ? "fixed" : "listed"}
+          {own?.length ?? p.modelCount ?? 0} {p.models.length ? "enabled" : "listed"}
         </span>
       ),
     ],
