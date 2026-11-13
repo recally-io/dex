@@ -6,6 +6,14 @@ import (
 	"time"
 )
 
+func TestUserLiveActivityHidesArbitraryToolNames(t *testing.T) {
+	for _, name := range []string{"secret-token", "mcp_secret-token", "Bash", "bash secret-token"} {
+		if got := safeToolName(name); got != "other" {
+			t.Fatalf("tool name %q was exposed as %q", name, got)
+		}
+	}
+}
+
 func TestUserBackgroundActivityTracksWithoutUserWatch(t *testing.T) {
 	// Given a background execution with a real faux bash tool and no transcript subscriber.
 	a := coreEngine(t, Config{})

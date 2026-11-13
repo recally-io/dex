@@ -19,10 +19,16 @@ type Ref struct {
 	AgentID string
 	ID      int64
 }
+type RunningTool struct {
+	Name            string `json:"name"`
+	FirstObservedAt int64  `json:"firstObservedAt"`
+}
+
 type Activity struct {
 	LastAction     string
 	LastActivityAt *int64
 	ToolStartedAt  *int64
+	RunningTools   []RunningTool
 }
 type ModelRef struct {
 	Provider string `json:"provider"`

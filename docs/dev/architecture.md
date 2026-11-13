@@ -24,8 +24,12 @@ package ownership. `internal/app` connects the services. Business services call
 `internal/engine`; platform adapters use `internal/channel` for commands and
 durable reply delivery. The engine does not import dex business packages.
 
-Tools and stdio MCP servers can start child processes. Agent execution itself
-stays in dex. There is no backend subprocess or serialized internal protocol.
+Tools and stdio MCP servers can start child processes. Bash has a default
+120-second timeout. An omitted or null `timeout` uses the default. An explicit
+`timeout` in seconds replaces it. PiG stops the shell process group and waits for it on timeout or cancellation.
+Use `background_start` for supervised long work. Other tools do not have this
+default: a generic deadline cannot safely stop a tool that ignores cancellation.
+Agent execution itself stays in dex. There is no backend subprocess or serialized internal protocol.
 See [ADR 0011](decisions/0011-native-pig-runtime.md).
 
 ## Service and updates
@@ -698,9 +702,14 @@ writing child separate files or directories. The tools are:
   other sessions: empty (the bot of the caller), `all`, or a bot ID or name. It
   never hides a child of the caller. Each row names its bot.
 - `session_read` returns turns newest first: the input and the final answer of
-  each turn, cut at 4,000 characters. It does not return thinking, tool calls or
-  tool output. It reads any session of any bot except dreams. `turn` with
-  `offset` reads the rest of a cut text.
+  each turn, cut at 4,000 characters. A running session has `activity.available`.
+  When available, `activity.runningTools` lists safe tool names and the time each
+  was first observed running, in Unix milliseconds. It includes no tool arguments,
+  output, or thinking. Other tool names become `other`. An available empty list
+  means no tool was running in the last observation. Unavailable means there is
+  no live observation. The engine observes child sessions only, and a watch can
+  fail or end before settlement. It reads any session of any bot except dreams.
+  `turn` with `offset` reads the rest of a cut text.
 - `session_search` finds turns whose input or answer contains every word of a
   query, in sessions except dreams. `bot` is empty (the bot of the caller),
   `all`, or a bot ID or name.

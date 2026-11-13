@@ -424,6 +424,17 @@ func (s *Service) ToolSessionRead(ctx context.Context, r engine.TaskContext, a e
 		return engine.SessionPage{}, err
 	}
 	page := engine.SessionPage{SessionRef: ref}
+	if ref.State == "running" {
+		page.Activity = &engine.SessionActivity{}
+		if conv.ExecutionID.Valid {
+			key := engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64}
+			if activity, ok := s.engine.Activity([]engine.Ref{key})[key]; ok {
+				page.Activity.Available = true
+				page.Activity.LastObservedAt = activity.LastActivityAt
+				page.Activity.RunningTools = activity.RunningTools
+			}
+		}
+	}
 	if a.Turn != "" {
 		return s.readText(ctx, conv, page, a)
 	}
