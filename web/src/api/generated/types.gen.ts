@@ -459,6 +459,11 @@ export type ThinkingItem = {
      * Empty when the provider redacted it.
      */
     text: string;
+    /**
+     * True when text holds only the first line of a long thought. getChatItem returns all of it.
+     *
+     */
+    truncated?: boolean;
 };
 
 export type ToolItem = {
@@ -473,6 +478,11 @@ export type ToolItem = {
         [key: string]: unknown;
     };
     output: string;
+    /**
+     * True when output is empty because it is long. getChatItem returns it.
+     *
+     */
+    truncated?: boolean;
     /**
      * A call that ended without a result is an error.
      */
@@ -2707,6 +2717,48 @@ export type GetChatHistoryResponses = {
 };
 
 export type GetChatHistoryResponse = GetChatHistoryResponses[keyof GetChatHistoryResponses];
+
+export type GetChatItemData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+        itemId: string;
+    };
+    query: {
+        /**
+         * The entryId of the item.
+         */
+        entry: number;
+    };
+    url: '/api/agents/{agentId}/chats/{chatId}/items/{itemId}';
+};
+
+export type GetChatItemErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetChatItemError = GetChatItemErrors[keyof GetChatItemErrors];
+
+export type GetChatItemResponses = {
+    /**
+     * The full item.
+     */
+    200: Item;
+};
+
+export type GetChatItemResponse = GetChatItemResponses[keyof GetChatItemResponses];
 
 export type AbortChatData = {
     body?: never;

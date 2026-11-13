@@ -1157,6 +1157,38 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/chats/{chatId}/items/{itemId}:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+      - in: path
+        name: itemId
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getChatItem
+      description: >
+        Reads one committed item with all of its tool output or thought. Use
+        it for an item with truncated set.
+      parameters:
+        - in: query
+          name: entry
+          required: true
+          description: The entryId of the item.
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        "200":
+          description: The full item.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/chats/{chatId}/abort:
     parameters:
       - in: path
@@ -2166,6 +2198,11 @@ components:
         text:
           type: string
           description: Empty when the provider redacted it.
+        truncated:
+          type: boolean
+          description: >
+            True when text holds only the first line of a long thought.
+            getChatItem returns all of it.
 
     ToolItem:
       type: object
@@ -2179,6 +2216,11 @@ components:
           type: object
           additionalProperties: true
         output: { type: string }
+        truncated:
+          type: boolean
+          description: >
+            True when output is empty because it is long. getChatItem
+            returns it.
         status:
           type: string
           enum: [running, done, error]

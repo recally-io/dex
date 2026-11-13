@@ -94,7 +94,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusServiceUnavailable
 			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden), errors.Is(err, chat.ErrSettingsForbidden):
 				status = http.StatusForbidden
-			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived):
+			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
 			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
@@ -918,6 +918,19 @@ func (h *handler) ContinueChat(ctx context.Context, req api.ContinueChatRequestO
 		return nil, err
 	}
 	return api.ContinueChat202JSONResponse{SubmissionId: id.String()}, nil
+}
+
+func (h *handler) GetChatItem(ctx context.Context, req api.GetChatItemRequestObject) (api.GetChatItemResponseObject, error) {
+	item, err := h.Live.Detail(ctx, agentID(ctx), req.ChatId, req.Params.Entry, req.ItemId)
+	if err != nil {
+		return nil, err
+	}
+	var out api.GetChatItem200JSONResponse
+	raw, err := json.Marshal(item)
+	if err == nil {
+		err = json.Unmarshal(raw, &out)
+	}
+	return out, err
 }
 
 func (h *handler) GetChatHistory(ctx context.Context, req api.GetChatHistoryRequestObject) (api.GetChatHistoryResponseObject, error) {

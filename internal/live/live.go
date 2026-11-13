@@ -152,6 +152,18 @@ func writeEvent(w io.Writer, event engine.Event) error {
 	return err
 }
 
+// Detail returns the full tool output or thought of one committed item.
+func (h *Hub) Detail(ctx context.Context, agentID string, chatID, entryID int64, itemID string) (engine.Item, error) {
+	c, err := h.chats.Get(ctx, agentID, chatID)
+	if err != nil {
+		return engine.Item{}, err
+	}
+	if c.ExecutionID == 0 {
+		return engine.Item{}, engine.ErrItemNotFound
+	}
+	return h.agents.Detail(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID}, entryID, itemID)
+}
+
 func (h *Hub) History(ctx context.Context, agentID string, chatID, before int64, limit int) (engine.History, error) {
 	c, err := h.chats.Get(ctx, agentID, chatID)
 	if err != nil {

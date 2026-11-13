@@ -11,10 +11,12 @@ import {
   SquarePen,
 } from "lucide-react";
 import { useAgentId } from "../../lib/agent-scope";
-import { memo, useEffect, useState, type ReactNode } from "react";
+import { createContext, memo, useContext, useEffect, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
+import { getChatItemOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { formatSize, isImage } from "../../lib/attachments";
 import { blocks, describeTool, seconds, stepTitle, type ContentBlock, type Step } from "../../lib/tools";
 import { remarkStrong, strongText } from "../../lib/strong";
@@ -171,7 +173,36 @@ function Trace({ children }: { children: ReactNode }) {
 const outputBox =
   "overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-[12px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]";
 
-function Output({ tool }: { tool: ToolItem }) {
+// The chat of the transcript, to load a step that the server truncated.
+const TranscriptChat = createContext(0);
+
+/**
+ * The server leaves out a long tool output or thought until its step opens. A committed item does
+ * not change, so its full form loads once.
+ */
+function useFull<T extends Step>(step: T) {
+  const agentId = useAgentId();
+  const chatId = useContext(TranscriptChat);
+
+  const enabled = !!step.truncated && !!step.entryId && chatId > 0;
+
+  const full = useQuery({
+    ...getChatItemOptions({
+      path: { agentId, chatId, itemId: step.id },
+      query: { entry: step.entryId ?? 0 },
+    }),
+    enabled,
+    staleTime: Infinity,
+  });
+
+  // SAFETY: the item has the ID of the step and the same kind, so it is the full form of the step.
+  const data = full.data?.kind === step.kind ? (full.data as T) : undefined;
+
+  return { step: data ?? step, loading: enabled && !data && !full.isError, failed: full.isError };
+}
+
+function Output({ tool: brief }: { tool: ToolItem }) {
+  const { step: tool, loading, failed } = useFull(brief);
   // The command or the path is the target of the row. The other arguments show here.
   const extra = Object.entries(tool.args).filter(([key]) => key !== "command" && key !== "path");
 
@@ -183,7 +214,11 @@ function Output({ tool }: { tool: ToolItem }) {
         </pre>
       ) : null}
       <pre className={cn(outputBox, "max-h-60 text-foreground")}>
-        {tool.output || (tool.status === "running" ? "Waiting for tool output…" : "No output.")}
+        {loading
+          ? "Loading the output…"
+          : failed
+            ? "Could not load the output. Close and open the step to try again."
+            : tool.output || (tool.status === "running" ? "Waiting for tool output…" : "No output.")}
       </pre>
     </div>
   );
@@ -207,6 +242,20 @@ function ToolStatus({ status }: { status: ToolItem["status"] }) {
       strokeWidth={2.5}
       className="size-3.5 shrink-0 text-muted-foreground"
     />
+  );
+}
+
+function Thought({ thought: brief }: { thought: Step }) {
+  const { step, loading, failed } = useFull(brief);
+
+  return (
+    <p className="mb-1 ml-6 animate-[fade-up_240ms_var(--ease-out-strong)_both] text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground [overflow-wrap:anywhere]">
+      {loading
+        ? `${brief.kind === "thinking" ? brief.text : ""}…`
+        : failed
+          ? "Could not load the thought. Close and open the step to try again."
+          : (step.kind === "thinking" && step.text) || "The provider did not share its thought process."}
+    </p>
   );
 }
 
@@ -261,11 +310,7 @@ function StepLine({
           </span>
         ) : null}
       </button>
-      {shown && thought ? (
-        <p className="mb-1 ml-6 animate-[fade-up_240ms_var(--ease-out-strong)_both] text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground [overflow-wrap:anywhere]">
-          {step.text || "The provider did not share its thought process."}
-        </p>
-      ) : null}
+      {shown && thought ? <Thought thought={step} /> : null}
       {shown && !thought ? <Output tool={step} /> : null}
     </div>
   );
@@ -808,6 +853,7 @@ function retryable(items: Item[], index: number) {
 }
 
 export function Transcript({
+  chatId,
   items,
   running,
   retry,
@@ -816,6 +862,7 @@ export function Transcript({
   queuedActions,
   messageActions,
 }: {
+  chatId: number;
   items: Item[];
   running: boolean;
   retry: (index: number) => void;
@@ -853,22 +900,26 @@ export function Transcript({
     );
   }
 
-  return blocks(items).map((block) =>
-    block.kind === "task" ? (
-      <section
-        key={block.item.id}
-        aria-label={`Session result: ${block.item.title}`}
-        className="mt-5 flex min-w-0 flex-col gap-3 first:mt-0"
-      >
-        <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />
-        {/* The main agent answers the user here; indenting it made the reply read as background output. */}
-        {block.blocks.length ? (
-          <div className="flex min-w-0 flex-col gap-3">{block.blocks.map(content)}</div>
-        ) : null}
-      </section>
-    ) : (
-      content(block)
-    ),
+  return (
+    <TranscriptChat.Provider value={chatId}>
+      {blocks(items).map((block) =>
+        block.kind === "task" ? (
+          <section
+            key={block.item.id}
+            aria-label={`Session result: ${block.item.title}`}
+            className="mt-5 flex min-w-0 flex-col gap-3 first:mt-0"
+          >
+            <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />
+            {/* The main agent answers the user here; indenting it made the reply read as background output. */}
+            {block.blocks.length ? (
+              <div className="flex min-w-0 flex-col gap-3">{block.blocks.map(content)}</div>
+            ) : null}
+          </section>
+        ) : (
+          content(block)
+        ),
+      )}
+    </TranscriptChat.Provider>
   );
 }
 

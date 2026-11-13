@@ -536,7 +536,8 @@ conversation, while a chat ID names a business record in `control.sqlite`.
 - `Abort`, `CheckIdle`, and `Reset` operate on one execution reference. Reset
   uses a stable request ID. `Recover` registers child conversations that must
   be isolated before Harness scheduling resumes.
-- `History(ctx, ref, before, limit)` returns typed `History`. `Watch(ctx, ref)`
+- `History(ctx, ref, before, limit)` returns typed `History`.
+  `Detail(ctx, ref, entryID, itemID)` returns one item with its full output. `Watch(ctx, ref)`
   returns a typed initial `Snapshot` and an `Events` channel. `Watch.Close`
   cancels only that subscription. `Quiesce` and `Resume` control maintenance
   admission. Reload does not use them. `Close` ends resource lifetime.
@@ -972,6 +973,17 @@ updates the backend implementation of ADR 0003.
 - The [Go projection](../../internal/engine/view.go) renders immutable native
   conversation revisions. Each revision includes entries, the live partial,
   tool state, retry state, and the full Inbox. The renderer also serves history.
+- A first snapshot holds the last 20 turns of the active context. A turn
+  starts at an input or a context boundary, and its tool steps count once
+  because they fold into one row. When those turns hold more than 300 entries,
+  the window starts at the history boundary before the last 300 entries.
+  `historyBefore` points at the first entry of the window, and older entries
+  load as history. The window start stays fixed for one subscription.
+- Snapshots, events, and history pages leave out a done tool output or a
+  committed thought longer than 2 KiB and set `truncated`. A thought keeps its
+  first line. A failed call and a session call keep their output, because the
+  web shows them without a click. `GET .../chats/{chatId}/items/{itemId}?entry=`
+  returns the full item when the user opens the step.
 - A text-only increase sends `append`. Other item changes send `item`.
   Removal, reordering, a committed partial ID change, or a new history boundary
   sends a replacement `snapshot`. Running and retry changes send `run`.
