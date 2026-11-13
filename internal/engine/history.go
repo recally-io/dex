@@ -53,8 +53,9 @@ func historyBoundary(e durable.EntryRecord) bool {
 
 // turnStart reports an input or a context boundary, which starts a turn of the transcript.
 func turnStart(e durable.EntryRecord) bool {
+	// Withdrawn inputs can appear between a tool call and its result.
 	switch e.Kind {
-	case "dex.user", "dex.task_result", "dex.withdrawn", "pi.user", "pi.reset", "pi.compaction", CompactionNoteKind:
+	case "dex.user", "dex.task_result", "pi.user", "pi.reset", "pi.compaction", CompactionNoteKind:
 		return true
 	}
 	return false

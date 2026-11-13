@@ -382,6 +382,104 @@ func TestUserOpensLongToolOutputAndThought(t *testing.T) {
 	}
 }
 
+func TestUserStopKeepsToolOutputAcrossHistory(t *testing.T) {
+	for _, withdrawn := range []int{20, 320} {
+		t.Run(fmt.Sprintf("withdrawn-%d", withdrawn), func(t *testing.T) {
+			// Given finished turns and a tool result after withdrawn queued inputs.
+			ctx := t.Context()
+			agents, ref, conversation := transcriptAgents(t)
+			var resultID durable.EntryId
+			_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+				for range 25 {
+					if _, err := appendEntry(tx, conversation, "pi.user", ai.UserMessage{Content: ai.UserText("earlier")}); err != nil {
+						return nil, err
+					}
+					if _, err := appendEntry(tx, conversation, "pi.assistant", transcriptAssistant("finished")); err != nil {
+						return nil, err
+					}
+				}
+				if _, err := appendEntry(tx, conversation, "pi.user", ai.UserMessage{Content: ai.UserText("work")}); err != nil {
+					return nil, err
+				}
+				call := transcriptAssistant("")
+				call.Content = []ai.AssistantContentBlock{ai.ToolCall{ID: "stop-call", Name: "bash", Arguments: map[string]any{"command": "check"}}}
+				if _, err := appendEntry(tx, conversation, "pi.assistant", call); err != nil {
+					return nil, err
+				}
+				for i := range withdrawn {
+					data, err := durable.ToJsonValue(InputMetadata{RequestID: fmt.Sprintf("withdrawn-%d", i), Content: "queued", Reason: "aborted"})
+					if err != nil {
+						return nil, err
+					}
+					if _, err := tx.AppendEntry(conversation.Id(), durable.EntryDraft{Kind: "dex.withdrawn", Data: data}); err != nil {
+						return nil, err
+					}
+				}
+				result := ai.ToolResultMessage{ToolCallID: "stop-call", Content: []ai.ToolResultMessageContent{ai.TextContent{Text: "complete marker output"}}}
+				var err error
+				resultID, err = appendEntry(tx, conversation, "pi.toolResult", result)
+				return nil, err
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// When the user reconnects and loads every older page.
+			watch, err := agents.Watch(ctx, ref)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer watch.Close()
+			items := watch.Snapshot.Items
+			if watch.Snapshot.HistoryBefore == 0 {
+				t.Fatal("snapshot has no history to paginate")
+			}
+			for before := watch.Snapshot.HistoryBefore; before != 0; {
+				page, err := agents.History(ctx, ref, before, 7)
+				if err != nil {
+					t.Fatal(err)
+				}
+				items = append(page.Items, items...)
+				if page.NextBefore >= before {
+					t.Fatalf("history cursor did not advance: %d -> %d", before, page.NextBefore)
+				}
+				before = page.NextBefore
+			}
+			complete, err := agents.History(ctx, ref, math.MaxInt64, 1000)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Then the complete tool output appears once in both views.
+			check := func(name string, items []Item) {
+				t.Helper()
+				count := 0
+				for _, item := range items {
+					if item.ID == "stop-call" {
+						count++
+						if item.Status != "done" || item.Output != "complete marker output" {
+							t.Errorf("%s tool: status %q, output %q", name, item.Status, item.Output)
+						}
+					}
+				}
+				if count != 1 {
+					t.Errorf("%s tool count = %d, want 1", name, count)
+				}
+			}
+			check("snapshot and pages", items)
+			check("complete history", complete.Items)
+			if !reflect.DeepEqual(items, complete.Items) {
+				t.Error("snapshot and history pages differ from complete history")
+			}
+			// A page that starts at the result must also include its call.
+			page, err := agents.History(ctx, ref, int64(resultID)+1, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			check("one-entry history page", page.Items)
+		})
+	}
+}
+
 func TestUserNativeHistoryKeepsToolCallAndResultTogether(t *testing.T) {
 	// Given durable assistant calls and results in a real SQLite conversation.
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
