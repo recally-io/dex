@@ -177,11 +177,7 @@ export function ProviderDialog({
   return (
     <Modal
       title={existing ? `Edit ${existing.name}` : "Add provider"}
-      description={
-        existing
-          ? "The provider ID cannot change. Remove the provider and add it again to use another ID."
-          : "dex saves the provider, then lists its models."
-      }
+      description={existing ? `Provider ID ${existing.id} is fixed.` : undefined}
       pending={save.isPending}
       onClose={onClose}
       footer={
@@ -252,7 +248,7 @@ export function ProviderDialog({
           )
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className={existing ? "flex flex-col" : "grid gap-4 sm:grid-cols-2"}>
               <Field label="Name" error={show("name")}>
                 {({ id: field, describedBy, invalid }) => (
                   <Input
@@ -269,33 +265,26 @@ export function ProviderDialog({
                   />
                 )}
               </Field>
-              <Field
-                label="Provider ID"
-                hint={
-                  existing
-                    ? "Fixed after the first save. Past answers keep this ID in their model label."
-                    : "The model prefix. Fixed after save. Lowercase letters, digits, and hyphens."
-                }
-                error={show("id")}
-              >
-                {({ id: field, describedBy, invalid }) => (
-                  <Input
-                    id={field}
-                    aria-describedby={describedBy}
-                    aria-invalid={invalid}
-                    className="font-mono"
-                    value={id}
-                    maxLength={40}
-                    disabled={!!existing}
-                    onChange={(e) => {
-                      setIdEdited(true);
-                      setId(e.target.value);
-                    }}
-                  />
-                )}
-              </Field>
+              {existing ? null : (
+                <Field label="Provider ID" hint="The model prefix. Fixed after save." error={show("id")}>
+                  {({ id: field, describedBy, invalid }) => (
+                    <Input
+                      id={field}
+                      aria-describedby={describedBy}
+                      aria-invalid={invalid}
+                      className="font-mono"
+                      value={id}
+                      maxLength={40}
+                      onChange={(e) => {
+                        setIdEdited(true);
+                        setId(e.target.value);
+                      }}
+                    />
+                  )}
+                </Field>
+              )}
             </div>
-            <Field label="API" hint={notes.get(api)}>
+            <Field label="API" hint={existing ? undefined : notes.get(api)}>
               {({ id: field, describedBy }) => (
                 <Select
                   id={field}
@@ -338,13 +327,11 @@ export function ProviderDialog({
           />
         ) : (
           <Field
-            label={kind === "custom" ? "API key (optional)" : "API key"}
+            label="API key"
             hint={
-              existing?.keySet
-                ? "Write-only. An empty field keeps the saved key."
-                : kind === "custom"
-                  ? "Write-only. Without a key, dex sends “none”, for local servers."
-                  : "Write-only. dex stores the key on this computer and never shows it again."
+              kind === "builtin" && !existing?.keySet
+                ? "dex stores the key on this computer and never shows it again."
+                : undefined
             }
             error={show("key")}
           >
@@ -357,6 +344,9 @@ export function ProviderDialog({
                 aria-describedby={describedBy}
                 aria-invalid={invalid}
                 className="font-mono"
+                placeholder={
+                  existing?.keySet ? "Empty keeps the saved key" : kind === "custom" ? "Optional" : undefined
+                }
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
               />

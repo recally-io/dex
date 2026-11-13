@@ -3,8 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import type { ProviderModel, ProviderModelsInput } from "../api/generated/types.gen";
 import { listProviderModels } from "../api/generated/sdk.gen";
 import { errorText } from "../lib/queries";
+import { RefreshCw } from "lucide-react";
 import { Button } from "./ui/button";
-import { Switch } from "./ui/switch";
+import { IconButton } from "./icon-button";
 import { Input } from "./form";
 
 /**
@@ -50,8 +51,7 @@ export function ProviderModels({
   });
 
   const titleId = useId();
-  const [filter, setFilter] = useState("");
-  const [manual, setManual] = useState("");
+  const [text, setText] = useState("");
 
   const listed = listing.data ?? [];
 
@@ -61,13 +61,20 @@ export function ProviderModels({
     ...selected.flatMap((id) => (listed.some((m) => m.id === id) ? [] : [{ id, name: id }])),
   ];
 
-  const needle = filter.trim().toLowerCase();
+  const pending = !!input && (settled !== input || listing.isFetching);
+  // A short list needs no filter. Without a list, the field is the only way to add a model.
+  const showField = rows.length > 8 || (!!input && !pending && !listed.length);
+  const needle = text.trim();
 
   const shown = needle
-    ? rows.filter((m) => m.id.toLowerCase().includes(needle) || m.name.toLowerCase().includes(needle))
+    ? rows.filter(
+        (m) =>
+          m.id.toLowerCase().includes(needle.toLowerCase()) ||
+          m.name.toLowerCase().includes(needle.toLowerCase()),
+      )
     : rows;
 
-  const pending = !!input && (settled !== input || listing.isFetching);
+  const canAdd = !!needle && !rows.some((m) => m.id === needle);
 
   function toggle(id: string) {
     if (all) {
@@ -77,69 +84,71 @@ export function ProviderModels({
       onSelectedChange(selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id]);
   }
 
+  function toggleAll() {
+    onAllChange(!all);
+
+    // Clearing "All" starts an empty choice, so the user picks only what they need.
+    if (all) onSelectedChange([]);
+  }
+
   function add() {
-    const id = manual.trim();
+    if (!canAdd) return;
 
-    if (!id) return;
     onAllChange(false);
-
-    if (!selected.includes(id)) onSelectedChange([...selected, id]);
-    setManual("");
+    onSelectedChange([...(all ? rows.map((m) => m.id) : selected), needle]);
+    setText("");
   }
 
   return (
-    <div role="group" aria-labelledby={titleId} className="flex min-w-0 flex-col gap-2">
+    <div role="group" aria-labelledby={titleId} className="flex min-w-0 flex-col gap-1.5">
       <div className="flex items-center justify-between gap-3">
         <span id={titleId} className="text-[12.5px] font-medium text-foreground">
           Models
         </span>
-        <Button
-          type="button"
-          size="xs"
-          variant="secondary"
-          disabled={!input || pending}
-          onClick={() => void listing.refetch()}
-        >
-          {pending ? "Listing…" : "List again"}
-        </Button>
+        <span className="flex items-center gap-1 text-[12px] text-muted-foreground">
+          <span aria-live="polite">
+            {!input
+              ? "Enter the base URL first"
+              : pending
+                ? "Listing…"
+                : listing.isError
+                  ? ""
+                  : `${listed.length} listed`}
+          </span>
+          <IconButton
+            label="List models again"
+            className="size-7"
+            disabled={!input || pending}
+            onClick={() => void listing.refetch()}
+          >
+            <RefreshCw size={14} aria-hidden className={pending ? "animate-spin" : undefined} />
+          </IconButton>
+        </span>
       </div>
 
-      <p aria-live="polite" className="text-[12px] text-muted-foreground">
-        {!input ? (
-          "Enter the base URL. dex then lists the models of the endpoint."
-        ) : pending ? (
-          "Listing the models of the endpoint…"
-        ) : listing.isError ? (
-          <span className="text-red">
-            Could not list models: {errorText(listing.error)} Check the URL and the key, or add model IDs
-            below.
-          </span>
-        ) : (
-          `The endpoint lists ${listed.length} models.`
-        )}
-      </p>
-
-      <label className="flex items-center justify-between gap-3">
-        <span className="flex flex-col">
-          <span className="text-[13px] text-foreground">Enable all models</span>
-          <span className="text-[12px] text-muted-foreground">
-            Includes the models that the endpoint adds later.
-          </span>
-        </span>
-        <Switch checked={all} onCheckedChange={onAllChange} aria-label="Enable all models" />
-      </label>
-
-      {rows.length > 8 ? (
-        <Input
-          aria-label="Filter models"
-          placeholder="Filter models"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
+      {listing.isError && !pending ? (
+        <p className="text-[12px] text-red">
+          {errorText(listing.error)}. Check the URL and the key, or add a model ID.
+        </p>
       ) : null}
 
       {rows.length ? (
-        <ul className="max-h-56 overflow-y-auto rounded-md bg-card py-1 shadow-card">
+        <ul className="max-h-60 overflow-y-auto rounded-md bg-card py-1 shadow-card">
+          <li className="border-b border-border">
+            <label className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[13px] hover:bg-muted">
+              <input
+                type="checkbox"
+                className="accent-primary"
+                checked={all}
+                ref={(el) => {
+                  if (el) el.indeterminate = !all && selected.length > 0;
+                }}
+                onChange={toggleAll}
+              />
+              <span className="font-medium text-foreground">All models</span>
+              <span className="ml-auto text-[12px] text-muted-foreground">Includes new ones</span>
+            </label>
+          </li>
           {shown.map((m) => (
             <li key={m.id}>
               <label className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[13px] hover:bg-muted">
@@ -157,30 +166,34 @@ export function ProviderModels({
             </li>
           ))}
           {!shown.length ? (
-            <li className="px-3 py-1.5 text-[12px] text-muted-foreground">No model matches the filter.</li>
+            <li className="px-3 py-1.5 text-[12px] text-muted-foreground">No model matches.</li>
           ) : null}
         </ul>
       ) : null}
 
-      <div className="flex gap-2">
-        <Input
-          aria-label="Model ID to add"
-          className="font-mono"
-          placeholder="Add a model ID"
-          value={manual}
-          onChange={(e) => setManual(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter adds the ID; it must not submit the provider form.
-            if (e.key === "Enter") {
-              e.preventDefault();
-              add();
-            }
-          }}
-        />
-        <Button type="button" variant="secondary" disabled={!manual.trim()} onClick={add}>
-          Add
-        </Button>
-      </div>
+      {showField ? (
+        <div className="flex gap-2">
+          <Input
+            aria-label="Filter or add a model ID"
+            className="font-mono"
+            placeholder={rows.length ? "Filter or add a model ID" : "Add a model ID"}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter adds the ID; it must not submit the provider form.
+              if (e.key === "Enter") {
+                e.preventDefault();
+                add();
+              }
+            }}
+          />
+          {canAdd ? (
+            <Button type="button" variant="secondary" onClick={add}>
+              Add
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {error ? <p className="text-[12px] text-red">{error}</p> : null}
     </div>
