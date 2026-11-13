@@ -674,6 +674,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           onPage={(page) => setState((previous) => mergeHistory(previous, page))}
         />
         <Transcript
+          chatId={chatId}
           items={items}
           running={running}
           retry={retryText}

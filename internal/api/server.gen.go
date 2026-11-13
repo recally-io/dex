@@ -1189,6 +1189,9 @@ type ThinkingItem struct {
 
 	// Text Empty when the provider redacted it.
 	Text string `json:"text"`
+
+	// Truncated True when text holds only the first line of a long thought. getChatItem returns all of it.
+	Truncated *bool `json:"truncated,omitempty"`
 }
 
 // ThinkingItemKind defines model for ThinkingItem.Kind.
@@ -1211,6 +1214,9 @@ type ToolItem struct {
 
 	// Status A call that ended without a result is an error.
 	Status ToolItemStatus `json:"status"`
+
+	// Truncated True when output is empty because it is long. getChatItem returns it.
+	Truncated *bool `json:"truncated,omitempty"`
 }
 
 // ToolItemKind defines model for ToolItem.Kind.
@@ -1335,6 +1341,12 @@ type ForkChatJSONBody struct {
 type GetChatHistoryParams struct {
 	Before int64 `form:"before" json:"before"`
 	Limit  *int  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetChatItemParams defines parameters for GetChatItem.
+type GetChatItemParams struct {
+	// Entry The entryId of the item.
+	Entry int64 `form:"entry" json:"entry"`
 }
 
 // SetChatProjectJSONBody defines parameters for SetChatProject.
@@ -2030,6 +2042,9 @@ type ServerInterface interface {
 
 	// (GET /api/agents/{agentId}/chats/{chatId}/history)
 	GetChatHistory(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, params GetChatHistoryParams)
+
+	// (GET /api/agents/{agentId}/chats/{chatId}/items/{itemId})
+	GetChatItem(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, itemId string, params GetChatItemParams)
 
 	// (POST /api/agents/{agentId}/chats/{chatId}/messages)
 	SendMessage(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
@@ -3327,6 +3342,66 @@ func (siw *ServerInterfaceWrapper) GetChatHistory(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetChatItem operation middleware
+func (siw *ServerInterfaceWrapper) GetChatItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetChatItemParams
+
+	// ------------- Required query parameter "entry" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "entry", r.URL.Query(), &params.Entry, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "entry"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entry", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetChatItem(w, r, agentId, chatId, itemId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SendMessage operation middleware
 func (siw *ServerInterfaceWrapper) SendMessage(w http.ResponseWriter, r *http.Request) {
 
@@ -4339,6 +4414,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/fork", wrapper.ForkChat)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/compact", wrapper.CompactChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/history", wrapper.GetChatHistory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/items/{itemId}", wrapper.GetChatItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/abort", wrapper.AbortChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/events", wrapper.WatchChat)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/uploads", wrapper.CreateUpload)
@@ -6586,6 +6662,84 @@ func (response GetChatHistorydefaultJSONResponse) VisitGetChatHistoryResponse(w 
 	return err
 }
 
+type GetChatItemRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  ChatId `json:"chatId"`
+	ItemId  string `json:"itemId"`
+	Params  GetChatItemParams
+}
+
+type GetChatItemResponseObject interface {
+	VisitGetChatItemResponse(w http.ResponseWriter) error
+}
+
+type GetChatItem200JSONResponse Item
+
+func (t GetChatItem200JSONResponse) MarshalJSON() ([]byte, error) {
+	return Item(t).MarshalJSON()
+}
+
+func (t *GetChatItem200JSONResponse) UnmarshalJSON(b []byte) error {
+	return (*Item)(t).UnmarshalJSON(b)
+}
+
+func (response GetChatItem200JSONResponse) VisitGetChatItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChatItem400JSONResponse struct{ ErrorJSONResponse }
+
+func (response GetChatItem400JSONResponse) VisitGetChatItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChatItem404JSONResponse Error
+
+func (response GetChatItem404JSONResponse) VisitGetChatItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChatItemdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetChatItemdefaultJSONResponse) VisitGetChatItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SendMessageRequestObject struct {
 	AgentId string `json:"agentId"`
 	ChatId  ChatId `json:"chatId"`
@@ -8476,6 +8630,9 @@ type StrictServerInterface interface {
 	// (GET /api/agents/{agentId}/chats/{chatId}/history)
 	GetChatHistory(ctx context.Context, request GetChatHistoryRequestObject) (GetChatHistoryResponseObject, error)
 
+	// (GET /api/agents/{agentId}/chats/{chatId}/items/{itemId})
+	GetChatItem(ctx context.Context, request GetChatItemRequestObject) (GetChatItemResponseObject, error)
+
 	// (POST /api/agents/{agentId}/chats/{chatId}/messages)
 	SendMessage(ctx context.Context, request SendMessageRequestObject) (SendMessageResponseObject, error)
 
@@ -9732,6 +9889,35 @@ func (sh *strictHandler) GetChatHistory(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetChatHistoryResponseObject); ok {
 		if err := validResponse.VisitGetChatHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetChatItem operation middleware
+func (sh *strictHandler) GetChatItem(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, itemId string, params GetChatItemParams) {
+	var request GetChatItemRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+	request.ItemId = itemId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetChatItem(ctx, request.(GetChatItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetChatItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetChatItemResponseObject); ok {
+		if err := validResponse.VisitGetChatItemResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

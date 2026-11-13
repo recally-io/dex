@@ -39,6 +39,8 @@ type Item struct {
 	// can continue that run.
 	Failure  string `json:"failure,omitempty"`
 	Boundary string `json:"boundary,omitempty"`
+	// Truncated marks a tool output or a thought that brief left out. Detail returns all of it.
+	Truncated bool `json:"truncated,omitzero"`
 }
 
 type Usage struct {
@@ -129,7 +131,7 @@ type projection struct {
 }
 
 func (p projection) event() Event {
-	e := Event{Type: "snapshot", Items: p.render(), Running: p.live.Run != nil}
+	e := Event{Type: "snapshot", Items: brief(p.render()), Running: p.live.Run != nil}
 	if g := p.live.Generation; g != nil && g.Retry != nil {
 		e.Retry = &Retry{Attempt: g.Attempt, At: g.Retry.At, Reason: g.Retry.Error}
 	}
@@ -447,6 +449,40 @@ func assistantItems(m ai.AssistantMessage, key string, results map[string]ai.Too
 	case ai.StopReasonPending, ai.StopReasonStop, ai.StopReasonLength, ai.StopReasonToolUse, ai.StopReasonDeferred:
 	}
 	return out
+}
+
+// detailLimit is the longest tool output or thought that a snapshot or a history page carries.
+// The transcript shows these bodies only in an opened step, and they are most of a long chat.
+const detailLimit = 2048
+
+// sessionCalls are the tools whose result the web thread card reads (web/src/lib/threads.ts).
+var sessionCalls = []string{"session_new", "session_fork", "session_send", "spawn_task"}
+
+// brief leaves out long bodies that the transcript shows only in an opened step. A thought keeps
+// its first line, which titles its step. A failed call opens by itself and a session call shows
+// its result in a card, so both keep their output. A streaming thought has no entry and stays.
+func brief(items []Item) []Item {
+	for i := range items {
+		item := &items[i]
+		switch {
+		case item.Kind == "tool" && item.Status == "done" && len(item.Output) > detailLimit && !slices.Contains(sessionCalls, item.Name):
+			item.Output, item.Truncated = "", true
+		case item.Kind == "thinking" && item.EntryID != 0 && len(item.Text) > detailLimit:
+			line, _, _ := strings.Cut(item.Text, "\n")
+			item.Text, item.Truncated = cutRunes(line, 200), true
+		}
+	}
+	return items
+}
+
+func cutRunes(text string, n int) string {
+	for i := range text {
+		if n == 0 {
+			return text[:i]
+		}
+		n--
+	}
+	return text
 }
 
 // diff returns false when removal or reordering requires a replacement snapshot.

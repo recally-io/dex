@@ -273,6 +273,115 @@ func TestUserWatchCapsALongTurn(t *testing.T) {
 	}
 }
 
+func TestUserOpensLongToolOutputAndThought(t *testing.T) {
+	// Given a turn with a long thought and long outputs of a done call, a failed call and a session call.
+	ctx := t.Context()
+	agents, ref, conversation := transcriptAgents(t)
+	long := strings.Repeat("x", detailLimit+1)
+	thought := "Plan the check\n" + long
+	var callEntry durable.EntryId
+	_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+		if _, err := appendEntry(tx, conversation, "pi.user", ai.UserMessage{Content: ai.UserText("check")}); err != nil {
+			return nil, err
+		}
+		msg := transcriptAssistant("")
+		msg.Content = []ai.AssistantContentBlock{
+			ai.ThinkingContent{Thinking: thought},
+			ai.ToolCall{ID: "done", Name: "bash", Arguments: map[string]any{"command": "cat big"}},
+			ai.ToolCall{ID: "failed", Name: "bash", Arguments: map[string]any{"command": "false"}},
+			ai.ToolCall{ID: "session", Name: "session_new", Arguments: map[string]any{"title": "child"}},
+			ai.ToolCall{ID: "orphan", Name: "bash", Arguments: map[string]any{"command": "sleep 9"}},
+		}
+		// Parallel calls put the last result past the first page of the forward scan.
+		for i := range 20 {
+			msg.Content = append(msg.Content, ai.ToolCall{ID: fmt.Sprintf("p%d", i), Name: "bash", Arguments: map[string]any{"command": "pwd"}})
+		}
+		id, err := appendEntry(tx, conversation, "pi.assistant", msg)
+		if err != nil {
+			return nil, err
+		}
+		callEntry = id
+		calls := []string{"done", "failed", "session"}
+		for i := range 20 {
+			calls = append(calls, fmt.Sprintf("p%d", i))
+		}
+		for _, call := range calls {
+			result := ai.ToolResultMessage{ToolCallID: call, IsError: call == "failed", Content: []ai.ToolResultMessageContent{ai.TextContent{Text: call + long}}}
+			if _, err := appendEntry(tx, conversation, "pi.toolResult", result); err != nil {
+				return nil, err
+			}
+		}
+		_, err = appendEntry(tx, conversation, "pi.assistant", transcriptAssistant("checked"))
+		return nil, err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// When the user opens the chat and loads its history.
+	watch, err := agents.Watch(ctx, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer watch.Close()
+	history, err := agents.History(ctx, ref, math.MaxInt64, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Then both leave out the long done output and keep the first line of the thought.
+	for name, items := range map[string][]Item{"snapshot": watch.Snapshot.Items, "history": history.Items} {
+		byID := map[string]Item{}
+		for _, item := range items {
+			byID[item.ID] = item
+		}
+		thinkingID := fmt.Sprintf("e%d:0", callEntry)
+		if got := byID[thinkingID]; got.Text != "Plan the check" || !got.Truncated {
+			t.Fatalf("%s thought = %#v", name, got)
+		}
+		if got := byID["done"]; got.Output != "" || !got.Truncated || got.Status != "done" {
+			t.Fatalf("%s done call = %#v", name, got)
+		}
+		// A failed call opens by itself, and a session card reads its result.
+		for _, id := range []string{"failed", "session"} {
+			if got := byID[id]; got.Output != id+long || got.Truncated {
+				t.Fatalf("%s %s call keeps %d bytes, truncated %v", name, id, len(got.Output), got.Truncated)
+			}
+		}
+	}
+	// When the user opens the done call and the thought, they get the full text.
+	done, err := agents.Detail(ctx, ref, int64(callEntry), "done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done.Output != "done"+long || done.Truncated || done.Status != "done" {
+		t.Fatalf("done detail = %d bytes, %#v", len(done.Output), done.Status)
+	}
+	full, err := agents.Detail(ctx, ref, int64(callEntry), fmt.Sprintf("e%d:0", callEntry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if full.Text != thought || full.Truncated {
+		t.Fatalf("thought detail = %d bytes", len(full.Text))
+	}
+	last, err := agents.Detail(ctx, ref, int64(callEntry), "p19")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last.Output != "p19"+long || last.Status != "done" {
+		t.Fatalf("last parallel detail = %d bytes, %q", len(last.Output), last.Status)
+	}
+	// A call without a result stops the scan at the next answer.
+	orphan, err := agents.Detail(ctx, ref, int64(callEntry), "orphan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if orphan.Output != "" || orphan.Status != "error" {
+		t.Fatalf("orphan detail = %#v", orphan)
+	}
+	if _, err := agents.Detail(ctx, ref, int64(callEntry), "missing"); !errors.Is(err, ErrItemNotFound) {
+		t.Fatalf("missing item: %v", err)
+	}
+}
+
 func TestUserNativeHistoryKeepsToolCallAndResultTogether(t *testing.T) {
 	// Given durable assistant calls and results in a real SQLite conversation.
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)

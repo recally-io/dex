@@ -158,7 +158,7 @@ test("user sees a result as one line without the answer", async () => {
   ];
 
   const html = await render(
-    createElement(Transcript, { items, running: false, retry: () => {}, canRetry: false }),
+    createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: false }),
   );
 
   expect(html).toContain("Check logs</span> replied");

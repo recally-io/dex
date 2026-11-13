@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/MichaelKinsy/PiG/durable"
@@ -40,7 +41,7 @@ func (a *Agents) History(ctx context.Context, ref Ref, before int64, limit int) 
 	if cursor != nil && len(entries) > 0 {
 		out.NextBefore = int64(entries[len(entries)-1].Id)
 	}
-	out.Items = (projection{entries: entries}).render()
+	out.Items = brief((projection{entries: entries}).render())
 	return out, nil
 }
 
@@ -65,4 +66,65 @@ func answer(e durable.EntryRecord) bool {
 		return ok
 	}
 	return false
+}
+
+// Detail returns one committed item with its full tool output or thought, for an item that brief
+// cut. entryID is the entry of the item: for a tool, the entry of its call.
+func (a *Agents) Detail(ctx context.Context, ref Ref, entryID int64, itemID string) (Item, error) {
+	if entryID <= 0 || itemID == "" {
+		return Item{}, fmt.Errorf("%w: detail requires an entry and an item", ErrInvalidInput)
+	}
+	if err := a.begin(); err != nil {
+		return Item{}, err
+	}
+	defer a.end()
+	conversation, err := a.conversation(ctx, ref)
+	if err != nil {
+		return Item{}, err
+	}
+	order := durable.ScanAscending
+	query := durable.EntryQuery{MinEntryId: new(durable.EntryId(entryID)), Order: &order}
+	page, err := conversation.Entries(ctx, query, 1, nil)
+	if err != nil {
+		return Item{}, err
+	}
+	if len(page.Items) == 0 || int64(page.Items[0].Id) != entryID {
+		return Item{}, ErrItemNotFound
+	}
+	entries := page.Items
+	item, ok := find((projection{entries: entries}).render(), itemID)
+	if !ok {
+		return Item{}, ErrItemNotFound
+	}
+	// The result of a call follows it, before the next answer.
+	for cursor := page.Next; item.Kind == "tool" && cursor != nil && len(entries) == 1; {
+		more, err := conversation.Entries(ctx, query, 16, *cursor)
+		if err != nil {
+			return Item{}, err
+		}
+		cursor = more.Next
+		for _, e := range more.Items {
+			if answer(e) {
+				cursor = nil
+				break
+			}
+			if slices.ContainsFunc(e.Model, func(m ai.Message) bool {
+				result, ok := m.(ai.ToolResultMessage)
+				return ok && result.ToolCallID == itemID
+			}) {
+				entries = append(entries, e)
+				break
+			}
+		}
+	}
+	item, _ = find((projection{entries: entries}).render(), itemID)
+	return item, nil
+}
+
+func find(items []Item, id string) (Item, bool) {
+	i := slices.IndexFunc(items, func(item Item) bool { return item.ID == id })
+	if i < 0 {
+		return Item{}, false
+	}
+	return items[i], true
 }

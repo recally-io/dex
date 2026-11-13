@@ -194,7 +194,9 @@ type item struct {
 	Name     string `json:"name"`
 	Status   string `json:"status"`
 	Output   string `json:"output"`
-	Reason   string `json:"reason"`
+	// Truncated marks a long output that getChatItem returns.
+	Truncated bool   `json:"truncated"`
+	Reason    string `json:"reason"`
 	// Attachments of a user item.
 	Attachments []attachment `json:"attachments"`
 }
