@@ -271,7 +271,7 @@ func TestUserGetsTheLinesOfAWatchWhileTheDatabaseIsBusy(t *testing.T) {
 	command := fmt.Sprintf("until test -f %s; do sleep 0.05; done; echo 'lint: pass'; until test -f %s; do sleep 0.05; done", gate, last)
 	bgStart(t, d, chat, map[string]any{"command": command, "wake": "lines"})
 	// And another writer that holds the database longer than the busy timeout of 5 seconds.
-	writer, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite"))
+	writer, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}
