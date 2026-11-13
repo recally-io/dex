@@ -1034,7 +1034,7 @@ type Provider struct {
 	// ModelCount The number of models in the catalog for this provider.
 	ModelCount *int `json:"modelCount,omitempty"`
 
-	// Models Fixed model IDs; empty means the endpoint lists them.
+	// Models The enabled model IDs; empty enables all models that the endpoint lists.
 	Models []string `json:"models"`
 	Name   string   `json:"name"`
 }
@@ -1051,10 +1051,35 @@ type ProviderInput struct {
 	Api string `json:"api"`
 
 	// ApiKey Write-only. Empty keeps the saved key.
-	ApiKey  *string   `json:"apiKey,omitempty"`
-	BaseUrl *string   `json:"baseUrl,omitempty"`
-	Models  *[]string `json:"models,omitempty"`
-	Name    *string   `json:"name,omitempty"`
+	ApiKey  *string `json:"apiKey,omitempty"`
+	BaseUrl *string `json:"baseUrl,omitempty"`
+
+	// Models The enabled model IDs. Empty enables all models that the endpoint lists.
+	Models *[]string `json:"models,omitempty"`
+	Name   *string   `json:"name,omitempty"`
+}
+
+// ProviderModel defines model for ProviderModel.
+type ProviderModel struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// ProviderModelList defines model for ProviderModelList.
+type ProviderModelList struct {
+	Models []ProviderModel `json:"models"`
+}
+
+// ProviderModelsInput defines model for ProviderModelsInput.
+type ProviderModelsInput struct {
+	Api string `json:"api"`
+
+	// ApiKey Write-only.
+	ApiKey  *string `json:"apiKey,omitempty"`
+	BaseUrl string  `json:"baseUrl"`
+
+	// ProviderId A saved custom provider whose key to use when apiKey is empty.
+	ProviderId *string `json:"providerId,omitempty"`
 }
 
 // Retry defines model for Retry.
@@ -1453,6 +1478,9 @@ type CreateSessionJSONRequestBody = NewSession
 
 // SetOnePasswordJSONRequestBody defines body for SetOnePassword for application/json ContentType.
 type SetOnePasswordJSONRequestBody = OnePasswordInput
+
+// ListProviderModelsJSONRequestBody defines body for ListProviderModels for application/json ContentType.
+type ListProviderModelsJSONRequestBody = ProviderModelsInput
 
 // SetProviderJSONRequestBody defines body for SetProvider for application/json ContentType.
 type SetProviderJSONRequestBody = ProviderInput
@@ -2117,6 +2145,9 @@ type ServerInterface interface {
 
 	// (PUT /api/settings/onepassword)
 	SetOnePassword(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/settings/provider-models)
+	ListProviderModels(w http.ResponseWriter, r *http.Request)
 
 	// (DELETE /api/settings/providers/{providerId})
 	DeleteProvider(w http.ResponseWriter, r *http.Request, providerId string)
@@ -4067,6 +4098,20 @@ func (siw *ServerInterfaceWrapper) SetOnePassword(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListProviderModels operation middleware
+func (siw *ServerInterfaceWrapper) ListProviderModels(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProviderModels(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteProvider operation middleware
 func (siw *ServerInterfaceWrapper) DeleteProvider(w http.ResponseWriter, r *http.Request) {
 
@@ -4298,6 +4343,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/onepassword", wrapper.GetOnePassword)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/onepassword", wrapper.SetOnePassword)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/models", wrapper.ListModels)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/provider-models", wrapper.ListProviderModels)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.DeleteProvider)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.SetProvider)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/channels", wrapper.GetChannels)
@@ -8224,6 +8270,59 @@ func (response SetOnePassworddefaultJSONResponse) VisitSetOnePasswordResponse(w 
 	return err
 }
 
+type ListProviderModelsRequestObject struct {
+	Body *ListProviderModelsJSONRequestBody
+}
+
+type ListProviderModelsResponseObject interface {
+	VisitListProviderModelsResponse(w http.ResponseWriter) error
+}
+
+type ListProviderModels200JSONResponse ProviderModelList
+
+func (response ListProviderModels200JSONResponse) VisitListProviderModelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProviderModels400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListProviderModels400JSONResponse) VisitListProviderModelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProviderModelsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListProviderModelsdefaultJSONResponse) VisitListProviderModelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteProviderRequestObject struct {
 	ProviderId string `json:"providerId"`
 }
@@ -8562,6 +8661,9 @@ type StrictServerInterface interface {
 
 	// (PUT /api/settings/onepassword)
 	SetOnePassword(ctx context.Context, request SetOnePasswordRequestObject) (SetOnePasswordResponseObject, error)
+
+	// (POST /api/settings/provider-models)
+	ListProviderModels(ctx context.Context, request ListProviderModelsRequestObject) (ListProviderModelsResponseObject, error)
 
 	// (DELETE /api/settings/providers/{providerId})
 	DeleteProvider(ctx context.Context, request DeleteProviderRequestObject) (DeleteProviderResponseObject, error)
@@ -10537,6 +10639,37 @@ func (sh *strictHandler) SetOnePassword(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetOnePasswordResponseObject); ok {
 		if err := validResponse.VisitSetOnePasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListProviderModels operation middleware
+func (sh *strictHandler) ListProviderModels(w http.ResponseWriter, r *http.Request) {
+	var request ListProviderModelsRequestObject
+
+	var body ListProviderModelsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListProviderModels(ctx, request.(ListProviderModelsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListProviderModels")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListProviderModelsResponseObject); ok {
+		if err := validResponse.VisitListProviderModelsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

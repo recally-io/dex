@@ -304,13 +304,6 @@ func customProvider(p ProviderSettings) *ai.ModelsProvider {
 	if p.API == "anthropic-messages" {
 		api = ai.AnthropicMessagesAPI()
 	}
-	model := func(id string) *ai.Model {
-		m := &ai.Model{ID: id, DisplayName: id, Input: []ai.ModelInputModality{"text"}, Capabilities: ai.ModelCapabilities{ContextWindow: 128000, MaxOutputTokens: 16384, SupportsToolUse: true}, ProviderMeta: ai.ProviderMetadata{ProviderID: p.ID, API: ai.API(p.API), BaseURL: p.BaseURL}}
-		if p.API == "openai-responses" {
-			m.ProviderMeta.Compat = &ai.ModelCompat{SupportsStrictMode: new(true)}
-		}
-		return m
-	}
 	opts := ai.CreateProviderOptions{ID: p.ID, Name: new(p.Name), BaseURL: p.BaseURL, API: api, Auth: ai.ProviderAuth{APIKey: &ai.APIKeyAuth{Name: p.Name + " API key", Resolve: func(context.Context, ai.APIKeyAuthInput) (*ai.AuthResult, error) {
 		key := p.APIKey
 		if key == "" {
@@ -319,78 +312,16 @@ func customProvider(p ProviderSettings) *ai.ModelsProvider {
 		return &ai.AuthResult{Auth: ai.ModelAuth{APIKey: key}, Source: "settings"}, nil
 	}}}}
 	for _, id := range p.Models {
-		opts.Models = append(opts.Models, model(id))
+		opts.Models = append(opts.Models, customModel(p, id))
 	}
 	if len(p.Models) == 0 {
 		opts.FetchModels = func(refresh ai.RefreshModelsContext) ([]ai.AnyModel, error) {
-			// Bound each network request independently of the application lifetime.
-			ctx, cancel := context.WithTimeout(refresh.Signal, 30*time.Second)
-			defer cancel()
-			suffix := "/models"
-			if p.API == "anthropic-messages" {
-				suffix = "/v1/models"
+			models, err := fetchModels(refresh.Signal, p)
+			out := make([]ai.AnyModel, len(models))
+			for i, m := range models {
+				out[i] = m
 			}
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(p.BaseURL, "/")+suffix, nil)
-			if err != nil {
-				return nil, &privateError{message: "invalid model discovery URL", cause: err}
-			}
-			if p.APIKey != "" {
-				if p.API == "anthropic-messages" {
-					req.Header.Set("x-api-key", p.APIKey)
-					req.Header.Set("anthropic-version", "2023-06-01")
-				} else {
-					req.Header.Set("Authorization", "Bearer "+p.APIKey)
-				}
-			}
-			response, err := http.DefaultClient.Do(req)
-			if err != nil {
-				return nil, &privateError{message: "model discovery request failed", cause: err}
-			}
-			defer response.Body.Close()
-			if response.StatusCode != http.StatusOK {
-				return nil, fmt.Errorf("model discovery HTTP %d", response.StatusCode)
-			}
-			var list struct {
-				Data *[]struct {
-					ID        *string `json:"id"`
-					Name      string  `json:"display_name"`
-					Window    *int    `json:"context_window"`
-					Tokens    *int    `json:"max_output_tokens"`
-					Reasoning bool    `json:"reasoning"`
-				} `json:"data"`
-			}
-			data, err := io.ReadAll(io.LimitReader(response.Body, 8<<20))
-			if err != nil {
-				return nil, &privateError{message: "cannot read model discovery response", cause: err}
-			}
-			if err := json.Unmarshal(data, &list); err != nil {
-				return nil, &privateError{message: "invalid model discovery response", cause: err}
-			}
-			if list.Data == nil {
-				return nil, fmt.Errorf("model discovery response has no model list")
-			}
-			out := []ai.AnyModel{}
-			for _, entry := range *list.Data {
-				if entry.ID == nil {
-					return nil, fmt.Errorf("model discovery entry has no id")
-				}
-				m := model(*entry.ID)
-				if entry.Name != "" {
-					m.DisplayName = entry.Name
-				}
-				if entry.Window != nil {
-					m.Capabilities.ContextWindow = *entry.Window
-				}
-				if entry.Tokens != nil {
-					m.Capabilities.MaxOutputTokens = *entry.Tokens
-				}
-				m.ProviderMeta.Reasoning = entry.Reasoning
-				if entry.Reasoning {
-					m.Capabilities.MaxThinking = ai.ThinkingLevelHigh
-				}
-				out = append(out, m)
-			}
-			return out, nil
+			return out, err
 		}
 	}
 	provider := ai.CreateProvider(opts)
@@ -402,6 +333,105 @@ func customProvider(p ProviderSettings) *ai.ModelsProvider {
 		}
 	}
 	return provider
+}
+
+// ListedModel is a model that a custom provider endpoint lists.
+type ListedModel struct {
+	ID   string
+	Name string
+}
+
+// ListProviderModels asks the endpoint of custom provider p for its models. It changes no catalog.
+func ListProviderModels(ctx context.Context, p ProviderSettings) ([]ListedModel, error) {
+	models, err := fetchModels(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ListedModel, len(models))
+	for i, m := range models {
+		out[i] = ListedModel{ID: m.ID, Name: m.DisplayName}
+	}
+	return out, nil
+}
+
+func customModel(p ProviderSettings, id string) *ai.Model {
+	m := &ai.Model{ID: id, DisplayName: id, Input: []ai.ModelInputModality{"text"}, Capabilities: ai.ModelCapabilities{ContextWindow: 128000, MaxOutputTokens: 16384, SupportsToolUse: true}, ProviderMeta: ai.ProviderMetadata{ProviderID: p.ID, API: ai.API(p.API), BaseURL: p.BaseURL}}
+	if p.API == "openai-responses" {
+		m.ProviderMeta.Compat = &ai.ModelCompat{SupportsStrictMode: new(true)}
+	}
+	return m
+}
+
+// fetchModels reads the model list of a custom provider endpoint.
+func fetchModels(ctx context.Context, p ProviderSettings) ([]*ai.Model, error) {
+	// Bound each network request independently of the application lifetime.
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	suffix := "/models"
+	if p.API == "anthropic-messages" {
+		suffix = "/v1/models"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(p.BaseURL, "/")+suffix, nil)
+	if err != nil {
+		return nil, &privateError{message: "invalid model discovery URL", cause: err}
+	}
+	if p.APIKey != "" {
+		if p.API == "anthropic-messages" {
+			req.Header.Set("x-api-key", p.APIKey)
+			req.Header.Set("anthropic-version", "2023-06-01")
+		} else {
+			req.Header.Set("Authorization", "Bearer "+p.APIKey)
+		}
+	}
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, &privateError{message: "model discovery request failed", cause: err}
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("model discovery HTTP %d", response.StatusCode)
+	}
+	var list struct {
+		Data *[]struct {
+			ID        *string `json:"id"`
+			Name      string  `json:"display_name"`
+			Window    *int    `json:"context_window"`
+			Tokens    *int    `json:"max_output_tokens"`
+			Reasoning bool    `json:"reasoning"`
+		} `json:"data"`
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, 8<<20))
+	if err != nil {
+		return nil, &privateError{message: "cannot read model discovery response", cause: err}
+	}
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, &privateError{message: "invalid model discovery response", cause: err}
+	}
+	if list.Data == nil {
+		return nil, fmt.Errorf("model discovery response has no model list")
+	}
+	out := []*ai.Model{}
+	for _, entry := range *list.Data {
+		if entry.ID == nil {
+			return nil, fmt.Errorf("model discovery entry has no id")
+		}
+		m := customModel(p, *entry.ID)
+		if entry.Name != "" {
+			m.DisplayName = entry.Name
+		}
+		if entry.Window != nil {
+			m.Capabilities.ContextWindow = *entry.Window
+		}
+		if entry.Tokens != nil {
+			m.Capabilities.MaxOutputTokens = *entry.Tokens
+		}
+		m.ProviderMeta.Reasoning = entry.Reasoning
+		if entry.Reasoning {
+			m.Capabilities.MaxThinking = ai.ThinkingLevelHigh
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 // Keep sensitive runtime details available to error matching, not error text.

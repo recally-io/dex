@@ -677,7 +677,7 @@ export type Provider = {
     baseUrl: string;
     keySet: boolean;
     /**
-     * Fixed model IDs; empty means the endpoint lists them.
+     * The enabled model IDs; empty enables all models that the endpoint lists.
      */
     models: Array<string>;
     /**
@@ -698,7 +698,33 @@ export type ProviderInput = {
      * Write-only. Empty keeps the saved key.
      */
     apiKey?: string;
+    /**
+     * The enabled model IDs. Empty enables all models that the endpoint lists.
+     *
+     */
     models?: Array<string>;
+};
+
+export type ProviderModelsInput = {
+    /**
+     * A saved custom provider whose key to use when apiKey is empty.
+     */
+    providerId?: string;
+    api: string;
+    baseUrl: string;
+    /**
+     * Write-only.
+     */
+    apiKey?: string;
+};
+
+export type ProviderModelList = {
+    models: Array<ProviderModel>;
+};
+
+export type ProviderModel = {
+    id: string;
+    name: string;
 };
 
 export type ProviderInfo = {
@@ -1273,6 +1299,35 @@ export type ListModelsResponses = {
 };
 
 export type ListModelsResponse = ListModelsResponses[keyof ListModelsResponses];
+
+export type ListProviderModelsData = {
+    body: ProviderModelsInput;
+    path?: never;
+    query?: never;
+    url: '/api/settings/provider-models';
+};
+
+export type ListProviderModelsErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListProviderModelsError = ListProviderModelsErrors[keyof ListProviderModelsErrors];
+
+export type ListProviderModelsResponses = {
+    /**
+     * The models of the endpoint.
+     */
+    200: ProviderModelList;
+};
+
+export type ListProviderModelsResponse = ListProviderModelsResponses[keyof ListProviderModelsResponses];
 
 export type DeleteProviderData = {
     body?: never;
