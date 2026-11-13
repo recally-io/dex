@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { Provider, Settings } from "../api/generated/types.gen";
 import { getSettingsQueryKey, setProviderMutation } from "../api/generated/@tanstack/react-query.gen";
@@ -7,7 +7,8 @@ import { useApp } from "../lib/app-state";
 import { Button } from "./ui/button";
 import { Modal } from "./dialog";
 import { Failure, Spinner } from "./feedback";
-import { Field, Input, RadioSegments, SavedSecret, Select, Textarea } from "./form";
+import { Field, Input, RadioSegments, SavedSecret, Select } from "./form";
+import { ProviderModels } from "./provider-models";
 
 // The same rule as customID in internal/settings.
 const providerId = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -76,7 +77,9 @@ export function ProviderDialog({
   const [url, setUrl] = useState(initial?.baseUrl ?? "");
   const [key, setKey] = useState("");
   const [replace, setReplace] = useState(!initial?.keySet);
-  const [models, setModels] = useState(initial?.models.join("\n") ?? "");
+  // An empty saved list enables every model that the endpoint lists.
+  const [allModels, setAllModels] = useState(!initial?.models.length);
+  const [models, setModels] = useState<string[]>(initial?.models ?? []);
   const [tried, setTried] = useState(false);
   const [listingError, setListingError] = useState("");
   const targetId = kind === "builtin" ? builtin : id;
@@ -111,7 +114,7 @@ export function ProviderDialog({
     },
   });
 
-  const errors: Partial<Record<"id" | "name" | "url" | "key", string>> = {};
+  const errors: Partial<Record<"id" | "name" | "url" | "key" | "models", string>> = {};
 
   if (kind === "builtin") {
     if (!builtin) errors.id = "Every built-in provider is already added.";
@@ -132,10 +135,21 @@ export function ProviderDialog({
     const problem = urlError(url.trim());
 
     if (problem) errors.url = problem;
+
+    if (!allModels && !models.length) errors.models = "Choose at least one model, or enable all models.";
   }
 
   const valid = Object.keys(errors).length === 0;
   const show = (field: keyof typeof errors) => (tried ? errors[field] : undefined);
+
+  const listInput = useMemo(
+    () =>
+      kind === "custom" && !urlError(url.trim())
+        ? { providerId: existing?.id, api, baseUrl: url.trim(), apiKey: key.trim() || undefined }
+        : null,
+    [kind, existing?.id, api, url, key],
+  );
+
   const builtinName = settings.builtins.find((b) => b.id === builtin)?.name ?? builtin;
 
   function submit() {
@@ -153,10 +167,7 @@ export function ProviderDialog({
               name: name.trim(),
               baseUrl: url.trim(),
               apiKey: key.trim(),
-              models: models
-                .split(/[\n,]/)
-                .map((m) => m.trim())
-                .filter(Boolean),
+              models: allModels ? [] : models,
             },
     });
   }
@@ -166,11 +177,7 @@ export function ProviderDialog({
   return (
     <Modal
       title={existing ? `Edit ${existing.name}` : "Add provider"}
-      description={
-        existing
-          ? "The provider ID cannot change. Remove the provider and add it again to use another ID."
-          : "dex saves the provider, then lists its models."
-      }
+      description={existing ? `Provider ID ${existing.id} is fixed.` : undefined}
       pending={save.isPending}
       onClose={onClose}
       footer={
@@ -241,7 +248,7 @@ export function ProviderDialog({
           )
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className={existing ? "flex flex-col" : "grid gap-4 sm:grid-cols-2"}>
               <Field label="Name" error={show("name")}>
                 {({ id: field, describedBy, invalid }) => (
                   <Input
@@ -258,33 +265,26 @@ export function ProviderDialog({
                   />
                 )}
               </Field>
-              <Field
-                label="Provider ID"
-                hint={
-                  existing
-                    ? "Fixed after the first save. Past answers keep this ID in their model label."
-                    : "The model prefix. Fixed after save. Lowercase letters, digits, and hyphens."
-                }
-                error={show("id")}
-              >
-                {({ id: field, describedBy, invalid }) => (
-                  <Input
-                    id={field}
-                    aria-describedby={describedBy}
-                    aria-invalid={invalid}
-                    className="font-mono"
-                    value={id}
-                    maxLength={40}
-                    disabled={!!existing}
-                    onChange={(e) => {
-                      setIdEdited(true);
-                      setId(e.target.value);
-                    }}
-                  />
-                )}
-              </Field>
+              {existing ? null : (
+                <Field label="Provider ID" hint="The model prefix. Fixed after save." error={show("id")}>
+                  {({ id: field, describedBy, invalid }) => (
+                    <Input
+                      id={field}
+                      aria-describedby={describedBy}
+                      aria-invalid={invalid}
+                      className="font-mono"
+                      value={id}
+                      maxLength={40}
+                      onChange={(e) => {
+                        setIdEdited(true);
+                        setId(e.target.value);
+                      }}
+                    />
+                  )}
+                </Field>
+              )}
             </div>
-            <Field label="API" hint={notes.get(api)}>
+            <Field label="API" hint={existing ? undefined : notes.get(api)}>
               {({ id: field, describedBy }) => (
                 <Select
                   id={field}
@@ -327,13 +327,11 @@ export function ProviderDialog({
           />
         ) : (
           <Field
-            label={kind === "custom" ? "API key (optional)" : "API key"}
+            label="API key"
             hint={
-              existing?.keySet
-                ? "Write-only. An empty field keeps the saved key."
-                : kind === "custom"
-                  ? "Write-only. Without a key, dex sends “none”, for local servers."
-                  : "Write-only. dex stores the key on this computer and never shows it again."
+              kind === "builtin" && !existing?.keySet
+                ? "dex stores the key on this computer and never shows it again."
+                : undefined
             }
             error={show("key")}
           >
@@ -346,6 +344,9 @@ export function ProviderDialog({
                 aria-describedby={describedBy}
                 aria-invalid={invalid}
                 className="font-mono"
+                placeholder={
+                  existing?.keySet ? "Empty keeps the saved key" : kind === "custom" ? "Optional" : undefined
+                }
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
               />
@@ -354,30 +355,21 @@ export function ProviderDialog({
         )}
 
         {kind === "custom" ? (
-          <Field
-            label="Model IDs (optional)"
-            hint="One per line. When the list is empty, dex asks the endpoint for its models."
-          >
-            {({ id: field, describedBy }) => (
-              <Textarea
-                id={field}
-                aria-describedby={describedBy}
-                className="font-mono"
-                rows={3}
-                value={models}
-                onChange={(e) => setModels(e.target.value)}
-              />
-            )}
-          </Field>
+          <ProviderModels
+            input={listInput}
+            all={allModels}
+            onAllChange={setAllModels}
+            selected={models}
+            onSelectedChange={setModels}
+            error={show("models")}
+          />
         ) : null}
         <button type="submit" hidden />
       </form>
       {listingError ? (
         <Failure title="Saved. Model listing failed.">
           <p className="font-mono text-[11.5px]">{listingError}</p>
-          <p className="mt-1">
-            The provider stays saved. Check the base URL and the key, or enter model IDs.
-          </p>
+          <p className="mt-1">The provider stays saved. Check the base URL and the key, or add model IDs.</p>
         </Failure>
       ) : null}
       {failure ? (

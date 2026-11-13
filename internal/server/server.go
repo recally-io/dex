@@ -737,6 +737,24 @@ func (h *handler) SetProvider(ctx context.Context, req api.SetProviderRequestObj
 	return api.SetProvider200JSONResponse(providerView(p)), nil
 }
 
+func (h *handler) ListProviderModels(ctx context.Context, req api.ListProviderModelsRequestObject) (api.ListProviderModelsResponseObject, error) {
+	if req.Body == nil {
+		return nil, errInvalid
+	}
+	b := req.Body
+	models, err := h.Settings.ListProviderModels(ctx, settings.Provider{
+		ID: deref(b.ProviderId), API: b.Api, BaseURL: strings.TrimSpace(b.BaseUrl), APIKey: strings.TrimSpace(deref(b.ApiKey)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := api.ListProviderModels200JSONResponse{Models: make([]api.ProviderModel, len(models))}
+	for i, m := range models {
+		out.Models[i] = api.ProviderModel{Id: m.ID, Name: m.Name}
+	}
+	return out, nil
+}
+
 func deref(s *string) string {
 	if s == nil {
 		return ""
