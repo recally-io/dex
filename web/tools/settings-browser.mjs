@@ -198,9 +198,7 @@ try {
       })()`);
       await type('[role="dialog"] input[type="url"]', `http://127.0.0.1:${endpoint.address().port}/v1`);
       await poll("models listed without a save", () =>
-        evaluate(
-          "document.querySelector('[role=\"dialog\"]').innerText.includes('3 listed')",
-        ),
+        evaluate("document.querySelector('[role=\"dialog\"]').innerText.includes('3 listed')"),
       );
       assert.equal(
         (await api("/api/settings")).providers.some((p) => p.id === "lan"),
