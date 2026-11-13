@@ -95,12 +95,11 @@ export function Shell() {
 
     // A redirected page can load its heading after the first frame. Stop waiting if the user
     // starts navigating, so a late heading cannot take focus away from their next action.
-    let observer: MutationObserver | undefined;
-    let waiting = true;
+    const observer = new MutationObserver(() => focusTitle());
 
     const stop = () => {
-      waiting = false;
-      observer?.disconnect();
+      cancelAnimationFrame(frame);
+      observer.disconnect();
       document.removeEventListener("focusin", stop);
       document.removeEventListener("pointerdown", stop);
       document.removeEventListener("keydown", stop);
@@ -119,19 +118,11 @@ export function Shell() {
     document.addEventListener("keydown", stop);
 
     const frame = requestAnimationFrame(() => {
-      if (!waiting) return;
+      observer.observe(document.getElementById("main")!, { childList: true, subtree: true });
       focusTitle();
-
-      if (!document.querySelector('#main [id="page-title"]:not([inert] *)')) {
-        observer = new MutationObserver(focusTitle);
-        observer.observe(document.getElementById("main")!, { childList: true, subtree: true });
-      }
     });
 
-    return () => {
-      cancelAnimationFrame(frame);
-      stop();
-    };
+    return stop;
   }, [path]);
 
   return (
