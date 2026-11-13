@@ -87,8 +87,8 @@ type Limits struct {
 	Batch time.Duration
 	// Grace is the time between SIGTERM and SIGKILL.
 	Grace time.Duration
-	// LinesTimeout is the default timeout of a lines command. MaxLinesTimeout is its maximum.
-	LinesTimeout, MaxLinesTimeout time.Duration
+	// ExitTimeout and LinesTimeout are the default timeouts. MaxLinesTimeout is the lines maximum.
+	ExitTimeout, LinesTimeout, MaxLinesTimeout time.Duration
 }
 
 func (l Limits) withDefaults() Limits {
@@ -98,6 +98,7 @@ func (l Limits) withDefaults() Limits {
 	l.Window = cmp.Or(l.Window, time.Minute)
 	l.Batch = cmp.Or(l.Batch, time.Second)
 	l.Grace = cmp.Or(l.Grace, 5*time.Second)
+	l.ExitTimeout = cmp.Or(l.ExitTimeout, 30*time.Minute)
 	l.LinesTimeout = cmp.Or(l.LinesTimeout, 5*time.Minute)
 	l.MaxLinesTimeout = cmp.Or(l.MaxLinesTimeout, 30*time.Minute)
 	return l
@@ -125,7 +126,7 @@ type StartParams struct {
 	SourceRequestID string
 	Command         string
 	Wake            string
-	// Timeout is zero for no timeout. A lines command with zero takes the default.
+	// Timeout is zero for the default of the wake mode.
 	Timeout time.Duration
 	// Cwd is empty or relative to DefaultCwd.
 	Cwd        string
@@ -228,6 +229,8 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 		if p.Timeout > m.limits.MaxLinesTimeout {
 			return sqlc.BackgroundCommand{}, fmt.Errorf("%w: a lines command runs at most %d seconds; start it again after it ends", ErrInvalid, int(m.limits.MaxLinesTimeout.Seconds()))
 		}
+	} else {
+		p.Timeout = cmp.Or(p.Timeout, m.limits.ExitTimeout)
 	}
 	cwd := p.Cwd
 	if !filepath.IsAbs(cwd) {

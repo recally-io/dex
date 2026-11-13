@@ -303,26 +303,73 @@ func TestUserGetsTheLinesOfAWatchWhileTheDatabaseIsBusy(t *testing.T) {
 	waitWakes(t, conn, chat, 2)
 }
 
-func TestUserGetsAWakeUpWhenAWatchPassesItsTimeout(t *testing.T) {
+func TestUserGetsDefaultAndExplicitBackgroundTimeouts(t *testing.T) {
 	t.Parallel()
-	// Given a watch with a timeout of one second and a command that never ends.
+	// Given both wake modes and omitted, null, and explicit timeouts.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
 	chat := bgChat(t, d)
-	pids := filepath.Join(dir, "timeout.pid")
-	info := bgStart(t, d, chat, map[string]any{"command": "echo $$ > " + pids + "; sleep 300 & wait", "wake": "lines", "timeout": 1})
-	pid := pidFile(t, pids)
-	killAtEnd(t, pid)
-	// Then dex ends the process group and wakes the session with the timeout.
-	wake := waitWakes(t, conn, chat, 1)[0]
-	if wake.result.Event != "timed_out" || !strings.Contains(wake.result.Notice, "timeout of 1 seconds") {
-		t.Fatalf("wake-up: %+v", wake.result)
+	cases := []struct {
+		name string
+		args map[string]any
+		want int64
+	}{
+		{"default wake and timeout", map[string]any{}, 1800},
+		{"exit omitted", map[string]any{"wake": "exit"}, 1800},
+		{"exit null", map[string]any{"wake": "exit", "timeout": nil}, 1800},
+		{"exit explicit above lines limit", map[string]any{"wake": "exit", "timeout": 1860}, 1860},
+		{"lines omitted", map[string]any{"wake": "lines"}, 300},
+		{"lines null", map[string]any{"wake": "lines", "timeout": nil}, 300},
+		{"lines explicit", map[string]any{"wake": "lines", "timeout": 1800}, 1800},
 	}
-	if state, reason := bgRow(t, conn, info.ID); state != "timed_out" || reason != "timeout" {
-		t.Fatalf("state %s, reason %s", state, reason)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// When the bot starts a command that waits.
+			tc.args["command"] = "sleep 300"
+			info := bgStart(t, d, chat, tc.args)
+			// Then the durable row has the applicable timeout, and stop sends no wake-up.
+			var timeout sql.NullInt64
+			if err := conn.QueryRowContext(t.Context(), `SELECT timeout_ms FROM background_commands WHERE id = ?`, info.ID).Scan(&timeout); err != nil {
+				t.Fatal(err)
+			}
+			if !timeout.Valid || timeout.Int64 != tc.want*1000 {
+				t.Fatalf("timeout = %+v, want %d seconds", timeout, tc.want)
+			}
+			callSessionTool(t, d, chat, "background_stop", map[string]any{"id": info.ID})
+			if wakes := bgWakes(t, conn, chat); len(wakes) != 0 {
+				t.Fatalf("stopped command sent wake-ups: %+v", wakes)
+			}
+		})
 	}
-	waitTaskPIDGone(t, pids)
+}
+
+func TestUserGetsAWakeUpWhenABackgroundCommandPassesItsTimeout(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"exit", "lines"} {
+		t.Run(mode, func(t *testing.T) {
+			// Given a command with a one-second timeout and a child process.
+			dir := t.TempDir()
+			d := startDex(t, dir, "")
+			conn := taskResultDB(t, dir)
+			chat := bgChat(t, d)
+			leader, child := filepath.Join(dir, "leader.pid"), filepath.Join(dir, "child.pid")
+			command := fmt.Sprintf("echo $$ > %s; sleep 300 & echo $! > %s; wait", leader, child)
+			info := bgStart(t, d, chat, map[string]any{"command": command, "wake": mode, "timeout": 1})
+			killAtEnd(t, pidFile(t, leader))
+			killAtEnd(t, pidFile(t, child))
+			// Then dex ends the group and stores one timeout wake-up with the final state.
+			wake := waitWakes(t, conn, chat, 1)[0]
+			if wake.result.Event != "timed_out" || !strings.Contains(wake.result.Notice, "timeout of 1 seconds") {
+				t.Fatalf("wake-up: %+v", wake.result)
+			}
+			if state, reason := bgRow(t, conn, info.ID); state != "timed_out" || reason != "timeout" {
+				t.Fatalf("state %s, reason %s", state, reason)
+			}
+			waitTaskPIDGone(t, leader)
+			waitTaskPIDGone(t, child)
+		})
+	}
 }
 
 func TestUserRejectsAWatchLongerThanThirtyMinutes(t *testing.T) {

@@ -27,8 +27,10 @@ durable reply delivery. The engine does not import dex business packages.
 Tools and stdio MCP servers can start child processes. Bash has a default
 120-second timeout. An omitted or null `timeout` uses the default. An explicit
 `timeout` in seconds replaces it. PiG stops the shell process group and waits for it on timeout or cancellation.
-Use `background_start` for supervised long work. Other tools do not have this
-default: a generic deadline cannot safely stop a tool that ignores cancellation.
+Use `background_start` for supervised long work. It has its own timeout defaults.
+Other tools do not receive the bash or background timeout defaults. MCP calls have
+a 600-second timeout, but remote work can continue after cancellation. A generic
+deadline cannot safely stop a tool that ignores cancellation.
 Agent execution itself stays in dex. There is no backend subprocess or serialized internal protocol.
 See [ADR 0011](decisions/0011-native-pig-runtime.md).
 
@@ -882,13 +884,18 @@ binds a tool call to its session.
   `<data dir>/agents/<id>/background/<background id>.log`.
 - Wake `exit` (the default) sends one input when the command ends: the ID, the
   exit status, and the last 20 lines (at most 4 KiB) of the output. A command
-  with this mode has no default timeout. A wait on a condition is a command that
-  loops until the condition holds.
+  with this mode has a default timeout of 1800 seconds. Set an explicit timeout
+  in seconds for longer work. A wait on a condition is a command that loops
+  until the condition holds.
 - Wake `lines` sends the stdout lines as events. dex reads stdout through a
   pipe, copies it to the output file, and batches the lines of one second into
   one input (at most 50 lines and 8 KiB, with a count of the omitted lines).
   stderr is not an event. The command ends at its exit or its timeout (5
   minutes by default, 30 minutes at most), and the session gets a last input.
+  An omitted or null timeout uses the default for either wake mode. An explicit
+  timeout replaces the default; the 30-minute maximum applies only to `lines`.
+  Previously, an `exit` command without a timeout could run indefinitely.
+  New commands that need more than 30 minutes must set a longer timeout.
 - `background_list` shows the commands of the session. `background_stop` sends
   SIGTERM to the process group and SIGKILL after 5 s.
 - A command owns its whole process group. When the shell leader exits, dex ends
