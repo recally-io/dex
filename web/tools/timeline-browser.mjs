@@ -373,12 +373,8 @@ try {
   );
   results.push("server 409 note, stable reset ID, idle /clear, divider, empty box after reset");
   await reload();
-  await ui(
-    "fresh history boundary",
-    "document.body.innerText.includes('Show earlier messages') && !document.body.innerText.includes('first input')",
-  );
-  await click("Show earlier messages");
-  await ui("earlier messages loaded", "document.body.innerText.includes('echo: first input')");
+  // The history button is in view above a short context, so the earlier page loads by itself.
+  await ui("earlier messages load in view", "document.body.innerText.includes('echo: first input')");
   await check(
     "history merges once",
     "document.querySelectorAll('[role=separator]').length === 1 && document.body.innerText.split('echo: first input').length === 2",
@@ -1036,10 +1032,8 @@ try {
     "!!document.querySelector('[role=separator]') && document.body.innerText.includes('Carried into the new context') && document.body.innerText.includes('carry the plan')",
   );
   await reload();
-  await ui("Chat history is available", "document.body.innerText.includes('Show earlier messages')");
-  await click("Show earlier messages");
   await ui(
-    "Chat history loaded",
+    "Chat history loads in view",
     "document.body.innerText.includes('context: [\"Plan a separate session\"]')",
   );
   await sendFromComposer("Fresh Chat context");

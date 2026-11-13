@@ -671,15 +671,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         <LoadEarlierButton
           chatId={chatId}
           before={state.historyBefore}
-          onPage={(page) => {
-            pinned.current = false;
-            const box = scroller.current;
-            const height = box?.scrollHeight ?? 0;
-            setState((previous) => mergeHistory(previous, page));
-            requestAnimationFrame(() => {
-              if (box) box.scrollTop += box.scrollHeight - height;
-            });
-          }}
+          onPage={(page) => setState((previous) => mergeHistory(previous, page))}
         />
         <Transcript
           items={items}
