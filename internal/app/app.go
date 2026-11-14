@@ -214,6 +214,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	automations := automation.New(q, chats, time.Now)
 	routineTools = automation.NewToolService(conn, automations, chats.AutomationCommitted)
 	hub = live.New(chats, native)
+	artifacts.OnChanged = hub.Changed
 	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
 	a := &App{db: conn, engine: native, bots: bots, jobs: jobs, background: bg, cancel: cancel}
 	defer func() { //nolint:contextcheck // Shutdown joins the app lifetime.

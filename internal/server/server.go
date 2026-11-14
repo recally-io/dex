@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -86,7 +87,7 @@ func New(cfg Config) http.Handler {
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
-				errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid):
+				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
@@ -594,6 +595,27 @@ func (h *handler) ListArtifacts(ctx context.Context, req api.ListArtifactsReques
 	return api.ListArtifacts200JSONResponse{Artifacts: out}, nil
 }
 
+func (h *handler) RenameArtifact(ctx context.Context, req api.RenameArtifactRequestObject) (api.RenameArtifactResponseObject, error) {
+	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
+		return nil, err
+	}
+	a, err := h.Artifacts.Rename(ctx, req.ChatId, req.ArtifactId, req.Body.Name)
+	if err != nil {
+		return nil, err
+	}
+	return api.RenameArtifact200JSONResponse{Id: a.ID, Name: a.Name, Size: a.Size, ConversationId: a.ConversationID, DisplayConversationId: a.DisplayConversationID}, nil
+}
+
+func (h *handler) DeleteArtifact(ctx context.Context, req api.DeleteArtifactRequestObject) (api.DeleteArtifactResponseObject, error) {
+	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
+		return nil, err
+	}
+	if err := h.Artifacts.Delete(ctx, req.ChatId, req.ArtifactId); err != nil {
+		return nil, err
+	}
+	return api.DeleteArtifact200JSONResponse{Status: api.OkStatusOk}, nil
+}
+
 func (h *handler) GetArtifact(ctx context.Context, req api.GetArtifactRequestObject) (api.GetArtifactResponseObject, error) {
 	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
 		return nil, err
@@ -603,6 +625,9 @@ func (h *handler) GetArtifact(ctx context.Context, req api.GetArtifactRequestObj
 		return nil, err
 	}
 	f, err := artifact.Open(agent.Home(h.DataDir, a.AgentID), a.ID)
+	if os.IsNotExist(err) {
+		return nil, sql.ErrNoRows
+	}
 	if err != nil {
 		return nil, err
 	}

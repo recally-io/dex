@@ -15,7 +15,7 @@ import (
 
 const heartbeat = 15 * time.Second
 
-// Hub keeps only notifications needed to attach an initially empty chat.
+// Hub attaches empty chats and invalidates delivered snapshot lists.
 type Hub struct {
 	chats  *chat.Service
 	agents *engine.Agents
@@ -27,7 +27,7 @@ func New(chats *chat.Service, agents *engine.Agents) *Hub {
 	return &Hub{chats: chats, agents: agents, byChat: map[int64]map[chan struct{}]struct{}{}}
 }
 
-// Changed wakes empty chats after the business service stores their execution reference.
+// Changed wakes subscribers after a reference or a delivery changes.
 func (h *Hub) Changed(chatID int64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -126,6 +126,9 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, signal <-c
 			return nil
 		case <-signal:
 			if err := attach(); err != nil {
+				return err
+			}
+			if _, err := io.WriteString(writer, "event: artifacts\ndata: {\"type\":\"artifacts\"}\n\n"); err != nil {
 				return err
 			}
 		case event, ok := <-events:

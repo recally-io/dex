@@ -9,6 +9,7 @@ import {
   listAgentsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { ChatTitle, MainTimeline } from "../routes/chat";
+import { Artifacts } from "./agent/artifacts";
 import { BotNavigation } from "./bot-navigation";
 import { AgentAvatar } from "./agent-avatar";
 import { Failure, Loading } from "./feedback";
@@ -112,7 +113,8 @@ function AgentPane({ settings }: { settings: Settings }) {
               </span>
             )}
           </div>
-          <div className="flex min-w-0 items-center justify-end">
+          <div className="flex min-w-0 items-center justify-end gap-1">
+            {shown ? <Artifacts key={`${agentId}:${shown.id}`} chatId={shown.id} /> : null}
             <BotNavigation
               agent={settings.agent}
               segment={segment ?? ""}

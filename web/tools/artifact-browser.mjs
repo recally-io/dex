@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -29,7 +29,7 @@ await Promise.all([
   mkdir(workspace, { recursive: true }),
 ]);
 
-for (const name of ["main.markdown", "chat.md", "task.md", "routine.md", "routine-task.md"]) {
+for (const name of ["main.markdown", "chat.md", "task.md", "routine.md", "routine-task.md", "lifecycle.md"]) {
   await writeFile(join(workspace, name), `# Preview ${name}\n`);
 }
 
@@ -174,14 +174,7 @@ try {
   await preview("main.markdown", mainArtifact.id);
   await click("Continue editing");
   await hasDraft(mainArtifact.id);
-  await poll("result link", () =>
-    evaluate(`!!document.querySelector('a[href^="/a/default/tasks/"]:not([inert] *)')`),
-  );
-  await evaluate(`document.querySelector('a[href^="/a/default/tasks/"]:not([inert] *)').click()`);
-  await poll(
-    "result link opens the child session",
-    async () => (await evaluate("location.pathname")) === `/a/default/c/${task.id}`,
-  );
+  await openChildPage(task.id);
   await preview("task.md", taskArtifact.id);
   await click("Continue editing");
   await hasDraft(taskArtifact.id);
@@ -206,14 +199,7 @@ try {
   await shot("routine");
   results.push("routine opens writable Chat with project");
   await visit(`/a/default/c/${run2.chatId}`);
-  await poll("routine result link", () =>
-    evaluate(`!!document.querySelector('a[href^="/a/default/tasks/"]:not([inert] *)')`),
-  );
-  await evaluate(`document.querySelector('a[href^="/a/default/tasks/"]:not([inert] *)').click()`);
-  await poll(
-    "routine result link opens the child session",
-    async () => (await evaluate("location.pathname")) === `/a/default/c/${child.id}`,
-  );
+  await openChildPage(child.id);
   await preview("routine-task.md", childArtifact.id);
   await click("Continue editing");
   await hasDraft(childArtifact.id);
@@ -222,6 +208,129 @@ try {
   assert.equal(childView.cwd, project);
   await shot("routine-task");
   results.push("a routine child session is a writable Chat with project");
+
+  // Two real pages share a child delivery. SSE updates the source and parent views.
+  const secondTarget = await call("Target.createTarget", { url: "about:blank" });
+
+  const { sessionId: second } = await call("Target.attachToTarget", {
+    targetId: secondTarget.targetId,
+    flatten: true,
+  });
+
+  const other = async (expression) => {
+    const result = await call(
+      "Runtime.evaluate",
+      { expression, awaitPromise: true, returnByValue: true },
+      second,
+    );
+
+    if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
+
+    return result.result.value;
+  };
+
+  await call("Network.enable", {}, second);
+  await call("Page.navigate", { url: base + "/a/default" }, second);
+  await poll("second page header", () =>
+    other(
+      "!![...document.querySelectorAll('header button')].find(b => b.textContent.trim() === 'Artifacts')",
+    ),
+  );
+  await other(
+    "[...document.querySelectorAll('header button')].find(b => b.textContent.trim() === 'Artifacts').click()",
+  );
+  await poll("second page child delivery", () => other("document.body.innerText.includes('task.md')"));
+
+  await visit(`/a/default/c/${task.id}`);
+  assert.equal(await evaluate('document.body.innerText.includes("Delivered files")'), false);
+  await preview("task.md", taskArtifact.id);
+  await click("Rename");
+  await setName("../bad.md");
+  await click("Save");
+  await poll("invalid rename is shown", () =>
+    evaluate('document.body.innerText.includes("Could not rename artifact")'),
+  );
+  await setName("renamed-task.md");
+  await click("Save");
+  await poll("source renamed", () =>
+    evaluate(
+      '!document.body.innerText.includes("Rename artifact") && document.body.innerText.includes("renamed-task.md")',
+    ),
+  );
+  await poll("parent renamed without reload", () =>
+    other('document.body.innerText.includes("renamed-task.md")'),
+  );
+  assert.ok(
+    network.some(
+      (e) => e.method === "Network.eventSourceMessageReceived" && e.params.eventName === "artifacts",
+    ),
+    "delivery mutations emit SSE invalidations",
+  );
+  await shot("artifacts-renamed");
+  await click("Delete");
+  await shot("artifacts-delete-confirm");
+  await click("Cancel");
+  assert.ok(
+    (await api(`/api/agents/default/chats/${task.id}/artifacts`)).artifacts.some(
+      (a) => a.id === taskArtifact.id,
+    ),
+  );
+  await click("Delete");
+  await click("Delete artifact");
+  await poll("source deletion clears selection", () =>
+    evaluate(
+      'document.body.innerText.includes("No artifacts yet.") && !document.body.innerText.includes("Continue editing")',
+    ),
+  );
+  await poll("parent deletion without reload", () =>
+    other('!document.body.innerText.includes("renamed-task.md")'),
+  );
+  assert.equal(await readFile(join(workspace, "task.md"), "utf8"), "# Preview task.md\n");
+  await visit("/a/default");
+  await click("Artifacts");
+  await model("tool");
+  await send(main.id, 'deliver_file {"path":"lifecycle.md"}');
+  const fresh = await artifact(main.id, "lifecycle.md");
+  await poll("new delivery in open panel", () =>
+    evaluate('document.body.innerText.includes("lifecycle.md")'),
+  );
+  await poll("new delivery in other page", () => other('document.body.innerText.includes("lifecycle.md")'));
+  await click("lifecycle.md");
+  await poll("fresh preview", () => evaluate('document.body.innerText.includes("Preview lifecycle.md")'));
+  const download = await evaluate('document.querySelector("a[download=\\"lifecycle.md\\"]").href');
+  assert.equal(await (await fetch(download)).text(), "# Preview lifecycle.md\n");
+  await shot("artifacts-preview");
+  await unlink(join(data, "agents", "default", "artifacts", fresh.id));
+  await poll("external removal clears list and preview", () =>
+    evaluate(`!document.querySelector('[role=dialog]')?.innerText.includes("lifecycle.md")`),
+  );
+  await poll("external removal reaches other page", () =>
+    other(`!document.querySelector('[role=dialog]')?.innerText.includes("lifecycle.md")`),
+  );
+  assert.equal(await readFile(join(workspace, "lifecycle.md"), "utf8"), "# Preview lifecycle.md\n");
+  await click("Close");
+  await shot("chat-artifacts-entry");
+  await call("Emulation.setDeviceMetricsOverride", {
+    width: 320,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await click("Artifacts");
+  await poll("mobile artifact dialog", () =>
+    evaluate(`(() => {
+    const dialog = document.querySelector('[role=dialog]');
+    if (!dialog) return false;
+    const rect = dialog.getBoundingClientRect();
+    return rect.left >= 0 && rect.right <= innerWidth;
+  })()`),
+  );
+  await shot("artifacts-mobile");
+  await click("Close");
+  await call("Target.closeTarget", { targetId: secondTarget.targetId });
+  results.push(
+    "snapshot rename validation, download, delete confirmation/cancel, source preservation, parent/source SSE, two-page new delivery, and external removal",
+  );
   await writeFile(
     join(evidence, "results.json"),
     JSON.stringify(
@@ -318,10 +427,10 @@ async function makeRoutine(name, prompt) {
   });
 }
 
-function call(method, params = {}) {
+function call(method, params = {}, sessionId) {
   const id = ++serial;
   const promise = new Promise((done, fail) => pending.set(id, { done, fail }));
-  socket.send(JSON.stringify({ id, method, params }));
+  socket.send(JSON.stringify({ id, method, params, sessionId }));
 
   return promise;
 }
@@ -353,6 +462,7 @@ async function click(text) {
 }
 
 async function preview(name, id) {
+  await click("Artifacts");
   await click(name);
   await poll(`preview ${id}`, () =>
     evaluate(`document.body.innerText.includes(${JSON.stringify(`Preview ${name}`)})`),
@@ -370,4 +480,24 @@ async function hasDraft(id) {
 async function shot(name) {
   const image = await call("Page.captureScreenshot", { format: "png" });
   await writeFile(join(evidence, `${name}.png`), Buffer.from(image.data, "base64"));
+}
+
+async function setName(value) {
+  await evaluate(`(() => {
+    const input = document.querySelector('#artifact-name');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+}
+
+async function openChildPage(id) {
+  await click("View thread");
+  await poll("thread session link", () =>
+    evaluate("!!document.querySelector('a[aria-label=\"Open as a session page\"]')"),
+  );
+  await evaluate("document.querySelector('a[aria-label=\"Open as a session page\"]').click()");
+  await poll(
+    "child session page",
+    async () => (await evaluate("location.pathname")) === "/a/default/c/" + id,
+  );
 }

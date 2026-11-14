@@ -1357,6 +1357,39 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+    patch:
+      operationId: renameArtifact
+      description: Change the display and download name of the shared snapshot, not its source.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 255 }
+      responses:
+        "200":
+          description: Renamed snapshot.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Artifact" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteArtifact
+      description: Delete the shared delivery snapshot from all views. The source file is unchanged.
+      responses:
+        "200":
+          description: Snapshot deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/extensions:
     parameters:
       - in: path
@@ -2283,6 +2316,7 @@ components:
         - $ref: "#/components/schemas/ItemEvent"
         - $ref: "#/components/schemas/AppendEvent"
         - $ref: "#/components/schemas/RunEvent"
+        - $ref: "#/components/schemas/ArtifactsEvent"
       discriminator:
         propertyName: type
         mapping:
@@ -2290,6 +2324,14 @@ components:
           item: "#/components/schemas/ItemEvent"
           append: "#/components/schemas/AppendEvent"
           run: "#/components/schemas/RunEvent"
+          artifacts: "#/components/schemas/ArtifactsEvent"
+
+    ArtifactsEvent:
+      type: object
+      required: [type]
+      description: Refetch the delivered snapshot list. This event does not change the transcript.
+      properties:
+        type: { type: string, enum: [artifacts] }
 
     SnapshotEvent:
       type: object

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Test delivered snapshot management through the real API"
+#MISE depends=["build:web"]
+set -euo pipefail
+go test -race ./internal/artifact
+go test -race ./internal/app -run 'TestUser(ManagesDeliveredSnapshots|ConcurrentDeliveriesRemainAvailable|DeliversWorkspaceSnapshots|FindsBackgroundDeliveries)' -count=1

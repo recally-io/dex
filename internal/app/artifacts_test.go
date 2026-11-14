@@ -172,6 +172,17 @@ func TestUserConcurrentDeliveriesRemainAvailable(t *testing.T) {
 	if replay, err := service.Deliver(t.Context(), caller, "parallel.md"); err != nil || replay.ID == "" {
 		t.Fatalf("replay=%+v err=%v", replay, err)
 	}
+	replay, err := service.Deliver(t.Context(), caller, "parallel.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.must(t, http.MethodDelete, artifactPath(chat, replay.ID), nil, nil)
+	if again, err := service.Deliver(t.Context(), caller, "parallel.md"); err != nil || again.ID != replay.ID {
+		t.Fatalf("deleted replay=%+v err=%v", again, err)
+	}
+	if rows := listArtifacts(t, d, chat); len(rows) != count-1 {
+		t.Fatalf("replay restored deleted delivery: %+v", rows)
+	}
 	caller.Key = "parallel/new"
 	if _, err := service.Deliver(t.Context(), caller, "parallel.md"); err == nil {
 		t.Fatal("settled input accepted a new delivery")
@@ -324,4 +335,79 @@ func TestUserFindsBackgroundDeliveriesFromTheirParentChat(t *testing.T) {
 	if len(parentArtifacts) != 1 || len(childArtifacts) != 1 || parentArtifacts[0] != childArtifacts[0] || parentArtifacts[0].Name != "task.md" || parentArtifacts[0].ConversationID != childID || parentArtifacts[0].DisplayConversationID != parent {
 		t.Fatalf("child=%d parent=%+v childArtifacts=%+v", childID, parentArtifacts, childArtifacts)
 	}
+}
+
+func TestUserManagesDeliveredSnapshotsWithoutChangingSources(t *testing.T) {
+	t.Parallel()
+	// Given a delivered report shared by a child and its parent.
+	data := t.TempDir()
+	d := startDex(t, data, "")
+	workspace := filepath.Join(data, "agents", "default", "workspace")
+	if err := os.MkdirAll(workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(workspace, "report.md")
+	if err := os.WriteFile(source, []byte("# Source\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	parent := d.newSession(t).ID
+	child := spawnChild(t, d, parent, "Report", `deliver_file {"path":"report.md"}`, "tool")
+	waitResults(t, taskResultDB(t, data), parent, 1)
+	childID := child.conversation(t)
+	item := listArtifacts(t, d, parent)[0]
+
+	// When the user renames the delivery, both views and its download use the new name.
+	d.must(t, http.MethodPatch, artifactPath(parent, item.ID), map[string]string{"name": "renamed.md"}, nil)
+	for _, chat := range []int64{parent, childID} {
+		rows := listArtifacts(t, d, chat)
+		if len(rows) != 1 || rows[0].Name != "renamed.md" {
+			t.Fatalf("renamed artifacts=%+v", rows)
+		}
+	}
+	headers, body := readArtifact(t, d, parent, item.ID)
+	if string(body) != "# Source\n" || !strings.Contains(headers.Get("Content-Disposition"), "renamed.md") {
+		t.Fatalf("headers=%v body=%q", headers, body)
+	}
+	for _, name := range []string{"", " ", "..", "../outside", "a/b", `a\b`, "bad\nname", strings.Repeat("a", 256)} {
+		status, _ := d.call(t, http.MethodPatch, artifactPath(parent, item.ID), map[string]string{"name": name})
+		if status != http.StatusBadRequest {
+			t.Fatalf("name %q: status=%d", name, status)
+		}
+	}
+	other := d.newSession(t).ID
+	for _, method := range []string{http.MethodPatch, http.MethodDelete} {
+		status, _ := d.call(t, method, artifactPath(other, item.ID), map[string]string{"name": "intruder.md"})
+		if status != http.StatusNotFound {
+			t.Fatalf("unrelated chat %s: status=%d", method, status)
+		}
+	}
+
+	// Then deletion removes the shared snapshot, but leaves the source file untouched.
+	d.must(t, http.MethodDelete, artifactPath(childID, item.ID), nil, nil)
+	for _, chat := range []int64{parent, childID} {
+		if rows := listArtifacts(t, d, chat); len(rows) != 0 {
+			t.Fatalf("deleted artifacts=%+v", rows)
+		}
+		status, _ := d.call(t, http.MethodGet, artifactPath(chat, item.ID), nil)
+		if status != http.StatusNotFound {
+			t.Fatalf("deleted download status=%d", status)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(data, "agents", "default", "artifacts", item.ID)); !os.IsNotExist(err) {
+		t.Fatalf("snapshot remains: %v", err)
+	}
+	if contents, err := os.ReadFile(source); err != nil || string(contents) != "# Source\n" {
+		t.Fatalf("source=%q err=%v", contents, err)
+	}
+
+	// A removed snapshot is absent from the list even if its delivery record remains.
+	d.setModel(t, "tool")
+	missing := deliverArtifact(t, d, parent, "report.md")
+	if err := os.Remove(filepath.Join(data, "agents", "default", "artifacts", missing.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if rows := listArtifacts(t, d, parent); len(rows) != 0 {
+		t.Fatalf("missing snapshot listed: %+v", rows)
+	}
+	d.must(t, http.MethodDelete, artifactPath(parent, missing.ID), nil, nil)
 }

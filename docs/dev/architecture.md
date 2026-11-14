@@ -169,6 +169,14 @@ Continue editing references the snapshot ID, name, and source. Main and Chat
 reuse the writable conversation. A read-only source opens a new writable Chat
 with the source project directory. A new delivery creates a new snapshot.
 
+The chat header opens Artifacts. Rename changes the shared snapshot display and
+download name. Delete removes its bytes and hides it in both source and parent
+conversations. Neither action changes workspace source files. A deleted row keeps
+its operation key, so a tool replay cannot restore it. The chat SSE stream sends
+`artifacts` invalidations after delivery, rename, and delete. A reconnect refetches
+the list. The open dialog also polls every three seconds to detect snapshot files
+removed outside dex. The list excludes missing snapshots.
+
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
 each agent execution store. Run one dex process per data directory.
 

@@ -39,6 +39,34 @@ func (q *Queries) CreateArtifact(ctx context.Context, arg CreateArtifactParams) 
 	return err
 }
 
+const deleteArtifact = `-- name: DeleteArtifact :one
+UPDATE artifacts SET deleted = 1 WHERE id = ? AND (conversation_id = ? OR display_conversation_id = ?) RETURNING id, agent_id, conversation_id, display_conversation_id, operation_key, name, size, created_at, deleted
+`
+
+type DeleteArtifactParams struct {
+	ID                    string `json:"id"`
+	ConversationID        int64  `json:"conversation_id"`
+	DisplayConversationID int64  `json:"display_conversation_id"`
+}
+
+// Keep the operation key so a tool replay cannot restore a deleted delivery.
+func (q *Queries) DeleteArtifact(ctx context.Context, arg DeleteArtifactParams) (Artifact, error) {
+	row := q.db.QueryRowContext(ctx, deleteArtifact, arg.ID, arg.ConversationID, arg.DisplayConversationID)
+	var i Artifact
+	err := row.Scan(
+		&i.ID,
+		&i.AgentID,
+		&i.ConversationID,
+		&i.DisplayConversationID,
+		&i.OperationKey,
+		&i.Name,
+		&i.Size,
+		&i.CreatedAt,
+		&i.Deleted,
+	)
+	return i, err
+}
+
 const getActiveArtifactInput = `-- name: GetActiveArtifactInput :one
 SELECT id FROM submissions WHERE id = ? AND conversation_id = ? AND status = 'pending'
 `
@@ -56,7 +84,7 @@ func (q *Queries) GetActiveArtifactInput(ctx context.Context, arg GetActiveArtif
 }
 
 const getArtifact = `-- name: GetArtifact :one
-SELECT id, agent_id, conversation_id, display_conversation_id, operation_key, name, size, created_at FROM artifacts WHERE id = ? AND (conversation_id = ? OR display_conversation_id = ?)
+SELECT id, agent_id, conversation_id, display_conversation_id, operation_key, name, size, created_at, deleted FROM artifacts WHERE id = ? AND deleted = 0 AND (conversation_id = ? OR display_conversation_id = ?)
 `
 
 type GetArtifactParams struct {
@@ -80,12 +108,13 @@ func (q *Queries) GetArtifact(ctx context.Context, arg GetArtifactParams) (Artif
 		&i.Name,
 		&i.Size,
 		&i.CreatedAt,
+		&i.Deleted,
 	)
 	return i, err
 }
 
 const getArtifactByOperation = `-- name: GetArtifactByOperation :one
-SELECT id, agent_id, conversation_id, display_conversation_id, operation_key, name, size, created_at FROM artifacts WHERE operation_key = ? AND agent_id = ?
+SELECT id, agent_id, conversation_id, display_conversation_id, operation_key, name, size, created_at, deleted FROM artifacts WHERE operation_key = ? AND agent_id = ?
 `
 
 type GetArtifactByOperationParams struct {
@@ -105,12 +134,13 @@ func (q *Queries) GetArtifactByOperation(ctx context.Context, arg GetArtifactByO
 		&i.Name,
 		&i.Size,
 		&i.CreatedAt,
+		&i.Deleted,
 	)
 	return i, err
 }
 
 const listArtifacts = `-- name: ListArtifacts :many
-SELECT id, agent_id, conversation_id, display_conversation_id, operation_key, name, size, created_at FROM artifacts WHERE conversation_id = ? OR display_conversation_id = ? ORDER BY created_at, id
+SELECT id, agent_id, conversation_id, display_conversation_id, operation_key, name, size, created_at, deleted FROM artifacts WHERE deleted = 0 AND (conversation_id = ? OR display_conversation_id = ?) ORDER BY created_at, id
 `
 
 type ListArtifactsParams struct {
@@ -136,6 +166,7 @@ func (q *Queries) ListArtifacts(ctx context.Context, arg ListArtifactsParams) ([
 			&i.Name,
 			&i.Size,
 			&i.CreatedAt,
+			&i.Deleted,
 		); err != nil {
 			return nil, err
 		}
@@ -165,4 +196,37 @@ func (q *Queries) LockArtifactInput(ctx context.Context, arg LockArtifactInputPa
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const renameArtifact = `-- name: RenameArtifact :one
+UPDATE artifacts SET name = ? WHERE id = ? AND deleted = 0 AND (conversation_id = ? OR display_conversation_id = ?) RETURNING id, agent_id, conversation_id, display_conversation_id, operation_key, name, size, created_at, deleted
+`
+
+type RenameArtifactParams struct {
+	Name                  string `json:"name"`
+	ID                    string `json:"id"`
+	ConversationID        int64  `json:"conversation_id"`
+	DisplayConversationID int64  `json:"display_conversation_id"`
+}
+
+func (q *Queries) RenameArtifact(ctx context.Context, arg RenameArtifactParams) (Artifact, error) {
+	row := q.db.QueryRowContext(ctx, renameArtifact,
+		arg.Name,
+		arg.ID,
+		arg.ConversationID,
+		arg.DisplayConversationID,
+	)
+	var i Artifact
+	err := row.Scan(
+		&i.ID,
+		&i.AgentID,
+		&i.ConversationID,
+		&i.DisplayConversationID,
+		&i.OperationKey,
+		&i.Name,
+		&i.Size,
+		&i.CreatedAt,
+		&i.Deleted,
+	)
+	return i, err
 }

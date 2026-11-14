@@ -543,7 +543,16 @@ export type ChatEvent = ({
     type: 'append';
 } & AppendEvent) | ({
     type: 'run';
-} & RunEvent);
+} & RunEvent) | ({
+    type: 'artifacts';
+} & ArtifactsEvent);
+
+/**
+ * Refetch the delivered snapshot list. This event does not change the transcript.
+ */
+export type ArtifactsEvent = {
+    type: 'artifacts';
+};
 
 export type SnapshotEvent = {
     type: 'snapshot';
@@ -2931,6 +2940,39 @@ export type ListArtifactsResponses = {
 
 export type ListArtifactsResponse = ListArtifactsResponses[keyof ListArtifactsResponses];
 
+export type DeleteArtifactData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+        artifactId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}';
+};
+
+export type DeleteArtifactErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteArtifactError = DeleteArtifactErrors[keyof DeleteArtifactErrors];
+
+export type DeleteArtifactResponses = {
+    /**
+     * Snapshot deleted.
+     */
+    200: Ok;
+};
+
+export type DeleteArtifactResponse = DeleteArtifactResponses[keyof DeleteArtifactResponses];
+
 export type GetArtifactData = {
     body?: never;
     path: {
@@ -2963,6 +3005,45 @@ export type GetArtifactResponses = {
 };
 
 export type GetArtifactResponse = GetArtifactResponses[keyof GetArtifactResponses];
+
+export type RenameArtifactData = {
+    body: {
+        name: string;
+    };
+    path: {
+        agentId: string;
+        chatId: number;
+        artifactId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}';
+};
+
+export type RenameArtifactErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type RenameArtifactError = RenameArtifactErrors[keyof RenameArtifactErrors];
+
+export type RenameArtifactResponses = {
+    /**
+     * Renamed snapshot.
+     */
+    200: Artifact;
+};
+
+export type RenameArtifactResponse = RenameArtifactResponses[keyof RenameArtifactResponses];
 
 export type GetExtensionsData = {
     body?: never;

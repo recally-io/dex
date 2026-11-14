@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -13,8 +16,9 @@ import (
 )
 
 type Service struct {
-	db      *sql.DB
-	dataDir string
+	db        *sql.DB
+	dataDir   string
+	OnChanged func(int64)
 }
 
 func New(db *sql.DB, dataDir string) *Service { return &Service{db: db, dataDir: dataDir} }
@@ -102,6 +106,7 @@ func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path s
 		return engine.ArtifactInfo{}, err
 	}
 	keepSnapshot = false
+	s.changed(conv.ID, parent)
 	return engine.ArtifactInfo{ID: snapshot.ID, Name: snapshot.Name, Size: snapshot.Size, ConversationID: conv.ID, DisplayConversationID: parent}, nil
 }
 
@@ -113,5 +118,69 @@ func (s *Service) Get(ctx context.Context, conversationID int64, id string) (sql
 }
 
 func (s *Service) List(ctx context.Context, conversationID int64) ([]sqlc.Artifact, error) {
-	return sqlc.New(s.db).ListArtifacts(ctx, sqlc.ListArtifactsParams{ConversationID: conversationID, DisplayConversationID: conversationID})
+	rows, err := sqlc.New(s.db).ListArtifacts(ctx, sqlc.ListArtifactsParams{ConversationID: conversationID, DisplayConversationID: conversationID})
+	if err != nil {
+		return nil, err
+	}
+	visible := make([]sqlc.Artifact, 0, len(rows))
+	for _, a := range rows {
+		f, err := Open(agent.Home(s.dataDir, a.AgentID), a.ID)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if err := f.Close(); err != nil {
+			return nil, err
+		}
+		visible = append(visible, a)
+	}
+	return visible, nil
+}
+
+// ErrInvalidName marks names that are unsafe in download headers or file lists.
+var ErrInvalidName = errors.New("invalid artifact name")
+
+// Rename changes only delivery metadata. The opaque snapshot path stays fixed.
+func (s *Service) Rename(ctx context.Context, conversationID int64, id, name string) (sqlc.Artifact, error) {
+	if strings.TrimSpace(name) == "" || name == "." || name == ".." || len(name) > 255 || strings.ContainsAny(name, "/\\") || strings.ContainsFunc(name, unicode.IsControl) {
+		return sqlc.Artifact{}, fmt.Errorf("%w: use a file name of 1 to 255 bytes without paths or control characters", ErrInvalidName)
+	}
+	a, err := sqlc.New(s.db).RenameArtifact(ctx, sqlc.RenameArtifactParams{Name: name, ID: id, ConversationID: conversationID, DisplayConversationID: conversationID})
+	if err == nil {
+		s.changed(a.ConversationID, a.DisplayConversationID)
+	}
+	return a, err
+}
+
+// Delete removes the shared snapshot, not the source. Keep its operation receipt for replay.
+func (s *Service) Delete(ctx context.Context, conversationID int64, id string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	a, err := sqlc.New(tx).DeleteArtifact(ctx, sqlc.DeleteArtifactParams{ID: id, ConversationID: conversationID, DisplayConversationID: conversationID})
+	if err != nil {
+		return err
+	}
+	if err := Remove(agent.Home(s.dataDir, a.AgentID), a.ID); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.changed(a.ConversationID, a.DisplayConversationID)
+	return nil
+}
+
+func (s *Service) changed(source, display int64) {
+	if s.OnChanged == nil {
+		return
+	}
+	s.OnChanged(source)
+	if source != display {
+		s.OnChanged(display)
+	}
 }

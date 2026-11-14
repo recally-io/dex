@@ -99,14 +99,29 @@ func Open(agentDir, id string) (*os.File, error) {
 		return nil, err
 	}
 	defer root.Close()
-	f, err := root.Open(id)
+	info, err := root.Lstat(id)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fs.ErrNotExist
+	}
+	f, err := root.OpenFile(id, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open artifact: %w", err)
+	}
+	opened, err := f.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+		_ = f.Close()
+		if err != nil {
+			return nil, err
+		}
+		return nil, fs.ErrNotExist
 	}
 	return f, nil
 }
 
-// Remove discards a snapshot that did not get a durable database record.
+// Remove discards a delivery snapshot. It never follows the snapshot symlink.
 func Remove(agentDir, id string) error {
 	root, err := artifactRoot(agentDir, id)
 	if err != nil {
@@ -126,9 +141,24 @@ func artifactRoot(agentDir, id string) (*os.Root, error) {
 		return nil, err
 	}
 	defer agent.Close()
+	info, err := agent.Lstat("artifacts")
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, errors.New("artifacts must be a directory")
+	}
 	root, err := agent.OpenRoot("artifacts")
 	if err != nil {
 		return nil, err
+	}
+	opened, err := root.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		_ = root.Close()
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New("artifacts changed while opening")
 	}
 	return root, nil
 }

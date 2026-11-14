@@ -90,3 +90,50 @@ func TestUserCannotDeliverAnOversizedFile(t *testing.T) {
 		t.Fatalf("artifacts directory = %v, want absent", statErr)
 	}
 }
+
+func TestUserCannotDeleteSourcesThroughSnapshotPaths(t *testing.T) {
+	// Given a source file with a snapshot-shaped name and a replaced snapshot directory.
+	agent := t.TempDir()
+	workspace := filepath.Join(agent, "workspace")
+	if err := os.Mkdir(workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
+	const id = "01900000-0000-7000-8000-000000000001"
+	source := filepath.Join(workspace, id)
+	if err := os.WriteFile(source, []byte("source"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	artifacts := filepath.Join(agent, "artifacts")
+	if err := os.Symlink(workspace, artifacts); err != nil {
+		t.Fatal(err)
+	}
+
+	// When a deletion tries to enter that directory, it is refused.
+	if err := artifact.Remove(agent, id); err == nil {
+		t.Fatal("deleted through a replaced artifacts directory")
+	}
+	if err := os.Remove(artifacts); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(artifacts, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(source, filepath.Join(artifacts, id)); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := artifact.Open(agent, id); err == nil {
+		_ = f.Close()
+		t.Fatal("opened source through a snapshot symlink")
+	}
+	if err := artifact.Remove(agent, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := artifact.Remove(agent, "../workspace/"+id); err == nil {
+		t.Fatal("accepted a path in place of a snapshot ID")
+	}
+
+	// Then only the symlink is removed. The source remains unchanged.
+	if body, err := os.ReadFile(source); err != nil || string(body) != "source" {
+		t.Fatalf("source=%q err=%v", body, err)
+	}
+}
