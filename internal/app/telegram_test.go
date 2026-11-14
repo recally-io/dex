@@ -131,7 +131,8 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad token", http.StatusUnauthorized)
 		return
 	}
-	if method == "sendDocument" || method == "sendPhoto" {
+	mediaField := map[string]string{"sendDocument": "document", "sendPhoto": "photo", "sendAudio": "audio", "sendVoice": "voice", "sendVideo": "video", "sendAnimation": "animation"}[method]
+	if mediaField != "" {
 		f.mediaCalls <- time.Now()
 	}
 	f.mu.Lock()
@@ -156,17 +157,13 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var result any = true
-	if method == "sendDocument" || method == "sendPhoto" {
+	if mediaField != "" {
 		if err := r.ParseMultipartForm(21 << 20); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
-		field := "document"
-		if method == "sendPhoto" {
-			field = "photo"
-		}
-		file, header, err := r.FormFile(field)
+		file, header, err := r.FormFile(mediaField)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

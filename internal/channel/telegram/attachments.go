@@ -14,21 +14,21 @@ import (
 )
 
 type media struct {
-	ID     string `json:"file_id"`
-	Size   int64  `json:"file_size"`
-	Name   string `json:"file_name"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
+	ID         string `json:"file_id"`
+	Size       int64  `json:"file_size"`
+	Name       string `json:"file_name"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
+	Duration   int    `json:"duration"`
+	MimeType   string `json:"mime_type"`
+	Emoji      string `json:"emoji"`
+	SetName    string `json:"set_name"`
+	IsAnimated bool   `json:"is_animated"`
+	IsVideo    bool   `json:"is_video"`
 }
 
 func (b *Bot) download(ctx context.Context, m *message) ([]engine.Attachment, error) {
-	selected := m.Document
-	for i := range m.Photo {
-		photo := &m.Photo[i]
-		if selected == nil || photo.Width*photo.Height > selected.Width*selected.Height {
-			selected = photo
-		}
-	}
+	selected, _ := m.selectedMedia()
 	if selected == nil {
 		return nil, nil
 	}
@@ -48,6 +48,9 @@ func (b *Bot) download(ctx context.Context, m *message) ([]engine.Attachment, er
 	// Telegram returns a relative file path. It cannot select another server or a bot method.
 	if file.Path == "" || file.Path == "." || file.Path == ".." || strings.HasPrefix(file.Path, "/") || strings.ContainsAny(file.Path, `\?#`) || path.Clean(file.Path) != file.Path || strings.HasPrefix(file.Path, "../") {
 		return nil, errors.New("telegram returned an invalid file path")
+	}
+	if err := b.waitRate(ctx); err != nil {
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.cfg.APIURL+"/file/bot"+b.cfg.Token+"/"+file.Path, nil)
 	if err != nil {

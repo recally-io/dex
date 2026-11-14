@@ -140,7 +140,7 @@ func (b *Bot) Run(ctx context.Context) error {
 
 func (b *Bot) receive(ctx context.Context, u update) error {
 	m := u.Message
-	if m == nil || m.From == nil || (m.Text == "" && m.Caption == "" && len(m.Photo) == 0 && m.Document == nil) {
+	if m == nil || m.From == nil || !m.hasContent() {
 		return nil
 	}
 	if m.Chat.Type != "private" {
@@ -166,7 +166,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		return nil
 	}
 	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
-	if m.Document != nil || len(m.Photo) > 0 {
+	if selected, _ := m.selectedMedia(); selected != nil {
 		received, err := b.chats.ReceivedSource(ctx, source)
 		if err != nil {
 			return err
@@ -184,16 +184,24 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		if !permanent {
 			return err
 		}
-		return b.controlReply(ctx, m.Chat.ID, "Cannot read this attachment. Use a photo or document under 20 MB.")
+		return b.controlReply(ctx, m.Chat.ID, "Cannot read this attachment. Send a supported file under 20 MiB.")
 	}
 	content := m.Text
 	if content == "" {
 		content = m.Caption
 	}
+	if m.ForwardOrigin != nil {
+		content = "Forwarded message:\n" + content
+	}
 	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
-	incoming := chat.Message{Content: content, Attachments: attachments, ChannelContext: chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10)}}
+	incoming := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10), MediaGroup: m.MediaGroupID}}
+	if selected, kind := m.selectedMedia(); selected != nil {
+		incoming.ChannelContext.FileID = selected.ID
+		incoming.ChannelContext.MediaKind = kind
+	}
 	if m.ReplyTo != nil {
 		incoming.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
+		incoming.ChannelContext.ReplyTo = incoming.ReplyTo
 	}
 	receiveErr := b.chats.Receive(ctx, peer, source, incoming)
 	if len(attachments) > 0 {
@@ -322,20 +330,60 @@ type update struct {
 	Message  *message `json:"message"`
 }
 
+type user struct {
+	ID        int64  `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Username  string `json:"username"`
+}
+
+type remoteChat struct {
+	ID    int64  `json:"id"`
+	Type  string `json:"type"`
+	Title string `json:"title"`
+}
+
 type message struct {
-	From *struct {
-		ID int64 `json:"id"`
-	} `json:"from"`
-	Chat struct {
-		ID   int64  `json:"id"`
-		Type string `json:"type"`
-	} `json:"chat"`
-	// ReplyTo is the message that this message quotes.
-	ReplyTo *struct {
-		ID int64 `json:"message_id"`
-	} `json:"reply_to_message"`
-	Text     string  `json:"text"`
-	Caption  string  `json:"caption"`
-	Photo    []media `json:"photo"`
-	Document *media  `json:"document"`
+	ID      int64      `json:"message_id"`
+	From    *user      `json:"from"`
+	Chat    remoteChat `json:"chat"`
+	ReplyTo *message   `json:"reply_to_message"`
+	Quote   *struct {
+		Text string `json:"text"`
+	} `json:"quote"`
+	ForwardOrigin *struct {
+		Type           string      `json:"type"`
+		SenderUser     *user       `json:"sender_user"`
+		SenderUserName string      `json:"sender_user_name"`
+		Chat           *remoteChat `json:"chat"`
+		Date           int64       `json:"date"`
+		MessageID      int64       `json:"message_id"`
+	} `json:"forward_origin"`
+	MediaGroupID string  `json:"media_group_id"`
+	Text         string  `json:"text"`
+	Caption      string  `json:"caption"`
+	Photo        []media `json:"photo"`
+	Document     *media  `json:"document"`
+	Voice        *media  `json:"voice"`
+	Audio        *media  `json:"audio"`
+	Video        *media  `json:"video"`
+	Animation    *media  `json:"animation"`
+	VideoNote    *media  `json:"video_note"`
+	Sticker      *media  `json:"sticker"`
+	Location     *struct {
+		Latitude  float64 `json:"latitude"`
+		Longitude float64 `json:"longitude"`
+	} `json:"location"`
+	Contact *struct {
+		Phone     string `json:"phone_number"`
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+	} `json:"contact"`
+	Poll *struct {
+		Question string `json:"question"`
+		Options  []struct {
+			Text  string `json:"text"`
+			Votes int    `json:"voter_count"`
+		} `json:"options"`
+	} `json:"poll"`
 }
