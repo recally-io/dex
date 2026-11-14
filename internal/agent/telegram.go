@@ -42,6 +42,12 @@ func (s *Service) CreateTelegramPairing(ctx context.Context, agentID string) (st
 	return "https://t.me/" + username + "?start=" + value, expires, nil
 }
 
+func (s *Service) telegramRateLimit(agentID, token string) func(context.Context, int64) error {
+	return func(ctx context.Context, until int64) error {
+		return s.q.SetTelegramRetryAt(ctx, sqlc.SetTelegramRetryAtParams{AgentID: agentID, Token: token, RetryAt: until})
+	}
+}
+
 func (s *Service) pairTelegram(agentID, token string) func(context.Context, string, int64) ([]int64, error) {
 	return func(ctx context.Context, code string, user int64) ([]int64, error) {
 		// Never wait: settings changes hold mu while joining this bot.

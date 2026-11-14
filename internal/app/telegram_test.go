@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -34,6 +35,10 @@ type fakeTelegram struct {
 	failAfter     atomic.Int64
 	sendCount     atomic.Int64
 	failSend      atomic.Bool
+	failMedia     atomic.Bool
+	mediaSent     chan telegramMedia
+	mediaAttempts chan telegramMedia
+	mediaCalls    chan time.Time
 	attempted     chan struct{}
 	srv           *httptest.Server
 	sent          chan sentMessage
@@ -68,7 +73,7 @@ const fakeToken = "123:secret"
 
 func newFakeTelegram(t *testing.T) *fakeTelegram {
 	t.Helper()
-	f := &fakeTelegram{sent: make(chan sentMessage, 64), attempted: make(chan struct{}, 64), failures: map[string][]platformFailure{}, files: map[string]string{}, events: make(chan platformEvent, 512)}
+	f := &fakeTelegram{sent: make(chan sentMessage, 64), attempted: make(chan struct{}, 64), mediaSent: make(chan telegramMedia, 64), mediaAttempts: make(chan telegramMedia, 64), mediaCalls: make(chan time.Time, 64), failures: map[string][]platformFailure{}, files: map[string]string{}, events: make(chan platformEvent, 512)}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -126,6 +131,9 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad token", http.StatusUnauthorized)
 		return
 	}
+	if method == "sendDocument" || method == "sendPhoto" {
+		f.mediaCalls <- time.Now()
+	}
 	f.mu.Lock()
 	failures := f.failures[method]
 	var failure platformFailure
@@ -148,6 +156,41 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var result any = true
+	if method == "sendDocument" || method == "sendPhoto" {
+		if err := r.ParseMultipartForm(21 << 20); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer func() { _ = r.MultipartForm.RemoveAll() }()
+		field := "document"
+		if method == "sendPhoto" {
+			field = "photo"
+		}
+		file, header, err := r.FormFile(field)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		body, err := io.ReadAll(io.LimitReader(file, (20<<20)+1))
+		_ = file.Close()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		media := telegramMedia{Method: method, Chat: r.FormValue("chat_id"), Name: header.Filename, Body: string(body), At: time.Now()}
+		f.mediaAttempts <- media
+		if f.failMedia.Load() {
+			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 500, "description": "temporary media failure"})
+			return
+		}
+		f.mediaSent <- media
+		f.mu.Lock()
+		f.nextID++
+		id := f.nextID
+		f.mu.Unlock()
+		_ = json.MarshalWrite(w, map[string]any{"ok": true, "result": map[string]any{"message_id": id}})
+		return
+	}
 	switch method {
 	case "getMe":
 		result = map[string]any{"id": 123, "username": "dex_test_bot"}

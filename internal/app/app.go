@@ -123,7 +123,22 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
 			return chats.ToolReadDreamMessage(ctx, c, request)
 		},
-		DeliverArtifact: artifacts.Deliver,
+		DeliverArtifact: func(ctx context.Context, caller engine.TaskContext, path string) (engine.ArtifactInfo, error) {
+			result, err := artifacts.Deliver(ctx, caller, path)
+			if err != nil {
+				return result, err
+			}
+			_, file, err := artifacts.Open(caller.AgentID, result.Name)
+			if err != nil {
+				return result, err
+			}
+			defer file.Close()
+			queued, err := bots.Agent(caller.AgentID).QueueFile(ctx, caller, result.Name, file)
+			if queued {
+				result.ChannelDelivery = "queued"
+			}
+			return result, err
+		},
 		ReportCheck: func(ctx context.Context, c engine.TaskContext, r engine.CheckReport) error {
 			return chats.ToolReportCheck(ctx, c, r)
 		},

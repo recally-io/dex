@@ -13,7 +13,7 @@ import (
 )
 
 // Parts renders a final reply into independently valid HTML messages.
-func (b *Bot) Parts(reply chat.Reply) []string {
+func (b *Bot) Parts(reply chat.Reply) []channel.Part {
 	text := reply.Answer
 	if reply.Status != "done" {
 		text = "No answer: " + reply.Reason
@@ -23,21 +23,25 @@ func (b *Bot) Parts(reply chat.Reply) []string {
 	}
 	parts := render(text)
 	if len(parts) == 0 {
-		return []string{html.EscapeString(text)}
+		return channel.TextParts([]string{html.EscapeString(text)})
 	}
-	return parts
+	return channel.TextParts(parts)
 }
 
-// Send replaces its preview and confirms one final part. The caller stores progress.
-func (b *Bot) Send(ctx context.Context, key, deliveryID string, index int, part string) (string, error) {
+func peerID(key string) (int64, error) {
 	id, ok := strings.CutPrefix(key, channelPrefix)
-	if !ok {
-		return "", errors.New("telegram destination is invalid")
-	}
-	id, _, _ = strings.Cut(id, "/")
 	chatID, err := strconv.ParseInt(id, 10, 64)
+	if !ok || err != nil || chatID <= 0 {
+		return 0, fmt.Errorf("%w: invalid Telegram private destination", channel.ErrPermanent)
+	}
+	return chatID, nil
+}
+
+// sendText replaces its preview and confirms one final part. The caller stores progress.
+func (b *Bot) sendText(ctx context.Context, key, deliveryID string, index int, part string) (string, error) {
+	chatID, err := peerID(key)
 	if err != nil {
-		return "", errors.New("telegram destination is invalid")
+		return "", err
 	}
 	var previewID int64
 	if index == 0 {

@@ -181,6 +181,36 @@ file URL. A parent in another bot can link to that URL; it does not receive a
 shared artifact entry or a second copy. Continue editing uses the current
 writable conversation, or creates a Chat for a read-only conversation.
 
+For a Telegram Main input, `deliver_file` also queues a native file for that input's
+original recipient. The tool caller supplies the native execution, source receipt,
+and operation key. A Web, child, or other channel call keeps URL-only delivery.
+The channel path does not accept a model-supplied peer or bot identity.
+
+The shared sender uses typed text and file parts. It freezes rendered parts before
+the first send and stores confirmed remote message IDs with the part cursor in one
+transaction. A restart skips confirmed parts. Delivery remains at least once: a
+crash after Telegram accepts a request but before its receipt commits can repeat it.
+
+`channel_reply_files` holds temporary byte snapshots for pending deliveries, with
+at most ten files per input and 20 MiB per file. This table is not an artifact
+index. It has no role in artifact listing, naming, rename, delete, or conflict checks.
+A queued snapshot does not change when an artifact is renamed, deleted, or replaced.
+SQLite removes the payload in the same transaction that completes, cancels, or
+revokes its delivery. A missing payload records a permanent failure; the sender
+never reopens an artifact with the same name.
+
+Telegram sends valid PNG and JPEG results as photos when they meet the photo limits:
+at most 10 MiB, width plus height at most 10,000, and aspect ratio at most 20.
+Other files use documents. A definitive photo rejection can fall back to a document
+with the same bytes. Network failures are retried without an immediate fallback.
+
+Each Telegram input stores its authenticated sender and public bot account ID.
+Child results copy that context with the original origin. The sender checks current
+account ownership and the positive-integer allowlist before each final part.
+Revocation discards pending payloads and remains in effect for those receipts if
+the sender is later authorized again. Flood-control responses persist both the
+account cooldown and reply retry time. API waits are cancellable and survive restart.
+
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
 each agent execution store. Run one dex process per data directory.
 

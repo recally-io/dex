@@ -125,8 +125,8 @@ UPDATE conversations SET execution_id = ? WHERE id = ?;
 -- name: CreateSubmission :execrows
 -- A message whose ID or source key exists already is not stored again. An empty when_busy
 -- keeps the column default, so only callers that choose a mode name one.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at)
-VALUES (@id, @conversation_id, @content, @attachments, @source_key, @origin, @kind, coalesce(nullif(CAST(@when_busy AS TEXT), ''), 'followUp'), 'pending', @created_at)
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at, channel_context)
+VALUES (@id, @conversation_id, @content, @attachments, @source_key, @origin, @kind, coalesce(nullif(CAST(@when_busy AS TEXT), ''), 'followUp'), 'pending', @created_at, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'))
 ON CONFLICT DO NOTHING;
 
 -- name: GetSubmission :one
@@ -267,10 +267,12 @@ DELETE FROM providers WHERE id = ?;
 -- name: GetTelegramSettings :one
 SELECT * FROM telegram_settings WHERE agent_id = ?;
 
--- name: SetTelegramSettings :exec
+-- name: SetTelegramSettings :one
 INSERT INTO telegram_settings (agent_id, token, allowed_users)
 VALUES (?, ?, ?)
-ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, pairing_code = '', pairing_expires = 0;
+ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, pairing_code = '', pairing_expires = 0,
+retry_at = CASE WHEN substr(token, 1, instr(token, ':') - 1) = substr(excluded.token, 1, instr(excluded.token, ':') - 1) THEN retry_at ELSE 0 END
+RETURNING retry_at;
 
 -- name: DeleteTelegramSettings :exec
 DELETE FROM telegram_settings WHERE agent_id = ?;

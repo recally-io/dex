@@ -71,14 +71,21 @@ type Settings struct {
 	ThinkingLevel string `json:"thinkingLevel,omitempty"`
 }
 
+// ChannelContext records the platform identity that authorized channel input.
+type ChannelContext struct {
+	AccountID string `json:"accountId,omitempty"`
+	SenderID  string `json:"senderId,omitempty"`
+}
+
 // Message is a message to post. Title is the title of a new chat; empty uses the start of Content,
 // or the name of the first attachment. Settings apply only when the message creates the chat.
 type Message struct {
-	ID          string
-	Title       string
-	Content     string
-	Attachments []engine.Attachment
-	Settings    Settings
+	ChannelContext ChannelContext
+	ID             string
+	Title          string
+	Content        string
+	Attachments    []engine.Attachment
+	Settings       Settings
 	// AnswersQuestion is the ID of the open question that this message answers. A message with
 	// this ID is an answer to that question; any other message leaves a question open.
 	AnswersQuestion string
@@ -342,7 +349,12 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				return 0, err
 			}
 		}
+		channelContext, err := json.Marshal(m.ChannelContext)
+		if err != nil {
+			return 0, err
+		}
 		created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
+			ChannelContext: string(channelContext),
 			ID:             m.ID,
 			ConversationID: conv.ID,
 			Content:        content,
