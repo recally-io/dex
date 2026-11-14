@@ -2,12 +2,14 @@ package app_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"uuid"
@@ -289,7 +291,7 @@ func TestUserCleansAnUnpublishedSnapshotAfterDeliveryFails(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "report.md"), []byte("# report\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sessionDB(t, d).ExecContext(t.Context(), "CREATE TRIGGER reject_artifact BEFORE INSERT ON artifacts BEGIN SELECT RAISE(ABORT, 'artifact receipt failed'); END"); err != nil {
+	if _, err := sessionDB(t, d).ExecContext(t.Context(), "CREATE TRIGGER reject_artifact BEFORE UPDATE OF id ON submissions BEGIN SELECT RAISE(ABORT, 'artifact receipt failed'); END"); err != nil {
 		t.Fatal(err)
 	}
 	chat := d.newSession(t)
@@ -302,12 +304,14 @@ func TestUserCleansAnUnpublishedSnapshotAfterDeliveryFails(t *testing.T) {
 	if artifacts := listArtifacts(t, d, chat.ID); len(artifacts) != 0 {
 		t.Fatalf("artifacts=%+v", artifacts)
 	}
-	entries, err := os.ReadDir(filepath.Join(data, "agents", "default", "artifacts"))
+	entries, err := os.ReadDir(filepath.Join(data, "artifacts"))
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
-	if len(entries) != 0 {
-		t.Fatalf("orphaned snapshots=%v", entries)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			t.Fatalf("orphaned snapshot=%s", entry.Name())
+		}
 	}
 }
 
@@ -383,6 +387,7 @@ func TestUserManagesDeliveredSnapshotsWithoutChangingSources(t *testing.T) {
 	}
 
 	// Then deletion removes the shared snapshot, but leaves the source file untouched.
+	snapshotPath := artifactFile(t, data, item.ID)
 	d.must(t, http.MethodDelete, artifactPath(childID, item.ID), nil, nil)
 	for _, chat := range []int64{parent, childID} {
 		if rows := listArtifacts(t, d, chat); len(rows) != 0 {
@@ -393,7 +398,7 @@ func TestUserManagesDeliveredSnapshotsWithoutChangingSources(t *testing.T) {
 			t.Fatalf("deleted download status=%d", status)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(data, "agents", "default", "artifacts", item.ID)); !os.IsNotExist(err) {
+	if _, err := os.Stat(snapshotPath); !os.IsNotExist(err) {
 		t.Fatalf("snapshot remains: %v", err)
 	}
 	if contents, err := os.ReadFile(source); err != nil || string(contents) != "# Source\n" {
@@ -403,11 +408,234 @@ func TestUserManagesDeliveredSnapshotsWithoutChangingSources(t *testing.T) {
 	// A removed snapshot is absent from the list even if its delivery record remains.
 	d.setModel(t, "tool")
 	missing := deliverArtifact(t, d, parent, "report.md")
-	if err := os.Remove(filepath.Join(data, "agents", "default", "artifacts", missing.ID)); err != nil {
+	if err := os.Remove(artifactFile(t, data, missing.ID)); err != nil {
 		t.Fatal(err)
 	}
 	if rows := listArtifacts(t, d, parent); len(rows) != 0 {
 		t.Fatalf("missing snapshot listed: %+v", rows)
 	}
 	d.must(t, http.MethodDelete, artifactPath(parent, missing.ID), nil, nil)
+}
+
+func TestUserUsesDiskAsTheOnlyArtifactState(t *testing.T) {
+	t.Parallel()
+	// Given a delivered snapshot, whose physical file name is visible to the user.
+	data := t.TempDir()
+	d := startDex(t, data, "")
+	chat := d.newSession(t).ID
+	workspace := filepath.Join(data, "agents", "default", "workspace")
+	if err := os.MkdirAll(workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "disk.md"), []byte("# Disk\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	item := deliverArtifact(t, d, chat, "disk.md")
+	file := artifactFile(t, data, item.ID)
+	if filepath.Base(file) != "disk.md" {
+		t.Fatalf("physical snapshot name=%q, want disk.md", filepath.Base(file))
+	}
+	// When a user changes its real name and bytes outside dex, the API reads the disk state.
+	renamed := filepath.Join(filepath.Dir(file), "external.markdown")
+	if err := os.Rename(file, renamed); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(renamed, []byte("# Changed on disk\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rows := listArtifacts(t, d, chat)
+	if len(rows) != 1 || rows[0].Name != "external.markdown" || rows[0].Size != 18 || rows[0].ID != item.ID {
+		t.Fatalf("disk artifacts=%+v", rows)
+	}
+	// No mutable artifact state or delivery receipt was written into SQLite.
+	var records int
+	if err := sessionDB(t, d).QueryRowContext(t.Context(), "SELECT count(*) FROM artifacts").Scan(&records); err != nil || records != 0 {
+		t.Fatalf("artifact records=%d err=%v", records, err)
+	}
+	// Then internal rename and delete change the same physical file, without a second name index.
+	d.must(t, http.MethodPatch, artifactPath(chat, item.ID), map[string]string{"name": "real.md"}, nil)
+	if _, err := os.Stat(filepath.Join(filepath.Dir(file), "real.md")); err != nil {
+		t.Fatal(err)
+	}
+	d.must(t, http.MethodDelete, artifactPath(chat, item.ID), nil, nil)
+	if rows := listArtifacts(t, d, chat); len(rows) != 0 {
+		t.Fatalf("deleted files=%+v", rows)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(file), "restored.md"), []byte("restored"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if rows := listArtifacts(t, d, chat); len(rows) != 1 || rows[0].Name != "restored.md" {
+		t.Fatalf("restored files=%+v", rows)
+	}
+	// A new disk-only snapshot in the conversation directory also appears without a DB row.
+	added := filepath.Join(data, "artifacts", fmt.Sprintf("%d_%d", chat, chat), uuid.NewV7().String(), "added.md")
+	if err := os.MkdirAll(filepath.Dir(added), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(added, []byte("added"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if rows := listArtifacts(t, d, chat); len(rows) != 2 {
+		t.Fatalf("added files=%+v", rows)
+	}
+}
+
+func artifactFile(t *testing.T, data, id string) string {
+	t.Helper()
+	var found string
+	err := filepath.WalkDir(filepath.Join(data, "artifacts"), func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && (entry.Name() == id || strings.HasPrefix(filepath.Base(filepath.Dir(path)), id+"_")) {
+			found = path
+		}
+		return nil
+	})
+	if err != nil || found == "" {
+		t.Fatalf("snapshot %s: path=%s err=%v", id, found, err)
+	}
+	return found
+}
+
+func TestUserRejectsUnsafeArtifactDeliveries(t *testing.T) {
+	t.Parallel()
+	data := t.TempDir()
+	d := startDex(t, data, "")
+	d.setModel(t, "tool")
+	chat := d.newSession(t).ID
+	workspace := filepath.Join(data, "agents", "default", "workspace")
+	if err := os.MkdirAll(workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	if err := os.WriteFile(outside, []byte("outside"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(workspace, "link")); err != nil {
+		t.Fatal(err)
+	}
+	large := filepath.Join(workspace, "large.bin")
+	if err := os.WriteFile(large, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(large, artifact.MaxSize+1); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"../outside.md", outside, "link", "large.bin"} {
+		body, err := json.Marshal(map[string]string{"path": name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = taskTurn(t, d, chat, "deliver_file "+string(body))
+		if rows := listArtifacts(t, d, chat); len(rows) != 0 {
+			t.Fatalf("unsafe path %s delivered %+v", name, rows)
+		}
+	}
+}
+
+func TestUserMigratesLegacyArtifactFilesOnce(t *testing.T) {
+	t.Parallel()
+	// Given legacy SQLite receipts and UUID files from the released layout.
+	data := t.TempDir()
+	d := startDex(t, data, "")
+	d.setModel(t, "echo")
+	source := d.newChat(t, "seed")
+	parent := d.mainChat(t)
+	conn := sessionDB(t, d)
+	// Also accept databases that ran the earlier, unreleased PR build.
+	if _, err := conn.ExecContext(t.Context(), "ALTER TABLE artifacts ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO goose_db_version (version_id,is_applied) VALUES (20261114090000,1)"); err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(data, "agents", "default", "artifacts")
+	if err := os.MkdirAll(legacy, 0700); err != nil {
+		t.Fatal(err)
+	}
+	id, missing, interrupted := uuid.NewV7().String(), uuid.NewV7().String(), uuid.NewV7().String()
+	orphan := uuid.NewV7().String()
+	if err := os.WriteFile(filepath.Join(legacy, orphan), []byte("unclaimed bytes"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for i, item := range []struct{ id, name string }{{id, "legacy.md"}, {missing, "missing.md"}, {interrupted, "before.md"}} {
+		if _, err := conn.ExecContext(t.Context(), `INSERT INTO artifacts (id,agent_id,conversation_id,display_conversation_id,operation_key,name,size,created_at) VALUES (?,'default',?,?,?,?,999,?)`, item.id, source, parent, "legacy/"+item.id, item.name, i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(legacy, id), []byte("legacy bytes"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, interrupted), []byte("old bytes"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a crash after a prior import published a file but before it removed the old copy.
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte("default\x00legacy/"+interrupted)))
+	recovered := filepath.Join(data, "artifacts", fmt.Sprintf("%d_%d", source, parent), interrupted+"_"+hash, "after.md")
+	if err := os.MkdirAll(filepath.Dir(recovered), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(recovered, []byte("recovered bytes"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	d.stop()
+	if err := os.WriteFile(filepath.Join(data, "artifacts", ".legacy-imported"), []byte("1"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// When the app imports them before it serves HTTP, identity and sharing stay intact.
+	d = startDex(t, data, "")
+	for _, chat := range []int64{source, parent} {
+		rows := listArtifacts(t, d, chat)
+		if len(rows) != 2 {
+			t.Fatalf("migrated files=%+v", rows)
+		}
+		for _, row := range rows {
+			switch row.ID {
+			case id:
+				if row.Name != "legacy.md" || row.Size != 12 {
+					t.Fatalf("legacy stat=%+v", row)
+				}
+			case interrupted:
+				if row.Name != "after.md" || row.Size != 15 {
+					t.Fatalf("recovered stat=%+v", row)
+				}
+			default:
+				t.Fatalf("unexpected migrated file=%+v", row)
+			}
+		}
+	}
+	if _, body := readArtifact(t, d, parent, id); string(body) != "legacy bytes" {
+		t.Fatalf("legacy bytes=%q", body)
+	}
+	if files, err := os.ReadDir(legacy); err != nil || len(files) != 1 || files[0].Name() != orphan {
+		t.Fatalf("legacy duplicates or lost unclaimed file=%v err=%v", files, err)
+	}
+	if bytes, err := os.ReadFile(filepath.Join(legacy, orphan)); err != nil || string(bytes) != "unclaimed bytes" {
+		t.Fatalf("unclaimed file changed: %q err=%v", bytes, err)
+	}
+	// Then future starts do not read or reconstruct the artifact index from SQLite.
+	if _, err := sessionDB(t, d).ExecContext(t.Context(), "DROP TABLE artifacts"); err != nil {
+		t.Fatal(err)
+	}
+	disk := artifactFile(t, data, id)
+	renamed := filepath.Join(filepath.Dir(disk), "disk-name.md")
+	if err := os.Rename(disk, renamed); err != nil {
+		t.Fatal(err)
+	}
+	d.stop()
+	d = startDex(t, data, "")
+	rows := listArtifacts(t, d, parent)
+	if len(rows) != 2 {
+		t.Fatalf("disk-only restart=%+v", rows)
+	}
+	if !slices.ContainsFunc(rows, func(item deliveredArtifact) bool { return item.ID == id && item.Name == "disk-name.md" }) {
+		t.Fatalf("disk-only restart=%+v", rows)
+	}
+	d.must(t, http.MethodDelete, artifactPath(parent, id), nil, nil)
+	d.stop()
+	d = startDex(t, data, "")
+	if rows := listArtifacts(t, d, parent); len(rows) != 1 || rows[0].ID != interrupted {
+		t.Fatalf("deleted file restored on restart=%+v", rows)
+	}
 }

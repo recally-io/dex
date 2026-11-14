@@ -884,7 +884,7 @@ export const deleteArtifact = <ThrowOnError extends boolean = false>(options: Op
 });
 
 /**
- * The immutable snapshot. Only safe raster images are inline.
+ * The current snapshot file bytes. Only safe raster images are inline.
  */
 export const getArtifact = <ThrowOnError extends boolean = false>(options: Options<GetArtifactData, ThrowOnError>): RequestResult<GetArtifactResponses, GetArtifactErrors, ThrowOnError> => (options.client ?? client).get<GetArtifactResponses, GetArtifactErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
@@ -897,7 +897,7 @@ export const getArtifact = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Change the display and download name of the shared snapshot, not its source.
+ * Rename the physical snapshot file. The workspace source file is unchanged.
  */
 export const renameArtifact = <ThrowOnError extends boolean = false>(options: Options<RenameArtifactData, ThrowOnError>): RequestResult<RenameArtifactResponses, RenameArtifactErrors, ThrowOnError> => (options.client ?? client).patch<RenameArtifactResponses, RenameArtifactErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {

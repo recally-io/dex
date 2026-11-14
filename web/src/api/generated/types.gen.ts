@@ -189,6 +189,10 @@ export type Artifact = {
     id: string;
     name: string;
     size: number;
+    /**
+     * Current disk modification time with nanosecond precision.
+     */
+    modifiedAt: string;
     conversationId: number;
     displayConversationId: number;
 };

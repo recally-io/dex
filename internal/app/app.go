@@ -113,6 +113,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		bots          *channelRegistry
 	)
 	artifacts := artifact.New(conn, cfg.DataDir)
+	if err := artifacts.Migrate(ctx); err != nil {
+		cancel()
+		return nil, errors.Join(err, jobs.Close(), conn.Close())
+	}
 	bg := background.New(conn, time.Now, cfg.Background, func(id int64) { chats.WakeConversation(id) })
 	// A previous run owned the processes of running commands. This must precede any new command.
 	if err := bg.Recover(ctx); err != nil {

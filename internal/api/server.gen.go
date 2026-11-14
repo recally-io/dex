@@ -616,8 +616,11 @@ type Artifact struct {
 	ConversationId        int64  `json:"conversationId"`
 	DisplayConversationId int64  `json:"displayConversationId"`
 	Id                    string `json:"id"`
-	Name                  string `json:"name"`
-	Size                  int64  `json:"size"`
+
+	// ModifiedAt Current disk modification time with nanosecond precision.
+	ModifiedAt string `json:"modifiedAt"`
+	Name       string `json:"name"`
+	Size       int64  `json:"size"`
 }
 
 // ArtifactsEvent Refetch the delivered snapshot list. This event does not change the transcript.

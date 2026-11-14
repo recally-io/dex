@@ -8,132 +8,106 @@ import (
 	"github.com/recally-io/dex/internal/artifact"
 )
 
-func TestUserReceivesWorkspaceSnapshot(t *testing.T) {
-	// Given a report in an agent's workspace.
-	agent := t.TempDir()
-	workspace := filepath.Join(agent, "workspace")
-	if err := os.Mkdir(workspace, 0700); err != nil {
+const diskID = "01900000-0000-7000-8000-000000000001"
+
+func diskFixture(t *testing.T) (string, string, *artifact.Service) {
+	t.Helper()
+	data := t.TempDir()
+	file := filepath.Join(data, "artifacts", "1_2", diskID, "report.md")
+	if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, "report.md"), []byte("first"), 0600); err != nil {
+	if err := os.WriteFile(file, []byte("original"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	// When the agent explicitly delivers the report and then changes the source.
-	a, err := artifact.Snapshot(agent, "report.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(workspace, "report.md"), []byte("second"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	// Then the delivered file retains the original content.
-	f, err := artifact.Open(agent, a.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	b := make([]byte, 5)
-	if _, err := f.Read(b); err != nil {
-		t.Fatal(err)
-	}
-	if string(b) != "first" || a.Name != "report.md" {
-		t.Fatalf("snapshot = %q, name %q", b, a.Name)
-	}
+	return data, file, artifact.New(nil, data)
 }
 
-func TestUserCannotDeliverOutsideWorkspace(t *testing.T) {
-	agent := t.TempDir()
-	workspace := filepath.Join(agent, "workspace")
-	if err := os.Mkdir(workspace, 0700); err != nil {
+func TestUserReadsTheActualSnapshotFile(t *testing.T) {
+	// Given a disk-only delivery without a database or a sidecar index.
+	_, file, service := diskFixture(t)
+	// When the physical file is renamed and changed, both conversation views read it.
+	renamed := filepath.Join(filepath.Dir(file), "actual.md")
+	if err := os.Rename(file, renamed); err != nil {
 		t.Fatal(err)
 	}
-	outside := t.TempDir()
-	if err := os.WriteFile(filepath.Join(outside, "secret"), []byte("secret"), 0600); err != nil {
+	if err := os.WriteFile(renamed, []byte("changed"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(outside, "secret"), filepath.Join(workspace, "link")); err != nil {
-		t.Fatal(err)
+	for _, chat := range []int64{1, 2} {
+		rows, err := service.List(t.Context(), chat)
+		if err != nil || len(rows) != 1 || rows[0].Name != "actual.md" || rows[0].Size != 7 {
+			t.Fatalf("files=%+v err=%v", rows, err)
+		}
 	}
-	if err := os.Symlink(outside, filepath.Join(workspace, "escape")); err != nil {
-		t.Fatal(err)
+	// Then an unrelated chat cannot list or mutate it.
+	if rows, err := service.List(t.Context(), 3); err != nil || len(rows) != 0 {
+		t.Fatalf("unrelated files=%+v err=%v", rows, err)
 	}
-	for _, path := range []string{"../secret", filepath.Join(outside, "secret"), "link", "escape/secret"} {
-		t.Run(path, func(t *testing.T) {
-			if _, err := artifact.Snapshot(agent, path); err == nil {
-				t.Fatalf("delivered %q", path)
-			}
-		})
-	}
-}
-
-func TestUserCannotDeliverAnOversizedFile(t *testing.T) {
-	// Given a sparse source file larger than the delivery limit.
-	agent := t.TempDir()
-	workspace := filepath.Join(agent, "workspace")
-	if err := os.Mkdir(workspace, 0700); err != nil {
-		t.Fatal(err)
-	}
-	large := filepath.Join(workspace, "large.bin")
-	if err := os.WriteFile(large, nil, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Truncate(large, artifact.MaxSize+1); err != nil {
-		t.Fatal(err)
-	}
-	// When the agent attempts to deliver it.
-	_, err := artifact.Snapshot(agent, "large.bin")
-	// Then no snapshot is created.
-	if err == nil {
-		t.Fatal("oversized file delivered")
-	}
-	if _, statErr := os.Stat(filepath.Join(agent, "artifacts")); !os.IsNotExist(statErr) {
-		t.Fatalf("artifacts directory = %v, want absent", statErr)
+	if err := service.Delete(t.Context(), 3, diskID); err == nil {
+		t.Fatal("unrelated chat deleted a snapshot")
 	}
 }
 
 func TestUserCannotDeleteSourcesThroughSnapshotPaths(t *testing.T) {
-	// Given a source file with a snapshot-shaped name and a replaced snapshot directory.
-	agent := t.TempDir()
-	workspace := filepath.Join(agent, "workspace")
-	if err := os.Mkdir(workspace, 0700); err != nil {
+	data, file, service := diskFixture(t)
+	outside := filepath.Join(t.TempDir(), "source.md")
+	if err := os.WriteFile(outside, []byte("source"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	const id = "01900000-0000-7000-8000-000000000001"
-	source := filepath.Join(workspace, id)
-	if err := os.WriteFile(source, []byte("source"), 0600); err != nil {
+	if err := os.Remove(file); err != nil {
 		t.Fatal(err)
 	}
-	artifacts := filepath.Join(agent, "artifacts")
-	if err := os.Symlink(workspace, artifacts); err != nil {
+	if err := os.Symlink(outside, file); err != nil {
 		t.Fatal(err)
 	}
-
-	// When a deletion tries to enter that directory, it is refused.
-	if err := artifact.Remove(agent, id); err == nil {
-		t.Fatal("deleted through a replaced artifacts directory")
+	if rows, err := service.List(t.Context(), 1); err != nil || len(rows) != 0 {
+		t.Fatalf("symlink files=%+v err=%v", rows, err)
 	}
-	if err := os.Remove(artifacts); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(artifacts, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(source, filepath.Join(artifacts, id)); err != nil {
-		t.Fatal(err)
-	}
-	if f, err := artifact.Open(agent, id); err == nil {
+	if _, f, err := service.Open(t.Context(), 1, diskID); err == nil {
 		_ = f.Close()
-		t.Fatal("opened source through a snapshot symlink")
+		t.Fatal("opened a snapshot symlink")
 	}
-	if err := artifact.Remove(agent, id); err != nil {
+	if err := service.Delete(t.Context(), 1, diskID); err != nil {
 		t.Fatal(err)
 	}
-	if err := artifact.Remove(agent, "../workspace/"+id); err == nil {
-		t.Fatal("accepted a path in place of a snapshot ID")
+	if err := service.Delete(t.Context(), 1, "../../source.md"); err == nil {
+		t.Fatal("accepted a path as an ID")
 	}
-
-	// Then only the symlink is removed. The source remains unchanged.
-	if body, err := os.ReadFile(source); err != nil || string(body) != "source" {
+	if _, err := service.Rename(t.Context(), 1, diskID, "../source.md"); err == nil {
+		t.Fatal("accepted a path as a name")
+	}
+	// Replacing the complete artifacts directory with a link cannot widen the boundary.
+	if err := os.Rename(filepath.Join(data, "artifacts"), filepath.Join(data, "saved")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Dir(outside), filepath.Join(data, "artifacts")); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Delete(t.Context(), 1, diskID); err == nil {
+		t.Fatal("accepted a replaced artifacts root")
+	}
+	if body, err := os.ReadFile(outside); err != nil || string(body) != "source" {
 		t.Fatalf("source=%q err=%v", body, err)
+	}
+}
+
+func TestUserDoesNotLoseFilesWhenADirectoryContainsTwoFiles(t *testing.T) {
+	_, file, service := diskFixture(t)
+	second := filepath.Join(filepath.Dir(file), "second.md")
+	if err := os.WriteFile(second, []byte("second"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// An ambiguous snapshot is reported, never resolved by deleting or overwriting one file.
+	if err := service.Delete(t.Context(), 1, diskID); err == nil {
+		t.Fatal("deleted an ambiguous snapshot")
+	}
+	if _, err := service.Rename(t.Context(), 1, diskID, "second.md"); err == nil {
+		t.Fatal("overwrote an existing file")
+	}
+	for _, path := range []string{file, second} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

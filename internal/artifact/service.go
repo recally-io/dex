@@ -4,174 +4,236 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
-	"unicode"
+	"uuid"
 
 	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
 )
 
+// Service uses business storage only to authorize a new delivery's active input
+// and resolve its source/parent. All artifact state and replay identities live on disk.
 type Service struct {
 	db        *sql.DB
 	dataDir   string
+	mu        sync.Mutex
 	OnChanged func(int64)
 }
 
 func New(db *sql.DB, dataDir string) *Service { return &Service{db: db, dataDir: dataDir} }
 
-func artifactInfo(a sqlc.Artifact) engine.ArtifactInfo {
-	return engine.ArtifactInfo{ID: a.ID, Name: a.Name, Size: a.Size, ConversationID: a.ConversationID, DisplayConversationID: a.DisplayConversationID}
-}
-
-// Deliver binds a snapshot to the actual source and, for a task, its parent.
 func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path string) (engine.ArtifactInfo, error) {
-	q := sqlc.New(s.db)
-	prior, err := q.GetArtifactByOperation(ctx, sqlc.GetArtifactByOperationParams{OperationKey: caller.Key, AgentID: caller.AgentID})
-	if err == nil {
-		return artifactInfo(prior), nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, err := diskRoot(s.dataDir)
+	if err != nil {
 		return engine.ArtifactInfo{}, err
 	}
+	defer root.Close()
+	hash := operationHash(caller.AgentID, caller.Key)
+	prior, err := find(root, 0, "", hash)
+	if err == nil {
+		return prior.ArtifactInfo, nil
+	}
+	if !os.IsNotExist(err) {
+		return engine.ArtifactInfo{}, err
+	}
+	q := sqlc.New(s.db)
 	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: caller.AgentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
 	if err != nil {
 		return engine.ArtifactInfo{}, err
 	}
 	parent := conv.ID
 	switch {
-	case conv.ChannelKey == "main", strings.HasPrefix(conv.ChannelKey, "chat:"), strings.HasPrefix(conv.ChannelKey, "automation:"):
-	case strings.HasPrefix(conv.ChannelKey, "task:"):
-		// A conversation from before child sessions. Its parent link comes from the migration.
+	case conv.ChannelKey == "main", strings.HasPrefix(conv.ChannelKey, "chat:"), strings.HasPrefix(conv.ChannelKey, "automation:"), strings.HasPrefix(conv.ChannelKey, "task:"):
 	default:
 		return engine.ArtifactInfo{}, errors.New("this conversation cannot deliver files")
 	}
 	if conv.ParentID.Valid {
-		// Only a turn that the parent sent delivers to the parent. A user turn delivers in this
-		// conversation, like any chat.
 		source, err := q.GetSubmission(ctx, caller.SourceRequestID)
 		if err != nil {
 			return engine.ArtifactInfo{}, err
 		}
 		if source.ParentRequestID.Valid {
-			// The snapshot stays in the home of this agent, whatever the bot of the parent. The row names
-			// that agent, and the readers of the parent open the file from there.
 			parent = conv.ParentID.Int64
 		}
 	}
 	if _, err := q.GetActiveArtifactInput(ctx, sqlc.GetActiveArtifactInputParams{ID: caller.SourceRequestID, ConversationID: conv.ID}); err != nil {
 		return engine.ArtifactInfo{}, errors.Join(errors.New("delivery requires an active input"), err)
 	}
-
-	snapshot, err := Snapshot(agent.Home(s.dataDir, caller.AgentID), path)
+	pending, size, err := stage(root, agent.Home(s.dataDir, caller.AgentID), path)
 	if err != nil {
 		return engine.ArtifactInfo{}, err
 	}
-	keepSnapshot := true
-	defer func() {
-		if keepSnapshot {
-			_ = Remove(agent.Home(s.dataDir, caller.AgentID), snapshot.ID)
-		}
-	}()
-
+	defer func() { _ = root.RemoveAll(pending) }()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return engine.ArtifactInfo{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	q = sqlc.New(tx)
-	// Take the writer before reading, so concurrent deliveries cannot upgrade a stale WAL snapshot.
-	locked, err := q.LockArtifactInput(ctx, sqlc.LockArtifactInputParams{ID: caller.SourceRequestID, ConversationID: conv.ID})
+	// Stop and settlement take this same SQLite writer. A closed input cannot publish a new file.
+	locked, err := sqlc.New(tx).LockArtifactInput(ctx, sqlc.LockArtifactInputParams{ID: caller.SourceRequestID, ConversationID: conv.ID})
 	if err != nil {
-		return engine.ArtifactInfo{}, err
-	}
-	prior, err = q.GetArtifactByOperation(ctx, sqlc.GetArtifactByOperationParams{OperationKey: caller.Key, AgentID: caller.AgentID})
-	if err == nil {
-		return artifactInfo(prior), nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
 		return engine.ArtifactInfo{}, err
 	}
 	if locked != 1 {
 		return engine.ArtifactInfo{}, errors.New("delivery requires an active input")
 	}
-	params := sqlc.CreateArtifactParams{ID: snapshot.ID, AgentID: caller.AgentID, ConversationID: conv.ID, DisplayConversationID: parent, OperationKey: caller.Key, Name: snapshot.Name, Size: snapshot.Size, CreatedAt: time.Now().UnixMilli()}
-	if err := q.CreateArtifact(ctx, params); err != nil {
+	parentDir := route(conv.ID, parent)
+	if err := root.Mkdir(parentDir, 0700); err != nil && !os.IsExist(err) {
 		return engine.ArtifactInfo{}, err
 	}
+	dir, err := openDirectory(root, parentDir)
+	if err != nil {
+		return engine.ArtifactInfo{}, err
+	}
+	_ = dir.Close()
+	id := uuid.NewV7().String()
+	if err := root.Rename(pending, parentDir+"/"+id+"_"+hash); err != nil {
+		return engine.ArtifactInfo{}, err
+	}
+	if err := syncPublication(root, parentDir); err != nil {
+		return engine.ArtifactInfo{}, err
+	}
+	// The atomic directory publication is the receipt. A failed commit does not remove it;
+	// a replay returns that identity instead of copying another snapshot.
 	if err := tx.Commit(); err != nil {
 		return engine.ArtifactInfo{}, err
 	}
-	keepSnapshot = false
 	s.changed(conv.ID, parent)
-	return engine.ArtifactInfo{ID: snapshot.ID, Name: snapshot.Name, Size: snapshot.Size, ConversationID: conv.ID, DisplayConversationID: parent}, nil
+	return engine.ArtifactInfo{ID: id, Name: filepath.Base(path), Size: size, ConversationID: conv.ID, DisplayConversationID: parent}, nil
 }
 
-// Get and List return the files of a conversation and the files that its children show in it. The
-// caller must have checked access to the conversation. A file can belong to another bot: open it
-// from the home of Artifact.AgentID.
-func (s *Service) Get(ctx context.Context, conversationID int64, id string) (sqlc.Artifact, error) {
-	return sqlc.New(s.db).GetArtifact(ctx, sqlc.GetArtifactParams{ID: id, ConversationID: conversationID, DisplayConversationID: conversationID})
-}
-
-func (s *Service) List(ctx context.Context, conversationID int64) ([]sqlc.Artifact, error) {
-	rows, err := sqlc.New(s.db).ListArtifacts(ctx, sqlc.ListArtifactsParams{ConversationID: conversationID, DisplayConversationID: conversationID})
+func (s *Service) List(_ context.Context, conversationID int64) ([]Info, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, err := diskRoot(s.dataDir)
 	if err != nil {
 		return nil, err
 	}
-	visible := make([]sqlc.Artifact, 0, len(rows))
-	for _, a := range rows {
-		f, err := Open(agent.Home(s.dataDir, a.AgentID), a.ID)
-		if os.IsNotExist(err) {
-			continue
+	defer root.Close()
+	records, err := scan(root, conversationID, "")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Info, 0, len(records))
+	for _, record := range records {
+		if record.Name != "" {
+			out = append(out, record)
 		}
+	}
+	return out, nil
+}
+
+func (s *Service) Open(_ context.Context, conversationID int64, id string) (Info, *os.File, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, err := diskRoot(s.dataDir)
+	if err != nil {
+		return Info{}, nil, err
+	}
+	defer root.Close()
+	item, err := find(root, conversationID, id, "")
+	if err != nil {
+		return Info{}, nil, err
+	}
+	if item.Name == "" {
+		return Info{}, nil, fs.ErrNotExist
+	}
+	dir, err := snapshotDirectory(root, item.directory)
+	if err != nil {
+		return Info{}, nil, err
+	}
+	defer dir.Close()
+	f, err := regularFile(dir, item.Name)
+	if err != nil {
+		return Info{}, nil, err
+	}
+	stat, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return Info{}, nil, err
+	}
+	item.Size = stat.Size()
+	item.ModifiedAt = stat.ModTime().UTC().Format(time.RFC3339Nano)
+	return item, f, nil
+}
+
+func (s *Service) Rename(_ context.Context, conversationID int64, id, name string) (Info, error) {
+	if err := checkName(name); err != nil {
+		return Info{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, err := diskRoot(s.dataDir)
+	if err != nil {
+		return Info{}, err
+	}
+	defer root.Close()
+	item, err := find(root, conversationID, id, "")
+	if err != nil {
+		return Info{}, err
+	}
+	if item.Name == "" {
+		return Info{}, fs.ErrNotExist
+	}
+	dir, err := snapshotDirectory(root, item.directory)
+	if err != nil {
+		return Info{}, err
+	}
+	defer dir.Close()
+	if name != item.Name {
+		if _, err := dir.Lstat(name); err == nil {
+			return Info{}, ErrConflict
+		} else if !os.IsNotExist(err) {
+			return Info{}, err
+		}
+		if err := dir.Rename(item.Name, name); err != nil {
+			return Info{}, err
+		}
+	}
+	if err := syncDirectory(dir); err != nil {
+		return Info{}, err
+	}
+	item.Name = name
+	s.changed(item.ConversationID, item.DisplayConversationID)
+	return item, nil
+}
+
+func (s *Service) Delete(_ context.Context, conversationID int64, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, err := diskRoot(s.dataDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	item, err := find(root, conversationID, id, "")
+	if err != nil {
+		return err
+	}
+	if item.Name != "" {
+		dir, err := snapshotDirectory(root, item.directory)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if err := f.Close(); err != nil {
-			return nil, err
+		err = dir.Remove(item.Name)
+		if err == nil {
+			err = syncDirectory(dir)
 		}
-		visible = append(visible, a)
+		_ = dir.Close()
+		if err != nil && !os.IsNotExist(err) {
+			return err
+		}
 	}
-	return visible, nil
-}
-
-// ErrInvalidName marks names that are unsafe in download headers or file lists.
-var ErrInvalidName = errors.New("invalid artifact name")
-
-// Rename changes only delivery metadata. The opaque snapshot path stays fixed.
-func (s *Service) Rename(ctx context.Context, conversationID int64, id, name string) (sqlc.Artifact, error) {
-	if strings.TrimSpace(name) == "" || name == "." || name == ".." || len(name) > 255 || strings.ContainsAny(name, "/\\") || strings.ContainsFunc(name, unicode.IsControl) {
-		return sqlc.Artifact{}, fmt.Errorf("%w: use a file name of 1 to 255 bytes without paths or control characters", ErrInvalidName)
-	}
-	a, err := sqlc.New(s.db).RenameArtifact(ctx, sqlc.RenameArtifactParams{Name: name, ID: id, ConversationID: conversationID, DisplayConversationID: conversationID})
-	if err == nil {
-		s.changed(a.ConversationID, a.DisplayConversationID)
-	}
-	return a, err
-}
-
-// Delete removes the shared snapshot, not the source. Keep its operation receipt for replay.
-func (s *Service) Delete(ctx context.Context, conversationID int64, id string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	a, err := sqlc.New(tx).DeleteArtifact(ctx, sqlc.DeleteArtifactParams{ID: id, ConversationID: conversationID, DisplayConversationID: conversationID})
-	if err != nil {
-		return err
-	}
-	if err := Remove(agent.Home(s.dataDir, a.AgentID), a.ID); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	s.changed(a.ConversationID, a.DisplayConversationID)
+	// Keep the empty identity directory. Replays cannot publish the same delivery again.
+	s.changed(item.ConversationID, item.DisplayConversationID)
 	return nil
 }
 

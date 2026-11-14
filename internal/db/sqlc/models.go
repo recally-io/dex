@@ -34,7 +34,6 @@ type Artifact struct {
 	Name                  string `json:"name"`
 	Size                  int64  `json:"size"`
 	CreatedAt             int64  `json:"created_at"`
-	Deleted               int64  `json:"deleted"`
 }
 
 type Automation struct {

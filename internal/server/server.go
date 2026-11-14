@@ -89,13 +89,15 @@ func New(cfg Config) http.Handler {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
 				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid):
 				status = http.StatusBadRequest
+			case errors.Is(err, artifact.ErrConflict):
+				status = http.StatusConflict
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, engine.ErrModelsPending):
 				status = http.StatusServiceUnavailable
 			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden), errors.Is(err, chat.ErrSettingsForbidden):
 				status = http.StatusForbidden
-			case errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived), errors.Is(err, engine.ErrItemNotFound):
+			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
 			case errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
@@ -590,7 +592,7 @@ func (h *handler) ListArtifacts(ctx context.Context, req api.ListArtifactsReques
 	}
 	out := make([]api.Artifact, 0, len(rows))
 	for _, a := range rows {
-		out = append(out, api.Artifact{Id: a.ID, Name: a.Name, Size: a.Size, ConversationId: a.ConversationID, DisplayConversationId: a.DisplayConversationID})
+		out = append(out, api.Artifact{Id: a.ID, Name: a.Name, Size: a.Size, ModifiedAt: a.ModifiedAt, ConversationId: a.ConversationID, DisplayConversationId: a.DisplayConversationID})
 	}
 	return api.ListArtifacts200JSONResponse{Artifacts: out}, nil
 }
@@ -603,7 +605,7 @@ func (h *handler) RenameArtifact(ctx context.Context, req api.RenameArtifactRequ
 	if err != nil {
 		return nil, err
 	}
-	return api.RenameArtifact200JSONResponse{Id: a.ID, Name: a.Name, Size: a.Size, ConversationId: a.ConversationID, DisplayConversationId: a.DisplayConversationID}, nil
+	return api.RenameArtifact200JSONResponse{Id: a.ID, Name: a.Name, Size: a.Size, ModifiedAt: a.ModifiedAt, ConversationId: a.ConversationID, DisplayConversationId: a.DisplayConversationID}, nil
 }
 
 func (h *handler) DeleteArtifact(ctx context.Context, req api.DeleteArtifactRequestObject) (api.DeleteArtifactResponseObject, error) {
@@ -620,11 +622,7 @@ func (h *handler) GetArtifact(ctx context.Context, req api.GetArtifactRequestObj
 	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
 		return nil, err
 	}
-	a, err := h.Artifacts.Get(ctx, req.ChatId, req.ArtifactId)
-	if err != nil {
-		return nil, err
-	}
-	f, err := artifact.Open(agent.Home(h.DataDir, a.AgentID), a.ID)
+	a, f, err := h.Artifacts.Open(ctx, req.ChatId, req.ArtifactId)
 	if os.IsNotExist(err) {
 		return nil, sql.ErrNoRows
 	}

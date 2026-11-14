@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, unlink, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -268,6 +268,26 @@ try {
     "delivery mutations emit SSE invalidations",
   );
   await shot("artifacts-renamed");
+  const taskFile = await diskFile(taskArtifact.id);
+  const diskName = join(resolve(taskFile, ".."), "disk-task.markdown");
+  await rename(taskFile, diskName);
+  await writeFile(diskName, "# Disk version A\n");
+  await poll("disk rename updates the selected source", () =>
+    evaluate(
+      'document.querySelector("[role=dialog]").innerText.includes("disk-task.markdown") && document.querySelector("[role=dialog]").innerText.includes("Disk version A")',
+    ),
+  );
+  await poll("disk rename reaches parent", () =>
+    other('document.querySelector("[role=dialog]").innerText.includes("disk-task.markdown")'),
+  );
+  await writeFile(diskName, "# Disk version B\n");
+  const changedTime = new Date(Date.now() + 1000);
+  await utimes(diskName, changedTime, changedTime);
+  await poll("same-size disk edit updates preview", () =>
+    evaluate('document.querySelector("[role=dialog]").innerText.includes("Disk version B")'),
+  );
+  assert.equal((await artifact(task.id, "disk-task.markdown")).size, Buffer.byteLength("# Disk version B\n"));
+  await shot("artifacts-disk-renamed");
   await click("Delete");
   await shot("artifacts-delete-confirm");
   await click("Cancel");
@@ -284,7 +304,7 @@ try {
     ),
   );
   await poll("parent deletion without reload", () =>
-    other('!document.body.innerText.includes("renamed-task.md")'),
+    other('!document.querySelector("[role=dialog]").innerText.includes("disk-task.markdown")'),
   );
   assert.equal(await readFile(join(workspace, "task.md"), "utf8"), "# Preview task.md\n");
   await visit("/a/default");
@@ -301,7 +321,7 @@ try {
   const download = await evaluate('document.querySelector("a[download=\\"lifecycle.md\\"]").href');
   assert.equal(await (await fetch(download)).text(), "# Preview lifecycle.md\n");
   await shot("artifacts-preview");
-  await unlink(join(data, "agents", "default", "artifacts", fresh.id));
+  await unlink(await diskFile(fresh.id));
   await poll("external removal clears list and preview", () =>
     evaluate(`!document.querySelector('[role=dialog]')?.innerText.includes("lifecycle.md")`),
   );
@@ -309,6 +329,24 @@ try {
     other(`!document.querySelector('[role=dialog]')?.innerText.includes("lifecycle.md")`),
   );
   assert.equal(await readFile(join(workspace, "lifecycle.md"), "utf8"), "# Preview lifecycle.md\n");
+  const addedPath = join(data, "artifacts", main.id + "_" + main.id, randomUUID(), "disk-added.md");
+  await mkdir(resolve(addedPath, ".."), { recursive: true });
+  await writeFile(addedPath, "# Added outside dex\n");
+  await poll("disk-only addition in source", () =>
+    evaluate('document.querySelector("[role=dialog]").innerText.includes("disk-added.md")'),
+  );
+  await poll("disk-only addition in other page", () =>
+    other('document.querySelector("[role=dialog]").innerText.includes("disk-added.md")'),
+  );
+  await click("disk-added.md");
+  await poll("disk-only file preview", () =>
+    evaluate('document.querySelector("[role=dialog]").innerText.includes("Added outside dex")'),
+  );
+  await unlink(addedPath);
+  await poll("disk-only deletion clears selection", () =>
+    evaluate('!document.querySelector("[role=dialog]").innerText.includes("disk-added.md")'),
+  );
+  results.push("disk-only additions, external rename, stat size, same-size content refresh, and deletion");
   await click("Close");
   await shot("chat-artifacts-entry");
   await call("Emulation.setDeviceMetricsOverride", {
@@ -560,4 +598,21 @@ async function verifyArtifactEntry(mode) {
   );
   await click("Close");
   await call("Input.dispatchMouseEvent", { type: "mouseMoved", x: 0, y: 0 });
+}
+
+async function diskFile(id) {
+  for (const route of await readdir(join(data, "artifacts"), { withFileTypes: true })) {
+    if (!route.isDirectory()) continue;
+
+    for (const entry of await readdir(join(data, "artifacts", route.name), { withFileTypes: true })) {
+      if (!entry.isDirectory() || !(entry.name === id || entry.name.startsWith(id + "_"))) continue;
+      const directory = join(data, "artifacts", route.name, entry.name);
+      const files = (await readdir(directory, { withFileTypes: true })).filter((f) => f.isFile());
+      assert.equal(files.length, 1);
+
+      return join(directory, files[0].name);
+    }
+  }
+
+  throw new Error("Missing disk file " + id);
 }

@@ -1342,7 +1342,7 @@ paths:
         schema: { type: string }
     get:
       operationId: getArtifact
-      description: The immutable snapshot. Only safe raster images are inline.
+      description: The current snapshot file bytes. Only safe raster images are inline.
       responses:
         "200":
           description: Snapshot bytes.
@@ -1359,7 +1359,7 @@ paths:
 
     patch:
       operationId: renameArtifact
-      description: Change the display and download name of the shared snapshot, not its source.
+      description: Rename the physical snapshot file. The workspace source file is unchanged.
       requestBody:
         required: true
         content:
@@ -1863,11 +1863,22 @@ components:
 
     Artifact:
       type: object
-      required: [id, name, size, conversationId, displayConversationId]
+      required: [
+        id,
+        name,
+        size,
+        conversationId,
+        displayConversationId,
+        modifiedAt,
+      ]
       properties:
         id: { type: string }
         name: { type: string }
         size: { type: integer, format: int64 }
+        modifiedAt: {
+          type: string,
+          description: Current disk modification time with nanosecond precision.,
+        }
         conversationId: { type: integer, format: int64 }
         displayConversationId: { type: integer, format: int64 }
     Attachment:

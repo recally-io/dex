@@ -1139,7 +1139,7 @@ export const deleteArtifactMutation = (options?: Partial<Options<DeleteArtifactD
 export const getArtifactQueryKey = (options: Options<GetArtifactData>) => createQueryKey('getArtifact', options);
 
 /**
- * The immutable snapshot. Only safe raster images are inline.
+ * The current snapshot file bytes. Only safe raster images are inline.
  */
 export const getArtifactOptions = (options: Options<GetArtifactData>) => queryOptions<GetArtifactResponse, GetArtifactError, GetArtifactResponse, ReturnType<typeof getArtifactQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -1155,7 +1155,7 @@ export const getArtifactOptions = (options: Options<GetArtifactData>) => queryOp
 });
 
 /**
- * Change the display and download name of the shared snapshot, not its source.
+ * Rename the physical snapshot file. The workspace source file is unchanged.
  */
 export const renameArtifactMutation = (options?: Partial<Options<RenameArtifactData>>): UseMutationOptions<RenameArtifactResponse, RenameArtifactError, Options<RenameArtifactData>> => {
     const mutationOptions: UseMutationOptions<RenameArtifactResponse, RenameArtifactError, Options<RenameArtifactData>> = {

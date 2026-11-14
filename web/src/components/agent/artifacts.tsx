@@ -76,7 +76,7 @@ export function Artifacts({ chatId }: { chatId: number }) {
   const image = !!selected && /\.(png|jpe?g|gif|webp)$/i.test(selected.name);
 
   const content = useQuery({
-    queryKey: ["artifact-content", url],
+    queryKey: ["artifact-content", url, selected?.name, selected?.modifiedAt],
     enabled: open && markdown,
     queryFn: async () => {
       const response = await fetch(url);
@@ -218,7 +218,11 @@ export function Artifacts({ chatId }: { chatId: number }) {
                   </div>
                 )
               ) : image ? (
-                <img className="max-h-96 max-w-full object-contain" src={url} alt={selected.name} />
+                <img
+                  className="max-h-96 max-w-full object-contain"
+                  src={`${url}?v=${encodeURIComponent(selected.modifiedAt)}`}
+                  alt={selected.name}
+                />
               ) : (
                 <p className="text-sm text-muted-foreground">Download this file to open it.</p>
               )}

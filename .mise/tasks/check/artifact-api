@@ -3,4 +3,4 @@
 #MISE depends=["build:web"]
 set -euo pipefail
 go test -race ./internal/artifact
-go test -race ./internal/app -run 'TestUser(ManagesDeliveredSnapshots|ConcurrentDeliveriesRemainAvailable|DeliversWorkspaceSnapshots|FindsBackgroundDeliveries)' -count=1
+go test -race ./internal/app -run "${1:-TestUser(MigratesLegacyArtifactFilesOnce|ParentReadsTheFilesOfItsChildInAnotherBot|CleansAnUnpublishedSnapshotAfterDeliveryFails|RoutineAndItsTaskDeliverFiles|ConcurrentHTTPDeliveries|RejectsUnsafeArtifactDeliveries|UsesDiskAsTheOnlyArtifactState|ManagesDeliveredSnapshots|ConcurrentDeliveriesRemainAvailable|DeliversWorkspaceSnapshots|FindsBackgroundDeliveries)}" -count=1
