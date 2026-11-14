@@ -53,6 +53,7 @@ func (b *Bot) sendText(ctx context.Context, key, deliveryID string, index int, p
 		method = "editMessageText"
 		params["message_id"] = previewID
 	}
+	b.presentation(params, method)
 	var sent struct {
 		ID int64 `json:"message_id"`
 	}

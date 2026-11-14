@@ -433,7 +433,10 @@ level is a warning, not an error, so it does not block MCP Reload.
 Each agent has its own environment snapshot for tools and stdio MCP servers.
 It starts from the login shell environment, then the `.env` levels, then the
 1Password credentials of the settings. When `op` exists, the prompt tells the
-agent to read secrets with `op read`; dex never runs `op`. A scheduler job
+agent to read secrets with `op read`. Optional speech can resolve an explicitly
+selected provider key reference in memory through the same CLI and credentials;
+see [ADR 0020](decisions/0020-explicit-speech-provider-credentials.md). Other
+references remain under agent control. A scheduler job
 reloads an open agent after its extension files, shell rc files, or
 1Password settings change, when all agents are idle. See
 [ADR 0013](decisions/0013-tool-environment-sources.md).
@@ -1220,7 +1223,10 @@ so dex needs no public URL.
   with `setMyCommands`.
   The channel manager owns command execution and deduplication.
 - Each update has a stable source key: `telegram:<bot id>:<update id>`.
-  A repeated update does not create another submission.
+  A repeated update does not create another submission. An edited message creates
+  a new correction input. It does not replace the earlier input or undo its actions.
+  Reply, quote, and forward context cannot change sender authorization. Attachments
+  and forwarded or edited command text do not execute shared channel controls.
 - Goldmark parses Markdown into Telegram HTML. The sender splits at block
   boundaries and closes code tags in each part. Each part has at most 4096
   UTF-16 code units, including markup. A rejected HTML part retries as plain
@@ -1232,11 +1238,55 @@ so dex needs no public URL.
   updates a private draft at most once per second. If drafts fail, the bot
   sends one preview and edits it. Typing refreshes every 4 seconds. Previews
   are best effort. Queued user items do not start answer segments. The final
-  reply stops and joins its preview before delivery. Preview registration and
-  final lookup use one lock; attachment downloads do not hold this lock.
-- Photos use the largest size. Documents and photos pass through
-  `upload.Store`, with a 20 MB limit. Captions become message text. The agent
-  and web transcript use the same upload record.
+  reply stops and joins its preview before delivery. Runtime shutdown removes
+  preview messages that have no final owner. Preview registration and final
+  lookup use one lock; attachment downloads do not hold this lock.
+  Saved `options.preview` can select drafts, message edits, or no previews and
+  no typing. `options.silent` applies to new text, media, and copied or forwarded
+  messages. `options.linkPreview` controls text link previews. Optional reactions
+  show input processing and final status. Terminal reaction retries do not repeat
+  already confirmed reply parts.
+- Photos use the largest size. Documents, photos, voice, audio, video, video notes,
+  animations, and stickers pass through `upload.Store`, with a 20 MiB limit.
+  Captions become message text. The agent and web transcript use the same upload
+  record. Location, contact, and poll inputs keep their available fields as text.
+  Quoted files are not downloaded. Media bytes alone do not prove that a model
+  can understand their content.
+- Incoming albums persist each member before polling can acknowledge it. A batch
+  closes after 800 ms without a new member, 3 seconds from its first member, or
+  ten files. Admission uses the existing native input path. Source aliases stay
+  available after temporary input data is cleared. Late members form an explicit
+  continuation. Compatible outgoing files use `sendMediaGroup` in batches of 2–10.
+  An explicit API 400 saves fallback mode before single sends. Each single send
+  then has its own durable cursor. Lost or incomplete responses and HTTP 5xx do
+  not permit a method change. Unconfirmed delivery is at least once.
+- `telegram_message` selects confirmed bot deliveries by stored delivery ID and
+  index. Text and caption edits, deletion, reactions, copies, and forwards stay
+  in the current bot account, sender, and peer. Web and child callers cannot use
+  this authority. API time and permission limits still apply. The effect receipt
+  binds the native operation and source. An interrupted control operation becomes
+  unknown and does not run again automatically. Copy and forward results retain
+  their remote IDs for later authorized operations.
+- Speech is off by default. `options.stt` and `options.tts` require an explicit
+  saved custom provider, audio model, and data-sending consent. TTS also requires
+  an explicit voice. The provider must have an explicit base URL and support
+  OpenAI-compatible `/audio/transcriptions` or `/audio/speech`. Its chat model
+  does not prove audio support. Provider credentials use the existing catalog
+  resolver; explicit `op://` provider keys use the configured 1Password CLI and
+  stay references in storage. Channel settings contain no second API key. HTTPS is required except
+  for loopback HTTP. Redirects, provider fallback, and automatic provider retries
+  are disabled. Audio or text can leave the host and can incur provider charges.
+- Speech defaults are 30 seconds per request, 20 MiB per input or response,
+  300 seconds of Telegram-reported STT input duration, and 4000 TTS text characters.
+  STT does not decode audio to verify duration. `telegram_effects` retains staged
+  upload ownership and provider results before native admission. It clears staged
+  references after a business or album receipt owns the upload. Empty, failed, or
+  unknown transcription keeps the original audio and an explicit note. Unknown
+  requests are not sent again on recovery. TTS stores generated bytes before it
+  queues the existing native file outbox, then clears its temporary BLOB. The
+  tool retains readable text on failure. Unsupported voice formats use the
+  existing audio or document fallback; dex installs no codecs or speech engine.
+  These rows are side-effect receipts, not artifact identities or a second work queue.
 - Polling checks the token through `getUpdates`. A transient startup failure
   does not stop the bot. Poll errors and recovery update runtime status in
   bot settings. Tokens do not appear in status reasons.

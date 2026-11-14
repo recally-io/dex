@@ -47,6 +47,7 @@ func (s *Service) Channels(ctx context.Context, agentID string) (Channels, error
 		tg.Enabled = true
 		tg.BotID, _, _ = strings.Cut(cfg.Token, ":")
 		tg.AllowedUsers = cfg.AllowedUsers
+		tg.Options = cfg.Options
 	}
 	if s.ChannelStatus != nil {
 		tg.Status = s.ChannelStatus(agentID, "telegram")

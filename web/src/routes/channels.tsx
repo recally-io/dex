@@ -1,4 +1,4 @@
-import type { Channels as Settings } from "../api/generated/types.gen";
+import type { Channels as Settings, TelegramOptions } from "../api/generated/types.gen";
 import { useAgentId } from "../lib/agent-scope";
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
@@ -35,6 +35,7 @@ import {
   type ChannelId,
 } from "../components/channel-kit";
 import { FeishuChannel } from "./feishu";
+import { TelegramOptionsFields } from "../components/telegram-options";
 
 function ChannelRow({ channel, text, state }: { channel: ChannelId; text: string; state: string }) {
   const agentId = useAgentId();
@@ -205,6 +206,12 @@ function Telegram({ settings }: { settings: Settings }) {
               rows={[
                 ["Bot ID", <Mono key="bot">{telegram.botId ?? "Unknown"}</Mono>],
                 [
+                  "Speech",
+                  telegram.options?.stt?.enabled || telegram.options?.tts?.enabled
+                    ? "Explicit provider configured"
+                    : "Speech is off",
+                ],
+                [
                   "Bot token",
                   <span key="token" className="text-muted-foreground">
                     Saved · write-only
@@ -227,6 +234,10 @@ function Telegram({ settings }: { settings: Settings }) {
             </Button>
           </Panel>
         )}
+        <p className="mt-3 text-[12px] text-muted-foreground">
+          Speech sends audio or text only to your explicitly selected provider. Review data-sending consent in
+          Edit.
+        </p>
         {telegram.status.reason ? (
           <div className="mt-3">
             <Note tone={telegram.status.state === "error" ? "warn" : "neutral"}>
@@ -342,6 +353,7 @@ function TelegramDialog({
   const [token, setToken] = useState("");
   const [replace, setReplace] = useState(!saved);
   const [users, setUsers] = useState(settings.telegram.allowedUsers.join("\n"));
+  const [options, setOptions] = useState<TelegramOptions>(settings.telegram.options ?? {});
   const [tried, setTried] = useState(false);
   const parsed = parseUsers(users);
   const tokenError = !saved && !token.trim() ? "Enter the bot token from @BotFather." : "";
@@ -364,7 +376,7 @@ function TelegramDialog({
     setTried(true);
 
     if (tokenError || parsed.error || save.isPending) return;
-    save.mutate({ path: { agentId }, body: { token: token.trim(), allowedUsers: parsed.users } });
+    save.mutate({ path: { agentId }, body: { token: token.trim(), allowedUsers: parsed.users, options } });
   }
 
   return (
@@ -449,6 +461,7 @@ function TelegramDialog({
             )}
           </Field>
         </details>
+        <TelegramOptionsFields value={options} onChange={setOptions} />
         <button type="submit" hidden />
       </form>
       {save.isError ? (

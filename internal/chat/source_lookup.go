@@ -7,7 +7,7 @@ import (
 )
 
 // SourceReceipt describes stored business input, including input awaiting native admission.
-// Staged means a durable album member owns uploads but has no native input yet.
+// Staged means an album or speech receipt owns uploads but has no native input yet.
 type SourceReceipt struct {
 	ID      string
 	ChatID  int64
@@ -34,7 +34,17 @@ func (s *Service) LookupSource(ctx context.Context, agentID, source string) (Sou
 	if errors.Is(err, sql.ErrNoRows) {
 		member, lookupErr := s.q.GetTelegramAlbumMember(ctx, source)
 		if errors.Is(lookupErr, sql.ErrNoRows) {
-			return SourceReceipt{}, nil
+			effect, effectErr := s.q.GetTelegramEffect(ctx, "stt:"+source)
+			if errors.Is(effectErr, sql.ErrNoRows) {
+				return SourceReceipt{}, nil
+			}
+			if effectErr != nil {
+				return SourceReceipt{}, effectErr
+			}
+			if effect.AgentID != agentID {
+				return SourceReceipt{}, ErrSessionNotFound
+			}
+			return SourceReceipt{Staged: effect.InputJson != "{}"}, nil
 		}
 		if lookupErr != nil {
 			return SourceReceipt{}, lookupErr

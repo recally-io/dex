@@ -185,6 +185,9 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 			return err
 		}
 		if c.ChannelKey == MainKey {
+			if err := q.DiscardTelegramInputEffects(ctx, agentID); err != nil {
+				return err
+			}
 			if err := q.DiscardTelegramAlbums(ctx, agentID); err != nil {
 				return err
 			}

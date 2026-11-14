@@ -120,6 +120,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, errors.Join(err, jobs.Close(), conn.Close())
 	}
 	tools := engine.TaskTools{
+		Telegram: func(ctx context.Context, caller engine.TaskContext, args engine.TelegramRequest) (engine.TelegramResult, error) {
+			return bots.Agent(caller.AgentID).TelegramAction(ctx, caller, args, prefs.SpeechEndpoint)
+		},
 		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
 			return chats.ToolReadDreamMessage(ctx, c, request)
 		},
@@ -247,6 +250,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return
 		}
 		config.Uploads = uploads
+		config.Speech = prefs.SpeechEndpoint
 		config.Watch = agentStreams{hub, agentID}.Open
 		config.Report = func(state, reason string) { manager.Report("telegram", channel.Status{State: state, Reason: reason}) }
 		manager.Set("telegram", telegram.New(*config, manager)) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.

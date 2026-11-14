@@ -37,5 +37,5 @@ func (m *Manager) CleanupTelegramAlbums(ctx context.Context, store *upload.Store
 			return err
 		}
 	}
-	return nil
+	return m.cleanupSpeechInputs(ctx, store)
 }

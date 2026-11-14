@@ -70,9 +70,13 @@ type platformEvent struct {
 }
 
 type sentMessage struct {
-	ChatID    int64  `json:"chat_id"`
-	Text      string `json:"text"`
-	ParseMode string `json:"parse_mode"`
+	ChatID      int64  `json:"chat_id"`
+	Text        string `json:"text"`
+	ParseMode   string `json:"parse_mode"`
+	Silent      bool   `json:"disable_notification"`
+	LinkPreview *struct {
+		Disabled bool `json:"is_disabled"`
+	} `json:"link_preview_options"`
 	// ID is the message ID that the fake returned for this message.
 	ID int64 `json:"-"`
 }
@@ -241,7 +245,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		result = updates
-	case "sendMessage", "editMessageText", "sendMessageDraft", "sendChatAction", "setMyCommands":
+	case "sendMessage", "editMessageText", "sendMessageDraft", "sendChatAction", "setMyCommands", "setMessageReaction", "editMessageCaption", "deleteMessage", "copyMessage", "forwardMessage":
 		if method == "sendMessage" {
 			select {
 			case f.attempted <- struct{}{}:
@@ -255,12 +259,28 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		var m struct {
 			sentMessage
-			MessageID int64 `json:"message_id"`
-			Commands  []struct {
+			MessageID int64  `json:"message_id"`
+			Caption   string `json:"caption"`
+			Reaction  []struct {
+				Emoji string `json:"emoji"`
+			} `json:"reaction"`
+			Commands []struct {
 				Command string `json:"command"`
 			} `json:"commands"`
 		}
 		_ = json.UnmarshalRead(r.Body, &m)
+		if method == "editMessageCaption" {
+			m.Text = m.Caption
+		}
+		if method == "setMessageReaction" {
+			for _, reaction := range m.Reaction {
+				if reaction.Emoji == "✅" || reaction.Emoji == "⚠️" {
+					_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 400, "description": "REACTION_INVALID"})
+					return
+				}
+				m.Text += reaction.Emoji
+			}
+		}
 		if method == "setMyCommands" {
 			for _, command := range m.Commands {
 				m.Text += "/" + command.Command + " "
@@ -296,6 +316,12 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		default:
 		}
 		result = map[string]any{"message_id": id}
+		if method == "editMessageText" || method == "editMessageCaption" {
+			result = map[string]any{"message_id": m.MessageID}
+		}
+		if method == "deleteMessage" || method == "setMessageReaction" {
+			result = true
+		}
 	case "getFile":
 		var p struct {
 			ID string `json:"file_id"`

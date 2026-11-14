@@ -16,6 +16,7 @@ type preview struct {
 	cancel    context.CancelFunc
 	done      chan struct{}
 	messageID int64
+	chatID    int64
 }
 
 type streamItem struct {
@@ -34,7 +35,7 @@ type streamEvent struct {
 
 // preview reads the same native watch as the web UI. Final answers use durable delivery.
 func (b *Bot) startPreview(ctx context.Context, key string, chatID int64) {
-	if b.cfg.Watch == nil {
+	if b.cfg.Watch == nil || b.cfg.Options.Preview == "off" {
 		return
 	}
 	b.previewMu.Lock()
@@ -56,7 +57,7 @@ func (b *Bot) startPreview(ctx context.Context, key string, chatID int64) {
 		cancel()
 		return
 	}
-	p := &preview{cancel: cancel, done: make(chan struct{})}
+	p := &preview{cancel: cancel, done: make(chan struct{}), chatID: chatID}
 	b.previews[id] = p
 	go func() { defer close(p.done); b.watchPreview(ctx, id, chatID, p, reader) }()
 }
@@ -99,7 +100,7 @@ func (b *Bot) watchPreview(ctx context.Context, id string, chatID int64, p *prev
 	var items []streamItem
 	last := ""
 	var lastSend time.Time
-	drafts := true
+	drafts := b.cfg.Options.Preview != "edit"
 	for {
 		select {
 		case <-ctx.Done():
@@ -168,12 +169,14 @@ func (b *Bot) watchPreview(ctx context.Context, id string, chatID int64, p *prev
 					var result struct {
 						ID int64 `json:"message_id"`
 					}
+					b.presentation(params, "sendMessage")
 					err = b.call(ctx, "sendMessage", params, &result)
 					if err == nil {
 						p.messageID = result.ID
 					}
 				} else {
 					params["message_id"] = p.messageID
+					b.presentation(params, "editMessageText")
 					err = b.call(ctx, "editMessageText", params, nil)
 				}
 			}
@@ -197,7 +200,7 @@ func (b *Bot) stopPreview(key string) int64 {
 	return p.messageID
 }
 
-func (b *Bot) closePreviews() {
+func (b *Bot) closePreviews(ctx context.Context) {
 	b.previewMu.Lock()
 	for _, p := range b.previews {
 		p.cancel()
@@ -205,6 +208,12 @@ func (b *Bot) closePreviews() {
 	defer b.previewMu.Unlock()
 	for _, p := range b.previews {
 		<-p.done
+		if p.messageID != 0 {
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			// This preview has no confirmed final owner. Remove it when its runtime closes.
+			_ = b.call(ctx, "deleteMessage", map[string]any{"chat_id": p.chatID, "message_id": p.messageID}, nil)
+			cancel()
+		}
 	}
 }
 

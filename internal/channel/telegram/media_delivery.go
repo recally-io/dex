@@ -53,6 +53,11 @@ func (b *Bot) sendFile(ctx context.Context, peer string, file *channel.File) (st
 		if err := form.WriteField("chat_id", strconv.FormatInt(chatID, 10)); err != nil {
 			return "", err
 		}
+		if b.cfg.Options.Silent {
+			if err := form.WriteField("disable_notification", "true"); err != nil {
+				return "", err
+			}
+		}
 		if err := form.WriteField("caption", file.Name); err != nil {
 			return "", err
 		}

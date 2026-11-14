@@ -285,6 +285,21 @@ func (c *Catalog) Builtins(ctx context.Context) ([]ProviderInfo, error) {
 	}
 	return out, nil
 }
+
+// ProviderAPIKey resolves the existing provider credential without exposing it in a settings view.
+func (c *Catalog) ProviderAPIKey(ctx context.Context, id string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	auth, err := c.Models.GetAuth(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if auth == nil {
+		return "", nil
+	}
+	return auth.Auth.APIKey, nil
+}
+
 func (c *Catalog) Available(ctx context.Context) ([]ModelInfo, error) {
 	models, err := c.Models.GetAvailable(ctx)
 	if err != nil {

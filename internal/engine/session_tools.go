@@ -28,6 +28,7 @@ type ArtifactInfo struct {
 
 // TaskTools connects foreground tools to the application services.
 type TaskTools struct {
+	Telegram         func(context.Context, TaskContext, TelegramRequest) (TelegramResult, error)
 	ReadDreamMessage func(context.Context, TaskContext, DreamMessageRequest) (DreamMessagePage, error)
 	DeliverArtifact  func(context.Context, TaskContext, string) (ArtifactInfo, error)
 	ReportCheck      func(context.Context, TaskContext, CheckReport) error

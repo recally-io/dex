@@ -69,6 +69,7 @@ type Bot interface {
 }
 
 type runtime struct {
+	ctx    context.Context
 	bot    Bot
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -110,7 +111,7 @@ func (m *Manager) Set(name string, bot Bot) {
 		return
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
-	r := &runtime{bot: bot, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), status: Status{State: "running"}}
+	r := &runtime{ctx: ctx, bot: bot, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), status: Status{State: "running"}}
 	m.mu.Lock()
 	m.bots[name] = r
 	m.mu.Unlock()
@@ -211,7 +212,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 		return err
 	}
 	cmd := strings.TrimSpace(msg.Content)
-	if !IsCommand(cmd) || msg.AlbumSource != "" {
+	if !IsCommand(cmd) || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
 		return m.chats.SubmitMessage(ctx, m.agentID, peer, source, msg)
 	}
 	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd}); err != nil {
@@ -403,6 +404,26 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 				return err
 			}
 			r.ChannelGroupFallback, r.ChannelGroupCursor = 0, 0
+		}
+		if finished, ok := bot.(interface {
+			Finish(context.Context, string, chat.ChannelContext, string) error
+		}); ok {
+			allowed, err := m.authorizedReply(ctx, name, r)
+			if err != nil {
+				return err
+			}
+			if allowed {
+				var source chat.ChannelContext
+				if err := json.Unmarshal([]byte(r.ChannelContext), &source); err != nil {
+					return err
+				}
+				if err := finished.Finish(ctx, r.Origin, source, r.Status); err != nil {
+					if saved := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: r.ID, RetryAt: time.Now().Add(5 * time.Second).UnixMilli(), Reason: err.Error()}); saved != nil {
+						return errors.Join(err, saved)
+					}
+					return err
+				}
+			}
 		}
 		if err := m.q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: r.ID, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
 			return err

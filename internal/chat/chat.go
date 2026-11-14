@@ -89,6 +89,7 @@ type Message struct {
 	ChannelContext ChannelContext
 	ChannelNote    string
 	AlbumSource    string
+	SpeechSource   string
 	ID             string
 	Title          string
 	Content        string
@@ -347,6 +348,15 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		// The writer is held now. Input first makes an archive fail as busy; archive first ends here.
 		if err := db.RequireActive(ctx, q, agentID); err != nil {
 			return 0, err
+		}
+		if m.SpeechSource != "" {
+			effect, err := q.GetTelegramEffect(ctx, m.SpeechSource)
+			if err != nil {
+				return 0, err
+			}
+			if effect.AgentID != agentID || effect.State == "discarded" {
+				return 0, fmt.Errorf("%w: speech input discarded before admission", ErrSessionInvalid)
+			}
 		}
 		if m.AlbumSource != "" {
 			sealed, err := q.IsTelegramAlbumSealed(ctx, sqlc.IsTelegramAlbumSealedParams{AgentID: agentID, BatchSource: m.AlbumSource})

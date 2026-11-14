@@ -22,6 +22,7 @@ import (
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/telegram"
 	"github.com/recally-io/dex/internal/wechat"
 )
 
@@ -246,22 +247,22 @@ func (e ExtensionScope) Valid() bool {
 
 // Defines values for ExtensionsEnvHints.
 const (
-	Assignment  ExtensionsEnvHints = "assignment"
-	Empty       ExtensionsEnvHints = "empty"
-	OpReference ExtensionsEnvHints = "op-reference"
-	Whitespace  ExtensionsEnvHints = "whitespace"
+	ExtensionsEnvHintsAssignment  ExtensionsEnvHints = "assignment"
+	ExtensionsEnvHintsEmpty       ExtensionsEnvHints = "empty"
+	ExtensionsEnvHintsOpReference ExtensionsEnvHints = "op-reference"
+	ExtensionsEnvHintsWhitespace  ExtensionsEnvHints = "whitespace"
 )
 
 // Valid indicates whether the value is a known member of the ExtensionsEnvHints enum.
 func (e ExtensionsEnvHints) Valid() bool {
 	switch e {
-	case Assignment:
+	case ExtensionsEnvHintsAssignment:
 		return true
-	case Empty:
+	case ExtensionsEnvHintsEmpty:
 		return true
-	case OpReference:
+	case ExtensionsEnvHintsOpReference:
 		return true
-	case Whitespace:
+	case ExtensionsEnvHintsWhitespace:
 		return true
 	default:
 		return false
@@ -475,6 +476,30 @@ const (
 func (e TaskItemKind) Valid() bool {
 	switch e {
 	case Task:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TelegramSpeechOptionsFormat.
+const (
+	TelegramSpeechOptionsFormatEmpty TelegramSpeechOptionsFormat = ""
+	TelegramSpeechOptionsFormatMp3   TelegramSpeechOptionsFormat = "mp3"
+	TelegramSpeechOptionsFormatOpus  TelegramSpeechOptionsFormat = "opus"
+	TelegramSpeechOptionsFormatWav   TelegramSpeechOptionsFormat = "wav"
+)
+
+// Valid indicates whether the value is a known member of the TelegramSpeechOptionsFormat enum.
+func (e TelegramSpeechOptionsFormat) Valid() bool {
+	switch e {
+	case TelegramSpeechOptionsFormatEmpty:
+		return true
+	case TelegramSpeechOptionsFormatMp3:
+		return true
+	case TelegramSpeechOptionsFormatOpus:
+		return true
+	case TelegramSpeechOptionsFormatWav:
 		return true
 	default:
 		return false
@@ -1243,19 +1268,51 @@ type TaskItemKind string
 
 // Telegram defines model for Telegram.
 type Telegram struct {
-	AllowedUsers []int64       `json:"allowedUsers"`
-	BotId        *string       `json:"botId,omitempty"`
-	Enabled      bool          `json:"enabled"`
-	Status       ChannelStatus `json:"status"`
+	AllowedUsers []int64          `json:"allowedUsers"`
+	BotId        *string          `json:"botId,omitempty"`
+	Enabled      bool             `json:"enabled"`
+	Options      *TelegramOptions `json:"options,omitempty"`
+	Status       ChannelStatus    `json:"status"`
 }
 
 // TelegramInput defines model for TelegramInput.
 type TelegramInput struct {
-	AllowedUsers []int64 `json:"allowedUsers"`
+	AllowedUsers []int64          `json:"allowedUsers"`
+	Options      *TelegramOptions `json:"options,omitempty"`
 
 	// Token Write-only. Empty keeps the saved token.
 	Token string `json:"token"`
 }
+
+// TelegramOptions defines model for TelegramOptions.
+type TelegramOptions = telegram.Options
+
+// TelegramSpeechOptions defines model for TelegramSpeechOptions.
+type TelegramSpeechOptions struct {
+	// AllowSending Explicit consent to send this bot's audio (STT) or text (TTS) to the selected provider. The provider can be an external third party. No automatic fallback provider is used.
+	AllowSending *bool                        `json:"allowSending,omitempty"`
+	Enabled      *bool                        `json:"enabled,omitempty"`
+	Format       *TelegramSpeechOptionsFormat `json:"format,omitempty"`
+	Language     *string                      `json:"language,omitempty"`
+
+	// MaxBytes Zero uses 20 MiB for input and response bytes.
+	MaxBytes *int64 `json:"maxBytes,omitempty"`
+
+	// MaxDurationSeconds STT only. Checks Telegram reported audio duration. Zero uses 300 seconds. dex does not decode audio to measure duration.
+	MaxDurationSeconds *int `json:"maxDurationSeconds,omitempty"`
+
+	// MaxTextCharacters TTS only. Zero uses 4000 characters.
+	MaxTextCharacters *int    `json:"maxTextCharacters,omitempty"`
+	Model             *string `json:"model,omitempty"`
+	Provider          *string `json:"provider,omitempty"`
+
+	// TimeoutSeconds Zero uses 30 seconds.
+	TimeoutSeconds *int    `json:"timeoutSeconds,omitempty"`
+	Voice          *string `json:"voice,omitempty"`
+}
+
+// TelegramSpeechOptionsFormat defines model for TelegramSpeechOptions.Format.
+type TelegramSpeechOptionsFormat string
 
 // ThinkingItem defines model for ThinkingItem.
 type ThinkingItem struct {

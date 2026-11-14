@@ -131,6 +131,9 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 			}
 		}
 		if c.AgentID == agentID && c.ChannelKey == MainKey {
+			if err := q.DiscardTelegramInputEffects(ctx, agentID); err != nil {
+				return withdrawal{}, err
+			}
 			if err := q.DiscardTelegramAlbums(ctx, agentID); err != nil {
 				return withdrawal{}, err
 			}

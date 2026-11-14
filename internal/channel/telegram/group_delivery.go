@@ -63,6 +63,11 @@ func (b *Bot) sendGroup(ctx context.Context, peer string, files []channel.File) 
 	if err := form.WriteField("chat_id", strconv.FormatInt(chatID, 10)); err != nil {
 		return channel.Receipt{}, err
 	}
+	if b.cfg.Options.Silent {
+		if err := form.WriteField("disable_notification", "true"); err != nil {
+			return channel.Receipt{}, err
+		}
+	}
 	type member struct {
 		Type    string `json:"type"`
 		Media   string `json:"media"`
