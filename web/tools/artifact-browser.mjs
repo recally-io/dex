@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, rename, unlink, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, unlink, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -18,18 +18,13 @@ const evidence = output ? resolve(output) : await mkdtemp(join(tmpdir(), "dex-ar
 const root = await mkdtemp(join(tmpdir(), "dex-artifact-browser-"));
 const data = join(root, "data");
 const home = join(root, "home");
-const project = join(root, "project");
 const workspace = join(data, "agents", "default", "workspace");
 const profile = join(root, "chrome");
+const files = join(data, "agents", "default", "artifacts");
 
-await Promise.all([
-  mkdir(evidence, { recursive: true }),
-  mkdir(home),
-  mkdir(project),
-  mkdir(workspace, { recursive: true }),
-]);
+await Promise.all([mkdir(evidence, { recursive: true }), mkdir(home), mkdir(workspace, { recursive: true })]);
 
-for (const name of ["main.markdown", "chat.md", "task.md", "routine.md", "routine-task.md", "lifecycle.md"]) {
+for (const name of ["report.md", "second.md"]) {
   await writeFile(join(workspace, name), `# Preview ${name}\n`);
 }
 
@@ -69,45 +64,20 @@ try {
   await poll("app", async () => (await fetch(base + "/api/health")).ok);
   const main = await api("/api/agents/default/chats/main");
   await model("tool");
-  await send(main.id, 'deliver_file {"path":"main.markdown"}');
-  const mainArtifact = await artifact(main.id, "main.markdown");
+  await send(main.id, 'deliver_file {"path":"report.md"}');
   const chat = await api("/api/agents/default/chats", {}, "POST");
-  await api(`/api/agents/default/chats/${chat.id}/project`, { cwd: project }, "PUT");
-  await send(chat.id, 'deliver_file {"path":"chat.md"}');
-  const chatArtifact = await artifact(chat.id, "chat.md");
-  await model("spawn");
-  await send(
-    main.id,
-    JSON.stringify({
-      title: "Artifact task",
-      message: 'deliver_file {"path":"task.md"}',
-      provider: "faux",
-      modelId: "tool",
-    }),
-  );
-  const task = await childNamed("Artifact task");
-  const taskArtifact = await artifact(task.id, "task.md");
-  await model("tool");
-  const routine = await makeRoutine("Routine delivery", 'deliver_file {"path":"routine.md"}');
-  const run = await api(`/api/agents/default/automations/${routine.id}/run`, {}, "POST");
-  const routineArtifact = await artifact(run.chatId, "routine.md");
-  await model("spawn");
+  await send(chat.id, 'deliver_file {"path":"second.md"}');
 
-  const routine2 = await makeRoutine(
-    "Routine task",
-    JSON.stringify({
-      title: "Routine child",
-      message: 'deliver_file {"path":"routine-task.md"}',
-      provider: "faux",
-      modelId: "tool",
-    }),
-  );
+  const bot = await api("/api/agents", {
+    name: "Other bot",
+    provider: "faux",
+    modelId: "echo",
+    thinkingLevel: "off",
+  });
 
-  const run2 = await api(`/api/agents/default/automations/${routine2.id}/run`, {}, "POST");
-  const child = await childNamed("Routine child");
-  const childArtifact = await artifact(child.id, "routine-task.md");
-  assert.equal(childArtifact.displayConversationId, run2.chatId);
-  await model("echo");
+  const botFiles = join(data, "agents", bot.id, "artifacts");
+  await mkdir(botFiles, { recursive: true });
+  await writeFile(join(botFiles, "b-only.md"), "# Only in the other bot\n");
   chrome = spawn(
     process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     [
@@ -156,199 +126,106 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await visit(`/a/default`);
+  await visit("/a/default");
   await verifyArtifactEntry("desktop");
-  await preview("main.markdown", mainArtifact.id);
+  await click("Artifacts");
+  await click("report.md");
+  await panelHas("Preview report.md");
   await click("Continue editing");
-  await hasDraft(mainArtifact.id);
-  assert.equal(await evaluate("location.pathname"), "/a/default");
-  await shot("main");
-  results.push("main .markdown preview and writable draft");
+  await hasDraft("/api/agents/default/artifacts/report.md");
+  await shot("artifacts-entry");
+  results.push("desktop icon, tooltip, keyboard open, preview, and continuation");
+
   await visit(`/a/default/c/${chat.id}`);
-  await preview("chat.md", chatArtifact.id);
-  await click("Continue editing");
-  await hasDraft(chatArtifact.id);
-  assert.equal(await evaluate("location.pathname"), `/a/default/c/${chat.id}`);
-  await shot("chat");
-  results.push("project Chat preview and writable draft");
-  await visit(`/a/default`);
-  await preview("main.markdown", mainArtifact.id);
-  await click("Continue editing");
-  await hasDraft(mainArtifact.id);
-  await openChildPage(task.id);
-  await preview("task.md", taskArtifact.id);
-  await click("Continue editing");
-  await hasDraft(taskArtifact.id);
-  assert.equal(await evaluate("location.pathname"), `/a/default/c/${task.id}`);
-  assert.equal((await api(`/api/agents/default/chats/${task.id}`)).readOnly, false);
-  await shot("task");
-  await evaluate(`document.querySelector('aside a[href="/a/default"]').click()`);
-  await poll("main restored", async () => (await evaluate("location.pathname")) === "/a/default");
-  await hasDraft(mainArtifact.id);
-  results.push("a child session continues in its own conversation and preserves the main draft");
-  await visit(`/a/default/c/${run.chatId}`);
-  await preview("routine.md", routineArtifact.id);
-  await click("Continue editing");
-  await poll("routine opens writable Chat", async () => {
-    const path = await evaluate("location.pathname");
+  await click("Artifacts");
+  await click("report.md");
+  await panelHas("Preview report.md");
+  await click("Rename");
+  await setName("second.md");
+  await click("Save");
+  await panelHas("Could not rename artifact");
+  await click("Cancel");
+  assert.equal(await readFile(join(files, "second.md"), "utf8"), "# Preview second.md\n");
+  await click("Rename");
+  await setName("renamed.md");
+  await click("Save");
+  await panelHas("renamed.md");
+  await poll("renamed download", () => evaluate(`!!document.querySelector('a[download="renamed.md"]')`));
+  assert.equal(
+    await (await fetch(base + "/api/agents/default/artifacts/renamed.md")).text(),
+    "# Preview report.md\n",
+  );
+  results.push("the same bot files in another conversation, native rename, conflict, and download");
 
-    return path.startsWith("/a/default/c/") && path !== `/a/default/c/${run.chatId}`;
-  });
-  await hasDraft(routineArtifact.id);
-  const routineChat = Number((await evaluate("location.pathname")).split("/").at(-1));
-  assert.equal((await api(`/api/agents/default/chats/${routineChat}`)).cwd, project);
-  await shot("routine");
-  results.push("routine opens writable Chat with project");
-  await visit(`/a/default/c/${run2.chatId}`);
-  await openChildPage(child.id);
-  await preview("routine-task.md", childArtifact.id);
-  await click("Continue editing");
-  await hasDraft(childArtifact.id);
-  const childView = await api(`/api/agents/default/chats/${child.id}`);
-  assert.equal(childView.readOnly, false);
-  assert.equal(childView.cwd, project);
-  await shot("routine-task");
-  results.push("a routine child session is a writable Chat with project");
-
-  // Two real pages share a child delivery. SSE updates the source and parent views.
-  const secondTarget = await call("Target.createTarget", { url: "about:blank" });
-
-  const { sessionId: second } = await call("Target.attachToTarget", {
-    targetId: secondTarget.targetId,
-    flatten: true,
-  });
+  const { targetId } = await call("Target.createTarget", { url: base + "/a/default" });
+  const { sessionId } = await call("Target.attachToTarget", { targetId, flatten: true });
 
   const other = async (expression) => {
-    const result = await call(
-      "Runtime.evaluate",
-      { expression, awaitPromise: true, returnByValue: true },
-      second,
-    );
+    const response = await call("Runtime.evaluate", { expression, returnByValue: true }, sessionId);
 
-    if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
+    if (response.exceptionDetails) throw new Error(JSON.stringify(response.exceptionDetails));
 
-    return result.result.value;
+    return response.result.value;
   };
 
-  await call("Network.enable", {}, second);
-  await call("Page.navigate", { url: base + "/a/default" }, second);
-  await poll("second page header", () =>
-    other(
-      "!![...document.querySelectorAll('header button')].find(b => b.getAttribute('aria-label') === 'Artifacts')",
-    ),
+  await poll("second page", () => other(`!!document.querySelector('button[aria-label="Artifacts"]')`));
+  await other(`document.querySelector('button[aria-label="Artifacts"]').click()`);
+  await rename(join(files, "renamed.md"), join(files, "external.md"));
+  await panelHas("external.md");
+  await poll("old selection clears after external rename", () =>
+    evaluate(`!document.querySelector('[role=dialog] strong')`),
   );
-  await other(
-    "[...document.querySelectorAll('header button')].find(b => b.getAttribute('aria-label') === 'Artifacts').click()",
+  await poll("second page sees rename", () =>
+    other(`document.querySelector('[role=dialog]')?.innerText.includes('external.md')`),
   );
-  await poll("second page child delivery", () => other("document.body.innerText.includes('task.md')"));
-
-  await visit(`/a/default/c/${task.id}`);
-  assert.equal(await evaluate('document.body.innerText.includes("Delivered files")'), false);
-  await preview("task.md", taskArtifact.id);
-  await click("Rename");
-  await setName("../bad.md");
-  await click("Save");
-  await poll("invalid rename is shown", () =>
-    evaluate('document.body.innerText.includes("Could not rename artifact")'),
-  );
-  await setName("renamed-task.md");
-  await click("Save");
-  await poll("source renamed", () =>
-    evaluate(
-      '!document.body.innerText.includes("Rename artifact") && document.body.innerText.includes("renamed-task.md")',
-    ),
-  );
-  await poll("parent renamed without reload", () =>
-    other('document.body.innerText.includes("renamed-task.md")'),
-  );
-  assert.ok(
-    network.some(
-      (e) => e.method === "Network.eventSourceMessageReceived" && e.params.eventName === "artifacts",
-    ),
-    "delivery mutations emit SSE invalidations",
-  );
-  await shot("artifacts-renamed");
-  const taskFile = await diskFile(taskArtifact.id);
-  const diskName = join(resolve(taskFile, ".."), "disk-task.markdown");
-  await rename(taskFile, diskName);
-  await writeFile(diskName, "# Disk version A\n");
-  await poll("disk rename updates the selected source", () =>
-    evaluate(
-      'document.querySelector("[role=dialog]").innerText.includes("disk-task.markdown") && document.querySelector("[role=dialog]").innerText.includes("Disk version A")',
-    ),
-  );
-  await poll("disk rename reaches parent", () =>
-    other('document.querySelector("[role=dialog]").innerText.includes("disk-task.markdown")'),
-  );
-  await writeFile(diskName, "# Disk version B\n");
-  const changedTime = new Date(Date.now() + 1000);
-  await utimes(diskName, changedTime, changedTime);
-  await poll("same-size disk edit updates preview", () =>
-    evaluate('document.querySelector("[role=dialog]").innerText.includes("Disk version B")'),
-  );
-  assert.equal((await artifact(task.id, "disk-task.markdown")).size, Buffer.byteLength("# Disk version B\n"));
-  await shot("artifacts-disk-renamed");
+  await click("external.md");
+  await writeFile(join(files, "external.md"), "# Disk version A\n");
+  await panelHas("Disk version A");
+  await writeFile(join(files, "external.md"), "# Disk version B\n");
+  const changed = new Date(Date.now() + 1000);
+  await utimes(join(files, "external.md"), changed, changed);
+  await panelHas("Disk version B");
+  await shot("artifacts-desktop");
   await click("Delete");
-  await shot("artifacts-delete-confirm");
+  await shot("artifacts-confirm");
   await click("Cancel");
-  assert.ok(
-    (await api(`/api/agents/default/chats/${task.id}/artifacts`)).artifacts.some(
-      (a) => a.id === taskArtifact.id,
-    ),
-  );
+  await readFile(join(files, "external.md"));
   await click("Delete");
   await click("Delete artifact");
-  await poll("source deletion clears selection", () =>
+  await poll("delete clears file and selection", () =>
     evaluate(
-      'document.body.innerText.includes("No artifacts yet.") && !document.body.innerText.includes("Continue editing")',
+      `!document.querySelector('[role=dialog]').innerText.includes('external.md') && !document.querySelector('[role=dialog] strong')`,
     ),
   );
-  await poll("parent deletion without reload", () =>
-    other('!document.querySelector("[role=dialog]").innerText.includes("disk-task.markdown")'),
+  await poll("other page sees deletion", () =>
+    other(`!document.querySelector('[role=dialog]').innerText.includes('external.md')`),
   );
-  assert.equal(await readFile(join(workspace, "task.md"), "utf8"), "# Preview task.md\n");
-  await visit("/a/default");
+  await writeFile(join(files, "added.md"), "# Added on disk\n");
+  await panelHas("added.md");
+  await poll("other page sees addition", () =>
+    other(`document.querySelector('[role=dialog]').innerText.includes('added.md')`),
+  );
+  await click("added.md");
+  await panelHas("Added on disk");
+  await unlink(join(files, "added.md"));
+  await poll("external delete clears selection", () =>
+    evaluate(
+      `!document.querySelector('[role=dialog]').innerText.includes('added.md') && !document.querySelector('[role=dialog] strong')`,
+    ),
+  );
+  await call("Target.closeTarget", { targetId });
+  results.push("two-page disk rename, edits, addition, delete confirmation, and external deletion");
+
+  await visit(`/a/${bot.id}`);
   await click("Artifacts");
-  await model("tool");
-  await send(main.id, 'deliver_file {"path":"lifecycle.md"}');
-  const fresh = await artifact(main.id, "lifecycle.md");
-  await poll("new delivery in open panel", () =>
-    evaluate('document.body.innerText.includes("lifecycle.md")'),
+  await panelHas("b-only.md");
+  assert.equal(
+    await evaluate(`document.querySelector('[role=dialog]').innerText.includes('second.md')`),
+    false,
   );
-  await poll("new delivery in other page", () => other('document.body.innerText.includes("lifecycle.md")'));
-  await click("lifecycle.md");
-  await poll("fresh preview", () => evaluate('document.body.innerText.includes("Preview lifecycle.md")'));
-  const download = await evaluate('document.querySelector("a[download=\\"lifecycle.md\\"]").href');
-  assert.equal(await (await fetch(download)).text(), "# Preview lifecycle.md\n");
-  await shot("artifacts-preview");
-  await unlink(await diskFile(fresh.id));
-  await poll("external removal clears list and preview", () =>
-    evaluate(`!document.querySelector('[role=dialog]')?.innerText.includes("lifecycle.md")`),
-  );
-  await poll("external removal reaches other page", () =>
-    other(`!document.querySelector('[role=dialog]')?.innerText.includes("lifecycle.md")`),
-  );
-  assert.equal(await readFile(join(workspace, "lifecycle.md"), "utf8"), "# Preview lifecycle.md\n");
-  const addedPath = join(data, "artifacts", main.id + "_" + main.id, randomUUID(), "disk-added.md");
-  await mkdir(resolve(addedPath, ".."), { recursive: true });
-  await writeFile(addedPath, "# Added outside dex\n");
-  await poll("disk-only addition in source", () =>
-    evaluate('document.querySelector("[role=dialog]").innerText.includes("disk-added.md")'),
-  );
-  await poll("disk-only addition in other page", () =>
-    other('document.querySelector("[role=dialog]").innerText.includes("disk-added.md")'),
-  );
-  await click("disk-added.md");
-  await poll("disk-only file preview", () =>
-    evaluate('document.querySelector("[role=dialog]").innerText.includes("Added outside dex")'),
-  );
-  await unlink(addedPath);
-  await poll("disk-only deletion clears selection", () =>
-    evaluate('!document.querySelector("[role=dialog]").innerText.includes("disk-added.md")'),
-  );
-  results.push("disk-only additions, external rename, stat size, same-size content refresh, and deletion");
-  await click("Close");
-  await shot("chat-artifacts-entry");
+  await shot("artifacts-other-bot");
+  results.push("different bots show different physical directories");
+  await visit("/a/default");
   await call("Emulation.setDeviceMetricsOverride", {
     width: 320,
     height: 844,
@@ -357,29 +234,11 @@ try {
   });
   await verifyArtifactEntry("mobile");
   await click("Artifacts");
-  await poll("mobile artifact dialog", () =>
-    evaluate(`(() => {
-    const dialog = document.querySelector('[role=dialog]');
-    if (!dialog) return false;
-    const rect = dialog.getBoundingClientRect();
-    return rect.left >= 0 && rect.right <= innerWidth;
-  })()`),
-  );
+  await panelHas("second.md");
   await shot("artifacts-mobile");
   await click("Close");
-  await call("Target.closeTarget", { targetId: secondTarget.targetId });
-  results.push("desktop and 320px mobile icon-only entry, tooltip, keyboard access, and dialog state");
-  results.push(
-    "snapshot rename validation, download, delete confirmation/cancel, source preservation, parent/source SSE, two-page new delivery, and external removal",
-  );
-  await writeFile(
-    join(evidence, "results.json"),
-    JSON.stringify(
-      { results, mainArtifact, chatArtifact, taskArtifact, routineArtifact, childArtifact, project },
-      null,
-      2,
-    ),
-  );
+  results.push("320px icon entry, tooltip, keyboard activation, and file panel");
+  await writeFile(join(evidence, "results.json"), JSON.stringify({ results }, null, 2));
   console.log(`PASS: ${results.length} artifact browser checks. Evidence: ${evidence}`);
 } catch (error) {
   await writeFile(
@@ -442,32 +301,6 @@ async function send(id, text) {
   await poll("chat settled", async () => !(await api(`/api/agents/default/chats/${id}`)).busy);
 }
 
-async function artifact(id, name) {
-  return poll(`artifact ${name}`, async () =>
-    (await api(`/api/agents/default/chats/${id}/artifacts`)).artifacts.find((a) => a.name === name),
-  );
-}
-
-async function childNamed(title) {
-  return poll(title, async () =>
-    (await api("/api/agents/default/chats")).chats.find(
-      (c) => c.parentId !== undefined && c.title === title && !c.busy,
-    ),
-  );
-}
-
-async function makeRoutine(name, prompt) {
-  return api("/api/agents/default/automations", {
-    name,
-    prompt,
-    cwd: project,
-    schedule: { kind: "daily", time: "09:00" },
-    timeZone: "UTC",
-    session: "new",
-    enabled: false,
-  });
-}
-
 function call(method, params = {}, sessionId) {
   const id = ++serial;
   const promise = new Promise((done, fail) => pending.set(id, { done, fail }));
@@ -502,14 +335,6 @@ async function click(text) {
   );
 }
 
-async function preview(name, id) {
-  await click("Artifacts");
-  await click(name);
-  await poll(`preview ${id}`, () =>
-    evaluate(`document.body.innerText.includes(${JSON.stringify(`Preview ${name}`)})`),
-  );
-}
-
 async function hasDraft(id) {
   await poll(`draft ${id}`, () =>
     evaluate(
@@ -529,18 +354,6 @@ async function setName(value) {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(value)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
-}
-
-async function openChildPage(id) {
-  await click("View thread");
-  await poll("thread session link", () =>
-    evaluate("!!document.querySelector('a[aria-label=\"Open as a session page\"]')"),
-  );
-  await evaluate("document.querySelector('a[aria-label=\"Open as a session page\"]').click()");
-  await poll(
-    "child session page",
-    async () => (await evaluate("location.pathname")) === "/a/default/c/" + id,
-  );
 }
 
 async function verifyArtifactEntry(mode) {
@@ -600,19 +413,10 @@ async function verifyArtifactEntry(mode) {
   await call("Input.dispatchMouseEvent", { type: "mouseMoved", x: 0, y: 0 });
 }
 
-async function diskFile(id) {
-  for (const route of await readdir(join(data, "artifacts"), { withFileTypes: true })) {
-    if (!route.isDirectory()) continue;
-
-    for (const entry of await readdir(join(data, "artifacts", route.name), { withFileTypes: true })) {
-      if (!entry.isDirectory() || !(entry.name === id || entry.name.startsWith(id + "_"))) continue;
-      const directory = join(data, "artifacts", route.name, entry.name);
-      const files = (await readdir(directory, { withFileTypes: true })).filter((f) => f.isFile());
-      assert.equal(files.length, 1);
-
-      return join(directory, files[0].name);
-    }
-  }
-
-  throw new Error("Missing disk file " + id);
+async function panelHas(text) {
+  await poll("panel " + text, () =>
+    evaluate(
+      `[...document.querySelectorAll('[role=dialog]')].some(dialog => dialog.innerText.includes(${JSON.stringify(text)}))`,
+    ),
+  );
 }

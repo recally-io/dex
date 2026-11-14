@@ -1298,22 +1298,18 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/artifacts:
+  /api/agents/{agentId}/artifacts:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
-      - in: path
-        name: chatId
-        required: true
-        schema: { type: integer, format: int64 }
     get:
       operationId: listArtifacts
-      description: Delivered snapshots from this conversation and its child sessions.
+      description: Regular files in this bot’s artifacts directory.
       responses:
         "200":
-          description: Delivered snapshots.
+          description: Current bot files.
           content:
             application/json:
               schema:
@@ -1326,26 +1322,22 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}:
+  /api/agents/{agentId}/artifacts/{artifactName}:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
       - in: path
-        name: chatId
-        required: true
-        schema: { type: integer, format: int64 }
-      - in: path
-        name: artifactId
+        name: artifactName
         required: true
         schema: { type: string }
     get:
       operationId: getArtifact
-      description: The current snapshot file bytes. Only safe raster images are inline.
+      description: The current bot file bytes. Only safe raster images are inline.
       responses:
         "200":
-          description: Snapshot bytes.
+          description: File bytes.
           headers:
             Content-Disposition:
               schema: { type: string }
@@ -1359,7 +1351,7 @@ paths:
 
     patch:
       operationId: renameArtifact
-      description: Rename the physical snapshot file. The workspace source file is unchanged.
+      description: Rename a bot file. Existing names are conflicts.
       requestBody:
         required: true
         content:
@@ -1371,7 +1363,7 @@ paths:
                 name: { type: string, minLength: 1, maxLength: 255 }
       responses:
         "200":
-          description: Renamed snapshot.
+          description: Renamed file.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Artifact" }
@@ -1380,10 +1372,10 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: deleteArtifact
-      description: Delete the shared delivery snapshot from all views. The source file is unchanged.
+      description: Delete this bot file. Workspace source files are unchanged.
       responses:
         "200":
-          description: Snapshot deleted.
+          description: File deleted.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Ok" }
@@ -1863,24 +1855,11 @@ components:
 
     Artifact:
       type: object
-      required: [
-        id,
-        name,
-        size,
-        conversationId,
-        displayConversationId,
-        modifiedAt,
-      ]
+      required: [name, size, modifiedAt]
       properties:
-        id: { type: string }
         name: { type: string }
         size: { type: integer, format: int64 }
-        modifiedAt: {
-          type: string,
-          description: Current disk modification time with nanosecond precision.,
-        }
-        conversationId: { type: integer, format: int64 }
-        displayConversationId: { type: integer, format: int64 }
+        modifiedAt: { type: string }
     Attachment:
       x-go-type: engine.Attachment
       x-go-type-import:
@@ -2327,7 +2306,6 @@ components:
         - $ref: "#/components/schemas/ItemEvent"
         - $ref: "#/components/schemas/AppendEvent"
         - $ref: "#/components/schemas/RunEvent"
-        - $ref: "#/components/schemas/ArtifactsEvent"
       discriminator:
         propertyName: type
         mapping:
@@ -2335,14 +2313,6 @@ components:
           item: "#/components/schemas/ItemEvent"
           append: "#/components/schemas/AppendEvent"
           run: "#/components/schemas/RunEvent"
-          artifacts: "#/components/schemas/ArtifactsEvent"
-
-    ArtifactsEvent:
-      type: object
-      required: [type]
-      description: Refetch the delivered snapshot list. This event does not change the transcript.
-      properties:
-        type: { type: string, enum: [artifacts] }
 
     SnapshotEvent:
       type: object

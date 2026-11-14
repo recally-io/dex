@@ -582,47 +582,35 @@ func (h *handler) GetUpload(ctx context.Context, req api.GetUploadRequestObject)
 	}, nil
 }
 
-func (h *handler) ListArtifacts(ctx context.Context, req api.ListArtifactsRequestObject) (api.ListArtifactsResponseObject, error) {
-	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
-		return nil, err
-	}
-	rows, err := h.Artifacts.List(ctx, req.ChatId)
+func (h *handler) ListArtifacts(ctx context.Context, _ api.ListArtifactsRequestObject) (api.ListArtifactsResponseObject, error) {
+	rows, err := h.Artifacts.List(agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
 	out := make([]api.Artifact, 0, len(rows))
 	for _, a := range rows {
-		out = append(out, api.Artifact{Id: a.ID, Name: a.Name, Size: a.Size, ModifiedAt: a.ModifiedAt, ConversationId: a.ConversationID, DisplayConversationId: a.DisplayConversationID})
+		out = append(out, api.Artifact{Name: a.Name, Size: a.Size, ModifiedAt: a.ModifiedAt})
 	}
 	return api.ListArtifacts200JSONResponse{Artifacts: out}, nil
 }
 
 func (h *handler) RenameArtifact(ctx context.Context, req api.RenameArtifactRequestObject) (api.RenameArtifactResponseObject, error) {
-	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
-		return nil, err
-	}
-	a, err := h.Artifacts.Rename(ctx, req.ChatId, req.ArtifactId, req.Body.Name)
+	a, err := h.Artifacts.Rename(agentID(ctx), req.ArtifactName, req.Body.Name)
 	if err != nil {
 		return nil, err
 	}
-	return api.RenameArtifact200JSONResponse{Id: a.ID, Name: a.Name, Size: a.Size, ModifiedAt: a.ModifiedAt, ConversationId: a.ConversationID, DisplayConversationId: a.DisplayConversationID}, nil
+	return api.RenameArtifact200JSONResponse{Name: a.Name, Size: a.Size, ModifiedAt: a.ModifiedAt}, nil
 }
 
 func (h *handler) DeleteArtifact(ctx context.Context, req api.DeleteArtifactRequestObject) (api.DeleteArtifactResponseObject, error) {
-	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
-		return nil, err
-	}
-	if err := h.Artifacts.Delete(ctx, req.ChatId, req.ArtifactId); err != nil {
+	if err := h.Artifacts.Delete(agentID(ctx), req.ArtifactName); err != nil {
 		return nil, err
 	}
 	return api.DeleteArtifact200JSONResponse{Status: api.OkStatusOk}, nil
 }
 
 func (h *handler) GetArtifact(ctx context.Context, req api.GetArtifactRequestObject) (api.GetArtifactResponseObject, error) {
-	if _, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId); err != nil {
-		return nil, err
-	}
-	a, f, err := h.Artifacts.Open(ctx, req.ChatId, req.ArtifactId)
+	a, f, err := h.Artifacts.Open(agentID(ctx), req.ArtifactName)
 	if os.IsNotExist(err) {
 		return nil, sql.ErrNoRows
 	}

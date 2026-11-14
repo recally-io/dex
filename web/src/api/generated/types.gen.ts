@@ -186,15 +186,9 @@ export type WithdrawnMessage = {
 };
 
 export type Artifact = {
-    id: string;
     name: string;
     size: number;
-    /**
-     * Current disk modification time with nanosecond precision.
-     */
     modifiedAt: string;
-    conversationId: number;
-    displayConversationId: number;
 };
 
 export type Attachment = {
@@ -547,16 +541,7 @@ export type ChatEvent = ({
     type: 'append';
 } & AppendEvent) | ({
     type: 'run';
-} & RunEvent) | ({
-    type: 'artifacts';
-} & ArtifactsEvent);
-
-/**
- * Refetch the delivered snapshot list. This event does not change the transcript.
- */
-export type ArtifactsEvent = {
-    type: 'artifacts';
-};
+} & RunEvent);
 
 export type SnapshotEvent = {
     type: 'snapshot';
@@ -2914,10 +2899,9 @@ export type ListArtifactsData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/artifacts';
+    url: '/api/agents/{agentId}/artifacts';
 };
 
 export type ListArtifactsErrors = {
@@ -2935,7 +2919,7 @@ export type ListArtifactsError = ListArtifactsErrors[keyof ListArtifactsErrors];
 
 export type ListArtifactsResponses = {
     /**
-     * Delivered snapshots.
+     * Current bot files.
      */
     200: {
         artifacts: Array<Artifact>;
@@ -2948,11 +2932,10 @@ export type DeleteArtifactData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
-        artifactId: string;
+        artifactName: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}';
+    url: '/api/agents/{agentId}/artifacts/{artifactName}';
 };
 
 export type DeleteArtifactErrors = {
@@ -2970,7 +2953,7 @@ export type DeleteArtifactError = DeleteArtifactErrors[keyof DeleteArtifactError
 
 export type DeleteArtifactResponses = {
     /**
-     * Snapshot deleted.
+     * File deleted.
      */
     200: Ok;
 };
@@ -2981,11 +2964,10 @@ export type GetArtifactData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
-        artifactId: string;
+        artifactName: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}';
+    url: '/api/agents/{agentId}/artifacts/{artifactName}';
 };
 
 export type GetArtifactErrors = {
@@ -3003,7 +2985,7 @@ export type GetArtifactError = GetArtifactErrors[keyof GetArtifactErrors];
 
 export type GetArtifactResponses = {
     /**
-     * Snapshot bytes.
+     * File bytes.
      */
     200: Blob | File;
 };
@@ -3016,11 +2998,10 @@ export type RenameArtifactData = {
     };
     path: {
         agentId: string;
-        chatId: number;
-        artifactId: string;
+        artifactName: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}';
+    url: '/api/agents/{agentId}/artifacts/{artifactName}';
 };
 
 export type RenameArtifactErrors = {
@@ -3042,7 +3023,7 @@ export type RenameArtifactError = RenameArtifactErrors[keyof RenameArtifactError
 
 export type RenameArtifactResponses = {
     /**
-     * Renamed snapshot.
+     * Renamed file.
      */
     200: Artifact;
 };

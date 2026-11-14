@@ -112,11 +112,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		hub           *live.Hub
 		bots          *channelRegistry
 	)
-	artifacts := artifact.New(conn, cfg.DataDir)
-	if err := artifacts.Migrate(ctx); err != nil {
-		cancel()
-		return nil, errors.Join(err, jobs.Close(), conn.Close())
-	}
+	artifacts := artifact.New(cfg.DataDir)
 	bg := background.New(conn, time.Now, cfg.Background, func(id int64) { chats.WakeConversation(id) })
 	// A previous run owned the processes of running commands. This must precede any new command.
 	if err := bg.Recover(ctx); err != nil {
@@ -218,7 +214,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	automations := automation.New(q, chats, time.Now)
 	routineTools = automation.NewToolService(conn, automations, chats.AutomationCommitted)
 	hub = live.New(chats, native)
-	artifacts.OnChanged = hub.Changed
 	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
 	a := &App{db: conn, engine: native, bots: bots, jobs: jobs, background: bg, cancel: cancel}
 	defer func() { //nolint:contextcheck // Shutdown joins the app lifetime.

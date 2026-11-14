@@ -21,8 +21,6 @@ export function retryMessage(items: Item[], index: number) {
 
 export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
   switch (event.type) {
-    case "artifacts":
-      return state;
     case "snapshot": {
       const remote = new Set(event.items.map((item) => item.id));
       const archived = state.items.filter((item) => item.entryId !== undefined && !remote.has(item.id));

@@ -22,8 +22,8 @@ import { Modal } from "../dialog";
 import { Confirm } from "../confirm";
 import { Failure } from "../feedback";
 
-function reference(item: Artifact) {
-  return `Continue modifying delivered file ${item.name} (artifact ID ${item.id}, source conversation ${item.conversationId}). The delivered file is a snapshot and does not change with the source file.`;
+function reference(agentId: string, item: Artifact) {
+  return `Continue editing the bot artifact ${item.name} at /api/agents/${encodeURIComponent(agentId)}/artifacts/${encodeURIComponent(item.name)}. This file is in this bot's artifacts directory, not the workspace source.`;
 }
 
 export function Artifacts({ chatId }: { chatId: number }) {
@@ -31,27 +31,28 @@ export function Artifacts({ chatId }: { chatId: number }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState<string>();
+  const [selectedName, setSelectedName] = useState<string>();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [confirm, setConfirm] = useState(false);
-  // SSE invalidates deliveries. Poll while open for snapshots removed outside dex.
+  // The directory is shared by this bot. Poll open panels for external file changes.
 
   const list = useQuery({
-    ...listArtifactsOptions({ path: { agentId, chatId } }),
+    ...listArtifactsOptions({ path: { agentId } }),
     enabled: open,
     refetchInterval: open ? 3000 : false,
     refetchIntervalInBackground: true,
   });
 
-  const selected = list.data?.artifacts.find((item) => item.id === selectedId);
-  const path = (id: string) => ({ agentId, chatId, artifactId: id });
+  const selected = list.data?.artifacts.find((item) => item.name === selectedName);
+  const path = (fileName: string) => ({ agentId, artifactName: fileName });
   const refresh = () => queryClient.invalidateQueries({ queryKey: [{ _id: "listArtifacts" }] });
 
   const rename = useMutation({
-    mutationFn: ({ id, name: nextName }: { id: string; name: string }) =>
-      renameArtifact({ path: path(id), body: { name: nextName }, throwOnError: true }),
-    onSuccess: async () => {
+    mutationFn: ({ from, to }: { from: string; to: string }) =>
+      renameArtifact({ path: path(from), body: { name: to }, throwOnError: true }),
+    onSuccess: async ({ data }) => {
+      setSelectedName(data.name);
       setEditing(false);
       await refresh();
     },
@@ -59,17 +60,17 @@ export function Artifacts({ chatId }: { chatId: number }) {
   });
 
   const remove = useMutation({
-    mutationFn: (id: string) => deleteArtifact({ path: path(id), throwOnError: true }),
+    mutationFn: (fileName: string) => deleteArtifact({ path: path(fileName), throwOnError: true }),
     onSuccess: async () => {
       setConfirm(false);
-      setSelectedId(undefined);
+      setSelectedName(undefined);
       await refresh();
     },
     onError: () => void refresh(),
   });
 
   const url = selected
-    ? `/api/agents/${encodeURIComponent(agentId)}/chats/${chatId}/artifacts/${encodeURIComponent(selected.id)}`
+    ? `/api/agents/${encodeURIComponent(agentId)}/artifacts/${encodeURIComponent(selected.name)}`
     : "";
 
   const markdown = !!selected && /\.(md|mdown|markdown)$/i.test(selected.name);
@@ -106,7 +107,7 @@ export function Artifacts({ chatId }: { chatId: number }) {
         });
       }
 
-      putChatDraft(agentId, target.id, reference(item));
+      putChatDraft(agentId, target.id, reference(agentId, item));
       setOpen(false);
 
       if (target.main) await navigate({ to: "/a/$agentId", params: { agentId } });
@@ -137,7 +138,7 @@ export function Artifacts({ chatId }: { chatId: number }) {
       {open ? (
         <Modal
           title="Artifacts"
-          description="Delivered snapshots are shared with their source conversation. Renaming or deleting a snapshot does not change the source file."
+          description="Files in this bot’s artifacts directory. All conversations in this bot show the same files."
           onClose={() => setOpen(false)}
           footer={
             <Button variant="secondary" onClick={() => setOpen(false)}>
@@ -155,11 +156,11 @@ export function Artifacts({ chatId }: { chatId: number }) {
             <div className="flex flex-col gap-2" aria-label="Artifact files">
               {list.data.artifacts.map((item) => (
                 <Button
-                  key={item.id}
-                  variant={selectedId === item.id ? "secondary" : "outline"}
+                  key={item.name}
+                  variant={selectedName === item.name ? "secondary" : "outline"}
                   className="h-auto justify-start whitespace-normal text-left [overflow-wrap:anywhere]"
                   onClick={() => {
-                    setSelectedId(item.id);
+                    setSelectedName(item.name);
                     setEditing(false);
                     continuation.reset();
                   }}
@@ -231,7 +232,7 @@ export function Artifacts({ chatId }: { chatId: number }) {
           {selected && editing ? (
             <Modal
               title="Rename artifact"
-              description="Change the snapshot name shown in all conversations and downloads."
+              description="Rename this bot file. Existing file names cannot be replaced."
               pending={rename.isPending}
               onClose={() => setEditing(false)}
               footer={
@@ -250,7 +251,7 @@ export function Artifacts({ chatId }: { chatId: number }) {
                 className="flex flex-col gap-2"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  rename.mutate({ id: selected.id, name });
+                  rename.mutate({ from: selected.name, to: name });
                 }}
               >
                 <Label htmlFor="artifact-name">File name</Label>
@@ -270,12 +271,12 @@ export function Artifacts({ chatId }: { chatId: number }) {
           {selected && confirm ? (
             <Confirm
               title="Delete artifact?"
-              description={`Delete “${selected.name}” from all conversations that share this snapshot? The source file will not change. This action cannot be undone.`}
+              description={`Delete “${selected.name}” from this bot’s artifacts directory? This action cannot be undone.`}
               confirmLabel="Delete artifact"
               pending={remove.isPending}
               error={remove.error}
               onCancel={() => setConfirm(false)}
-              onConfirm={() => remove.mutate(selected.id)}
+              onConfirm={() => remove.mutate(selected.name)}
             />
           ) : null}
         </Modal>

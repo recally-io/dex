@@ -34,27 +34,16 @@ export function useChatStream(chatId: number) {
         try {
           const event: ChatEvent = JSON.parse(message.data);
 
-          if (event.type === "artifacts") {
-            void queryClient.invalidateQueries({
-              queryKey: [{ _id: "listArtifacts", path: { agentId, chatId } }],
-            });
-
-            return;
-          }
-
           if (!["snapshot", "item", "append", "run"].includes(event.type))
             throw new Error("Unknown chat event.");
 
           if (!snapshotSeen && event.type !== "snapshot")
             throw new Error("The stream did not start with a snapshot.");
 
-          if (event.type === "snapshot") {
-            snapshotSeen = true;
-            void queryClient.invalidateQueries({
-              queryKey: [{ _id: "listArtifacts", path: { agentId, chatId } }],
-            });
-          }
+          if (event.type === "snapshot") snapshotSeen = true;
 
+          if (event.type === "snapshot" || (event.type === "run" && !event.running))
+            void queryClient.invalidateQueries({ queryKey: [{ _id: "listArtifacts", path: { agentId } }] });
           setState((previous) => applyChatEvent(previous, event));
 
           if (event.type === "snapshot")

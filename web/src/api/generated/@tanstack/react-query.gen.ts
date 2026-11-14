@@ -1104,7 +1104,7 @@ export const getUploadOptions = (options: Options<GetUploadData>) => queryOption
 export const listArtifactsQueryKey = (options: Options<ListArtifactsData>) => createQueryKey('listArtifacts', options);
 
 /**
- * Delivered snapshots from this conversation and its child sessions.
+ * Regular files in this bot’s artifacts directory.
  */
 export const listArtifactsOptions = (options: Options<ListArtifactsData>) => queryOptions<ListArtifactsResponse, ListArtifactsError, ListArtifactsResponse, ReturnType<typeof listArtifactsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -1120,7 +1120,7 @@ export const listArtifactsOptions = (options: Options<ListArtifactsData>) => que
 });
 
 /**
- * Delete the shared delivery snapshot from all views. The source file is unchanged.
+ * Delete this bot file. Workspace source files are unchanged.
  */
 export const deleteArtifactMutation = (options?: Partial<Options<DeleteArtifactData>>): UseMutationOptions<DeleteArtifactResponse, DeleteArtifactError, Options<DeleteArtifactData>> => {
     const mutationOptions: UseMutationOptions<DeleteArtifactResponse, DeleteArtifactError, Options<DeleteArtifactData>> = {
@@ -1139,7 +1139,7 @@ export const deleteArtifactMutation = (options?: Partial<Options<DeleteArtifactD
 export const getArtifactQueryKey = (options: Options<GetArtifactData>) => createQueryKey('getArtifact', options);
 
 /**
- * The current snapshot file bytes. Only safe raster images are inline.
+ * The current bot file bytes. Only safe raster images are inline.
  */
 export const getArtifactOptions = (options: Options<GetArtifactData>) => queryOptions<GetArtifactResponse, GetArtifactError, GetArtifactResponse, ReturnType<typeof getArtifactQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -1155,7 +1155,7 @@ export const getArtifactOptions = (options: Options<GetArtifactData>) => queryOp
 });
 
 /**
- * Rename the physical snapshot file. The workspace source file is unchanged.
+ * Rename a bot file. Existing names are conflicts.
  */
 export const renameArtifactMutation = (options?: Partial<Options<RenameArtifactData>>): UseMutationOptions<RenameArtifactResponse, RenameArtifactError, Options<RenameArtifactData>> => {
     const mutationOptions: UseMutationOptions<RenameArtifactResponse, RenameArtifactError, Options<RenameArtifactData>> = {

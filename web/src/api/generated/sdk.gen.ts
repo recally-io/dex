@@ -858,7 +858,7 @@ export const getUpload = <ThrowOnError extends boolean = false>(options: Options
 });
 
 /**
- * Delivered snapshots from this conversation and its child sessions.
+ * Regular files in this bot’s artifacts directory.
  */
 export const listArtifacts = <ThrowOnError extends boolean = false>(options: Options<ListArtifactsData, ThrowOnError>): RequestResult<ListArtifactsResponses, ListArtifactsErrors, ThrowOnError> => (options.client ?? client).get<ListArtifactsResponses, ListArtifactsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
@@ -866,12 +866,12 @@ export const listArtifacts = <ThrowOnError extends boolean = false>(options: Opt
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/artifacts',
+    url: '/api/agents/{agentId}/artifacts',
     ...options
 });
 
 /**
- * Delete the shared delivery snapshot from all views. The source file is unchanged.
+ * Delete this bot file. Workspace source files are unchanged.
  */
 export const deleteArtifact = <ThrowOnError extends boolean = false>(options: Options<DeleteArtifactData, ThrowOnError>): RequestResult<DeleteArtifactResponses, DeleteArtifactErrors, ThrowOnError> => (options.client ?? client).delete<DeleteArtifactResponses, DeleteArtifactErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
@@ -879,12 +879,12 @@ export const deleteArtifact = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}',
+    url: '/api/agents/{agentId}/artifacts/{artifactName}',
     ...options
 });
 
 /**
- * The current snapshot file bytes. Only safe raster images are inline.
+ * The current bot file bytes. Only safe raster images are inline.
  */
 export const getArtifact = <ThrowOnError extends boolean = false>(options: Options<GetArtifactData, ThrowOnError>): RequestResult<GetArtifactResponses, GetArtifactErrors, ThrowOnError> => (options.client ?? client).get<GetArtifactResponses, GetArtifactErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
@@ -892,12 +892,12 @@ export const getArtifact = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}',
+    url: '/api/agents/{agentId}/artifacts/{artifactName}',
     ...options
 });
 
 /**
- * Rename the physical snapshot file. The workspace source file is unchanged.
+ * Rename a bot file. Existing names are conflicts.
  */
 export const renameArtifact = <ThrowOnError extends boolean = false>(options: Options<RenameArtifactData, ThrowOnError>): RequestResult<RenameArtifactResponses, RenameArtifactErrors, ThrowOnError> => (options.client ?? client).patch<RenameArtifactResponses, RenameArtifactErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
@@ -905,7 +905,7 @@ export const renameArtifact = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}',
+    url: '/api/agents/{agentId}/artifacts/{artifactName}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
