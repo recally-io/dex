@@ -24,9 +24,10 @@ import (
 // contain HTML, Markdown, or card markup and is not universal plain text.
 // Manager stores parts as JSON and passes them back to that Bot unchanged.
 type Part struct {
-	Text  string `json:"text,omitempty"`
-	File  *File  `json:"file,omitempty"`
-	Group []File `json:"group,omitempty"`
+	Buttons []Button `json:"buttons,omitempty"`
+	Text    string   `json:"text,omitempty"`
+	File    *File    `json:"file,omitempty"`
+	Group   []File   `json:"group,omitempty"`
 }
 
 // File identifies a temporary outbox snapshot, not an artifact entry.
@@ -141,6 +142,33 @@ func (m *Manager) replyParts(ctx context.Context, bot Bot, r sqlc.ListChannelRep
 			}
 		}
 		parts = group.GroupParts(parts)
+	}
+	if strings.HasPrefix(r.Origin, "telegram:") {
+		question, err := m.q.GetQuestionBySource(ctx, r.ID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		if err == nil {
+			var identity chat.ChannelContext
+			if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
+				return nil, err
+			}
+			target, err := m.chats.ChannelConversation(ctx, m.agentID, r.Origin, identity)
+			if err != nil {
+				if errors.Is(err, chat.ErrGroupUnauthorized) {
+					return parts, nil
+				}
+				return nil, err
+			}
+			actions, err := questionActions(question)
+			if err != nil {
+				return nil, err
+			}
+			parts, err = m.addButtons(ctx, parts, r.ID, r.Origin, identity, target, actions)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	encoded, err := json.Marshal(parts)
 	if err != nil {

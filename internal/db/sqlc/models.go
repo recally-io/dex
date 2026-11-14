@@ -98,6 +98,7 @@ type ChannelCommand struct {
 	Completed      int64         `json:"completed"`
 	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
 	ChannelContext string        `json:"channel_context"`
+	RenderedReply  string        `json:"rendered_reply"`
 }
 
 type ChannelPeer struct {
@@ -279,6 +280,26 @@ type TelegramAlbumMember struct {
 	ReceivedAt  int64  `json:"received_at"`
 	BatchSource string `json:"batch_source"`
 	State       string `json:"state"`
+}
+
+type TelegramCallback struct {
+	ID              string        `json:"id"`
+	AgentID         string        `json:"agent_id"`
+	SourceID        string        `json:"source_id"`
+	Part            int64         `json:"part"`
+	Ordinal         int64         `json:"ordinal"`
+	Peer            string        `json:"peer"`
+	ChannelContext  string        `json:"channel_context"`
+	ConversationID  int64         `json:"conversation_id"`
+	ExecutionScope  string        `json:"execution_scope"`
+	ExecutionID     int64         `json:"execution_id"`
+	ContextRevision string        `json:"context_revision"`
+	Label           string        `json:"label"`
+	ObjectID        string        `json:"object_id"`
+	Action          string        `json:"action"`
+	MessageID       string        `json:"message_id"`
+	ExpiresAt       int64         `json:"expires_at"`
+	ConsumedAt      sql.NullInt64 `json:"consumed_at"`
 }
 
 type TelegramEffect struct {

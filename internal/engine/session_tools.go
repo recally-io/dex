@@ -31,6 +31,7 @@ type ArtifactInfo struct {
 // TaskTools connects foreground tools to the application services.
 type TaskTools struct {
 	AuthorizeGroup   func(context.Context, TaskContext) error
+	GroupQuestion    func(context.Context, TaskContext, AskUserArgs) (QuestionInfo, error)
 	GroupSession     func(context.Context, TaskContext, GroupSessionArgs) (GroupSessionResult, error)
 	DeliverGroupFile func(context.Context, TaskContext, string, io.Reader) error
 	Telegram         func(context.Context, TaskContext, TelegramRequest) (TelegramResult, error)

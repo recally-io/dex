@@ -25,7 +25,7 @@ func (b *Bot) Send(ctx context.Context, peer, deliveryID string, index int, part
 	case part.File != nil:
 		id, err = b.sendFile(ctx, peer, part.File)
 	default:
-		id, err = b.sendText(ctx, peer, deliveryID, index, part.Text)
+		id, err = b.sendText(ctx, peer, deliveryID, index, part.Text, part.Buttons)
 	}
 	if id != "" {
 		receipt.MessageIDs = []string{id}

@@ -93,6 +93,19 @@ try {
   await call("Page.navigate", { url: base + "/a/default/channels/telegram" });
   await poll("Telegram setup", () => evaluate("document.body.textContent.includes('Connect bot')"));
   await evaluate(
+    "[...document.querySelectorAll('summary')].find(el => el.textContent === 'Commands and limits').parentElement.open = true",
+  );
+  assert.equal(
+    await evaluate(
+      "document.body.textContent.includes('/workflows') && document.body.textContent.includes('15 minutes')",
+    ),
+    true,
+  );
+  await evaluate(
+    "[...document.querySelectorAll('summary')].find(el => el.textContent === 'Commands and limits').scrollIntoView({ block: 'center' })",
+  );
+  await capture("telegram-workflow-help.png");
+  await evaluate(
     "[...document.querySelectorAll('button')].find(el => el.textContent.trim() === 'Connect bot').click()",
   );
   await poll("group settings", () =>

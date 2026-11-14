@@ -120,6 +120,11 @@ func authorizeTelegramActor(ctx context.Context, q *sqlc.Queries, agentID, accou
 
 // TelegramInputAllowed checks current pairing before a transport downloads any bytes.
 func (s *Service) TelegramInputAllowed(ctx context.Context, agentID, peer string, source ChannelContext) (bool, error) {
+	return TelegramInputAllowed(ctx, s.q, agentID, peer, source)
+}
+
+// TelegramInputAllowed also serves writer transactions that commit Telegram control intents.
+func TelegramInputAllowed(ctx context.Context, q *sqlc.Queries, agentID, peer string, source ChannelContext) (bool, error) {
 	if groupPeer(peer) {
 		if _, _, _, err := groupTarget(peer, source); err != nil {
 			if errors.Is(err, ErrGroupUnauthorized) {
@@ -130,7 +135,7 @@ func (s *Service) TelegramInputAllowed(ctx context.Context, agentID, peer string
 	} else if !strings.HasPrefix(peer, "telegram:") || !positiveTelegramID(strings.TrimPrefix(peer, "telegram:")) || source.ChatID != 0 || source.TopicID != 0 || source.TopicShared {
 		return false, nil
 	}
-	err := authorizeTelegramActor(ctx, s.q, agentID, source.AccountID, source.SenderID)
+	err := authorizeTelegramActor(ctx, q, agentID, source.AccountID, source.SenderID)
 	if errors.Is(err, ErrGroupUnauthorized) {
 		return false, nil
 	}

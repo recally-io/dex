@@ -48,7 +48,7 @@ func parsePeer(key string) (int64, int64, error) {
 func peerID(key string) (int64, error) { chatID, _, err := parsePeer(key); return chatID, err }
 
 // sendText replaces its preview and confirms one final part. The caller stores progress.
-func (b *Bot) sendText(ctx context.Context, key, deliveryID string, index int, part string) (string, error) {
+func (b *Bot) sendText(ctx context.Context, key, deliveryID string, index int, part string, buttons []channel.Button) (string, error) {
 	chatID, topicID, err := parsePeer(key)
 	if err != nil {
 		return "", err
@@ -59,6 +59,9 @@ func (b *Bot) sendText(ctx context.Context, key, deliveryID string, index int, p
 	}
 	method := "sendMessage"
 	params := map[string]any{"chat_id": chatID, "text": part, "parse_mode": "HTML"}
+	if len(buttons) > 0 {
+		params["reply_markup"] = b.keyboard(buttons)
+	}
 	if topicID > 0 {
 		params["message_thread_id"] = topicID
 	}

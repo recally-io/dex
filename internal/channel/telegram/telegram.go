@@ -105,8 +105,14 @@ func New(cfg Config, chats *channel.Manager) *Bot {
 // Run receives messages and sends replies until ctx is done.
 func (b *Bot) Run(ctx context.Context) error {
 	if err := b.call(ctx, "setMyCommands", map[string]any{"commands": []map[string]string{
-		{"command": "clear", "description": "Clear the main context"},
-		{"command": "stop", "description": "Stop the main answer and its background work"},
+		{"command": "menu", "description": "Open current conversation controls"},
+		{"command": "status", "description": "Show current conversation status"},
+		{"command": "settings", "description": "Show Telegram preferences"},
+		{"command": "sessions", "description": "List direct children of this conversation"},
+		{"command": "workflows", "description": "Resume saved child workflows"},
+		{"command": "question", "description": "Show this conversation's open question"},
+		{"command": "clear", "description": "Clear the current conversation context"},
+		{"command": "stop", "description": "Stop the current conversation and its child work"},
 		{"command": "help", "description": "List commands"},
 	}}, nil); err != nil {
 		slog.Warn("telegram: command menu", "err", err)
@@ -122,7 +128,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	for {
 		var updates []update
 		err := b.call(ctx, "getUpdates", map[string]any{
-			"offset": offset, "timeout": 30, "allowed_updates": []string{"message"},
+			"offset": offset, "timeout": 30, "allowed_updates": []string{"message", "edited_message", "callback_query"},
 		}, &updates)
 		for _, u := range updates {
 			if err = b.receive(ctx, u); err != nil {
@@ -151,6 +157,9 @@ func (b *Bot) Run(ctx context.Context) error {
 }
 
 func (b *Bot) receive(ctx context.Context, u update) error {
+	if u.Callback != nil {
+		return b.receiveCallback(ctx, u.Callback)
+	}
 	m := u.Message
 	edited := u.EditedMessage != nil
 	if edited {
@@ -404,9 +413,10 @@ func split(text string, limit int) []string {
 // Bot API types, with only the fields that dex reads.
 
 type update struct {
-	UpdateID      int64    `json:"update_id"`
-	Message       *message `json:"message"`
-	EditedMessage *message `json:"edited_message"`
+	Callback      *callbackQuery `json:"callback_query"`
+	UpdateID      int64          `json:"update_id"`
+	Message       *message       `json:"message"`
+	EditedMessage *message       `json:"edited_message"`
 }
 
 type user struct {

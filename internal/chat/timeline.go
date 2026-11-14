@@ -189,6 +189,9 @@ func (s *Service) clear(ctx context.Context, agentID string, chatID int64, reque
 			return err
 		}
 		q := s.q.WithTx(tx)
+		if err := checkTelegramControl(ctx, q, strings.TrimPrefix(requestID, "channel:"), agentID, chatID); err != nil {
+			return err
+		}
 		if archived, err := q.ConversationAgentArchived(ctx, chatID); err != nil || archived != 0 {
 			return cmp.Or(err, db.ErrAgentArchived)
 		}

@@ -114,7 +114,7 @@ func (q *Queries) FeishuCredentialOwner(ctx context.Context, appID string) (Feis
 }
 
 const getChannelCommand = `-- name: GetChannelCommand :one
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context FROM channel_commands WHERE source_key = ?
+SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE source_key = ?
 `
 
 func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (ChannelCommand, error) {
@@ -130,6 +130,7 @@ func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (Chan
 		&i.Completed,
 		&i.DeliveredAt,
 		&i.ChannelContext,
+		&i.RenderedReply,
 	)
 	return i, err
 }
@@ -229,7 +230,7 @@ func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow
 }
 
 const listChannelCommandReplies = `-- name: ListChannelCommandReplies :many
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
+SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
 AND agent_id = ?1 AND peer LIKE ?2 || '%' ORDER BY rowid
 `
 
@@ -257,6 +258,7 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, arg ListChannel
 			&i.Completed,
 			&i.DeliveredAt,
 			&i.ChannelContext,
+			&i.RenderedReply,
 		); err != nil {
 			return nil, err
 		}
@@ -272,7 +274,7 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, arg ListChannel
 }
 
 const listChannelCommands = `-- name: ListChannelCommands :many
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context FROM channel_commands WHERE agent_id = ? AND completed = 0
+SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE agent_id = ? AND completed = 0
 `
 
 func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]ChannelCommand, error) {
@@ -294,6 +296,7 @@ func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]Ch
 			&i.Completed,
 			&i.DeliveredAt,
 			&i.ChannelContext,
+			&i.RenderedReply,
 		); err != nil {
 			return nil, err
 		}

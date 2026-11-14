@@ -1255,10 +1255,32 @@ through native admission, provider requests, tools and restore. Children cannot 
 select another bot, choose a project or override the model. Private session handlers stay
 unavailable. Children return published resource paths; the parent queues Telegram delivery.
 
+`group_question` asks one public question with two to four options and ends the turn.
+Only the initiating paired sender can answer in the same conversation. It cannot approve
+owner actions. Children report decisions to their parent instead of asking directly.
+Private `ask_user` and owner-action Question handlers stay unavailable in groups.
+
+Telegram `/menu`, `/status`, `/settings`, `/sessions`, `/question` and `/workflows` use the
+current parsed conversation. Session lists contain only its direct same-audience children.
+Saved workflow controls reuse those children and their stored first prompt. `/run <child ID>
+[message]` queues another parent-owned child turn. It retains the original Telegram source,
+current personal grant and resource scope. It does not invoke private Routines or route
+group work through Main. Only the initiating Telegram sender can resume the child.
+
+Inline buttons carry a 96-bit HMAC reference signed with the current bot token. An immutable
+server row binds the actor, account, chat, topic, confirmed message, conversation, execution
+scope, native ID, context-reset receipt, object, action and a 15-minute expiry. The claim
+transaction checks current authority and consumes the nonce with its durable command intent.
+Effect transactions check the current grant, expiry and context revision again. Clear does
+not change the native conversation ID, so callbacks also bind the latest `context_reset`
+receipt. Replays cannot queue another action. A matching actor's rejected grant cancels its
+button permanently. Command parts and button labels stay frozen across delivery retries.
+Message delivery stays at least once; only the bound confirmed remote message accepts its
+buttons. A stale Question button cannot become ordinary model input.
+
 Group speech does not borrow private consent or provider settings. Original audio
-stays attached. Group drafts/previews stay off. Menus, Questions, callbacks and saved
-workflow controls still need narrow scope-bound handlers before L3 is complete. This code
-and its local fake-platform tests do not authorize a real group deployment. See
+stays attached. Group drafts/previews stay off. This code and its local fake-platform tests
+do not authorize a real group deployment. See
 [proposed ADR 0021](decisions/0021-isolated-telegram-group-resources.md).
 
 ## Telegram

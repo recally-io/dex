@@ -102,6 +102,8 @@ type Message struct {
 	// AnswersQuestion is the ID of the open question that this message answers. A message with
 	// this ID is an answer to that question; any other message leaves a question open.
 	AnswersQuestion string
+	// QuestionOnly prevents a stale button answer from becoming an ordinary message.
+	QuestionOnly bool
 	// ReplyTo is the remote ID of the channel message that this message quotes. A quote of a message
 	// that carries an open question answers it.
 	ReplyTo string
@@ -318,7 +320,7 @@ func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey st
 		addContext()
 	}
 	_, err := s.enqueue(ctx, agentID, channelKey, sourceKey, peer, m)
-	if errors.Is(err, ErrQuestionClosed) && m.AnswersQuestion != "" {
+	if errors.Is(err, ErrQuestionClosed) && m.AnswersQuestion != "" && !m.QuestionOnly {
 		// The question closed while the user wrote. The words still reach the agent as a plain message.
 		m.AnswersQuestion = ""
 		addContext()
@@ -367,6 +369,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		if err != nil {
 			return 0, err
 		}
+		if err := checkTelegramControl(ctx, q, sourceKey, agentID, conv.ID); err != nil {
+			return 0, err
+		}
 		if conv.ExecutionScope != scope || scope != "" && conv.ScopeContext != binding {
 			return 0, ErrGroupUnauthorized
 		}
@@ -411,7 +416,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			// A retry of an answer that is stored already must not bind or wrap it again.
 			switch _, err := q.GetSubmission(ctx, m.ID); {
 			case errors.Is(err, sql.ErrNoRows):
-				if decision, err = answerContent(ctx, q, agentID, conv.ID, m.AnswersQuestion, m.Content, origin); err != nil {
+				if decision, err = answerContent(ctx, q, agentID, conv.ID, m.AnswersQuestion, m.Content, origin, m.ChannelContext); err != nil {
 					return 0, err
 				}
 				content = decision.Content

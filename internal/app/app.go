@@ -121,6 +121,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	tools := engine.TaskTools{
 		AuthorizeGroup: func(ctx context.Context, c engine.TaskContext) error { return chats.AuthorizeGroup(ctx, c) },
+		GroupQuestion: func(ctx context.Context, c engine.TaskContext, args engine.AskUserArgs) (engine.QuestionInfo, error) {
+			return chats.ToolGroupQuestion(ctx, c, args)
+		},
 		GroupSession: func(ctx context.Context, c engine.TaskContext, args engine.GroupSessionArgs) (engine.GroupSessionResult, error) {
 			return chats.ToolGroupSession(ctx, c, args)
 		},

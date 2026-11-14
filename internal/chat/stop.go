@@ -98,6 +98,11 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		return withdrawal{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if command != nil {
+		if err := checkTelegramControl(ctx, q, command.SourceKey, agentID, id); err != nil {
+			return withdrawal{}, err
+		}
+	}
 	if call != nil {
 		prior, err := q.GetRoutineToolOperation(ctx, call.task.Key)
 		if err == nil {

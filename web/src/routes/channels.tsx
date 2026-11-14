@@ -295,6 +295,16 @@ function Telegram({ settings }: { settings: Settings }) {
         <li>Send text, images or files in a private chat with the bot.</li>
         <li>Paired senders can use isolated Telegram groups and topics without a mention by default.</li>
         <li>Require group mention limits triggers. It does not grant private owner tools or files.</li>
+        <li>
+          Use /menu for current-conversation controls, /question for choices and /workflows for saved
+          children.
+        </li>
+        <li>
+          Workflow controls reuse the same child and resource scope. Only its initiating sender can resume it.
+        </li>
+        <li>
+          Buttons expire after 15 minutes. They bind the sender, bot, chat, topic and message, and work once.
+        </li>
       </HowToUse>
       {telegram.enabled ? (
         <TurnOff
