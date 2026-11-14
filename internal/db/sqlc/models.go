@@ -261,6 +261,8 @@ type Submission struct {
 	ChannelDeliveryError string         `json:"channel_delivery_error"`
 	ChannelRemoteIds     string         `json:"channel_remote_ids"`
 	ChannelRevoked       int64          `json:"channel_revoked"`
+	ChannelGroupFallback int64          `json:"channel_group_fallback"`
+	ChannelGroupCursor   int64          `json:"channel_group_cursor"`
 }
 
 type TelegramAlbumMember struct {

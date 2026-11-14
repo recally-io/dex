@@ -283,6 +283,10 @@ func (b *Bot) request(ctx context.Context, method string, body io.Reader, conten
 		return fmt.Errorf("telegram %s: %w", method, err)
 	}
 	defer resp.Body.Close() //nolint:errcheck // read-only body
+	// A proxy or service failure cannot authorize a fallback, even if its JSON says 400.
+	if resp.StatusCode >= http.StatusInternalServerError {
+		return &apiError{Code: resp.StatusCode, Description: "service outcome unknown"}
+	}
 	var out struct {
 		OK          bool           `json:"ok"`
 		Result      jsontext.Value `json:"result"`

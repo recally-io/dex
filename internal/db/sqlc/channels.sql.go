@@ -10,9 +10,24 @@ import (
 	"database/sql"
 )
 
+const advanceChannelGroupMember = `-- name: AdvanceChannelGroupMember :exec
+UPDATE submissions SET channel_group_cursor = channel_group_cursor + 1,
+    channel_remote_ids = ?1, channel_retry_at = 0 WHERE id = ?2
+`
+
+type AdvanceChannelGroupMemberParams struct {
+	RemoteIds string `json:"remote_ids"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) AdvanceChannelGroupMember(ctx context.Context, arg AdvanceChannelGroupMemberParams) error {
+	_, err := q.db.ExecContext(ctx, advanceChannelGroupMember, arg.RemoteIds, arg.ID)
+	return err
+}
+
 const advanceChannelReply = `-- name: AdvanceChannelReply :exec
 UPDATE submissions SET delivered_parts = delivered_parts + 1, channel_remote_ids = ?1,
-    channel_retry_at = 0 WHERE id = ?2
+    channel_retry_at = 0, channel_group_fallback = 0, channel_group_cursor = 0 WHERE id = ?2
 `
 
 type AdvanceChannelReplyParams struct {
@@ -290,7 +305,8 @@ func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]Ch
 
 const listChannelReplies = `-- name: ListChannelReplies :many
 SELECT s.id, s.origin, s.status, s.answer, s.reason, s.delivered_parts,
-       s.rendered_reply, s.channel_context, s.channel_remote_ids, s.channel_revoked, s.channel_retry_at
+       s.rendered_reply, s.channel_context, s.channel_remote_ids, s.channel_revoked, s.channel_retry_at,
+       s.channel_group_fallback, s.channel_group_cursor
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status != 'pending' AND s.delivered_at IS NULL
 AND (s.kind = 'message' OR (s.kind = 'task_result' AND s.status = 'done'))
@@ -305,17 +321,19 @@ type ListChannelRepliesParams struct {
 }
 
 type ListChannelRepliesRow struct {
-	ID               string         `json:"id"`
-	Origin           string         `json:"origin"`
-	Status           string         `json:"status"`
-	Answer           sql.NullString `json:"answer"`
-	Reason           sql.NullString `json:"reason"`
-	DeliveredParts   int64          `json:"delivered_parts"`
-	RenderedReply    string         `json:"rendered_reply"`
-	ChannelContext   string         `json:"channel_context"`
-	ChannelRemoteIds string         `json:"channel_remote_ids"`
-	ChannelRevoked   int64          `json:"channel_revoked"`
-	ChannelRetryAt   int64          `json:"channel_retry_at"`
+	ID                   string         `json:"id"`
+	Origin               string         `json:"origin"`
+	Status               string         `json:"status"`
+	Answer               sql.NullString `json:"answer"`
+	Reason               sql.NullString `json:"reason"`
+	DeliveredParts       int64          `json:"delivered_parts"`
+	RenderedReply        string         `json:"rendered_reply"`
+	ChannelContext       string         `json:"channel_context"`
+	ChannelRemoteIds     string         `json:"channel_remote_ids"`
+	ChannelRevoked       int64          `json:"channel_revoked"`
+	ChannelRetryAt       int64          `json:"channel_retry_at"`
+	ChannelGroupFallback int64          `json:"channel_group_fallback"`
+	ChannelGroupCursor   int64          `json:"channel_group_cursor"`
 }
 
 func (q *Queries) ListChannelReplies(ctx context.Context, arg ListChannelRepliesParams) ([]ListChannelRepliesRow, error) {
@@ -339,6 +357,8 @@ func (q *Queries) ListChannelReplies(ctx context.Context, arg ListChannelReplies
 			&i.ChannelRemoteIds,
 			&i.ChannelRevoked,
 			&i.ChannelRetryAt,
+			&i.ChannelGroupFallback,
+			&i.ChannelGroupCursor,
 		); err != nil {
 			return nil, err
 		}
@@ -392,6 +412,21 @@ type SaveChannelCommandAnswerParams struct {
 
 func (q *Queries) SaveChannelCommandAnswer(ctx context.Context, arg SaveChannelCommandAnswerParams) error {
 	_, err := q.db.ExecContext(ctx, saveChannelCommandAnswer, arg.Answer, arg.SourceKey)
+	return err
+}
+
+const startChannelGroupFallback = `-- name: StartChannelGroupFallback :exec
+UPDATE submissions SET channel_group_fallback = 1
+WHERE id = ?1 AND delivered_parts = ?2 AND channel_group_cursor = 0
+`
+
+type StartChannelGroupFallbackParams struct {
+	ID   string `json:"id"`
+	Part int64  `json:"part"`
+}
+
+func (q *Queries) StartChannelGroupFallback(ctx context.Context, arg StartChannelGroupFallbackParams) error {
+	_, err := q.db.ExecContext(ctx, startChannelGroupFallback, arg.ID, arg.Part)
 	return err
 }
 
