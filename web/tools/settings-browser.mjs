@@ -226,17 +226,11 @@ try {
     await api("/api/agents/default", { ...agent, provider: "faux", modelId: "think" }, "PUT");
     const chat = await api("/api/agents/default/chats", {}, "POST");
     await visit(`/a/default/c/${chat.id}`);
-    // The session controls show after the chat header's More menu opens their row.
-    await poll("chat settings button", () =>
-      evaluate("!!document.querySelector('header button[aria-label=\"Chat more\"]')"),
+    // Task controls open beside the task title.
+    await poll("task settings button", () =>
+      evaluate("!!document.querySelector('header button[aria-label=\"Task settings\"]')"),
     );
-    await tap('header button[aria-label="Chat more"]');
-    await poll("chat settings menu", () =>
-      evaluate(
-        '!![...document.querySelectorAll(\'[role="menuitem"]\')].find(e => e.textContent === "Chat settings")',
-      ),
-    );
-    await tap('[role="menuitem"]');
+    await tap('header button[aria-label="Task settings"]');
     await poll("session controls", () =>
       evaluate("!!document.querySelector('button[aria-label=\"Set thinking level\"]:not([inert] *)')"),
     );

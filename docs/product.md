@@ -48,26 +48,22 @@ to read in an afternoon.
   messages can load the earlier transcript. A clear and a summary show a
   divider. The window has a sidebar and a page.
   The user talks to a bot, and the bot manages its sessions. The sidebar lists
-  the bots as groups. Each bot row shows at most one status dot: orange for
-  Needs you, blue for Working. Needs you wins. The open bot expands to Needs
-  you, Main, Routines with the number of enabled routines, its five chats with
-  the newest activity, the open chat, New chat, and a closed Archived group.
-  When the bot has more chats, a row opens All sessions, the full session list
-  of the bot. Other bots show only their row, so the list stays short. The ⋯
-  of the open bot opens its Settings (General, Instructions, Channels, and
-  Tools) and All sessions; it stays lit on those pages. The model and the
-  thinking level change in Settings. The ⋯ at the top of the sidebar opens the
-  global settings (Providers, Environment, Archived bots) and About. A red dot
-  on it tells that a provider needs attention. New bot comes after the bots.
-  The page header names only the open page: Main, the title of the open chat,
-  Routines, Settings, or All sessions. In Main or a writable Chat, the header
-  ends with the model and the thinking level that answer the next message.
-  This button opens Chat settings, a row with the project, model and thinking
-  level of the open chat; a dot on the button tells that the chat has its own
-  values. Main cannot be archived.
+  the bots without row menus. Each bot row shows at most one status dot: orange
+  for Needs you, blue for Working. Needs you wins. New bot comes after the bots.
+  The sidebar footer opens global Settings and About. A red dot marks provider
+  errors. The page header names the bot and the open page. On desktop, its right
+  side shows New task, Tasks, Routines, and Bot settings as direct controls.
+  Routines keeps its enabled count and failure mark. Bot settings keeps its
+  instructions draft mark. On a phone, a Menu button holds these same actions.
+  Main has no session settings button; Bot settings edits its default model and
+  thinking level. If Main has saved overrides from an older version, Bot settings
+  shows a warning and a button to clear them. It does not clear them automatically. A task has a settings button beside its title for model and
+  thinking overrides. Unset values follow the bot. Its project selector stays
+  visible below the header, even when task settings are closed. An unset project
+  shows Bot working directory. Main cannot be archived.
   The row menu and a right-click archive or restore a Chat. Archiving keeps the
   messages, records and files; a child session's result still returns to the chat.
-  New chat does not reuse an archived empty chat. The button at the top left of
+  New task does not reuse an archived empty chat. The button at the top left of
   the sidebar hides it. The first button of the page header then shows it
   again, with an orange dot when a bot needs the user, and the header shows the
   bot's avatar. On a phone, the menu button opens the sidebar as a drawer. The
@@ -197,9 +193,8 @@ a named label and a thin line that groups its replies and tool calls. The mark
 shows where the report belongs; it does not confirm that the work reached its goal.
 The chat does not show the internal report as input. The user opens the
 child session to read its full work.
-The bot has no Sessions tab. The open bot in the sidebar lists Chats and child sessions,
-newest activity first, and links to All sessions, the full session list of the
-bot. A child session is a Chat session with a parent. Its row shows "Started by"
+Tasks in the bot header opens the full session list, newest activity first.
+The sidebar only switches bots. A child session is a Chat session with a parent. Its row shows "Started by"
 and the name of the parent: Main, or the title of a Chat, also when that Chat is
 archived. The list has no task rows, no step preview, no Stop on a row, no Mark
 handled and no Completed group.
@@ -216,13 +211,14 @@ Old channel transcript URLs remain readable. The legacy Sessions URL remains
 available for saved links.
 Named dispatch and result labels open the child session that holds the turn. An
 old `/tasks/<id>` link, with or without the bot prefix, opens the session of that
-old task in the same way. The UI has no Task page and no Task kind in the filter.
+old task in the same way. Tasks uses the existing session pages. The filter has no separate Task kind.
 A result shows that the child returned a report. It does not prove goal
 completion. The UI does not show progress percentages.
 
-`New chat` in the sidebar opens a writable Chat
-with its own model context. It reuses the
-newest empty Chat, so an abandoned click leaves no list row. The first message
+`New task` in the bot header opens a writable Chat with its own model context.
+It copies the current session's project, or Main's project from a bot page,
+and opens the directory picker. The user can keep or change that directory.
+It reuses the newest empty Chat, so an abandoned click leaves no list row. The first message
 sets the title. Chat defaults to the bot's model settings and uses its instructions and shared memory.
 A saved session model or thinking level override applies from the next input.
 Chat does not read the main timeline's context. A child session started in Chat returns
@@ -245,8 +241,8 @@ Routines before its title.
 
 A bot needs the user when it has an open question, an unhandled failed or
 failed routine run that is not handled, or a routine that needs a model. The
-Needs you section of the open bot in the sidebar lists each item and opens the place to
-act on it. A failed child session goes to its parent, which tells the user; it
+Needs you button in the desktop header lists each item and opens the place to
+act on it. On a phone, these items appear in the bot menu. A failed child session goes to its parent, which tells the user; it
 is not a Needs you item. Mark handled applies to a failed routine run only.
 There is no cross-bot list.
 Routine result records include settled `changed` or `failed` outcomes without a
@@ -258,7 +254,7 @@ Continue in chat opens a writable Chat for that bot, sets the routine's current
 project directory, and sends a first message that quotes the stored result
 and exact run reference. Routine history shows outcome dots, summaries,
 duplicate marks, and links to saved results. The Routines
-row in the sidebar shows a red dot when an enabled routine's latest run failed.
+entry in the header shows a red dot when an enabled routine's latest run failed.
 
 When the main agent starts background work, it continues independent local
 work within the same scope. When no local work remains, it names the background
@@ -376,9 +372,9 @@ imports another file; a project file can import only files inside the project.
 A bot can opt in to personal rules with a symlink to `~/.agents/AGENTS.md` in
 its own `.agents/`. See
 [ADR 0017](dev/decisions/0017-drop-home-level-and-agents-md.md). Tools start
-in the agent workspace by default. Main and Chat sessions can select an existing
-project directory in the header or with `set_project`. A child session
-can also change its project through the API. The header picker
+in the agent workspace by default. Task sessions can select an existing project
+in the header. Main and Chat sessions can also use `set_project` or the project
+API. A directory change keeps the existing model context. The header picker
 browses directories on the dex host and offers up to eight recent projects
 for the current agent. The directory applies
 from the next message after an API change. A tool change also applies to

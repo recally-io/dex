@@ -7,7 +7,6 @@ import type { Chat, ChatSettings, Model, ThinkingLevel } from "../api/generated/
 import { listModelsOptions, setChatSettingsMutation } from "../api/generated/@tanstack/react-query.gen";
 import { findModel, thinkingNames } from "../lib/agent";
 import { refreshChats } from "../lib/queries";
-import { ChatProject } from "./chat-project";
 import { ModelPicker } from "./model-picker";
 import { ThinkingPicker } from "./thinking-picker";
 import { Button } from "./ui/button";
@@ -34,9 +33,7 @@ function changed(
   return next;
 }
 
-// The project, model and thinking level of one session. Main, Chat sessions and finished
-// delegated sessions share this rule: each change applies from the next input, including
-// input from a channel.
+// Task overrides apply from the next message. An unset field follows the bot.
 export function SessionSettings({ chat, settings }: { chat: Chat; settings: Settings }) {
   const agentId = useAgentId();
   const models = useQuery(listModelsOptions());
@@ -63,7 +60,6 @@ export function SessionSettings({ chat, settings }: { chat: Chat; settings: Sett
 
   return (
     <div className="flex min-w-0 items-center gap-1">
-      <ChatProject chatId={chat.id} cwd={chat.cwd} />
       <ModelPicker
         override={{
           value: own.modelId ? { provider: own.provider ?? "", modelId: own.modelId } : null,

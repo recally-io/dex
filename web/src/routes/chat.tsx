@@ -154,7 +154,7 @@ export function ChatTitle({ chat, heading }: { chat: ChatInfo; heading: boolean 
         tabIndex={-1}
         className="min-w-0 truncate text-[13px] font-medium outline-none"
       >
-        {chat.main ? "Main" : chat.title || (switchable ? "New chat" : "New session")}
+        {chat.main ? "Main" : chat.title || (switchable ? "New task" : "New session")}
       </h1>
       {switchable ? null : <OriginPill chat={chat} />}
       {!chat.main && switchable && chat.parentId !== undefined ? (
@@ -237,7 +237,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
 
   const readOnly = chat.data?.readOnly ?? true;
   const kind = chat.data ? sessionKind(chat.data) : undefined;
-  const switchable = kind === "Main" || kind === "Chat";
 
   const refetchChat = chat.refetch;
 
@@ -714,16 +713,14 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   return (
     <>
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        {chat.data && switchable && settingsOpen ? (
+        {chat.data && kind === "Chat" && settingsOpen ? (
           <div
             role="region"
-            aria-label="Chat settings"
+            aria-label="Task settings"
             className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-muted/40 px-4 py-1.5"
           >
             <p className="min-w-0 basis-56 flex-1 text-[12px] text-muted-foreground">
-              {chat.data.main
-                ? "Changes apply from the next message, including channel messages."
-                : "Changes apply from the next message in this chat."}
+              Defaults follow the Bot. Overrides apply from the next message in this task.
             </p>
             <div className="min-w-0 max-w-full">
               <SessionSettings chat={chat.data} settings={settings} />

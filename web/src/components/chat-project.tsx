@@ -20,10 +20,26 @@ import {
   DialogTrigger,
 } from "./ui/dialog";
 
-export function ChatProject({ chatId, cwd }: { chatId: number; cwd: string }) {
+export function ChatProject({
+  chatId,
+  cwd,
+  initialOpen = false,
+  onClose,
+}: {
+  chatId: number;
+  cwd: string;
+  initialOpen?: boolean;
+  onClose?: () => void;
+}) {
   const agentId = useAgentId();
   const pathInput = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
+
+  function close() {
+    setOpen(false);
+    onClose?.();
+  }
+
   const [path, setPath] = useState(cwd || "~");
   const [draft, setDraft] = useState(cwd || "~");
 
@@ -41,8 +57,8 @@ export function ChatProject({ chatId, cwd }: { chatId: number; cwd: string }) {
   const save = useMutation({
     ...setChatProjectMutation(),
     onSuccess: async () => {
-      setOpen(false);
       await refreshChats(agentId);
+      close();
     },
   });
 
@@ -60,7 +76,8 @@ export function ChatProject({ chatId, cwd }: { chatId: number; cwd: string }) {
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
+        if (!nextOpen) close();
+        else setOpen(true);
 
         if (nextOpen) {
           navigate(cwd || "~");
@@ -68,24 +85,28 @@ export function ChatProject({ chatId, cwd }: { chatId: number; cwd: string }) {
         }
       }}
     >
-      <DialogTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="sm"
-            className="max-w-full"
-            title={cwd || "No project"}
-            aria-label="Set project directory"
-          />
-        }
-      >
-        <span className="truncate">{cwd ? folderName(cwd) : "No project"}</span>
-      </DialogTrigger>
+      {initialOpen ? null : (
+        <DialogTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="max-w-full"
+              title={cwd || "Bot working directory"}
+              aria-label="Set project directory"
+            />
+          }
+        >
+          <Folder aria-hidden="true" />
+          <span className="truncate">{cwd ? folderName(cwd) : "Bot working directory"}</span>
+        </DialogTrigger>
+      )}
       <DialogContent className="flex h-[min(40rem,calc(100dvh-2rem))] flex-col">
         <DialogHeader>
           <DialogTitle>Project directory</DialogTitle>
           <DialogDescription>
-            Choose a folder on the dex host. Changes apply from the next message.
+            Choose a folder on the dex host. Changes apply from the next message. Existing context stays
+            unchanged.
           </DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -203,7 +224,7 @@ export function ChatProject({ chatId, cwd }: { chatId: number; cwd: string }) {
           <Button variant="outline" disabled={save.isPending} onClick={() => submit("")}>
             Clear project
           </Button>
-          <Button variant="outline" disabled={save.isPending} onClick={() => setOpen(false)}>
+          <Button variant="outline" disabled={save.isPending} onClick={close}>
             Cancel
           </Button>
           <Button

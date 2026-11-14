@@ -2,7 +2,9 @@ import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { getMainChatOptions, setChatSettingsMutation } from "../api/generated/@tanstack/react-query.gen";
+import { refreshChats } from "../lib/queries";
 
 import { saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
@@ -73,6 +75,7 @@ function Agent({ settings }: { settings: Settings }) {
       <Section n={1} title="Profile" caption="A change applies from the next message.">
         <Panel>
           <NameRow name={settings.agent.name} />
+          <MainDefaults />
           <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3.5">
             <div className="min-w-0 flex-1">
               <p
@@ -186,6 +189,37 @@ function Agent({ settings }: { settings: Settings }) {
         </Panel>
       </Section>
     </>
+  );
+}
+
+// Older versions let Main keep session overrides. Keep the reset next to the Bot defaults.
+function MainDefaults() {
+  const agentId = useAgentId();
+  const main = useQuery(getMainChatOptions({ path: { agentId } }));
+
+  const reset = useMutation({
+    ...setChatSettingsMutation(),
+    onSuccess: () => refreshChats(agentId),
+  });
+
+  if (!main.data || !(main.data.settings.modelId || main.data.settings.thinkingLevel)) return null;
+
+  return (
+    <div className="space-y-2 border-t border-border px-4 py-3">
+      <Note tone="warn">
+        Main has saved model or thinking overrides. It does not follow all Bot defaults.
+      </Note>
+      <Button
+        variant="outline"
+        size="sm"
+        aria-label="Use Bot defaults for Main"
+        disabled={reset.isPending}
+        onClick={() => reset.mutate({ path: { agentId, chatId: main.data!.id }, body: {} })}
+      >
+        Use Bot defaults for Main
+      </Button>
+      {reset.isError ? <Failure title="Could not reset Main settings" error={reset.error} /> : null}
+    </div>
   );
 }
 

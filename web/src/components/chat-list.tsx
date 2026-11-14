@@ -1,23 +1,30 @@
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { createChatMutation } from "../api/generated/@tanstack/react-query.gen";
+import { createChat, setChatProject } from "../api/generated/sdk.gen";
+import type { Chat } from "../api/generated/types.gen";
 import { useAgentId } from "../lib/agent-scope";
 import { useApp } from "../lib/app-state";
 import { errorText, refreshChats } from "../lib/queries";
 
-/** Opens a Chat with its own context. The server reuses the newest empty Chat. */
-export function useNewChat() {
+/** Opens a task with the current project. The server reuses the newest empty task. */
+export function useNewChat(cwd: string, created: (chat: Chat) => void) {
   const agentId = useAgentId();
   const navigate = useNavigate();
   const { notify } = useApp();
 
   return useMutation({
-    ...createChatMutation(),
+    mutationFn: async () => {
+      const { data: chat } = await createChat({ path: { agentId }, throwOnError: true });
+      await setChatProject({ path: { agentId, chatId: chat.id }, body: { cwd }, throwOnError: true });
+
+      return { ...chat, cwd };
+    },
     onSuccess: async (chat) => {
       await refreshChats(agentId);
       await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chat.id) } });
+      created(chat);
     },
-    onError: (cause) => notify(`Could not open a new chat. ${errorText(cause)}`),
+    onError: (cause) => notify(`Could not open a new task. ${errorText(cause)}`),
   });
 }
 
