@@ -236,10 +236,25 @@ safe URL without fetching the image. Raw HTML remains escaped. The UTF-16 splitt
 keeps valid tags across parts. An old partially delivered reply without a frozen
 payload uses the original parser and rendering rules, so its cursor does not change.
 
-Album members still enter as separate inputs in this increment. Durable album fan-in,
-`sendMediaGroup`, presentation preferences and configured speech services remain open
-layer-2 work. Group routing and isolated resources belong to layer 3; the adapter
-still rejects non-private chats.
+Album members commit their upload references to `telegram_album_members` before
+polling ACK. Collection closes after 800 ms without a new member, at three seconds,
+or at ten files. The chat service freezes membership before it creates the normal
+business input. Later members form an explicit continuation instead of changing a
+submitted payload. A restart restores collection and sealed batches from SQLite;
+raw member source keys resolve to the same stored input without downloading again.
+
+These member rows track collection and upload ownership, not native execution.
+After a business receipt owns the files, their temporary input JSON is removed;
+source aliases remain for replay detection. Native admission and reconciliation
+still use the existing submission path. The receipt transaction checks that the
+batch is still sealed. Stop, Clear, authorization revocation and bot archive can
+discard unsubmitted batches without deleting files owned by an existing input.
+An interrupted cleanup retries from the retained references. Rejected files use
+the existing attachment error reply and do not enter the native album.
+
+Native `sendMediaGroup`, presentation preferences and configured speech services
+remain open layer-2 work. Group routing and isolated resources belong to layer 3;
+the adapter still rejects non-private chats.
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
 each agent execution store. Run one dex process per data directory.

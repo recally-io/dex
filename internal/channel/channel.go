@@ -152,6 +152,9 @@ func (m *Manager) Notify(key string) {
 		if key != chat.MainKey && platform != name {
 			continue
 		}
+		if media, ok := r.bot.(interface{ WakeMedia() }); ok {
+			media.WakeMedia()
+		}
 		select {
 		case r.wake <- struct{}{}:
 		default:

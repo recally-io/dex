@@ -1,5 +1,9 @@
 -- name: GetSubmissionBySource :one
-SELECT id FROM submissions WHERE source_key = ?;
+SELECT s.id FROM submissions s WHERE s.source_key = @source_key
+UNION ALL
+SELECT s.id FROM telegram_album_members m JOIN submissions s ON s.source_key = m.batch_source
+WHERE m.source_key = @source_key
+LIMIT 1;
 
 -- name: CreateChannelCommand :exec
 INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command) VALUES (?, ?, ?, ?, ?)

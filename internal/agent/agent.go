@@ -253,6 +253,7 @@ func (s *Service) DeleteTelegram(ctx context.Context, agentID string) error {
 		}
 		return err
 	}
+	s.onTelegram(agentID, nil)
 	return nil
 }
 

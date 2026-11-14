@@ -76,6 +76,7 @@ type Bot struct {
 	previews  map[string]*preview
 	rateMu    sync.Mutex
 	retryAt   time.Time
+	albumWake chan struct{}
 }
 
 // New returns a Bot. Register it with the channel manager to start it.
@@ -84,11 +85,12 @@ func New(cfg Config, chats *channel.Manager) *Bot {
 		cfg.APIURL = "https://api.telegram.org"
 	}
 	return &Bot{
-		cfg:      cfg,
-		chats:    chats,
-		client:   &http.Client{Timeout: 90 * time.Second}, // above the 30 s long poll
-		previews: map[string]*preview{},
-		retryAt:  time.UnixMilli(cfg.RetryAt),
+		cfg:       cfg,
+		chats:     chats,
+		client:    &http.Client{Timeout: 90 * time.Second}, // above the 30 s long poll
+		previews:  map[string]*preview{},
+		retryAt:   time.UnixMilli(cfg.RetryAt),
+		albumWake: make(chan struct{}, 1),
 	}
 }
 
@@ -102,7 +104,9 @@ func (b *Bot) Run(ctx context.Context) error {
 		slog.Warn("telegram: command menu", "err", err)
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	defer func() { cancel(); b.closePreviews() }()
+	var media sync.WaitGroup
+	media.Go(func() { b.collectAlbums(ctx) })
+	defer func() { cancel(); media.Wait(); b.closePreviews() }()
 
 	// Telegram sends an update again until a getUpdates call with a higher offset confirms it. After
 	// a restart the offset is 0, so the last batch comes again; Receive ignores the repeats.
@@ -203,11 +207,19 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		incoming.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
 		incoming.ChannelContext.ReplyTo = incoming.ReplyTo
 	}
-	receiveErr := b.chats.Receive(ctx, peer, source, incoming)
+	var receiveErr error
+	if m.MediaGroupID != "" && len(attachments) > 0 {
+		receiveErr = b.chats.StoreTelegramAlbum(ctx, peer, source, incoming)
+		if receiveErr == nil {
+			b.WakeMedia()
+		}
+	} else {
+		receiveErr = b.chats.Receive(ctx, peer, source, incoming)
+	}
 	if len(attachments) > 0 {
 		// A committed receipt can own the files even when admission returns an error.
 		receipt, lookupErr := b.chats.Source(context.WithoutCancel(ctx), source)
-		if lookupErr == nil && receipt.ID == "" {
+		if lookupErr == nil && receipt.ID == "" && !receipt.Staged {
 			for _, attachment := range attachments {
 				if err := b.cfg.Uploads.Remove(attachment.ID); err != nil {
 					slog.Warn("telegram: upload cleanup failed", "err", err)
@@ -220,7 +232,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	} else if receiveErr != nil {
 		return receiveErr
 	}
-	if !channel.IsCommand(content) {
+	if !channel.IsCommand(content) && m.MediaGroupID == "" {
 		b.startPreview(ctx, source, m.Chat.ID)
 	}
 	return nil
