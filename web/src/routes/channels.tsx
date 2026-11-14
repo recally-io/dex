@@ -131,7 +131,7 @@ export function ChannelsPage() {
   return (
     <FramedPage
       title="Channels"
-      description="Channels share the main timeline. Open one to set it up."
+      description="Private channel chats share Main. Telegram groups and topics use isolated resources."
       toolbar={<BotSettingsSwitcher segment="channels" />}
     >
       <WithChannels>{(settings) => <ChannelsSection settings={settings} />}</WithChannels>
@@ -293,6 +293,8 @@ function Telegram({ settings }: { settings: Settings }) {
       ) : null}
       <HowToUse channel="telegram">
         <li>Send text, images or files in a private chat with the bot.</li>
+        <li>Paired senders can use isolated Telegram groups and topics without a mention by default.</li>
+        <li>Require group mention limits triggers. It does not grant private owner tools or files.</li>
       </HowToUse>
       {telegram.enabled ? (
         <TurnOff

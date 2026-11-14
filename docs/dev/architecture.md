@@ -1233,8 +1233,10 @@ generation hook errors and continues, so a denied request uses its native task a
 mark to cancel that invocation before provider dispatch. Group inputs stay outside
 private dream consolidation.
 
-Group transport input must mention the bot or reply to it. Only a current paired
-sender can trigger work or downloads. Ordinary groups separate sender sessions;
+Group `requireMention` defaults to false, as the selected Hermes trigger default.
+A current paired sender can trigger work without a mention. The channel settings can
+require a mention or reply; that trigger switch never grants identity or resource access.
+Only a current paired sender can trigger work or downloads. Ordinary groups separate sender sessions;
 topics share their topic session, including forum General without a thread ID.
 `/stop`, `/clear` and `/new` use the parsed session. Saved commands bind the actual
 actor and peer, and cannot acquire Main's scope after restore.
@@ -1259,7 +1261,8 @@ have a bot token. It reads messages with `getUpdates` long polling,
 so dex needs no public URL.
 
 - Private input still enters Main. Group and supergroup input uses an isolated
-  audience only when a current paired sender mentions the bot or replies to it.
+  audience for a current paired sender. `requireMention` is off by default; when on,
+  group input must mention this bot or reply to it.
   The transport ignores other users, bot/anonymous senders and untriggered group text.
   It checks the current control allowlist before any file download. Group senders
   receive no private owner tools. A saved token without allowed users waits for pairing.

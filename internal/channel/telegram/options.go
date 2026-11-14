@@ -12,12 +12,13 @@ import (
 
 // Options are saved channel preferences. Speech requires a separate data-sending consent.
 type Options struct {
-	Silent      bool          `json:"silent"`
-	LinkPreview string        `json:"linkPreview,omitempty"`
-	Preview     string        `json:"preview,omitempty"`
-	Reactions   bool          `json:"reactions"`
-	STT         SpeechOptions `json:"stt"`
-	TTS         SpeechOptions `json:"tts"`
+	RequireMention bool          `json:"requireMention"`
+	Silent         bool          `json:"silent"`
+	LinkPreview    string        `json:"linkPreview,omitempty"`
+	Preview        string        `json:"preview,omitempty"`
+	Reactions      bool          `json:"reactions"`
+	STT            SpeechOptions `json:"stt"`
+	TTS            SpeechOptions `json:"tts"`
 }
 
 type SpeechOptions = speech.Options

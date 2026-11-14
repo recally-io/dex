@@ -908,6 +908,10 @@ export type TelegramInput = {
 };
 
 export type TelegramOptions = {
+    /**
+     * Require a mention or reply to this bot for group input. Off by default for individually authorized senders. This does not grant access to private resources.
+     */
+    requireMention?: boolean;
     silent?: boolean;
     linkPreview?: '' | 'on' | 'off';
     preview?: '' | 'auto' | 'edit' | 'draft' | 'off';

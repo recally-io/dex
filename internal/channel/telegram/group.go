@@ -18,10 +18,11 @@ func (b *Bot) groupText(ctx context.Context, m *message) (string, bool, error) {
 	if text == "" {
 		text = m.Caption
 	}
+	acceptUnmentioned := !b.cfg.Options.RequireMention
 	botID, _ := strconv.ParseInt(b.cfg.botID(), 10, 64)
 	replied := m.ReplyTo != nil && m.ReplyTo.From != nil && m.ReplyTo.From.ID == botID
 	if !strings.Contains(text, "@") {
-		return text, replied, nil
+		return text, replied || acceptUnmentioned, nil
 	}
 	if b.username == "" {
 		var me user
@@ -31,7 +32,7 @@ func (b *Bot) groupText(ctx context.Context, m *message) (string, bool, error) {
 		b.username = me.Username
 	}
 	if b.username == "" {
-		return text, replied, nil
+		return text, replied || acceptUnmentioned, nil
 	}
 	first, rest, _ := strings.Cut(text, " ")
 	if command, name, ok := strings.Cut(first, "@"); strings.HasPrefix(command, "/") && ok {
@@ -42,7 +43,7 @@ func (b *Bot) groupText(ctx context.Context, m *message) (string, bool, error) {
 	}
 	mention := regexp.MustCompile(`(?i)(^|\s)@` + regexp.QuoteMeta(b.username) + `\b`)
 	mentioned := mention.MatchString(text)
-	return strings.TrimSpace(mention.ReplaceAllString(text, "$1")), replied || mentioned, nil
+	return strings.TrimSpace(mention.ReplaceAllString(text, "$1")), replied || mentioned || acceptUnmentioned, nil
 }
 
 func (b *Bot) receiveGroup(ctx context.Context, u update, m *message, edited bool) error {

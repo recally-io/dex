@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -161,6 +162,7 @@ func TestUserTelegramGroupTriggerAndGeneralTopicKeepSessionRules(t *testing.T) {
 	directory := t.TempDir()
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, directory, 42, 43)
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42, 43}, "options": map[string]any{"requireMention": true}}, nil)
 	d.setModel(t, "context")
 	conn := controlWriteDB(t, directory)
 	appendText := func(id, sender, chat int64, forum, reply bool, text string) {
@@ -193,5 +195,42 @@ func TestUserTelegramGroupTriggerAndGeneralTopicKeepSessionRules(t *testing.T) {
 	appendText(5, 43, -200, true, true, "GENERAL_ACTOR_43")
 	if got := f.next(t); !strings.Contains(got.Text, "GENERAL_ACTOR_42") || !strings.Contains(got.Text, "GENERAL_ACTOR_43") || strings.Contains(got.Text, "ORDINARY_ACTOR_") {
 		t.Fatalf("General topic session rule lost: %+v", got)
+	}
+}
+
+func TestUserTelegramGroupDefaultDoesNotRequireMentionForPairedSender(t *testing.T) {
+	// Given the agreed default: pairing grants input, not private owner resources.
+	directory := t.TempDir()
+	f := newFakeTelegram(t)
+	f.files["plain-one.txt"], f.files["plain-two.txt"] = "public one", "public two"
+	startTelegram(t, f, directory, 42)
+	conn := controlWriteDB(t, directory)
+	// When Telegram delivers ordinary group text without a mention or a quoted bot message.
+	f.mu.Lock()
+	f.updates = append(f.updates, map[string]any{"update_id": int64(1), "message": map[string]any{"message_id": int64(1), "from": map[string]any{"id": int64(42)}, "chat": map[string]any{"id": int64(-100), "type": "supergroup"}, "text": "DEFAULT_PAIRED_GROUP_INPUT"}})
+	f.mu.Unlock()
+	eventually(t, "default group update acknowledged", func() (bool, any) { return f.pollOffset.Load() >= 2, f.pollOffset.Load() })
+	// Then the default starts an isolated group input without a mention requirement.
+	if n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1'"); n != 1 {
+		t.Fatalf("default required a mention: accepted receipts=%d", n)
+	}
+	if got := f.next(t); got.ChatID != -100 || !strings.Contains(got.Text, "DEFAULT_PAIRED_GROUP_INPUT") {
+		t.Fatalf("default group reply: %+v", got)
+	}
+	// An unmentioned album also collects every member when the option is off.
+	f.mu.Lock()
+	for i, name := range []string{"plain-one.txt", "plain-two.txt"} {
+		id := int64(i + 2)
+		f.updates = append(f.updates, map[string]any{"update_id": id, "message": map[string]any{"message_id": id, "from": map[string]any{"id": int64(42)}, "chat": map[string]any{"id": int64(-100), "type": "supergroup"}, "media_group_id": "unmentioned-default", "document": map[string]any{"file_id": name, "file_name": name}}})
+	}
+	f.mu.Unlock()
+	if got := f.next(t); !strings.Contains(got.Text, "plain-one.txt") || !strings.Contains(got.Text, "plain-two.txt") {
+		t.Fatalf("default album required a mention: %+v", got)
+	}
+	// The default is not a whole-chat grant for an unknown sender.
+	f.groupText(4, 43, -100, 0, "UNAUTHORIZED_DEFAULT_SENDER")
+	eventually(t, "unknown sender acknowledged", func() (bool, any) { return f.pollOffset.Load() >= 5, f.pollOffset.Load() })
+	if n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:4'"); n != 0 {
+		t.Fatalf("group trigger bypassed sender authorization: %d", n)
 	}
 }
