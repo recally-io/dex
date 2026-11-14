@@ -157,6 +157,7 @@ try {
     mobile: false,
   });
   await visit(`/a/default`);
+  await verifyArtifactEntry("desktop");
   await preview("main.markdown", mainArtifact.id);
   await click("Continue editing");
   await hasDraft(mainArtifact.id);
@@ -233,11 +234,11 @@ try {
   await call("Page.navigate", { url: base + "/a/default" }, second);
   await poll("second page header", () =>
     other(
-      "!![...document.querySelectorAll('header button')].find(b => b.textContent.trim() === 'Artifacts')",
+      "!![...document.querySelectorAll('header button')].find(b => b.getAttribute('aria-label') === 'Artifacts')",
     ),
   );
   await other(
-    "[...document.querySelectorAll('header button')].find(b => b.textContent.trim() === 'Artifacts').click()",
+    "[...document.querySelectorAll('header button')].find(b => b.getAttribute('aria-label') === 'Artifacts').click()",
   );
   await poll("second page child delivery", () => other("document.body.innerText.includes('task.md')"));
 
@@ -316,6 +317,7 @@ try {
     deviceScaleFactor: 1,
     mobile: true,
   });
+  await verifyArtifactEntry("mobile");
   await click("Artifacts");
   await poll("mobile artifact dialog", () =>
     evaluate(`(() => {
@@ -328,6 +330,7 @@ try {
   await shot("artifacts-mobile");
   await click("Close");
   await call("Target.closeTarget", { targetId: secondTarget.targetId });
+  results.push("desktop and 320px mobile icon-only entry, tooltip, keyboard access, and dialog state");
   results.push(
     "snapshot rename validation, download, delete confirmation/cancel, source preservation, parent/source SSE, two-page new delivery, and external removal",
   );
@@ -453,11 +456,11 @@ async function visit(path) {
 async function click(text) {
   await poll(`button ${text}`, () =>
     evaluate(
-      `!![...document.querySelectorAll('button:not([inert] *)')].find(b => b.textContent.trim() === ${JSON.stringify(text)} && !b.disabled)`,
+      `!![...document.querySelectorAll('button:not([inert] *)')].find(b => (b.getAttribute("aria-label") === ${JSON.stringify(text)} || b.textContent.trim() === ${JSON.stringify(text)}) && !b.disabled)`,
     ),
   );
   await evaluate(
-    `[...document.querySelectorAll('button:not([inert] *)')].find(b => b.textContent.trim() === ${JSON.stringify(text)}).click()`,
+    `[...document.querySelectorAll('button:not([inert] *)')].find(b => (b.getAttribute("aria-label") === ${JSON.stringify(text)} || b.textContent.trim() === ${JSON.stringify(text)})).click()`,
   );
 }
 
@@ -500,4 +503,61 @@ async function openChildPage(id) {
     "child session page",
     async () => (await evaluate("location.pathname")) === "/a/default/c/" + id,
   );
+}
+
+async function verifyArtifactEntry(mode) {
+  const selector = 'header button[aria-label="Artifacts"]';
+  await poll(`${mode} icon-only entry`, () =>
+    evaluate(`(() => {
+    const button = document.querySelector(${JSON.stringify(selector)});
+    if (!button) return false;
+    const rect = button.getBoundingClientRect();
+    const neighbor = document.querySelector('header button[aria-label="New task"]');
+    const size = neighbor?.getBoundingClientRect();
+    return button.textContent.trim() === '' && !!button.querySelector('svg[aria-hidden="true"]') &&
+      button.getAttribute('aria-haspopup') === 'dialog' && button.getAttribute('aria-expanded') === 'false' &&
+      rect.width === 28 && rect.height === 28 && rect.left >= 0 && rect.right <= innerWidth &&
+      (${JSON.stringify(mode)} !== 'desktop' || (rect.width === size?.width && rect.height === size?.height));
+  })()`),
+  );
+
+  const center = await evaluate(`(() => {
+    const rect = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  })()`);
+
+  await call("Input.dispatchMouseEvent", { type: "mouseMoved", ...center });
+  await poll(`${mode} tooltip`, () =>
+    evaluate(
+      `!![...document.querySelectorAll('[data-slot="tooltip-content"]')].find(t => t.textContent.trim() === 'Artifacts' && t.getBoundingClientRect().width > 0)`,
+    ),
+  );
+  await shot(`artifacts-entry-${mode}`);
+  await evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);
+  assert.equal(
+    await evaluate(`document.activeElement === document.querySelector(${JSON.stringify(selector)})`),
+    true,
+  );
+  await call("Page.bringToFront");
+  await call("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "Enter",
+    code: "Enter",
+    text: "\r",
+    unmodifiedText: "\r",
+    windowsVirtualKeyCode: 13,
+  });
+  await call("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "Enter",
+    code: "Enter",
+    windowsVirtualKeyCode: 13,
+  });
+  await poll(`${mode} keyboard opens dialog`, () =>
+    evaluate(
+      `!!document.querySelector('[role="dialog"]') && document.querySelector(${JSON.stringify(selector)}).getAttribute('aria-expanded') === 'true'`,
+    ),
+  );
+  await click("Close");
+  await call("Input.dispatchMouseEvent", { type: "mouseMoved", x: 0, y: 0 });
 }

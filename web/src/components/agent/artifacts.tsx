@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { Files } from "lucide-react";
 import {
   createChat,
   deleteArtifact,
@@ -16,6 +17,7 @@ import { Markdown } from "./transcript";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { Modal } from "../dialog";
 import { Confirm } from "../confirm";
 import { Failure } from "../feedback";
@@ -114,9 +116,24 @@ export function Artifacts({ chatId }: { chatId: number }) {
 
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
-        Artifacts
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          onClick={() => setOpen(true)}
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="text-muted-foreground"
+              aria-label="Artifacts"
+              aria-haspopup="dialog"
+              aria-expanded={open}
+            />
+          }
+        >
+          <Files aria-hidden="true" />
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Artifacts</TooltipContent>
+      </Tooltip>
       {open ? (
         <Modal
           title="Artifacts"
