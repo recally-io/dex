@@ -1212,7 +1212,7 @@ are local to each store. Forks, cancellation, recovery and activity keys retain 
 
 The group constructor bypasses private memory, profile/instructions, AGENTS,
 project files, skills, environment capture and MCP loading. Its registry contains
-only narrow group resource and note tools. A before-tool hook enforces a fixed
+only narrow group resource, note and file-delivery tools. A before-tool hook enforces a fixed
 execution allowlist for direct, nested, deferred and task-owned-child calls.
 Filesystem handlers use a scope-rooted handle and reject traversal and symlinks.
 Group input configuration cannot add private extensions or a project; settlement
@@ -1233,10 +1233,24 @@ generation hook errors and continues, so a denied request uses its native task a
 mark to cancel that invocation before provider dispatch. Group inputs stay outside
 private dream consolidation.
 
-This foundation does not enable a group route. Telegram and channel ingress still
-reject group input. Scoped commands, media ownership, pre-download authorization and
-scope-bound workflows must be complete before that gate changes. Group speech remains
-off. See [proposed ADR 0021](decisions/0021-isolated-telegram-group-resources.md).
+Group transport input must mention the bot or reply to it. Only a current paired
+sender can trigger work or downloads. Ordinary groups separate sender sessions;
+topics share their topic session, including forum General without a thread ID.
+`/stop`, `/clear` and `/new` use the parsed session. Saved commands bind the actual
+actor and peer, and cannot acquire Main's scope after restore.
+
+Group uploads live in their audience's `resources/uploads/`, not the private workspace.
+Album collection and cleanup retain that ownership. Scope-local stop/clear discards only
+its pending albums; private Main cannot discard group albums. `group_resource` reads
+published UTF-8 text up to 64 KiB or common image bytes up to 20 MiB. `group_deliver`
+queues only a rooted audience file in the existing outbox. It never copies to bot-wide
+artifacts. Topic replies, files and media groups set the exact message thread.
+
+Group speech does not borrow private consent or provider settings. Original audio
+stays attached. Group drafts/previews stay off. Menus, Questions, callbacks and permitted
+child workflows still need narrow scope-bound handlers before L3 is complete. This code
+and its local fake-platform tests do not authorize a real group deployment. See
+[proposed ADR 0021](decisions/0021-isolated-telegram-group-resources.md).
 
 ## Telegram
 
@@ -1244,10 +1258,11 @@ off. See [proposed ADR 0021](decisions/0021-isolated-telegram-group-resources.md
 have a bot token. It reads messages with `getUpdates` long polling,
 so dex needs no public URL.
 
-- Only private chats can enter the agent. The bot ignores users outside the
-  saved allowlist. A saved token with no allowed users waits for owner pairing.
-  Earlier versions accepted group messages from allowed users. The bot now
-  ignores all non-private chats, including messages from allowed users.
+- Private input still enters Main. Group and supergroup input uses an isolated
+  audience only when a current paired sender mentions the bot or replies to it.
+  The transport ignores other users, bot/anonymous senders and untriggered group text.
+  It checks the current control allowlist before any file download. Group senders
+  receive no private owner tools. A saved token without allowed users waits for pairing.
 - The Telegram channel page creates a link with the bot username from `getMe` and a
   random code. The code expires after 10 minutes. `telegram_settings` stores
   the code and expiry. Pairing is available only while the allowlist is empty. One atomic SQLite

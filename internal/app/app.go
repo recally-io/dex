@@ -121,6 +121,16 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	tools := engine.TaskTools{
 		AuthorizeGroup: func(ctx context.Context, c engine.TaskContext) error { return chats.AuthorizeGroup(ctx, c) },
+		DeliverGroupFile: func(ctx context.Context, caller engine.TaskContext, name string, reader io.Reader) error {
+			queued, err := bots.Agent(caller.AgentID).QueueFile(ctx, caller, name, reader)
+			if err != nil {
+				return err
+			}
+			if !queued {
+				return errors.New("group file delivery needs its active top-level Telegram source")
+			}
+			return nil
+		},
 		Telegram: func(ctx context.Context, caller engine.TaskContext, args engine.TelegramRequest) (engine.TelegramResult, error) {
 			return bots.Agent(caller.AgentID).TelegramAction(ctx, caller, args, prefs.SpeechEndpoint)
 		},

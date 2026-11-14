@@ -64,8 +64,13 @@ func (e *RetryError) Unwrap() error { return e.Err }
 
 // QueueFile binds bytes to the initiating Telegram input. Web and child calls keep URL-only delivery.
 func (m *Manager) QueueFile(ctx context.Context, caller engine.TaskContext, name string, reader io.Reader) (bool, error) {
-	if caller.AgentID != m.agentID || caller.Key == "" || caller.Scope != "" {
+	if caller.AgentID != m.agentID || caller.Key == "" {
 		return false, errors.New("invalid file delivery caller")
+	}
+	if caller.Scope != "" {
+		if err := m.chats.AuthorizeGroup(ctx, caller); err != nil {
+			return false, err
+		}
 	}
 	conv, err := m.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: m.agentID, ExecutionScope: caller.Scope, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
 	if err != nil {

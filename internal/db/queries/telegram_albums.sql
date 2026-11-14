@@ -60,4 +60,27 @@ WHERE agent_id = ? AND state IN ('collecting', 'sealed');
 
 -- name: IsTelegramAlbumSealed :one
 SELECT EXISTS(SELECT 1 FROM telegram_album_members
-WHERE agent_id = @agent_id AND batch_source = @batch_source AND state = 'sealed');
+WHERE agent_id = @agent_id AND batch_source = @batch_source AND state = 'sealed'
+ AND peer = @peer AND account_id = @account_id AND sender_id = @sender_id);
+
+-- name: HasTelegramAlbumGroup :one
+SELECT EXISTS(SELECT 1 FROM telegram_album_members WHERE agent_id = ? AND group_key = ? AND state <> 'discarded');
+
+-- name: DiscardPrivateTelegramAlbums :exec
+UPDATE telegram_album_members SET state = 'discarded'
+WHERE agent_id = ? AND peer NOT LIKE 'telegram:-%' AND state IN ('collecting', 'sealed');
+
+-- name: DiscardGroupTelegramAlbums :exec
+UPDATE telegram_album_members SET state = 'discarded'
+WHERE agent_id = @agent_id AND account_id = @account_id AND peer = @peer
+  AND (CAST(@sender_id AS TEXT) = '' OR sender_id = @sender_id)
+  AND (CAST(@topic_id AS INTEGER) > 0 OR coalesce(json_extract(input_json, '$.ChannelContext.topicShared'), 0) = CAST(@topic_shared AS INTEGER))
+  AND state IN ('collecting', 'sealed');
+
+-- name: DiscardUnauthorizedTelegramAlbums :exec
+UPDATE telegram_album_members SET state = 'discarded'
+WHERE telegram_album_members.agent_id = @agent_id AND state IN ('collecting', 'sealed')
+ AND NOT EXISTS(SELECT 1 FROM agents a JOIN telegram_settings t ON t.agent_id = a.id
+   WHERE a.id = @agent_id AND a.archived_at IS NULL
+    AND substr(t.token, 1, instr(t.token, ':') - 1) = telegram_album_members.account_id
+    AND instr(',' || replace(t.allowed_users, ' ', '') || ',', ',' || telegram_album_members.sender_id || ',') > 0);

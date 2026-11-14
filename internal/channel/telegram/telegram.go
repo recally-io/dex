@@ -84,6 +84,7 @@ type Bot struct {
 	rateMu    sync.Mutex
 	retryAt   time.Time
 	albumWake chan struct{}
+	username  string
 }
 
 // New returns a Bot. Register it with the channel manager to start it.
@@ -158,6 +159,9 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if m == nil || m.From == nil || !m.hasContent() {
 		return nil
 	}
+	if m.Chat.Type == "group" || m.Chat.Type == "supergroup" {
+		return b.receiveGroup(ctx, u, m, edited)
+	}
 	if m.Chat.Type != "private" {
 		return nil
 	}
@@ -178,6 +182,15 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	}
 	if !slices.Contains(b.cfg.AllowedUsers, m.From.ID) {
 		slog.Warn("telegram: ignored a message from a user who is not allowed", "user", m.From.ID)
+		return nil
+	}
+	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
+	identity := chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10), MediaGroup: m.MediaGroupID}
+	allowed, err := b.chats.TelegramInputAllowed(ctx, peer, identity)
+	if err != nil {
+		return err
+	}
+	if !allowed {
 		return nil
 	}
 	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
@@ -223,8 +236,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if edited {
 		content = fmt.Sprintf("Correction to Telegram message %d (earlier actions are not undone):\n%s", m.ID, content)
 	}
-	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
-	incoming := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10), MediaGroup: m.MediaGroupID}}
+	incoming := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: identity}
 	if selected, kind := m.selectedMedia(); selected != nil {
 		incoming.ChannelContext.FileID = selected.ID
 		incoming.ChannelContext.MediaKind = kind
@@ -402,20 +414,24 @@ type user struct {
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
 	Username  string `json:"username"`
+	IsBot     bool   `json:"is_bot"`
 }
 
 type remoteChat struct {
-	ID    int64  `json:"id"`
-	Type  string `json:"type"`
-	Title string `json:"title"`
+	ID      int64  `json:"id"`
+	Type    string `json:"type"`
+	Title   string `json:"title"`
+	IsForum bool   `json:"is_forum"`
 }
 
 type message struct {
-	ID      int64      `json:"message_id"`
-	From    *user      `json:"from"`
-	Chat    remoteChat `json:"chat"`
-	ReplyTo *message   `json:"reply_to_message"`
-	Quote   *struct {
+	ThreadID int64      `json:"message_thread_id"`
+	IsTopic  bool       `json:"is_topic_message"`
+	ID       int64      `json:"message_id"`
+	From     *user      `json:"from"`
+	Chat     remoteChat `json:"chat"`
+	ReplyTo  *message   `json:"reply_to_message"`
+	Quote    *struct {
 		Text string `json:"text"`
 	} `json:"quote"`
 	ForwardOrigin *struct {

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"strings"
 	"uuid"
@@ -114,6 +115,14 @@ func (s *Service) Main(ctx context.Context, agentID string) (Chat, error) {
 // Clear stores a reset only when both owners are idle. Delivery cannot pass this check. A
 // handoff is the first message of the new context; it does not start a run.
 func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, requestID, origin, handoff string) error {
+	return s.clear(ctx, agentID, chatID, requestID, origin, handoff, nil)
+}
+
+func (s *Service) ClearGroup(ctx context.Context, agentID string, chatID int64, requestID, peer string, identity ChannelContext) error {
+	return s.clear(ctx, agentID, chatID, requestID, peer, "", &identity)
+}
+
+func (s *Service) clear(ctx context.Context, agentID string, chatID int64, requestID, origin, handoff string, identity *ChannelContext) error {
 	unlock, err := s.lockAgent(ctx, agentID)
 	if err != nil {
 		return err
@@ -123,7 +132,25 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 	if err != nil {
 		return err
 	}
-	if !c.Writable {
+	channelContext := "{}"
+	var groupConversation sqlc.Conversation
+	if identity != nil {
+		encoded, err := json.Marshal(identity)
+		if err != nil {
+			return err
+		}
+		channelContext = string(encoded)
+		groupConversation, err = s.q.GetConversation(ctx, chatID)
+		if err != nil {
+			return err
+		}
+		if groupConversation.AgentID != agentID {
+			return ErrGroupUnauthorized
+		}
+		if err := authorizeGroupSource(ctx, s.q, groupConversation, sqlc.Submission{ConversationID: chatID, Origin: origin, ChannelContext: channelContext}); err != nil {
+			return err
+		}
+	} else if !c.Writable {
 		return ErrNotFound
 	}
 	if sub, err := s.q.GetSubmission(ctx, requestID); err == nil {
@@ -165,6 +192,11 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 		if archived, err := q.ConversationAgentArchived(ctx, chatID); err != nil || archived != 0 {
 			return cmp.Or(err, db.ErrAgentArchived)
 		}
+		if identity != nil {
+			if err := authorizeGroupSource(ctx, q, groupConversation, sqlc.Submission{ConversationID: chatID, Origin: origin, ChannelContext: channelContext}); err != nil {
+				return err
+			}
+		}
 		pending, err := q.CountPendingChat(ctx, chatID)
 		if err != nil {
 			return err
@@ -173,7 +205,7 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 			return ErrConversationBusy
 		}
 		created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
-			ID: requestID, ConversationID: chatID, Content: handoff, Attachments: "null", Origin: origin, Kind: "context_reset", CreatedAt: s.now().UnixMilli(),
+			ID: requestID, ConversationID: chatID, Content: handoff, Attachments: "null", Origin: origin, Kind: "context_reset", CreatedAt: s.now().UnixMilli(), ChannelContext: channelContext,
 		})
 		if err != nil {
 			return err
@@ -188,7 +220,11 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 			if err := q.DiscardTelegramInputEffects(ctx, agentID); err != nil {
 				return err
 			}
-			if err := q.DiscardTelegramAlbums(ctx, agentID); err != nil {
+			if err := q.DiscardPrivateTelegramAlbums(ctx, agentID); err != nil {
+				return err
+			}
+		} else if identity != nil {
+			if err := discardGroupAlbums(ctx, q, groupConversation); err != nil {
 				return err
 			}
 		}

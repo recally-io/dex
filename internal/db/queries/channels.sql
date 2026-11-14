@@ -6,7 +6,7 @@ WHERE m.source_key = @source_key
 LIMIT 1;
 
 -- name: CreateChannelCommand :exec
-INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command) VALUES (?, ?, ?, ?, ?)
+INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context) VALUES (?, ?, ?, ?, ?, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'))
 ON CONFLICT DO NOTHING;
 
 -- name: GetChannelCommand :one

@@ -28,6 +28,10 @@ type media struct {
 }
 
 func (b *Bot) download(ctx context.Context, m *message) ([]engine.Attachment, error) {
+	return b.downloadTo(ctx, m, b.cfg.Uploads)
+}
+
+func (b *Bot) downloadTo(ctx context.Context, m *message, store *upload.Store) ([]engine.Attachment, error) {
 	selected, _ := m.selectedMedia()
 	if selected == nil {
 		return nil, nil
@@ -74,7 +78,7 @@ func (b *Bot) download(ctx context.Context, m *message) ([]engine.Attachment, er
 	if name == "" {
 		name = path.Base(file.Path)
 	}
-	a, err := b.cfg.Uploads.Save(name, resp.Body)
+	a, err := store.Save(name, resp.Body)
 	if err != nil {
 		return nil, err
 	}

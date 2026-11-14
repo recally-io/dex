@@ -75,15 +75,16 @@ type Settings struct {
 
 // ChannelContext records the platform identity that authorized channel input.
 type ChannelContext struct {
-	ChatID     int64  `json:"chatId,omitzero"`
-	TopicID    int64  `json:"topicId,omitzero"`
-	AccountID  string `json:"accountId,omitempty"`
-	SenderID   string `json:"senderId,omitempty"`
-	MessageID  string `json:"messageId,omitempty"`
-	ReplyTo    string `json:"replyTo,omitempty"`
-	FileID     string `json:"fileId,omitempty"`
-	MediaKind  string `json:"mediaKind,omitempty"`
-	MediaGroup string `json:"mediaGroup,omitempty"`
+	ChatID      int64  `json:"chatId,omitzero"`
+	TopicID     int64  `json:"topicId,omitzero"`
+	TopicShared bool   `json:"topicShared,omitzero"`
+	AccountID   string `json:"accountId,omitempty"`
+	SenderID    string `json:"senderId,omitempty"`
+	MessageID   string `json:"messageId,omitempty"`
+	ReplyTo     string `json:"replyTo,omitempty"`
+	FileID      string `json:"fileId,omitempty"`
+	MediaKind   string `json:"mediaKind,omitempty"`
+	MediaGroup  string `json:"mediaGroup,omitempty"`
 }
 
 // Message is a message to post. Title is the title of a new chat; empty uses the start of Content,
@@ -288,7 +289,7 @@ func (s *Service) Send(ctx context.Context, agentID, channelKey string, m Messag
 // SubmitMessage stores a channel update with its attachments and source identity.
 func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey string, m Message) error {
 	channelKey := MainKey
-	if groupPeer(peer) || m.ChannelContext.ChatID != 0 || m.ChannelContext.TopicID != 0 {
+	if groupPeer(peer) || m.ChannelContext.ChatID != 0 || m.ChannelContext.TopicID != 0 || m.ChannelContext.TopicShared {
 		key, _, _, err := groupTarget(peer, m.ChannelContext)
 		if err != nil {
 			return err
@@ -328,12 +329,12 @@ func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey st
 
 func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, origin string, m Message) (int64, error) {
 	scope, binding := "", "{}"
-	if groupPeer(origin) || m.ChannelContext.ChatID != 0 || m.ChannelContext.TopicID != 0 {
+	if groupPeer(origin) || m.ChannelContext.ChatID != 0 || m.ChannelContext.TopicID != 0 || m.ChannelContext.TopicShared {
 		key, audience, identity, err := groupTarget(origin, m.ChannelContext)
 		if err != nil || key != channelKey {
 			return 0, ErrGroupUnauthorized
 		}
-		if m.AlbumSource != "" || m.SpeechSource != "" {
+		if m.SpeechSource != "" {
 			return 0, ErrGroupUnauthorized
 		}
 		scope, binding = audience, identity
@@ -392,7 +393,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			}
 		}
 		if m.AlbumSource != "" {
-			sealed, err := q.IsTelegramAlbumSealed(ctx, sqlc.IsTelegramAlbumSealedParams{AgentID: agentID, BatchSource: m.AlbumSource})
+			sealed, err := q.IsTelegramAlbumSealed(ctx, sqlc.IsTelegramAlbumSealedParams{AgentID: agentID, BatchSource: m.AlbumSource, Peer: origin, AccountID: m.ChannelContext.AccountID, SenderID: m.ChannelContext.SenderID})
 			if err != nil {
 				return 0, err
 			}

@@ -43,6 +43,7 @@ type fakeTelegram struct {
 	groupAttempts  chan telegramGroup
 	groupSent      chan telegramGroup
 	mediaSuccesses atomic.Int64
+	fileRequests   atomic.Int64
 	mediaFailAfter atomic.Int64
 	attempted      chan struct{}
 	srv            *httptest.Server
@@ -71,6 +72,7 @@ type platformEvent struct {
 
 type sentMessage struct {
 	ChatID      int64  `json:"chat_id"`
+	TopicID     int64  `json:"message_thread_id"`
 	Text        string `json:"text"`
 	ParseMode   string `json:"parse_mode"`
 	Silent      bool   `json:"disable_notification"`
@@ -190,7 +192,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		media := telegramMedia{Method: method, Chat: r.FormValue("chat_id"), Name: header.Filename, Body: string(body), At: time.Now()}
+		media := telegramMedia{Method: method, Chat: r.FormValue("chat_id"), Topic: r.FormValue("message_thread_id"), Name: header.Filename, Body: string(body), At: time.Now()}
 		f.mediaAttempts <- media
 		if f.failMedia.Load() || f.mediaFailAfter.Load() > 0 && f.mediaSuccesses.Load() >= f.mediaFailAfter.Load() {
 			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 500, "description": "temporary media failure"})
@@ -323,6 +325,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			result = true
 		}
 	case "getFile":
+		f.fileRequests.Add(1)
 		var p struct {
 			ID string `json:"file_id"`
 		}

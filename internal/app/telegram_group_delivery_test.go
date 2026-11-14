@@ -49,7 +49,7 @@ func (f *fakeTelegram) serveMediaGroup(w http.ResponseWriter, r *http.Request, f
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		group.Files = append(group.Files, telegramMedia{Method: item.Type, Chat: r.FormValue("chat_id"), Name: header.Filename, Body: string(body), At: group.At})
+		group.Files = append(group.Files, telegramMedia{Method: item.Type, Chat: r.FormValue("chat_id"), Topic: r.FormValue("message_thread_id"), Name: header.Filename, Body: string(body), At: group.At})
 	}
 	f.groupAttempts <- group
 	if failure.Code != 0 || f.failMedia.Load() {

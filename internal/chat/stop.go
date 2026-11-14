@@ -134,7 +134,11 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 			if err := q.DiscardTelegramInputEffects(ctx, agentID); err != nil {
 				return withdrawal{}, err
 			}
-			if err := q.DiscardTelegramAlbums(ctx, agentID); err != nil {
+			if err := q.DiscardPrivateTelegramAlbums(ctx, agentID); err != nil {
+				return withdrawal{}, err
+			}
+		} else if c.ExecutionScope != "" && !c.ParentID.Valid {
+			if err := discardGroupAlbums(ctx, q, c); err != nil {
 				return withdrawal{}, err
 			}
 		}

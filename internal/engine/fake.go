@@ -12,7 +12,7 @@ import (
 
 func fakeProvider() *ai.ModelsProvider {
 	defs := []ai.FauxModelDefinition{}
-	for _, id := range []string{"echo", "context", "prompt", "direct", "shout", "bash", "memory", "section", "tool", "spawn", "think", "mixed", "files"} {
+	for _, id := range []string{"echo", "context", "prompt", "direct", "direct-content", "shout", "bash", "memory", "section", "tool", "spawn", "think", "mixed", "files"} {
 		defs = append(defs, ai.FauxModelDefinition{ID: id, Reasoning: id == "think"})
 	}
 	faux := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "faux", Models: defs, TokensPerSecond: 200})
@@ -65,12 +65,16 @@ func fakeProvider() *ai.ModelsProvider {
 				return fakeText("bash: " + strings.TrimSpace(ai.ContentText(result.Content, ""))), nil
 			}
 			return fakeCall("bash", map[string]any{"command": fakeBashCommand(text)}), nil
-		case "tool", "direct":
+		case "tool", "direct", "direct-content":
 			name, argsText, hasArgs := strings.Cut(text, " ")
 			if result, ok := last.(ai.ToolResultMessage); ok && result.ToolName == name {
 				prefix := "tool: "
 				if result.IsError {
 					prefix = "tool error: "
+				}
+				if m.ID == "direct-content" {
+					body, err := json.Marshal(result.Content)
+					return fakeText(prefix + string(body)), err
 				}
 				return fakeText(prefix + strings.TrimSpace(ai.ContentText(result.Content, ""))), nil
 			}

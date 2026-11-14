@@ -2,9 +2,11 @@ package engine
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -97,6 +99,34 @@ func (a *Agents) groupDirectory(ref Ref) (string, error) {
 	return filepath.Join(root.Name(), relative), nil
 }
 
+// GroupResources opens only an audience directory. The caller authorizes access and closes the root.
+func (a *Agents) GroupResources(agentID, scope string) (*os.Root, error) {
+	if !agentIDPattern.MatchString(agentID) {
+		return nil, ErrInvalidInput
+	}
+	dir, err := a.groupDirectory(Ref{AgentID: agentID, Scope: scope})
+	if err != nil {
+		return nil, err
+	}
+	return openGroupResources(dir)
+}
+
+func openGroupResources(dir string) (*os.Root, error) {
+	groupRoot, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer groupRoot.Close()
+	if err := groupRoot.Mkdir("resources", 0700); err != nil && !errors.Is(err, os.ErrExist) {
+		return nil, err
+	}
+	info, err := groupRoot.Lstat("resources")
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("group resource directory must not be a symlink")
+	}
+	return groupRoot.OpenRoot("resources")
+}
+
 func (a *Agents) openGroup(ctx context.Context, ref Ref) (_ *agentResources, resultErr error) {
 	if err := a.Catalog.DiscoveryReady(); err != nil {
 		return nil, err
@@ -105,21 +135,7 @@ func (a *Agents) openGroup(ctx context.Context, ref Ref) (_ *agentResources, res
 	if err != nil {
 		return nil, err
 	}
-	groupRoot, err := os.OpenRoot(dir)
-	if err != nil {
-		return nil, err
-	}
-	if err := groupRoot.Mkdir("resources", 0700); err != nil && !errors.Is(err, os.ErrExist) {
-		_ = groupRoot.Close()
-		return nil, err
-	}
-	info, err := groupRoot.Lstat("resources")
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		_ = groupRoot.Close()
-		return nil, errors.New("group resource directory must not be a symlink")
-	}
-	root, err := groupRoot.OpenRoot("resources")
-	_ = groupRoot.Close()
+	root, err := openGroupResources(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -139,6 +155,9 @@ func (a *Agents) openGroup(ctx context.Context, ref Ref) (_ *agentResources, res
 	}()
 	var h harness.Harness
 	extension := groupExtension(root)
+	if a.config.Tasks.DeliverGroupFile != nil {
+		extension.Tools = append(extension.Tools, a.groupDeliveryTool(ref, root))
+	}
 	// Recovery can start a provider request before business receipt reconciliation.
 	if a.config.Tasks.AuthorizeGroup != nil {
 		extension.Hooks = append(extension.Hooks, harness.Hook(harness.GenerationTask, &harness.GenerationHooks{BeforeRequest: func(ctx context.Context, _ harness.GenerationRequest, api harness.HookApi) (*harness.GenerationRequest, error) {
@@ -225,23 +244,23 @@ func (a *Agents) changeFor(ref Ref, options Options) harness.AgentChange {
 func groupExtension(root *os.Root) *durable.Extension {
 	rules := "This conversation is a Telegram group audience. Use only this conversation and explicitly published group resources. Private bot instructions, memory, projects, skills, environment and MCP are not available. A group sender is not an owner or administrator."
 	extension := &durable.Extension{Name: "telegram-group", Sections: []*durable.PromptSection{harness.Section("group-audience", func(context.Context, durable.PromptInput) (*string, error) { return &rules, nil }, harness.SectionOptions{})}, Hooks: []durable.HookRegistration{harness.Hook(harness.ToolTask, &harness.ToolHooks{BeforeTool: func(_ context.Context, call harness.ToolHookCall, _ harness.HookApi) (*harness.BeforeToolResult, error) {
-		if !slices.Contains([]string{"group_resource", "group_note"}, call.Name) {
+		if !slices.Contains([]string{"group_resource", "group_note", "group_deliver"}, call.Name) {
 			return &harness.BeforeToolResult{Block: new("tool is not allowed in this group audience")}, nil
 		}
 		return nil, nil
 	}})}}
-	extension.Tools = []*durable.ToolRegistration{{Name: "group_resource", Description: "Read one text file explicitly published in this group/topic resource directory. Private files, traversal and symlinks are not available.", Replay: durable.ReplaySafe, Parameters: map[string]any{"type": "object", "required": []string{"path"}, "additionalProperties": false, "properties": map[string]any{"path": map[string]any{"type": "string", "minLength": 1}}}, Execute: func(ctx context.Context, raw any, _ durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+	extension.Tools = []*durable.ToolRegistration{{Name: "group_resource", Description: "Read one explicitly published group/topic resource: UTF-8 text up to 64 KiB or an image up to 20 MiB. Private files, traversal and symlinks are not available.", Replay: durable.ReplaySafe, Parameters: map[string]any{"type": "object", "required": []string{"path"}, "additionalProperties": false, "properties": map[string]any{"path": map[string]any{"type": "string", "minLength": 1}}}, Execute: func(ctx context.Context, raw any, _ durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
 		args, err := durable.FromJsonValue[struct {
 			Path string `json:"path"`
 		}](raw)
 		if err != nil {
 			return durable.ToolExecutionResult{}, err
 		}
-		body, err := readGroupResource(root, args.Path)
+		content, err := groupResourceContent(root, args.Path)
 		if err != nil {
 			return durable.ToolExecutionResult{}, err
 		}
-		return durable.ToolExecutionResult{Output: []ai.ToolResultMessageContent{ai.TextContent{Text: string(body)}}}, ctx.Err()
+		return durable.ToolExecutionResult{Output: content}, ctx.Err()
 	}}, {Name: "group_note", Description: "Append a short note to this group/topic's isolated notes. This does not write private memory.", Replay: durable.ReplaySafe, Parameters: map[string]any{"type": "object", "required": []string{"text"}, "additionalProperties": false, "properties": map[string]any{"text": map[string]any{"type": "string", "minLength": 1, "maxLength": 4000}}}, Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
 		args, err := durable.FromJsonValue[struct {
 			Text string `json:"text"`
@@ -287,6 +306,36 @@ func openGroupResource(root *os.Root, path string) (*os.File, error) {
 		return nil, errors.New("group resource must be a regular file")
 	}
 	return file, nil
+}
+
+func groupResourceContent(root *os.Root, path string) ([]ai.ToolResultMessageContent, error) {
+	file, err := openGroupResource(root, path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	header := make([]byte, 512)
+	n, err := file.ReadAt(header, 0)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	mime := http.DetectContentType(header[:n])
+	image := slices.Contains([]string{"image/png", "image/jpeg", "image/gif", "image/webp"}, mime)
+	limit := int64(65536)
+	if image {
+		limit = 20 << 20
+	}
+	body, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit || !image && !utf8.Valid(body) {
+		return nil, errors.New("group resource exceeds its text or image limit")
+	}
+	if image {
+		return []ai.ToolResultMessageContent{ai.ImageContent{Data: base64.StdEncoding.EncodeToString(body), MimeType: mime}}, nil
+	}
+	return []ai.ToolResultMessageContent{ai.TextContent{Text: string(body)}}, nil
 }
 
 func readGroupResource(root *os.Root, path string) ([]byte, error) {

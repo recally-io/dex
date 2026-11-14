@@ -12,15 +12,17 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/upload"
 )
 
 var ErrGroupUnauthorized = errors.New("telegram group source is not authorized")
 
 type groupBinding struct {
-	AccountID string `json:"accountId"`
-	ChatID    int64  `json:"chatId"`
-	TopicID   int64  `json:"topicId"`
-	SenderID  string `json:"senderId"`
+	AccountID   string `json:"accountId"`
+	ChatID      int64  `json:"chatId"`
+	TopicID     int64  `json:"topicId"`
+	SenderID    string `json:"senderId"`
+	TopicShared bool   `json:"topicShared,omitzero"`
 }
 
 // groupTarget derives routing from transport identity. The resulting scope is not an access grant.
@@ -41,7 +43,8 @@ func groupTarget(peer string, source ChannelContext) (key, scope, binding string
 	}
 	audience := groupBinding{AccountID: source.AccountID, ChatID: source.ChatID, TopicID: source.TopicID, SenderID: source.SenderID}
 	key = "telegram-group:" + scope + ":" + source.SenderID
-	if source.TopicID > 0 {
+	if source.TopicID > 0 || source.TopicShared {
+		audience.TopicShared = source.TopicShared && source.TopicID == 0
 		audience.SenderID = ""
 		key = "telegram-topic:" + scope
 	}
@@ -60,12 +63,6 @@ func authorizeGroupSource(ctx context.Context, q *sqlc.Queries, conv sqlc.Conver
 	if conv.ExecutionScope == "" || source.ConversationID != conv.ID || source.ChannelRevoked != 0 {
 		return ErrGroupUnauthorized
 	}
-	if err := db.RequireActive(ctx, q, conv.AgentID); err != nil {
-		if errors.Is(err, db.ErrAgentArchived) {
-			return errors.Join(ErrGroupUnauthorized, err)
-		}
-		return err
-	}
 	var identity ChannelContext
 	if err := json.Unmarshal([]byte(source.ChannelContext), &identity); err != nil {
 		return errors.Join(ErrGroupUnauthorized, err)
@@ -74,7 +71,20 @@ func authorizeGroupSource(ctx context.Context, q *sqlc.Queries, conv sqlc.Conver
 	if err != nil || scope != conv.ExecutionScope || key != conv.ChannelKey || binding != conv.ScopeContext {
 		return ErrGroupUnauthorized
 	}
-	cfg, err := q.GetTelegramSettings(ctx, conv.AgentID)
+	return authorizeTelegramActor(ctx, q, conv.AgentID, identity.AccountID, identity.SenderID)
+}
+
+func authorizeTelegramActor(ctx context.Context, q *sqlc.Queries, agentID, accountID, senderID string) error {
+	if !positiveTelegramID(accountID) || !positiveTelegramID(senderID) {
+		return ErrGroupUnauthorized
+	}
+	if err := db.RequireActive(ctx, q, agentID); err != nil {
+		if errors.Is(err, db.ErrAgentArchived) {
+			return errors.Join(ErrGroupUnauthorized, err)
+		}
+		return err
+	}
+	cfg, err := q.GetTelegramSettings(ctx, agentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrGroupUnauthorized
 	}
@@ -82,15 +92,124 @@ func authorizeGroupSource(ctx context.Context, q *sqlc.Queries, conv sqlc.Conver
 		return err
 	}
 	account, _, ok := strings.Cut(cfg.Token, ":")
-	if !ok || account != identity.AccountID {
+	if !ok || account != accountID {
 		return ErrGroupUnauthorized
 	}
 	for allowed := range strings.SplitSeq(cfg.AllowedUsers, ",") {
-		if strings.TrimSpace(allowed) == identity.SenderID {
+		if strings.TrimSpace(allowed) == senderID {
 			return nil
 		}
 	}
 	return ErrGroupUnauthorized
+}
+
+// TelegramInputAllowed checks current pairing before a transport downloads any bytes.
+func (s *Service) TelegramInputAllowed(ctx context.Context, agentID, peer string, source ChannelContext) (bool, error) {
+	if groupPeer(peer) {
+		if _, _, _, err := groupTarget(peer, source); err != nil {
+			if errors.Is(err, ErrGroupUnauthorized) {
+				return false, nil
+			}
+			return false, err
+		}
+	} else if !strings.HasPrefix(peer, "telegram:") || !positiveTelegramID(strings.TrimPrefix(peer, "telegram:")) || source.ChatID != 0 || source.TopicID != 0 || source.TopicShared {
+		return false, nil
+	}
+	err := authorizeTelegramActor(ctx, s.q, agentID, source.AccountID, source.SenderID)
+	if errors.Is(err, ErrGroupUnauthorized) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (s *Service) groupUploads(agentID string, source ChannelContext) (*upload.Store, error) {
+	scope, err := engine.TelegramGroupScope(source.AccountID, source.ChatID, source.TopicID)
+	if err != nil {
+		return nil, err
+	}
+	root, err := s.engine.GroupResources(agentID, scope)
+	if err != nil {
+		return nil, err
+	}
+	return upload.NewScoped(root), nil
+}
+
+// GroupUploads opens only the audience that current transport identity authorizes.
+func (s *Service) GroupUploads(ctx context.Context, agentID, peer string, source ChannelContext) (*upload.Store, error) {
+	if !groupPeer(peer) {
+		return nil, ErrGroupUnauthorized
+	}
+	allowed, err := s.TelegramInputAllowed(ctx, agentID, peer, source)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, ErrGroupUnauthorized
+	}
+	return s.groupUploads(agentID, source)
+}
+
+// RemoveGroupUploads is cleanup of persisted member ownership, not an actor tool.
+func (s *Service) RemoveGroupUploads(agentID string, identity ChannelContext, files []engine.Attachment) error {
+	store, err := s.groupUploads(agentID, identity)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	for _, file := range files {
+		if err := store.Remove(file.ID); err != nil && !errors.Is(err, upload.ErrNotFound) {
+			return err
+		}
+	}
+	return nil
+}
+
+func discardGroupAlbums(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation) error {
+	var binding groupBinding
+	if err := json.Unmarshal([]byte(conv.ScopeContext), &binding); err != nil {
+		return err
+	}
+	scope, err := engine.TelegramGroupScope(binding.AccountID, binding.ChatID, binding.TopicID)
+	if err != nil || scope != conv.ExecutionScope {
+		return ErrGroupUnauthorized
+	}
+	peer := fmt.Sprintf("telegram:%d", binding.ChatID)
+	if binding.TopicID > 0 {
+		peer += ":" + strconv.FormatInt(binding.TopicID, 10)
+	}
+	var shared int64
+	if binding.TopicShared {
+		shared = 1
+	}
+	return q.DiscardGroupTelegramAlbums(ctx, sqlc.DiscardGroupTelegramAlbumsParams{AgentID: conv.AgentID, AccountID: binding.AccountID, Peer: peer, SenderID: binding.SenderID, TopicID: binding.TopicID, TopicShared: shared})
+}
+
+// GroupConversation resolves only the current audience/session. It does not open native execution.
+func (s *Service) GroupConversation(ctx context.Context, agentID, peer string, identity ChannelContext) (Chat, error) {
+	key, scope, binding, err := groupTarget(peer, identity)
+	if err != nil {
+		return Chat{}, err
+	}
+	encoded, err := json.Marshal(identity)
+	if err != nil {
+		return Chat{}, err
+	}
+	tx, q, err := s.writeTransaction(ctx)
+	if err != nil {
+		return Chat{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: agentID, ChannelKey: key, ExecutionScope: scope, ScopeContext: binding, CreatedAt: s.now().UnixMilli()})
+	if err != nil {
+		return Chat{}, err
+	}
+	if err := authorizeGroupSource(ctx, q, conv, sqlc.Submission{ConversationID: conv.ID, Origin: peer, ChannelContext: string(encoded)}); err != nil {
+		return Chat{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Chat{}, err
+	}
+	return s.Get(ctx, agentID, conv.ID)
 }
 
 // AuthorizeGroup checks the current actor grant at execution, including restored native tools.

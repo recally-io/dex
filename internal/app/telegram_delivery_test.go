@@ -12,6 +12,7 @@ import (
 )
 
 type telegramMedia struct {
+	Topic                    string
 	Method, Chat, Name, Body string
 	At                       time.Time
 }

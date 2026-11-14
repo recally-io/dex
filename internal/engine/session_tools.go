@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/MichaelKinsy/PiG/durable"
@@ -30,6 +31,7 @@ type ArtifactInfo struct {
 // TaskTools connects foreground tools to the application services.
 type TaskTools struct {
 	AuthorizeGroup   func(context.Context, TaskContext) error
+	DeliverGroupFile func(context.Context, TaskContext, string, io.Reader) error
 	Telegram         func(context.Context, TaskContext, TelegramRequest) (TelegramResult, error)
 	ReadDreamMessage func(context.Context, TaskContext, DreamMessageRequest) (DreamMessagePage, error)
 	DeliverArtifact  func(context.Context, TaskContext, string) (ArtifactInfo, error)

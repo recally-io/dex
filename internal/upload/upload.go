@@ -32,12 +32,23 @@ var (
 
 // Store keeps the uploads of one agent.
 type Store struct {
-	agentDir string // <data>/agents/<agent>, the parent of the workspace
+	scopedRoot *os.Root
+	agentDir   string // <data>/agents/<agent>, the parent of the workspace
 }
 
 // New returns the Store of the agent with the directory agentDir.
 func New(agentDir string) *Store {
 	return &Store{agentDir: agentDir}
+}
+
+// NewScoped consumes an already authorized audience root. Close releases that root.
+func NewScoped(root *os.Root) *Store { return &Store{scopedRoot: root} }
+
+func (s *Store) Close() error {
+	if s.scopedRoot != nil {
+		return s.scopedRoot.Close()
+	}
+	return nil
 }
 
 // uploadsDir is the uploads directory, relative to the agent directory.
@@ -47,6 +58,21 @@ const uploadsDir = "workspace/uploads"
 // can write in the workspace, also a symlink in the place of the uploads directory. The root at
 // the agent directory refuses each symlink that leads out of it.
 func (s *Store) uploads(create bool) (*os.Root, error) {
+	if s.scopedRoot != nil {
+		if create {
+			if err := s.scopedRoot.Mkdir("uploads", 0700); err != nil && !errors.Is(err, os.ErrExist) {
+				return nil, err
+			}
+		}
+		info, err := s.scopedRoot.Lstat("uploads")
+		if err != nil {
+			return nil, err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, ErrNotFound
+		}
+		return s.scopedRoot.OpenRoot("uploads")
+	}
 	// The engine creates the agent directory on first use.
 	if create {
 		if err := os.MkdirAll(s.agentDir, 0o700); err != nil {
@@ -151,6 +177,12 @@ func (s *Store) Open(id string) (*os.File, engine.Attachment, error) {
 		return nil, engine.Attachment{}, fmt.Errorf("%w: %w", ErrNotFound, err)
 	}
 	defer func() { _ = root.Close() }()
+	if s.scopedRoot != nil {
+		info, err := root.Lstat(id)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 {
+			return nil, engine.Attachment{}, ErrNotFound
+		}
+	}
 	entries, err := fs.ReadDir(root.FS(), id)
 	if err != nil {
 		// Also a symlink to a directory outside: the root refuses it.

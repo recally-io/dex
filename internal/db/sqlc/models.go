@@ -89,14 +89,15 @@ type BackgroundCommand struct {
 }
 
 type ChannelCommand struct {
-	AgentID     string        `json:"agent_id"`
-	SourceKey   string        `json:"source_key"`
-	Peer        string        `json:"peer"`
-	ChannelKey  string        `json:"channel_key"`
-	Command     string        `json:"command"`
-	Answer      string        `json:"answer"`
-	Completed   int64         `json:"completed"`
-	DeliveredAt sql.NullInt64 `json:"delivered_at"`
+	AgentID        string        `json:"agent_id"`
+	SourceKey      string        `json:"source_key"`
+	Peer           string        `json:"peer"`
+	ChannelKey     string        `json:"channel_key"`
+	Command        string        `json:"command"`
+	Answer         string        `json:"answer"`
+	Completed      int64         `json:"completed"`
+	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
+	ChannelContext string        `json:"channel_context"`
 }
 
 type ChannelPeer struct {
