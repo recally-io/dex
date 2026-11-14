@@ -6,71 +6,89 @@ import (
 	"testing"
 
 	"github.com/recally-io/dex/internal/artifact"
+	"github.com/recally-io/dex/internal/engine"
 )
 
-func TestUserReceivesWorkspaceSnapshot(t *testing.T) {
-	// Given a report in an agent's workspace.
-	agent := t.TempDir()
-	workspace := filepath.Join(agent, "workspace")
-	if err := os.Mkdir(workspace, 0700); err != nil {
+func TestUserKeepsEachBotsDirectorySeparate(t *testing.T) {
+	data := t.TempDir()
+	service := artifact.New(data)
+	for _, bot := range []string{"a", "b"} {
+		directory := filepath.Join(data, "agents", bot, "artifacts")
+		if err := os.MkdirAll(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "report.md"), []byte(bot), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := service.Rename("a", "report.md", "renamed.md"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, "report.md"), []byte("first"), 0600); err != nil {
+	if rows, err := service.List("b"); err != nil || len(rows) != 1 || rows[0].Name != "report.md" {
+		t.Fatalf("other bot files=%+v err=%v", rows, err)
+	}
+	if err := service.Delete("a", "renamed.md"); err != nil {
 		t.Fatal(err)
 	}
-	// When the agent explicitly delivers the report and then changes the source.
-	a, err := artifact.Snapshot(agent, "report.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(workspace, "report.md"), []byte("second"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	// Then the delivered file retains the original content.
-	f, err := artifact.Open(agent, a.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	b := make([]byte, 5)
-	if _, err := f.Read(b); err != nil {
-		t.Fatal(err)
-	}
-	if string(b) != "first" || a.Name != "report.md" {
-		t.Fatalf("snapshot = %q, name %q", b, a.Name)
+	if body, err := os.ReadFile(filepath.Join(data, "agents", "b", "artifacts", "report.md")); err != nil || string(body) != "b" {
+		t.Fatalf("other bot file=%q err=%v", body, err)
 	}
 }
 
-func TestUserCannotDeliverOutsideWorkspace(t *testing.T) {
-	agent := t.TempDir()
-	workspace := filepath.Join(agent, "workspace")
-	if err := os.Mkdir(workspace, 0700); err != nil {
+func TestUserCannotEscapeTheBotArtifactDirectory(t *testing.T) {
+	data := t.TempDir()
+	directory := filepath.Join(data, "agents", "default", "artifacts")
+	if err := os.MkdirAll(directory, 0700); err != nil {
 		t.Fatal(err)
 	}
-	outside := t.TempDir()
-	if err := os.WriteFile(filepath.Join(outside, "secret"), []byte("secret"), 0600); err != nil {
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	if err := os.WriteFile(outside, []byte("outside"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(outside, "secret"), filepath.Join(workspace, "link")); err != nil {
+	if err := os.Symlink(outside, filepath.Join(directory, "link.md")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(workspace, "escape")); err != nil {
+	service := artifact.New(data)
+	if rows, err := service.List("default"); err != nil || len(rows) != 0 {
+		t.Fatalf("link listed=%+v err=%v", rows, err)
+	}
+	for _, name := range []string{"link.md", "../outside.md", outside} {
+		if _, f, err := service.Open("default", name); err == nil {
+			_ = f.Close()
+			t.Fatalf("opened %s", name)
+		}
+		if err := service.Delete("default", name); err == nil {
+			t.Fatalf("deleted %s", name)
+		}
+	}
+	if err := os.Remove(filepath.Join(directory, "link.md")); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"../secret", filepath.Join(outside, "secret"), "link", "escape/secret"} {
-		t.Run(path, func(t *testing.T) {
-			if _, err := artifact.Snapshot(agent, path); err == nil {
-				t.Fatalf("delivered %q", path)
-			}
-		})
+	if err := os.Remove(directory); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Dir(outside), directory); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.List("default"); err == nil {
+		t.Fatal("followed artifacts directory link")
+	}
+	if body, err := os.ReadFile(outside); err != nil || string(body) != "outside" {
+		t.Fatalf("source=%q err=%v", body, err)
 	}
 }
 
-func TestUserCannotDeliverAnOversizedFile(t *testing.T) {
-	// Given a sparse source file larger than the delivery limit.
-	agent := t.TempDir()
-	workspace := filepath.Join(agent, "workspace")
-	if err := os.Mkdir(workspace, 0700); err != nil {
+func TestUserCannotDeliverOutsideWorkspaceOrOverTheLimit(t *testing.T) {
+	data := t.TempDir()
+	workspace := filepath.Join(data, "agents", "default", "workspace")
+	if err := os.MkdirAll(workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	if err := os.WriteFile(outside, []byte("outside"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(workspace, "link")); err != nil {
 		t.Fatal(err)
 	}
 	large := filepath.Join(workspace, "large.bin")
@@ -80,13 +98,10 @@ func TestUserCannotDeliverAnOversizedFile(t *testing.T) {
 	if err := os.Truncate(large, artifact.MaxSize+1); err != nil {
 		t.Fatal(err)
 	}
-	// When the agent attempts to deliver it.
-	_, err := artifact.Snapshot(agent, "large.bin")
-	// Then no snapshot is created.
-	if err == nil {
-		t.Fatal("oversized file delivered")
-	}
-	if _, statErr := os.Stat(filepath.Join(agent, "artifacts")); !os.IsNotExist(statErr) {
-		t.Fatalf("artifacts directory = %v, want absent", statErr)
+	service := artifact.New(data)
+	for _, path := range []string{"../outside.md", outside, "link", "large.bin"} {
+		if _, err := service.Deliver(t.Context(), engine.TaskContext{AgentID: "default"}, path); err == nil {
+			t.Fatalf("delivered %s", path)
+		}
 	}
 }

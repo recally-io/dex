@@ -27,7 +27,6 @@ import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
 import { activeSessionCount, sessionKind, sessionTime } from "../lib/sessions";
 import { SessionSettings } from "../components/session-settings";
-import { Artifacts } from "../components/agent/artifacts";
 import { chatDraftEvent, putChatDraft, takeChatDraft } from "../lib/chat-draft";
 import { Composer, type SendMode } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
@@ -691,12 +690,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
           memory={memory}
           queuedActions={readOnly ? undefined : queuedActions}
           messageActions={readOnly ? undefined : messageActions}
-        />
-        <Artifacts
-          chatId={chatId}
-          onContinue={
-            readOnly ? undefined : (text) => setDraft((prior) => (prior ? `${prior}\n\n${text}` : text))
-          }
         />
         {state.retry ? <RetryNotice retry={state.retry} /> : null}
         {running &&

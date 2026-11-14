@@ -20,11 +20,9 @@ type TaskContext struct {
 }
 
 type ArtifactInfo struct {
-	ID                    string `json:"id"`
-	Name                  string `json:"name"`
-	Size                  int64  `json:"size"`
-	ConversationID        int64  `json:"conversationId"`
-	DisplayConversationID int64  `json:"displayConversationId"`
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+	URL  string `json:"url"`
 }
 
 // TaskTools connects foreground tools to the application services.

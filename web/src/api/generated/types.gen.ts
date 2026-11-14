@@ -186,11 +186,9 @@ export type WithdrawnMessage = {
 };
 
 export type Artifact = {
-    id: string;
     name: string;
     size: number;
-    conversationId: number;
-    displayConversationId: number;
+    modifiedAt: string;
 };
 
 export type Attachment = {
@@ -2901,10 +2899,9 @@ export type ListArtifactsData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/artifacts';
+    url: '/api/agents/{agentId}/artifacts';
 };
 
 export type ListArtifactsErrors = {
@@ -2922,7 +2919,7 @@ export type ListArtifactsError = ListArtifactsErrors[keyof ListArtifactsErrors];
 
 export type ListArtifactsResponses = {
     /**
-     * Delivered snapshots.
+     * Current bot files.
      */
     200: {
         artifacts: Array<Artifact>;
@@ -2931,15 +2928,46 @@ export type ListArtifactsResponses = {
 
 export type ListArtifactsResponse = ListArtifactsResponses[keyof ListArtifactsResponses];
 
+export type DeleteArtifactData = {
+    body?: never;
+    path: {
+        agentId: string;
+        artifactName: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/artifacts/{artifactName}';
+};
+
+export type DeleteArtifactErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteArtifactError = DeleteArtifactErrors[keyof DeleteArtifactErrors];
+
+export type DeleteArtifactResponses = {
+    /**
+     * File deleted.
+     */
+    200: Ok;
+};
+
+export type DeleteArtifactResponse = DeleteArtifactResponses[keyof DeleteArtifactResponses];
+
 export type GetArtifactData = {
     body?: never;
     path: {
         agentId: string;
-        chatId: number;
-        artifactId: string;
+        artifactName: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}';
+    url: '/api/agents/{agentId}/artifacts/{artifactName}';
 };
 
 export type GetArtifactErrors = {
@@ -2957,12 +2985,50 @@ export type GetArtifactError = GetArtifactErrors[keyof GetArtifactErrors];
 
 export type GetArtifactResponses = {
     /**
-     * Snapshot bytes.
+     * File bytes.
      */
     200: Blob | File;
 };
 
 export type GetArtifactResponse = GetArtifactResponses[keyof GetArtifactResponses];
+
+export type RenameArtifactData = {
+    body: {
+        name: string;
+    };
+    path: {
+        agentId: string;
+        artifactName: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/artifacts/{artifactName}';
+};
+
+export type RenameArtifactErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type RenameArtifactError = RenameArtifactErrors[keyof RenameArtifactErrors];
+
+export type RenameArtifactResponses = {
+    /**
+     * Renamed file.
+     */
+    200: Artifact;
+};
+
+export type RenameArtifactResponse = RenameArtifactResponses[keyof RenameArtifactResponses];
 
 export type GetExtensionsData = {
     body?: never;

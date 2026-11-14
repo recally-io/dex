@@ -778,42 +778,26 @@ func TestUserSessionReadCoversAnotherBotButNotDreams(t *testing.T) {
 	}
 }
 
-func TestUserParentReadsTheFilesOfItsChildInAnotherBot(t *testing.T) {
+func TestUserChildLinksFilesInItsOwnBot(t *testing.T) {
 	t.Parallel()
-	// Given a file in the workspace of B, and a child in B that delivers it for a parent in A.
 	s := startBots(t)
 	writeFile(t, filepath.Join(s.dir, "agents", s.b.ID, "workspace", "report.markdown"), "# Report\n")
-	if err := os.Chmod(filepath.Join(s.dir, "agents", s.b.ID, "workspace", "report.markdown"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	parent := s.chat("default")
 	child := parent.newChild(map[string]any{"bot": "Coder", "title": "Files", "message": `deliver_file {"path":"report.markdown"}`, "provider": "faux", "modelId": "tool"})
 	waitResults(t, s.conn, parent.id, 1)
-	// When the parent lists its files in bot A, the file of the child shows in the parent.
-	files := listArtifacts(t, s.d, parent.id)
-	if len(files) != 1 || fmt.Sprint(files[0].ConversationID) != child.ID || files[0].DisplayConversationID != parent.id {
-		t.Fatalf("artifacts of the parent: %+v", files)
+	if got := listArtifacts(t, s.d, "default"); len(got) != 0 {
+		t.Fatalf("parent directory received child files: %+v", got)
 	}
-	// And the parent reads the bytes through the API of bot A, from the home of bot B.
-	if _, body := readArtifact(t, s.d, parent.id, files[0].ID); string(body) != "# Report\n" {
-		t.Fatalf("file read through the parent: %q", body)
+	files := listArtifacts(t, s.d, s.b.ID)
+	if len(files) != 1 || files[0].Name != "report.markdown" {
+		t.Fatalf("child bot files=%+v", files)
 	}
-	// And the file is not in the home of bot A.
-	if _, err := os.Stat(filepath.Join(s.dir, "agents", "default", "artifacts", files[0].ID)); err == nil {
-		t.Fatal("the file was copied into the home of bot A")
+	if _, body := readArtifact(t, s.d, s.b.ID, "report.markdown"); string(body) != "# Report\n" {
+		t.Fatalf("child file=%q", body)
 	}
-	// And bot B still lists the file in the child.
-	var result struct {
-		Artifacts []deliveredArtifact `json:"artifacts"`
-	}
-	s.d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/%s/chats/%s/artifacts", s.b.ID, child.ID), nil, &result)
-	if len(result.Artifacts) != 1 || result.Artifacts[0].ID != files[0].ID {
-		t.Fatalf("artifacts of the child: %+v", result.Artifacts)
-	}
-	// And a chat in A that is not the parent does not list it.
-	if got := listArtifacts(t, s.d, s.chat("default").id); len(got) != 0 {
-		t.Fatalf("artifacts of another chat: %+v", got)
-	}
+	url := artifactPath(s.b.ID, "report.markdown")
+	s.d.watchPath(t, fmt.Sprintf("/api/agents/%s/chats/%s/events", s.b.ID, child.ID)).until(t, "child returns actual bot URL", answeredWith(url))
+	s.d.must(t, http.MethodGet, artifactPath("default", "report.markdown"), nil, nil, http.StatusNotFound)
 }
 
 func TestUserChildUsesTargetBotRuntimeContext(t *testing.T) {

@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, ArchiveChatData, ArchiveChatErrors, ArchiveChatResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CompactChatData, CompactChatErrors, CompactChatResponses, ContinueChatData, ContinueChatErrors, ContinueChatResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteExtensionEnvData, DeleteExtensionEnvErrors, DeleteExtensionEnvResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, DismissInboxItemData, DismissInboxItemErrors, DismissInboxItemResponses, ForkChatData, ForkChatErrors, ForkChatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatItemData, GetChatItemErrors, GetChatItemResponses, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetNotificationTargetsData, GetNotificationTargetsErrors, GetNotificationTargetsResponses, GetOnePasswordData, GetOnePasswordErrors, GetOnePasswordResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetTurnChatData, GetTurnChatErrors, GetTurnChatResponses, GetUploadData, GetUploadErrors, GetUploadResponses, GetWorkData, GetWorkErrors, GetWorkResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListArchivedAgentsData, ListArchivedAgentsErrors, ListArchivedAgentsResponses, ListArtifactsData, ListArtifactsErrors, ListArtifactsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListDirectoriesData, ListDirectoriesErrors, ListDirectoriesResponses, ListInboxData, ListInboxErrors, ListInboxResponses, ListModelsData, ListModelsErrors, ListModelsResponses, ListProviderModelsData, ListProviderModelsErrors, ListProviderModelsResponses, ListRecentProjectsData, ListRecentProjectsErrors, ListRecentProjectsResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, PutExtensionEnvData, PutExtensionEnvErrors, PutExtensionEnvResponses, ReadInboxItemData, ReadInboxItemErrors, ReadInboxItemResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RestoreAgentData, RestoreAgentErrors, RestoreAgentResponses, RestoreInboxItemData, RestoreInboxItemErrors, RestoreInboxItemResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetChatProjectData, SetChatProjectErrors, SetChatProjectResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetOnePasswordData, SetOnePasswordErrors, SetOnePasswordResponses, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetErrors, SetPrimaryNotificationTargetResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UnarchiveChatData, UnarchiveChatErrors, UnarchiveChatResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses, WithdrawMessageData, WithdrawMessageErrors, WithdrawMessageResponses } from './types.gen';
+import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, ArchiveChatData, ArchiveChatErrors, ArchiveChatResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CompactChatData, CompactChatErrors, CompactChatResponses, ContinueChatData, ContinueChatErrors, ContinueChatResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteArtifactData, DeleteArtifactErrors, DeleteArtifactResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteExtensionEnvData, DeleteExtensionEnvErrors, DeleteExtensionEnvResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, DismissInboxItemData, DismissInboxItemErrors, DismissInboxItemResponses, ForkChatData, ForkChatErrors, ForkChatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatItemData, GetChatItemErrors, GetChatItemResponses, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetNotificationTargetsData, GetNotificationTargetsErrors, GetNotificationTargetsResponses, GetOnePasswordData, GetOnePasswordErrors, GetOnePasswordResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetTurnChatData, GetTurnChatErrors, GetTurnChatResponses, GetUploadData, GetUploadErrors, GetUploadResponses, GetWorkData, GetWorkErrors, GetWorkResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListArchivedAgentsData, ListArchivedAgentsErrors, ListArchivedAgentsResponses, ListArtifactsData, ListArtifactsErrors, ListArtifactsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListDirectoriesData, ListDirectoriesErrors, ListDirectoriesResponses, ListInboxData, ListInboxErrors, ListInboxResponses, ListModelsData, ListModelsErrors, ListModelsResponses, ListProviderModelsData, ListProviderModelsErrors, ListProviderModelsResponses, ListRecentProjectsData, ListRecentProjectsErrors, ListRecentProjectsResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, PutExtensionEnvData, PutExtensionEnvErrors, PutExtensionEnvResponses, ReadInboxItemData, ReadInboxItemErrors, ReadInboxItemResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RenameArtifactData, RenameArtifactErrors, RenameArtifactResponses, RestoreAgentData, RestoreAgentErrors, RestoreAgentResponses, RestoreInboxItemData, RestoreInboxItemErrors, RestoreInboxItemResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetChatProjectData, SetChatProjectErrors, SetChatProjectResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetOnePasswordData, SetOnePasswordErrors, SetOnePasswordResponses, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetErrors, SetPrimaryNotificationTargetResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, UnarchiveChatData, UnarchiveChatErrors, UnarchiveChatResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses, WithdrawMessageData, WithdrawMessageErrors, WithdrawMessageResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -858,7 +858,7 @@ export const getUpload = <ThrowOnError extends boolean = false>(options: Options
 });
 
 /**
- * Delivered snapshots from this conversation and its child sessions.
+ * Regular files in this bot’s artifacts directory.
  */
 export const listArtifacts = <ThrowOnError extends boolean = false>(options: Options<ListArtifactsData, ThrowOnError>): RequestResult<ListArtifactsResponses, ListArtifactsErrors, ThrowOnError> => (options.client ?? client).get<ListArtifactsResponses, ListArtifactsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
@@ -866,12 +866,25 @@ export const listArtifacts = <ThrowOnError extends boolean = false>(options: Opt
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/artifacts',
+    url: '/api/agents/{agentId}/artifacts',
     ...options
 });
 
 /**
- * The immutable snapshot. Only safe raster images are inline.
+ * Delete this bot file. Workspace source files are unchanged.
+ */
+export const deleteArtifact = <ThrowOnError extends boolean = false>(options: Options<DeleteArtifactData, ThrowOnError>): RequestResult<DeleteArtifactResponses, DeleteArtifactErrors, ThrowOnError> => (options.client ?? client).delete<DeleteArtifactResponses, DeleteArtifactErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/agents/{agentId}/artifacts/{artifactName}',
+    ...options
+});
+
+/**
+ * The current bot file bytes. Only safe raster images are inline.
  */
 export const getArtifact = <ThrowOnError extends boolean = false>(options: Options<GetArtifactData, ThrowOnError>): RequestResult<GetArtifactResponses, GetArtifactErrors, ThrowOnError> => (options.client ?? client).get<GetArtifactResponses, GetArtifactErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
@@ -879,8 +892,25 @@ export const getArtifact = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/artifacts/{artifactId}',
+    url: '/api/agents/{agentId}/artifacts/{artifactName}',
     ...options
+});
+
+/**
+ * Rename a bot file. Existing names are conflicts.
+ */
+export const renameArtifact = <ThrowOnError extends boolean = false>(options: Options<RenameArtifactData, ThrowOnError>): RequestResult<RenameArtifactResponses, RenameArtifactErrors, ThrowOnError> => (options.client ?? client).patch<RenameArtifactResponses, RenameArtifactErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/agents/{agentId}/artifacts/{artifactName}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**
