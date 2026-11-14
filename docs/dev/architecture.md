@@ -211,6 +211,36 @@ Revocation discards pending payloads and remains in effect for those receipts if
 the sender is later authorized again. Flood-control responses persist both the
 account cooldown and reply retry time. API waits are cancellable and survive restart.
 
+Telegram also accepts voice, audio, video, video notes, animations and stickers.
+The adapter keeps the original upload bytes and records the media type. Video notes
+remain video files. Animated stickers remain files with a type description.
+Voice and audio input states that automatic transcription is not configured.
+No speech provider, frame extractor, codec installer or cloud fallback runs automatically.
+Location, contact and poll messages become text with their supplied fields.
+
+Reply quotes and forward headers enter the ordinary model input as context, not as
+caller identity. The outer authenticated sender keeps authority. The adapter does not
+download quoted attachments. A pending Question keeps the user's answer text before
+the existing question wrapper is added, so quote text cannot change an approval.
+Forwarded text is not treated as a channel command.
+
+Explicit file results use native MP3/M4A audio, Opus voice, MP4 video and GIF animation
+methods when the detected container supports that route. A definitive media rejection
+falls back to a document with the original bytes. The platform still checks the codec;
+container routing does not prove that a real Telegram service can decode the file.
+
+The existing Goldmark version parses GFM. Telegram rendering maps task checkboxes,
+strikeout, numbered lists, blockquotes and code languages to supported text or HTML.
+Tables use plain cell text in a preformatted block. Image links keep their label and
+safe URL without fetching the image. Raw HTML remains escaped. The UTF-16 splitter
+keeps valid tags across parts. An old partially delivered reply without a frozen
+payload uses the original parser and rendering rules, so its cursor does not change.
+
+Album members still enter as separate inputs in this increment. Durable album fan-in,
+`sendMediaGroup`, presentation preferences and configured speech services remain open
+layer-2 work. Group routing and isolated resources belong to layer 3; the adapter
+still rejects non-private chats.
+
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
 each agent execution store. Run one dex process per data directory.
 

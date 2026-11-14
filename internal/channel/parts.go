@@ -107,7 +107,7 @@ func (m *Manager) replyParts(ctx context.Context, bot Bot, r sqlc.ListChannelRep
 		err := json.Unmarshal([]byte(r.RenderedReply), &parts)
 		return parts, err
 	}
-	parts = bot.Parts(chat.Reply{Status: r.Status, Answer: r.Answer.String, Reason: r.Reason.String})
+	parts = bot.Parts(chat.Reply{Status: r.Status, Answer: r.Answer.String, Reason: r.Reason.String, LegacyDelivery: r.DeliveredParts > 0})
 	if r.Status == "done" {
 		files, err := m.q.ListChannelReplyFiles(ctx, r.ID)
 		if err != nil {

@@ -44,6 +44,21 @@ func (b *Bot) sendFile(ctx context.Context, peer string, file *channel.File) (st
 		return "", err
 	}
 	method, field := "sendDocument", "document"
+	switch file.MimeType {
+	case "audio/mpeg":
+		method, field = "sendAudio", "audio"
+	case "application/ogg", "audio/ogg":
+		if bytes.Contains(file.Body[:min(len(file.Body), 512)], []byte("OpusHead")) {
+			method, field = "sendVoice", "voice"
+		}
+	case "video/mp4":
+		method, field = "sendVideo", "video"
+		if len(file.Body) >= 12 && bytes.Equal(file.Body[8:12], []byte("M4A ")) {
+			method, field = "sendAudio", "audio"
+		}
+	case "image/gif":
+		method, field = "sendAnimation", "animation"
+	}
 	if file.Size <= 10<<20 && (file.MimeType == "image/png" || file.MimeType == "image/jpeg") {
 		decode := png.DecodeConfig
 		if file.MimeType == "image/jpeg" {
@@ -82,8 +97,8 @@ func (b *Bot) sendFile(ctx context.Context, peer string, file *channel.File) (st
 		return strconv.FormatInt(result.ID, 10), nil
 	}
 	id, err := send(method, field)
-	// Only a definitive photo rejection may change the API method. A network failure is ambiguous.
-	if api, ok := errors.AsType[*apiError](err); ok && api.Code == 400 && method == "sendPhoto" {
+	// Only a definitive media rejection may change the API method. A network failure is ambiguous.
+	if api, ok := errors.AsType[*apiError](err); ok && api.Code == 400 && method != "sendDocument" {
 		return send("sendDocument", "document")
 	}
 	return id, err
