@@ -1,8 +1,9 @@
-import type { ChatEvent, HistoryPage, Item, Retry } from "../api/generated/types.gen";
+import type { ChatEvent, ChildEvent, HistoryPage, Item, Retry } from "../api/generated/types.gen";
 
 export type ChatState = {
   items: Item[];
   running: boolean;
+  children?: Record<number, ChildEvent["state"]>;
   retry?: Retry;
   history?: Item[];
   historyBefore?: number;
@@ -21,6 +22,15 @@ export function retryMessage(items: Item[], index: number) {
 
 export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
   switch (event.type) {
+    case "child": {
+      const children = { ...state.children };
+
+      if (event.state === "unavailable") delete children[event.chatId];
+      else children[event.chatId] = event.state;
+
+      return { ...state, children };
+    }
+
     case "snapshot": {
       const remote = new Set(event.items.map((item) => item.id));
       const archived = state.items.filter((item) => item.entryId !== undefined && !remote.has(item.id));
@@ -29,6 +39,7 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
       return {
         items: mergeItems(history, event.items),
         running: event.running,
+        children: state.children,
         retry: event.retry,
         history,
         headBefore: event.historyBefore,

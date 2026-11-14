@@ -28,13 +28,16 @@ export function useChatStream(chatId: number) {
       snapshotSeen = false;
       setConnection("connecting");
       source = new EventSource(`/api/agents/${encodeURIComponent(agentId)}/chats/${chatId}/events`);
-      source.onopen = () => setConnection("connecting");
+      source.onopen = () => {
+        setConnection("connecting");
+        setState((previous) => ({ ...previous, children: undefined }));
+      };
 
       const receive = (message: MessageEvent<string>) => {
         try {
           const event: ChatEvent = JSON.parse(message.data);
 
-          if (!["snapshot", "item", "append", "run"].includes(event.type))
+          if (!["snapshot", "item", "append", "run", "child"].includes(event.type))
             throw new Error("Unknown chat event.");
 
           if (!snapshotSeen && event.type !== "snapshot")
@@ -73,7 +76,8 @@ export function useChatStream(chatId: number) {
         }
       };
 
-      for (const type of ["snapshot", "item", "append", "run"]) source.addEventListener(type, receive);
+      for (const type of ["snapshot", "item", "append", "run", "child"])
+        source.addEventListener(type, receive);
       source.onerror = () => {
         setConnection("error");
         checkSession();

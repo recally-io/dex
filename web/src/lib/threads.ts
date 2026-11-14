@@ -1,4 +1,4 @@
-import type { Item, ToolItem } from "../api/generated/types.gen";
+import type { ChildEvent, ToolItem } from "../api/generated/types.gen";
 import { arg } from "./tools";
 
 /** A child session. A missing agentId means the bot of the open page. */
@@ -57,37 +57,9 @@ export function threadCall(tool: ToolItem): ThreadCall | undefined {
   };
 }
 
-export type ThreadState = "running" | "idle" | "done" | "failed" | "interrupted" | "stopped";
+export type ThreadState = ChildEvent["state"];
 
-const interrupted = ["interrupted", "orphaned", "restart_limit"];
-
-/** busy comes from the chat. The items are the committed history of the child. */
-export function threadState(busy: boolean, items: Item[]): ThreadState {
-  if (busy) return "running";
-
-  const last = items.findLast((item) => ["user", "assistant", "error"].includes(item.kind));
-
-  if (last?.kind === "assistant") return "done";
-
-  if (last?.kind === "error")
-    return last.aborted ? "stopped" : interrupted.includes(last.failure ?? "") ? "interrupted" : "failed";
-
-  return "idle";
-}
-
-/** The number of messages the child received, and the first two lines of its latest answer. */
-export function threadSummary(items: Item[]) {
-  const answer = items.findLast((item) => item.kind === "assistant" && item.text.trim());
-
-  return {
-    turns: items.filter((item) => item.kind === "user" && !item.queued).length,
-    preview:
-      answer?.kind === "assistant"
-        ? answer.text
-            .split("\n")
-            .filter((line) => line.trim())
-            .slice(0, 2)
-            .join("\n")
-        : "",
-  };
+/** A card and a panel show current state, never the outcome of an old dispatch. */
+export function threadState(state?: ThreadState, connected = true): ThreadState {
+  return connected ? (state ?? "unavailable") : "unavailable";
 }

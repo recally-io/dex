@@ -818,6 +818,18 @@ the reply of Main. Child
 conversations stay absent from dream inputs, and dream input selects only
 ordinary messages.
 
+A card shows the child's current state, not the outcome of the dispatch that
+created it: waiting, running, idle, or unavailable. Idle does not mean success;
+result marks keep their recorded outcomes. The shared child activity watch
+wakes subscribers when native running changes. It remains open for queued
+inputs after the first input settles. Parent SSE subscribes to child IDs found
+in its current native window and sends only changed current states. It checks
+bot and parent ownership before it emits child metadata. It does not read all
+past dispatches, submissions, or child transcripts. Cards outside that window
+have unavailable status; opening the panel reads the child's own stream.
+Disconnect makes status unavailable. A reconnect reads the current snapshot
+and child states.
+
 A child is writable on the web at any time. A user message goes to the child
 like to any Chat and sends no result. Web Stop covers the selected session and
 its children that have pending input. Channel `/stop` calls main Stop with the

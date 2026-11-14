@@ -172,6 +172,45 @@ func (e ChatQuestionStatus) Valid() bool {
 	}
 }
 
+// Defines values for ChildEventState.
+const (
+	ChildEventStateIdle        ChildEventState = "idle"
+	ChildEventStateRunning     ChildEventState = "running"
+	ChildEventStateUnavailable ChildEventState = "unavailable"
+	ChildEventStateWaiting     ChildEventState = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the ChildEventState enum.
+func (e ChildEventState) Valid() bool {
+	switch e {
+	case ChildEventStateIdle:
+		return true
+	case ChildEventStateRunning:
+		return true
+	case ChildEventStateUnavailable:
+		return true
+	case ChildEventStateWaiting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChildEventType.
+const (
+	Child ChildEventType = "child"
+)
+
+// Valid indicates whether the value is a known member of the ChildEventType enum.
+func (e ChildEventType) Valid() bool {
+	switch e {
+	case Child:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorItemKind.
 const (
 	ErrorItemKindError ErrorItemKind = "error"
@@ -785,6 +824,20 @@ type ChatQuestionStatus string
 
 // ChatSettings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
 type ChatSettings = chat.Settings
+
+// ChildEvent Current state of this chat or an observed child. Idle is not a turn outcome. A disconnected client must show unavailable until the new stream supplies this state.
+type ChildEvent struct {
+	AgentId string          `json:"agentId"`
+	ChatId  int64           `json:"chatId"`
+	State   ChildEventState `json:"state"`
+	Type    ChildEventType  `json:"type"`
+}
+
+// ChildEventState defines model for ChildEvent.State.
+type ChildEventState string
+
+// ChildEventType defines model for ChildEvent.Type.
+type ChildEventType string
 
 // Error defines model for Error.
 type Error struct {
@@ -1639,6 +1692,40 @@ func (t *ChatEvent) MergeRunEvent(v RunEvent) error {
 	return err
 }
 
+// AsChildEvent returns the union data inside the ChatEvent as a ChildEvent
+func (t ChatEvent) AsChildEvent() (ChildEvent, error) {
+	var body ChildEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromChildEvent overwrites any union data inside the ChatEvent as the provided ChildEvent
+func (t *ChatEvent) FromChildEvent(v ChildEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"child"}`))
+	t.union = b
+	return err
+}
+
+// MergeChildEvent performs a merge with any union data inside the ChatEvent, using the provided ChildEvent
+func (t *ChatEvent) MergeChildEvent(v ChildEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"child"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t ChatEvent) Discriminator() (string, error) {
 	var discriminator struct {
 		Discriminator string `json:"type"`
@@ -1655,6 +1742,8 @@ func (t ChatEvent) ValueByDiscriminator() (interface{}, error) {
 	switch discriminator {
 	case "append":
 		return t.AsAppendEvent()
+	case "child":
+		return t.AsChildEvent()
 	case "item":
 		return t.AsItemEvent()
 	case "run":

@@ -4,8 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { expect, test } from "vite-plus/test";
 import type { Chat, Item, ToolItem } from "../../api/generated/types.gen";
-import { getChatHistoryOptions, getChatOptions } from "../../api/generated/@tanstack/react-query.gen";
-import { threadCall, threadState, threadSummary } from "../../lib/threads";
+import { threadCall, threadState } from "../../lib/threads";
 import { ResultLine, ThreadContext } from "./thread";
 import { ThreadView } from "./thread-panel";
 import { Steps, Transcript } from "./transcript";
@@ -33,7 +32,13 @@ const created = (id: string, child: number, title: string) =>
     id,
     "session_new",
     { title, message: "Do it" },
-    JSON.stringify({ id: String(child), title, botId: "default", bot: "Default", state: "running" }),
+    JSON.stringify({
+      id: String(child),
+      title,
+      botId: "default",
+      bot: "Default",
+      state: "running",
+    }),
   );
 
 const chat = (id: number, title: string, busy: boolean): Chat => ({
@@ -52,26 +57,24 @@ const chat = (id: number, title: string, busy: boolean): Chat => ({
 
 const answer = "First line\nSecond line\nThird line";
 
-// The cache holds a running child with two messages and an answer, as the web reads them.
 function seeded() {
-  const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
-  const path = { agentId: "default", chatId: 7 };
-  client.setQueryData(getChatOptions({ path }).queryKey, chat(7, "Check logs", true));
-
-  client.setQueryData(getChatHistoryOptions({ path, query: { before: Number.MAX_SAFE_INTEGER } }).queryKey, {
-    items: [
-      { kind: "user", id: "u1", text: "Check the logs" },
-      { kind: "assistant", id: "a1", text: answer },
-      { kind: "user", id: "u2", text: "And the errors" },
-    ],
-  });
-
-  return client;
+  return new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
 }
 
 async function render(children: ReactNode, client = seeded()) {
   const router = createRouter({
-    routeTree: createRootRoute({ component: () => createElement(QueryClientProvider, { client }, children) }),
+    routeTree: createRootRoute({
+      component: () =>
+        createElement(
+          QueryClientProvider,
+          { client },
+          createElement(
+            ThreadContext.Provider,
+            { value: { children: { 7: "running" }, connection: "ready" } },
+            children,
+          ),
+        ),
+    }),
     history: createMemoryHistory({ initialEntries: ["/"] }),
   });
 
@@ -80,7 +83,7 @@ async function render(children: ReactNode, client = seeded()) {
   return renderToStaticMarkup(createElement(RouterProvider, { router }));
 }
 
-test("user sees one card at the place of the call, with its state and the first two lines", async () => {
+test("user sees one card with native execution status and no copied child text", async () => {
   const html = await render(
     createElement(Steps, { steps: [bash("a"), created("s1", 7, "Check logs"), bash("b")] }),
   );
@@ -89,8 +92,7 @@ test("user sees one card at the place of the call, with its state and the first 
   expect(html.indexOf("Ran a command")).toBeLessThan(html.indexOf("Session thread"));
   expect(html.indexOf("Session thread")).toBeLessThan(html.lastIndexOf("Ran a command"));
   expect(html).toContain('data-state="running"');
-  expect(html).toContain("2 turns");
-  expect(html).toContain("First line\nSecond line");
+  expect(html).not.toContain("First line");
   expect(html).not.toContain("Third line");
   // Without a panel, the card opens the child as a session page.
   expect(html).toContain('href="/a/default/c/7"');
@@ -194,6 +196,7 @@ test("user sees the child transcript in the panel, with its title, bot and state
       chat: { data: chat(7, "Check logs", false), isError: false, isPending: false, refetch: () => {} },
       items,
       running: false,
+      status: "idle",
       connection: "ready",
       reconnect: () => {},
       onPage: () => {},
@@ -206,28 +209,18 @@ test("user sees the child transcript in the panel, with its title, bot and state
   expect(html).toContain("Check logs");
   expect(html).toContain("Check the logs");
   expect(html).toContain("Third line");
-  expect(html).toContain('data-state="done"');
+  expect(html).toContain('data-state="idle"');
+  expect(html).not.toContain('data-state="done"');
   expect(html).toContain('aria-label="Close thread"');
   expect(html).toContain('href="/a/default/c/7"');
 });
 
-test("thread state and summary come from the chat and its history", () => {
-  const user: Item = { kind: "user", id: "u", text: "go" };
-
-  expect(threadState(true, [user])).toBe("running");
-  expect(threadState(false, [])).toBe("idle");
-  expect(threadState(false, [user, { kind: "assistant", id: "a", text: "ok" }])).toBe("done");
-  expect(threadState(false, [user, { kind: "error", id: "e", reason: "x", failure: "model_error" }])).toBe(
-    "failed",
-  );
-  expect(threadState(false, [user, { kind: "error", id: "e", reason: "x", failure: "interrupted" }])).toBe(
-    "interrupted",
-  );
-  expect(threadState(false, [user, { kind: "error", id: "e", reason: "x", aborted: true }])).toBe("stopped");
-  expect(threadSummary([user, { kind: "assistant", id: "a", text: `\n${answer}` }])).toEqual({
-    turns: 1,
-    preview: "First line\nSecond line",
-  });
+test("thread state is current state, and disconnect makes it unknown", () => {
+  expect(threadState("running")).toBe("running");
+  expect(threadState("waiting")).toBe("waiting");
+  expect(threadState("idle")).toBe("idle");
+  expect(threadState("running", false)).toBe("unavailable");
+  expect(threadState()).toBe("unavailable");
 });
 
 test("a legacy task call names its first input", () => {
@@ -235,4 +228,29 @@ test("a legacy task call names its first input", () => {
 
   expect(threadCall(legacy)).toMatchObject({ kind: "card", title: "Old", turn: "task-9" });
   expect(threadCall(bash("x"))).toBeUndefined();
+});
+
+test("user sees preparation before a child exists and running without text", async () => {
+  const pending = { ...created("pending", 7, "Check logs"), status: "running" as const, output: "" };
+  const preparation = await render(createElement(Steps, { steps: [pending] }));
+  expect(preparation).toContain("Preparing delegation");
+  expect(preparation).not.toContain("starting");
+
+  const html = await render(
+    createElement(ThreadView, {
+      agentId: "default",
+      chatId: 7,
+      chat: { data: chat(7, "Check logs", true), isError: false, isPending: false, refetch: () => {} },
+      items: [{ kind: "user", id: "dispatch", text: "Go" }],
+      running: true,
+      status: "running",
+      connection: "ready",
+      reconnect: () => {},
+      onPage: () => {},
+      onClose: () => {},
+    }),
+  );
+
+  expect(html).toContain("Running");
+  expect(html).not.toContain("Waiting for model");
 });

@@ -541,7 +541,19 @@ export type ChatEvent = ({
     type: 'append';
 } & AppendEvent) | ({
     type: 'run';
-} & RunEvent);
+} & RunEvent) | ({
+    type: 'child';
+} & ChildEvent);
+
+/**
+ * Current state of this chat or an observed child. Idle is not a turn outcome. A disconnected client must show unavailable until the new stream supplies this state.
+ */
+export type ChildEvent = {
+    type: 'child';
+    chatId: number;
+    agentId: string;
+    state: 'waiting' | 'running' | 'idle' | 'unavailable';
+};
 
 export type SnapshotEvent = {
     type: 'snapshot';

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Test current child state and shared-watch queue lifetime"
+#MISE depends=["build:web"]
+set -euo pipefail
+go test -race ./internal/app -run '^TestUserSeesCurrentChildStateWithoutText$' -count=1

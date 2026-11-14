@@ -2306,6 +2306,7 @@ components:
         - $ref: "#/components/schemas/ItemEvent"
         - $ref: "#/components/schemas/AppendEvent"
         - $ref: "#/components/schemas/RunEvent"
+        - $ref: "#/components/schemas/ChildEvent"
       discriminator:
         propertyName: type
         mapping:
@@ -2313,6 +2314,19 @@ components:
           item: "#/components/schemas/ItemEvent"
           append: "#/components/schemas/AppendEvent"
           run: "#/components/schemas/RunEvent"
+          child: "#/components/schemas/ChildEvent"
+
+    ChildEvent:
+      type: object
+      description: >-
+        Current state of this chat or an observed child. Idle is not a turn outcome.
+        A disconnected client must show unavailable until the new stream supplies this state.
+      required: [type, chatId, agentId, state]
+      properties:
+        type: { type: string, enum: [child] }
+        chatId: { type: integer, format: int64 }
+        agentId: { type: string }
+        state: { type: string, enum: [waiting, running, idle, unavailable] }
 
     SnapshotEvent:
       type: object

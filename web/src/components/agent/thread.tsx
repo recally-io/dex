@@ -1,19 +1,14 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CornerDownRight, MessagesSquare } from "lucide-react";
 import type { TaskItem, ToolItem } from "../../api/generated/types.gen";
-import {
-  getChatHistoryOptions,
-  getChatOptions,
-  getTurnChatOptions,
-} from "../../api/generated/@tanstack/react-query.gen";
+import { getTurnChatOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { useAgentId } from "../../lib/agent-scope";
 import { sessionAgentId } from "../../lib/sessions";
 import {
   threadCall,
   threadState,
-  threadSummary,
   type ThreadCall,
   type ThreadRef,
   type ThreadState,
@@ -23,7 +18,11 @@ import { Spinner } from "../feedback";
 import { Badge } from "../ui/badge";
 
 /** The page that shows the thread panel provides this. Without it, a thread opens as a session page. */
-export const ThreadContext = createContext<{ open: (thread: ThreadRef) => void } | null>(null);
+export const ThreadContext = createContext<{
+  open?: (thread: ThreadRef) => void;
+  children?: Record<number, ThreadState>;
+  connection?: "connecting" | "ready" | "error";
+} | null>(null);
 
 /** A card, a line or a button that opens one child session. */
 function ThreadOpen({
@@ -40,9 +39,9 @@ function ThreadOpen({
 
   if (!thread) return <span className={className}>{children}</span>;
 
-  if (context)
+  if (context?.open)
     return (
-      <button type="button" onClick={() => context.open(thread)} className={className}>
+      <button type="button" onClick={() => context.open?.(thread)} className={className}>
         {children}
       </button>
     );
@@ -58,73 +57,57 @@ function ThreadOpen({
   );
 }
 
-/**
- * The live data of a child session: its chat, for the state, and its committed history, for the
- * count and the preview. The history is read again whenever the chat shows new activity.
- */
-export function useThreadData(call: Pick<ThreadCall, "thread" | "turn">) {
+/** Cards consume only the parent's content-free execution stream. */
+export function useThreadData(call: ThreadCall) {
   const current = useAgentId();
+  const context = useContext(ThreadContext);
 
-  // A task from before child sessions names its first input. The API finds the session.
   const found = useQuery({
     ...getTurnChatOptions({ path: { agentId: current, turnId: call.turn ?? "" } }),
     enabled: !!call.turn,
   });
 
-  const thread: ThreadRef | undefined =
+  const thread =
     call.thread ??
     (found.data ? { chatId: found.data.id, agentId: sessionAgentId(found.data, current) } : undefined);
 
-  const agentId = thread?.agentId ?? current;
-  const chatId = thread?.chatId ?? 0;
-
-  // The parent stream does not carry the activity of its children, so the chat is polled: fast
-  // while it runs, slowly otherwise, so a new message from the parent shows up.
-  const chat = useQuery({
-    ...getChatOptions({ path: { agentId, chatId } }),
-    enabled: !!thread,
-    refetchInterval: (query) => (query.state.data?.busy ? 3000 : 30000),
-  });
-
-  const history = useQuery({
-    ...getChatHistoryOptions({ path: { agentId, chatId }, query: { before: Number.MAX_SAFE_INTEGER } }),
-    enabled: chat.isSuccess,
-  });
-
-  const updatedAt = chat.data?.updatedAt;
-  const seen = useRef(updatedAt);
-  const refetch = history.refetch;
-
-  useEffect(() => {
-    if (seen.current !== updatedAt) void refetch();
-    seen.current = updatedAt;
-  }, [updatedAt, refetch]);
-
-  const items = history.data?.items ?? [];
-
   return {
     thread,
-    chat: chat.data,
-    state: chat.data ? threadState(chat.data.busy, items) : undefined,
-    ...threadSummary(items),
+    state: threadState(
+      thread ? context?.children?.[thread.chatId] : undefined,
+      context?.connection === "ready",
+    ),
   };
 }
 
 const stateStyle: Record<ThreadState, "secondary" | "outline" | "destructive"> = {
   running: "secondary",
+  waiting: "outline",
+  unavailable: "outline",
   idle: "outline",
-  done: "outline",
-  failed: "destructive",
-  interrupted: "destructive",
-  stopped: "outline",
+};
+
+const stateLabels: Record<ThreadState, string> = {
+  idle: "Idle",
+  waiting: "Waiting to run",
+  unavailable: "Status unavailable",
+  running: "Running",
 };
 
 export function StateBadge({ state }: { state: ThreadState }) {
   return (
     <Badge variant={stateStyle[state]} data-state={state}>
       {state === "running" ? <Spinner /> : null}
-      {state}
+      {stateLabels[state]}
     </Badge>
+  );
+}
+
+export function ExecutionNotice({ state }: { state: ThreadState }) {
+  return (
+    <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+      {stateLabels[state]}
+    </p>
   );
 }
 
@@ -133,7 +116,7 @@ function ThreadCard({ call }: { call: ThreadCall }) {
   const agentId = useAgentId();
   const data = useThreadData(call);
   const other = call.bot && call.bot.id !== agentId ? call.bot.name : undefined;
-  const title = data.chat?.title || call.title;
+  const title = call.title;
 
   return (
     <section aria-label={`Session thread: ${title}`} className="my-2 min-w-0 rounded-md border text-sm">
@@ -148,7 +131,7 @@ function ThreadCard({ call }: { call: ThreadCall }) {
           {call.status === "running" ? (
             <Badge variant="secondary">
               <Spinner />
-              starting
+              Preparing delegation
             </Badge>
           ) : call.status === "error" ? (
             <Badge variant="destructive">not started</Badge>
@@ -160,15 +143,6 @@ function ThreadCard({ call }: { call: ThreadCall }) {
           <span className="mt-1 block text-red [overflow-wrap:anywhere] whitespace-pre-wrap">
             {call.error}
           </span>
-        ) : data.state ? (
-          <span className="mt-1 block text-xs text-muted-foreground">
-            {data.turns} {data.turns === 1 ? "turn" : "turns"}
-          </span>
-        ) : null}
-        {data.preview ? (
-          <span className="mt-1 line-clamp-2 block whitespace-pre-wrap [overflow-wrap:anywhere]">
-            {data.preview}
-          </span>
         ) : null}
       </ThreadOpen>
     </section>
@@ -177,6 +151,7 @@ function ThreadCard({ call }: { call: ThreadCall }) {
 
 /** A message to a child session that exists. It opens the same thread as the card. */
 function ThreadLine({ call }: { call: ThreadCall }) {
+  const data = useThreadData(call);
   const failed = call.status === "error";
 
   return (
@@ -192,6 +167,7 @@ function ThreadLine({ call }: { call: ThreadCall }) {
             ? "Sending a message"
             : `Sent to ${call.title}`}
       </ThreadOpen>
+      {call.status === "done" ? <StateBadge state={data.state} /> : null}
       {failed && call.error ? <span className="min-w-0 truncate text-red">{call.error}</span> : null}
     </p>
   );
@@ -231,7 +207,7 @@ export function ResultLine({ item }: { item: TaskItem }) {
       <CornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0" />
       <h3 className="min-w-0 font-normal [overflow-wrap:anywhere]">
         {label} ·{" "}
-        {context ? (
+        {context?.open ? (
           <button
             type="button"
             className={link}
@@ -239,7 +215,7 @@ export function ResultLine({ item }: { item: TaskItem }) {
               setFailed(false);
               client
                 .fetchQuery(getTurnChatOptions({ path: { agentId, turnId: item.taskId } }))
-                .then((chat) => context.open({ chatId: chat.id, agentId: sessionAgentId(chat, agentId) }))
+                .then((chat) => context.open?.({ chatId: chat.id, agentId: sessionAgentId(chat, agentId) }))
                 .catch(() => setFailed(true));
             }}
           >

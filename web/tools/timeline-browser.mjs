@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
+import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -30,16 +30,45 @@ const profile = join(isolated, "chrome");
 
 await mkdir(home);
 
-const port = await freePort();
+// Chrome's offline emulation does not close existing SSE sockets. Cut the real transport instead.
+let networkOffline = false;
+const connections = new Set();
 
-assert.notEqual(port, 8787);
+const transport = createServer((socket) => {
+  if (networkOffline) {
+    socket.destroy();
+
+    return;
+  }
+
+  const upstream = createConnection({ host: "127.0.0.1", port: appPort });
+  connections.add(socket);
+  socket.on("error", () => {});
+  upstream.on("error", () => socket.destroy());
+  socket.on("close", () => {
+    connections.delete(socket);
+    upstream.destroy();
+  });
+  upstream.on("close", () => socket.destroy());
+  socket.pipe(upstream).pipe(socket);
+});
+
+await new Promise((accept, reject) => {
+  transport.once("error", reject);
+  transport.listen(0, "127.0.0.1", accept);
+});
+
+const port = transport.address().port;
+const appPort = await freePort();
+
+assert.notEqual(appPort, 8787);
 
 const base = `http://127.0.0.1:${port}`;
 const appLog = createWriteStream(join(artifacts, "browser-app.log"));
 
 const app = spawn(
   resolve(binary),
-  ["serve", "--host", "127.0.0.1", "--port", String(port), "--data-dir", data],
+  ["serve", "--host", "127.0.0.1", "--port", String(appPort), "--data-dir", data],
   {
     env: { PATH: process.env.PATH, HOME: home, LANG: "en_US.UTF-8" },
     stdio: ["ignore", "pipe", "pipe"],
@@ -1102,6 +1131,7 @@ try {
 
   await model("spawn");
   await visit(`/a/default/c/${emptySession}`);
+  const childReadStart = activityReads.length;
   const sessionChildGate = join(isolated, "session-child.gate");
   await sendFromComposer(
     JSON.stringify({
@@ -1120,6 +1150,42 @@ try {
   await poll(
     "Chat dispatch reply settled",
     async () => !(await api(`/api/agents/default/chats/${emptySession}`)).busy,
+  );
+  const currentChildCard = `document.querySelector('section[aria-label="Session thread: Session audit"]:not([inert] *)')`;
+  await ui(
+    "parent sees child running without a reply",
+    `!!${currentChildCard}?.querySelector('[data-state="running"]')`,
+  );
+  assert.ok(
+    activityReads
+      .slice(childReadStart)
+      .every((url) => !url.startsWith(`${base}/api/agents/default/chats/${sessionChild.id}`)),
+    "the card does not fetch the child transcript or poll its history",
+  );
+  await evaluate(`${currentChildCard}.querySelector('button').click()`);
+  await ui(
+    "child panel has the same current state",
+    `!!${threadPanel}?.querySelector('header [data-state="running"]') && !${threadPanel}.innerText.includes('bash: session-report')`,
+  );
+  await shot("child-current-running");
+  networkOffline = true;
+
+  for (const connection of connections) connection.destroy();
+
+  await ui(
+    "disconnect makes parent and child status unknown",
+    `!!${currentChildCard}?.querySelector('[data-state="unavailable"]') && !!${threadPanel}?.querySelector('header [data-state="unavailable"]')`,
+  );
+  await shot("child-current-disconnected");
+  networkOffline = false;
+  await ui(
+    "reconnect restores current parent and child status",
+    `!!${currentChildCard}?.querySelector('[data-state="running"]') && !!${threadPanel}?.querySelector('header [data-state="running"]')`,
+  );
+  await shot("child-current-reconnected");
+  await evaluate(`${threadPanel}.querySelector('button[aria-label="Close thread"]').click()`);
+  results.push(
+    "Parent SSE carries no-text child state without history polling; disconnect is unknown and reconnect restores the current state.",
   );
   await visit("/a/default");
   await ui(
@@ -1253,6 +1319,11 @@ try {
     "Chat thread panel shows the child answer",
     `${threadPanel}?.innerText.includes('session-report')`,
   );
+  await ui(
+    "idle is not a successful dispatch outcome",
+    `!!${currentChildCard}?.querySelector('[data-state="idle"]') && !!${threadPanel}?.querySelector('header [data-state="idle"]') && !${currentChildCard}.querySelector('[data-state="done"]')`,
+  );
+  await shot("child-current-idle");
   await visit("/a/default");
   await ui(
     "main snapshot after Chat report",
@@ -1459,7 +1530,9 @@ try {
     `location.pathname === '/a/default' && !!document.querySelector('textarea[aria-label^="Message"]:not([inert] *)')`,
   );
   await ui("mobile drawer closes", `!document.querySelector('[role="dialog"]')`);
-  await evaluate("document.querySelector('textarea[aria-label^=\"Message\"]').dataset.probe = 'kept'");
+  await evaluate(
+    `window.__focusTrail = []; for (const type of ['pointerdown', 'pointerup', 'click', 'focusin', 'focusout']) document.addEventListener(type, e => { window.__focusTrail.push({ type, target: e.target.outerHTML?.slice(0, 220), active: document.activeElement?.outerHTML.slice(0, 220), x: e.clientX, y: e.clientY, rect: document.querySelector('textarea[aria-label^="Message"]:not([inert] *)')?.getBoundingClientRect().toJSON(), at: performance.now() }); window.__focusTrail = window.__focusTrail.slice(-30); }, true); document.querySelector('textarea[aria-label^="Message"]').dataset.probe = 'kept'`,
+  );
   await tap('textarea[aria-label^="Message"]:not([inert] *)');
   await ui("composer receives focus", `document.activeElement?.matches('textarea[aria-label^="Message"]')`);
   await call("Input.insertText", { text: "unsent words" });
@@ -2207,7 +2280,7 @@ try {
         "\n" +
         JSON.stringify(
           await evaluate(
-            `({ path: location.pathname, active: document.activeElement?.outerHTML.slice(0, 500), composers: [...document.querySelectorAll('textarea')].map(t => ({value: t.value, label: t.getAttribute('aria-label'), inert: !!t.closest('[inert]'), probe: t.dataset.probe})) })`,
+            `({ path: location.pathname, focusTrail: window.__focusTrail, active: document.activeElement?.outerHTML.slice(0, 500), composers: [...document.querySelectorAll('textarea')].map(t => ({value: t.value, label: t.getAttribute('aria-label'), inert: !!t.closest('[inert]'), probe: t.dataset.probe})) })`,
           ).catch(() => ({})),
           null,
           2,
@@ -2220,6 +2293,10 @@ try {
   throw error;
 } finally {
   socket?.close();
+
+  for (const connection of connections) connection.destroy();
+
+  await new Promise((accept) => transport.close(accept));
   await Promise.all([stop(chrome), stop(app)]);
   appLog.end();
   chromeLog.end();
