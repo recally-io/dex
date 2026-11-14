@@ -23,7 +23,8 @@ func (b *Bot) collectAlbums(ctx context.Context) {
 		}
 		if err != nil {
 			slog.Warn("telegram: album collection waits for retry", "err", err)
-			delay = 5 * time.Second
+			// Admission backoff must not delay collection of new members.
+			delay = min(delay, 5*time.Second)
 		}
 		timer := time.NewTimer(delay)
 		select {
@@ -39,32 +40,32 @@ func (b *Bot) collectAlbums(ctx context.Context) {
 
 func (b *Bot) flushAlbums(ctx context.Context) (time.Duration, error) {
 	if err := b.chats.CleanupTelegramAlbums(ctx, b.cfg.Uploads); err != nil {
-		return 0, err
+		return 5 * time.Second, err
 	}
 	batches, delay, err := b.chats.ReadyTelegramAlbums(ctx)
 	if err != nil {
-		return 0, err
+		return 5 * time.Second, err
 	}
 	for _, batch := range batches {
 		err := b.chats.Receive(ctx, batch.Peer, batch.Source, batch.Message)
 		receipt, lookupErr := b.chats.Source(ctx, batch.Source)
 		if lookupErr != nil {
-			return 0, errors.Join(err, lookupErr)
+			return delay, errors.Join(err, lookupErr)
 		}
 		if receipt.ID == "" {
-			return 0, errors.Join(err, errors.New("album input receipt is missing"))
+			return delay, errors.Join(err, errors.New("album input receipt is missing"))
 		}
 		// A committed input owns these uploads even when native admission needs reconciliation.
 		if finishErr := b.chats.FinishTelegramAlbum(ctx, batch.Source); finishErr != nil {
-			return 0, errors.Join(err, finishErr)
+			return delay, errors.Join(err, finishErr)
 		}
 		chatID, parseErr := peerID(batch.Peer)
 		if parseErr != nil {
-			return 0, parseErr
+			return delay, parseErr
 		}
 		b.startPreview(ctx, batch.Source, chatID)
 		if err != nil {
-			return 0, err
+			return delay, err
 		}
 	}
 	return delay, nil

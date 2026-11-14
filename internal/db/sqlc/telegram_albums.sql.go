@@ -57,8 +57,11 @@ func (q *Queries) GetTelegramAlbumMember(ctx context.Context, sourceKey string) 
 }
 
 const hasEarlierTelegramAlbumBatch = `-- name: HasEarlierTelegramAlbumBatch :one
-SELECT EXISTS(SELECT 1 FROM telegram_album_members WHERE agent_id = ?1
- AND group_key = ?2 AND batch_source <> '' AND batch_source <> ?3)
+SELECT EXISTS(SELECT 1 FROM telegram_album_members m WHERE m.agent_id = ?1
+ AND m.group_key = ?2 AND m.batch_source <> ''
+ AND (m.received_at, m.rowid) < (SELECT first.received_at, first.rowid FROM telegram_album_members first
+   WHERE first.agent_id = ?1 AND first.batch_source = ?3
+   ORDER BY first.received_at, first.rowid LIMIT 1))
 `
 
 type HasEarlierTelegramAlbumBatchParams struct {
