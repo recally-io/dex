@@ -40,7 +40,10 @@ func (s *Service) writeTransaction(ctx context.Context) (*sql.Tx, *sqlc.Queries,
 
 // toolCaller validates the execution owner of a tool call and returns its conversation.
 func (s *Service) toolCaller(ctx context.Context, r engine.TaskContext) (sqlc.Conversation, error) {
-	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
+	if r.Scope != "" {
+		return sqlc.Conversation{}, ErrSessionInvalid
+	}
+	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionScope: r.Scope, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
 		return conv, err
 	}
@@ -56,10 +59,13 @@ func (s *Service) toolCaller(ctx context.Context, r engine.TaskContext) (sqlc.Co
 
 // liveSource returns the input that started the run of the caller, and fails when that run is over.
 func liveSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Submission, error) {
+	if r.Scope != "" {
+		return sqlc.Submission{}, ErrSessionInvalid
+	}
 	if err := db.RequireActive(ctx, q, r.AgentID); err != nil {
 		return sqlc.Submission{}, err
 	}
-	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
+	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionScope: r.Scope, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
 		return sqlc.Submission{}, err
 	}

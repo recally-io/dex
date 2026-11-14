@@ -138,7 +138,7 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 		return ErrConversationBusy
 	}
 	if c.ExecutionID != 0 {
-		if err := s.engine.CheckIdle(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID}); err != nil {
+		if err := s.engine.CheckIdle(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID, Scope: c.ExecutionScope}); err != nil {
 			if errors.Is(err, engine.ErrBusy) {
 				return ErrConversationBusy
 			}

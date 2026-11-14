@@ -120,6 +120,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, errors.Join(err, jobs.Close(), conn.Close())
 	}
 	tools := engine.TaskTools{
+		AuthorizeGroup: func(ctx context.Context, c engine.TaskContext) error { return chats.AuthorizeGroup(ctx, c) },
 		Telegram: func(ctx context.Context, caller engine.TaskContext, args engine.TelegramRequest) (engine.TelegramResult, error) {
 			return bots.Agent(caller.AgentID).TelegramAction(ctx, caller, args, prefs.SpeechEndpoint)
 		},

@@ -92,6 +92,9 @@ func NormalizeText(s string) string { return strings.TrimSpace(s) }
 // askQuestion saves a question. An action question also needs a user input as its source, and the
 // action must be allowed now; control runs the action only when the owner approves it.
 func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engine.AskUserArgs, action *questionAction) (engine.QuestionInfo, error) {
+	if r.Scope != "" {
+		return engine.QuestionInfo{}, ErrQuestionInvalid
+	}
 	// One line, so the answer wrapper "Answer to: <question>" has an unambiguous first line.
 	text := strings.Join(strings.Fields(a.Question), " ")
 	if text == "" || utf8.RuneCountInString(text) > maxQuestion || len(a.Options) < 2 || len(a.Options) > 4 {
@@ -125,7 +128,7 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engin
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return engine.QuestionInfo{}, err
 	}
-	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
+	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionScope: r.Scope, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
 		return engine.QuestionInfo{}, err
 	}

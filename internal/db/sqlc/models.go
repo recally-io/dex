@@ -119,20 +119,22 @@ type CompactReceipt struct {
 }
 
 type Conversation struct {
-	ID            int64         `json:"id"`
-	AgentID       string        `json:"agent_id"`
-	ChannelKey    string        `json:"channel_key"`
-	ExecutionID   sql.NullInt64 `json:"execution_id"`
-	CreatedAt     int64         `json:"created_at"`
-	Title         string        `json:"title"`
-	ModelProvider string        `json:"model_provider"`
-	ModelID       string        `json:"model_id"`
-	ThinkingLevel string        `json:"thinking_level"`
-	AbortPending  int64         `json:"abort_pending"`
-	ArchivedAt    sql.NullInt64 `json:"archived_at"`
-	Cwd           string        `json:"cwd"`
-	ForkedFrom    sql.NullInt64 `json:"forked_from"`
-	ParentID      sql.NullInt64 `json:"parent_id"`
+	ID             int64         `json:"id"`
+	AgentID        string        `json:"agent_id"`
+	ChannelKey     string        `json:"channel_key"`
+	ExecutionID    sql.NullInt64 `json:"execution_id"`
+	CreatedAt      int64         `json:"created_at"`
+	Title          string        `json:"title"`
+	ModelProvider  string        `json:"model_provider"`
+	ModelID        string        `json:"model_id"`
+	ThinkingLevel  string        `json:"thinking_level"`
+	AbortPending   int64         `json:"abort_pending"`
+	ArchivedAt     sql.NullInt64 `json:"archived_at"`
+	Cwd            string        `json:"cwd"`
+	ForkedFrom     sql.NullInt64 `json:"forked_from"`
+	ParentID       sql.NullInt64 `json:"parent_id"`
+	ExecutionScope string        `json:"execution_scope"`
+	ScopeContext   string        `json:"scope_context"`
 }
 
 type Dream struct {

@@ -128,23 +128,81 @@ func (a *Agents) openGroup(ctx context.Context, ref Ref) (_ *agentResources, res
 			_ = root.Close()
 		}
 	}()
-	extension := groupExtension(root)
-	registry := harness.CreateRegistry()
-	if err := registry.Install(extension); err != nil {
-		return nil, err
-	}
 	store, err := storage.OpenNodeSqliteStorage(filepath.Join(dir, "state.sqlite"), storage.NodeSqliteStorageOptions{})
 	if err != nil {
 		return nil, err
 	}
-	h, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{Models: a.Catalog.Models, Registry: registry, Settings: func() *harness.HarnessSettings {
+	defer func() {
+		if resultErr != nil {
+			_ = store.Close(context.WithoutCancel(ctx))
+		}
+	}()
+	var h harness.Harness
+	extension := groupExtension(root)
+	// Recovery can start a provider request before business receipt reconciliation.
+	if a.config.Tasks.AuthorizeGroup != nil {
+		extension.Hooks = append(extension.Hooks, harness.Hook(harness.GenerationTask, &harness.GenerationHooks{BeforeRequest: func(ctx context.Context, _ harness.GenerationRequest, api harness.HookApi) (*harness.GenerationRequest, error) {
+			if err := a.authorizeGroupRun(ctx, ref, store, api, api.ConversationId()); err != nil {
+				// PiG reports ordinary hook errors and continues. Its abort mark cancels this invocation.
+				_, abortErr := h.AbortTask(ctx, api.TaskId())
+				return nil, errors.Join(err, abortErr)
+			}
+			return nil, nil
+		}}))
+		for _, tool := range extension.Tools {
+			execute := tool.Execute
+			tool.Execute = func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+				if err := a.authorizeGroupRun(ctx, ref, store, api, api.ConversationId()); err != nil {
+					return durable.ToolExecutionResult{}, err
+				}
+				source, err := taskSource(ctx, api)
+				if err != nil {
+					return durable.ToolExecutionResult{}, err
+				}
+				caller := TaskContext{Scope: ref.Scope, AgentID: ref.AgentID, ConversationID: int64(api.ConversationId()), SourceRequestID: source, Key: fmt.Sprintf("%s/%s/%d", ref.AgentID, ref.Scope, api.TaskId())}
+				if err := a.config.Tasks.AuthorizeGroup(ctx, caller); err != nil {
+					return durable.ToolExecutionResult{}, err
+				}
+				return execute(ctx, raw, api)
+			}
+		}
+	}
+	registry := harness.CreateRegistry()
+	if err := registry.Install(extension); err != nil {
+		return nil, err
+	}
+	h, err = harness.OpenHarness(ctx, store, harness.HarnessOptions{Models: a.Catalog.Models, Registry: registry, Settings: func() *harness.HarnessSettings {
 		return &harness.HarnessSettings{Extensions: []*durable.Extension{extension}, AfterFailedRun: durable.AfterFailedRunContinue, SteeringMode: durable.QueueAll}
 	}})
 	if err != nil {
-		_ = store.Close(context.WithoutCancel(ctx))
 		return nil, err
 	}
 	return &agentResources{harness: h, store: store, groupRoot: root, groupExtension: extension}, nil
+}
+
+// authorizeGroupRun includes steered actors, not only the first input that owns a tool operation.
+func (a *Agents) authorizeGroupRun(ctx context.Context, ref Ref, store durable.Storage, reader durable.DocumentReader, conversationID durable.ConversationId) error {
+	live, err := durable.Snapshot(ctx, reader, harness.LiveDoc, conversationID)
+	if err != nil {
+		return err
+	}
+	if live == nil || live.Run == nil || len(live.Run.Inputs) == 0 {
+		return errors.New("group execution has no bound input")
+	}
+	for _, id := range live.Run.Inputs {
+		source, err := store.Submission(ctx, id)
+		if err != nil {
+			return err
+		}
+		if source == nil || source.ConversationId != conversationID || source.RequestId == nil {
+			return errors.New("group execution has no bound source")
+		}
+		caller := TaskContext{Scope: ref.Scope, AgentID: ref.AgentID, ConversationID: int64(conversationID), SourceRequestID: *source.RequestId}
+		if err := a.config.Tasks.AuthorizeGroup(ctx, caller); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // changeFor keeps group configuration outside the private resource loader.

@@ -1219,11 +1219,24 @@ Group input configuration cannot add private extensions or a project; settlement
 does not commit private memory. Group attachment text contains relative resource
 paths, not the host's private directory path.
 
-This is an engine foundation, not an enabled group route. Telegram still rejects
-non-private input. Business scope persistence, actor authorization, group/topic
-routing and scope-bound workflows must be complete before that gate changes.
-A resource scope is not an actor grant. See
-[proposed ADR 0021](decisions/0021-isolated-telegram-group-resources.md).
+Control persists the execution scope and immutable bot/chat/topic/session-sender
+binding on the business conversation. Each source stores its actual sender. Ordinary
+groups separate sender sessions inside one audience; topics share their own session.
+Native lookup, cancellation, recovery, live snapshots and history retain the stored
+scope. A group source cannot acquire private owner authority through an equal native
+ID. Private session/bot/Routine handlers and bot-wide artifact sharing deny scoped callers.
+
+A resource scope is not an actor grant. Admission and every group provider request
+and tool execution check the current Telegram account and sender allowlist against
+the persisted source. Revocation also blocks public delivery. PiG reports ordinary
+generation hook errors and continues, so a denied request uses its native task abort
+mark to cancel that invocation before provider dispatch. Group inputs stay outside
+private dream consolidation.
+
+This foundation does not enable a group route. Telegram and channel ingress still
+reject group input. Scoped commands, media ownership, pre-download authorization and
+scope-bound workflows must be complete before that gate changes. Group speech remains
+off. See [proposed ADR 0021](decisions/0021-isolated-telegram-group-resources.md).
 
 ## Telegram
 

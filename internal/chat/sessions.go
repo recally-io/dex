@@ -223,7 +223,7 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a en
 	child, err := q.CreateChildConversation(ctx, sqlc.CreateChildConversationParams{
 		AgentID: target.ID, ChannelKey: ChatPrefix + uuid.NewV7().String(), Title: a.Title,
 		ModelProvider: settings.Provider, ModelID: settings.ModelID, ThinkingLevel: settings.ThinkingLevel, Cwd: cwd,
-		ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}, CreatedAt: now,
+		ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}, CreatedAt: now, ExecutionScope: parent.ExecutionScope, ScopeContext: parent.ScopeContext,
 	})
 	if err != nil {
 		return engine.SessionRef{}, err
@@ -427,7 +427,7 @@ func (s *Service) ToolSessionRead(ctx context.Context, r engine.TaskContext, a e
 	if ref.State == "running" {
 		page.Activity = &engine.SessionActivity{}
 		if conv.ExecutionID.Valid {
-			key := engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64}
+			key := engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}
 			if activity, ok := s.engine.Activity([]engine.Ref{key})[key]; ok {
 				page.Activity.Available = true
 				page.Activity.LastObservedAt = activity.LastActivityAt

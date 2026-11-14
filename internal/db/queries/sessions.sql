@@ -1,7 +1,7 @@
 -- name: CreateChildConversation :one
 -- A child session is a Chat with a parent. Its first turn is stored in the same transaction.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, parent_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, parent_id, created_at, execution_scope, scope_context)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: CreateParentTurn :execrows
@@ -106,7 +106,7 @@ ON CONFLICT (result_child_id, native_answer_id) DO NOTHING;
 -- name: ListRecoveryChildren :many
 -- The child sessions with a pending parent turn. Recovery reads the native state of each pending
 -- input, because the admission receipt and the native admission are not one transaction.
-SELECT DISTINCT c.id, c.agent_id, c.execution_id
+SELECT DISTINCT c.id, c.agent_id, c.execution_id, c.execution_scope
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL

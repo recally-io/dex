@@ -39,7 +39,7 @@ func (s *Service) Continue(ctx context.Context, agentID string, chatID int64, re
 	if err != nil {
 		return err
 	}
-	err = s.engine.Continue(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, requestID, chatOptions(agent, conv))
+	err = s.engine.Continue(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}, requestID, chatOptions(agent, conv))
 	if err == nil {
 		s.signal(chatID)
 	}
@@ -86,7 +86,7 @@ func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, ins
 			}
 		}
 	}
-	_, err = s.engine.Compact(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, instructions, requestID, chatOptions(agent, conv))
+	_, err = s.engine.Compact(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}, instructions, requestID, chatOptions(agent, conv))
 	if err == nil {
 		s.signal(chatID)
 	}

@@ -39,6 +39,9 @@ AND NOT EXISTS (
 )
 ORDER BY s.rowid;
 
+-- name: RevokeChannelSubmission :exec
+UPDATE submissions SET channel_revoked = 1 WHERE id = ?;
+
 -- name: MarkChannelReplyDelivered :exec
 UPDATE submissions SET delivered_at = ? WHERE id = ?;
 

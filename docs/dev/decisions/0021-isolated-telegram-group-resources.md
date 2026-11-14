@@ -18,9 +18,13 @@ The group constructor does not call the private resource loader, open private me
 
 The initial registry permits only `group_resource` and `group_note`. A native before-tool hook rejects all other names at dispatch. The hook also applies to nested and deferred calls and task-owned children. The resource handlers hold a scope-rooted filesystem handle. They reject traversal and symlinks. Reads are limited to explicitly published UTF-8 resources. Notes use immutable operation-owned files, separate from private memory. Forks and engine recovery retain the scope.
 
+Control persists the execution scope and immutable audience/session binding on each conversation. Each submission records the exact account/chat/topic/sender identity. Native ID lookup, recovery, cancellation, live views and history use that stored scope. Generic private input cannot reopen a group conversation with an empty scope. Private bot/session/Routine handlers and the bot-wide artifact directory are not group sharing paths. Group input does not feed private dream consolidation.
+
+The application checks current account and sender authorization at admission, before every provider request, before tool effects and before public delivery. It checks every input of a steered run. PiG v0.7 reports ordinary generation hook errors and continues. A denied request must use its native task abort mark, with the invocation context, so the scheduler cancels the request before provider dispatch. A hook error alone is not an authorization barrier.
+
 ## Rollout boundary
 
-This first increment supplies the native resource and execution boundary only. The Telegram adapter still rejects non-private input. Before group input can enter, business routing must persist scope, bind current bot/chat/topic/sender identity, enforce sender authorization before downloads and tool actions, and keep stop/clear/child operations in the current scope. Existing private instructions must not enter through those paths. Group speech needs a separate explicit permission and must not reuse private speech consent.
+The native and persisted business foundations do not enable group ingress. The Telegram adapter and channel ingress still reject group input. Before that gate changes, media ownership and pre-download authorization must be scope-aware, and stop/clear/child operations must stay in the current scope. Existing private instructions must not enter through those paths. Group speech needs a separate explicit permission and must not reuse private speech consent.
 
 Menus, Questions, callbacks and child workflows must use narrow scope-bound handlers before their tool names can enter the fixed group registry. Private bot management, Routines, process tools, generic filesystem tools, MCP discovery and cross-bot session/memory tools stay absent.
 
@@ -28,4 +32,4 @@ Menus, Questions, callbacks and child workflows must use narrow scope-bound hand
 
 Use real native execution and SQLite. Adversarial native registries can offer and register forbidden executables; tests must prove that the execution hook blocks them, not only that the model cannot see them. Remove that hook through a Go overlay to prove that direct, nested/deferred and task-owned-child calls execute without it.
 
-Context canaries, real local MCP configuration, separate audience files, traversal/symlink attempts, forks and reopen tests cover resource initialization and recovery. These tests do not authorize a real Telegram group or prove the unfinished business authorization and workflow paths. The runtime boundary is not an OS sandbox against the local owner.
+Context canaries, real local MCP configuration, separate audience files, traversal/symlink attempts, forks and reopen tests cover resource initialization and recovery. Equal-native-ID history/live probes, private owner/source-confusion probes, current-actor revocation and private artifact delivery probes cover the business boundary. These tests do not authorize a real Telegram group or prove the unfinished ingress, media and workflow paths. The runtime boundary is not an OS sandbox against the local owner.

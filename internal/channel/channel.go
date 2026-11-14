@@ -219,6 +219,10 @@ func (m *Manager) Source(ctx context.Context, source string) (chat.SourceReceipt
 
 // Receive stores one update or executes a shared command. A repeated source has no effect.
 func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Message) error {
+	// Group routing stays closed until command and media ownership are scope-aware.
+	if strings.HasPrefix(peer, "telegram:-") {
+		return chat.ErrGroupUnauthorized
+	}
 	if !strings.Contains(peer, ":") || strings.Contains(peer, "/") || source == "" {
 		return errors.New("invalid channel peer or source")
 	}
@@ -268,6 +272,8 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	}
 	answer := "/clear clears the main timeline's context. It takes no text. /new does the same. /stop stops the main answer and its background work. /help shows these commands."
 	switch {
+	case strings.HasPrefix(c.Peer, "telegram:-"):
+		answer = "This group command has no authorization binding. Send a new command when group routing is available."
 	case c.ChannelKey != chat.MainKey:
 		// A saved peer command cannot acquire main's scope after an upgrade.
 		answer = "This command is from an earlier version. Send a new command if needed."

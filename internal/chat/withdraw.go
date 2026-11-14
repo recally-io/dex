@@ -66,7 +66,7 @@ func (s *Service) Withdraw(ctx context.Context, agentID string, chatID int64, id
 	// Without a native conversation the input cannot have been admitted. The delivery lock keeps
 	// admission from starting meanwhile.
 	if c.ExecutionID != 0 {
-		outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID}, id)
+		outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID, Scope: c.ExecutionScope}, id)
 		if err != nil {
 			return WithdrawnMessage{}, err
 		}

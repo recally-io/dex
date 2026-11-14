@@ -2,7 +2,7 @@
 -- task layer that child sessions replaced.
 
 -- name: GetConversationByExecution :one
-SELECT * FROM conversations WHERE agent_id = ? AND execution_id = ?;
+SELECT * FROM conversations WHERE agent_id = ? AND execution_scope = ? AND execution_id = ?;
 
 -- name: ListStopConversations :many
 -- Stop reaches the conversation and the children of it that have pending input that the parent

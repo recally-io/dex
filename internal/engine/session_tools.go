@@ -13,6 +13,7 @@ import (
 
 // TaskContext binds a tool invocation to its persisted initiating input.
 type TaskContext struct {
+	Scope           string
 	AgentID         string
 	ConversationID  int64
 	SourceRequestID string
@@ -28,6 +29,7 @@ type ArtifactInfo struct {
 
 // TaskTools connects foreground tools to the application services.
 type TaskTools struct {
+	AuthorizeGroup   func(context.Context, TaskContext) error
 	Telegram         func(context.Context, TaskContext, TelegramRequest) (TelegramResult, error)
 	ReadDreamMessage func(context.Context, TaskContext, DreamMessageRequest) (DreamMessagePage, error)
 	DeliverArtifact  func(context.Context, TaskContext, string) (ArtifactInfo, error)

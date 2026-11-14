@@ -409,6 +409,15 @@ func (q *Queries) MarkChannelReplyDelivered(ctx context.Context, arg MarkChannel
 	return err
 }
 
+const revokeChannelSubmission = `-- name: RevokeChannelSubmission :exec
+UPDATE submissions SET channel_revoked = 1 WHERE id = ?
+`
+
+func (q *Queries) RevokeChannelSubmission(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, revokeChannelSubmission, id)
+	return err
+}
+
 const saveChannelCommandAnswer = `-- name: SaveChannelCommandAnswer :exec
 UPDATE channel_commands SET answer = ? WHERE source_key = ?
 `

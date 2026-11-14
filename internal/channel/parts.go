@@ -64,10 +64,10 @@ func (e *RetryError) Unwrap() error { return e.Err }
 
 // QueueFile binds bytes to the initiating Telegram input. Web and child calls keep URL-only delivery.
 func (m *Manager) QueueFile(ctx context.Context, caller engine.TaskContext, name string, reader io.Reader) (bool, error) {
-	if caller.AgentID != m.agentID || caller.Key == "" {
+	if caller.AgentID != m.agentID || caller.Key == "" || caller.Scope != "" {
 		return false, errors.New("invalid file delivery caller")
 	}
-	conv, err := m.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: m.agentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
+	conv, err := m.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: m.agentID, ExecutionScope: caller.Scope, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
 	if err != nil {
 		return false, err
 	}
@@ -95,7 +95,7 @@ func (m *Manager) QueueFile(ctx context.Context, caller engine.TaskContext, name
 		return false, err
 	}
 	n, err := m.q.QueueChannelReplyFile(ctx, sqlc.QueueChannelReplyFileParams{
-		OperationKey: caller.Key, SubmissionID: source.ID, AgentID: m.agentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true},
+		OperationKey: caller.Key, SubmissionID: source.ID, AgentID: m.agentID, ExecutionScope: caller.Scope, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true},
 		Name: name, MimeType: http.DetectContentType(body), Body: body,
 	})
 	if err != nil {
@@ -157,6 +157,9 @@ func (m *Manager) authorizedReply(ctx context.Context, platform string, r sqlc.L
 	}
 	if platform != "telegram" {
 		return true, nil
+	}
+	if strings.HasPrefix(current.Origin, "telegram:-") {
+		return m.chats.GroupReplyAllowed(ctx, m.agentID, current.ID)
 	}
 	cfg, err := m.q.GetTelegramSettings(ctx, m.agentID)
 	if errors.Is(err, sql.ErrNoRows) {

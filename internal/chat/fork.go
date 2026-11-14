@@ -86,7 +86,7 @@ func (s *Service) fork(ctx context.Context, conv sqlc.Conversation, entryID int6
 	if !conv.ExecutionID.Valid {
 		return sqlc.Conversation{}, fmt.Errorf("%w: entry %d is not in this chat", engine.ErrInvalidInput, entryID)
 	}
-	ref, copied, err := s.engine.Fork(ctx, engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64}, entryID, before)
+	ref, copied, err := s.engine.Fork(ctx, engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}, entryID, before)
 	if err != nil {
 		return sqlc.Conversation{}, err
 	}
@@ -105,7 +105,7 @@ func (s *Service) fork(ctx context.Context, conv sqlc.Conversation, entryID int6
 	}
 	defer func() { _ = tx.Rollback() }()
 	fork, err := q.CreateFork(ctx, sqlc.CreateForkParams{
-		AgentID: conv.AgentID, ChannelKey: ChatPrefix + uuid.NewV7().String(), Title: title,
+		AgentID: conv.AgentID, ChannelKey: ChatPrefix + uuid.NewV7().String(), Title: title, ExecutionScope: conv.ExecutionScope, ScopeContext: conv.ScopeContext,
 		ModelProvider: conv.ModelProvider, ModelID: conv.ModelID, ThinkingLevel: conv.ThinkingLevel, Cwd: conv.Cwd,
 		ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: copied}, ForkedFrom: sql.NullInt64{Int64: conv.ID, Valid: true}, ParentID: conv.ParentID,
 		CreatedAt: s.now().UnixMilli(),
