@@ -78,7 +78,7 @@ backend readiness and maintenance lifecycle.
 | Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/)) |
 | Transcripts, runs, tool calls, usage | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                     |
 | Agent files                          | the agent's tools | `<data dir>/agents/<id>/workspace/`                                       |
-| Delivered snapshots                  | control           | `<data dir>/agents/<id>/artifacts/<id>` and `control.sqlite`              |
+| Bot artifact files                   | disk              | `<data dir>/agents/<id>/artifacts/<name>`                                 |
 | Uploaded files                       | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`             |
 | Memory (git repo)                    | the agent's tools | `<data dir>/memory/`                                                      |
 | Skills and MCP servers               | the user's files  | `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/`                  |
@@ -155,19 +155,31 @@ parent's `session_send` can steer. Channel, automation and dream inputs always
 use `followUp`. Bot and routine management check the source input, not the
 steered input.
 
-An agent calls `deliver_file` with a workspace-relative path to publish one
-regular file. The tool copies at most 20 MiB to an immutable snapshot and
-records the source agent and conversation. A project cwd does not widen this
-boundary. The agent copies a selected project file to its workspace first.
-Rooted filesystem operations prevent paths and symlinks from escaping the
-workspace. The API checks the agent and source or parent conversation before
-it serves a snapshot. Snapshots that a child delivers also appear in the parent
-conversation. A path in a result does not publish a file. Only detected PNG,
-JPEG, GIF, and WebP content is served inline. Other content is downloaded;
+Each bot has one artifacts directory at
+`<data dir>/agents/<bot ID>/artifacts/`. Its immediate regular files are the
+complete artifact list for every conversation in that bot. Names, sizes, and
+modification times come from directory entries and stat. Artifact reads and
+operations do not read or write the legacy artifacts table. No manifest,
+conversation route, stable ID, operation receipt, deduplication, migration, or
+deleted marker is used. Existing disk files stay untouched and use their current
+physical names. Links and subdirectories are not files in this view.
+
+The header icon opens Artifacts. Rename and delete use filesystem operations in
+that bot directory. Existing target names are conflicts, not silent replacements.
+Bot API routes keep the normal active-bot authorization and rooted path checks.
+Only detected PNG, JPEG, GIF, and WebP bytes are inline; other files download.
 Markdown is rendered as text by the client. HTML and SVG never run inline.
-Continue editing references the snapshot ID, name, and source. Main and Chat
-reuse the writable conversation. A read-only source opens a new writable Chat
-with the source project directory. A new delivery creates a new snapshot.
+The open panel polls every three seconds, including in background tabs, and
+updates after mutations and chat reconnect/completion. Selection uses the current
+file name. Modification time refreshes previews when bytes change.
+
+An agent calls `deliver_file` to copy a workspace-relative regular file of at most
+20 MiB into its bot directory under the original name. Existing names fail with
+a conflict. No deduplication or retry receipt is saved. Workspace source files
+are not changed by artifact rename or delete. The tool returns the actual bot
+file URL. A parent in another bot can link to that URL; it does not receive a
+shared artifact entry or a second copy. Continue editing uses the current
+writable conversation, or creates a Chat for a read-only conversation.
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
 each agent execution store. Run one dex process per data directory.
@@ -758,11 +770,9 @@ against them:
   caller and takes `bot` for the other sessions. The default is the bot of the
   caller. A name is not unique: an ambiguous name is an error that lists the
   IDs.
-- A file that a child in another bot delivers stays in the home of the bot of
-  the child. Its row names that bot in `artifacts.agent_id`. The row shows the
-  file in the parent conversation when the turn came from the parent, so the API
-  of the parent bot lists the file and opens it from the home that the row
-  names. Control does not copy the file.
+- A child delivers files to its own bot's artifacts directory. Its tool result
+  provides that bot's file URL. A parent can link to the URL, but its bot's
+  directory does not contain or list the child's files.
 
 A tool call uses its bot ID and PiG's tool task ID as the turn ID. The turn
 is stored with `submissions.parent_request_id` in the same write transaction as

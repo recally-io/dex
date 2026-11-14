@@ -1,6 +1,6 @@
 import { useAgentId } from "./agent-scope";
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getChatOptions } from "../api/generated/@tanstack/react-query.gen";
 import type { ChatEvent, UserItem } from "../api/generated/types.gen";
 import { applyChatEvent, emptyChatState } from "./chat-state";
@@ -10,6 +10,7 @@ import { checkSession } from "./session";
 // A reconnect replaces live items with a snapshot and keeps the loaded history prefix.
 export function useChatStream(chatId: number) {
   const agentId = useAgentId();
+  const queryClient = useQueryClient();
   const chat = useQuery(getChatOptions({ path: { agentId, chatId } }));
   const [state, setState] = useState(emptyChatState);
   const [queued, setQueued] = useState<UserItem[]>([]);
@@ -43,6 +44,9 @@ export function useChatStream(chatId: number) {
             throw new Error("The stream did not start with a snapshot.");
 
           if (event.type === "snapshot") snapshotSeen = true;
+
+          if (event.type === "snapshot" || (event.type === "run" && !event.running))
+            void queryClient.invalidateQueries({ queryKey: [{ _id: "listArtifacts", path: { agentId } }] });
           setState((previous) => applyChatEvent(previous, event));
 
           if (event.type === "snapshot")
@@ -87,7 +91,7 @@ export function useChatStream(chatId: number) {
       reconnect.current = null;
       source.close();
     };
-  }, [agentId, chatId, chat.isSuccess]);
+  }, [agentId, chatId, chat.isSuccess, queryClient]);
 
   return { chat, state, setState, queued, setQueued, connection, streamError, reconnect };
 }
