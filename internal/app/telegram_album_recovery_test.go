@@ -133,3 +133,33 @@ func TestUserRevokedTelegramAlbumDoesNotResumeOnReauthorization(t *testing.T) {
 		t.Fatalf("revoked members=%d", n)
 	}
 }
+
+func TestUserRetriedTelegramAlbumKeepsFirstBatchAndContinuationOrder(t *testing.T) {
+	t.Parallel()
+	// Given a sealed first batch that cannot yet create its business receipt.
+	f := newFakeTelegram(t)
+	f.files["one.txt"], f.files["two.txt"], f.files["late.txt"] = "one", "two", "late"
+	d := startTelegram(t, f, t.TempDir(), 42)
+	conn := controlWriteDB(t, d.dataDir(t))
+	execSQL(t, conn, "CREATE TRIGGER hold_album_input BEFORE INSERT ON submissions WHEN NEW.source_key LIKE 'telegram:%:album:%' BEGIN SELECT RAISE(ABORT,'hold album input'); END")
+	f.albumFiles("retry-order", 1, "one.txt", "two.txt")
+	eventually(t, "first batch frozen", func() (bool, any) {
+		n := count(t, conn, "SELECT count(*) FROM telegram_album_members WHERE state='sealed'")
+		return n == 2, n
+	})
+	// When a continuation seals during the retry, only the later batch gets the continuation label.
+	f.albumFiles("retry-order", 3, "late.txt")
+	eventually(t, "both batches frozen", func() (bool, any) {
+		n := count(t, conn, "SELECT count(*) FROM telegram_album_members WHERE state='sealed'")
+		return n == 3, n
+	})
+	execSQL(t, conn, "DROP TRIGGER hold_album_input")
+	first := f.next(t).Text
+	if strings.Contains(first, "Late album continuation") || !strings.Contains(first, "caption one.txt") || strings.Contains(first, "caption late.txt") {
+		t.Fatalf("first batch changed during retry: %q", first)
+	}
+	second := f.next(t).Text
+	if !strings.Contains(second, "Late album continuation") || !strings.Contains(second, "caption late.txt") {
+		t.Fatalf("continuation=%q", second)
+	}
+}

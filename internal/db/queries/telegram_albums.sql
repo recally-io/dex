@@ -36,8 +36,11 @@ WHERE agent_id = ? AND batch_source = ? AND state = 'sealed'
 ORDER BY received_at, rowid;
 
 -- name: HasEarlierTelegramAlbumBatch :one
-SELECT EXISTS(SELECT 1 FROM telegram_album_members WHERE agent_id = @agent_id
- AND group_key = @group_key AND batch_source <> '' AND batch_source <> @batch_source);
+SELECT EXISTS(SELECT 1 FROM telegram_album_members m WHERE m.agent_id = @agent_id
+ AND m.group_key = @group_key AND m.batch_source <> ''
+ AND (m.received_at, m.rowid) < (SELECT first.received_at, first.rowid FROM telegram_album_members first
+   WHERE first.agent_id = @agent_id AND first.batch_source = @batch_source
+   ORDER BY first.received_at, first.rowid LIMIT 1));
 
 -- name: TransferTelegramAlbumMembers :exec
 UPDATE telegram_album_members SET state = 'transferred', input_json = '{}'
