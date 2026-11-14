@@ -164,7 +164,7 @@ try {
     `(() => {
     const nav = document.querySelector('aside[aria-label="Sidebar"]');
     return !!nav.querySelector('nav[aria-label="Bots"] a[href="/a/default"][aria-current="page"]') &&
-      !!nav.querySelector('a[href="/providers"]') && !!nav.querySelector('a[href="/about"]') &&
+      !!nav.querySelector('a[href="/providers"]') && !nav.querySelector('a[href="/about"]') &&
       !nav.querySelector('button[aria-label^="More"]') && !nav.querySelector('a[data-tab="Main"]') &&
       !!nav.querySelector('button[aria-label="New bot"]') &&
       !nav.querySelector('a[href="/work"], a[href="/needs-you"], a[href="/automations"], input');
@@ -186,7 +186,7 @@ try {
     "empty Sessions hides the filter and activity caption",
     "!document.querySelector('select[aria-label=\"Kind\"]') && !document.body.innerText.includes('active · newest first')",
   );
-  await click("New task");
+  await clickLabel("New task");
   await ui(
     "new task project picker",
     `!!document.querySelector('[role="dialog"] [aria-label="Directory path"]')`,
@@ -205,7 +205,7 @@ try {
   );
   await visit("/a/default/sessions");
   await ui("abandoned empty Chat stays hidden", "document.body.innerText.includes('No sessions yet')");
-  await click("New task");
+  await clickLabel("New task");
   await ui(
     "reused task project picker",
     `!!document.querySelector('[role="dialog"] [aria-label="Directory path"]')`,
@@ -616,7 +616,7 @@ try {
   // Then the child session opens as a normal chat that names its parent.
   await ui(
     "thread panel link opens the child session",
-    `location.pathname === '/a/default/c/${done.id}' && document.body.innerText.includes('echo: saved report') && document.body.innerText.includes('Started by Main') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
+    `location.pathname === '/a/default/c/${done.id}' && document.body.innerText.includes('echo: saved report') && !!document.querySelector('header a[aria-label="Started by Main"]') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
   );
   assert.ok(doneTurn);
   assert.equal((await api(`/api/agents/default/chats/${done.id}`)).readOnly, false);
@@ -628,7 +628,7 @@ try {
   await visit(`/a/default/tasks/${old.taskId}`);
   await ui(
     "old task link opens the child session",
-    `location.pathname === '/a/default/c/${old.conversationId}' && document.body.innerText.includes('Started by Main') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
+    `location.pathname === '/a/default/c/${old.conversationId}' && !!document.querySelector('header a[aria-label="Started by Main"]') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
   );
   await shot("06a-old-task-link");
 
@@ -636,7 +636,7 @@ try {
   await visit(`/tasks/${old.taskId}`);
   await ui(
     "the old address of a task link opens the child session",
-    `location.pathname === '/a/default/c/${old.conversationId}' && document.body.innerText.includes('Started by Main')`,
+    `location.pathname === '/a/default/c/${old.conversationId}' && !!document.querySelector('header a[aria-label="Started by Main"]')`,
   );
   assert.equal((await api(`/api/agents/default/chats/${old.conversationId}`)).readOnly, false);
   // The user can archive it, so it leaves the lists below.
@@ -719,7 +719,7 @@ try {
   await visit(`/a/default/tasks/${childTurn(steered.id)}`);
   await ui(
     "a running child is a normal chat with Stop",
-    `location.pathname === '/a/default/c/${steered.id}' && document.body.innerText.includes('Started by Main') && !!document.querySelector('textarea:not(:disabled):not([inert] *)') && !!document.querySelector('button[aria-label="Stop run"]:not([inert] *)')`,
+    `location.pathname === '/a/default/c/${steered.id}' && !!document.querySelector('header a[aria-label="Started by Main"]') && !!document.querySelector('textarea:not(:disabled):not([inert] *)') && !!document.querySelector('button[aria-label="Stop run"]:not([inert] *)')`,
   );
   // After a redirect, the shell moves focus to the page title in an animation frame. A headless page
   // draws that frame late, so draw one with a screenshot and wait for the title to take focus.
@@ -848,7 +848,7 @@ try {
   await evaluate(`${threadPanel}.querySelector('a[aria-label="Open as a session page"]').click()`);
   await ui(
     "the thread panel link opens the child in its own bot, and the child names the bot of its parent",
-    `location.pathname === '/a/${coder.id}/c/${crossChild.id}' && document.body.innerText.includes('echo: hello coder') && document.body.innerText.includes('Started by Main in ${parentBot}') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
+    `location.pathname === '/a/${coder.id}/c/${crossChild.id}' && document.body.innerText.includes('echo: hello coder') && !!document.querySelector('header a[aria-label="Started by Main in ${parentBot}"]') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
   );
   await shot("06c-cross-bot-child");
   // Open All sessions from the parent bot, then archive the cross-bot child in its owning bot.
@@ -1208,7 +1208,7 @@ try {
         `/a/default/tasks/${childTurn(sessionChild.id)}`,
         "location.pathname === '/a/default/c/" +
           sessionChild.id +
-          "' && document.body.innerText.includes('Started by') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')",
+          "' && !!document.querySelector('header a[aria-label^=\"Started by\"]') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')",
       ],
       [
         "new-session",
@@ -1427,7 +1427,7 @@ try {
 
   await ui(
     "Routines navigation preserves count and failure",
-    `(() => { const a = document.querySelector('header nav a[href="/a/default/automations"]'); return a?.getAttribute('aria-label') === ${JSON.stringify(`Routines${enabledRoutines ? `, ${enabledRoutines} on` : ""}, latest run failed`)} && ${enabledRoutines ? `a.textContent.includes('${enabledRoutines}')` : "true"} && !!a.querySelector('[aria-label="Latest routine run failed"]'); })()`,
+    `(() => { const a = document.querySelector('header nav a[href="/a/default/automations"]'); return a?.getAttribute('aria-label') === ${JSON.stringify(`Routines${enabledRoutines ? `, ${enabledRoutines} on` : ""}, latest run failed`)} && !a.textContent.trim() && !!a.querySelector('[aria-label="Latest routine run failed"]'); })()`,
   );
   await tap(attentionMenu);
   await ui(

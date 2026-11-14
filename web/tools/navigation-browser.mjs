@@ -116,7 +116,24 @@ try {
   await poll("app ready", async () => (await fetch(`${base}/api/health`)).ok);
   const agent = await api("/agents/default");
   await api("/agents/default", { ...agent, name: "Coder", provider: "faux", modelId: "think" }, "PUT");
-  await api("/agents", { name: "Anna", provider: "faux", modelId: "echo", thinkingLevel: "off" });
+
+  const anna = await api("/agents", {
+    name: "Anna",
+    provider: "faux",
+    modelId: "echo",
+    thinkingLevel: "off",
+  });
+
+  const archived = await api(`/agents/${anna.id}/chats`, {});
+  await api(`/agents/${anna.id}/chats/${archived.id}/messages`, {
+    id: crypto.randomUUID(),
+    text: "Find the saved report",
+  });
+  await poll(
+    "Anna session settled",
+    async () => !(await api(`/agents/${anna.id}/chats/${archived.id}`)).busy,
+  );
+  await api(`/agents/${anna.id}/chats/${archived.id}/archive`, {}, "PUT");
   const main = await api("/agents/default/chats/main");
   await api(`/agents/default/chats/${main.id}/project`, { cwd: project }, "PUT");
   const task = await api("/agents/default/chats", {});
@@ -175,6 +192,41 @@ try {
       await click('aside button[aria-label^="Bot menu"]');
       await poll("old bot menu", () => evaluate("!!document.querySelector('[role=menu]')"));
     } else {
+      // Given Main, Search opens bots and conversations without a separate navigation page.
+      await check(
+        `${size}: header has no search`,
+        `!document.querySelector('header button[aria-label="Search bots and conversations"]')`,
+      );
+
+      if (size === "mobile") await click('button[aria-label^="Open navigation"]');
+      await check(
+        `${size}: sidebar has search`,
+        `!!document.querySelector('aside button[aria-label="Search bots and conversations"]')`,
+      );
+      await click('aside button[aria-label="Search bots and conversations"]');
+      await poll("search input", () =>
+        evaluate(`!!document.querySelector('[aria-label="Search bots and conversations"][role="combobox"]')`),
+      );
+      await call("Input.insertText", { text: "Anna" });
+      await click(`[cmdk-item][data-value="bot/${anna.id}"]`);
+      await poll("search switches bot", () => evaluate(`location.pathname === '/a/${anna.id}'`));
+      results.push(`${size}: search switches bots`);
+
+      if (size === "mobile") await click('button[aria-label^="Open navigation"]');
+      await click('aside button[aria-label="Search bots and conversations"]');
+      await poll("search input", () =>
+        evaluate(`!!document.querySelector('[aria-label="Search bots and conversations"][role="combobox"]')`),
+      );
+      await call("Input.insertText", { text: "saved report" });
+      await click(`[cmdk-item][data-value="chat/${anna.id}/${archived.id}"]`);
+      await poll("search opens archived session", () =>
+        evaluate(
+          `location.pathname === '/a/${anna.id}/c/${archived.id}' && document.querySelector('#page-title')?.textContent === 'Find the saved report'`,
+        ),
+      );
+      results.push(`${size}: search finds archived conversations across bots`);
+      await visit("/a/default");
+
       // Given Main, desktop shows bot navigation and mobile puts the same actions in one menu.
       await check(
         `${size}: Main has no task settings`,
@@ -188,7 +240,7 @@ try {
         );
         await check(
           "desktop: bot navigation is visible",
-          '!!document.querySelector(\'header nav[aria-label="Bot navigation"] a[href="/a/default/sessions"]\')',
+          '!!document.querySelector(\'header nav[aria-label="Bot navigation"] a[href="/a/default/sessions"]\') && !document.querySelector(\'header nav[aria-label="Bot navigation"]\').textContent.trim()',
         );
       } else await click('header button[aria-label="Bot menu: Coder"]');
     }
@@ -212,6 +264,35 @@ try {
     await capture(`${size}-task`);
 
     if (mode !== "--baseline") {
+      await check(
+        `${size}: task header has no Main breadcrumb`,
+        `![...document.querySelectorAll('header a')].some(a => a.textContent.trim() === 'Main')`,
+      );
+
+      if (size === "desktop") {
+        await evaluate(`document.querySelector('textarea:not([inert] *)').focus()`);
+        await call("Input.insertText", { text: "Keep this draft" });
+        await call("Input.dispatchKeyEvent", { type: "keyDown", key: "k", code: "KeyK", modifiers: 4 });
+        await poll("keyboard search", () =>
+          evaluate(
+            `!!document.querySelector('[aria-label="Search bots and conversations"][role="combobox"]')`,
+          ),
+        );
+        await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
+        await poll("search closed", () =>
+          evaluate(
+            `!document.querySelector('[aria-label="Search bots and conversations"][role="combobox"]')`,
+          ),
+        );
+        await check(
+          "keyboard search preserves the input draft",
+          `document.querySelector('textarea:not([inert] *)').value === 'Keep this draft'`,
+        );
+        await visit(`/a/default/c/${task.id}`);
+      }
+    }
+
+    if (mode !== "--baseline") {
       await click('button[aria-label="Set model"]:not([inert] *)');
       await poll("combined model and thinking picker", () =>
         evaluate(`!!document.querySelector('[aria-label="Chat model"] [aria-label="Thinking level"]')`),
@@ -221,6 +302,10 @@ try {
         `!!document.querySelector('[aria-label="Model providers"]') && !!document.querySelector('select[aria-label="Provider"]')`,
       );
       await capture(`${size}-model-picker`);
+      await check(
+        `${size}: model picker fits within the input width`,
+        `(() => { const p = document.querySelector('[aria-label="Chat model"]').getBoundingClientRect(); const f = document.querySelector('form:not([inert] *)').getBoundingClientRect(); return p.left >= f.left - 1 && p.right <= f.right + 1 && p.height <= 321; })()`,
+      );
       await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
     }
 

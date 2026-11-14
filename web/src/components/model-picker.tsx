@@ -86,6 +86,7 @@ export function ModelPicker({
   const agentId = useAgentId();
   const { notify } = useApp();
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   const save = useMutation({
     mutationFn: (model: Model | null) =>
@@ -104,21 +105,27 @@ export function ModelPicker({
   return (
     <Popover
       open={open}
-      onOpenChange={(next) => {
+      onOpenChange={(next, details) => {
         // The save result shows in the list, so it stays open until the save ends.
         if (save.isPending || thinking?.pending) return;
 
-        if (next) save.reset();
+        if (next) {
+          save.reset();
+          setAnchor(details.trigger?.closest("form") ?? null);
+        }
+
         setOpen(next);
       }}
     >
       <PopoverTrigger render={trigger} />
       <PopoverContent
-        align="start"
+        anchor={anchor ?? undefined}
+        style={anchor ? { width: "min(560px, var(--anchor-width))" } : undefined}
+        align={anchor ? "end" : "start"}
         side={side}
         sideOffset={6}
         aria-label={override ? "Chat model" : "Bot model"}
-        className="z-[60] flex max-h-[min(480px,var(--available-height))] w-[560px] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden rounded-window bg-card p-0 shadow-raised outline-none"
+        className="z-[60] flex max-h-[min(320px,var(--available-height))] w-[560px] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden rounded-window bg-card p-0 shadow-raised outline-none"
       >
         <ModelList
           override={override}
@@ -289,7 +296,6 @@ function ModelList({
                     heading={
                       <span className="flex flex-wrap items-center gap-1.5 px-2 pt-2 pb-1 text-[11.5px] font-medium text-muted-foreground">
                         <span className="text-muted-foreground">{group.name}</span>
-                        <span className="font-mono font-normal">{group.id}</span>
                         {group.error ? <Badge variant="destructive">Model listing failed</Badge> : null}
                       </span>
                     }
@@ -317,16 +323,10 @@ function ModelList({
                             className="flex h-8 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent"
                           >
                             <span
-                              className="min-w-0 truncate text-[12.5px] font-medium text-foreground"
-                              title={m.name}
+                              className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground"
+                              title={`${m.name} (${m.id})`}
                             >
                               {m.name}
-                            </span>
-                            <span
-                              className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground"
-                              title={m.id}
-                            >
-                              {m.id}
                             </span>
                             <Mark checked={checked} saving={saving} />
                           </CommandItem>

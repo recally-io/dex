@@ -45,7 +45,7 @@ import type { SlashCommand } from "../components/slash-commands";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
 import { MainPane, Note } from "../components/page";
-import { Button } from "../components/ui/button";
+import { Button, buttonVariants } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { cn, newId } from "../lib/utils";
 
@@ -108,53 +108,62 @@ function ParentLink({
   const title = parent.data ? (parent.data.main ? "Main" : parent.data.title || "a chat") : "…";
   const name = parentAgentName ? `${title} in ${parentAgentName}` : title;
 
-  const className =
-    "max-w-56 min-w-0 truncate text-[12.5px] text-muted-foreground hover:text-foreground hover:underline";
+  const className = cn(
+    buttonVariants({ variant: "ghost", size: "sm" }),
+    "max-w-40 gap-1 px-1.5 text-muted-foreground",
+  );
+
+  const label = `Started by ${name}`;
+
+  const content = (
+    <>
+      <GitBranch aria-hidden="true" />
+      <span className="hidden truncate sm:inline">
+        {parentAgentName ? `${parentAgentName} · ${title}` : title}
+      </span>
+    </>
+  );
 
   return parent.data?.main ? (
-    <Link to="/a/$agentId" params={{ agentId }} className={className}>
-      Started by {name}
+    <Link to="/a/$agentId" params={{ agentId }} className={className} title={label} aria-label={label}>
+      {content}
     </Link>
   ) : (
-    <Link to="/a/$agentId/c/$chatId" params={{ agentId, chatId: String(parentId) }} className={className}>
-      Started by {name}
+    <Link
+      to="/a/$agentId/c/$chatId"
+      params={{ agentId, chatId: String(parentId) }}
+      className={className}
+      title={label}
+      aria-label={label}
+    >
+      {content}
     </Link>
   );
 }
 
 /**
- * The open chat's place in the bot header: a link back to its parent page, its title, and where it
- * came from. The title is the page heading while its tab shows.
+ * The chat title and a compact link to its source session. The full source stays in the label
+ * and tooltip so that it does not take space from the title.
  */
-export function ChatTitle({ chat, heading }: { chat: ChatInfo; heading: boolean }) {
-  const agentId = useAgentId();
+export function ChatTitle({
+  chat,
+  heading,
+  mainTitle,
+}: {
+  chat: ChatInfo;
+  heading: boolean;
+  mainTitle: string;
+}) {
   const switchable = ["Main", "Chat"].includes(sessionKind(chat));
-  const crumb = "shrink-0 text-[13px] text-muted-foreground hover:text-foreground hover:underline";
 
   return (
     <>
-      {chat.main ? null : (
-        <>
-          {switchable ? (
-            <Link to="/a/$agentId" params={{ agentId }} className={crumb}>
-              Main
-            </Link>
-          ) : (
-            <Link to="/a/$agentId/automations" params={{ agentId }} className={crumb}>
-              Routines
-            </Link>
-          )}
-          <span aria-hidden className="text-ring">
-            /
-          </span>
-        </>
-      )}
       <h1
         id={heading ? "page-title" : undefined}
         tabIndex={-1}
         className="min-w-0 truncate text-[13px] font-medium outline-none"
       >
-        {chat.main ? "Main" : chat.title || (switchable ? "New task" : "New session")}
+        {chat.main ? mainTitle : chat.title || (switchable ? "New task" : "New session")}
       </h1>
       {switchable ? null : <OriginPill chat={chat} />}
       {!chat.main && switchable && chat.parentId !== undefined ? (

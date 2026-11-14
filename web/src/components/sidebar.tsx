@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Info, Plus, Settings } from "lucide-react";
+import { Plus, Search, Settings } from "lucide-react";
 import type { Agent } from "../api/generated/types.gen";
 import { getSettingsOptions, listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { AgentContext } from "../lib/agent-scope";
@@ -12,7 +12,7 @@ import { cn } from "../lib/utils";
 import { AgentAvatar } from "./agent-avatar";
 import { AgentCreateDialog } from "./agent-create-dialog";
 import { row } from "./chat-list";
-import { buttonVariants } from "./ui/button";
+import { Button, buttonVariants } from "./ui/button";
 
 const statusLabel = { needs: "Needs you", working: "Working" } as const;
 
@@ -20,11 +20,13 @@ export function Sidebar({
   path,
   statuses,
   lead,
+  onSearch,
   className,
 }: {
   path: string;
   statuses: Map<string, BotStatus>;
   lead: ReactNode;
+  onSearch: () => void;
   className?: string;
 }) {
   const agents = useQuery(listAgentsOptions());
@@ -37,7 +39,22 @@ export function Sidebar({
       aria-label="Sidebar"
       className={cn("flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-sidebar", className)}
     >
-      <div className="flex h-12 shrink-0 items-center px-2">{lead}</div>
+      <div className="flex h-12 shrink-0 items-center gap-1 px-2">
+        {lead}
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Search bots and conversations"
+          aria-haspopup="dialog"
+          title="Search bots and conversations (⌘K / Ctrl+K)"
+          onClick={onSearch}
+          className="min-w-0 flex-1 justify-start gap-2 bg-muted/60 text-muted-foreground"
+        >
+          <Search />
+          <span>Search</span>
+          <kbd className="ml-auto text-[10px]">⌘K</kbd>
+        </Button>
+      </div>
       <nav aria-label="Bots" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3">
         {(agents.data?.agents ?? []).map((agent) => (
           <AgentContext.Provider key={agent.id} value={agent.id!}>
@@ -82,10 +99,6 @@ function Footer() {
         {errors ? (
           <span role="img" aria-label={label} title={label} className="size-2 rounded-full bg-red" />
         ) : null}
-      </Link>
-      <Link to="/about" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), row)}>
-        <Info size={15} aria-hidden />
-        About
       </Link>
     </div>
   );

@@ -34,7 +34,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
     .join(", ");
 
   const linkClass = cn(
-    buttonVariants({ variant: "ghost", size: "sm" }),
+    buttonVariants({ variant: "ghost", size: "icon-sm" }),
     "text-muted-foreground aria-[current=page]:bg-accent aria-[current=page]:text-foreground",
   );
 
@@ -132,31 +132,34 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
       <nav aria-label="Bot navigation" className="hidden shrink-0 items-center gap-0.5 lg:flex">
         <Button
           variant="ghost"
-          size="sm"
+          size="icon-sm"
           className="text-muted-foreground"
           aria-label="New task"
           title="Start an independent task without changing Main"
           disabled={newTask.isPending}
           onClick={() => newTask.mutate()}
         >
-          New task
+          <Plus aria-hidden="true" />
         </Button>
         <Link
           to="/a/$agentId/sessions"
           params={{ agentId }}
           aria-current={segment === "sessions" ? "page" : undefined}
+          aria-label="Tasks"
+          title="Tasks"
           className={linkClass}
         >
-          Tasks
+          <List aria-hidden="true" />
         </Link>
         <Link
           to="/a/$agentId/automations"
           params={{ agentId }}
           aria-current={segment === "automations" ? "page" : undefined}
           aria-label={routineLabel}
+          title={routineLabel}
           className={linkClass}
         >
-          Routines {routines ? <span className="text-xs tabular-nums">{routines}</span> : null}
+          <CalendarClock aria-hidden="true" />
           {failed ? (
             <span
               role="img"
@@ -170,9 +173,10 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           params={{ agentId }}
           aria-current={settingsSegments.includes(segment) ? "page" : undefined}
           aria-label={settingsLabel}
+          title={settingsLabel}
           className={linkClass}
         >
-          Bot settings{" "}
+          <Settings aria-hidden="true" />
           {dirty ? (
             <span
               role="img"
@@ -183,7 +187,9 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
         </Link>
         {attention ? (
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Needs you" />}>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon-sm" aria-label="Needs you" title="Needs you" />}
+            >
               <CircleAlert className="text-orange" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60 max-w-[calc(100vw-1rem)]">

@@ -96,33 +96,29 @@ function AgentPane({ settings }: { settings: Settings }) {
   return (
     <InPaneContext.Provider value>
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border pr-2 pl-3 sm:pl-4">
-          <MenuButton />
-          <AgentAvatar agent={settings.agent} className="size-5 shrink-0 rounded-control text-[11px]" />
-          <Link
-            to="/a/$agentId"
-            params={{ agentId }}
-            className="max-w-24 shrink-0 truncate text-[13px] text-muted-foreground lg:max-w-40"
-          >
-            {settings.agent.name}
-          </Link>
-          <span aria-hidden className="text-ring">
-            /
-          </span>
-          {shown ? (
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <ChatTitle chat={shown} heading />
-            </div>
-          ) : (
-            <span className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em]">
-              {pageNames.get(segment ?? "") ?? ""}
+        <header className="grid h-12 shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-1 border-b border-border pr-2 pl-3 sm:pl-4">
+          <div className="flex min-w-0 items-center gap-1">
+            <MenuButton />
+          </div>
+          <div className="flex min-w-0 items-center justify-center gap-2">
+            <span title={settings.agent.name} className="shrink-0">
+              <AgentAvatar agent={settings.agent} className="size-5 rounded-control text-[11px]" />
             </span>
-          )}
-          <BotNavigation
-            agent={settings.agent}
-            segment={segment ?? ""}
-            cwd={shown?.cwd ?? main.data?.cwd ?? ""}
-          />
+            {shown ? (
+              <ChatTitle chat={shown} heading mainTitle={settings.agent.name} />
+            ) : (
+              <span className="min-w-0 truncate text-[13px] font-medium">
+                {pageNames.get(segment ?? "") ?? ""}
+              </span>
+            )}
+          </div>
+          <div className="flex min-w-0 items-center justify-end">
+            <BotNavigation
+              agent={settings.agent}
+              segment={segment ?? ""}
+              cwd={shown?.cwd ?? main.data?.cwd ?? ""}
+            />
+          </div>
         </header>
         <div inert={!onMain} className={cn("min-h-0 flex-1 flex-col", onMain ? "flex" : "hidden")}>
           <MainTimeline settings={settings} />
