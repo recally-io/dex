@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Test native child execution status and parent stream updates"
+#MISE description="Test current child state and shared-watch queue lifetime"
 #MISE depends=["build:web"]
 set -euo pipefail
-go test -race ./internal/engine ./internal/chat ./internal/app -run 'TestUserSeesChild(ExecutionBeforeTextAndAfterReconnect|FailureWithoutAReply)$|TestUserSeesModelWorkAndRetryBeforeContent$|TestUserSessionNewReplayKeepsIdentity$|TestUserReadingExecutionDoesNotStartAColdAgent$' -count=1
+go test -race ./internal/app -run '^TestUserSeesCurrentChildStateWithoutText$' -count=1

@@ -655,7 +655,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	}
 	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
 	if input.Child {
-		input.Changed = func() { s.signal(conv.ID); s.signal(conv.ParentID.Int64) }
+		input.Changed = func() { s.signal(conv.ID) }
 	}
 	if p.Kind == "task_result" {
 		input.TaskID, input.TaskTitle = resultLabel(p.Content)

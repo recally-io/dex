@@ -149,12 +149,7 @@ func checkMessage(message string) error {
 	return nil
 }
 
-func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a engine.SessionNewArgs) (result engine.SessionRef, resultErr error) {
-	defer func() {
-		if resultErr == nil {
-			result.TurnID = turnID(r.Key)
-		}
-	}()
+func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
 		return engine.SessionRef{}, err
@@ -245,12 +240,7 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a en
 	return sessionRef(child, target.Name, 1), nil
 }
 
-func (s *Service) ToolSessionSend(ctx context.Context, r engine.TaskContext, a engine.SessionSendArgs) (result engine.SessionRef, resultErr error) {
-	defer func() {
-		if resultErr == nil {
-			result.TurnID = turnID(r.Key)
-		}
-	}()
+func (s *Service) ToolSessionSend(ctx context.Context, r engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
 		return engine.SessionRef{}, err
@@ -323,12 +313,7 @@ func (s *Service) ToolSessionStop(ctx context.Context, r engine.TaskContext, id 
 	return s.ref(ctx, s.q, child)
 }
 
-func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a engine.SessionForkArgs) (result engine.SessionRef, resultErr error) {
-	defer func() {
-		if resultErr == nil {
-			result.TurnID = turnID(r.Key)
-		}
-	}()
+func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a engine.SessionForkArgs) (engine.SessionRef, error) {
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
 		return engine.SessionRef{}, err

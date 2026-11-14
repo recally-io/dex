@@ -106,10 +106,9 @@ type SessionSearchArgs struct {
 
 // SessionRef names a session, its bot, and its state: "running" or "idle".
 type SessionRef struct {
-	TurnID string `json:"turnId,omitempty"`
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	State  string `json:"state"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	State string `json:"state"`
 	// Bot is the name of the bot that owns the session.
 	Bot   string `json:"bot"`
 	BotID string `json:"botId"`

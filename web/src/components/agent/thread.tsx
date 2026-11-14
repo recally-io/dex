@@ -2,7 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CornerDownRight, MessagesSquare } from "lucide-react";
-import type { SessionExecution, TaskItem, ToolItem } from "../../api/generated/types.gen";
+import type { TaskItem, ToolItem } from "../../api/generated/types.gen";
 import { getTurnChatOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { useAgentId } from "../../lib/agent-scope";
 import { sessionAgentId } from "../../lib/sessions";
@@ -20,7 +20,7 @@ import { Badge } from "../ui/badge";
 /** The page that shows the thread panel provides this. Without it, a thread opens as a session page. */
 export const ThreadContext = createContext<{
   open?: (thread: ThreadRef) => void;
-  sessions?: SessionExecution[];
+  children?: Record<number, ThreadState>;
   connection?: "connecting" | "ready" | "error";
 } | null>(null);
 
@@ -71,73 +71,42 @@ export function useThreadData(call: ThreadCall) {
     call.thread ??
     (found.data ? { chatId: found.data.id, agentId: sessionAgentId(found.data, current) } : undefined);
 
-  const session = context?.sessions?.find(
-    (item) => item.chatId === thread?.chatId && item.agentId === (thread?.agentId ?? current),
-  );
-
-  const request = call.requestId ?? call.turn;
-
   return {
     thread,
-    session,
-    state: request
-      ? threadState(session, request, context?.connection === "ready")
-      : ("unavailable" as const),
+    state: threadState(
+      thread ? context?.children?.[thread.chatId] : undefined,
+      context?.connection === "ready",
+    ),
   };
 }
 
 const stateStyle: Record<ThreadState, "secondary" | "outline" | "destructive"> = {
   running: "secondary",
   waiting: "outline",
-  queued: "outline",
   unavailable: "outline",
-  model: "secondary",
-  tool: "secondary",
-  retry: "secondary",
-  deferred: "secondary",
-  compaction: "secondary",
-  finishing: "secondary",
   idle: "outline",
-  done: "outline",
-  failed: "destructive",
-  interrupted: "destructive",
-  stopped: "outline",
 };
 
 const stateLabels: Record<ThreadState, string> = {
-  idle: "idle",
+  idle: "Idle",
   waiting: "Waiting to run",
-  queued: "Queued",
   unavailable: "Status unavailable",
   running: "Running",
-  model: "Waiting for model",
-  tool: "Running tool",
-  retry: "Retrying",
-  deferred: "Provider pending",
-  compaction: "Compacting",
-  finishing: "Finishing",
-  done: "done",
-  failed: "failed",
-  interrupted: "interrupted",
-  stopped: "stopped",
 };
 
 export function StateBadge({ state }: { state: ThreadState }) {
   return (
     <Badge variant={stateStyle[state]} data-state={state}>
-      {["running", "model", "tool", "retry", "deferred", "compaction", "finishing"].includes(state) ? (
-        <Spinner />
-      ) : null}
+      {state === "running" ? <Spinner /> : null}
       {stateLabels[state]}
     </Badge>
   );
 }
 
-export function ExecutionNotice({ state, queued }: { state: ThreadState; queued: number }) {
+export function ExecutionNotice({ state }: { state: ThreadState }) {
   return (
     <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
       {stateLabels[state]}
-      {queued > 0 ? <span> · {queued} queued</span> : null}
     </p>
   );
 }
@@ -174,9 +143,6 @@ function ThreadCard({ call }: { call: ThreadCall }) {
           <span className="mt-1 block text-red [overflow-wrap:anywhere] whitespace-pre-wrap">
             {call.error}
           </span>
-        ) : null}
-        {data.session && data.session.queued > 0 ? (
-          <span className="mt-1 block text-xs text-muted-foreground">{data.session.queued} queued</span>
         ) : null}
       </ThreadOpen>
     </section>

@@ -262,60 +262,6 @@ func (q *Queries) ListChildPending(ctx context.Context, conversationID int64) ([
 	return items, nil
 }
 
-const listExecutionTurns = `-- name: ListExecutionTurns :many
-SELECT s.id, s.status, s.reason, c.id AS chat_id, c.agent_id, c.execution_id
-FROM submissions s
-JOIN conversations c ON c.id = s.conversation_id
-WHERE (c.id = ?1 OR c.parent_id = ?1)
-    AND s.kind IN ('message', 'task_result')
-    AND ((c.id = ?1
-        AND (s.status = 'pending' OR (s.parent_request_id IS NOT NULL AND s.kind = 'message')
-            OR s.rowid = (SELECT max(latest.rowid) FROM submissions latest
-                         WHERE latest.conversation_id = c.id AND latest.kind IN ('message', 'task_result'))))
-        OR (c.parent_id = ?1 AND s.parent_request_id IS NOT NULL AND s.kind = 'message'))
-ORDER BY c.id, s.rowid
-`
-
-type ListExecutionTurnsRow struct {
-	ID          string         `json:"id"`
-	Status      string         `json:"status"`
-	Reason      sql.NullString `json:"reason"`
-	ChatID      int64          `json:"chat_id"`
-	AgentID     string         `json:"agent_id"`
-	ExecutionID sql.NullInt64  `json:"execution_id"`
-}
-
-// Only routing and receipt metadata. Native records decide pending inputs' execution state.
-func (q *Queries) ListExecutionTurns(ctx context.Context, conversationID int64) ([]ListExecutionTurnsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listExecutionTurns, conversationID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListExecutionTurnsRow{}
-	for rows.Next() {
-		var i ListExecutionTurnsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Status,
-			&i.Reason,
-			&i.ChatID,
-			&i.AgentID,
-			&i.ExecutionID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listRecoveryChildren = `-- name: ListRecoveryChildren :many
 SELECT DISTINCT c.id, c.agent_id, c.execution_id
 FROM submissions s

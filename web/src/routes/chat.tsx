@@ -296,8 +296,8 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const [thread, setThread] = useState<ThreadRef | null>(null);
 
   const threads = useMemo(
-    () => ({ open: setThread, sessions: state.sessions, connection }),
-    [state.sessions, connection],
+    () => ({ open: setThread, children: state.children, connection }),
+    [state.children, connection],
   );
 
   const [announcement, setAnnouncement] = useState("");

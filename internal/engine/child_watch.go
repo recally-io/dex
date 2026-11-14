@@ -2,19 +2,18 @@ package engine
 
 import (
 	"context"
-	"reflect"
 	"sync"
 
 	"github.com/MichaelKinsy/PiG/chord"
-	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/harness"
 )
 
 type childActivityWatch struct {
-	requests map[string]bool
-	closing  bool
-	cancel   context.CancelFunc
-	done     chan struct{}
+	requests          map[string]bool
+	closing           bool
+	cancel            context.CancelFunc
+	done              chan struct{}
+	running, observed bool
 }
 
 // startActivityWatch shares a child watch across queued inputs. Replays do not own a second
@@ -55,34 +54,17 @@ func (a *Agents) startActivityWatch(ctx context.Context, ref Ref, conversation h
 			return nil, err
 		}
 		var active activeContext
-		phase := ""
-		var run *harness.LiveRun
-		queued := 0
 		update := func(view harness.ConversationView) error {
 			event, err := active.project(watchCtx, conversation, view)
 			if err != nil {
 				return err
 			}
 			a.updateActivity(ref, event, view, activityNow())
-			var nextRun *harness.LiveRun
-			nextQueued := 0
-			if doc, ok := view.Docs.Get("pi.live"); ok {
-				if value, _ := doc.Get("run"); value != nil {
-					typed, err := durable.FromJsonValue[harness.LiveRun](value)
-					if err != nil {
-						return err
-					}
-					nextRun = &typed
-				}
-			}
-			if doc, ok := view.Docs.Get("pi.inbox"); ok {
-				value, _ := doc.Get("items")
-				if items, ok := value.([]any); ok {
-					nextQueued = len(items)
-				}
-			}
-			if phase != event.Phase || queued != nextQueued || !reflect.DeepEqual(run, nextRun) {
-				phase, run, queued = event.Phase, nextRun, nextQueued
+			a.mu.Lock()
+			changed := !owned.observed || owned.running != event.Running
+			owned.running, owned.observed = event.Running, true
+			a.mu.Unlock()
+			if changed {
 				if input.Changed != nil {
 					input.Changed()
 				}
@@ -154,4 +136,15 @@ func (a *Agents) releaseActivityWatch(owned *childActivityWatch, request string)
 		owned.cancel()
 		<-owned.done
 	}
+}
+
+// ChildRunning reads the existing child observation. It never opens an execution or reads its history.
+func (a *Agents) ChildRunning(ref Ref) (running, available bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	w := a.activityWatches[ref]
+	if w == nil || w.closing || !w.observed {
+		return false, false
+	}
+	return w.running, true
 }

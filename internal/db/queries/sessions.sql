@@ -118,17 +118,3 @@ SELECT id, parent_request_id IS NOT NULL AS from_parent
 FROM submissions
 WHERE conversation_id = ? AND status = 'pending'
 ORDER BY rowid;
-
--- name: ListExecutionTurns :many
--- Only routing and receipt metadata. Native records decide pending inputs' execution state.
-SELECT s.id, s.status, s.reason, c.id AS chat_id, c.agent_id, c.execution_id
-FROM submissions s
-JOIN conversations c ON c.id = s.conversation_id
-WHERE (c.id = @conversation_id OR c.parent_id = @conversation_id)
-    AND s.kind IN ('message', 'task_result')
-    AND ((c.id = @conversation_id
-        AND (s.status = 'pending' OR (s.parent_request_id IS NOT NULL AND s.kind = 'message')
-            OR s.rowid = (SELECT max(latest.rowid) FROM submissions latest
-                         WHERE latest.conversation_id = c.id AND latest.kind IN ('message', 'task_result'))))
-        OR (c.parent_id = @conversation_id AND s.parent_request_id IS NOT NULL AND s.kind = 'message'))
-ORDER BY c.id, s.rowid;

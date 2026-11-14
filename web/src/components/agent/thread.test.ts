@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { expect, test } from "vite-plus/test";
-import type { Chat, Item, ToolItem, SessionExecution } from "../../api/generated/types.gen";
+import type { Chat, Item, ToolItem } from "../../api/generated/types.gen";
 import { threadCall, threadState } from "../../lib/threads";
 import { ResultLine, ThreadContext } from "./thread";
 import { ThreadView } from "./thread-panel";
@@ -37,7 +37,6 @@ const created = (id: string, child: number, title: string) =>
       title,
       botId: "default",
       bot: "Default",
-      turnId: "dispatch",
       state: "running",
     }),
   );
@@ -62,14 +61,6 @@ function seeded() {
   return new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
 }
 
-const execution: SessionExecution = {
-  chatId: 7,
-  agentId: "default",
-  phase: "tool",
-  queued: 1,
-  turns: [{ id: "dispatch", status: "running" }],
-};
-
 async function render(children: ReactNode, client = seeded()) {
   const router = createRouter({
     routeTree: createRootRoute({
@@ -79,7 +70,7 @@ async function render(children: ReactNode, client = seeded()) {
           { client },
           createElement(
             ThreadContext.Provider,
-            { value: { sessions: [execution], connection: "ready" } },
+            { value: { children: { 7: "running" }, connection: "ready" } },
             children,
           ),
         ),
@@ -100,8 +91,7 @@ test("user sees one card with native execution status and no copied child text",
   expect(html.match(/Session thread: Check logs/g)).toHaveLength(1);
   expect(html.indexOf("Ran a command")).toBeLessThan(html.indexOf("Session thread"));
   expect(html.indexOf("Session thread")).toBeLessThan(html.lastIndexOf("Ran a command"));
-  expect(html).toContain('data-state="tool"');
-  expect(html).toContain("1 queued");
+  expect(html).toContain('data-state="running"');
   expect(html).not.toContain("First line");
   expect(html).not.toContain("Third line");
   // Without a panel, the card opens the child as a session page.
@@ -206,7 +196,7 @@ test("user sees the child transcript in the panel, with its title, bot and state
       chat: { data: chat(7, "Check logs", false), isError: false, isPending: false, refetch: () => {} },
       items,
       running: false,
-      execution: { ...execution, phase: "idle", queued: 0, turns: [{ id: "dispatch", status: "done" }] },
+      status: "idle",
       connection: "ready",
       reconnect: () => {},
       onPage: () => {},
@@ -219,34 +209,18 @@ test("user sees the child transcript in the panel, with its title, bot and state
   expect(html).toContain("Check logs");
   expect(html).toContain("Check the logs");
   expect(html).toContain("Third line");
-  expect(html).toContain('data-state="done"');
+  expect(html).toContain('data-state="idle"');
+  expect(html).not.toContain('data-state="done"');
   expect(html).toContain('aria-label="Close thread"');
   expect(html).toContain('href="/a/default/c/7"');
 });
 
-test("thread state follows native run and submission outcomes", () => {
-  expect(threadState(execution)).toBe("tool");
-  expect(threadState({ ...execution, turns: [{ id: "dispatch", status: "done" }] }, "dispatch")).toBe("done");
-  expect(threadState({ ...execution, turns: [{ id: "dispatch", status: "queued" }] }, "dispatch")).toBe(
-    "queued",
-  );
-  expect(threadState(execution, "dispatch", false)).toBe("unavailable");
-  expect(threadState({ ...execution, phase: "model" })).toBe("model");
-  expect(threadState({ ...execution, phase: "running" })).toBe("running");
-  expect(threadState({ ...execution, phase: "retry" })).toBe("retry");
-  expect(
-    threadState({ ...execution, phase: "waiting", turns: [{ id: "dispatch", status: "waiting" }] }),
-  ).toBe("waiting");
-
-  for (const [reason, want] of [
-    ["model_error", "failed"],
-    ["interrupted", "interrupted"],
-    ["aborted", "stopped"],
-  ]) {
-    expect(
-      threadState({ ...execution, phase: "idle", turns: [{ id: "dispatch", status: "failed", reason }] }),
-    ).toBe(want);
-  }
+test("thread state is current state, and disconnect makes it unknown", () => {
+  expect(threadState("running")).toBe("running");
+  expect(threadState("waiting")).toBe("waiting");
+  expect(threadState("idle")).toBe("idle");
+  expect(threadState("running", false)).toBe("unavailable");
+  expect(threadState()).toBe("unavailable");
 });
 
 test("a legacy task call names its first input", () => {
@@ -256,7 +230,7 @@ test("a legacy task call names its first input", () => {
   expect(threadCall(bash("x"))).toBeUndefined();
 });
 
-test("user sees preparation before a child exists and model work without text", async () => {
+test("user sees preparation before a child exists and running without text", async () => {
   const pending = { ...created("pending", 7, "Check logs"), status: "running" as const, output: "" };
   const preparation = await render(createElement(Steps, { steps: [pending] }));
   expect(preparation).toContain("Preparing delegation");
@@ -269,7 +243,7 @@ test("user sees preparation before a child exists and model work without text", 
       chat: { data: chat(7, "Check logs", true), isError: false, isPending: false, refetch: () => {} },
       items: [{ kind: "user", id: "dispatch", text: "Go" }],
       running: true,
-      execution: { ...execution, phase: "model" },
+      status: "running",
       connection: "ready",
       reconnect: () => {},
       onPage: () => {},
@@ -277,6 +251,6 @@ test("user sees preparation before a child exists and model work without text", 
     }),
   );
 
-  expect(html).toContain("Waiting for model");
-  expect(html).toContain("1 queued");
+  expect(html).toContain("Running");
+  expect(html).not.toContain("Waiting for model");
 });

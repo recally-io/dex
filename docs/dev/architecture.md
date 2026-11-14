@@ -811,16 +811,24 @@ The web shows a child as a thread
 transcript keeps one card at each `session_new` or `session_fork` call and one
 line at each `session_send` call. A result mark is one line with a "View thread"
 action. The card, the line and the action open a read-only side panel that
-shows the child's own transcript with the usual chat reads and stream. Parent
-cards read content-free execution summaries from their own SSE connection, not
-child history polls. Each new session tool result includes `turnId`, so a card
-keeps the outcome of its own submission when the child receives later input.
-Old results without a turn ID keep their links but show status as unavailable.
-The web reads the child ID from the session tool result and finds the child of a result
+shows the child's own transcript with the usual chat reads and stream. The web
+reads the child ID from the session tool result and finds the child of a result
 mark with `getTurnChat`. Channels have no thread, so a channel user sees only
 the reply of Main. Child
 conversations stay absent from dream inputs, and dream input selects only
 ordinary messages.
+
+A card shows the child's current state, not the outcome of the dispatch that
+created it: waiting, running, idle, or unavailable. Idle does not mean success;
+result marks keep their recorded outcomes. The shared child activity watch
+wakes subscribers when native running changes. It remains open for queued
+inputs after the first input settles. Parent SSE subscribes to child IDs found
+in its current native window and sends only changed current states. It checks
+bot and parent ownership before it emits child metadata. It does not read all
+past dispatches, submissions, or child transcripts. Cards outside that window
+have unavailable status; opening the panel reads the child's own stream.
+Disconnect makes status unavailable. A reconnect reads the current snapshot
+and child states.
 
 A child is writable on the web at any time. A user message goes to the child
 like to any Chat and sends no result. Web Stop covers the selected session and
@@ -1009,19 +1017,6 @@ updates the backend implementation of ADR 0003.
   the window starts at the history boundary before the last 300 entries.
   `historyBefore` points at the first entry of the window, and older entries
   load as history. The window start stays fixed for one subscription.
-- The `sessions` event replaces content-free execution metadata for the selected
-  conversation and its delegated inputs. Native submissions distinguish waiting
-  for admission, queued, placed, done and unanswered. Queue length is separate
-  from the active run. The shared child activity watch wakes the parent stream
-  when the native run, phase or queue changes, including after the first input
-  settles while another input runs. No child text enters this event.
-- The `phase` of snapshots and run events comes from `pi.live`. A run without a
-  generation or a running tool shows Running, not an inferred model phase.
-  A generation can show Waiting for model before its first content event; this
-  does not prove that the HTTP request was sent. Retries and deferred responses
-  keep their own phases. Disconnected clients show status as unavailable until
-  a new execution snapshot arrives. Completion uses the submission outcome,
-  never the last text item. These are projections, not a second state table.
 - Snapshots, events, and history pages leave out a done tool output or a
   committed thought longer than 2 KiB and set `truncated`. A thought keeps its
   first line. A failed call and a session call keep their output, because the

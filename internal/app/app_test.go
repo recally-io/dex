@@ -212,26 +212,30 @@ type attachment struct {
 // transcript applies chat events as the web UI does: a snapshot replaces all, an item replaces the
 // item with its ID or is added, and an append adds text to an item.
 type transcript struct {
-	sessions  []sessionExecution
+	children  map[int64]string
 	items     []item
 	running   bool
 	snapshots int
 }
 
 type chatEvent struct {
-	Sessions []sessionExecution `json:"sessions"`
-	Type     string             `json:"type"`
-	Items    []item             `json:"items"`
-	Item     item               `json:"item"`
-	ID       string             `json:"id"`
-	Text     string             `json:"text"`
-	Running  bool               `json:"running"`
+	ChatID  int64  `json:"chatId"`
+	State   string `json:"state"`
+	Type    string `json:"type"`
+	Items   []item `json:"items"`
+	Item    item   `json:"item"`
+	ID      string `json:"id"`
+	Text    string `json:"text"`
+	Running bool   `json:"running"`
 }
 
 func (tr *transcript) apply(ev chatEvent) {
 	switch ev.Type {
-	case "sessions":
-		tr.sessions = ev.Sessions
+	case "child":
+		if tr.children == nil {
+			tr.children = map[int64]string{}
+		}
+		tr.children[ev.ChatID] = ev.State
 	case "snapshot":
 		tr.items, tr.running = ev.Items, ev.Running
 		tr.snapshots++

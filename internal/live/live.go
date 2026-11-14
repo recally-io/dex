@@ -4,6 +4,7 @@ package live
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -15,25 +16,31 @@ import (
 
 const heartbeat = 15 * time.Second
 
-// Hub keeps only notifications needed to attach an initially empty chat.
+type subscriber struct {
+	signal  chan struct{}
+	pending map[int64]struct{}
+}
+
+// Hub routes reference and child-state notifications to each transcript connection.
 type Hub struct {
 	chats  *chat.Service
 	agents *engine.Agents
 	mu     sync.Mutex
-	byChat map[int64]map[chan struct{}]struct{}
+	byChat map[int64]map[*subscriber]struct{}
 }
 
 func New(chats *chat.Service, agents *engine.Agents) *Hub {
-	return &Hub{chats: chats, agents: agents, byChat: map[int64]map[chan struct{}]struct{}{}}
+	return &Hub{chats: chats, agents: agents, byChat: map[int64]map[*subscriber]struct{}{}}
 }
 
-// Changed wakes empty chats after the business service stores their execution reference.
+// Changed coalesces notifications for the chat and parents that observe this child.
 func (h *Hub) Changed(chatID int64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for signal := range h.byChat[chatID] {
+	for sub := range h.byChat[chatID] {
+		sub.pending[chatID] = struct{}{}
 		select {
-		case signal <- struct{}{}:
+		case sub.signal <- struct{}{}:
 		default:
 		}
 	}
@@ -50,23 +57,13 @@ func (h *Hub) Open(ctx context.Context, agentID string, chatID int64) (io.ReadCl
 // open accepts only a chat that the caller has authorized.
 func (h *Hub) open(ctx context.Context, agentID string, c chat.Chat) io.ReadCloser {
 	ctx, cancel := context.WithCancel(ctx)
-	signal := make(chan struct{}, 1)
-	h.mu.Lock()
-	if h.byChat[c.ID] == nil {
-		h.byChat[c.ID] = map[chan struct{}]struct{}{}
-	}
-	h.byChat[c.ID][signal] = struct{}{}
-	h.mu.Unlock()
+	sub := &subscriber{signal: make(chan struct{}, 1), pending: map[int64]struct{}{}}
+	h.subscribe(c.ID, sub)
 	reader, writer := io.Pipe()
 	stop := context.AfterFunc(ctx, func() { _ = writer.CloseWithError(ctx.Err()) })
 	go func() {
-		err := h.serve(ctx, agentID, c, signal, writer)
-		h.mu.Lock()
-		delete(h.byChat[c.ID], signal)
-		if len(h.byChat[c.ID]) == 0 {
-			delete(h.byChat, c.ID)
-		}
-		h.mu.Unlock()
+		err := h.serve(ctx, agentID, c, sub, writer)
+		h.unsubscribe(c.ID, sub)
 		stop()
 		cancel()
 		_ = writer.CloseWithError(err)
@@ -81,8 +78,88 @@ type streamReader struct {
 
 func (r *streamReader) Close() error { r.cancel(); return r.PipeReader.Close() }
 
-func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, signal <-chan struct{}, writer io.Writer) error {
+func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subscriber, writer io.Writer) error {
+	children := map[int64]string{}
+	states := map[int64]string{}
+	defer func() {
+		for id := range children {
+			h.unsubscribe(id, sub)
+		}
+	}()
+	send := func(event childEvent) error {
+		if states[event.ChatID] == event.State {
+			return nil
+		}
+		raw, err := json.Marshal(event)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(writer, "event: child\ndata: %s\n\n", raw); err != nil {
+			return err
+		}
+		states[event.ChatID] = event.State
+		return nil
+	}
+	observe := func(event engine.Event) error {
+		if event.Type != "snapshot" && event.Type != "item" {
+			return nil
+		}
+		found := map[int64]string{}
+		items := event.Items
+		if event.Item != nil {
+			items = []engine.Item{*event.Item}
+		}
+		for _, item := range items {
+			if id, bot := childRef(item, agentID); id != 0 && id != c.ID {
+				found[id] = bot
+			}
+		}
+		if event.Type == "snapshot" {
+			for id, bot := range children {
+				if _, ok := found[id]; !ok {
+					h.unsubscribe(id, sub)
+					delete(children, id)
+					if err := send(childEvent{Type: "child", ChatID: id, AgentID: bot, State: "unavailable"}); err != nil {
+						return err
+					}
+					delete(states, id)
+				}
+			}
+		}
+		for id, bot := range found {
+			if _, ok := children[id]; ok {
+				continue
+			}
+			// Register before the state read, so a native change during the read cannot be lost.
+			h.subscribe(id, sub)
+			state, err := h.childState(ctx, c.ID, id, bot, nil)
+			if err != nil {
+				h.unsubscribe(id, sub)
+				if errors.Is(err, chat.ErrNotFound) {
+					continue
+				}
+				return err
+			}
+			children[id] = bot
+			if err := send(state); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	var watch *engine.Watch
+	running := false
+	ownState := func() error {
+		var native *bool
+		if watch != nil {
+			native = &running
+		}
+		state, err := h.childState(ctx, c.ID, c.ID, agentID, native)
+		if err != nil {
+			return err
+		}
+		return send(state)
+	}
 	defer func() {
 		if watch != nil {
 			watch.Close()
@@ -103,7 +180,11 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, signal <-c
 		if err != nil {
 			return err
 		}
-		return writeEvent(writer, watch.Snapshot)
+		running = watch.Snapshot.Running
+		if err := writeEvent(writer, watch.Snapshot); err != nil {
+			return err
+		}
+		return observe(watch.Snapshot)
 	}
 	// Register before rereading the reference, so admission cannot be missed.
 	if err := attach(); err != nil {
@@ -114,26 +195,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, signal <-c
 			return err
 		}
 	}
-	phase := ""
-	if watch != nil {
-		phase = watch.Snapshot.Phase
-	}
-	writeSessions := func() error {
-		sessions, err := h.chats.Executions(ctx, agentID, c.ID)
-		if err != nil {
-			return err
-		}
-		raw, err := json.Marshal(struct {
-			Type     string                  `json:"type"`
-			Sessions []chat.SessionExecution `json:"sessions"`
-		}{"sessions", sessions})
-		if err != nil {
-			return err
-		}
-		_, err = fmt.Fprintf(writer, "event: sessions\ndata: %s\n\n", raw)
-		return err
-	}
-	if err := writeSessions(); err != nil {
+	if err := ownState(); err != nil {
 		return err
 	}
 	tick := time.NewTicker(heartbeat)
@@ -146,12 +208,28 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, signal <-c
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-signal:
-			if err := attach(); err != nil {
-				return err
-			}
-			if err := writeSessions(); err != nil {
-				return err
+		case <-sub.signal:
+			h.mu.Lock()
+			pending := sub.pending
+			sub.pending = map[int64]struct{}{}
+			h.mu.Unlock()
+			for id := range pending {
+				if id == c.ID {
+					if err := attach(); err != nil {
+						return err
+					}
+					if err := ownState(); err != nil {
+						return err
+					}
+				} else if bot, ok := children[id]; ok {
+					state, err := h.childState(ctx, c.ID, id, bot, nil)
+					if err != nil {
+						return err
+					}
+					if err := send(state); err != nil {
+						return err
+					}
+				}
 			}
 		case event, ok := <-events:
 			if !ok {
@@ -160,9 +238,12 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, signal <-c
 			if err := writeEvent(writer, event); err != nil {
 				return err
 			}
-			if event.Phase != "" && event.Phase != phase {
-				phase = event.Phase
-				if err := writeSessions(); err != nil {
+			if err := observe(event); err != nil {
+				return err
+			}
+			if event.Type == "snapshot" || event.Type == "run" {
+				running = event.Running
+				if err := ownState(); err != nil {
 					return err
 				}
 			}

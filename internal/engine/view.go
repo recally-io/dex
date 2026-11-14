@@ -62,7 +62,6 @@ type Event struct {
 	ID            string `json:"id,omitempty"`
 	Text          string `json:"text,omitempty"`
 	Running       bool   `json:"running,omitzero"`
-	Phase         string `json:"phase,omitempty"`
 	Retry         *Retry `json:"retry,omitzero"`
 	HistoryBefore int64  `json:"historyBefore,omitzero"`
 }
@@ -76,16 +75,14 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			Items         []Item `json:"items"`
 			Running       bool   `json:"running"`
 			Retry         *Retry `json:"retry,omitzero"`
-			Phase         string `json:"phase,omitempty"`
 			HistoryBefore int64  `json:"historyBefore,omitzero"`
-		}{e.Type, e.Items, e.Running, e.Retry, e.Phase, e.HistoryBefore})
+		}{e.Type, e.Items, e.Running, e.Retry, e.HistoryBefore})
 	case "run":
 		return json.Marshal(struct {
 			Type    string `json:"type"`
 			Running bool   `json:"running"`
 			Retry   *Retry `json:"retry,omitzero"`
-			Phase   string `json:"phase,omitempty"`
-		}{e.Type, e.Running, e.Retry, e.Phase})
+		}{e.Type, e.Running, e.Retry})
 	}
 	type plain Event
 	return json.Marshal(plain(e))
@@ -134,7 +131,7 @@ type projection struct {
 }
 
 func (p projection) event() Event {
-	e := Event{Type: "snapshot", Items: brief(p.render()), Running: p.live.Run != nil, Phase: executionPhase(p.live)}
+	e := Event{Type: "snapshot", Items: brief(p.render()), Running: p.live.Run != nil}
 	if g := p.live.Generation; g != nil && g.Retry != nil {
 		e.Retry = &Retry{Attempt: g.Attempt, At: g.Retry.At, Reason: g.Retry.Error}
 	}

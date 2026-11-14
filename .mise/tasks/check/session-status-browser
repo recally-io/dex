@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Test child execution status in an isolated app and Moli browser"
-#MISE depends=["build:web"]
-set -euo pipefail
-binary="$(mktemp -d)"
-trap 'rm -rf "$binary"' EXIT
-go build -tags dex_e2e -o "$binary/dex" ./cmd/dex
-node web/tools/session-status-browser.mjs "$binary/dex" "$@"
