@@ -23,7 +23,7 @@ concurrency:
   group: check-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# The jobs run every step of `mise run check`. App race tests run in three partitions;
+# The jobs run every step of `mise run check`. App and chat race tests use separate partitions;
 # the Go job runs lint, builds, and all other packages. Keep coverage equal to mise.toml.
 jobs:
   lint:
@@ -82,7 +82,7 @@ jobs:
             go-test-${{ runner.os }}-
       # Go builds embed the web UI. install also downloads Go modules.
       - run: mise run install
-      - run: mise run check:go without-app
+      - run: mise run check:go without-integration
       - if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6.1.0
         with:
@@ -124,6 +124,41 @@ jobs:
         uses: actions/upload-artifact@v7.0.2
         with:
           name: app-tests-${{ matrix.shard }}
+          path: .local/ci/
+          include-hidden-files: true
+          retention-days: 7
+
+  # A package-wide timeout must not cut off later chat tests during native/SQLite-heavy runs.
+  chat:
+    name: Chat race tests (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.2.7
+        with:
+          install: true
+          cache: true
+      - uses: actions/cache/restore@v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+          key: go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ runner.os }}-
+      - run: mise run install
+      - run: mise run check:go-shard ./internal/chat ${{ strategy.job-index }} ${{ strategy.job-total }}
+      - if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: chat-tests-${{ matrix.shard }}
           path: .local/ci/
           include-hidden-files: true
           retention-days: 7
