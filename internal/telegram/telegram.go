@@ -76,6 +76,7 @@ type Bot struct {
 	previews  map[string]*preview
 	rateMu    sync.Mutex
 	retryAt   time.Time
+	albumWake chan struct{}
 }
 
 // New returns a Bot. Register it with the channel manager to start it.
@@ -84,11 +85,12 @@ func New(cfg Config, chats *channel.Manager) *Bot {
 		cfg.APIURL = "https://api.telegram.org"
 	}
 	return &Bot{
-		cfg:      cfg,
-		chats:    chats,
-		client:   &http.Client{Timeout: 90 * time.Second}, // above the 30 s long poll
-		previews: map[string]*preview{},
-		retryAt:  time.UnixMilli(cfg.RetryAt),
+		cfg:       cfg,
+		chats:     chats,
+		client:    &http.Client{Timeout: 90 * time.Second}, // above the 30 s long poll
+		previews:  map[string]*preview{},
+		retryAt:   time.UnixMilli(cfg.RetryAt),
+		albumWake: make(chan struct{}, 1),
 	}
 }
 
@@ -102,7 +104,9 @@ func (b *Bot) Run(ctx context.Context) error {
 		slog.Warn("telegram: command menu", "err", err)
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	defer func() { cancel(); b.closePreviews() }()
+	var media sync.WaitGroup
+	media.Go(func() { b.collectAlbums(ctx) })
+	defer func() { cancel(); media.Wait(); b.closePreviews() }()
 
 	// Telegram sends an update again until a getUpdates call with a higher offset confirms it. After
 	// a restart the offset is 0, so the last batch comes again; Receive ignores the repeats.
@@ -140,7 +144,7 @@ func (b *Bot) Run(ctx context.Context) error {
 
 func (b *Bot) receive(ctx context.Context, u update) error {
 	m := u.Message
-	if m == nil || m.From == nil || (m.Text == "" && m.Caption == "" && len(m.Photo) == 0 && m.Document == nil) {
+	if m == nil || m.From == nil || !m.hasContent() {
 		return nil
 	}
 	if m.Chat.Type != "private" {
@@ -166,7 +170,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		return nil
 	}
 	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
-	if m.Document != nil || len(m.Photo) > 0 {
+	if selected, _ := m.selectedMedia(); selected != nil {
 		received, err := b.chats.ReceivedSource(ctx, source)
 		if err != nil {
 			return err
@@ -184,22 +188,38 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		if !permanent {
 			return err
 		}
-		return b.controlReply(ctx, m.Chat.ID, "Cannot read this attachment. Use a photo or document under 20 MB.")
+		return b.controlReply(ctx, m.Chat.ID, "Cannot read this attachment. Send a supported file under 20 MB.")
 	}
 	content := m.Text
 	if content == "" {
 		content = m.Caption
 	}
+	if m.ForwardOrigin != nil {
+		content = "Forwarded message:\n" + content
+	}
 	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
-	incoming := chat.Message{Content: content, Attachments: attachments, ChannelContext: chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10)}}
+	incoming := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10), MediaGroup: m.MediaGroupID}}
+	if selected, kind := m.selectedMedia(); selected != nil {
+		incoming.ChannelContext.FileID = selected.ID
+		incoming.ChannelContext.MediaKind = kind
+	}
 	if m.ReplyTo != nil {
 		incoming.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
+		incoming.ChannelContext.ReplyTo = incoming.ReplyTo
 	}
-	receiveErr := b.chats.Receive(ctx, peer, source, incoming)
+	var receiveErr error
+	if m.MediaGroupID != "" && len(attachments) > 0 {
+		receiveErr = b.chats.StoreTelegramAlbum(ctx, peer, source, incoming)
+		if receiveErr == nil {
+			b.WakeMedia()
+		}
+	} else {
+		receiveErr = b.chats.Receive(ctx, peer, source, incoming)
+	}
 	if len(attachments) > 0 {
 		// A committed receipt can own the files even when admission returns an error.
 		receipt, lookupErr := b.chats.Source(context.WithoutCancel(ctx), source)
-		if lookupErr == nil && receipt.ID == "" {
+		if lookupErr == nil && receipt.ID == "" && !receipt.Staged {
 			for _, attachment := range attachments {
 				if err := b.cfg.Uploads.Remove(attachment.ID); err != nil {
 					slog.Warn("telegram: upload cleanup failed", "err", err)
@@ -212,7 +232,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	} else if receiveErr != nil {
 		return receiveErr
 	}
-	if !channel.IsCommand(content) {
+	if !channel.IsCommand(content) && m.MediaGroupID == "" {
 		b.startPreview(ctx, source, m.Chat.ID)
 	}
 	return nil
@@ -263,6 +283,10 @@ func (b *Bot) request(ctx context.Context, method string, body io.Reader, conten
 		return fmt.Errorf("telegram %s: %w", method, err)
 	}
 	defer resp.Body.Close() //nolint:errcheck // read-only body
+	// A proxy or service failure cannot authorize a fallback, even if its JSON says 400.
+	if resp.StatusCode >= http.StatusInternalServerError {
+		return &apiError{Code: resp.StatusCode, Description: "service outcome unknown"}
+	}
 	var out struct {
 		OK          bool           `json:"ok"`
 		Result      jsontext.Value `json:"result"`
@@ -322,20 +346,60 @@ type update struct {
 	Message  *message `json:"message"`
 }
 
+type user struct {
+	ID        int64  `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Username  string `json:"username"`
+}
+
+type remoteChat struct {
+	ID    int64  `json:"id"`
+	Type  string `json:"type"`
+	Title string `json:"title"`
+}
+
 type message struct {
-	From *struct {
-		ID int64 `json:"id"`
-	} `json:"from"`
-	Chat struct {
-		ID   int64  `json:"id"`
-		Type string `json:"type"`
-	} `json:"chat"`
-	// ReplyTo is the message that this message quotes.
-	ReplyTo *struct {
-		ID int64 `json:"message_id"`
-	} `json:"reply_to_message"`
-	Text     string  `json:"text"`
-	Caption  string  `json:"caption"`
-	Photo    []media `json:"photo"`
-	Document *media  `json:"document"`
+	ID      int64      `json:"message_id"`
+	From    *user      `json:"from"`
+	Chat    remoteChat `json:"chat"`
+	ReplyTo *message   `json:"reply_to_message"`
+	Quote   *struct {
+		Text string `json:"text"`
+	} `json:"quote"`
+	ForwardOrigin *struct {
+		Type           string      `json:"type"`
+		SenderUser     *user       `json:"sender_user"`
+		SenderUserName string      `json:"sender_user_name"`
+		Chat           *remoteChat `json:"chat"`
+		Date           int64       `json:"date"`
+		MessageID      int64       `json:"message_id"`
+	} `json:"forward_origin"`
+	MediaGroupID string  `json:"media_group_id"`
+	Text         string  `json:"text"`
+	Caption      string  `json:"caption"`
+	Photo        []media `json:"photo"`
+	Document     *media  `json:"document"`
+	Voice        *media  `json:"voice"`
+	Audio        *media  `json:"audio"`
+	Video        *media  `json:"video"`
+	Animation    *media  `json:"animation"`
+	VideoNote    *media  `json:"video_note"`
+	Sticker      *media  `json:"sticker"`
+	Location     *struct {
+		Latitude  float64 `json:"latitude"`
+		Longitude float64 `json:"longitude"`
+	} `json:"location"`
+	Contact *struct {
+		Phone     string `json:"phone_number"`
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+	} `json:"contact"`
+	Poll *struct {
+		Question string `json:"question"`
+		Options  []struct {
+			Text  string `json:"text"`
+			Votes int    `json:"voter_count"`
+		} `json:"options"`
+	} `json:"poll"`
 }

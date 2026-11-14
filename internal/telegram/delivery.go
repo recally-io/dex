@@ -21,7 +21,7 @@ func (b *Bot) Parts(reply chat.Reply) []channel.Part {
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
 	}
-	parts := render(text)
+	parts := render(text, !reply.LegacyDelivery)
 	if len(parts) == 0 {
 		return channel.TextParts([]string{html.EscapeString(text)})
 	}

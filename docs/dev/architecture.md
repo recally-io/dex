@@ -211,6 +211,74 @@ Revocation discards pending payloads and remains in effect for those receipts if
 the sender is later authorized again. Flood-control responses persist both the
 account cooldown and reply retry time. API waits are cancellable and survive restart.
 
+Telegram also accepts voice, audio, video, video notes, animations and stickers.
+The adapter keeps the original upload bytes and records the media type. Video notes
+remain video files. Animated stickers remain files with a type description.
+Voice and audio input states that automatic transcription is not configured.
+No speech provider, frame extractor, codec installer or cloud fallback runs automatically.
+Location, contact and poll messages become text with their supplied fields.
+
+Reply quotes and forward headers enter the ordinary model input as context, not as
+caller identity. The outer authenticated sender keeps authority. The adapter does not
+download quoted attachments. A pending Question keeps the user's answer text before
+the existing question wrapper is added, so quote text cannot change an approval.
+Forwarded text is not treated as a channel command.
+
+Explicit file results use native MP3/M4A audio, Opus voice, MP4 video and GIF animation
+methods when the detected container supports that route. A definitive media rejection
+falls back to a document with the original bytes. The platform still checks the codec;
+container routing does not prove that a real Telegram service can decode the file.
+
+The existing Goldmark version parses GFM. Telegram rendering maps task checkboxes,
+strikeout, numbered lists, blockquotes and code languages to supported text or HTML.
+Tables use plain cell text in a preformatted block. Image links keep their label and
+safe URL without fetching the image. Raw HTML remains escaped. The UTF-16 splitter
+keeps valid tags across parts. An old partially delivered reply without a frozen
+payload uses the original parser and rendering rules, so its cursor does not change.
+
+Album members commit their upload references to `telegram_album_members` before
+polling ACK. Collection closes after 800 ms without a new member, at three seconds,
+or at ten files. The chat service freezes membership before it creates the normal
+business input. Later members form an explicit continuation instead of changing a
+submitted payload. A restart restores collection and sealed batches from SQLite;
+raw member source keys resolve to the same stored input without downloading again.
+Captions keep their text for Question matching. Album captions are input data, not
+shared commands, even when a caption is `/clear` or `/stop`.
+
+These member rows track collection and upload ownership, not native execution.
+After a business receipt owns the files, their temporary input JSON is removed;
+source aliases remain for replay detection. Native admission and reconciliation
+still use the existing submission path. The receipt transaction checks that the
+batch is still sealed. Stop, Clear, authorization revocation and bot archive can
+discard unsubmitted batches without deleting files owned by an existing input.
+An interrupted cleanup retries from the retained references. Rejected files use
+the existing attachment error reply and do not enter the native album.
+
+Consecutive compatible file results use one `sendMediaGroup` request with two to
+ten members. Photos and videos can share a group. Audio and documents each use
+their own group type. Voice and animation keep their single-file methods.
+Membership and order freeze with the rendered reply. Existing frozen replies and
+older partially delivered replies keep their original part boundaries.
+
+A successful group confirms every remote message ID and the outer part cursor in
+one transaction. A definitive API 400 rejection first commits fallback mode.
+Fallback then uses native single-file methods and confirms each member in a
+transaction. A restart skips confirmed members and cannot regroup the rejected
+batch. The last member advances the outer cursor in the same transaction.
+The sender checks current authorization before each fallback member.
+
+Lost responses, invalid or incomplete message IDs, and service 5xx responses leave
+the whole group unconfirmed. HTTP 5xx takes precedence over a contradictory error
+code in the body. These outcomes never trigger fallback or confirm a prefix.
+Retries use the same snapshots. Telegram has no delivery idempotency key here,
+so remote acceptance before a failed response or local receipt can repeat an
+unconfirmed group or member. Flood waits keep the existing durable account and
+reply cooldowns. This is at-least-once delivery, not exactly-once delivery.
+
+Presentation preferences and configured speech services remain open layer-2 work.
+Group routing and isolated resources belong to layer 3; the adapter still rejects
+non-private chats.
+
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
 each agent execution store. Run one dex process per data directory.
 

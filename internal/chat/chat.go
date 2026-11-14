@@ -26,9 +26,10 @@ import (
 
 // Reply is the outcome of one message.
 type Reply struct {
-	Status string `json:"status"` // "done" or "unanswered"
-	Answer string `json:"answer,omitempty"`
-	Reason string `json:"reason,omitempty"`
+	LegacyDelivery bool   `json:"-"`
+	Status         string `json:"status"` // "done" or "unanswered"
+	Answer         string `json:"answer,omitempty"`
+	Reason         string `json:"reason,omitempty"`
 }
 
 // Chat is one conversation on one channel.
@@ -73,14 +74,21 @@ type Settings struct {
 
 // ChannelContext records the platform identity that authorized channel input.
 type ChannelContext struct {
-	AccountID string `json:"accountId,omitempty"`
-	SenderID  string `json:"senderId,omitempty"`
+	AccountID  string `json:"accountId,omitempty"`
+	SenderID   string `json:"senderId,omitempty"`
+	MessageID  string `json:"messageId,omitempty"`
+	ReplyTo    string `json:"replyTo,omitempty"`
+	FileID     string `json:"fileId,omitempty"`
+	MediaKind  string `json:"mediaKind,omitempty"`
+	MediaGroup string `json:"mediaGroup,omitempty"`
 }
 
 // Message is a message to post. Title is the title of a new chat; empty uses the start of Content,
 // or the name of the first attachment. Settings apply only when the message creates the chat.
 type Message struct {
 	ChannelContext ChannelContext
+	ChannelNote    string
+	AlbumSource    string
 	ID             string
 	Title          string
 	Content        string
@@ -288,10 +296,20 @@ func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey st
 			return err
 		}
 	}
+	content := m.Content
+	addContext := func() {
+		if m.ChannelNote != "" {
+			m.Content = strings.TrimSpace(content + "\n\n" + m.ChannelNote)
+		}
+	}
+	if m.AnswersQuestion == "" {
+		addContext()
+	}
 	_, err := s.enqueue(ctx, agentID, MainKey, sourceKey, peer, m)
 	if errors.Is(err, ErrQuestionClosed) && m.AnswersQuestion != "" {
 		// The question closed while the user wrote. The words still reach the agent as a plain message.
 		m.AnswersQuestion = ""
+		addContext()
 		_, err = s.enqueue(ctx, agentID, MainKey, sourceKey, peer, m)
 	}
 	return err
@@ -329,6 +347,15 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		// The writer is held now. Input first makes an archive fail as busy; archive first ends here.
 		if err := db.RequireActive(ctx, q, agentID); err != nil {
 			return 0, err
+		}
+		if m.AlbumSource != "" {
+			sealed, err := q.IsTelegramAlbumSealed(ctx, sqlc.IsTelegramAlbumSealedParams{AgentID: agentID, BatchSource: m.AlbumSource})
+			if err != nil {
+				return 0, err
+			}
+			if !sealed {
+				return 0, fmt.Errorf("%w: album was discarded before admission", ErrSessionInvalid)
+			}
 		}
 		attachments, err := json.Marshal(m.Attachments)
 		if err != nil {

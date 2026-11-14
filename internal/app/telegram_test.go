@@ -26,22 +26,27 @@ import (
 // of the real service. getUpdates returns every queued update with an ID at or above the offset,
 // as Telegram does.
 type fakeTelegram struct {
-	fileGate      <-chan struct{}
-	draftGate     <-chan struct{}
-	pollStarted   chan struct{}
-	pollCanceled  chan struct{}
-	pollRelease   <-chan struct{}
-	permanentChat atomic.Int64
-	failAfter     atomic.Int64
-	sendCount     atomic.Int64
-	failSend      atomic.Bool
-	failMedia     atomic.Bool
-	mediaSent     chan telegramMedia
-	mediaAttempts chan telegramMedia
-	mediaCalls    chan time.Time
-	attempted     chan struct{}
-	srv           *httptest.Server
-	sent          chan sentMessage
+	fileGate       <-chan struct{}
+	draftGate      <-chan struct{}
+	pollStarted    chan struct{}
+	pollCanceled   chan struct{}
+	pollRelease    <-chan struct{}
+	permanentChat  atomic.Int64
+	failAfter      atomic.Int64
+	sendCount      atomic.Int64
+	pollOffset     atomic.Int64
+	failSend       atomic.Bool
+	failMedia      atomic.Bool
+	mediaSent      chan telegramMedia
+	mediaAttempts  chan telegramMedia
+	mediaCalls     chan time.Time
+	groupAttempts  chan telegramGroup
+	groupSent      chan telegramGroup
+	mediaSuccesses atomic.Int64
+	mediaFailAfter atomic.Int64
+	attempted      chan struct{}
+	srv            *httptest.Server
+	sent           chan sentMessage
 
 	mu          sync.Mutex
 	updates     []map[string]any
@@ -54,7 +59,10 @@ type fakeTelegram struct {
 	deliveries  []channelSend
 }
 
-type platformFailure struct{ Code, Retry int }
+type platformFailure struct {
+	Code, Retry, HTTPStatus int
+	Disconnect, ShortResult bool
+}
 type platformEvent struct {
 	Method    string
 	Text      string
@@ -73,7 +81,7 @@ const fakeToken = "123:secret"
 
 func newFakeTelegram(t *testing.T) *fakeTelegram {
 	t.Helper()
-	f := &fakeTelegram{sent: make(chan sentMessage, 64), attempted: make(chan struct{}, 64), mediaSent: make(chan telegramMedia, 64), mediaAttempts: make(chan telegramMedia, 64), mediaCalls: make(chan time.Time, 64), failures: map[string][]platformFailure{}, files: map[string]string{}, events: make(chan platformEvent, 512)}
+	f := &fakeTelegram{sent: make(chan sentMessage, 64), attempted: make(chan struct{}, 64), mediaSent: make(chan telegramMedia, 64), mediaAttempts: make(chan telegramMedia, 64), mediaCalls: make(chan time.Time, 64), groupAttempts: make(chan telegramGroup, 64), groupSent: make(chan telegramGroup, 64), failures: map[string][]platformFailure{}, files: map[string]string{}, events: make(chan platformEvent, 512)}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -131,7 +139,8 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad token", http.StatusUnauthorized)
 		return
 	}
-	if method == "sendDocument" || method == "sendPhoto" {
+	mediaField := map[string]string{"sendDocument": "document", "sendPhoto": "photo", "sendAudio": "audio", "sendVoice": "voice", "sendVideo": "video", "sendAnimation": "animation"}[method]
+	if mediaField != "" {
 		f.mediaCalls <- time.Now()
 	}
 	f.mu.Lock()
@@ -143,6 +152,10 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	rejectHTML, rejectDraft := f.rejectHTML, f.rejectDraft
 	f.mu.Unlock()
+	if method == "sendMediaGroup" {
+		f.serveMediaGroup(w, r, failure)
+		return
+	}
 	if failure.Code != 0 {
 		_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": failure.Code, "description": "test platform failure", "parameters": map[string]any{"retry_after": failure.Retry}})
 		return
@@ -156,17 +169,13 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var result any = true
-	if method == "sendDocument" || method == "sendPhoto" {
+	if mediaField != "" {
 		if err := r.ParseMultipartForm(21 << 20); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
-		field := "document"
-		if method == "sendPhoto" {
-			field = "photo"
-		}
-		file, header, err := r.FormFile(field)
+		file, header, err := r.FormFile(mediaField)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -179,11 +188,12 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		media := telegramMedia{Method: method, Chat: r.FormValue("chat_id"), Name: header.Filename, Body: string(body), At: time.Now()}
 		f.mediaAttempts <- media
-		if f.failMedia.Load() {
+		if f.failMedia.Load() || f.mediaFailAfter.Load() > 0 && f.mediaSuccesses.Load() >= f.mediaFailAfter.Load() {
 			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 500, "description": "temporary media failure"})
 			return
 		}
 		f.mediaSent <- media
+		f.mediaSuccesses.Add(1)
 		f.mu.Lock()
 		f.nextID++
 		id := f.nextID
@@ -214,6 +224,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+		f.pollOffset.Store(params.Offset)
 		f.mu.Lock()
 		var updates []map[string]any
 		for _, u := range f.updates {

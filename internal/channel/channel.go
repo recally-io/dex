@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,9 @@ import (
 // ErrPermanent marks a part the platform cannot accept. The sender logs and skips it.
 // Other errors keep the part for retry.
 var ErrPermanent = errors.New("permanent channel delivery failure")
+
+// ErrGroupRejected permits a durable switch to single-file delivery after a definitive rejection.
+var ErrGroupRejected = errors.New("media group was rejected")
 
 // Status is the public runtime state. Reason must contain no credentials.
 type Status struct {
@@ -152,6 +156,9 @@ func (m *Manager) Notify(key string) {
 		if key != chat.MainKey && platform != name {
 			continue
 		}
+		if media, ok := r.bot.(interface{ WakeMedia() }); ok {
+			media.WakeMedia()
+		}
 		select {
 		case r.wake <- struct{}{}:
 		default:
@@ -192,7 +199,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 		return err
 	}
 	cmd := strings.TrimSpace(msg.Content)
-	if !IsCommand(cmd) {
+	if !IsCommand(cmd) || msg.AlbumSource != "" {
 		return m.chats.SubmitMessage(ctx, m.agentID, peer, source, msg)
 	}
 	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd}); err != nil {
@@ -297,6 +304,19 @@ func (m *Manager) sendPart(ctx context.Context, bot Bot, peer, id string, index 
 			err = fmt.Errorf("%w: file snapshot is no longer available", ErrPermanent)
 		}
 	}
+	if len(part.Group) > 0 {
+		files := slices.Clone(part.Group)
+		for i := range files {
+			files[i].Body, err = m.q.GetChannelReplyFile(ctx, sqlc.GetChannelReplyFileParams{OperationKey: files[i].Key, SubmissionID: id})
+			if errors.Is(err, sql.ErrNoRows) {
+				err = fmt.Errorf("%w: group snapshot is no longer available", ErrPermanent)
+			}
+			if err != nil {
+				break
+			}
+		}
+		part.Group = files
+	}
 	var receipt Receipt
 	if err == nil {
 		receipt, err = bot.Send(ctx, peer, id, index, part)
@@ -359,7 +379,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 				}
 				break
 			}
-			receipt, err := m.sendPart(ctx, bot, r.Origin, r.ID, i, parts[i])
+			err = m.sendReplyPart(ctx, name, bot, r, i, parts[i], &remotes)
 			if err != nil {
 				retryAt := time.Now().Add(5 * time.Second).UnixMilli()
 				if flood, ok := errors.AsType[*RetryError](err); ok {
@@ -370,9 +390,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 				}
 				return err
 			}
-			if err := m.confirmPart(ctx, r, receipt, &remotes); err != nil {
-				return err
-			}
+			r.ChannelGroupFallback, r.ChannelGroupCursor = 0, 0
 		}
 		if err := m.q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: r.ID, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
 			return err
