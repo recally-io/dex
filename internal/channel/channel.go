@@ -195,7 +195,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 		return err
 	}
 	cmd := strings.TrimSpace(msg.Content)
-	if !IsCommand(cmd) {
+	if !IsCommand(cmd) || msg.AlbumSource != "" {
 		return m.chats.SubmitMessage(ctx, m.agentID, peer, source, msg)
 	}
 	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd}); err != nil {
