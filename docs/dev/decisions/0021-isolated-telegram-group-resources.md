@@ -1,0 +1,31 @@
+# 0021: Isolated Telegram group execution resources
+
+Status: Proposed. Refs #159. The user has selected separate group resources and a minimal tool allowlist.
+
+## Context
+
+The private agent constructor loads owner instructions, memory, AGENTS files, skills, tool environment and MCP connections. A different conversation key cannot isolate those resources. Hiding tool schemas cannot stop nested or deferred execution.
+
+A group reader need not be an authorized sender. Sender authorization cannot grant access to the private bot profile or owner controls.
+
+## Decision
+
+Keep the real bot identity. Add a trusted resource audience to native `engine.Ref` and creation options. An empty scope keeps the existing private runtime. A canonical `tg_<Telegram bot ID>_<negative chat ID>_<topic ID>` selects the group constructor. Scope comes from trusted platform routing and persisted business data, never from model arguments or message text.
+
+Each audience has separate execution storage at `agents/<id>/telegram-groups/<scope>/state.sqlite` and a separate `resources/` directory. Native IDs are local to that storage; callers must retain both scope and native ID. Regular group sessions can separate senders inside one resource audience. Topic sessions can share their topic audience. There is no new real bot or general ACL language.
+
+The group constructor does not call the private resource loader, open private memory, capture the login environment, discover MCP, or set a project. It installs a fixed executable registry. Group configuration discards private instructions/CWD and replaces extension/tool selections. Settlement does not commit private memory. The constructor installs the restricted registry before the Harness can resume stored work.
+
+The initial registry permits only `group_resource` and `group_note`. A native before-tool hook rejects all other names at dispatch. The hook also applies to nested and deferred calls and task-owned children. The resource handlers hold a scope-rooted filesystem handle. They reject traversal and symlinks. Reads are limited to explicitly published UTF-8 resources. Notes use immutable operation-owned files, separate from private memory. Forks and engine recovery retain the scope.
+
+## Rollout boundary
+
+This first increment supplies the native resource and execution boundary only. The Telegram adapter still rejects non-private input. Before group input can enter, business routing must persist scope, bind current bot/chat/topic/sender identity, enforce sender authorization before downloads and tool actions, and keep stop/clear/child operations in the current scope. Existing private instructions must not enter through those paths. Group speech needs a separate explicit permission and must not reuse private speech consent.
+
+Menus, Questions, callbacks and child workflows must use narrow scope-bound handlers before their tool names can enter the fixed group registry. Private bot management, Routines, process tools, generic filesystem tools, MCP discovery and cross-bot session/memory tools stay absent.
+
+## Verification and limits
+
+Use real native execution and SQLite. Adversarial native registries can offer and register forbidden executables; tests must prove that the execution hook blocks them, not only that the model cannot see them. Remove that hook through a Go overlay to prove that direct, nested/deferred and task-owned-child calls execute without it.
+
+Context canaries, real local MCP configuration, separate audience files, traversal/symlink attempts, forks and reopen tests cover resource initialization and recovery. These tests do not authorize a real Telegram group or prove the unfinished business authorization and workflow paths. The runtime boundary is not an OS sandbox against the local owner.

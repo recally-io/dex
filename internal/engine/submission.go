@@ -64,7 +64,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 	}
 	var native durable.Submission
 	if record := existing; record != nil {
-		h, err := a.harness(ctx, ref.AgentID)
+		h, err := a.harness(ctx, ref.AgentID, ref.Scope)
 		if err != nil {
 			return nil, err
 		}
@@ -76,31 +76,36 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if input.Model.ModelID == "" {
 			return nil, ErrNoModel
 		}
-		change := a.agentChange(ref.AgentID, input.Options)
-		if input.Automation {
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil, "", "")}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck), botReadExtension(ref.AgentID, a.config.Bots)}}})
-		}
-		// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
-		// so a child, an automation or a dream never gets the tool and needs no removal.
-		dream := input.Origin == "dream" || strings.Contains(input.Source, "/dream/")
-		asksUser := !input.Automation && !input.Child && !dream
-		switch {
-		case input.Main:
-			add := []*durable.Extension{frontDeskExtension()}
-			if asksUser {
-				add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots))
+		change := a.changeFor(ref, input.Options)
+		if ref.Scope == "" {
+			if input.Automation {
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil, "", "")}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck), botReadExtension(ref.AgentID, a.config.Bots)}}})
 			}
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{workLoopExtension()}, Add: add}})
-		case asksUser:
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: []*durable.Extension{askUserExtension(ref.AgentID, a.config.Tasks.AskUser), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots)}}})
+			// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
+			// so a child, an automation or a dream never gets the tool and needs no removal.
+			dream := input.Origin == "dream" || strings.Contains(input.Source, "/dream/")
+			asksUser := !input.Automation && !input.Child && !dream
+			switch {
+			case input.Main:
+				add := []*durable.Extension{frontDeskExtension()}
+				if asksUser {
+					add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots))
+				}
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{workLoopExtension()}, Add: add}})
+			case asksUser:
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: []*durable.Extension{askUserExtension(ref.AgentID, a.config.Tasks.AskUser), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots)}}})
+			}
+			switch {
+			case input.Child:
+				// Every input of a child repeats this edit, so a user message in a child that was a task
+				// before the upgrade loses the same extensions.
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), frontDeskExtension(), routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{childExtension()}}})
+			case dream:
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil, "", ""), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"), a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
+			}
 		}
-		switch {
-		case input.Child:
-			// Every input of a child repeats this edit, so a user message in a child that was a task
-			// before the upgrade loses the same extensions.
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), frontDeskExtension(), routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{childExtension()}}})
-		case dream:
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil, "", ""), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"), a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
+		if err := a.groupAttachments(ref, input.Attachments); err != nil {
+			return nil, err
 		}
 		if err := conversation.Configure(ctx, change); err != nil {
 			return nil, err
@@ -108,13 +113,17 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		kind := inputEntryKind(input)
 		whenBusy := durable.WhenBusy(cmp.Or(input.WhenBusy, string(durable.WhenBusyFollowUp)))
 		var id durable.SubmissionId
+		inputDirectory := a.inputDirectory(ref)
+		if ref.Scope != "" {
+			inputDirectory = ""
+		}
 		_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
-			metadata := InputMetadata{RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
+			metadata := InputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
 			data, err := durable.ToJsonValue(metadata)
 			if err != nil {
 				return nil, err
 			}
-			draft := durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"))), WhenBusy: whenBusy, InputEntry: &durable.InputEntry{Kind: kind, Data: data}}
+			draft := durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, inputDirectory)), WhenBusy: whenBusy, InputEntry: &durable.InputEntry{Kind: kind, Data: data}}
 			id, err = conversation.SubmitIn(tx, draft)
 			return nil, err
 		})
@@ -124,7 +133,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			}
 			return nil, err
 		}
-		h, err := a.harness(ctx, ref.AgentID)
+		h, err := a.harness(ctx, ref.AgentID, ref.Scope)
 		if err != nil {
 			return nil, err
 		}
@@ -184,8 +193,10 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 			}
 		}
 		// A failed or aborted execution may have changed memory too.
-		if _, err := a.memory.Commit(settlementCtx, "Update memory from "+input.Source); err != nil {
-			slog.Error("commit agent memory", "agent", ref.AgentID, "error", err)
+		if ref.Scope == "" {
+			if _, err := a.memory.Commit(settlementCtx, "Update memory from "+input.Source); err != nil {
+				slog.Error("commit agent memory", "agent", ref.AgentID, "error", err)
+			}
 		}
 	})
 	return result
@@ -204,7 +215,7 @@ func inputText(input Input, workspace string) string {
 	for _, attachment := range input.Attachments {
 		text.WriteString("\n- ")
 		// Uploads stay in the workspace. An absolute path keeps working after set_project changes
-		// the cwd, also later in the same run.
+		// the cwd, also later in the same run. Group inputs use relative resource paths instead.
 		text.WriteString(filepath.Join(workspace, attachment.Path))
 	}
 	return text.String()

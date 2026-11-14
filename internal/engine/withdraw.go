@@ -81,7 +81,7 @@ func (a *Agents) Withdraw(ctx context.Context, ref Ref, requestID string) (Withd
 	if record == nil {
 		return NotAdmitted, nil
 	}
-	h, err := a.harness(ctx, ref.AgentID)
+	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
 	if err != nil {
 		return "", err
 	}

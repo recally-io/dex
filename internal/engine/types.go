@@ -16,6 +16,8 @@ var (
 )
 
 type Ref struct {
+	// Scope is the trusted resource audience. Empty selects the private bot runtime.
+	Scope   string
 	AgentID string
 	ID      int64
 }
@@ -35,6 +37,8 @@ type ModelRef struct {
 	ModelID  string `json:"modelId"`
 }
 type Options struct {
+	// Scope is selected by trusted routing, never by model arguments or message text.
+	Scope         string
 	Cwd           string
 	Model         ModelRef
 	ThinkingLevel string
@@ -67,6 +71,7 @@ type Input struct {
 	WhenBusy string
 }
 type InputMetadata struct {
+	Scope       string       `json:"scope,omitempty"`
 	RequestID   string       `json:"requestId"`
 	Content     string       `json:"content"`
 	Kind        string       `json:"kind,omitempty"`

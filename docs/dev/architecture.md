@@ -1201,6 +1201,30 @@ or input so a tool call keeps its result. Committed assistant block IDs use
 call IDs. The browser merges overlaps by ID and keeps queued input last.
 Older withdrawn input loads from the same durable entries through history.
 
+## Isolated Telegram resource runtime
+
+`engine.Ref.Scope` selects native resource ownership in addition to the real bot
+and native conversation ID. Empty scope keeps private execution. A canonical
+Telegram bot/chat/topic scope selects separate execution storage under
+`agents/<id>/telegram-groups/<scope>/state.sqlite`. Its `resources/` directory
+holds explicitly published group files and operation-owned notes. Native IDs
+are local to each store. Forks, cancellation, recovery and activity keys retain scope.
+
+The group constructor bypasses private memory, profile/instructions, AGENTS,
+project files, skills, environment capture and MCP loading. Its registry contains
+only narrow group resource and note tools. A before-tool hook enforces a fixed
+execution allowlist for direct, nested, deferred and task-owned-child calls.
+Filesystem handlers use a scope-rooted handle and reject traversal and symlinks.
+Group input configuration cannot add private extensions or a project; settlement
+does not commit private memory. Group attachment text contains relative resource
+paths, not the host's private directory path.
+
+This is an engine foundation, not an enabled group route. Telegram still rejects
+non-private input. Business scope persistence, actor authorization, group/topic
+routing and scope-bound workflows must be complete before that gate changes.
+A resource scope is not an actor grant. See
+[proposed ADR 0021](decisions/0021-isolated-telegram-group-resources.md).
+
 ## Telegram
 
 [`telegram.Bot`](../../internal/channel/telegram/telegram.go) is on when the settings
