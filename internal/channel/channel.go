@@ -21,6 +21,7 @@ package channel
 import (
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -45,10 +46,10 @@ type Status struct {
 // Bot is a transport. Run and Send can execute at the same time.
 type Bot interface {
 	Run(context.Context) error
-	Parts(chat.Reply) []string
+	Parts(chat.Reply) []Part
 	// Replies use the submission ID; commands use the source key.
-	// Part is zero-based. Send returns the remote message ID, or "" when the platform has none.
-	Send(ctx context.Context, peer, deliveryID string, part int, text string) (string, error)
+	// Part is zero-based. The receipt contains every remote message ID for that part.
+	Send(ctx context.Context, peer, deliveryID string, part int, content Part) (Receipt, error)
 }
 
 type runtime struct {
@@ -63,6 +64,7 @@ type runtime struct {
 type Manager struct {
 	ctx       context.Context
 	q         *sqlc.Queries
+	db        *sql.DB
 	chats     *chat.Service
 	agentID   string
 	setMu     sync.Mutex
@@ -73,7 +75,7 @@ type Manager struct {
 
 // New creates a manager. Close it before closing the database.
 func New(ctx context.Context, db *sql.DB, chats *chat.Service, agentID string) *Manager {
-	return &Manager{ctx: ctx, q: sqlc.New(db), chats: chats, agentID: agentID, bots: make(map[string]*runtime)}
+	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), chats: chats, agentID: agentID, bots: make(map[string]*runtime)}
 }
 
 // Set replaces one platform's bot. Callers must not call it from Bot.Run or Bot.Send.
@@ -285,13 +287,28 @@ func (m *Manager) deliver(ctx context.Context, name string, r *runtime) {
 	}
 }
 
-func sendPart(ctx context.Context, bot Bot, peer, id string, part int, text string) (string, error) {
-	remote, err := bot.Send(ctx, peer, id, part, text)
-	if errors.Is(err, ErrPermanent) {
-		slog.Warn("channel: skipped a rejected reply part", "delivery", id, "part", part, "err", err)
-		return "", nil
+func (m *Manager) sendPart(ctx context.Context, bot Bot, peer, id string, index int, part Part) (Receipt, error) {
+	var err error
+	if part.File != nil {
+		file := *part.File
+		part.File = &file
+		part.File.Body, err = m.q.GetChannelReplyFile(ctx, sqlc.GetChannelReplyFileParams{OperationKey: part.File.Key, SubmissionID: id})
+		if errors.Is(err, sql.ErrNoRows) {
+			err = fmt.Errorf("%w: file snapshot is no longer available", ErrPermanent)
+		}
 	}
-	return remote, err
+	var receipt Receipt
+	if err == nil {
+		receipt, err = bot.Send(ctx, peer, id, index, part)
+	}
+	if errors.Is(err, ErrPermanent) {
+		slog.Warn("channel: skipped a rejected reply part", "delivery", id, "part", index, "err", err)
+		if stored := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: id, Reason: err.Error()}); stored != nil {
+			return Receipt{}, stored
+		}
+		return Receipt{}, nil
+	}
+	return receipt, err
 }
 
 func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
@@ -314,22 +331,50 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 	if err != nil {
 		return err
 	}
+	blocked := make(map[string]bool)
 	for _, r := range replies {
-		parts := bot.Parts(chat.Reply{Status: r.Status, Answer: r.Answer.String, Reason: r.Reason.String})
+		if blocked[r.Origin] {
+			continue
+		}
+		if r.ChannelRetryAt > time.Now().UnixMilli() && r.ChannelRevoked == 0 {
+			blocked[r.Origin] = true
+			continue
+		}
+		parts, err := m.replyParts(ctx, bot, r)
+		if err != nil {
+			return err
+		}
+		var remotes []string
+		if err := json.Unmarshal([]byte(r.ChannelRemoteIds), &remotes); err != nil {
+			return err
+		}
 		for i := int(r.DeliveredParts); i < len(parts); i++ {
-			remote, err := sendPart(ctx, bot, r.Origin, r.ID, i, parts[i])
+			allowed, err := m.authorizedReply(ctx, name, r)
 			if err != nil {
 				return err
 			}
-			// A quoted reply to any part of a reply that asks a question answers it.
-			if err = m.rememberQuestionMessage(ctx, r.ID, r.Origin, remote); err != nil {
+			if !allowed {
+				if err := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: r.ID, Reason: "destination no longer authorized"}); err != nil {
+					return err
+				}
+				break
+			}
+			receipt, err := m.sendPart(ctx, bot, r.Origin, r.ID, i, parts[i])
+			if err != nil {
+				retryAt := time.Now().Add(5 * time.Second).UnixMilli()
+				if flood, ok := errors.AsType[*RetryError](err); ok {
+					retryAt = time.Now().Add(flood.After).UnixMilli()
+				}
+				if stored := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: r.ID, RetryAt: retryAt, Reason: err.Error()}); stored != nil {
+					return errors.Join(err, stored)
+				}
 				return err
 			}
-			if err = m.q.AdvanceChannelReply(ctx, r.ID); err != nil {
+			if err := m.confirmPart(ctx, r, receipt, &remotes); err != nil {
 				return err
 			}
 		}
-		if err = m.q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: r.ID, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
+		if err := m.q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: r.ID, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
 			return err
 		}
 	}
@@ -340,7 +385,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 	for _, r := range acks {
 		parts := bot.Parts(chat.Reply{Status: "done", Answer: r.Answer})
 		for i, part := range parts {
-			if _, err = sendPart(ctx, bot, r.Peer, r.SourceKey, i, part); err != nil {
+			if _, err = m.sendPart(ctx, bot, r.Peer, r.SourceKey, i, part); err != nil {
 				return fmt.Errorf("send command reply: %w", err)
 			}
 		}
@@ -352,16 +397,16 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 }
 
 // rememberQuestionMessage links a sent message to the question that its input asked.
-func (m *Manager) rememberQuestionMessage(ctx context.Context, submissionID, peer, remoteID string) error {
+func (m *Manager) rememberQuestionMessage(ctx context.Context, q *sqlc.Queries, submissionID, peer, remoteID string) error {
 	if remoteID == "" {
 		return nil
 	}
-	question, err := m.q.GetQuestionBySource(ctx, submissionID)
+	question, err := q.GetQuestionBySource(ctx, submissionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	return m.q.AddQuestionMessage(ctx, sqlc.AddQuestionMessageParams{AgentID: m.agentID, Peer: peer, RemoteID: remoteID, QuestionID: question.ID})
+	return q.AddQuestionMessage(ctx, sqlc.AddQuestionMessageParams{AgentID: m.agentID, Peer: peer, RemoteID: remoteID, QuestionID: question.ID})
 }

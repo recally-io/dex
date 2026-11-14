@@ -184,7 +184,9 @@ func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram
 	if err != nil {
 		return nil, err
 	}
-	return &telegram.Config{Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(agentID, row.Token)}, nil
+	return &telegram.Config{Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(agentID, row.Token), RetryAt: row.RetryAt,
+		RateLimit: s.telegramRateLimit(agentID, row.Token),
+	}, nil
 }
 
 // SetTelegram saves the bot configuration and restarts the bot. An empty token keeps the saved
@@ -214,6 +216,7 @@ func (s *Service) SetTelegram(ctx context.Context, agentID string, token string,
 	}
 	cfg := telegram.Config{Token: strings.TrimSpace(token), AllowedUsers: allowedUsers, APIURL: s.apiURL}
 	cfg.Pair = s.pairTelegram(agentID, cfg.Token)
+	cfg.RateLimit = s.telegramRateLimit(agentID, cfg.Token)
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
@@ -224,7 +227,7 @@ func (s *Service) SetTelegram(ctx context.Context, agentID string, token string,
 	for i, id := range allowedUsers {
 		users[i] = strconv.FormatInt(id, 10)
 	}
-	err = s.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: agentID,
+	cfg.RetryAt, err = s.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: agentID,
 		Token: cfg.Token, AllowedUsers: strings.Join(users, ","),
 	})
 	if err != nil {

@@ -401,8 +401,8 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 }
 
 const createSubmission = `-- name: CreateSubmission :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, coalesce(nullif(CAST(?8 AS TEXT), ''), 'followUp'), 'pending', ?9)
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at, channel_context)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, coalesce(nullif(CAST(?8 AS TEXT), ''), 'followUp'), 'pending', ?9, coalesce(nullif(CAST(?10 AS TEXT), ''), '{}'))
 ON CONFLICT DO NOTHING
 `
 
@@ -416,6 +416,7 @@ type CreateSubmissionParams struct {
 	Kind           string         `json:"kind"`
 	WhenBusy       string         `json:"when_busy"`
 	CreatedAt      int64          `json:"created_at"`
+	ChannelContext string         `json:"channel_context"`
 }
 
 // A message whose ID or source key exists already is not stored again. An empty when_busy
@@ -431,6 +432,7 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 		arg.Kind,
 		arg.WhenBusy,
 		arg.CreatedAt,
+		arg.ChannelContext,
 	)
 	if err != nil {
 		return 0, err
@@ -916,7 +918,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, rendered_reply, channel_retry_at, channel_delivery_error, channel_remote_ids, channel_revoked FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -942,6 +944,12 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.ParentRequestID,
 		&i.ResultChildID,
 		&i.NativeAnswerID,
+		&i.ChannelContext,
+		&i.RenderedReply,
+		&i.ChannelRetryAt,
+		&i.ChannelDeliveryError,
+		&i.ChannelRemoteIds,
+		&i.ChannelRevoked,
 	)
 	return i, err
 }
@@ -968,7 +976,7 @@ func (q *Queries) GetSubmissionReply(ctx context.Context, id string) (GetSubmiss
 }
 
 const getTelegramSettings = `-- name: GetTelegramSettings :one
-SELECT agent_id, token, allowed_users, pairing_code, pairing_expires FROM telegram_settings WHERE agent_id = ?
+SELECT agent_id, token, allowed_users, pairing_code, pairing_expires, retry_at FROM telegram_settings WHERE agent_id = ?
 `
 
 func (q *Queries) GetTelegramSettings(ctx context.Context, agentID string) (TelegramSetting, error) {
@@ -980,6 +988,7 @@ func (q *Queries) GetTelegramSettings(ctx context.Context, agentID string) (Tele
 		&i.AllowedUsers,
 		&i.PairingCode,
 		&i.PairingExpires,
+		&i.RetryAt,
 	)
 	return i, err
 }
@@ -1897,10 +1906,12 @@ func (q *Queries) SetTelegramPairing(ctx context.Context, arg SetTelegramPairing
 	return err
 }
 
-const setTelegramSettings = `-- name: SetTelegramSettings :exec
+const setTelegramSettings = `-- name: SetTelegramSettings :one
 INSERT INTO telegram_settings (agent_id, token, allowed_users)
 VALUES (?, ?, ?)
-ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, pairing_code = '', pairing_expires = 0
+ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, pairing_code = '', pairing_expires = 0,
+retry_at = CASE WHEN substr(token, 1, instr(token, ':') - 1) = substr(excluded.token, 1, instr(excluded.token, ':') - 1) THEN retry_at ELSE 0 END
+RETURNING retry_at
 `
 
 type SetTelegramSettingsParams struct {
@@ -1909,9 +1920,11 @@ type SetTelegramSettingsParams struct {
 	AllowedUsers string `json:"allowed_users"`
 }
 
-func (q *Queries) SetTelegramSettings(ctx context.Context, arg SetTelegramSettingsParams) error {
-	_, err := q.db.ExecContext(ctx, setTelegramSettings, arg.AgentID, arg.Token, arg.AllowedUsers)
-	return err
+func (q *Queries) SetTelegramSettings(ctx context.Context, arg SetTelegramSettingsParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, setTelegramSettings, arg.AgentID, arg.Token, arg.AllowedUsers)
+	var retry_at int64
+	err := row.Scan(&retry_at)
+	return retry_at, err
 }
 
 const settleSubmission = `-- name: SettleSubmission :execrows

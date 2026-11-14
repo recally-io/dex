@@ -18,7 +18,8 @@ UPDATE channel_commands SET answer = ? WHERE source_key = ?;
 SELECT * FROM channel_commands WHERE agent_id = ? AND completed = 0;
 
 -- name: ListChannelReplies :many
-SELECT s.id, s.origin, s.status, s.answer, s.reason, s.delivered_parts
+SELECT s.id, s.origin, s.status, s.answer, s.reason, s.delivered_parts,
+       s.rendered_reply, s.channel_context, s.channel_remote_ids, s.channel_revoked, s.channel_retry_at
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status != 'pending' AND s.delivered_at IS NULL
 AND (s.kind = 'message' OR (s.kind = 'task_result' AND s.status = 'done'))
@@ -40,7 +41,8 @@ SELECT count(*) FROM submissions s JOIN conversations c ON c.id = s.conversation
 WHERE s.status = 'pending' AND c.agent_id = @agent_id AND s.origin = @peer;
 
 -- name: AdvanceChannelReply :exec
-UPDATE submissions SET delivered_parts = delivered_parts + 1 WHERE id = ?;
+UPDATE submissions SET delivered_parts = delivered_parts + 1, channel_remote_ids = @remote_ids,
+    channel_retry_at = 0 WHERE id = @id;
 
 -- name: TelegramCredentialOwner :one
 SELECT a.id, a.name FROM agents a JOIN telegram_settings s ON s.agent_id = a.id WHERE s.token = ?;
