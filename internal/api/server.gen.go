@@ -57,16 +57,16 @@ func (e AssistantItemKind) Valid() bool {
 
 // Defines values for BoundaryItemBoundary.
 const (
-	Compaction BoundaryItemBoundary = "compaction"
-	Reset      BoundaryItemBoundary = "reset"
+	BoundaryItemBoundaryCompaction BoundaryItemBoundary = "compaction"
+	BoundaryItemBoundaryReset      BoundaryItemBoundary = "reset"
 )
 
 // Valid indicates whether the value is a known member of the BoundaryItemBoundary enum.
 func (e BoundaryItemBoundary) Valid() bool {
 	switch e {
-	case Compaction:
+	case BoundaryItemBoundaryCompaction:
 		return true
-	case Reset:
+	case BoundaryItemBoundaryReset:
 		return true
 	default:
 		return false
@@ -181,6 +181,78 @@ const (
 func (e ErrorItemKind) Valid() bool {
 	switch e {
 	case ErrorItemKindError:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExecutionPhase.
+const (
+	ExecutionPhaseCompaction  ExecutionPhase = "compaction"
+	ExecutionPhaseDeferred    ExecutionPhase = "deferred"
+	ExecutionPhaseFinishing   ExecutionPhase = "finishing"
+	ExecutionPhaseIdle        ExecutionPhase = "idle"
+	ExecutionPhaseModel       ExecutionPhase = "model"
+	ExecutionPhaseRetry       ExecutionPhase = "retry"
+	ExecutionPhaseRunning     ExecutionPhase = "running"
+	ExecutionPhaseTool        ExecutionPhase = "tool"
+	ExecutionPhaseUnavailable ExecutionPhase = "unavailable"
+	ExecutionPhaseWaiting     ExecutionPhase = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the ExecutionPhase enum.
+func (e ExecutionPhase) Valid() bool {
+	switch e {
+	case ExecutionPhaseCompaction:
+		return true
+	case ExecutionPhaseDeferred:
+		return true
+	case ExecutionPhaseFinishing:
+		return true
+	case ExecutionPhaseIdle:
+		return true
+	case ExecutionPhaseModel:
+		return true
+	case ExecutionPhaseRetry:
+		return true
+	case ExecutionPhaseRunning:
+		return true
+	case ExecutionPhaseTool:
+		return true
+	case ExecutionPhaseUnavailable:
+		return true
+	case ExecutionPhaseWaiting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExecutionTurnStatus.
+const (
+	ExecutionTurnStatusDone        ExecutionTurnStatus = "done"
+	ExecutionTurnStatusFailed      ExecutionTurnStatus = "failed"
+	ExecutionTurnStatusQueued      ExecutionTurnStatus = "queued"
+	ExecutionTurnStatusRunning     ExecutionTurnStatus = "running"
+	ExecutionTurnStatusUnavailable ExecutionTurnStatus = "unavailable"
+	ExecutionTurnStatusWaiting     ExecutionTurnStatus = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the ExecutionTurnStatus enum.
+func (e ExecutionTurnStatus) Valid() bool {
+	switch e {
+	case ExecutionTurnStatusDone:
+		return true
+	case ExecutionTurnStatusFailed:
+		return true
+	case ExecutionTurnStatusQueued:
+		return true
+	case ExecutionTurnStatusRunning:
+		return true
+	case ExecutionTurnStatusUnavailable:
+		return true
+	case ExecutionTurnStatusWaiting:
 		return true
 	default:
 		return false
@@ -391,6 +463,21 @@ func (e RunEventType) Valid() bool {
 	}
 }
 
+// Defines values for SessionsEventType.
+const (
+	Sessions SessionsEventType = "sessions"
+)
+
+// Valid indicates whether the value is a known member of the SessionsEventType enum.
+func (e SessionsEventType) Valid() bool {
+	switch e {
+	case Sessions:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SkillScope.
 const (
 	SkillScopeAgent   SkillScope = "agent"
@@ -492,13 +579,13 @@ func (e ThinkingLevel) Valid() bool {
 
 // Defines values for ToolItemKind.
 const (
-	Tool ToolItemKind = "tool"
+	ToolItemKindTool ToolItemKind = "tool"
 )
 
 // Valid indicates whether the value is a known member of the ToolItemKind enum.
 func (e ToolItemKind) Valid() bool {
 	switch e {
-	case Tool:
+	case ToolItemKindTool:
 		return true
 	default:
 		return false
@@ -810,6 +897,19 @@ type ErrorItem struct {
 // ErrorItemKind defines model for ErrorItem.Kind.
 type ErrorItemKind string
 
+// ExecutionPhase Native run phase. Running alone does not prove that a model request was sent.
+type ExecutionPhase string
+
+// ExecutionTurn defines model for ExecutionTurn.
+type ExecutionTurn struct {
+	Id     string              `json:"id"`
+	Reason *string             `json:"reason,omitempty"`
+	Status ExecutionTurnStatus `json:"status"`
+}
+
+// ExecutionTurnStatus defines model for ExecutionTurn.Status.
+type ExecutionTurnStatus string
+
 // ExtensionScope Resolved data directory or agent home, each under .agents/.
 type ExtensionScope string
 
@@ -1092,9 +1192,11 @@ type Retry struct {
 
 // RunEvent defines model for RunEvent.
 type RunEvent struct {
-	Retry   *Retry       `json:"retry,omitempty"`
-	Running bool         `json:"running"`
-	Type    RunEventType `json:"type"`
+	// Phase Native run phase. Running alone does not prove that a model request was sent.
+	Phase   *ExecutionPhase `json:"phase,omitempty"`
+	Retry   *Retry          `json:"retry,omitempty"`
+	Running bool            `json:"running"`
+	Type    RunEventType    `json:"type"`
 }
 
 // RunEventType defines model for RunEvent.Type.
@@ -1122,6 +1224,26 @@ type SchedulePreview struct {
 type SentMessage struct {
 	SubmissionId string `json:"submissionId"`
 }
+
+// SessionExecution Content-free native execution state. Queued inputs can coexist with an active run.
+type SessionExecution struct {
+	AgentId string `json:"agentId"`
+	ChatId  int64  `json:"chatId"`
+
+	// Phase Native run phase. Running alone does not prove that a model request was sent.
+	Phase  ExecutionPhase  `json:"phase"`
+	Queued int             `json:"queued"`
+	Turns  []ExecutionTurn `json:"turns"`
+}
+
+// SessionsEvent Replaces execution metadata for this session and its delegated inputs. No child text is included.
+type SessionsEvent struct {
+	Sessions []SessionExecution `json:"sessions"`
+	Type     SessionsEventType  `json:"type"`
+}
+
+// SessionsEventType defines model for SessionsEvent.Type.
+type SessionsEventType string
 
 // Settings defines model for Settings.
 type Settings struct {
@@ -1159,11 +1281,14 @@ type SkillScope string
 // SnapshotEvent defines model for SnapshotEvent.
 type SnapshotEvent struct {
 	// HistoryBefore Load history before this entry ID.
-	HistoryBefore *int64            `json:"historyBefore,omitempty"`
-	Items         []Item            `json:"items"`
-	Retry         *Retry            `json:"retry,omitempty"`
-	Running       bool              `json:"running"`
-	Type          SnapshotEventType `json:"type"`
+	HistoryBefore *int64 `json:"historyBefore,omitempty"`
+	Items         []Item `json:"items"`
+
+	// Phase Native run phase. Running alone does not prove that a model request was sent.
+	Phase   *ExecutionPhase   `json:"phase,omitempty"`
+	Retry   *Retry            `json:"retry,omitempty"`
+	Running bool              `json:"running"`
+	Type    SnapshotEventType `json:"type"`
 }
 
 // SnapshotEventType defines model for SnapshotEvent.Type.
@@ -1633,6 +1758,40 @@ func (t *ChatEvent) MergeRunEvent(v RunEvent) error {
 	return err
 }
 
+// AsSessionsEvent returns the union data inside the ChatEvent as a SessionsEvent
+func (t ChatEvent) AsSessionsEvent() (SessionsEvent, error) {
+	var body SessionsEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSessionsEvent overwrites any union data inside the ChatEvent as the provided SessionsEvent
+func (t *ChatEvent) FromSessionsEvent(v SessionsEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"sessions"}`))
+	t.union = b
+	return err
+}
+
+// MergeSessionsEvent performs a merge with any union data inside the ChatEvent, using the provided SessionsEvent
+func (t *ChatEvent) MergeSessionsEvent(v SessionsEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"sessions"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t ChatEvent) Discriminator() (string, error) {
 	var discriminator struct {
 		Discriminator string `json:"type"`
@@ -1653,6 +1812,8 @@ func (t ChatEvent) ValueByDiscriminator() (interface{}, error) {
 		return t.AsItemEvent()
 	case "run":
 		return t.AsRunEvent()
+	case "sessions":
+		return t.AsSessionsEvent()
 	case "snapshot":
 		return t.AsSnapshotEvent()
 	default:

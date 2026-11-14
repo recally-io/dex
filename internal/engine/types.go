@@ -49,6 +49,8 @@ type Attachment struct {
 }
 
 type Input struct {
+	// Changed wakes content-free execution subscribers. It must not block.
+	Changed                                  func()
 	RequestID, Content, Kind, Origin, Source string
 	Attachments                              []Attachment
 	Options

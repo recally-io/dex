@@ -1,8 +1,17 @@
-import type { ChatEvent, HistoryPage, Item, Retry } from "../api/generated/types.gen";
+import type {
+  ChatEvent,
+  ExecutionPhase,
+  SessionExecution,
+  HistoryPage,
+  Item,
+  Retry,
+} from "../api/generated/types.gen";
 
 export type ChatState = {
   items: Item[];
   running: boolean;
+  phase?: ExecutionPhase;
+  sessions?: SessionExecution[];
   retry?: Retry;
   history?: Item[];
   historyBefore?: number;
@@ -21,6 +30,8 @@ export function retryMessage(items: Item[], index: number) {
 
 export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
   switch (event.type) {
+    case "sessions":
+      return { ...state, sessions: event.sessions };
     case "snapshot": {
       const remote = new Set(event.items.map((item) => item.id));
       const archived = state.items.filter((item) => item.entryId !== undefined && !remote.has(item.id));
@@ -29,6 +40,8 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
       return {
         items: mergeItems(history, event.items),
         running: event.running,
+        phase: event.phase,
+        sessions: state.sessions,
         retry: event.retry,
         history,
         headBefore: event.historyBefore,
@@ -66,7 +79,7 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         ),
       };
     case "run":
-      return { ...state, running: event.running, retry: event.retry };
+      return { ...state, running: event.running, phase: event.phase, retry: event.retry };
   }
 }
 

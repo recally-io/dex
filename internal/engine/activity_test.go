@@ -53,7 +53,7 @@ func TestUserBackgroundActivityTracksWithoutUserWatch(t *testing.T) {
 		t.Fatalf("replay: %+v %v", replay, err)
 	}
 	a.mu.Lock()
-	watches := a.activityWatches[ref]
+	watches := len(a.activityWatches)
 	a.mu.Unlock()
 	if watches != 1 {
 		t.Fatalf("replay started another activity watch: %d", watches)

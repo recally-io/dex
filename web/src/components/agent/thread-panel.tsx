@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ExternalLink, X } from "lucide-react";
-import type { Chat, HistoryPage, Item } from "../../api/generated/types.gen";
+import type { Chat, HistoryPage, Item, SessionExecution } from "../../api/generated/types.gen";
 import { listAgentsOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { AgentContext, useAgentId } from "../../lib/agent-scope";
 import { mergeHistory } from "../../lib/chat-state";
@@ -11,7 +11,7 @@ import { threadState, type ThreadRef } from "../../lib/threads";
 import { Failure, Loading } from "../feedback";
 import { IconButton } from "../icon-button";
 import { LoadEarlierButton } from "../timeline-actions";
-import { StateBadge } from "./thread";
+import { ExecutionNotice, StateBadge } from "./thread";
 import { Transcript } from "./transcript";
 
 /**
@@ -45,6 +45,7 @@ function PanelBody({ chatId, agentId, onClose }: { chatId: number; agentId: stri
       chat={chat}
       items={state.items}
       running={state.running}
+      execution={state.sessions?.find((item) => item.chatId === chatId && item.agentId === agentId)}
       historyBefore={state.historyBefore}
       connection={connection}
       reconnect={() => reconnect.current?.()}
@@ -61,6 +62,7 @@ export function ThreadView({
   chat,
   items,
   running,
+  execution,
   historyBefore,
   connection,
   reconnect,
@@ -72,6 +74,7 @@ export function ThreadView({
   chat: { data?: Chat; error?: unknown; isError: boolean; isPending: boolean; refetch: () => void };
   items: Item[];
   running: boolean;
+  execution?: SessionExecution;
   historyBefore?: number;
   connection: "connecting" | "ready" | "error";
   reconnect: () => void;
@@ -98,7 +101,7 @@ export function ThreadView({
     return () => observer.disconnect();
   }, []);
 
-  const phase = chat.data ? threadState(chat.data.busy || running, items) : undefined;
+  const phase = threadState(execution, undefined, connection === "ready");
 
   return (
     <aside
@@ -154,6 +157,7 @@ export function ThreadView({
                   </button>
                 </Failure>
               ) : null}
+              <ExecutionNotice state={phase} queued={execution?.queued ?? 0} />
               <LoadEarlierButton chatId={chatId} before={historyBefore} onPage={onPage} />
               <Transcript chatId={chatId} items={items} running={running} retry={() => {}} canRetry={false} />
             </>

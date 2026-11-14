@@ -114,6 +114,28 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, signal <-c
 			return err
 		}
 	}
+	phase := ""
+	if watch != nil {
+		phase = watch.Snapshot.Phase
+	}
+	writeSessions := func() error {
+		sessions, err := h.chats.Executions(ctx, agentID, c.ID)
+		if err != nil {
+			return err
+		}
+		raw, err := json.Marshal(struct {
+			Type     string                  `json:"type"`
+			Sessions []chat.SessionExecution `json:"sessions"`
+		}{"sessions", sessions})
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(writer, "event: sessions\ndata: %s\n\n", raw)
+		return err
+	}
+	if err := writeSessions(); err != nil {
+		return err
+	}
 	tick := time.NewTicker(heartbeat)
 	defer tick.Stop()
 	for {
@@ -128,12 +150,21 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, signal <-c
 			if err := attach(); err != nil {
 				return err
 			}
+			if err := writeSessions(); err != nil {
+				return err
+			}
 		case event, ok := <-events:
 			if !ok {
 				return nil
 			}
 			if err := writeEvent(writer, event); err != nil {
 				return err
+			}
+			if event.Phase != "" && event.Phase != phase {
+				phase = event.Phase
+				if err := writeSessions(); err != nil {
+					return err
+				}
 			}
 		case <-tick.C:
 			if _, err := io.WriteString(writer, ": ping\n\n"); err != nil {

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Test native child execution status and parent stream updates"
+#MISE depends=["build:web"]
+set -euo pipefail
+go test -race ./internal/engine ./internal/chat ./internal/app -run 'TestUserSeesChild(ExecutionBeforeTextAndAfterReconnect|FailureWithoutAReply)$|TestUserSeesModelWorkAndRetryBeforeContent$|TestUserSessionNewReplayKeepsIdentity$|TestUserReadingExecutionDoesNotStartAColdAgent$' -count=1

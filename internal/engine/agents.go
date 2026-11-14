@@ -76,7 +76,7 @@ type Agents struct {
 	mu               sync.Mutex
 	resources        map[string]*agentResources
 	activity         map[Ref]*activityRecord
-	activityWatches  map[Ref]int // internal watches per child conversation; at most one
+	activityWatches  map[Ref]*childActivityWatch // one watch shared by live submissions
 	opening          map[string]*agentOpening
 	recovering       map[string]map[durable.ConversationId]bool
 	serial           map[Ref]chan struct{}
@@ -103,7 +103,7 @@ func New(config Config) (*Agents, error) {
 		}
 	}
 	config.BaseEnv = maps.Clone(config.BaseEnv)
-	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: NewMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]int{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
+	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: NewMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
 }
 
 func (a *Agents) begin() error {

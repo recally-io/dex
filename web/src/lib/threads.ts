@@ -1,4 +1,4 @@
-import type { Item, ToolItem } from "../api/generated/types.gen";
+import type { SessionExecution, ToolItem } from "../api/generated/types.gen";
 import { arg } from "./tools";
 
 /** A child session. A missing agentId means the bot of the open page. */
@@ -16,6 +16,7 @@ export type ThreadCall = {
   thread?: ThreadRef;
   /** The ID of a task from before child sessions. The API finds its session. */
   turn?: string;
+  requestId?: string;
   status: ToolItem["status"];
   /** What the failed call returned. */
   error?: string;
@@ -24,7 +25,7 @@ export type ThreadCall = {
 const creates = ["session_new", "session_fork", "spawn_task"];
 
 // The fields of a session tool result (engine.SessionRef) that the transcript uses.
-type SessionResult = { id?: string; title?: string; bot?: string; botId?: string };
+type SessionResult = { id?: string; title?: string; bot?: string; botId?: string; turnId?: string };
 
 function parse(output: string): SessionResult {
   try {
@@ -52,42 +53,38 @@ export function threadCall(tool: ToolItem): ThreadCall | undefined {
     bot: botId ? { id: botId, name: done.bot || botId } : undefined,
     thread: chatId ? { chatId, agentId: botId || undefined } : undefined,
     turn: tool.name === "spawn_task" && id && !chatId ? id : undefined,
+    requestId: done.turnId,
     status: tool.status,
     error: tool.status === "error" ? tool.output : undefined,
   };
 }
 
-export type ThreadState = "running" | "idle" | "done" | "failed" | "interrupted" | "stopped";
+export type ThreadState =
+  | SessionExecution["phase"]
+  | "queued"
+  | "done"
+  | "failed"
+  | "interrupted"
+  | "stopped";
 
 const interrupted = ["interrupted", "orphaned", "restart_limit"];
 
-/** busy comes from the chat. The items are the committed history of the child. */
-export function threadState(busy: boolean, items: Item[]): ThreadState {
-  if (busy) return "running";
+/** A card follows its submission. A panel shows the active run and the queue separately. */
+export function threadState(session?: SessionExecution, requestId?: string, connected = true): ThreadState {
+  if (!connected || !session || session.phase === "unavailable") return "unavailable";
 
-  const last = items.findLast((item) => ["user", "assistant", "error"].includes(item.kind));
+  if (!requestId && !["idle", "waiting", "unavailable"].includes(session.phase)) return session.phase;
+  const turn = requestId ? session.turns.find((item) => item.id === requestId) : session.turns.at(-1);
 
-  if (last?.kind === "assistant") return "done";
+  if (!turn) return requestId ? "waiting" : session.phase;
 
-  if (last?.kind === "error")
-    return last.aborted ? "stopped" : interrupted.includes(last.failure ?? "") ? "interrupted" : "failed";
+  if (turn.status === "failed") {
+    if (["aborted", "withdrawn"].includes(turn.reason ?? "")) return "stopped";
 
-  return "idle";
-}
+    return interrupted.includes(turn.reason ?? "") ? "interrupted" : "failed";
+  }
 
-/** The number of messages the child received, and the first two lines of its latest answer. */
-export function threadSummary(items: Item[]) {
-  const answer = items.findLast((item) => item.kind === "assistant" && item.text.trim());
+  if (turn.status === "running") return session.phase === "idle" ? "running" : session.phase;
 
-  return {
-    turns: items.filter((item) => item.kind === "user" && !item.queued).length,
-    preview:
-      answer?.kind === "assistant"
-        ? answer.text
-            .split("\n")
-            .filter((line) => line.trim())
-            .slice(0, 2)
-            .join("\n")
-        : "",
-  };
+  return turn.status;
 }

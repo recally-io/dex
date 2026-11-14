@@ -51,6 +51,20 @@ func TestUserSessionNewReplayKeepsIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The saved child is waiting for admission, not already running.
+	states, err := r.service.Executions(t.Context(), "bot", parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed := false
+	for _, state := range states {
+		if strconv.FormatInt(state.ChatID, 10) == first.ID {
+			observed = state.Phase == "waiting" && len(state.Turns) == 1 && state.Turns[0].ID == first.TurnID && state.Turns[0].Status == "waiting"
+		}
+	}
+	if !observed {
+		t.Fatalf("saved child must wait for native admission: %+v", states)
+	}
 	// When the same tool call runs again with other arguments.
 	replay, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Replay", Message: "different"})
 	if err != nil {

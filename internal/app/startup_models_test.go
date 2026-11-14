@@ -148,6 +148,8 @@ func TestUserStartupServesHTTPAndRetainsPendingAdmissionDuringDiscovery(t *testi
 	// Then discovery publication wakes reconciliation and the same receipt completes.
 	release()
 	eventually(t, "discovered model published", func() (bool, any) { got := d.models(t); return slices.Contains(got, "lan/remote"), got })
+	// The one-second deadline above checks finite HTTP reads, not the lifetime of an SSE connection.
+	d.srv.Client().Timeout = 0
 	d.watch(t, savedChat).until(t, "pending dynamic input recovered", func(tr *transcript) bool {
 		count := 0
 		for _, item := range tr.items {

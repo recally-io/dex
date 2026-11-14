@@ -76,8 +76,8 @@ func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
 		changes, ok := diff(current.Items, next.Items)
 		if !ok || current.HistoryBefore != next.HistoryBefore {
 			changes = []Event{next}
-		} else if current.Running != next.Running || !reflect.DeepEqual(current.Retry, next.Retry) {
-			changes = append(changes, Event{Type: "run", Running: next.Running, Retry: next.Retry})
+		} else if current.Running != next.Running || current.Phase != next.Phase || !reflect.DeepEqual(current.Retry, next.Retry) {
+			changes = append(changes, Event{Type: "run", Running: next.Running, Retry: next.Retry, Phase: next.Phase})
 		}
 		current = next
 		for _, event := range changes {

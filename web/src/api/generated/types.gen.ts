@@ -535,6 +535,36 @@ export type Retry = {
     reason: string;
 };
 
+/**
+ * Native run phase. Running alone does not prove that a model request was sent.
+ */
+export type ExecutionPhase = 'idle' | 'waiting' | 'unavailable' | 'running' | 'model' | 'tool' | 'retry' | 'deferred' | 'compaction' | 'finishing';
+
+export type ExecutionTurn = {
+    id: string;
+    status: 'waiting' | 'queued' | 'running' | 'done' | 'failed' | 'unavailable';
+    reason?: string;
+};
+
+/**
+ * Content-free native execution state. Queued inputs can coexist with an active run.
+ */
+export type SessionExecution = {
+    chatId: number;
+    agentId: string;
+    phase: ExecutionPhase;
+    queued: number;
+    turns: Array<ExecutionTurn>;
+};
+
+/**
+ * Replaces execution metadata for this session and its delegated inputs. No child text is included.
+ */
+export type SessionsEvent = {
+    type: 'sessions';
+    sessions: Array<SessionExecution>;
+};
+
 export type ChatEvent = ({
     type: 'snapshot';
 } & SnapshotEvent) | ({
@@ -543,12 +573,15 @@ export type ChatEvent = ({
     type: 'append';
 } & AppendEvent) | ({
     type: 'run';
-} & RunEvent);
+} & RunEvent) | ({
+    type: 'sessions';
+} & SessionsEvent);
 
 export type SnapshotEvent = {
     type: 'snapshot';
     items: Array<Item>;
     running: boolean;
+    phase?: ExecutionPhase;
     /**
      * Load history before this entry ID.
      */
@@ -576,6 +609,7 @@ export type AppendEvent = {
 export type RunEvent = {
     type: 'run';
     running: boolean;
+    phase?: ExecutionPhase;
     retry?: Retry;
 };
 

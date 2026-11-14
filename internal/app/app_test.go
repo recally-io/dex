@@ -212,22 +212,26 @@ type attachment struct {
 // transcript applies chat events as the web UI does: a snapshot replaces all, an item replaces the
 // item with its ID or is added, and an append adds text to an item.
 type transcript struct {
+	sessions  []sessionExecution
 	items     []item
 	running   bool
 	snapshots int
 }
 
 type chatEvent struct {
-	Type    string `json:"type"`
-	Items   []item `json:"items"`
-	Item    item   `json:"item"`
-	ID      string `json:"id"`
-	Text    string `json:"text"`
-	Running bool   `json:"running"`
+	Sessions []sessionExecution `json:"sessions"`
+	Type     string             `json:"type"`
+	Items    []item             `json:"items"`
+	Item     item               `json:"item"`
+	ID       string             `json:"id"`
+	Text     string             `json:"text"`
+	Running  bool               `json:"running"`
 }
 
 func (tr *transcript) apply(ev chatEvent) {
 	switch ev.Type {
+	case "sessions":
+		tr.sessions = ev.Sessions
 	case "snapshot":
 		tr.items, tr.running = ev.Items, ev.Running
 		tr.snapshots++
@@ -279,15 +283,18 @@ func (d *dex) watchPath(t *testing.T, path string) *watcher {
 		defer close(w.events)
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(nil, 16<<20)
-		var typ string
+		var typ, data string
 		for scanner.Scan() {
 			line := scanner.Text()
 			switch {
 			case strings.HasPrefix(line, "event: "):
 				typ = strings.TrimPrefix(line, "event: ")
 			case strings.HasPrefix(line, "data: "):
+				data = strings.TrimPrefix(line, "data: ")
+			case line == "" && data != "":
+				// EventSource dispatches only complete frames. A crash can cut the last frame at any byte.
 				var ev chatEvent
-				if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ev); err != nil || ev.Type != typ {
+				if err := json.Unmarshal([]byte(data), &ev); err != nil || ev.Type != typ {
 					// Cancellation at cleanup can cut the last event mid-line.
 					if ctx.Err() != nil {
 						return
@@ -296,6 +303,7 @@ func (d *dex) watchPath(t *testing.T, path string) *watcher {
 					return
 				}
 				w.events <- ev
+				typ, data = "", ""
 			}
 		}
 	}()

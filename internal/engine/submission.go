@@ -140,7 +140,7 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 	result := &Submission{ID: int64(native.Id()), done: make(chan struct{})}
 	var stopActivity func()
 	if input.Child {
-		stopActivity, err = a.startActivityWatch(ctx, ref, conversation)
+		stopActivity, err = a.startActivityWatch(ctx, ref, conversation, input)
 		if err != nil {
 			slog.Error("track child activity", "agent", ref.AgentID, "conversation", ref.ID, "error", err)
 		}

@@ -2275,6 +2275,56 @@ components:
           description: Time of the next attempt.
         reason: { type: string }
 
+    ExecutionPhase:
+      type: string
+      description: Native run phase. Running alone does not prove that a model request was sent.
+      enum: [
+        idle,
+        waiting,
+        unavailable,
+        running,
+        model,
+        tool,
+        retry,
+        deferred,
+        compaction,
+        finishing,
+      ]
+
+    ExecutionTurn:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string }
+        status: {
+          type: string,
+          enum: [waiting, queued, running, done, failed, unavailable],
+        }
+        reason: { type: string }
+
+    SessionExecution:
+      type: object
+      description: Content-free native execution state. Queued inputs can coexist with an active run.
+      required: [chatId, agentId, phase, queued, turns]
+      properties:
+        chatId: { type: integer, format: int64 }
+        agentId: { type: string }
+        phase: { $ref: "#/components/schemas/ExecutionPhase" }
+        queued: { type: integer }
+        turns:
+          type: array
+          items: { $ref: "#/components/schemas/ExecutionTurn" }
+
+    SessionsEvent:
+      type: object
+      description: Replaces execution metadata for this session and its delegated inputs. No child text is included.
+      required: [type, sessions]
+      properties:
+        type: { type: string, enum: [sessions] }
+        sessions:
+          type: array
+          items: { $ref: "#/components/schemas/SessionExecution" }
+
     # Events
 
     ChatEvent:
@@ -2283,6 +2333,7 @@ components:
         - $ref: "#/components/schemas/ItemEvent"
         - $ref: "#/components/schemas/AppendEvent"
         - $ref: "#/components/schemas/RunEvent"
+        - $ref: "#/components/schemas/SessionsEvent"
       discriminator:
         propertyName: type
         mapping:
@@ -2290,6 +2341,7 @@ components:
           item: "#/components/schemas/ItemEvent"
           append: "#/components/schemas/AppendEvent"
           run: "#/components/schemas/RunEvent"
+          sessions: "#/components/schemas/SessionsEvent"
 
     SnapshotEvent:
       type: object
@@ -2300,6 +2352,7 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Item" }
         running: { type: boolean }
+        phase: { $ref: "#/components/schemas/ExecutionPhase" }
         historyBefore: {
           type: integer,
           format: int64,
@@ -2330,6 +2383,7 @@ components:
       properties:
         type: { type: string, enum: [run] }
         running: { type: boolean }
+        phase: { $ref: "#/components/schemas/ExecutionPhase" }
         retry: { $ref: "#/components/schemas/Retry" }
 
     # Settings

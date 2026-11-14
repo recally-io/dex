@@ -295,7 +295,12 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
 
   const [jump, setJump] = useState(false);
   const [thread, setThread] = useState<ThreadRef | null>(null);
-  const threads = useMemo(() => ({ open: setThread }), []);
+
+  const threads = useMemo(
+    () => ({ open: setThread, sessions: state.sessions, connection }),
+    [state.sessions, connection],
+  );
+
   const [announcement, setAnnouncement] = useState("");
   const clear = useClearContext(chatId, state.running, () => setAnnouncement("Context cleared."));
   const wasRunning = useRef(false);
