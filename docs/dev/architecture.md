@@ -242,6 +242,8 @@ or at ten files. The chat service freezes membership before it creates the norma
 business input. Later members form an explicit continuation instead of changing a
 submitted payload. A restart restores collection and sealed batches from SQLite;
 raw member source keys resolve to the same stored input without downloading again.
+Captions keep their text for Question matching. Album captions are input data, not
+shared commands, even when a caption is `/clear` or `/stop`.
 
 These member rows track collection and upload ownership, not native execution.
 After a business receipt owns the files, their temporary input JSON is removed;

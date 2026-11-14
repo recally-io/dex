@@ -142,7 +142,7 @@ func (s *Service) ReadyTelegramAlbums(ctx context.Context, agentID string) ([]Te
 			}
 			msg.Attachments = append(msg.Attachments, input.Attachments...)
 			if input.Content != "" {
-				texts = append(texts, fmt.Sprintf("File %d (%s): %s", i+1, input.Attachments[0].Name, input.Content))
+				texts = append(texts, input.Content)
 			}
 			if input.ChannelNote != "" {
 				notes = append(notes, input.ChannelNote)
