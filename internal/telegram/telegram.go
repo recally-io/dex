@@ -184,7 +184,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		if !permanent {
 			return err
 		}
-		return b.controlReply(ctx, m.Chat.ID, "Cannot read this attachment. Send a supported file under 20 MiB.")
+		return b.controlReply(ctx, m.Chat.ID, "Cannot read this attachment. Send a supported file under 20 MB.")
 	}
 	content := m.Text
 	if content == "" {
