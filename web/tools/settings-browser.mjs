@@ -226,17 +226,13 @@ try {
     await api("/api/agents/default", { ...agent, provider: "faux", modelId: "think" }, "PUT");
     const chat = await api("/api/agents/default/chats", {}, "POST");
     await visit(`/a/default/c/${chat.id}`);
-    // Task controls open beside the task title.
-    await poll("task settings button", () =>
-      evaluate("!!document.querySelector('header button[aria-label=\"Task settings\"]')"),
-    );
-    await tap('header button[aria-label="Task settings"]');
+    // One input control opens both the model list and thinking choices.
     await poll("session controls", () =>
-      evaluate("!!document.querySelector('button[aria-label=\"Set thinking level\"]:not([inert] *)')"),
+      evaluate("!!document.querySelector('form button[aria-label=\"Set model\"]:not([inert] *)')"),
     );
-    await tap('button[aria-label="Set thinking level"]:not([inert] *)');
+    await tap('form button[aria-label="Set model"]:not([inert] *)');
     await poll("thinking menu", () =>
-      evaluate('!!document.querySelector(\'[aria-label="Thinking level"] [cmdk-item][data-value="high"]\')'),
+      evaluate('!!document.querySelector(\'[aria-label="Thinking level"] button[data-value="high"]\')'),
     );
     await call("Fetch.enable", {
       patterns: [
@@ -244,7 +240,7 @@ try {
         { urlPattern: `${base}/api/agents/default/chats/${chat.id}`, requestStage: "Response" },
       ],
     });
-    await tap('[aria-label="Thinking level"] [cmdk-item][data-value="high"]');
+    await tap('[aria-label="Thinking level"] button[data-value="high"]');
     await poll("first response held", () => held);
 
     const disabled = await evaluate(
@@ -267,7 +263,6 @@ try {
     await poll("first save refreshed", () =>
       evaluate("!document.querySelector('button[aria-label=\"Set model\"]:not([inert] *)').disabled"),
     );
-    await tap('button[aria-label="Set model"]:not([inert] *)');
     await tap('[cmdk-item][data-value="faux/echo"]');
 
     const saved = await poll("both overrides saved", async () => {
@@ -278,6 +273,9 @@ try {
       );
     });
 
+    await poll("non-reasoning model hides thinking choices", () =>
+      evaluate(`!document.querySelector('[aria-label="Chat model"] [aria-label="Thinking level"]')`),
+    );
     assert.equal(writes.length, 2);
     results.push({ scenario: "serialized session settings", writes, saved });
   }

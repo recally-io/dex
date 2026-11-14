@@ -91,7 +91,7 @@ export function ChatProject({
             <Button
               variant="ghost"
               size="sm"
-              className="max-w-full"
+              className="min-w-0 max-w-32 flex-initial gap-1 px-1.5 sm:max-w-40"
               title={cwd || "Bot working directory"}
               aria-label="Set project directory"
             />

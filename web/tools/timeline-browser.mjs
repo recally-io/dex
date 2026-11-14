@@ -1548,30 +1548,31 @@ try {
 
   const openChatSettings = async () => {
     await visit(`/a/default/c/${settingsTask.id}`);
-    await ui("Task settings button", `!!document.querySelector('header button[aria-label="Task settings"]')`);
-    await tap('header button[aria-label="Task settings"]');
     await ui("Task settings row", `!!document.querySelector('${settingsRow}')`);
   };
 
   await openChatSettings();
   await ui(
     "the Chat settings row shows the model",
-    `document.querySelector('${settingsRow} button[aria-label="Set model"]')?.innerText.includes(${JSON.stringify(chosen)}) && document.querySelector('${settingsRow}').innerText.includes('Defaults follow the Bot')`,
+    `document.querySelector('${settingsRow} button[aria-label="Set model"]')?.innerText.includes(${JSON.stringify(chosen)}) && !document.querySelector('${settingsRow} p')`,
   );
   await model("think");
   await visit("/a/default");
   await openChatSettings();
+  await tap(`${settingsRow} button[aria-label="Set model"]`);
   await ui(
-    "a reasoning model adds the session thinking control",
-    `document.querySelector('${settingsRow} [aria-label="Set thinking level"]')?.innerText.trim().length > 0`,
+    "a reasoning model adds thinking choices to the model picker",
+    `!!document.querySelector('[aria-label="Chat model"] [aria-label="Thinking level"]')`,
   );
   await model(chosen);
   await visit("/a/default");
   await openChatSettings();
+  await tap(`${settingsRow} button[aria-label="Set model"]`);
   await ui(
     "a model without reasoning leaves the thinking level out",
-    `!document.querySelector('${settingsRow} [aria-label="Set thinking level"]')`,
+    `!document.querySelector('[aria-label="Chat model"] [aria-label="Thinking level"]')`,
   );
+  await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
 
   // Instructions is a Settings page; client-side navigation keeps drafts alive.
   await openBotSettings('aside[aria-label="Sidebar"]');

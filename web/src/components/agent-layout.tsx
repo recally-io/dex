@@ -1,8 +1,6 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { AgentContext, useAgentSettings, useAgentId } from "../lib/agent-scope";
-import { useState } from "react";
 import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
-import type { Chat } from "../api/generated/types.gen";
 import { useQuery } from "@tanstack/react-query";
 
 import {
@@ -10,15 +8,11 @@ import {
   getMainChatOptions,
   listAgentsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
-import { sessionKind } from "../lib/sessions";
 import { ChatTitle, MainTimeline } from "../routes/chat";
-import { Settings as SettingsIcon } from "lucide-react";
-import { Button } from "./ui/button";
 import { BotNavigation } from "./bot-navigation";
-import { ChatProject } from "./chat-project";
 import { AgentAvatar } from "./agent-avatar";
 import { Failure, Loading } from "./feedback";
-import { ChatSettingsContext, InPaneContext, MainPane, MenuButton } from "./page";
+import { InPaneContext, MainPane, MenuButton } from "./page";
 import { cn } from "../lib/utils";
 
 /** The name of each page under a bot that is not a chat. */
@@ -98,8 +92,6 @@ function AgentPane({ settings }: { settings: Settings }) {
 
   const main = useQuery({ ...getMainChatOptions({ path: { agentId } }), enabled: openChat === 0 });
   const shown = onMain ? main.data : openChat > 0 ? chat.data : undefined;
-  const writable = shown ? sessionKind(shown) === "Chat" : false;
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <InPaneContext.Provider value>
@@ -120,13 +112,6 @@ function AgentPane({ settings }: { settings: Settings }) {
           {shown ? (
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <ChatTitle chat={shown} heading />
-              {writable ? (
-                <ChatSettingsButton
-                  chat={shown}
-                  open={settingsOpen}
-                  onClick={() => setSettingsOpen(!settingsOpen)}
-                />
-              ) : null}
             </div>
           ) : (
             <span className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em]">
@@ -139,46 +124,11 @@ function AgentPane({ settings }: { settings: Settings }) {
             cwd={shown?.cwd ?? main.data?.cwd ?? ""}
           />
         </header>
-        {shown && writable ? (
-          <div
-            className="flex min-w-0 items-center border-b border-border px-3 py-0.5"
-            aria-label="Task project"
-          >
-            <ChatProject chatId={shown.id} cwd={shown.cwd} />
-          </div>
-        ) : null}
-        <ChatSettingsContext.Provider value={settingsOpen}>
-          <div inert={!onMain} className={cn("min-h-0 flex-1 flex-col", onMain ? "flex" : "hidden")}>
-            <MainTimeline settings={settings} />
-          </div>
-          {!onMain ? <Outlet /> : null}
-        </ChatSettingsContext.Provider>
+        <div inert={!onMain} className={cn("min-h-0 flex-1 flex-col", onMain ? "flex" : "hidden")}>
+          <MainTimeline settings={settings} />
+        </div>
+        {!onMain ? <Outlet /> : null}
       </section>
     </InPaneContext.Provider>
-  );
-}
-
-/** Opens session controls. A dot marks a session override. */
-function ChatSettingsButton({ chat, open, onClick }: { chat: Chat; open: boolean; onClick: () => void }) {
-  const changed = !!(chat.settings.modelId || chat.settings.thinkingLevel);
-
-  return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label="Task settings"
-      title="Task settings"
-      aria-expanded={open}
-      onClick={onClick}
-      className="relative shrink-0 text-muted-foreground"
-    >
-      <SettingsIcon size={16} />
-      {changed ? (
-        <span
-          aria-label="Changed for this task"
-          className="absolute top-1 right-1 size-1.5 rounded-full bg-primary"
-        />
-      ) : null}
-    </Button>
   );
 }

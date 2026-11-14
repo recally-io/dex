@@ -57,10 +57,15 @@ to read in an afternoon.
   instructions draft mark. On a phone, a Menu button holds these same actions.
   Main has no session settings button; Bot settings edits its default model and
   thinking level. If Main has saved overrides from an older version, Bot settings
-  shows a warning and a button to clear them. It does not clear them automatically. A task has a settings button beside its title for model and
-  thinking overrides. Unset values follow the bot. Its project selector stays
-  visible below the header, even when task settings are closed. An unset project
-  shows Bot working directory. Main cannot be archived.
+  shows a warning and a button to clear them. It does not clear them automatically.
+  A writable task shows its project and one combined model and thinking control
+  inside the input toolbar. Both labels have width limits and truncate; they do
+  not push the send or stop buttons out of the input. Unset values follow the bot.
+  An unset project shows Bot working directory. The model picker has a provider
+  sidebar, a searchable model list, and thinking choices below the list. On narrow
+  screens, a provider selector replaces the sidebar. Model changes keep the
+  picker open so that the user can set thinking next. A model without reasoning
+  has no thinking choices. There is no separate settings row or toggle. Main cannot be archived.
   The row menu and a right-click archive or restore a Chat. Archiving keeps the
   messages, records and files; a child session's result still returns to the chat.
   New task does not reuse an archived empty chat. The button at the top left of

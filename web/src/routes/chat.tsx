@@ -1,6 +1,6 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
-import { useContext, useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowDown, Clock, GitBranch, Lock, Send } from "lucide-react";
@@ -44,7 +44,7 @@ import {
 import type { SlashCommand } from "../components/slash-commands";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
-import { ChatSettingsContext, MainPane, Note } from "../components/page";
+import { MainPane, Note } from "../components/page";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { cn, newId } from "../lib/utils";
@@ -236,7 +236,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     useChatStream(chatId);
 
   const readOnly = chat.data?.readOnly ?? true;
-  const kind = chat.data ? sessionKind(chat.data) : undefined;
 
   const refetchChat = chat.refetch;
 
@@ -285,7 +284,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     return () => window.removeEventListener(chatDraftEvent, receiveDraft);
   }, [agentId, chatId, setDraft]);
 
-  const settingsOpen = useContext(ChatSettingsContext);
   const [jump, setJump] = useState(false);
   const [thread, setThread] = useState<ThreadRef | null>(null);
   const threads = useMemo(() => ({ open: setThread }), []);
@@ -585,6 +583,9 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         </div>
       ) : null}
       <Composer
+        controls={
+          chat.data && !chat.data.main ? <SessionSettings chat={chat.data} settings={settings} /> : undefined
+        }
         commands={commands}
         fix={
           model.ok ? null : settings.providers.length ? (
@@ -713,20 +714,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   return (
     <>
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        {chat.data && kind === "Chat" && settingsOpen ? (
-          <div
-            role="region"
-            aria-label="Task settings"
-            className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-muted/40 px-4 py-1.5"
-          >
-            <p className="min-w-0 basis-56 flex-1 text-[12px] text-muted-foreground">
-              Defaults follow the Bot. Overrides apply from the next message in this task.
-            </p>
-            <div className="min-w-0 max-w-full">
-              <SessionSettings chat={chat.data} settings={settings} />
-            </div>
-          </div>
-        ) : null}
         <ThreadContext.Provider value={threads}>
           <div className="relative flex min-h-0 flex-1">
             <div className="relative flex min-w-0 flex-1 flex-col">

@@ -200,16 +200,29 @@ try {
 
     if (mode !== "--baseline") {
       await check(
-        `${size}: project visible without task settings`,
-        "!!document.querySelector('button[aria-label=\"Set project directory\"]:not([inert] *)') && !document.querySelector('[aria-label=\"Task settings\"][role=region]')",
-      );
-      await click('header button[aria-label="Task settings"]');
-      await poll("task settings", () =>
-        evaluate("!!document.querySelector('[aria-label=\"Task settings\"][role=region]')"),
+        `${size}: task controls stay inside the composer`,
+        `(() => {
+          const row = document.querySelector('[role="region"][aria-label="Task settings"]');
+          const controls = ['Set project directory', 'Set model'].map(label => row?.querySelector('button[aria-label="' + label + '"]'));
+          return controls.every(Boolean) && !!row.closest('form')?.querySelector('textarea') && controls.every(button => button.getBoundingClientRect().top === controls[0].getBoundingClientRect().top) && !row.querySelector('[aria-label="Set thinking level"]') && !document.querySelector('header button[aria-label="Task settings"]') && !row.querySelector('p');
+        })()`,
       );
     }
 
     await capture(`${size}-task`);
+
+    if (mode !== "--baseline") {
+      await click('button[aria-label="Set model"]:not([inert] *)');
+      await poll("combined model and thinking picker", () =>
+        evaluate(`!!document.querySelector('[aria-label="Chat model"] [aria-label="Thinking level"]')`),
+      );
+      await check(
+        `${size}: provider selection is available`,
+        `!!document.querySelector('[aria-label="Model providers"]') && !!document.querySelector('select[aria-label="Provider"]')`,
+      );
+      await capture(`${size}-model-picker`);
+      await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
+    }
 
     if (mode !== "--baseline") {
       await click('button[aria-label="Set project directory"]:not([inert] *)');
@@ -272,6 +285,110 @@ try {
       async () => !(await api(`/agents/default/chats/${main.id}`)).settings.modelId,
     );
     results.push("Bot settings can clear a saved Main override");
+
+    // Given long project and model names, every control and Send must fit inside the input.
+    const longProject = join(home, "project-" + "w".repeat(100));
+    const longModel = "model-" + "w".repeat(100);
+    await mkdir(longProject);
+    await api(
+      "/settings/providers/overflow",
+      {
+        api: "openai-completions",
+        name: "Overflow",
+        baseUrl: "http://127.0.0.1:9",
+        apiKey: "test",
+        models: [longModel],
+      },
+      "PUT",
+    );
+    await api(`/agents/default/chats/${task.id}/project`, { cwd: longProject }, "PUT");
+    await api(
+      `/agents/default/chats/${task.id}/settings`,
+      { provider: "overflow", modelId: longModel },
+      "PUT",
+    );
+
+    for (const width of [1440, 390, 320]) {
+      await call("Emulation.setDeviceMetricsOverride", {
+        width,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await visit(`/a/default/c/${task.id}`);
+      await poll("long model shown", () =>
+        evaluate(
+          `document.querySelector('[aria-label="Set model"]:not([inert] *)')?.title === ${JSON.stringify(longModel)}`,
+        ),
+      );
+      await check(
+        `${width}: long names do not overflow the composer`,
+        `(() => {
+        const row = document.querySelector('[aria-label="Task settings"]:not([inert] *)');
+        const form = row.closest('form');
+        const bounds = form.getBoundingClientRect();
+        return document.documentElement.scrollWidth <= innerWidth && row.scrollWidth <= row.clientWidth + 1 && [...form.querySelectorAll('button')].every(button => { const rect = button.getBoundingClientRect(); return rect.left >= bounds.left && rect.right <= bounds.right && rect.width > 0; }) && ['Set project directory', 'Set model'].every(label => { const text = row.querySelector('[aria-label="' + label + '"] span'); return text.scrollWidth > text.clientWidth; }) && !!form.querySelector('button[aria-label="Send message"]');
+      })()`,
+      );
+      await capture(`long-controls-${width}`);
+    }
+
+    for (const width of [1440, 320]) {
+      await call("Emulation.setDeviceMetricsOverride", {
+        width,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await click('form button[aria-label="Set model"]:not([inert] *)');
+
+      if (width >= 640) await click('[aria-label="Model providers"] button[title="faux"]');
+      else
+        await evaluate(
+          `(() => { const select = document.querySelector('select[aria-label="Provider"]'); select.value = 'faux'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`,
+        );
+      await poll("provider model list", () =>
+        evaluate(
+          `!!document.querySelector('[aria-label="Chat model"] [cmdk-item][data-value="faux/think"]') && !document.querySelector('[aria-label="Chat model"] [cmdk-item][data-value^="overflow/"]')`,
+        ),
+      );
+      await capture(`provider-filter-${width}`);
+      await check(
+        `${width}: provider filter excludes other providers and popup fits`,
+        `(() => { const popup = document.querySelector('[aria-label="Chat model"]'); const rect = popup.getBoundingClientRect(); return !popup.querySelector('[cmdk-item][data-value^="overflow/"]') && popup.scrollWidth <= popup.clientWidth + 1 && rect.left >= 0 && rect.right <= innerWidth; })()`,
+      );
+
+      if (width === 320) {
+        await click('[aria-label="Chat model"] [cmdk-item][data-value="faux/think"]');
+        await poll(
+          "model changed and thinking choices appeared",
+          async () =>
+            (await api(`/agents/default/chats/${task.id}`)).settings.modelId === "think" &&
+            (await evaluate(
+              `!!document.querySelector('[aria-label="Chat model"] [aria-label="Thinking level"] button[data-value="high"]:not(:disabled)')`,
+            )),
+        );
+        await click('[aria-label="Thinking level"] button[data-value="high"]');
+        await poll(
+          "thinking saved in the same picker",
+          async () =>
+            (await api(`/agents/default/chats/${task.id}`)).settings.thinkingLevel === "high" &&
+            (await evaluate(
+              `document.querySelector('form button[aria-label="Set model"]:not([inert] *)').title.includes('High')`,
+            )),
+        );
+        await check(
+          "combined picker stays open for model and thinking changes",
+          `!!document.querySelector('[aria-label="Chat model"]') && document.querySelector('form button[aria-label="Set model"]:not([inert] *)').title.includes('High')`,
+        );
+        await capture("combined-picker-320");
+      }
+
+      await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
+      await poll("model picker closed", () =>
+        evaluate(`!document.querySelector('[aria-label="Chat model"]')`),
+      );
+    }
   }
 
   await writeFile(join(output, "results.json"), JSON.stringify(results, null, 2));
