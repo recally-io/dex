@@ -79,10 +79,24 @@ func liveSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sql
 	return source, nil
 }
 
+func sessionSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Submission, error) {
+	if r.Scope == "" {
+		return liveSource(ctx, q, r)
+	}
+	_, source, err := groupCaller(ctx, q, r)
+	return source, err
+}
+
 // sessionParent returns the conversation of a caller that may manage child sessions. A child and
 // a dream cannot, whatever tools they have.
 func (s *Service) sessionParent(ctx context.Context, r engine.TaskContext) (sqlc.Conversation, error) {
-	conv, err := s.toolCaller(ctx, r)
+	var conv sqlc.Conversation
+	var err error
+	if r.Scope != "" {
+		conv, _, err = groupCaller(ctx, s.q, r)
+	} else {
+		conv, err = s.toolCaller(ctx, r)
+	}
 	if err != nil {
 		return conv, err
 	}

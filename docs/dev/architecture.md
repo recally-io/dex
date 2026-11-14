@@ -1248,9 +1248,16 @@ published UTF-8 text up to 64 KiB or common image bytes up to 20 MiB. `group_del
 queues only a rooted audience file in the existing outbox. It never copies to bot-wide
 artifacts. Topic replies, files and media groups set the exact message thread.
 
+`group_session` starts, lists, reads, sends to or stops only the current conversation's
+direct children in the same bot and resource audience. A child retains the persisted
+scope and exact initiating source. Current personal authorization follows that source
+through native admission, provider requests, tools and restore. Children cannot delegate,
+select another bot, choose a project or override the model. Private session handlers stay
+unavailable. Children return published resource paths; the parent queues Telegram delivery.
+
 Group speech does not borrow private consent or provider settings. Original audio
-stays attached. Group drafts/previews stay off. Menus, Questions, callbacks and permitted
-child workflows still need narrow scope-bound handlers before L3 is complete. This code
+stays attached. Group drafts/previews stay off. Menus, Questions, callbacks and saved
+workflow controls still need narrow scope-bound handlers before L3 is complete. This code
 and its local fake-platform tests do not authorize a real group deployment. See
 [proposed ADR 0021](decisions/0021-isolated-telegram-group-resources.md).
 

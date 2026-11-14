@@ -121,6 +121,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	tools := engine.TaskTools{
 		AuthorizeGroup: func(ctx context.Context, c engine.TaskContext) error { return chats.AuthorizeGroup(ctx, c) },
+		GroupSession: func(ctx context.Context, c engine.TaskContext, args engine.GroupSessionArgs) (engine.GroupSessionResult, error) {
+			return chats.ToolGroupSession(ctx, c, args)
+		},
 		DeliverGroupFile: func(ctx context.Context, caller engine.TaskContext, name string, reader io.Reader) error {
 			queued, err := bots.Agent(caller.AgentID).QueueFile(ctx, caller, name, reader)
 			if err != nil {

@@ -233,6 +233,66 @@ func (q *Queries) LatestTurn(ctx context.Context, conversationID int64) (LatestT
 	return i, err
 }
 
+const listAudienceChildren = `-- name: ListAudienceChildren :many
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context FROM conversations
+WHERE parent_id = ?1 AND agent_id = ?2
+    AND execution_scope = ?3 AND scope_context = ?4
+ORDER BY id DESC
+LIMIT 50
+`
+
+type ListAudienceChildrenParams struct {
+	ParentID       sql.NullInt64 `json:"parent_id"`
+	AgentID        string        `json:"agent_id"`
+	ExecutionScope string        `json:"execution_scope"`
+	ScopeContext   string        `json:"scope_context"`
+}
+
+func (q *Queries) ListAudienceChildren(ctx context.Context, arg ListAudienceChildrenParams) ([]Conversation, error) {
+	rows, err := q.db.QueryContext(ctx, listAudienceChildren,
+		arg.ParentID,
+		arg.AgentID,
+		arg.ExecutionScope,
+		arg.ScopeContext,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Conversation{}
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.ChannelKey,
+			&i.ExecutionID,
+			&i.CreatedAt,
+			&i.Title,
+			&i.ModelProvider,
+			&i.ModelID,
+			&i.ThinkingLevel,
+			&i.AbortPending,
+			&i.ArchivedAt,
+			&i.Cwd,
+			&i.ForkedFrom,
+			&i.ParentID,
+			&i.ExecutionScope,
+			&i.ScopeContext,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listChildPending = `-- name: ListChildPending :many
 SELECT id, parent_request_id IS NOT NULL AS from_parent
 FROM submissions

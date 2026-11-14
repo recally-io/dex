@@ -155,6 +155,9 @@ func (a *Agents) openGroup(ctx context.Context, ref Ref) (_ *agentResources, res
 	}()
 	var h harness.Harness
 	extension := groupExtension(root)
+	if a.config.Tasks.GroupSession != nil {
+		extension.Tools = append(extension.Tools, a.groupSessionTool(ref))
+	}
 	if a.config.Tasks.DeliverGroupFile != nil {
 		extension.Tools = append(extension.Tools, a.groupDeliveryTool(ref, root))
 	}
@@ -244,7 +247,7 @@ func (a *Agents) changeFor(ref Ref, options Options) harness.AgentChange {
 func groupExtension(root *os.Root) *durable.Extension {
 	rules := "This conversation is a Telegram group audience. Use only this conversation and explicitly published group resources. Private bot instructions, memory, projects, skills, environment and MCP are not available. A group sender is not an owner or administrator."
 	extension := &durable.Extension{Name: "telegram-group", Sections: []*durable.PromptSection{harness.Section("group-audience", func(context.Context, durable.PromptInput) (*string, error) { return &rules, nil }, harness.SectionOptions{})}, Hooks: []durable.HookRegistration{harness.Hook(harness.ToolTask, &harness.ToolHooks{BeforeTool: func(_ context.Context, call harness.ToolHookCall, _ harness.HookApi) (*harness.BeforeToolResult, error) {
-		if !slices.Contains([]string{"group_resource", "group_note", "group_deliver"}, call.Name) {
+		if !slices.Contains([]string{"group_resource", "group_note", "group_deliver", "group_session"}, call.Name) {
 			return &harness.BeforeToolResult{Block: new("tool is not allowed in this group audience")}, nil
 		}
 		return nil, nil

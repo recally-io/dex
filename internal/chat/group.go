@@ -63,6 +63,21 @@ func authorizeGroupSource(ctx context.Context, q *sqlc.Queries, conv sqlc.Conver
 	if conv.ExecutionScope == "" || source.ConversationID != conv.ID || source.ChannelRevoked != 0 {
 		return ErrGroupUnauthorized
 	}
+	if conv.ParentID.Valid {
+		// One direct delegation retains the immutable initiating source, not an owner grant.
+		parent, err := q.GetConversation(ctx, conv.ParentID.Int64)
+		if err != nil {
+			return err
+		}
+		if parent.ParentID.Valid || parent.AgentID != conv.AgentID || parent.ExecutionScope != conv.ExecutionScope || parent.ScopeContext != conv.ScopeContext || !source.ParentRequestID.Valid || source.Origin != "task" {
+			return ErrGroupUnauthorized
+		}
+		original, err := q.GetSubmission(ctx, source.ParentRequestID.String)
+		if err != nil {
+			return err
+		}
+		return authorizeGroupSource(ctx, q, parent, original)
+	}
 	var identity ChannelContext
 	if err := json.Unmarshal([]byte(source.ChannelContext), &identity); err != nil {
 		return errors.Join(ErrGroupUnauthorized, err)
@@ -212,23 +227,28 @@ func (s *Service) GroupConversation(ctx context.Context, agentID, peer string, i
 	return s.Get(ctx, agentID, conv.ID)
 }
 
-// AuthorizeGroup checks the current actor grant at execution, including restored native tools.
-func (s *Service) AuthorizeGroup(ctx context.Context, caller engine.TaskContext) error {
+func groupCaller(ctx context.Context, q *sqlc.Queries, caller engine.TaskContext) (sqlc.Conversation, sqlc.Submission, error) {
 	if caller.Scope == "" {
-		return ErrGroupUnauthorized
+		return sqlc.Conversation{}, sqlc.Submission{}, ErrGroupUnauthorized
 	}
-	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: caller.AgentID, ExecutionScope: caller.Scope, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
+	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: caller.AgentID, ExecutionScope: caller.Scope, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
 	if err != nil {
-		return err
+		return conv, sqlc.Submission{}, err
 	}
-	source, err := s.q.GetSubmission(ctx, caller.SourceRequestID)
+	source, err := q.GetSubmission(ctx, caller.SourceRequestID)
 	if err != nil {
-		return err
+		return conv, source, err
 	}
 	if source.Status != "pending" {
-		return ErrGroupUnauthorized
+		return conv, source, ErrGroupUnauthorized
 	}
-	return authorizeGroupSource(ctx, s.q, conv, source)
+	return conv, source, authorizeGroupSource(ctx, q, conv, source)
+}
+
+// AuthorizeGroup checks the current actor grant at execution, including restored native tools.
+func (s *Service) AuthorizeGroup(ctx context.Context, caller engine.TaskContext) error {
+	_, _, err := groupCaller(ctx, s.q, caller)
+	return err
 }
 
 // GroupReplyAllowed checks source ownership again after execution, before a public send.

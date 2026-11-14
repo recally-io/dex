@@ -113,6 +113,13 @@ WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL
     AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL
 ORDER BY c.id;
 
+-- name: ListAudienceChildren :many
+SELECT * FROM conversations
+WHERE parent_id = @parent_id AND agent_id = @agent_id
+    AND execution_scope = @execution_scope AND scope_context = @scope_context
+ORDER BY id DESC
+LIMIT 50;
+
 -- name: ListChildPending :many
 SELECT id, parent_request_id IS NOT NULL AS from_parent
 FROM submissions

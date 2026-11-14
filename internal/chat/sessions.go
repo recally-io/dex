@@ -62,14 +62,14 @@ func (s *Service) ref(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation)
 }
 
 // childOf returns the child of parent that the model named. The ownership rule is the parent
-// link alone: the child can belong to any bot (ADR 0016).
+// link for private callers (ADR 0016). Group callers also require the same bot and audience.
 func (s *Service) childOf(ctx context.Context, q *sqlc.Queries, parent sqlc.Conversation, id string) (sqlc.Conversation, error) {
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return sqlc.Conversation{}, ErrSessionNotFound
 	}
 	c, err := q.GetConversation(ctx, n)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && (!c.ParentID.Valid || c.ParentID.Int64 != parent.ID)) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (!c.ParentID.Valid || c.ParentID.Int64 != parent.ID || parent.ExecutionScope != "" && (c.AgentID != parent.AgentID || c.ExecutionScope != parent.ExecutionScope || c.ScopeContext != parent.ScopeContext))) {
 		return c, ErrSessionNotFound
 	}
 	return c, err
@@ -136,7 +136,7 @@ func repeatedTurn(ctx context.Context, q *sqlc.Queries, turn string, parent sqlc
 	if err != nil {
 		return c, false, err
 	}
-	if c.ParentID.Int64 != parent.ID {
+	if c.ParentID.Int64 != parent.ID || parent.ExecutionScope != "" && (c.AgentID != parent.AgentID || c.ExecutionScope != parent.ExecutionScope || c.ScopeContext != parent.ScopeContext) {
 		return c, false, ErrSessionNotFound
 	}
 	return c, true, nil
@@ -150,6 +150,16 @@ func checkMessage(message string) error {
 }
 
 func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
+	if r.Scope != "" {
+		return engine.SessionRef{}, ErrSessionInvalid
+	}
+	return s.newSession(ctx, r, a)
+}
+
+func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
+	if r.Scope != "" && (a.Bot != "" || a.Cwd != "" || a.Provider != "" || a.ModelID != "" || a.ThinkingLevel != "" || !strings.HasPrefix(r.Key, r.AgentID+"/"+r.Scope+"/")) {
+		return engine.SessionRef{}, ErrSessionInvalid
+	}
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
 		return engine.SessionRef{}, err
@@ -216,7 +226,7 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a en
 		}
 		return s.ref(ctx, q, c)
 	}
-	if _, err := liveSource(ctx, q, r); err != nil {
+	if _, err := sessionSource(ctx, q, r); err != nil {
 		return engine.SessionRef{}, err
 	}
 	now := s.now().UnixMilli()
@@ -241,6 +251,13 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a en
 }
 
 func (s *Service) ToolSessionSend(ctx context.Context, r engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
+	if r.Scope != "" {
+		return engine.SessionRef{}, ErrSessionInvalid
+	}
+	return s.sendSession(ctx, r, a)
+}
+
+func (s *Service) sendSession(ctx context.Context, r engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
 		return engine.SessionRef{}, err
@@ -274,7 +291,7 @@ func (s *Service) ToolSessionSend(ctx context.Context, r engine.TaskContext, a e
 		}
 		return s.ref(ctx, q, child)
 	}
-	if _, err := liveSource(ctx, q, r); err != nil {
+	if _, err := sessionSource(ctx, q, r); err != nil {
 		return engine.SessionRef{}, err
 	}
 	if _, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: child.ID, Content: a.Message, WhenBusy: whenBusy, ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: s.now().UnixMilli()}); err != nil {
@@ -294,6 +311,13 @@ func (s *Service) ToolSessionSend(ctx context.Context, r engine.TaskContext, a e
 }
 
 func (s *Service) ToolSessionStop(ctx context.Context, r engine.TaskContext, id string) (engine.SessionRef, error) {
+	if r.Scope != "" {
+		return engine.SessionRef{}, ErrSessionInvalid
+	}
+	return s.stopSession(ctx, r, id)
+}
+
+func (s *Service) stopSession(ctx context.Context, r engine.TaskContext, id string) (engine.SessionRef, error) {
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
 		return engine.SessionRef{}, err
@@ -314,6 +338,9 @@ func (s *Service) ToolSessionStop(ctx context.Context, r engine.TaskContext, id 
 }
 
 func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a engine.SessionForkArgs) (engine.SessionRef, error) {
+	if r.Scope != "" {
+		return engine.SessionRef{}, ErrSessionInvalid
+	}
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
 		return engine.SessionRef{}, err
@@ -333,7 +360,7 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a e
 		return s.ref(ctx, s.q, c)
 	}
 	fork, err := s.fork(ctx, child, a.Entry, false, func(ctx context.Context, q *sqlc.Queries, fork sqlc.Conversation) error {
-		if _, err := liveSource(ctx, q, r); err != nil {
+		if _, err := sessionSource(ctx, q, r); err != nil {
 			return err
 		}
 		created, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: fork.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: s.now().UnixMilli()})
@@ -419,6 +446,10 @@ func (s *Service) ToolSessionRead(ctx context.Context, r engine.TaskContext, a e
 	if err != nil {
 		return engine.SessionPage{}, err
 	}
+	return s.readSession(ctx, conv, a)
+}
+
+func (s *Service) readSession(ctx context.Context, conv sqlc.Conversation, a engine.SessionReadArgs) (engine.SessionPage, error) {
 	ref, err := s.ref(ctx, s.q, conv)
 	if err != nil {
 		return engine.SessionPage{}, err
