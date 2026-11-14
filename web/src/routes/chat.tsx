@@ -1,6 +1,6 @@
 import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
-import { useContext, useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowDown, Clock, GitBranch, Lock, Send } from "lucide-react";
@@ -44,8 +44,8 @@ import {
 import type { SlashCommand } from "../components/slash-commands";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
-import { ChatSettingsContext, MainPane, Note } from "../components/page";
-import { Button } from "../components/ui/button";
+import { MainPane, Note } from "../components/page";
+import { Button, buttonVariants } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { cn, newId } from "../lib/utils";
 
@@ -108,53 +108,62 @@ function ParentLink({
   const title = parent.data ? (parent.data.main ? "Main" : parent.data.title || "a chat") : "…";
   const name = parentAgentName ? `${title} in ${parentAgentName}` : title;
 
-  const className =
-    "max-w-56 min-w-0 truncate text-[12.5px] text-muted-foreground hover:text-foreground hover:underline";
+  const className = cn(
+    buttonVariants({ variant: "ghost", size: "sm" }),
+    "max-w-40 gap-1 px-1.5 text-muted-foreground",
+  );
+
+  const label = `Started by ${name}`;
+
+  const content = (
+    <>
+      <GitBranch aria-hidden="true" />
+      <span className="hidden truncate sm:inline">
+        {parentAgentName ? `${parentAgentName} · ${title}` : title}
+      </span>
+    </>
+  );
 
   return parent.data?.main ? (
-    <Link to="/a/$agentId" params={{ agentId }} className={className}>
-      Started by {name}
+    <Link to="/a/$agentId" params={{ agentId }} className={className} title={label} aria-label={label}>
+      {content}
     </Link>
   ) : (
-    <Link to="/a/$agentId/c/$chatId" params={{ agentId, chatId: String(parentId) }} className={className}>
-      Started by {name}
+    <Link
+      to="/a/$agentId/c/$chatId"
+      params={{ agentId, chatId: String(parentId) }}
+      className={className}
+      title={label}
+      aria-label={label}
+    >
+      {content}
     </Link>
   );
 }
 
 /**
- * The open chat's place in the bot header: a link back to its parent page, its title, and where it
- * came from. The title is the page heading while its tab shows.
+ * The chat title and a compact link to its source session. The full source stays in the label
+ * and tooltip so that it does not take space from the title.
  */
-export function ChatTitle({ chat, heading }: { chat: ChatInfo; heading: boolean }) {
-  const agentId = useAgentId();
+export function ChatTitle({
+  chat,
+  heading,
+  mainTitle,
+}: {
+  chat: ChatInfo;
+  heading: boolean;
+  mainTitle: string;
+}) {
   const switchable = ["Main", "Chat"].includes(sessionKind(chat));
-  const crumb = "shrink-0 text-[13px] text-muted-foreground hover:text-foreground hover:underline";
 
   return (
     <>
-      {chat.main ? null : (
-        <>
-          {switchable ? (
-            <Link to="/a/$agentId" params={{ agentId }} className={crumb}>
-              Main
-            </Link>
-          ) : (
-            <Link to="/a/$agentId/automations" params={{ agentId }} className={crumb}>
-              Routines
-            </Link>
-          )}
-          <span aria-hidden className="text-ring">
-            /
-          </span>
-        </>
-      )}
       <h1
         id={heading ? "page-title" : undefined}
         tabIndex={-1}
         className="min-w-0 truncate text-[13px] font-medium outline-none"
       >
-        {chat.main ? "Main" : chat.title || (switchable ? "New chat" : "New session")}
+        {chat.main ? mainTitle : chat.title || (switchable ? "New task" : "New session")}
       </h1>
       {switchable ? null : <OriginPill chat={chat} />}
       {!chat.main && switchable && chat.parentId !== undefined ? (
@@ -236,8 +245,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     useChatStream(chatId);
 
   const readOnly = chat.data?.readOnly ?? true;
-  const kind = chat.data ? sessionKind(chat.data) : undefined;
-  const switchable = kind === "Main" || kind === "Chat";
 
   const refetchChat = chat.refetch;
 
@@ -286,7 +293,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     return () => window.removeEventListener(chatDraftEvent, receiveDraft);
   }, [agentId, chatId, setDraft]);
 
-  const settingsOpen = useContext(ChatSettingsContext);
   const [jump, setJump] = useState(false);
   const [thread, setThread] = useState<ThreadRef | null>(null);
   const threads = useMemo(() => ({ open: setThread }), []);
@@ -586,6 +592,9 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         </div>
       ) : null}
       <Composer
+        controls={
+          chat.data && !chat.data.main ? <SessionSettings chat={chat.data} settings={settings} /> : undefined
+        }
         commands={commands}
         fix={
           model.ok ? null : settings.providers.length ? (
@@ -714,22 +723,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   return (
     <>
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        {chat.data && switchable && settingsOpen ? (
-          <div
-            role="region"
-            aria-label="Chat settings"
-            className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-muted/40 px-4 py-1.5"
-          >
-            <p className="min-w-0 basis-56 flex-1 text-[12px] text-muted-foreground">
-              {chat.data.main
-                ? "Changes apply from the next message, including channel messages."
-                : "Changes apply from the next message in this chat."}
-            </p>
-            <div className="min-w-0 max-w-full">
-              <SessionSettings chat={chat.data} settings={settings} />
-            </div>
-          </div>
-        ) : null}
         <ThreadContext.Provider value={threads}>
           <div className="relative flex min-h-0 flex-1">
             <div className="relative flex min-w-0 flex-1 flex-col">

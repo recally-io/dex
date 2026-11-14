@@ -114,12 +114,6 @@ export function MenuButton() {
   );
 }
 
-/**
- * The model, thinking level and project of the open chat change seldom, so their row shows only
- * after the chat header's More menu opens it. The chat page renders the row.
- */
-export const ChatSettingsContext = createContext(false);
-
 export const InPaneContext = createContext(false);
 
 /** The rounded main pane. Below lg it has a small bar with the drawer button. */

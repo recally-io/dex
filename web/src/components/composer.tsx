@@ -376,8 +376,7 @@ export function Composer({
               />
             </>
           ) : null}
-          {controls}
-          <span className="min-w-2 flex-1" />
+          {controls ? <div className="min-w-0 flex-1">{controls}</div> : <span className="min-w-2 flex-1" />}
           {stoppable && !hasDraft ? (
             <Button
               type="button"

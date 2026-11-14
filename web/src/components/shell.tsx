@@ -9,6 +9,7 @@ import { PanelLeft, X } from "lucide-react";
 import { listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { ShellContext } from "./page";
 import { Sidebar } from "./sidebar";
+import { SearchDialog } from "./search-dialog";
 import { useSystemTheme } from "./theme";
 
 const sidebarKey = "dex-sidebar";
@@ -54,6 +55,13 @@ function useBotStatuses() {
 export function Shell() {
   const statuses = useBotStatuses();
   const [menu, setMenu] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  const changeSearch = useCallback((open: boolean) => {
+    if (open) setMenu(false);
+    setSearchOpen(open);
+  }, []);
+
   const [sidebarOpen, toggleSidebar] = useSidebarOpen();
   const location = useRouterState({ select: (s) => s.location });
   const path = location.pathname;
@@ -143,6 +151,7 @@ export function Shell() {
             path={path}
             statuses={statuses}
             className="hidden lg:flex"
+            onSearch={() => changeSearch(true)}
             lead={
               <button
                 type="button"
@@ -172,6 +181,7 @@ export function Shell() {
             path={path}
             statuses={statuses}
             className="max-w-[85vw]"
+            onSearch={() => changeSearch(true)}
             lead={
               <DialogClose
                 aria-label="Close navigation"
@@ -183,6 +193,7 @@ export function Shell() {
           />
         </DialogContent>
       </Dialog>
+      <SearchDialog open={searchOpen} onOpenChange={changeSearch} />
     </ShellContext.Provider>
   );
 }

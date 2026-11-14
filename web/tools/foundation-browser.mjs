@@ -440,7 +440,13 @@ async function composerEvidence(theme) {
     10000,
   );
   await capture(`${theme}-chat-composer-running.png`);
-  const menu = `document.querySelector('aside a[aria-current="page"] + button[aria-label^="Bot menu"]')`;
+  if (await evaluate("innerWidth >= 1024")) {
+    const navigation = `document.querySelector('header nav a[href="/a/default/sessions"]')`;
+    await evaluate(`${navigation}.focus()`);
+    await capture(`${theme}-chat-navigation-keyboard.png`);
+    return { shiftLine, navigationFocused: await evaluate(`document.activeElement === ${navigation}`) };
+  }
+  const menu = `document.querySelector('header button[aria-label^="Bot menu"]')`;
   await waitFor("row menu button", () => evaluate(`!!${menu}`));
   await evaluate(`${menu}?.focus()`);
   await press("Enter", "Enter", 13, "\\r");

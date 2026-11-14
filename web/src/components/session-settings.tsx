@@ -9,7 +9,6 @@ import { findModel, thinkingNames } from "../lib/agent";
 import { refreshChats } from "../lib/queries";
 import { ChatProject } from "./chat-project";
 import { ModelPicker } from "./model-picker";
-import { ThinkingPicker } from "./thinking-picker";
 import { Button } from "./ui/button";
 
 // A change keeps the other field. null clears a field so that it follows the bot again.
@@ -34,9 +33,7 @@ function changed(
   return next;
 }
 
-// The project, model and thinking level of one session. Main, Chat sessions and finished
-// delegated sessions share this rule: each change applies from the next input, including
-// input from a channel.
+// Task overrides apply from the next message. An unset field follows the bot.
 export function SessionSettings({ chat, settings }: { chat: Chat; settings: Settings }) {
   const agentId = useAgentId();
   const models = useQuery(listModelsOptions());
@@ -62,9 +59,21 @@ export function SessionSettings({ chat, settings }: { chat: Chat; settings: Sett
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-1">
+    <div
+      role="region"
+      aria-label="Task settings"
+      className="flex min-w-0 items-center gap-0.5 overflow-hidden"
+    >
       <ChatProject chatId={chat.id} cwd={chat.cwd} />
       <ModelPicker
+        side="top"
+        thinking={{
+          value: own.thinkingLevel ?? null,
+          defaultValue: settings.agent.thinkingLevel,
+          levels: effective.model?.reasoning ? effective.model.thinkingLevels : [],
+          pending,
+          save: (thinking) => change(changed(own, { thinking })),
+        }}
         override={{
           value: own.modelId ? { provider: own.provider ?? "", modelId: own.modelId } : null,
           defaultName: bot.label,
@@ -74,30 +83,25 @@ export function SessionSettings({ chat, settings }: { chat: Chat; settings: Sett
           <Button
             variant="ghost"
             size="sm"
-            className="max-w-48"
+            className="min-w-0 max-w-56 flex-initial gap-1 px-1.5 sm:max-w-80"
             aria-label="Set model"
             disabled={pending}
-            title={effective.label}
+            title={
+              effective.model?.reasoning
+                ? `${effective.label} · ${thinkingNames[own.thinkingLevel ?? settings.agent.thinkingLevel]}`
+                : effective.label
+            }
           >
-            <span className="truncate">{effective.label}</span>
+            <span className="truncate">
+              {effective.label}
+              {effective.model?.reasoning
+                ? ` · ${thinkingNames[own.thinkingLevel ?? settings.agent.thinkingLevel]}`
+                : ""}
+            </span>
             <ChevronDown aria-hidden="true" />
           </Button>
         }
       />
-      {effective.model?.reasoning ? (
-        <ThinkingPicker
-          clearable
-          value={own.thinkingLevel ?? null}
-          levels={effective.model.thinkingLevels}
-          save={(thinking) => change(changed(own, { thinking }))}
-          trigger={
-            <Button variant="ghost" size="sm" aria-label="Set thinking level" disabled={pending}>
-              {thinkingNames[own.thinkingLevel ?? settings.agent.thinkingLevel]}
-              <ChevronDown aria-hidden="true" />
-            </Button>
-          }
-        />
-      ) : null}
     </div>
   );
 }

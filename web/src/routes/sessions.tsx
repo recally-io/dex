@@ -1,14 +1,13 @@
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "@tanstack/react-router";
+import { Link, Navigate } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChevronRight, MessageCircle, Clock3, Plus } from "lucide-react";
+import { ChevronRight, MessageCircle, Clock3 } from "lucide-react";
 import type { Chat } from "../api/generated/types.gen";
 import {
   getMainChatOptions,
   getTurnChatOptions,
   listChatsOptions,
-  createChatMutation,
   archiveChatMutation,
   unarchiveChatMutation,
 } from "../api/generated/@tanstack/react-query.gen";
@@ -39,16 +38,6 @@ export function SessionsPage() {
   });
 
   const main = useQuery(getMainChatOptions({ path: { agentId } }));
-  const navigate = useNavigate();
-
-  const create = useMutation({
-    ...createChatMutation(),
-    onSuccess: async (chat) => {
-      await refreshChats(agentId);
-      await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chat.id) } });
-    },
-  });
-
   const [kind, setKind] = useState("All kinds");
   const [archivedOpen, setArchivedOpen] = useState(false);
   const name = settings.data?.agent.name ?? "dex";
@@ -58,18 +47,8 @@ export function SessionsPage() {
 
   return (
     <FramedPage
-      title="Sessions"
+      title="Tasks"
       description={`Conversations of ${name} apart from the main timeline. Each session has its own context. Chat sessions and the sessions that ${name} started take messages. Automation runs are read-only.`}
-      actions={
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={create.isPending}
-          onClick={() => create.mutate({ path: { agentId } })}
-        >
-          <Plus size={16} /> {create.isPending ? "Opening…" : "New session"}
-        </Button>
-      }
     >
       <Section
         n={1}
@@ -90,7 +69,6 @@ export function SessionsPage() {
           ) : null
         }
       >
-        {create.isError ? <Failure title="Could not open a new session" error={create.error} /> : null}
         {sessions.isPending ? (
           <Loading />
         ) : sessions.isError ? (
@@ -111,8 +89,8 @@ export function SessionsPage() {
           <Empty title="No sessions of this kind">Choose All kinds to see every session.</Empty>
         ) : (
           <Empty title="No sessions yet">
-            Automation runs, sessions that {name} started and your Chat sessions show here. Use New session
-            for work that needs a clean context.
+            Automation runs, sessions that {name} started and your Chat sessions show here. Use New task for
+            work that needs a clean context.
           </Empty>
         )}
       </Section>

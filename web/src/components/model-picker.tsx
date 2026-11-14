@@ -4,15 +4,24 @@ import { useState, type ReactElement } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
-import type { Model } from "../api/generated/types.gen";
-import { saveModel } from "../lib/agent";
+import type { Model, ThinkingLevel } from "../api/generated/types.gen";
+import { saveModel, thinkingNames } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Command, CommandInput, CommandList, CommandGroup, CommandItem } from "./ui/command";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import { Failure, Spinner } from "./feedback";
 
 type Group = { id: string; name: string; error?: string; models: Model[] };
+
+type ThinkingOptions = {
+  value: ThinkingLevel | null;
+  defaultValue: ThinkingLevel;
+  levels: ThinkingLevel[];
+  pending: boolean;
+  save: (level: ThinkingLevel | null) => Promise<void>;
+};
 
 const byName = (a: { name: string; id: string }, b: { name: string; id: string }) =>
   a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id);
@@ -67,14 +76,17 @@ export function ModelPicker({
   trigger,
   override,
   side,
+  thinking,
 }: {
   trigger: ReactElement;
   override?: ModelOverride;
   side?: "top" | "bottom";
+  thinking?: ThinkingOptions;
 }) {
   const agentId = useAgentId();
   const { notify } = useApp();
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   const save = useMutation({
     mutationFn: (model: Model | null) =>
@@ -84,7 +96,7 @@ export function ModelPicker({
           ? saveModel(agentId, model.provider, model.id)
           : Promise.resolve(),
     onSuccess: (_, model) => {
-      setOpen(false);
+      if (!thinking) setOpen(false);
 
       if (!override && model) notify(`The bot model is now ${model.name}. It applies from the next message.`);
     },
@@ -93,29 +105,36 @@ export function ModelPicker({
   return (
     <Popover
       open={open}
-      onOpenChange={(next) => {
+      onOpenChange={(next, details) => {
         // The save result shows in the list, so it stays open until the save ends.
-        if (save.isPending) return;
+        if (save.isPending || thinking?.pending) return;
 
-        if (next) save.reset();
+        if (next) {
+          save.reset();
+          setAnchor(details.trigger?.closest("form") ?? null);
+        }
+
         setOpen(next);
       }}
     >
       <PopoverTrigger render={trigger} />
       <PopoverContent
-        align="start"
+        anchor={anchor ?? undefined}
+        style={anchor ? { width: "min(560px, var(--anchor-width))" } : undefined}
+        align={anchor ? "end" : "start"}
         side={side}
         sideOffset={6}
         aria-label={override ? "Chat model" : "Bot model"}
-        className="z-[60] flex max-h-[min(420px,var(--available-height))] w-[352px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-window bg-card p-0 shadow-raised outline-none"
+        className="z-[60] flex max-h-[min(320px,var(--available-height))] w-[560px] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden rounded-window bg-card p-0 shadow-raised outline-none"
       >
         <ModelList
           override={override}
+          thinking={thinking}
           pending={save.isPending ? save.variables : undefined}
           error={save.isError ? save.error : undefined}
           onPick={(model, current) => {
-            if (current) setOpen(false);
-            else save.mutate(model);
+            if (!current) save.mutate(model);
+            else if (!thinking) setOpen(false);
           }}
           onLeave={() => setOpen(false)}
         />
@@ -130,8 +149,10 @@ function ModelList({
   error,
   onPick,
   onLeave,
+  thinking,
 }: {
   override?: ModelOverride;
+  thinking?: ThinkingOptions;
   // undefined: no save runs; null: the save of "Use default" runs.
   pending?: Model | null;
   error?: unknown;
@@ -143,12 +164,13 @@ function ModelList({
   const models = useQuery({ ...listModelsOptions(), refetchOnMount: "always" });
   const { draft } = useApp();
   const [query, setQuery] = useState("");
+  const [provider, setProvider] = useState("");
   const agent = settings.data?.agent;
   const chosen = override ? override.value : agent?.modelId ? agent : null;
   const current = chosen ? `${chosen.provider}/${chosen.modelId}` : "";
   const all = models.data?.models ?? [];
   const dirty = !override && draft !== null && draft !== agent?.instructions;
-  const busy = pending !== undefined;
+  const busy = pending !== undefined || thinking?.pending === true;
 
   if (settings.isPending || models.isPending)
     return (
@@ -182,106 +204,193 @@ function ModelList({
       </p>
     );
 
-  const shown = search(groups(settings.data, all), query);
+  const providers = groups(settings.data, all);
+
+  const shown = search(
+    providers.filter((group) => !provider || group.id === provider),
+    query,
+  );
 
   return (
-    // The list is already filtered and sorted; cmdk only handles the keyboard.
-    <Command shouldFilter={false} className="flex min-h-0 flex-1 flex-col">
-      <CommandInput
-        autoFocus
-        aria-label="Search models"
-        placeholder="Search providers and models"
-        value={query}
-        onValueChange={setQuery}
-        className="text-[13px] text-foreground placeholder:text-muted-foreground"
-      />
-      {/* The popover limits the height; the stock max-h-72 would cut the list shorter. */}
-      <CommandList className="max-h-none min-h-0 flex-1 overscroll-contain p-1">
-        {override && override.allowDefault !== false && !query.trim() ? (
-          <CommandItem
-            value="default"
-            data-checked={!current}
+    <>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <nav
+          aria-label="Model providers"
+          className="hidden w-36 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-1.5 sm:flex"
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-pressed={!provider}
             disabled={busy}
-            onSelect={() => onPick(null, !current)}
-            className="mb-1 flex h-8 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent"
+            onClick={() => setProvider("")}
+            className="w-full justify-start truncate aria-pressed:bg-accent"
           >
-            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
-              Use default ({override.defaultName})
-            </span>
-            <Mark checked={!current} saving={pending === null} />
-          </CommandItem>
-        ) : null}
-        {!shown.length ? (
-          <p role="status" className="px-3 py-6 text-center text-[12.5px] text-muted-foreground">
-            No models match “{query.trim()}”.
-          </p>
-        ) : (
-          shown.map((group) => (
-            <CommandGroup
+            All providers
+          </Button>
+          {providers.map((group) => (
+            <Button
               key={group.id}
-              className="pb-1"
-              heading={
-                <span className="flex flex-wrap items-center gap-1.5 px-2 pt-2 pb-1 text-[11.5px] font-medium text-muted-foreground">
-                  <span className="text-muted-foreground">{group.name}</span>
-                  <span className="font-mono font-normal">{group.id}</span>
-                  {group.error ? <Badge variant="destructive">Model listing failed</Badge> : null}
-                </span>
-              }
+              variant="ghost"
+              size="sm"
+              aria-pressed={provider === group.id}
+              disabled={busy}
+              onClick={() => setProvider(group.id)}
+              className="w-full min-w-0 justify-start aria-pressed:bg-accent"
+              title={group.name}
             >
-              {!group.models.length ? (
-                <p className="px-2 pb-1 text-[12px] text-muted-foreground">
-                  No models.{" "}
-                  {group.error
-                    ? "Fix the listing error on Providers, or enter model IDs there."
-                    : "Check the provider on Providers."}
+              <span className="truncate">{group.name}</span>
+            </Button>
+          ))}
+        </nav>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <select
+            aria-label="Provider"
+            value={provider}
+            disabled={busy}
+            onChange={(event) => setProvider(event.target.value)}
+            className="h-9 w-full min-w-0 shrink-0 truncate border-b border-border bg-card px-2 text-xs sm:hidden"
+          >
+            <option value="">All providers</option>
+            {providers.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </select>
+          {/* The list is already filtered and sorted; cmdk only handles the keyboard. */}
+          <Command shouldFilter={false} className="flex min-h-0 flex-1 flex-col">
+            <CommandInput
+              autoFocus
+              aria-label="Search models"
+              placeholder="Search providers and models"
+              value={query}
+              onValueChange={setQuery}
+              className="text-[13px] text-foreground placeholder:text-muted-foreground"
+            />
+            {/* The popover limits the height; the stock max-h-72 would cut the list shorter. */}
+            <CommandList className="max-h-none min-h-0 flex-1 overscroll-contain p-1">
+              {override && override.allowDefault !== false && !query.trim() ? (
+                <CommandItem
+                  value="default"
+                  data-checked={!current}
+                  disabled={busy}
+                  onSelect={() => onPick(null, !current)}
+                  className="mb-1 flex h-8 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent"
+                >
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
+                    Use default ({override.defaultName})
+                  </span>
+                  <Mark checked={!current} saving={pending === null} />
+                </CommandItem>
+              ) : null}
+              {!shown.length ? (
+                <p role="status" className="px-3 py-6 text-center text-[12.5px] text-muted-foreground">
+                  No models match “{query.trim()}”.
                 </p>
               ) : (
-                group.models.map((m) => {
-                  const value = `${m.provider}/${m.id}`;
-                  const checked = value === current;
-                  const saving = !!pending && `${pending.provider}/${pending.id}` === value;
+                shown.map((group) => (
+                  <CommandGroup
+                    key={group.id}
+                    className="pb-1"
+                    heading={
+                      <span className="flex flex-wrap items-center gap-1.5 px-2 pt-2 pb-1 text-[11.5px] font-medium text-muted-foreground">
+                        <span className="text-muted-foreground">{group.name}</span>
+                        {group.error ? <Badge variant="destructive">Model listing failed</Badge> : null}
+                      </span>
+                    }
+                  >
+                    {!group.models.length ? (
+                      <p className="px-2 pb-1 text-[12px] text-muted-foreground">
+                        No models.{" "}
+                        {group.error
+                          ? "Fix the listing error on Providers, or enter model IDs there."
+                          : "Check the provider on Providers."}
+                      </p>
+                    ) : (
+                      group.models.map((m) => {
+                        const value = `${m.provider}/${m.id}`;
+                        const checked = value === current;
+                        const saving = !!pending && `${pending.provider}/${pending.id}` === value;
 
-                  return (
-                    <CommandItem
-                      key={value}
-                      value={value}
-                      data-checked={checked}
-                      disabled={busy}
-                      onSelect={() => onPick(m, checked)}
-                      className="flex h-8 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent"
-                    >
-                      <span
-                        className="min-w-0 truncate text-[12.5px] font-medium text-foreground"
-                        title={m.name}
-                      >
-                        {m.name}
-                      </span>
-                      <span
-                        className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground"
-                        title={m.id}
-                      >
-                        {m.id}
-                      </span>
-                      <Mark checked={checked} saving={saving} />
-                    </CommandItem>
-                  );
-                })
+                        return (
+                          <CommandItem
+                            key={value}
+                            value={value}
+                            data-checked={checked}
+                            disabled={busy}
+                            onSelect={() => onPick(m, checked)}
+                            className="flex h-8 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent"
+                          >
+                            <span
+                              className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground"
+                              title={`${m.name} (${m.id})`}
+                            >
+                              {m.name}
+                            </span>
+                            <Mark checked={checked} saving={saving} />
+                          </CommandItem>
+                        );
+                      })
+                    )}
+                  </CommandGroup>
+                ))
               )}
-            </CommandGroup>
-          ))
-        )}
-      </CommandList>
-      {dirty ? (
-        <p className="shrink-0 border-t border-border px-3 py-2 text-[11.5px] text-muted-foreground">
-          Your unsaved instructions stay as a draft. A model change does not save or discard them.
-        </p>
-      ) : null}
-      {error ? (
-        <div className="shrink-0 border-t border-border p-2">
-          <Failure title="The model did not change" error={error} />
+            </CommandList>
+            {dirty ? (
+              <p className="shrink-0 border-t border-border px-3 py-2 text-[11.5px] text-muted-foreground">
+                Your unsaved instructions stay as a draft. A model change does not save or discard them.
+              </p>
+            ) : null}
+            {error ? (
+              <div className="shrink-0 border-t border-border p-2">
+                <Failure title="The model did not change" error={error} />
+              </div>
+            ) : null}
+          </Command>
         </div>
-      ) : null}
-    </Command>
+      </div>
+      {thinking && thinking.levels.length ? <ThinkingControls thinking={thinking} busy={busy} /> : null}
+    </>
+  );
+}
+
+function ThinkingControls({ thinking, busy }: { thinking: ThinkingOptions; busy: boolean }) {
+  const mutation = useMutation({ mutationFn: thinking.save });
+
+  return (
+    <section aria-label="Thinking level" className="shrink-0 border-t border-border p-2">
+      <p className="mb-1 text-xs text-muted-foreground">Thinking</p>
+      <div className="flex flex-wrap gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          data-value="default"
+          aria-pressed={thinking.value === null}
+          disabled={busy}
+          title={`Bot default: ${thinkingNames[thinking.defaultValue]}`}
+          onClick={() => mutation.mutate(null)}
+          className="aria-pressed:bg-accent"
+        >
+          Bot default
+        </Button>
+        {thinking.levels.map((level) => (
+          <Button
+            key={level}
+            variant="ghost"
+            size="sm"
+            data-value={level}
+            aria-pressed={thinking.value === level}
+            disabled={busy}
+            onClick={() => mutation.mutate(level)}
+            className="aria-pressed:bg-accent"
+          >
+            {thinkingNames[level]}
+          </Button>
+        ))}
+      </div>
+      {mutation.isError ? <Failure title="The thinking level did not change" error={mutation.error} /> : null}
+    </section>
   );
 }
 

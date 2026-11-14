@@ -164,7 +164,7 @@ try {
     `(() => {
     const nav = document.querySelector('aside[aria-label="Sidebar"]');
     return !!nav.querySelector('nav[aria-label="Bots"] a[href="/a/default"][aria-current="page"]') &&
-      !!nav.querySelector('a[href="/providers"]') && !!nav.querySelector('a[href="/about"]') &&
+      !!nav.querySelector('a[href="/providers"]') && !nav.querySelector('a[href="/about"]') &&
       !nav.querySelector('button[aria-label^="More"]') && !nav.querySelector('a[data-tab="Main"]') &&
       !!nav.querySelector('button[aria-label="New bot"]') &&
       !nav.querySelector('a[href="/work"], a[href="/needs-you"], a[href="/automations"], input');
@@ -176,8 +176,8 @@ try {
   );
   await shot("01-empty");
   await check(
-    "main has a compact menu and no expanded sidebar",
-    "!document.querySelector('header nav') && !document.querySelector('aside[aria-label=\"Sidebar\"] a[data-tab=\"Main\"]') && !!document.querySelector('header button[aria-label=\"Chat more\"]') && !document.querySelector('[role=region][aria-label=\"Chat settings\"]')",
+    "main has bot navigation and no task settings",
+    "!!document.querySelector('header nav[aria-label=\"Bot navigation\"]') && !document.querySelector('aside button[aria-label^=\"Bot menu\"]') && !document.querySelector('header button[aria-label=\"Task settings\"]') && !document.querySelector('[role=region][aria-label=\"Task settings\"]')",
   );
   const main = await api("/api/agents/default/chats/main");
   await visit("/a/default/sessions");
@@ -186,7 +186,12 @@ try {
     "empty Sessions hides the filter and activity caption",
     "!document.querySelector('select[aria-label=\"Kind\"]') && !document.body.innerText.includes('active · newest first')",
   );
-  await click("New session");
+  await clickLabel("New task");
+  await ui(
+    "new task project picker",
+    `!!document.querySelector('[role="dialog"] [aria-label="Directory path"]')`,
+  );
+  await tap('[role="dialog"] button[data-slot="dialog-close"]');
   await ui(
     "new Chat session",
     "location.pathname.startsWith('/a/default/c/') && document.body.innerText.includes('This session has its own context. It does not see the main timeline.')",
@@ -195,12 +200,17 @@ try {
   assert.notEqual(emptySession, main.id);
   await check(
     "new Chat has its title and composer before choosing a model",
-    `document.querySelector('#page-title').textContent === 'New chat' &&
+    `document.querySelector('#page-title').textContent === 'New task' &&
       !!document.querySelector('textarea:not([inert] *)') && !document.querySelector('aside[aria-label="Sidebar"] a[data-tab][aria-current="page"]')`,
   );
   await visit("/a/default/sessions");
   await ui("abandoned empty Chat stays hidden", "document.body.innerText.includes('No sessions yet')");
-  await click("New session");
+  await clickLabel("New task");
+  await ui(
+    "reused task project picker",
+    `!!document.querySelector('[role="dialog"] [aria-label="Directory path"]')`,
+  );
+  await tap('[role="dialog"] button[data-slot="dialog-close"]');
   await ui("empty Chat reused", `location.pathname === '/a/default/c/${emptySession}'`);
   results.push("New session opens and reuses an empty Chat without showing an empty list row");
   await visit("/a/default");
@@ -606,7 +616,7 @@ try {
   // Then the child session opens as a normal chat that names its parent.
   await ui(
     "thread panel link opens the child session",
-    `location.pathname === '/a/default/c/${done.id}' && document.body.innerText.includes('echo: saved report') && document.body.innerText.includes('Started by Main') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
+    `location.pathname === '/a/default/c/${done.id}' && document.body.innerText.includes('echo: saved report') && !!document.querySelector('header a[aria-label="Started by Main"]') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
   );
   assert.ok(doneTurn);
   assert.equal((await api(`/api/agents/default/chats/${done.id}`)).readOnly, false);
@@ -618,7 +628,7 @@ try {
   await visit(`/a/default/tasks/${old.taskId}`);
   await ui(
     "old task link opens the child session",
-    `location.pathname === '/a/default/c/${old.conversationId}' && document.body.innerText.includes('Started by Main') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
+    `location.pathname === '/a/default/c/${old.conversationId}' && !!document.querySelector('header a[aria-label="Started by Main"]') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
   );
   await shot("06a-old-task-link");
 
@@ -626,7 +636,7 @@ try {
   await visit(`/tasks/${old.taskId}`);
   await ui(
     "the old address of a task link opens the child session",
-    `location.pathname === '/a/default/c/${old.conversationId}' && document.body.innerText.includes('Started by Main')`,
+    `location.pathname === '/a/default/c/${old.conversationId}' && !!document.querySelector('header a[aria-label="Started by Main"]')`,
   );
   assert.equal((await api(`/api/agents/default/chats/${old.conversationId}`)).readOnly, false);
   // The user can archive it, so it leaves the lists below.
@@ -709,7 +719,7 @@ try {
   await visit(`/a/default/tasks/${childTurn(steered.id)}`);
   await ui(
     "a running child is a normal chat with Stop",
-    `location.pathname === '/a/default/c/${steered.id}' && document.body.innerText.includes('Started by Main') && !!document.querySelector('textarea:not(:disabled):not([inert] *)') && !!document.querySelector('button[aria-label="Stop run"]:not([inert] *)')`,
+    `location.pathname === '/a/default/c/${steered.id}' && !!document.querySelector('header a[aria-label="Started by Main"]') && !!document.querySelector('textarea:not(:disabled):not([inert] *)') && !!document.querySelector('button[aria-label="Stop run"]:not([inert] *)')`,
   );
   // After a redirect, the shell moves focus to the page title in an animation frame. A headless page
   // draws that frame late, so draw one with a screenshot and wait for the title to take focus.
@@ -838,17 +848,12 @@ try {
   await evaluate(`${threadPanel}.querySelector('a[aria-label="Open as a session page"]').click()`);
   await ui(
     "the thread panel link opens the child in its own bot, and the child names the bot of its parent",
-    `location.pathname === '/a/${coder.id}/c/${crossChild.id}' && document.body.innerText.includes('echo: hello coder') && document.body.innerText.includes('Started by Main in ${parentBot}') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
+    `location.pathname === '/a/${coder.id}/c/${crossChild.id}' && document.body.innerText.includes('echo: hello coder') && !!document.querySelector('header a[aria-label="Started by Main in ${parentBot}"]') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')`,
   );
   await shot("06c-cross-bot-child");
   // Open All sessions from the parent bot, then archive the cross-bot child in its owning bot.
   await tap('aside a[href="/a/default"]');
-  await tap('aside a[href="/a/default"] + button[aria-label^="Bot menu"]');
-  await ui(
-    "All sessions menu item",
-    `!!document.querySelector('[role="menu"] a[href="/a/default/sessions"]')`,
-  );
-  await tap('[role="menu"] a[href="/a/default/sessions"]');
+  await tap('header nav a[href="/a/default/sessions"]');
   const crossRow = `main a[href="/a/${coder.id}/c/${crossChild.id}"]`;
   await ui("cross-bot child in parent sessions", `!!document.querySelector('${crossRow}')`);
   await tap(`main li:has(a[href="/a/${coder.id}/c/${crossChild.id}"]) button`);
@@ -857,7 +862,7 @@ try {
     async () => !!(await api(`/api/agents/${coder.id}/chats/${crossChild.id}`)).archivedAt,
   );
   await ui("archived child leaves active sessions", `!document.querySelector('${crossRow}')`);
-  await tap('main button[aria-expanded="false"]:not([inert] *)');
+  await tap('main button[aria-expanded="false"]:not([inert] *):not(header *)');
   await ui(
     "archived child is listed",
     `!!document.querySelector('${crossRow}') && document.querySelector('${crossRow}').closest('li').innerText.includes('Restore')`,
@@ -1203,7 +1208,7 @@ try {
         `/a/default/tasks/${childTurn(sessionChild.id)}`,
         "location.pathname === '/a/default/c/" +
           sessionChild.id +
-          "' && document.body.innerText.includes('Started by') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')",
+          "' && !!document.querySelector('header a[aria-label^=\"Started by\"]') && !!document.querySelector('textarea:not(:disabled):not([inert] *)')",
       ],
       [
         "new-session",
@@ -1397,7 +1402,8 @@ try {
 
   // The bot row opens Main; the bot menu holds its other pages and attention items.
   const tab = () => `aside[aria-label="Sidebar"] a[href="/a/default"]`;
-  const botMenu = 'aside[aria-label="Sidebar"] button[aria-label^="Bot menu"]';
+  const botMenu = 'header nav a[href="/a/default/agent"]';
+  const attentionMenu = 'header button[aria-label="Needs you"]';
 
   // The channel widths above leave a phone viewport behind; the bot column shows on a desktop one.
   await viewport(1280, 900);
@@ -1419,20 +1425,18 @@ try {
     (a) => a.enabled,
   ).length;
 
-  await tap(botMenu);
   await ui(
-    "Routines menu preserves count and failure",
-    `(() => { const a = document.querySelector('[role="menu"] a[href="/a/default/automations"]'); return a?.getAttribute('aria-label') === ${JSON.stringify(`Routines${enabledRoutines ? `, ${enabledRoutines} on` : ""}, latest run failed`)} && ${enabledRoutines ? `a.textContent.includes('${enabledRoutines}')` : "true"} && !!a.querySelector('[aria-label="Latest routine run failed"]'); })()`,
+    "Routines navigation preserves count and failure",
+    `(() => { const a = document.querySelector('header nav a[href="/a/default/automations"]'); return a?.getAttribute('aria-label') === ${JSON.stringify(`Routines${enabledRoutines ? `, ${enabledRoutines} on` : ""}, latest run failed`)} && !a.textContent.trim() && !!a.querySelector('[aria-label="Latest routine run failed"]'); })()`,
   );
+  await tap(attentionMenu);
   await ui(
-    "the bot menu lists the failed routine run",
+    "the attention menu lists the failed routine run",
     `[...document.querySelectorAll('[role="menu"] a[href^="/inbox/"]')].some(a => a.textContent.includes('Daily review') && a.textContent.includes('Routine run failed'))`,
   );
-  await tap(botMenu);
+  await tap(attentionMenu);
   await viewport(320, 844);
-  await tap('button[aria-label^="Open navigation"]');
-  await ui("mobile navigation opens", `!!document.querySelector('[role="dialog"][aria-label="Navigation"]')`);
-  await tap('[role="dialog"] a[href="/a/default"] + button[aria-label^="Bot menu"]');
+  await tap('header button[aria-label^="Bot menu"]');
   await ui("mobile failed result menu", `!!document.querySelector('[role="menu"] a[href^="/inbox/"]')`);
   await check(
     "long attention title stays inside mobile menu",
@@ -1440,7 +1444,7 @@ try {
   );
   await ui(
     "mobile menu finishes opening",
-    `document.querySelector('[role="menu"]').getAnimations({ subtree: true }).every(a => a.playState !== 'running') && document.querySelector('[role="dialog"]').getAnimations({ subtree: true }).every(a => a.playState !== 'running')`,
+    `document.querySelector('[role="menu"]').getAnimations({ subtree: true }).every(a => a.playState !== 'running')`,
   );
   await tap('[role="menu"] a[href^="/inbox/"]');
   await ui("failed result opens from mobile menu", `location.pathname.startsWith('/inbox/')`);
@@ -1474,12 +1478,7 @@ try {
   await ui("the header button shows the sidebar", `!!document.querySelector('aside[aria-label="Sidebar"]')`);
 
   // Routines opens its page, and the bot's row stays current.
-  await tap(botMenu);
-  await ui(
-    "Routines menu item",
-    `!!document.querySelector('[role="menu"] a[href="/a/default/automations"]')`,
-  );
-  await tap('[role="menu"] a[href="/a/default/automations"]');
+  await tap('header nav a[href="/a/default/automations"]');
   await ui(
     "the Routines row opens /a/default/automations",
     "location.pathname === '/a/default/automations' && document.querySelector('#page-title')?.textContent === 'Routines'",
@@ -1496,7 +1495,7 @@ try {
   );
   await check(
     "the bot menu is lit on Settings",
-    `document.querySelector('aside[aria-label="Sidebar"] button[aria-label^="Bot menu"]').hasAttribute('data-current')`,
+    `document.querySelector('header nav a[href="/a/default/agent"]').getAttribute('aria-current') === 'page'`,
   );
 
   await check(
@@ -1544,35 +1543,36 @@ try {
 
   // Session controls follow the bot model when there is no session override.
   const chosen = (await api("/api/agents/default")).modelId;
-  const settingsRow = '[role="region"][aria-label="Chat settings"]';
+  const settingsRow = '[role="region"][aria-label="Task settings"]';
+  const settingsTask = await api("/api/agents/default/chats", {});
 
   const openChatSettings = async () => {
-    await ui("Chat settings button", `!!document.querySelector('header button[aria-label="Chat more"]')`);
-    await tap('header button[aria-label="Chat more"]');
-    await ui("chat settings menu item", `!!document.querySelector('[role="menuitem"]')`);
-    await tap('[role="menuitem"]');
-    await ui("Chat settings row", `!!document.querySelector('${settingsRow}')`);
+    await visit(`/a/default/c/${settingsTask.id}`);
+    await ui("Task settings row", `!!document.querySelector('${settingsRow}')`);
   };
 
   await openChatSettings();
   await ui(
     "the Chat settings row shows the model",
-    `document.querySelector('${settingsRow} button[aria-label="Set model"]')?.innerText.includes(${JSON.stringify(chosen)}) && document.querySelector('${settingsRow}').innerText.includes('including channel messages')`,
+    `document.querySelector('${settingsRow} button[aria-label="Set model"]')?.innerText.includes(${JSON.stringify(chosen)}) && !document.querySelector('${settingsRow} p')`,
   );
   await model("think");
   await visit("/a/default");
   await openChatSettings();
+  await tap(`${settingsRow} button[aria-label="Set model"]`);
   await ui(
-    "a reasoning model adds the session thinking control",
-    `document.querySelector('${settingsRow} [aria-label="Set thinking level"]')?.innerText.trim().length > 0`,
+    "a reasoning model adds thinking choices to the model picker",
+    `!!document.querySelector('[aria-label="Chat model"] [aria-label="Thinking level"]')`,
   );
   await model(chosen);
   await visit("/a/default");
   await openChatSettings();
+  await tap(`${settingsRow} button[aria-label="Set model"]`);
   await ui(
     "a model without reasoning leaves the thinking level out",
-    `!document.querySelector('${settingsRow} [aria-label="Set thinking level"]')`,
+    `!document.querySelector('[aria-label="Chat model"] [aria-label="Thinking level"]')`,
   );
+  await call("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
 
   // Instructions is a Settings page; client-side navigation keeps drafts alive.
   await openBotSettings('aside[aria-label="Sidebar"]');
@@ -2018,7 +2018,7 @@ try {
   await botSettingsPage("extensions");
   await ui(
     "returned to current agent extensions",
-    `location.pathname === '/a/${second.id}/extensions' && document.querySelector('aside[aria-label="Sidebar"] a[aria-current="page"] + button[aria-label^="Bot menu"]').hasAttribute('data-current')`,
+    `location.pathname === '/a/${second.id}/extensions' && document.querySelector('header nav a[href="/a/${second.id}/agent"]').getAttribute('aria-current') === 'page'`,
   );
   await viewport(390, 844);
   // On a phone the bot column sits in the drawer.
@@ -2080,15 +2080,15 @@ try {
   const lastAgentPath = `/a/${connectionAgents.at(-1).id}`;
 
   // A full page navigation would close the streams and hide a connection leak.
-  await tap(`aside a[href="${lastAgentPath}"] + button[aria-label^="Bot menu"]`);
+  await tap('header button[aria-label="New task"]');
   await ui(
-    "new chat menu item",
-    `!![...document.querySelectorAll('[role="menuitem"]')].find(e => e.textContent.trim() === 'New chat')`,
+    "new task project picker",
+    `!!document.querySelector('[role="dialog"] [aria-label="Directory path"]')`,
   );
-  await tap('[role="menuitem"]');
+  await tap('[role="dialog"] button[data-slot="dialog-close"]');
   await ui(
     "New session works after seven agent switches",
-    `location.pathname.startsWith('${lastAgentPath}/c/') && document.querySelector('#page-title')?.textContent === 'New chat'`,
+    `location.pathname.startsWith('${lastAgentPath}/c/') && document.querySelector('#page-title')?.textContent === 'New task'`,
   );
   results.push("seven agent Chat visits leave ordinary New session requests working");
   await shot("16-seven-agents");
@@ -2148,7 +2148,12 @@ try {
     "question bot in drawer",
     `!!document.querySelector('[role="dialog"] a[href="/a/${questionBot.id}"]')`,
   );
-  await tap(`[role="dialog"] a[href="/a/${questionBot.id}"] + button[aria-label^="Bot menu"]`);
+  await tap(`[role="dialog"] a[href="/a/${questionBot.id}"]`);
+  await ui(
+    "question bot main",
+    `location.pathname === '/a/${questionBot.id}' && !document.querySelector('[role="dialog"]')`,
+  );
+  await tap('header button[aria-label^="Bot menu"]');
   const questionLink = `[role="menu"] a[href="/a/${questionBot.id}/c/${questionChat.id}"]`;
   await ui("question appears in bot menu", `!!document.querySelector('${questionLink}')`);
   await check(
@@ -2157,7 +2162,7 @@ try {
   );
   await ui(
     "question menu finishes opening",
-    `document.querySelector('[role="menu"]').getAnimations({ subtree: true }).every(a => a.playState !== 'running') && document.querySelector('[role="dialog"]').getAnimations({ subtree: true }).every(a => a.playState !== 'running')`,
+    `document.querySelector('[role="menu"]').getAnimations({ subtree: true }).every(a => a.playState !== 'running')`,
   );
   await tap(questionLink);
   await ui(
@@ -2463,13 +2468,14 @@ async function openGlobal(scope, path) {
   await tap(`${scope} a[href="${path}"]`);
 }
 
-/** Opens the open bot's Settings from its ⋯ in the sidebar inside `scope`. */
-async function openBotSettings(scope) {
+/** Opens settings for the current bot from the header. */
+async function openBotSettings(_scope) {
   const botPath = await evaluate(`'/' + location.pathname.split('/').filter(Boolean).slice(0, 2).join('/')`);
-  const settingsLink = `[role="menu"] a[href="${botPath}/agent"]`;
+  const desktop = await evaluate("innerWidth >= 1024");
+  const settingsLink = `${desktop ? "header nav" : '[role="menu"]'} a[href="${botPath}/agent"]`;
 
-  await tap(`${scope} a[href="${botPath}"] + button[aria-label^="Bot menu"]`);
-  await ui("the bot menu opens", `!!document.querySelector('${settingsLink}')`);
+  if (!desktop) await tap('header button[aria-label^="Bot menu"]');
+  await ui("bot settings link", `!!document.querySelector('${settingsLink}')`);
   await tap(settingsLink);
 }
 
