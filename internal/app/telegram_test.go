@@ -34,6 +34,7 @@ type fakeTelegram struct {
 	permanentChat atomic.Int64
 	failAfter     atomic.Int64
 	sendCount     atomic.Int64
+	pollOffset    atomic.Int64
 	failSend      atomic.Bool
 	failMedia     atomic.Bool
 	mediaSent     chan telegramMedia
@@ -211,6 +212,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+		f.pollOffset.Store(params.Offset)
 		f.mu.Lock()
 		var updates []map[string]any
 		for _, u := range f.updates {

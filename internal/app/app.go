@@ -236,17 +236,20 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			err = errors.Join(err, a.Close())
 		}
 	}()
-	setTelegram := func(agentID string, config *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
+	setTelegram := func(agentID string, config *telegram.Config) {
 		manager := bots.Agent(agentID)
 		uploads := upload.New(agent.Home(cfg.DataDir, agentID))
 		if config == nil {
-			manager.Set("telegram", nil)
+			manager.Set("telegram", nil) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
+			if err := manager.CleanupTelegramAlbums(runCtx, uploads); err != nil {
+				slog.Warn("telegram: album cleanup", "err", err)
+			}
 			return
 		}
 		config.Uploads = uploads
 		config.Watch = agentStreams{hub, agentID}.Open
 		config.Report = func(state, reason string) { manager.Report("telegram", channel.Status{State: state, Reason: reason}) }
-		manager.Set("telegram", telegram.New(*config, manager))
+		manager.Set("telegram", telegram.New(*config, manager)) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
 	}
 	prefs = settings.New(q, native.Catalog, native)
 	if err := prefs.ApplyOnePassword(ctx); err != nil {

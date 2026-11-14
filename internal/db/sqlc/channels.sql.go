@@ -117,7 +117,11 @@ func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (Chan
 }
 
 const getSubmissionBySource = `-- name: GetSubmissionBySource :one
-SELECT id FROM submissions WHERE source_key = ?
+SELECT s.id FROM submissions s WHERE s.source_key = ?1
+UNION ALL
+SELECT s.id FROM telegram_album_members m JOIN submissions s ON s.source_key = m.batch_source
+WHERE m.source_key = ?1
+LIMIT 1
 `
 
 func (q *Queries) GetSubmissionBySource(ctx context.Context, sourceKey sql.NullString) (string, error) {

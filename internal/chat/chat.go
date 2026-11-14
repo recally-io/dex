@@ -88,6 +88,7 @@ type ChannelContext struct {
 type Message struct {
 	ChannelContext ChannelContext
 	ChannelNote    string
+	AlbumSource    string
 	ID             string
 	Title          string
 	Content        string
@@ -346,6 +347,15 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		// The writer is held now. Input first makes an archive fail as busy; archive first ends here.
 		if err := db.RequireActive(ctx, q, agentID); err != nil {
 			return 0, err
+		}
+		if m.AlbumSource != "" {
+			sealed, err := q.IsTelegramAlbumSealed(ctx, sqlc.IsTelegramAlbumSealedParams{AgentID: agentID, BatchSource: m.AlbumSource})
+			if err != nil {
+				return 0, err
+			}
+			if !sealed {
+				return 0, fmt.Errorf("%w: album was discarded before admission", ErrSessionInvalid)
+			}
 		}
 		attachments, err := json.Marshal(m.Attachments)
 		if err != nil {

@@ -263,6 +263,19 @@ type Submission struct {
 	ChannelRevoked       int64          `json:"channel_revoked"`
 }
 
+type TelegramAlbumMember struct {
+	SourceKey   string `json:"source_key"`
+	AgentID     string `json:"agent_id"`
+	AccountID   string `json:"account_id"`
+	SenderID    string `json:"sender_id"`
+	Peer        string `json:"peer"`
+	GroupKey    string `json:"group_key"`
+	InputJson   string `json:"input_json"`
+	ReceivedAt  int64  `json:"received_at"`
+	BatchSource string `json:"batch_source"`
+	State       string `json:"state"`
+}
+
 type TelegramSetting struct {
 	AgentID        string `json:"agent_id"`
 	Token          string `json:"token"`

@@ -184,6 +184,11 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 		if err := q.DismissQuestions(ctx, sqlc.DismissQuestionsParams{ConversationID: chatID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
 			return err
 		}
+		if c.ChannelKey == MainKey {
+			if err := q.DiscardTelegramAlbums(ctx, agentID); err != nil {
+				return err
+			}
+		}
 		if err := tx.Commit(); err != nil {
 			return err
 		}
@@ -194,6 +199,9 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 	}
 
 	s.signal(chatID)
+	if c.ChannelKey == MainKey && s.notify != nil {
+		s.notify(MainKey)
+	}
 	if err := s.reconcileAgent(ctx, agentID); err != nil {
 		s.scheduleRetry()
 	}

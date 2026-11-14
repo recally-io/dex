@@ -130,6 +130,11 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 				continue
 			}
 		}
+		if c.AgentID == agentID && c.ChannelKey == MainKey {
+			if err := q.DiscardTelegramAlbums(ctx, agentID); err != nil {
+				return withdrawal{}, err
+			}
+		}
 		if _, err := q.StopConversationSubmissions(ctx, sqlc.StopConversationSubmissionsParams{ChatID: c.ID, Now: now}); err != nil {
 			return withdrawal{}, err
 		}
