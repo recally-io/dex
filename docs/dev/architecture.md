@@ -254,9 +254,30 @@ discard unsubmitted batches without deleting files owned by an existing input.
 An interrupted cleanup retries from the retained references. Rejected files use
 the existing attachment error reply and do not enter the native album.
 
-Native `sendMediaGroup`, presentation preferences and configured speech services
-remain open layer-2 work. Group routing and isolated resources belong to layer 3;
-the adapter still rejects non-private chats.
+Consecutive compatible file results use one `sendMediaGroup` request with two to
+ten members. Photos and videos can share a group. Audio and documents each use
+their own group type. Voice and animation keep their single-file methods.
+Membership and order freeze with the rendered reply. Existing frozen replies and
+older partially delivered replies keep their original part boundaries.
+
+A successful group confirms every remote message ID and the outer part cursor in
+one transaction. A definitive API 400 rejection first commits fallback mode.
+Fallback then uses native single-file methods and confirms each member in a
+transaction. A restart skips confirmed members and cannot regroup the rejected
+batch. The last member advances the outer cursor in the same transaction.
+The sender checks current authorization before each fallback member.
+
+Lost responses, invalid or incomplete message IDs, and service 5xx responses leave
+the whole group unconfirmed. HTTP 5xx takes precedence over a contradictory error
+code in the body. These outcomes never trigger fallback or confirm a prefix.
+Retries use the same snapshots. Telegram has no delivery idempotency key here,
+so remote acceptance before a failed response or local receipt can repeat an
+unconfirmed group or member. Flood waits keep the existing durable account and
+reply cooldowns. This is at-least-once delivery, not exactly-once delivery.
+
+Presentation preferences and configured speech services remain open layer-2 work.
+Group routing and isolated resources belong to layer 3; the adapter still rejects
+non-private chats.
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
 each agent execution store. Run one dex process per data directory.

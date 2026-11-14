@@ -11,7 +11,7 @@ import (
 
 func fakeProvider() *ai.ModelsProvider {
 	defs := []ai.FauxModelDefinition{}
-	for _, id := range []string{"echo", "context", "shout", "bash", "memory", "section", "tool", "spawn", "think", "mixed"} {
+	for _, id := range []string{"echo", "context", "shout", "bash", "memory", "section", "tool", "spawn", "think", "mixed", "files"} {
 		defs = append(defs, ai.FauxModelDefinition{ID: id, Reasoning: id == "think"})
 	}
 	faux := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "faux", Models: defs, TokensPerSecond: 200})
@@ -68,6 +68,22 @@ func fakeProvider() *ai.ModelsProvider {
 				}
 			}
 			return fakeCall(name, args), nil
+		case "files":
+			if result, ok := last.(ai.ToolResultMessage); ok && result.ToolName == "deliver_file" {
+				return fakeText("files: done"), nil
+			}
+			if !fakeExposed(t, "deliver_file") {
+				return fakeCall("tool_search", map[string]any{"query": "deliver_file"}), nil
+			}
+			var paths []string
+			if err := json.Unmarshal([]byte(text), &paths); err != nil {
+				return ai.AssistantMessage{}, err
+			}
+			calls := ai.FauxContentBlocks{}
+			for _, path := range paths {
+				calls = append(calls, ai.FauxToolCall("deliver_file", map[string]any{"path": path}, nil))
+			}
+			return ai.FauxAssistantMessage(calls, ai.FauxAssistantMessageOptions{StopReason: "toolUse"}), nil
 		case "mixed":
 			// One message with two tool calls: ask_user from the JSON in the message, and bash.
 			for _, message := range t.Messages() {
