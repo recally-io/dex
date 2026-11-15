@@ -27,12 +27,23 @@ func TelegramCallbackObject(row sqlc.TelegramCallback) bool {
 // checkTelegramControl runs under the effect's SQLite writer, after a callback queued its intent.
 // It prevents a queued action from gaining a new context or a later authorization grant.
 func checkTelegramControl(ctx context.Context, q *sqlc.Queries, source, agentID string, conversationID int64) error {
-	id, callback := strings.CutPrefix(source, "telegram-callback:")
-	if !callback {
+	if !strings.HasPrefix(source, "telegram-callback:") {
 		return nil
 	}
 	if err := q.LockRoutineTools(ctx); err != nil {
 		return err
+	}
+	return ValidateTelegramControl(ctx, q, source, agentID, conversationID)
+}
+
+// ValidateTelegramControl is the read-only validity check of a claimed callback command. Other
+// sources pass. The command must keep its button's audience, conversation, generation, object,
+// expiry, actor and a current grant. It returns ErrGroupUnauthorized for a stale command.
+// Effects must call it again under their writer through checkTelegramControl.
+func ValidateTelegramControl(ctx context.Context, q *sqlc.Queries, source, agentID string, conversationID int64) error {
+	id, callback := strings.CutPrefix(source, "telegram-callback:")
+	if !callback {
+		return nil
 	}
 	row, err := q.GetTelegramCallback(ctx, id)
 	if err != nil {

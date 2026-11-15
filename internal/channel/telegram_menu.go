@@ -23,6 +23,49 @@ type Button struct {
 
 type menuAction struct{ text, action, object string }
 
+// completeTelegram resolves a Telegram command's target once for this processing entry. It
+// returns done after it completes the command itself: silently for an unauthorized, stale or
+// moved command, or with the answer of a Telegram-only command. Effects recheck under the writer.
+func (m *Manager) completeTelegram(ctx context.Context, c sqlc.ChannelCommand) (chat.Chat, chat.ChannelContext, bool, error) {
+	var identity chat.ChannelContext
+	if err := json.Unmarshal([]byte(c.ChannelContext), &identity); err != nil {
+		return chat.Chat{}, identity, false, err
+	}
+	silent := func() (chat.Chat, chat.ChannelContext, bool, error) {
+		return chat.Chat{}, identity, true, m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: ""})
+	}
+	target, err := m.chats.ChannelConversation(ctx, m.agentID, c.Peer, identity)
+	if errors.Is(err, chat.ErrGroupUnauthorized) {
+		return silent()
+	}
+	if err != nil {
+		return chat.Chat{}, identity, false, err
+	}
+	// A saved group command keeps the sender or topic session that received it.
+	if strings.HasPrefix(c.Peer, "telegram:-") && target.ChannelKey != c.ChannelKey {
+		return silent()
+	}
+	current, err := m.callbackCurrent(ctx, c, target)
+	if err != nil {
+		return chat.Chat{}, identity, false, err
+	}
+	if !current {
+		return silent()
+	}
+	answer, handled, err := m.telegramCommand(ctx, c, target, identity)
+	if errors.Is(err, chat.ErrGroupUnauthorized) {
+		return silent()
+	}
+	if err != nil || !handled {
+		return target, identity, false, err
+	}
+	if err := m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: answer}); err != nil {
+		return chat.Chat{}, identity, false, err
+	}
+	m.Notify(c.Peer)
+	return target, identity, true, nil
+}
+
 func (m *Manager) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, target chat.Chat, identity chat.ChannelContext) (string, bool, error) {
 	switch c.Command {
 	case "/menu", "/help":
@@ -44,7 +87,7 @@ func (m *Manager) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, ta
 		}
 		return fmt.Sprintf("Telegram preferences\nRequire group mention: %t\nOnly individually paired senders can use controls. Change preferences in the owner's Channels page. Group speech does not use private consent.", options.RequireMention), true, nil
 	case "/sessions", "/workflows":
-		children, err := m.chats.ChannelChildren(ctx, m.agentID, c.Peer, identity)
+		children, err := m.chats.ChannelChildren(ctx, m.agentID, target)
 		if err != nil {
 			return "", true, err
 		}
@@ -121,7 +164,7 @@ func scopeLabel(scope string) string {
 	return scope
 }
 
-func (m *Manager) menuActions(ctx context.Context, command string, target chat.Chat, identity chat.ChannelContext, peer string) ([]menuAction, error) {
+func (m *Manager) menuActions(ctx context.Context, command string, target chat.Chat) ([]menuAction, error) {
 	actions := []menuAction{}
 	switch command {
 	case "/menu", "/help":
@@ -129,7 +172,7 @@ func (m *Manager) menuActions(ctx context.Context, command string, target chat.C
 			actions = append(actions, menuAction{item.text, item.command, strconv.FormatInt(target.ID, 10)})
 		}
 	case "/sessions", "/workflows":
-		children, err := m.chats.ChannelChildren(ctx, m.agentID, peer, identity)
+		children, err := m.chats.ChannelChildren(ctx, m.agentID, target)
 		if err != nil {
 			return nil, err
 		}
@@ -270,19 +313,11 @@ func (m *Manager) ClaimTelegramCallback(ctx context.Context, id, peer, remote st
 	return true, m.complete(ctx, command)
 }
 
-// A claimed command must still have its original audience, generation, expiry and current grant.
+// callbackCurrent applies the same post-claim validity check that effects repeat under the writer.
 func (m *Manager) callbackCurrent(ctx context.Context, c sqlc.ChannelCommand, target chat.Chat) (bool, error) {
-	id, callback := strings.CutPrefix(c.SourceKey, "telegram-callback:")
-	if !callback {
-		return true, nil
+	err := chat.ValidateTelegramControl(ctx, m.q, c.SourceKey, m.agentID, target.ID)
+	if errors.Is(err, chat.ErrGroupUnauthorized) {
+		return false, nil
 	}
-	row, err := m.q.GetTelegramCallback(ctx, id)
-	if err != nil {
-		return false, err
-	}
-	revision, err := m.q.TelegramContextRevision(ctx, target.ID)
-	if err != nil {
-		return false, err
-	}
-	return revision == row.ContextRevision && row.AgentID == m.agentID && row.Peer == c.Peer && row.ConversationID == target.ID && row.ExecutionScope == target.ExecutionScope && row.ExecutionID == target.ExecutionID && row.Action == c.Command && row.ConsumedAt.Valid && row.ExpiresAt > time.Now().UnixMilli(), nil
+	return err == nil, err
 }

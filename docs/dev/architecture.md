@@ -1271,9 +1271,13 @@ Inline buttons carry a 96-bit HMAC reference signed with the current bot token. 
 server row binds the actor, account, chat, topic, confirmed message, conversation, execution
 scope, native ID, context-reset receipt, object, action and a 15-minute expiry. The claim
 transaction checks current authority and consumes the nonce with its durable command intent.
-Effect transactions check the current grant, expiry and context revision again. Clear does
-not change the native conversation ID, so callbacks also bind the latest `context_reset`
-receipt. Replays cannot queue another action. A matching actor's rejected grant cancels its
+Command processing and effect transactions use one read-only validity check
+(`chat.ValidateTelegramControl`); effects repeat it under the SQLite writer. It covers the
+current grant, expiry, actor, message, object and context revision. A definite 400 or 403
+rejection of the final `answerCallbackQuery` does not hold the polling offset; network, 5xx
+and 429 errors retry the same update, and the consumed nonce cannot queue a second intent.
+Clear does not change the native conversation ID, so callbacks also bind the latest
+`context_reset` receipt. Replays cannot queue another action. A matching actor's rejected grant cancels its
 button permanently. Command parts and button labels stay frozen across delivery retries.
 Message delivery stays at least once; only the bound confirmed remote message accepts its
 buttons. A stale Question button cannot become ordinary model input.

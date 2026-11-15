@@ -23,6 +23,8 @@ import (
 // Text is opaque, platform-rendered content from the same Bot's Parts. It can
 // contain HTML, Markdown, or card markup and is not universal plain text.
 // Manager stores parts as JSON and passes them back to that Bot unchanged.
+// File and Text are the shared variants. Group and Buttons come only from
+// Telegram planning; another adapter decides itself whether it accepts them.
 type Part struct {
 	Buttons []Button `json:"buttons,omitempty"`
 	Text    string   `json:"text,omitempty"`

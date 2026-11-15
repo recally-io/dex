@@ -26,15 +26,15 @@ func (s *Service) ChannelConversation(ctx context.Context, agentID, peer string,
 	return s.Main(ctx, agentID)
 }
 
-// ChannelChildren uses only the current conversation, never the private global session list.
-func (s *Service) ChannelChildren(ctx context.Context, agentID, peer string, identity ChannelContext) ([]engine.SessionRef, error) {
-	target, err := s.ChannelConversation(ctx, agentID, peer, identity)
-	if err != nil {
-		return nil, err
-	}
+// ChannelChildren lists the direct children of an already resolved channel target, never the
+// private global session list. It re-reads the conversation and uses its stored agent and scope.
+func (s *Service) ChannelChildren(ctx context.Context, agentID string, target Chat) ([]engine.SessionRef, error) {
 	parent, err := s.q.GetConversation(ctx, target.ID)
 	if err != nil {
 		return nil, err
+	}
+	if parent.AgentID != agentID || parent.ParentID.Valid || parent.ChannelKey != target.ChannelKey {
+		return nil, ErrGroupUnauthorized
 	}
 	children, err := s.q.ListAudienceChildren(ctx, sqlc.ListAudienceChildrenParams{AgentID: parent.AgentID, ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}, ExecutionScope: parent.ExecutionScope, ScopeContext: parent.ScopeContext})
 	if err != nil {

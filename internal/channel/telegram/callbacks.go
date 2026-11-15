@@ -5,6 +5,8 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -84,5 +86,12 @@ func (b *Bot) receiveCallback(ctx context.Context, query *callbackQuery) error {
 	if accepted {
 		text = "Accepted."
 	}
-	return b.call(ctx, "answerCallbackQuery", map[string]any{"callback_query_id": query.ID, "text": text}, nil)
+	// Claim processing has finished. A definite rejection of this acknowledgement
+	// must not hold the polling offset; network, 5xx and 429 errors still retry the update.
+	err := b.call(ctx, "answerCallbackQuery", map[string]any{"callback_query_id": query.ID, "text": text}, nil)
+	if e, ok := errors.AsType[*apiError](err); ok && (e.Code == 400 || e.Code == 403) {
+		slog.Warn("telegram: skipped a rejected callback acknowledgement", "err", err)
+		return nil
+	}
+	return err
 }

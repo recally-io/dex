@@ -301,51 +301,12 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	group := strings.HasPrefix(c.Peer, "telegram:-")
 	var identity chat.ChannelContext
 	var target chat.Chat
-	if group {
-		if err := json.Unmarshal([]byte(c.ChannelContext), &identity); err != nil {
-			return err
-		}
-		var err error
-		target, err = m.chats.GroupConversation(ctx, m.agentID, c.Peer, identity)
-		if errors.Is(err, chat.ErrGroupUnauthorized) || err == nil && target.ChannelKey != c.ChannelKey {
-			return m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: ""})
-		}
-		if err != nil {
-			return err
-		}
-	}
 	if strings.HasPrefix(c.Peer, "telegram:") {
-		if err := json.Unmarshal([]byte(c.ChannelContext), &identity); err != nil {
-			return err
-		}
+		var done bool
 		var err error
-		target, err = m.chats.ChannelConversation(ctx, m.agentID, c.Peer, identity)
-		if errors.Is(err, chat.ErrGroupUnauthorized) {
-			return m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: ""})
-		}
-		if err != nil {
+		target, identity, done, err = m.completeTelegram(ctx, c)
+		if err != nil || done {
 			return err
-		}
-		current, err := m.callbackCurrent(ctx, c, target)
-		if err != nil {
-			return err
-		}
-		if !current {
-			return m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: ""})
-		}
-		answer, handled, err := m.telegramCommand(ctx, c, target, identity)
-		if errors.Is(err, chat.ErrGroupUnauthorized) {
-			return m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: ""})
-		}
-		if err != nil {
-			return err
-		}
-		if handled {
-			if err := m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: answer}); err != nil {
-				return err
-			}
-			m.Notify(c.Peer)
-			return nil
 		}
 	}
 	answer := "/clear clears the main timeline's context. It takes no text. /new does the same. /stop stops the main answer and its background work. /help shows these commands."
@@ -590,7 +551,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 			if err != nil {
 				return err
 			}
-			actions, err := m.menuActions(ctx, r.Command, target, identity, r.Peer)
+			actions, err := m.menuActions(ctx, r.Command, target)
 			if err != nil {
 				return err
 			}
