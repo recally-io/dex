@@ -108,20 +108,11 @@ func (m *Manager) Transcribe(ctx context.Context, peer, source string, msg chat.
 		row.Text = transcript
 		row.Error = ""
 		if err != nil {
-			row.State = "failed"
+			row.State = speechFailure(ctx, err)
 			row.Error = err.Error()
-			if strings.Contains(row.Error, "unknown") || ctx.Err() != nil {
-				row.State = "unknown"
-			}
 		}
-		saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
-		saved, saveErr := m.q.CompleteTelegramEffect(saveCtx, sqlc.CompleteTelegramEffectParams{OperationKey: key, State: row.State, Text: row.Text, Error: row.Error, ResultJson: "{}"})
-		cancel()
-		if saveErr != nil {
-			return msg, saveErr
-		}
-		if saved != 1 {
-			return msg, errors.New("speech input is no longer active")
+		if err := m.completeEffect(ctx, sqlc.CompleteTelegramEffectParams{OperationKey: key, State: row.State, Text: row.Text, Error: row.Error, ResultJson: "{}"}, "speech input is no longer active"); err != nil {
+			return msg, err
 		}
 		if ctx.Err() != nil {
 			return msg, ctx.Err()
@@ -139,6 +130,30 @@ func (m *Manager) Transcribe(ctx context.Context, peer, source string, msg chat.
 		msg.ChannelNote += "\nTranscription unavailable: " + row.Error + ". The original audio is attached; no automatic provider retry or fallback is used."
 	}
 	return msg, nil
+}
+
+// speechFailure classifies a failed provider call. Only an explicit unknown outcome or the
+// caller's cancellation stays unknown; every other error is a definite failure.
+func speechFailure(ctx context.Context, err error) string {
+	if errors.Is(err, speech.ErrOutcomeUnknown) || ctx.Err() != nil {
+		return "unknown"
+	}
+	return "failed"
+}
+
+// completeEffect records a started effect's outcome even after ctx ends. A missed row means
+// the effect was revoked or claimed elsewhere, so the caller must not use the outcome.
+func (m *Manager) completeEffect(ctx context.Context, params sqlc.CompleteTelegramEffectParams, inactive string) error {
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	saved, err := m.q.CompleteTelegramEffect(saveCtx, params)
+	if err != nil {
+		return err
+	}
+	if saved != 1 {
+		return errors.New(inactive)
+	}
+	return nil
 }
 
 func (m *Manager) FinishSpeechInput(ctx context.Context, source string, album bool) error {

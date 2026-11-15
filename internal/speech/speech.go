@@ -55,7 +55,18 @@ type Endpoint struct {
 }
 type Resolve func(context.Context, string) (Endpoint, error)
 
+// ErrOutcomeUnknown marks a call that may have reached the provider: a transport failure,
+// a 5xx response or an incomplete response body. Callers must not send it again automatically.
+var ErrOutcomeUnknown = errors.New("speech provider outcome unknown")
+
+// unknownError keeps the public message while matching ErrOutcomeUnknown.
+type unknownError string
+
+func (e unknownError) Error() string        { return string(e) }
+func (e unknownError) Is(target error) bool { return target == ErrOutcomeUnknown }
+
 // Call returns a transcript or generated audio. It does not retry or choose another provider.
+// Errors that match ErrOutcomeUnknown leave the remote result unknown; other errors are definite failures.
 func Call(ctx context.Context, endpoint Endpoint, options Options, kind, name, text string, audio io.Reader) (string, []byte, error) {
 	if !options.Enabled || !options.AllowSending {
 		return "", nil, errors.New("speech is off or sending consent is missing")
@@ -119,12 +130,12 @@ func Call(ctx context.Context, endpoint Endpoint, options Options, kind, name, t
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	response, err := client.Do(req)
 	if err != nil {
-		return "", nil, errors.New("speech provider outcome unknown; automatic retry is disabled")
+		return "", nil, unknownError("speech provider outcome unknown; automatic retry is disabled")
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		if response.StatusCode >= http.StatusInternalServerError {
-			return "", nil, fmt.Errorf("speech provider HTTP %d; remote outcome unknown; automatic retry is disabled", response.StatusCode)
+			return "", nil, unknownError(fmt.Sprintf("speech provider HTTP %d; remote outcome unknown; automatic retry is disabled", response.StatusCode))
 		}
 		return "", nil, fmt.Errorf("speech provider rejected the request: HTTP %d; automatic retry is disabled", response.StatusCode)
 	}
@@ -134,7 +145,7 @@ func Call(ctx context.Context, endpoint Endpoint, options Options, kind, name, t
 	}
 	payload, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
-		return "", nil, errors.New("speech provider response incomplete; outcome unknown; automatic retry is disabled")
+		return "", nil, unknownError("speech provider response incomplete; outcome unknown; automatic retry is disabled")
 	}
 	if int64(len(payload)) > limit {
 		return "", nil, errors.New("speech response exceeds configured byte budget")

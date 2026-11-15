@@ -32,6 +32,7 @@ import (
 
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/engine"
 )
 
 // ErrPermanent marks a part the platform cannot accept. The sender logs and skips it.
@@ -53,6 +54,9 @@ type Status struct {
 // Run and Send can execute at the same time, and Send can run while Run is
 // receiving. When ctx is cancelled, each method must stop and join the
 // goroutines, connections, and timers that it started before it returns.
+//
+// A bot can also implement GroupParts, MediaWaker, Finisher, or Controller.
+// They are optional; today only Telegram implements them.
 type Bot interface {
 	// Run receives platform input until ctx ends or the transport fails.
 	Run(context.Context) error
@@ -66,6 +70,30 @@ type Bot interface {
 	// it for retry. A Part variant that this adapter cannot deliver is the
 	// adapter's own decision; it does not change what other platforms support.
 	Send(ctx context.Context, peer, deliveryID string, part int, content Part) (Receipt, error)
+}
+
+// GroupParts plans native media groups for a reply before Manager freezes it.
+// File bodies are loaded for planning. Manager never calls it for a frozen or
+// partly delivered reply.
+type GroupParts interface {
+	GroupParts([]Part) []Part
+}
+
+// MediaWaker wakes inbound media collection after Notify.
+type MediaWaker interface {
+	WakeMedia()
+}
+
+// Finisher runs after every part of a reply is sent and before Manager marks
+// the reply delivered. An error keeps the reply for retry, so Finish must
+// tolerate a repeated call.
+type Finisher interface {
+	Finish(ctx context.Context, peer string, source chat.ChannelContext, status string) error
+}
+
+// Controller performs one agent-requested action on a confirmed remote message.
+type Controller interface {
+	Control(ctx context.Context, peer, remote string, args engine.TelegramRequest) (Receipt, error)
 }
 
 type runtime struct {
@@ -169,7 +197,7 @@ func (m *Manager) Notify(key string) {
 		if key != chat.MainKey && platform != name {
 			continue
 		}
-		if media, ok := r.bot.(interface{ WakeMedia() }); ok {
+		if media, ok := r.bot.(MediaWaker); ok {
 			media.WakeMedia()
 		}
 		select {
@@ -405,9 +433,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 			}
 			r.ChannelGroupFallback, r.ChannelGroupCursor = 0, 0
 		}
-		if finished, ok := bot.(interface {
-			Finish(context.Context, string, chat.ChannelContext, string) error
-		}); ok {
+		if finished, ok := bot.(Finisher); ok {
 			allowed, err := m.authorizedReply(ctx, name, r)
 			if err != nil {
 				return err

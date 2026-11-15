@@ -30,8 +30,9 @@ type Part struct {
 }
 
 // File identifies a temporary outbox snapshot, not an artifact entry.
-// The JSON fields describe the snapshot. Body is transient: Manager loads it
-// from the outbox only for one Send call and never stores it as JSON.
+// The JSON fields describe the snapshot. Body is transient and never stored
+// as JSON: Manager loads it from the outbox to plan GroupParts and for each
+// Send call.
 type File struct {
 	Key      string `json:"key"`
 	Name     string `json:"name"`
@@ -124,7 +125,7 @@ func (m *Manager) replyParts(ctx context.Context, bot Bot, r sqlc.ListChannelRep
 			parts = append(parts, Part{File: &File{Key: f.OperationKey, Name: f.Name, MimeType: f.MimeType, Size: f.Size.Int64}})
 		}
 	}
-	if group, ok := bot.(interface{ GroupParts([]Part) []Part }); ok && r.DeliveredParts == 0 {
+	if group, ok := bot.(GroupParts); ok && r.DeliveredParts == 0 {
 		for i := range parts {
 			if file := parts[i].File; file != nil {
 				var err error

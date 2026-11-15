@@ -143,9 +143,7 @@ func (m *Manager) TelegramAction(ctx context.Context, caller engine.TaskContext,
 		err := json.Unmarshal([]byte(existing.ResultJson), &result)
 		return result, err
 	}
-	transport, ok := runtime.bot.(interface {
-		Control(context.Context, string, string, engine.TelegramRequest) (Receipt, error)
-	})
+	transport, ok := runtime.bot.(Controller)
 	if !ok {
 		return engine.TelegramResult{}, errors.New("telegram control transport is unavailable")
 	}
@@ -163,14 +161,8 @@ func (m *Manager) TelegramAction(ctx context.Context, caller engine.TaskContext,
 			state = "failed"
 		}
 	}
-	saveCtx, saveCancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
-	saved, saveErr := m.q.CompleteTelegramEffect(saveCtx, sqlc.CompleteTelegramEffectParams{OperationKey: caller.Key, State: state, ResultJson: string(encoded), Error: reason})
-	saveCancel()
-	if saveErr != nil {
-		return result, saveErr
-	}
-	if saved != 1 {
-		return result, errors.New("telegram operation is no longer active")
+	if err := m.completeEffect(ctx, sqlc.CompleteTelegramEffectParams{OperationKey: caller.Key, State: state, ResultJson: string(encoded), Error: reason}, "telegram operation is no longer active"); err != nil {
+		return result, err
 	}
 	return result, callErr
 }
@@ -246,24 +238,15 @@ func (m *Manager) speak(ctx context.Context, caller engine.TaskContext, source s
 		callCancel()
 		state, reason := "done", ""
 		if callErr != nil {
-			state = "failed"
+			state = speechFailure(ctx, callErr)
 			reason = callErr.Error()
-			if strings.Contains(reason, "unknown") || ctx.Err() != nil {
-				state = "unknown"
-			}
 		}
 		name := "speech." + config.Format
 		if config.Format == "opus" {
 			name = "speech.ogg"
 		}
-		saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
-		saved, saveErr := m.q.CompleteTelegramEffect(saveCtx, sqlc.CompleteTelegramEffectParams{OperationKey: caller.Key, State: state, Body: body, Name: name, ResultJson: "{}", Error: reason})
-		cancel()
-		if saveErr != nil {
-			return engine.TelegramResult{}, saveErr
-		}
-		if saved != 1 {
-			return engine.TelegramResult{}, errors.New("TTS operation is no longer active")
+		if err := m.completeEffect(ctx, sqlc.CompleteTelegramEffectParams{OperationKey: caller.Key, State: state, Body: body, Name: name, ResultJson: "{}", Error: reason}, "TTS operation is no longer active"); err != nil {
+			return engine.TelegramResult{}, err
 		}
 		if callErr != nil {
 			return engine.TelegramResult{}, callErr
