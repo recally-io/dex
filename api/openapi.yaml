@@ -2791,7 +2791,7 @@ components:
     TelegramOptions:
       x-go-type: telegram.Options
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/telegram
+        path: github.com/recally-io/dex/internal/channel/telegram
       type: object
       properties:
         silent: { type: boolean, default: false }
