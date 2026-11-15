@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/telegram"
 )
 
 // CreateTelegramPairing replaces the previous link. The code grants host access.

@@ -1132,7 +1132,7 @@ Older withdrawn input loads from the same durable entries through history.
 
 ## Telegram
 
-[`telegram.Bot`](../../internal/telegram/telegram.go) is on when the settings
+[`telegram.Bot`](../../internal/channel/telegram/telegram.go) is on when the settings
 have a bot token. It reads messages with `getUpdates` long polling,
 so dex needs no public URL.
 
@@ -1243,7 +1243,7 @@ See [ADR 0009](decisions/0009-channel-layer.md).
 
 ## Feishu and Lark
 
-[`feishu.Bot`](../../internal/feishu/bot.go) receives private messages through
+[`feishu.Bot`](../../internal/channel/feishu/bot.go) receives private messages through
 one WebSocket long connection. It needs no public callback URL. The REST
 client caches the tenant token and refreshes an expired token. The transport
 uses `coder/websocket` and a small protobuf Frame encoder and decoder. It

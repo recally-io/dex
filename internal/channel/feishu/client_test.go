@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/recally-io/dex/internal/feishu"
+	"github.com/recally-io/dex/internal/channel/feishu"
 )
 
 func TestUserReceivesReplyAfterRateLimit(t *testing.T) {

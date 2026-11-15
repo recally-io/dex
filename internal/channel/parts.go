@@ -18,13 +18,19 @@ import (
 	"github.com/recally-io/dex/internal/upload"
 )
 
-// Part is a rendered text message or one native media delivery.
+// Part is one rendered text message or one native media delivery.
+//
+// Text is opaque, platform-rendered content from the same Bot's Parts. It can
+// contain HTML, Markdown, or card markup and is not universal plain text.
+// Manager stores parts as JSON and passes them back to that Bot unchanged.
 type Part struct {
 	Text string `json:"text,omitempty"`
 	File *File  `json:"file,omitempty"`
 }
 
 // File identifies a temporary outbox snapshot, not an artifact entry.
+// The JSON fields describe the snapshot. Body is transient: Manager loads it
+// from the outbox only for one Send call and never stores it as JSON.
 type File struct {
 	Key      string `json:"key"`
 	Name     string `json:"name"`

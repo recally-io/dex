@@ -15,10 +15,10 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/channel/feishu"
+	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/feishu"
-	"github.com/recally-io/dex/internal/telegram"
 	"github.com/recally-io/dex/internal/wechat"
 )
 

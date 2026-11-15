@@ -43,12 +43,24 @@ type Status struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// Bot is a transport. Run and Send can execute at the same time.
+// Bot is one platform transport. The application creates concrete bots and
+// registers them with Manager.Set; this package never imports an adapter.
+//
+// Run and Send can execute at the same time, and Send can run while Run is
+// receiving. When ctx is cancelled, each method must stop and join the
+// goroutines, connections, and timers that it started before it returns.
 type Bot interface {
+	// Run receives platform input until ctx ends or the transport fails.
 	Run(context.Context) error
+	// Parts renders and splits a final reply for this platform. Each Text is
+	// already in the platform's own format. Manager stores a reply's parts
+	// before its first Send, so a retry sends the same parts.
 	Parts(chat.Reply) []Part
-	// Replies use the submission ID; commands use the source key.
-	// Part is zero-based. The receipt contains every remote message ID for that part.
+	// Send delivers one part. Replies use the submission ID; commands use the
+	// source key. Part is zero-based. The receipt contains every remote
+	// message ID for that part. ErrPermanent rejects the part; other errors keep
+	// it for retry. A Part variant that this adapter cannot deliver is the
+	// adapter's own decision; it does not change what other platforms support.
 	Send(ctx context.Context, peer, deliveryID string, part int, content Part) (Receipt, error)
 }
 
