@@ -291,6 +291,11 @@ FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status != 'pending' AND s.delivered_at IS NULL
 AND (s.kind = 'message' OR (s.kind = 'task_result' AND s.status = 'done'))
 AND c.agent_id = ?1 AND s.origin >= ?2 AND s.origin < ?3
+AND NOT EXISTS (
+    SELECT 1 FROM submissions p JOIN conversations pc ON pc.id = p.conversation_id
+    WHERE p.status = 'pending' AND p.origin = s.origin AND p.rowid < s.rowid
+    AND p.kind = 'message' AND p.delivered_at IS NULL AND p.channel_revoked = 0 AND pc.agent_id = c.agent_id
+)
 ORDER BY s.rowid
 `
 
@@ -314,6 +319,9 @@ type ListChannelRepliesRow struct {
 	ChannelRetryAt   int64          `json:"channel_retry_at"`
 }
 
+// A reply waits for every earlier unrevoked pending message of the same agent and origin, so a
+// later answer cannot pass an earlier one whose outcome is not written yet. Settled, delivered,
+// revoked and non-message rows do not hold the barrier. Its origin lookup uses submissions_channel_pending.
 func (q *Queries) ListChannelReplies(ctx context.Context, arg ListChannelRepliesParams) ([]ListChannelRepliesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listChannelReplies, arg.AgentID, arg.OriginStart, arg.OriginEnd)
 	if err != nil {
