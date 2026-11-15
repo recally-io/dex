@@ -1531,11 +1531,11 @@ try {
   await tap('aside[aria-label="Sidebar"] a[href="/a/default"]');
   await ui(
     "main after failed result",
-    `location.pathname === '/a/default' && !!document.querySelector('textarea[aria-label^="Message"]:not([inert] *)')`,
+    `location.pathname === '/a/default' && !!document.querySelector('textarea[aria-label^="Message"]:not(:disabled):not([inert] *)')`,
   );
   await ui("mobile drawer closes", `!document.querySelector('[role="dialog"]')`);
   await evaluate(
-    `window.__focusTrail = []; for (const type of ['pointerdown', 'pointerup', 'click', 'focusin', 'focusout']) document.addEventListener(type, e => { window.__focusTrail.push({ type, target: e.target.outerHTML?.slice(0, 220), active: document.activeElement?.outerHTML.slice(0, 220), x: e.clientX, y: e.clientY, rect: document.querySelector('textarea[aria-label^="Message"]:not([inert] *)')?.getBoundingClientRect().toJSON(), at: performance.now() }); window.__focusTrail = window.__focusTrail.slice(-30); }, true); document.querySelector('textarea[aria-label^="Message"]').dataset.probe = 'kept'`,
+    `window.__focusTrail = []; for (const type of ['pointerdown', 'pointerup', 'click', 'focusin', 'focusout']) document.addEventListener(type, e => { window.__focusTrail.push({ type, target: e.target.outerHTML?.slice(0, 220), disabled: e.target.disabled, defaultPrevented: e.defaultPrevented, active: document.activeElement?.outerHTML.slice(0, 220), x: e.clientX, y: e.clientY, rect: document.querySelector('textarea[aria-label^="Message"]:not([inert] *)')?.getBoundingClientRect().toJSON(), at: performance.now() }); window.__focusTrail = window.__focusTrail.slice(-30); }, true); document.querySelector('textarea[aria-label^="Message"]').dataset.probe = 'kept'`,
   );
   await tap('textarea[aria-label^="Message"]:not([inert] *)');
   await ui("composer receives focus", `document.activeElement?.matches('textarea[aria-label^="Message"]')`);
@@ -2284,7 +2284,7 @@ try {
         "\n" +
         JSON.stringify(
           await evaluate(
-            `({ path: location.pathname, focusTrail: window.__focusTrail, active: document.activeElement?.outerHTML.slice(0, 500), composers: [...document.querySelectorAll('textarea')].map(t => ({value: t.value, label: t.getAttribute('aria-label'), inert: !!t.closest('[inert]'), probe: t.dataset.probe})) })`,
+            `({ path: location.pathname, focusTrail: window.__focusTrail, active: document.activeElement?.outerHTML.slice(0, 500), composers: [...document.querySelectorAll('textarea')].map(t => ({value: t.value, label: t.getAttribute('aria-label'), disabled: t.disabled, inert: !!t.closest('[inert]'), probe: t.dataset.probe})) })`,
           ).catch(() => ({})),
           null,
           2,
@@ -2562,7 +2562,7 @@ async function openBotSettings(_scope) {
 
 /**
  * Clicks the first element matching `selector` that a user can reach now. It waits until a match
- * is outside closed, exiting, hidden and inert layers, is rendered, and, after it scrolls into view,
+ * is enabled, outside closed, exiting, hidden and inert layers, rendered, and, after it scrolls into view,
  * is the topmost element at its center. A mounted but closed popup can match the same selector
  * while its replacement opens; a raw click at its stale position would hit another element.
  */
@@ -2570,7 +2570,8 @@ async function tap(selector) {
   const point = await poll(`reachable tap target ${selector}`, () =>
     evaluate(`(() => {
       for (const node of document.querySelectorAll(${JSON.stringify(selector)})) {
-        if (node.closest('[data-closed], [data-ending-style], [inert], [hidden]')) continue;
+        if (node.closest('[data-closed], [data-ending-style], [inert], [hidden], [aria-disabled="true"]')) continue;
+        if (node.matches(':disabled')) continue;
         if (!node.checkVisibility({ visibilityProperty: true })) continue;
         node.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
         const rect = node.getBoundingClientRect();
