@@ -166,7 +166,7 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 }
 
 // Parts renders final replies. The durable sender records each confirmed part.
-func (b *Bot) Parts(reply chat.Reply) []string {
+func (b *Bot) Parts(reply chat.Reply) []channel.Part {
 	text := reply.Answer
 	if reply.Status != "done" {
 		text = "No answer: " + reply.Reason
@@ -174,11 +174,23 @@ func (b *Bot) Parts(reply chat.Reply) []string {
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
 	}
-	return Parts(text)
+	return channel.TextParts(Parts(text))
 }
 
 // Send patches the preview for part zero. Other parts use a stable create ID.
-func (b *Bot) Send(ctx context.Context, peer, id string, part int, text string) (string, error) {
+func (b *Bot) Send(ctx context.Context, peer, id string, index int, part channel.Part) (channel.Receipt, error) {
+	if part.File != nil {
+		return channel.Receipt{}, fmt.Errorf("%w: Feishu file delivery is unavailable", channel.ErrPermanent)
+	}
+	remote, err := b.sendText(ctx, peer, id, index, part.Text)
+	receipt := channel.Receipt{}
+	if remote != "" {
+		receipt.MessageIDs = []string{remote}
+	}
+	return receipt, err
+}
+
+func (b *Bot) sendText(ctx context.Context, peer, id string, part int, text string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	owner, ok := strings.CutPrefix(peer, "feishu:")

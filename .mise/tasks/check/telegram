@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Test Telegram media delivery and existing private-chat behavior"
+#MISE depends=["build:web"]
+set -euo pipefail
+
+go test -race -count=1 -v ./internal/app -run 'Telegram|TestUserManagesBotArtifactDirectory|TestUserRetrySkipsConfirmed|TestUserBlockedPeer' "$@"

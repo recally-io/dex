@@ -41,8 +41,10 @@ type Config struct {
 	Pair    func(context.Context, string, int64) ([]int64, error)
 	Uploads *upload.Store
 	// Watch opens a chat's native preview stream.
-	Watch  func(context.Context, int64) (io.ReadCloser, error)
-	Report func(state, reason string)
+	Watch     func(context.Context, int64) (io.ReadCloser, error)
+	Report    func(state, reason string)
+	RetryAt   int64
+	RateLimit func(context.Context, int64) error
 }
 
 // Validate checks the token format and each allowed user ID.
@@ -72,6 +74,8 @@ type Bot struct {
 	client    *http.Client
 	previewMu sync.Mutex
 	previews  map[string]*preview
+	rateMu    sync.Mutex
+	retryAt   time.Time
 }
 
 // New returns a Bot. Register it with the channel manager to start it.
@@ -84,6 +88,7 @@ func New(cfg Config, chats *channel.Manager) *Bot {
 		chats:    chats,
 		client:   &http.Client{Timeout: 90 * time.Second}, // above the 30 s long poll
 		previews: map[string]*preview{},
+		retryAt:  time.UnixMilli(cfg.RetryAt),
 	}
 }
 
@@ -186,7 +191,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		content = m.Caption
 	}
 	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
-	incoming := chat.Message{Content: content, Attachments: attachments}
+	incoming := chat.Message{Content: content, Attachments: attachments, ChannelContext: chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10)}}
 	if m.ReplyTo != nil {
 		incoming.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
 	}
@@ -216,6 +221,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 type apiError struct {
 	Code        int
 	Description string
+	RetryAfter  int
 }
 
 func (e *apiError) Error() string { return fmt.Sprintf("Telegram API %d: %s", e.Code, e.Description) }
@@ -235,12 +241,19 @@ func (b *Bot) call(ctx context.Context, method string, params, result any) error
 	if err != nil {
 		return err
 	}
+	return b.request(ctx, method, bytes.NewReader(body), "application/json", result)
+}
+
+func (b *Bot) request(ctx context.Context, method string, body io.Reader, contentType string, result any) error {
+	if err := b.waitRate(ctx); err != nil {
+		return err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		b.cfg.APIURL+"/bot"+b.cfg.Token+"/"+method, bytes.NewReader(body))
+		b.cfg.APIURL+"/bot"+b.cfg.Token+"/"+method, body)
 	if err != nil {
 		return fmt.Errorf("telegram %s: bad request", method) // the error text would hold the token
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	resp, err := b.client.Do(req)
 	if err != nil {
 		// A *url.Error holds the URL, and the URL holds the token.
@@ -255,12 +268,28 @@ func (b *Bot) call(ctx context.Context, method string, params, result any) error
 		Result      jsontext.Value `json:"result"`
 		Description string         `json:"description"`
 		Code        int            `json:"error_code"`
+		Parameters  struct {
+			RetryAfter int `json:"retry_after"`
+		} `json:"parameters"`
 	}
 	if err := json.UnmarshalRead(resp.Body, &out); err != nil {
 		return fmt.Errorf("telegram %s: HTTP %d: %w", method, resp.StatusCode, err)
 	}
 	if !out.OK {
-		return &apiError{Code: out.Code, Description: strings.ReplaceAll(out.Description, b.cfg.Token, "[redacted]")}
+		if out.Code == 429 && out.Parameters.RetryAfter > 0 {
+			b.rateMu.Lock()
+			until := time.Now().Add(time.Duration(out.Parameters.RetryAfter) * time.Second)
+			if until.After(b.retryAt) {
+				b.retryAt = until
+			}
+			b.rateMu.Unlock()
+			if b.cfg.RateLimit != nil {
+				if err := b.cfg.RateLimit(ctx, until.UnixMilli()); err != nil {
+					return errors.Join(&apiError{Code: out.Code, Description: "Telegram flood control", RetryAfter: out.Parameters.RetryAfter}, fmt.Errorf("store Telegram retry window: %w", err))
+				}
+			}
+		}
+		return &apiError{Code: out.Code, Description: strings.ReplaceAll(out.Description, b.cfg.Token, "[redacted]"), RetryAfter: out.Parameters.RetryAfter}
 	}
 	if result == nil {
 		return nil

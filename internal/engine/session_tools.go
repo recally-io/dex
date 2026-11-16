@@ -20,9 +20,10 @@ type TaskContext struct {
 }
 
 type ArtifactInfo struct {
-	Name string `json:"name"`
-	Size int64  `json:"size"`
-	URL  string `json:"url"`
+	ChannelDelivery string `json:"channelDelivery,omitempty"`
+	Name            string `json:"name"`
+	Size            int64  `json:"size"`
+	URL             string `json:"url"`
 }
 
 // TaskTools connects foreground tools to the application services.

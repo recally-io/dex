@@ -82,7 +82,9 @@ func (m *Manager) flushNotifications(ctx context.Context, platform string, bot B
 	for _, d := range rows {
 		parts := []string{}
 		if d.RenderedParts == "" {
-			parts = bot.Parts(chat.Reply{Status: "done", Answer: d.Body})
+			for _, part := range bot.Parts(chat.Reply{Status: "done", Answer: d.Body}) {
+				parts = append(parts, part.Text)
+			}
 			data, err := json.Marshal(parts)
 			if err != nil {
 				return err
@@ -111,7 +113,7 @@ func (m *Manager) flushNotifications(ctx context.Context, platform string, bot B
 				}
 				break
 			}
-			_, err = bot.Send(ctx, d.Peer, "routine:"+d.RunID, i, parts[i])
+			_, err = bot.Send(ctx, d.Peer, "routine:"+d.RunID, i, Part{Text: parts[i]})
 			if errors.Is(err, ErrPermanent) {
 				if err := m.q.SetRoutineNotificationStatus(ctx, sqlc.SetRoutineNotificationStatusParams{RunID: d.RunID, Status: "rejected", Reason: "platform rejected delivery"}); err != nil {
 					return err

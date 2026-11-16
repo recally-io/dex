@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/telegram"
 )
 
 // CreateTelegramPairing replaces the previous link. The code grants host access.
@@ -40,6 +40,12 @@ func (s *Service) CreateTelegramPairing(ctx context.Context, agentID string) (st
 		return "", 0, err
 	}
 	return "https://t.me/" + username + "?start=" + value, expires, nil
+}
+
+func (s *Service) telegramRateLimit(agentID, token string) func(context.Context, int64) error {
+	return func(ctx context.Context, until int64) error {
+		return s.q.SetTelegramRetryAt(ctx, sqlc.SetTelegramRetryAtParams{AgentID: agentID, Token: token, RetryAt: until})
+	}
 }
 
 func (s *Service) pairTelegram(agentID, token string) func(context.Context, string, int64) ([]int64, error) {

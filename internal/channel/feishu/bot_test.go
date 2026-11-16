@@ -78,7 +78,7 @@ func TestUserFinalPatchRetriesWithoutSecondVisibleAnswer(t *testing.T) {
 			defer cancel()
 			bot.previews["submission"] = &preview{messageID: previewID, cancel: cancel}
 			// When final delivery sees an uncertain PATCH result, it must keep that message identity.
-			_, err = bot.Send(ctx, "feishu:owner", "submission", 0, "one final answer")
+			_, err = bot.Send(ctx, "feishu:owner", "submission", 0, channel.Part{Text: "one final answer"})
 			if err == nil {
 				t.Error("uncertain PATCH was confirmed as delivered")
 			}
@@ -86,7 +86,7 @@ func TestUserFinalPatchRetriesWithoutSecondVisibleAnswer(t *testing.T) {
 			uncertain = false
 			mu.Unlock()
 			// Then durable delivery can retry the same remote card after recovery.
-			if _, err := bot.Send(ctx, "feishu:owner", "submission", 0, "one final answer"); err != nil {
+			if _, err := bot.Send(ctx, "feishu:owner", "submission", 0, channel.Part{Text: "one final answer"}); err != nil {
 				t.Fatal(err)
 			}
 			mu.Lock()

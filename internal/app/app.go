@@ -20,17 +20,17 @@ import (
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/background"
 	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/channel/feishu"
+	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/feishu"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/scheduler"
 	"github.com/recally-io/dex/internal/server"
 	"github.com/recally-io/dex/internal/settings"
-	"github.com/recally-io/dex/internal/telegram"
 	"github.com/recally-io/dex/internal/upload"
 	"github.com/recally-io/dex/internal/wechat"
 )
@@ -123,7 +123,22 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
 			return chats.ToolReadDreamMessage(ctx, c, request)
 		},
-		DeliverArtifact: artifacts.Deliver,
+		DeliverArtifact: func(ctx context.Context, caller engine.TaskContext, path string) (engine.ArtifactInfo, error) {
+			result, err := artifacts.Deliver(ctx, caller, path)
+			if err != nil {
+				return result, err
+			}
+			_, file, err := artifacts.Open(caller.AgentID, result.Name)
+			if err != nil {
+				return result, err
+			}
+			defer file.Close()
+			queued, err := bots.Agent(caller.AgentID).QueueFile(ctx, caller, result.Name, file)
+			if queued {
+				result.ChannelDelivery = "queued"
+			}
+			return result, err
+		},
 		ReportCheck: func(ctx context.Context, c engine.TaskContext, r engine.CheckReport) error {
 			return chats.ToolReportCheck(ctx, c, r)
 		},

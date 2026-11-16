@@ -11,11 +11,17 @@ import (
 )
 
 const advanceChannelReply = `-- name: AdvanceChannelReply :exec
-UPDATE submissions SET delivered_parts = delivered_parts + 1 WHERE id = ?
+UPDATE submissions SET delivered_parts = delivered_parts + 1, channel_remote_ids = ?1,
+    channel_retry_at = 0 WHERE id = ?2
 `
 
-func (q *Queries) AdvanceChannelReply(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, advanceChannelReply, id)
+type AdvanceChannelReplyParams struct {
+	RemoteIds string `json:"remote_ids"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) AdvanceChannelReply(ctx context.Context, arg AdvanceChannelReplyParams) error {
+	_, err := q.db.ExecContext(ctx, advanceChannelReply, arg.RemoteIds, arg.ID)
 	return err
 }
 
@@ -279,11 +285,17 @@ func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]Ch
 }
 
 const listChannelReplies = `-- name: ListChannelReplies :many
-SELECT s.id, s.origin, s.status, s.answer, s.reason, s.delivered_parts
+SELECT s.id, s.origin, s.status, s.answer, s.reason, s.delivered_parts,
+       s.rendered_reply, s.channel_context, s.channel_remote_ids, s.channel_revoked, s.channel_retry_at
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status != 'pending' AND s.delivered_at IS NULL
 AND (s.kind = 'message' OR (s.kind = 'task_result' AND s.status = 'done'))
 AND c.agent_id = ?1 AND s.origin >= ?2 AND s.origin < ?3
+AND NOT EXISTS (
+    SELECT 1 FROM submissions p JOIN conversations pc ON pc.id = p.conversation_id
+    WHERE p.status = 'pending' AND p.origin = s.origin AND p.rowid < s.rowid
+    AND p.kind = 'message' AND p.delivered_at IS NULL AND p.channel_revoked = 0 AND pc.agent_id = c.agent_id
+)
 ORDER BY s.rowid
 `
 
@@ -294,14 +306,22 @@ type ListChannelRepliesParams struct {
 }
 
 type ListChannelRepliesRow struct {
-	ID             string         `json:"id"`
-	Origin         string         `json:"origin"`
-	Status         string         `json:"status"`
-	Answer         sql.NullString `json:"answer"`
-	Reason         sql.NullString `json:"reason"`
-	DeliveredParts int64          `json:"delivered_parts"`
+	ID               string         `json:"id"`
+	Origin           string         `json:"origin"`
+	Status           string         `json:"status"`
+	Answer           sql.NullString `json:"answer"`
+	Reason           sql.NullString `json:"reason"`
+	DeliveredParts   int64          `json:"delivered_parts"`
+	RenderedReply    string         `json:"rendered_reply"`
+	ChannelContext   string         `json:"channel_context"`
+	ChannelRemoteIds string         `json:"channel_remote_ids"`
+	ChannelRevoked   int64          `json:"channel_revoked"`
+	ChannelRetryAt   int64          `json:"channel_retry_at"`
 }
 
+// A reply waits for every earlier unrevoked pending message of the same agent and origin, so a
+// later answer cannot pass an earlier one whose outcome is not written yet. Settled, delivered,
+// revoked and non-message rows do not hold the barrier. Its origin lookup uses submissions_channel_pending.
 func (q *Queries) ListChannelReplies(ctx context.Context, arg ListChannelRepliesParams) ([]ListChannelRepliesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listChannelReplies, arg.AgentID, arg.OriginStart, arg.OriginEnd)
 	if err != nil {
@@ -318,6 +338,11 @@ func (q *Queries) ListChannelReplies(ctx context.Context, arg ListChannelReplies
 			&i.Answer,
 			&i.Reason,
 			&i.DeliveredParts,
+			&i.RenderedReply,
+			&i.ChannelContext,
+			&i.ChannelRemoteIds,
+			&i.ChannelRevoked,
+			&i.ChannelRetryAt,
 		); err != nil {
 			return nil, err
 		}

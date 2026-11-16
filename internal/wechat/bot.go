@@ -194,7 +194,7 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 }
 
 // Parts filters Markdown and splits the final text into at most 2000 runes per part.
-func (b *Bot) Parts(reply chat.Reply) []string {
+func (b *Bot) Parts(reply chat.Reply) []channel.Part {
 	text := reply.Answer
 	if reply.Status != "done" {
 		text = "No answer. Please try again."
@@ -210,14 +210,17 @@ func (b *Bot) Parts(reply chat.Reply) []string {
 		parts = append(parts, string(runes[:n]))
 		runes = runes[n:]
 	}
-	return parts
+	return channel.TextParts(parts)
 }
 
 // Send keeps the same client ID across retries of a durable reply part.
-// WeChat has no message ID to quote, so it returns "".
-func (b *Bot) Send(ctx context.Context, peer, id string, part int, text string) (string, error) {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", id, part)))
-	return "", b.send(ctx, peer, fmt.Sprintf("dex:%x", sum[:16]), text)
+// WeChat has no message ID to quote, so the receipt contains none.
+func (b *Bot) Send(ctx context.Context, peer, id string, index int, part channel.Part) (channel.Receipt, error) {
+	if part.File != nil {
+		return channel.Receipt{}, fmt.Errorf("%w: WeChat file delivery is unavailable", channel.ErrPermanent)
+	}
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", id, index)))
+	return channel.Receipt{}, b.send(ctx, peer, fmt.Sprintf("dex:%x", sum[:16]), part.Text)
 }
 
 func (b *Bot) send(ctx context.Context, peer, clientID, text string) error {

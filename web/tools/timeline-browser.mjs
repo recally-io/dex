@@ -13,6 +13,10 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const activityReads = [];
 
+// A closed or exiting Base UI menu can stay mounted (data-closed, inert) while its replacement
+// opens, for example after a viewport change. Menu checks select only the open popup.
+const openMenu = '[role="menu"][data-open]:not([inert] *)';
+
 const [binary, artifactArg] = process.argv.slice(2);
 
 assert.ok(binary, "Pass a dex_e2e binary");
@@ -1503,21 +1507,21 @@ try {
   await tap(attentionMenu);
   await ui(
     "the attention menu lists the failed routine run",
-    `[...document.querySelectorAll('[role="menu"] a[href^="/inbox/"]')].some(a => a.textContent.includes('Daily review') && a.textContent.includes('Routine run failed'))`,
+    `[...document.querySelectorAll('${openMenu} a[href^="/inbox/"]')].some(a => a.textContent.includes('Daily review') && a.textContent.includes('Routine run failed'))`,
   );
   await tap(attentionMenu);
   await viewport(320, 844);
   await tap('header button[aria-label^="Bot menu"]');
-  await ui("mobile failed result menu", `!!document.querySelector('[role="menu"] a[href^="/inbox/"]')`);
+  await ui("mobile failed result menu", `!!document.querySelector('${openMenu} a[href^="/inbox/"]')`);
   await check(
     "long attention title stays inside mobile menu",
-    `(() => { const menu = document.querySelector('[role="menu"]'); const link = menu.querySelector('a[href^="/inbox/"]'); const title = link.querySelector('span span'); const m = menu.getBoundingClientRect(); const l = link.getBoundingClientRect(); const t = title.getBoundingClientRect(); return m.left >= 0 && m.right <= innerWidth && l.left >= m.left && l.right <= m.right && t.right <= l.right && title.scrollWidth > title.clientWidth; })()`,
+    `(() => { const menu = document.querySelector('${openMenu}'); const link = menu.querySelector('a[href^="/inbox/"]'); const title = link.querySelector('span span'); const m = menu.getBoundingClientRect(); const l = link.getBoundingClientRect(); const t = title.getBoundingClientRect(); return m.left >= 0 && m.right <= innerWidth && l.left >= m.left && l.right <= m.right && t.right <= l.right && title.scrollWidth > title.clientWidth; })()`,
   );
   await ui(
     "mobile menu finishes opening",
-    `document.querySelector('[role="menu"]').getAnimations({ subtree: true }).every(a => a.playState !== 'running')`,
+    `document.querySelector('${openMenu}').getAnimations({ subtree: true }).every(a => a.playState !== 'running')`,
   );
-  await tap('[role="menu"] a[href^="/inbox/"]');
+  await tap(`${openMenu} a[href^="/inbox/"]`);
   await ui("failed result opens from mobile menu", `location.pathname.startsWith('/inbox/')`);
   await viewport(1280, 900);
   await ui(
@@ -1527,11 +1531,11 @@ try {
   await tap('aside[aria-label="Sidebar"] a[href="/a/default"]');
   await ui(
     "main after failed result",
-    `location.pathname === '/a/default' && !!document.querySelector('textarea[aria-label^="Message"]:not([inert] *)')`,
+    `location.pathname === '/a/default' && !!document.querySelector('textarea[aria-label^="Message"]:not(:disabled):not([inert] *)')`,
   );
   await ui("mobile drawer closes", `!document.querySelector('[role="dialog"]')`);
   await evaluate(
-    `window.__focusTrail = []; for (const type of ['pointerdown', 'pointerup', 'click', 'focusin', 'focusout']) document.addEventListener(type, e => { window.__focusTrail.push({ type, target: e.target.outerHTML?.slice(0, 220), active: document.activeElement?.outerHTML.slice(0, 220), x: e.clientX, y: e.clientY, rect: document.querySelector('textarea[aria-label^="Message"]:not([inert] *)')?.getBoundingClientRect().toJSON(), at: performance.now() }); window.__focusTrail = window.__focusTrail.slice(-30); }, true); document.querySelector('textarea[aria-label^="Message"]').dataset.probe = 'kept'`,
+    `window.__focusTrail = []; for (const type of ['pointerdown', 'pointerup', 'click', 'focusin', 'focusout']) document.addEventListener(type, e => { window.__focusTrail.push({ type, target: e.target.outerHTML?.slice(0, 220), disabled: e.target.disabled, defaultPrevented: e.defaultPrevented, active: document.activeElement?.outerHTML.slice(0, 220), x: e.clientX, y: e.clientY, rect: document.querySelector('textarea[aria-label^="Message"]:not([inert] *)')?.getBoundingClientRect().toJSON(), at: performance.now() }); window.__focusTrail = window.__focusTrail.slice(-30); }, true); document.querySelector('textarea[aria-label^="Message"]').dataset.probe = 'kept'`,
   );
   await tap('textarea[aria-label^="Message"]:not([inert] *)');
   await ui("composer receives focus", `document.activeElement?.matches('textarea[aria-label^="Message"]')`);
@@ -2227,7 +2231,7 @@ try {
     `location.pathname === '/a/${questionBot.id}' && !document.querySelector('[role="dialog"]')`,
   );
   await tap('header button[aria-label^="Bot menu"]');
-  const questionLink = `[role="menu"] a[href="/a/${questionBot.id}/c/${questionChat.id}"]`;
+  const questionLink = `${openMenu} a[href="/a/${questionBot.id}/c/${questionChat.id}"]`;
   await ui("question appears in bot menu", `!!document.querySelector('${questionLink}')`);
   await check(
     "long question chat title is truncated within mobile menu",
@@ -2235,7 +2239,7 @@ try {
   );
   await ui(
     "question menu finishes opening",
-    `document.querySelector('[role="menu"]').getAnimations({ subtree: true }).every(a => a.playState !== 'running')`,
+    `document.querySelector('${openMenu}').getAnimations({ subtree: true }).every(a => a.playState !== 'running')`,
   );
   await tap(questionLink);
   await ui(
@@ -2280,7 +2284,7 @@ try {
         "\n" +
         JSON.stringify(
           await evaluate(
-            `({ path: location.pathname, focusTrail: window.__focusTrail, active: document.activeElement?.outerHTML.slice(0, 500), composers: [...document.querySelectorAll('textarea')].map(t => ({value: t.value, label: t.getAttribute('aria-label'), inert: !!t.closest('[inert]'), probe: t.dataset.probe})) })`,
+            `({ path: location.pathname, focusTrail: window.__focusTrail, active: document.activeElement?.outerHTML.slice(0, 500), composers: [...document.querySelectorAll('textarea')].map(t => ({value: t.value, label: t.getAttribute('aria-label'), disabled: t.disabled, inert: !!t.closest('[inert]'), probe: t.dataset.probe})) })`,
           ).catch(() => ({})),
           null,
           2,
@@ -2549,22 +2553,37 @@ async function openGlobal(scope, path) {
 async function openBotSettings(_scope) {
   const botPath = await evaluate(`'/' + location.pathname.split('/').filter(Boolean).slice(0, 2).join('/')`);
   const desktop = await evaluate("innerWidth >= 1024");
-  const settingsLink = `${desktop ? "header nav" : '[role="menu"]'} a[href="${botPath}/agent"]`;
+  const settingsLink = `${desktop ? "header nav" : openMenu} a[href="${botPath}/agent"]`;
 
   if (!desktop) await tap('header button[aria-label^="Bot menu"]');
   await ui("bot settings link", `!!document.querySelector('${settingsLink}')`);
   await tap(settingsLink);
 }
 
+/**
+ * Clicks the first element matching `selector` that a user can reach now. It waits until a match
+ * is enabled, outside closed, exiting, hidden and inert layers, rendered, and, after it scrolls into view,
+ * is the topmost element at its center. A mounted but closed popup can match the same selector
+ * while its replacement opens; a raw click at its stale position would hit another element.
+ */
 async function tap(selector) {
-  await evaluate(
-    `document.querySelector(${JSON.stringify(selector)}).scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' })`,
+  const point = await poll(`reachable tap target ${selector}`, () =>
+    evaluate(`(() => {
+      for (const node of document.querySelectorAll(${JSON.stringify(selector)})) {
+        if (node.closest('[data-closed], [data-ending-style], [inert], [hidden], [aria-disabled="true"]')) continue;
+        if (node.matches(':disabled')) continue;
+        if (!node.checkVisibility({ visibilityProperty: true })) continue;
+        node.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+        const rect = node.getBoundingClientRect();
+        const x = rect.x + rect.width / 2;
+        const y = rect.y + rect.height / 2;
+        if (!rect.width || !rect.height || x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
+        const hit = document.elementFromPoint(x, y);
+        if (hit && node.contains(hit)) return { x, y };
+      }
+      return null;
+    })()`),
   );
-
-  const point = await evaluate(`(() => {
-    const rect = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
-    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-  })()`);
 
   await call("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
   await call("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });

@@ -11,9 +11,9 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/feishu"
 )
 
 // Feishu is the public view. It never contains the app secret or pairing code.

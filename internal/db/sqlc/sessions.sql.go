@@ -94,8 +94,8 @@ func (q *Queries) CreateParentTurn(ctx context.Context, arg CreateParentTurnPara
 }
 
 const createTurnResult = `-- name: CreateTurnResult :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, result_child_id, native_answer_id)
-SELECT ?1, c.parent_id, ?2, 'null', ?1, source.origin, 'task_result', 'pending', ?3, c.id, ?4
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
+SELECT ?1, c.parent_id, ?2, 'null', ?1, source.origin, 'task_result', 'pending', ?3, c.id, ?4, source.channel_context, source.channel_revoked
 FROM submissions turn
 JOIN conversations c ON c.id = turn.conversation_id
 JOIN submissions source ON source.id = turn.parent_request_id

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/recally-io/dex/internal/feishu"
-	"github.com/recally-io/dex/internal/telegram"
+	"github.com/recally-io/dex/internal/channel/feishu"
+	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/wechat"
 )
 

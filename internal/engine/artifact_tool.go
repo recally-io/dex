@@ -16,10 +16,10 @@ func artifactExtension(agentID, workspace string, deliver func(context.Context, 
 	return &durable.Extension{Name: "artifact-delivery", Sections: []*durable.PromptSection{
 		harness.Section("artifact-delivery", func(context.Context, durable.PromptInput) (*string, error) { return &rules, nil }, harness.SectionOptions{Tag: new(false)}),
 	}, Tools: []*durable.ToolRegistration{{
-		Name: "deliver_file", Description: "Copy a workspace file into this bot’s artifacts directory. Return the file URL. Existing names are conflicts.",
+		Name: "deliver_file", Description: "Copy a workspace file into this bot's artifacts directory and return its URL. For a Telegram Main input, also queue the file for the original recipient. Existing names are conflicts.",
 		Parameters: map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string", "minLength": 1}}, "required": []string{"path"}, "additionalProperties": false},
 		Replay:     durable.ReplaySafe,
-		Execute: func(ctx context.Context, raw any, _ durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+		Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
 			if deliver == nil {
 				return durable.ToolExecutionResult{}, errors.New("artifact service is unavailable")
 			}
@@ -29,7 +29,11 @@ func artifactExtension(agentID, workspace string, deliver func(context.Context, 
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}
-			result, err := deliver(ctx, TaskContext{AgentID: agentID}, args.Path)
+			caller, err := toolCall(ctx, api, agentID)
+			if err != nil {
+				return durable.ToolExecutionResult{}, err
+			}
+			result, err := deliver(ctx, caller, args.Path)
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}

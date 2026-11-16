@@ -104,6 +104,14 @@ type ChannelPeer struct {
 	ChannelKey string `json:"channel_key"`
 }
 
+type ChannelReplyFile struct {
+	OperationKey string `json:"operation_key"`
+	SubmissionID string `json:"submission_id"`
+	Name         string `json:"name"`
+	MimeType     string `json:"mime_type"`
+	Body         []byte `json:"body"`
+}
+
 type CompactReceipt struct {
 	ID             string `json:"id"`
 	ConversationID int64  `json:"conversation_id"`
@@ -228,25 +236,31 @@ type RoutineToolOperation struct {
 }
 
 type Submission struct {
-	ID              string         `json:"id"`
-	ConversationID  int64          `json:"conversation_id"`
-	Content         string         `json:"content"`
-	Status          string         `json:"status"`
-	Answer          sql.NullString `json:"answer"`
-	Reason          sql.NullString `json:"reason"`
-	CreatedAt       int64          `json:"created_at"`
-	SettledAt       sql.NullInt64  `json:"settled_at"`
-	SourceKey       sql.NullString `json:"source_key"`
-	Attachments     string         `json:"attachments"`
-	DeliveredAt     sql.NullInt64  `json:"delivered_at"`
-	DeliveredParts  int64          `json:"delivered_parts"`
-	Origin          string         `json:"origin"`
-	Kind            string         `json:"kind"`
-	AdmittedAt      sql.NullInt64  `json:"admitted_at"`
-	WhenBusy        string         `json:"when_busy"`
-	ParentRequestID sql.NullString `json:"parent_request_id"`
-	ResultChildID   sql.NullInt64  `json:"result_child_id"`
-	NativeAnswerID  sql.NullInt64  `json:"native_answer_id"`
+	ID                   string         `json:"id"`
+	ConversationID       int64          `json:"conversation_id"`
+	Content              string         `json:"content"`
+	Status               string         `json:"status"`
+	Answer               sql.NullString `json:"answer"`
+	Reason               sql.NullString `json:"reason"`
+	CreatedAt            int64          `json:"created_at"`
+	SettledAt            sql.NullInt64  `json:"settled_at"`
+	SourceKey            sql.NullString `json:"source_key"`
+	Attachments          string         `json:"attachments"`
+	DeliveredAt          sql.NullInt64  `json:"delivered_at"`
+	DeliveredParts       int64          `json:"delivered_parts"`
+	Origin               string         `json:"origin"`
+	Kind                 string         `json:"kind"`
+	AdmittedAt           sql.NullInt64  `json:"admitted_at"`
+	WhenBusy             string         `json:"when_busy"`
+	ParentRequestID      sql.NullString `json:"parent_request_id"`
+	ResultChildID        sql.NullInt64  `json:"result_child_id"`
+	NativeAnswerID       sql.NullInt64  `json:"native_answer_id"`
+	ChannelContext       string         `json:"channel_context"`
+	RenderedReply        string         `json:"rendered_reply"`
+	ChannelRetryAt       int64          `json:"channel_retry_at"`
+	ChannelDeliveryError string         `json:"channel_delivery_error"`
+	ChannelRemoteIds     string         `json:"channel_remote_ids"`
+	ChannelRevoked       int64          `json:"channel_revoked"`
 }
 
 type TelegramSetting struct {
@@ -255,6 +269,7 @@ type TelegramSetting struct {
 	AllowedUsers   string `json:"allowed_users"`
 	PairingCode    string `json:"pairing_code"`
 	PairingExpires int64  `json:"pairing_expires"`
+	RetryAt        int64  `json:"retry_at"`
 }
 
 type WechatRuntime struct {
