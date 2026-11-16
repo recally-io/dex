@@ -24,13 +24,15 @@ import (
 // contain HTML, Markdown, or card markup and is not universal plain text.
 // Manager stores parts as JSON and passes them back to that Bot unchanged.
 type Part struct {
-	Text string `json:"text,omitempty"`
-	File *File  `json:"file,omitempty"`
+	Text  string `json:"text,omitempty"`
+	File  *File  `json:"file,omitempty"`
+	Group []File `json:"group,omitempty"`
 }
 
 // File identifies a temporary outbox snapshot, not an artifact entry.
-// The JSON fields describe the snapshot. Body is transient: Manager loads it
-// from the outbox only for one Send call and never stores it as JSON.
+// The JSON fields describe the snapshot. Body is transient and never stored
+// as JSON: Manager loads it from the outbox to plan GroupParts and for each
+// Send call.
 type File struct {
 	Key      string `json:"key"`
 	Name     string `json:"name"`
@@ -113,7 +115,7 @@ func (m *Manager) replyParts(ctx context.Context, bot Bot, r sqlc.ListChannelRep
 		err := json.Unmarshal([]byte(r.RenderedReply), &parts)
 		return parts, err
 	}
-	parts = bot.Parts(chat.Reply{Status: r.Status, Answer: r.Answer.String, Reason: r.Reason.String})
+	parts = bot.Parts(chat.Reply{Status: r.Status, Answer: r.Answer.String, Reason: r.Reason.String, LegacyDelivery: r.DeliveredParts > 0})
 	if r.Status == "done" {
 		files, err := m.q.ListChannelReplyFiles(ctx, r.ID)
 		if err != nil {
@@ -122,6 +124,18 @@ func (m *Manager) replyParts(ctx context.Context, bot Bot, r sqlc.ListChannelRep
 		for _, f := range files {
 			parts = append(parts, Part{File: &File{Key: f.OperationKey, Name: f.Name, MimeType: f.MimeType, Size: f.Size.Int64}})
 		}
+	}
+	if group, ok := bot.(GroupParts); ok && r.DeliveredParts == 0 {
+		for i := range parts {
+			if file := parts[i].File; file != nil {
+				var err error
+				file.Body, err = m.q.GetChannelReplyFile(ctx, sqlc.GetChannelReplyFileParams{OperationKey: file.Key, SubmissionID: r.ID})
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		parts = group.GroupParts(parts)
 	}
 	encoded, err := json.Marshal(parts)
 	if err != nil {
@@ -134,7 +148,11 @@ func (m *Manager) replyParts(ctx context.Context, bot Bot, r sqlc.ListChannelRep
 }
 
 func (m *Manager) authorizedReply(ctx context.Context, platform string, r sqlc.ListChannelRepliesRow) (bool, error) {
-	if r.ChannelRevoked != 0 {
+	current, err := m.q.GetSubmission(ctx, r.ID)
+	if err != nil {
+		return false, err
+	}
+	if current.ChannelRevoked != 0 {
 		return false, nil
 	}
 	if platform != "telegram" {
@@ -172,6 +190,10 @@ func (m *Manager) authorizedReply(ctx context.Context, platform string, r sqlc.L
 }
 
 func (m *Manager) confirmPart(ctx context.Context, r sqlc.ListChannelRepliesRow, receipt Receipt, remotes *[]string) error {
+	return m.confirmDelivery(ctx, r, receipt, remotes, false)
+}
+
+func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.ListChannelRepliesRow, receipt Receipt, remotes *[]string, member bool) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -191,7 +213,12 @@ func (m *Manager) confirmPart(ctx context.Context, r sqlc.ListChannelRepliesRow,
 	if err != nil {
 		return err
 	}
-	if err := q.AdvanceChannelReply(ctx, sqlc.AdvanceChannelReplyParams{ID: r.ID, RemoteIds: string(encoded)}); err != nil {
+	if member {
+		err = q.AdvanceChannelGroupMember(ctx, sqlc.AdvanceChannelGroupMemberParams{ID: r.ID, RemoteIds: string(encoded)})
+	} else {
+		err = q.AdvanceChannelReply(ctx, sqlc.AdvanceChannelReplyParams{ID: r.ID, RemoteIds: string(encoded)})
+	}
+	if err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

@@ -918,7 +918,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, rendered_reply, channel_retry_at, channel_delivery_error, channel_remote_ids, channel_revoked FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, rendered_reply, channel_retry_at, channel_delivery_error, channel_remote_ids, channel_revoked, channel_group_fallback, channel_group_cursor FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -950,6 +950,8 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.ChannelDeliveryError,
 		&i.ChannelRemoteIds,
 		&i.ChannelRevoked,
+		&i.ChannelGroupFallback,
+		&i.ChannelGroupCursor,
 	)
 	return i, err
 }
@@ -976,7 +978,7 @@ func (q *Queries) GetSubmissionReply(ctx context.Context, id string) (GetSubmiss
 }
 
 const getTelegramSettings = `-- name: GetTelegramSettings :one
-SELECT agent_id, token, allowed_users, pairing_code, pairing_expires, retry_at FROM telegram_settings WHERE agent_id = ?
+SELECT agent_id, token, allowed_users, pairing_code, pairing_expires, retry_at, options FROM telegram_settings WHERE agent_id = ?
 `
 
 func (q *Queries) GetTelegramSettings(ctx context.Context, agentID string) (TelegramSetting, error) {
@@ -989,6 +991,7 @@ func (q *Queries) GetTelegramSettings(ctx context.Context, agentID string) (Tele
 		&i.PairingCode,
 		&i.PairingExpires,
 		&i.RetryAt,
+		&i.Options,
 	)
 	return i, err
 }
@@ -1907,9 +1910,9 @@ func (q *Queries) SetTelegramPairing(ctx context.Context, arg SetTelegramPairing
 }
 
 const setTelegramSettings = `-- name: SetTelegramSettings :one
-INSERT INTO telegram_settings (agent_id, token, allowed_users)
-VALUES (?, ?, ?)
-ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, pairing_code = '', pairing_expires = 0,
+INSERT INTO telegram_settings (agent_id, token, allowed_users, options)
+VALUES (?, ?, ?, ?)
+ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, options = excluded.options, pairing_code = '', pairing_expires = 0,
 retry_at = CASE WHEN substr(token, 1, instr(token, ':') - 1) = substr(excluded.token, 1, instr(excluded.token, ':') - 1) THEN retry_at ELSE 0 END
 RETURNING retry_at
 `
@@ -1918,10 +1921,16 @@ type SetTelegramSettingsParams struct {
 	AgentID      string `json:"agent_id"`
 	Token        string `json:"token"`
 	AllowedUsers string `json:"allowed_users"`
+	Options      string `json:"options"`
 }
 
 func (q *Queries) SetTelegramSettings(ctx context.Context, arg SetTelegramSettingsParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, setTelegramSettings, arg.AgentID, arg.Token, arg.AllowedUsers)
+	row := q.db.QueryRowContext(ctx, setTelegramSettings,
+		arg.AgentID,
+		arg.Token,
+		arg.AllowedUsers,
+		arg.Options,
+	)
 	var retry_at int64
 	err := row.Scan(&retry_at)
 	return retry_at, err

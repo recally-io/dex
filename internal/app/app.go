@@ -120,6 +120,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, errors.Join(err, jobs.Close(), conn.Close())
 	}
 	tools := engine.TaskTools{
+		Telegram: func(ctx context.Context, caller engine.TaskContext, args engine.TelegramRequest) (engine.TelegramResult, error) {
+			return bots.Agent(caller.AgentID).TelegramAction(ctx, caller, args, prefs.SpeechEndpoint)
+		},
 		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
 			return chats.ToolReadDreamMessage(ctx, c, request)
 		},
@@ -236,17 +239,21 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			err = errors.Join(err, a.Close())
 		}
 	}()
-	setTelegram := func(agentID string, config *telegram.Config) { //nolint:contextcheck // bots live until app shutdown, not the settings request
+	setTelegram := func(agentID string, config *telegram.Config) {
 		manager := bots.Agent(agentID)
 		uploads := upload.New(agent.Home(cfg.DataDir, agentID))
 		if config == nil {
-			manager.Set("telegram", nil)
+			manager.Set("telegram", nil) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
+			if err := manager.CleanupTelegramAlbums(runCtx, uploads); err != nil {
+				slog.Warn("telegram: album cleanup", "err", err)
+			}
 			return
 		}
 		config.Uploads = uploads
+		config.Speech = prefs.SpeechEndpoint
 		config.Watch = agentStreams{hub, agentID}.Open
 		config.Report = func(state, reason string) { manager.Report("telegram", channel.Status{State: state, Reason: reason}) }
-		manager.Set("telegram", telegram.New(*config, manager))
+		manager.Set("telegram", telegram.New(*config, manager)) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
 	}
 	prefs = settings.New(q, native.Catalog, native)
 	if err := prefs.ApplyOnePassword(ctx); err != nil {

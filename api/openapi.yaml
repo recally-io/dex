@@ -2762,6 +2762,7 @@ components:
         allowedUsers:
           type: array
           items: { type: integer, format: int64 }
+        options: { $ref: "#/components/schemas/TelegramOptions" }
 
     ChannelStatus:
       x-go-type: channel.Status
@@ -2783,6 +2784,61 @@ components:
         allowedUsers:
           type: array
           items: { type: integer, format: int64 }
+        options:
+          $ref: "#/components/schemas/TelegramOptions"
+          description: Omission preserves saved options. Speech stays off until explicitly enabled with data-sending consent.
+
+    TelegramOptions:
+      x-go-type: telegram.Options
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/channel/telegram
+      type: object
+      properties:
+        silent: { type: boolean, default: false }
+        linkPreview: { type: string, enum: ["", "on", "off"] }
+        preview: { type: string, enum: ["", auto, edit, draft, "off"] }
+        reactions: { type: boolean, default: false }
+        stt: { $ref: "#/components/schemas/TelegramSpeechOptions" }
+        tts: { $ref: "#/components/schemas/TelegramSpeechOptions" }
+
+    TelegramSpeechOptions:
+      type: object
+      properties:
+        enabled: { type: boolean, default: false }
+        allowSending:
+          type: boolean
+          default: false
+          description: Explicit consent to send this bot's audio (STT) or text (TTS) to the selected provider. The provider can be an external third party. No automatic fallback provider is used.
+        provider: { type: string }
+        model: { type: string }
+        voice: { type: string }
+        language: { type: string }
+        format: { type: string, enum: ["", opus, mp3, wav] }
+        timeoutSeconds: {
+          type: integer,
+          minimum: 0,
+          maximum: 120,
+          description: Zero uses 30 seconds.,
+        }
+        maxBytes: {
+          type: integer,
+          format: int64,
+          minimum: 0,
+          maximum: 20971520,
+          description: Zero uses 20 MiB for input and response bytes.,
+        }
+        maxDurationSeconds: {
+          type: integer,
+          minimum: 0,
+          maximum: 3600,
+          description: STT only. Checks Telegram reported audio duration. Zero uses 300 seconds. dex does not decode audio to measure duration.,
+        }
+        maxTextCharacters: {
+          type: integer,
+          minimum: 0,
+          maximum: 10000,
+          description: TTS only. Zero uses 4000 characters.,
+        }
 
     Feishu:
       x-go-type: agent.Feishu

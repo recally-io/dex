@@ -791,7 +791,7 @@ func (h *handler) SetTelegram(ctx context.Context, req api.SetTelegramRequestObj
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if err := h.Agents.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers); err != nil {
+	if err := h.Agents.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers, req.Body.Options); err != nil {
 		return nil, err
 	}
 	return api.SetTelegram200JSONResponse(ok), nil

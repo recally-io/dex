@@ -21,7 +21,7 @@ func (b *Bot) Parts(reply chat.Reply) []channel.Part {
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
 	}
-	parts := render(text)
+	parts := render(text, !reply.LegacyDelivery)
 	if len(parts) == 0 {
 		return channel.TextParts([]string{html.EscapeString(text)})
 	}
@@ -53,6 +53,7 @@ func (b *Bot) sendText(ctx context.Context, key, deliveryID string, index int, p
 		method = "editMessageText"
 		params["message_id"] = previewID
 	}
+	b.presentation(params, method)
 	var sent struct {
 		ID int64 `json:"message_id"`
 	}

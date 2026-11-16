@@ -1,13 +1,16 @@
 package engine
 
 import (
+	"context"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
-// OnePassword selects how tools authenticate the 1Password CLI. dex does not read secrets; it
-// passes the credentials to tools, and the prompt tells the agent to run op.
+// OnePassword selects how tools and explicit provider references authenticate the CLI.
 type OnePassword struct {
 	// Mode is "", "connect", or "service-account".
 	Mode                string
@@ -52,4 +55,32 @@ func secretsGuide(op OnePassword, opPath string) string {
 			"1Password: the op CLI is signed in through the tool environment. Read a secret inside the command that needs it, for example curl -H \"Authorization: Bearer $(op read 'op://<vault>/<item>/<field>')\". An environment value that starts with op:// is a reference: use $(op read \"$KEY\"). For a stdio MCP server, run it through op run -- <command>, and put op:// references in its env. Never print a secret.")
 	}
 	return strings.Join(lines, "\n")
+}
+
+// ResolveProviderAPIKey keeps an explicit 1Password reference out of HTTP headers and storage.
+func (a *Agents) ResolveProviderAPIKey(ctx context.Context, key string) (string, error) {
+	if !strings.HasPrefix(key, "op://") {
+		return key, nil
+	}
+	env, op := a.env.load(ctx)
+	op.apply(env)
+	executable := findOp(env)
+	if executable == "" {
+		return "", errors.New("provider credential reference needs the configured 1Password CLI")
+	}
+	command := exec.CommandContext(ctx, executable, "read", "--no-newline", key) //nolint:gosec // The configured CLI receives a reference, not a shell command.
+	command.Env = make([]string, 0, len(env))
+	for name, value := range env {
+		command.Env = append(command.Env, name+"="+value)
+	}
+	command.WaitDelay = time.Second
+	body, err := command.Output()
+	if err != nil {
+		return "", errors.New("provider credential reference could not be read")
+	}
+	secret := strings.TrimSpace(string(body))
+	if secret == "" || strings.ContainsAny(secret, "\r\n") {
+		return "", errors.New("provider credential reference did not return one API key")
+	}
+	return secret, nil
 }

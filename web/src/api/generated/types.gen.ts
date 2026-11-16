@@ -890,6 +890,7 @@ export type Telegram = {
     botId?: string;
     status: ChannelStatus;
     allowedUsers: Array<number>;
+    options?: TelegramOptions;
 };
 
 export type ChannelStatus = {
@@ -903,6 +904,45 @@ export type TelegramInput = {
      */
     token: string;
     allowedUsers: Array<number>;
+    options?: TelegramOptions;
+};
+
+export type TelegramOptions = {
+    silent?: boolean;
+    linkPreview?: '' | 'on' | 'off';
+    preview?: '' | 'auto' | 'edit' | 'draft' | 'off';
+    reactions?: boolean;
+    stt?: TelegramSpeechOptions;
+    tts?: TelegramSpeechOptions;
+};
+
+export type TelegramSpeechOptions = {
+    enabled?: boolean;
+    /**
+     * Explicit consent to send this bot's audio (STT) or text (TTS) to the selected provider. The provider can be an external third party. No automatic fallback provider is used.
+     */
+    allowSending?: boolean;
+    provider?: string;
+    model?: string;
+    voice?: string;
+    language?: string;
+    format?: '' | 'opus' | 'mp3' | 'wav';
+    /**
+     * Zero uses 30 seconds.
+     */
+    timeoutSeconds?: number;
+    /**
+     * Zero uses 20 MiB for input and response bytes.
+     */
+    maxBytes?: number;
+    /**
+     * STT only. Checks Telegram reported audio duration. Zero uses 300 seconds. dex does not decode audio to measure duration.
+     */
+    maxDurationSeconds?: number;
+    /**
+     * TTS only. Zero uses 4000 characters.
+     */
+    maxTextCharacters?: number;
 };
 
 export type Feishu = {

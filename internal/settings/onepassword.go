@@ -16,6 +16,7 @@ import (
 type ToolSettings interface {
 	SetOnePassword(engine.OnePassword)
 	OnePasswordCLI(ctx context.Context) string
+	ResolveProviderAPIKey(context.Context, string) (string, error)
 }
 
 // OnePassword is the 1Password view for the web UI. Tokens are write-only: requests send them,

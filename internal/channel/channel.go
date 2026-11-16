@@ -25,17 +25,22 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/engine"
 )
 
 // ErrPermanent marks a part the platform cannot accept. The sender logs and skips it.
 // Other errors keep the part for retry.
 var ErrPermanent = errors.New("permanent channel delivery failure")
+
+// ErrGroupRejected permits a durable switch to single-file delivery after a definitive rejection.
+var ErrGroupRejected = errors.New("media group was rejected")
 
 // Status is the public runtime state. Reason must contain no credentials.
 type Status struct {
@@ -49,6 +54,9 @@ type Status struct {
 // Run and Send can execute at the same time, and Send can run while Run is
 // receiving. When ctx is cancelled, each method must stop and join the
 // goroutines, connections, and timers that it started before it returns.
+//
+// A bot can also implement GroupParts, MediaWaker, Finisher, or Controller.
+// They are optional; today only Telegram implements them.
 type Bot interface {
 	// Run receives platform input until ctx ends or the transport fails.
 	Run(context.Context) error
@@ -64,7 +72,32 @@ type Bot interface {
 	Send(ctx context.Context, peer, deliveryID string, part int, content Part) (Receipt, error)
 }
 
+// GroupParts plans native media groups for a reply before Manager freezes it.
+// File bodies are loaded for planning. Manager never calls it for a frozen or
+// partly delivered reply.
+type GroupParts interface {
+	GroupParts([]Part) []Part
+}
+
+// MediaWaker wakes inbound media collection after Notify.
+type MediaWaker interface {
+	WakeMedia()
+}
+
+// Finisher runs after every part of a reply is sent and before Manager marks
+// the reply delivered. An error keeps the reply for retry, so Finish must
+// tolerate a repeated call.
+type Finisher interface {
+	Finish(ctx context.Context, peer string, source chat.ChannelContext, status string) error
+}
+
+// Controller performs one agent-requested action on a confirmed remote message.
+type Controller interface {
+	Control(ctx context.Context, peer, remote string, args engine.TelegramRequest) (Receipt, error)
+}
+
 type runtime struct {
+	ctx    context.Context
 	bot    Bot
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -106,7 +139,7 @@ func (m *Manager) Set(name string, bot Bot) {
 		return
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
-	r := &runtime{bot: bot, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), status: Status{State: "running"}}
+	r := &runtime{ctx: ctx, bot: bot, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), status: Status{State: "running"}}
 	m.mu.Lock()
 	m.bots[name] = r
 	m.mu.Unlock()
@@ -164,6 +197,9 @@ func (m *Manager) Notify(key string) {
 		if key != chat.MainKey && platform != name {
 			continue
 		}
+		if media, ok := r.bot.(MediaWaker); ok {
+			media.WakeMedia()
+		}
 		select {
 		case r.wake <- struct{}{}:
 		default:
@@ -204,7 +240,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 		return err
 	}
 	cmd := strings.TrimSpace(msg.Content)
-	if !IsCommand(cmd) {
+	if !IsCommand(cmd) || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
 		return m.chats.SubmitMessage(ctx, m.agentID, peer, source, msg)
 	}
 	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd}); err != nil {
@@ -309,6 +345,19 @@ func (m *Manager) sendPart(ctx context.Context, bot Bot, peer, id string, index 
 			err = fmt.Errorf("%w: file snapshot is no longer available", ErrPermanent)
 		}
 	}
+	if len(part.Group) > 0 {
+		files := slices.Clone(part.Group)
+		for i := range files {
+			files[i].Body, err = m.q.GetChannelReplyFile(ctx, sqlc.GetChannelReplyFileParams{OperationKey: files[i].Key, SubmissionID: id})
+			if errors.Is(err, sql.ErrNoRows) {
+				err = fmt.Errorf("%w: group snapshot is no longer available", ErrPermanent)
+			}
+			if err != nil {
+				break
+			}
+		}
+		part.Group = files
+	}
 	var receipt Receipt
 	if err == nil {
 		receipt, err = bot.Send(ctx, peer, id, index, part)
@@ -371,7 +420,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 				}
 				break
 			}
-			receipt, err := m.sendPart(ctx, bot, r.Origin, r.ID, i, parts[i])
+			err = m.sendReplyPart(ctx, name, bot, r, i, parts[i], &remotes)
 			if err != nil {
 				retryAt := time.Now().Add(5 * time.Second).UnixMilli()
 				if flood, ok := errors.AsType[*RetryError](err); ok {
@@ -382,8 +431,24 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 				}
 				return err
 			}
-			if err := m.confirmPart(ctx, r, receipt, &remotes); err != nil {
+			r.ChannelGroupFallback, r.ChannelGroupCursor = 0, 0
+		}
+		if finished, ok := bot.(Finisher); ok {
+			allowed, err := m.authorizedReply(ctx, name, r)
+			if err != nil {
 				return err
+			}
+			if allowed {
+				var source chat.ChannelContext
+				if err := json.Unmarshal([]byte(r.ChannelContext), &source); err != nil {
+					return err
+				}
+				if err := finished.Finish(ctx, r.Origin, source, r.Status); err != nil {
+					if saved := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: r.ID, RetryAt: time.Now().Add(5 * time.Second).UnixMilli(), Reason: err.Error()}); saved != nil {
+						return errors.Join(err, saved)
+					}
+					return err
+				}
 			}
 		}
 		if err := m.q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: r.ID, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {

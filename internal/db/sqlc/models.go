@@ -261,6 +261,39 @@ type Submission struct {
 	ChannelDeliveryError string         `json:"channel_delivery_error"`
 	ChannelRemoteIds     string         `json:"channel_remote_ids"`
 	ChannelRevoked       int64          `json:"channel_revoked"`
+	ChannelGroupFallback int64          `json:"channel_group_fallback"`
+	ChannelGroupCursor   int64          `json:"channel_group_cursor"`
+}
+
+type TelegramAlbumMember struct {
+	SourceKey   string `json:"source_key"`
+	AgentID     string `json:"agent_id"`
+	AccountID   string `json:"account_id"`
+	SenderID    string `json:"sender_id"`
+	Peer        string `json:"peer"`
+	GroupKey    string `json:"group_key"`
+	InputJson   string `json:"input_json"`
+	ReceivedAt  int64  `json:"received_at"`
+	BatchSource string `json:"batch_source"`
+	State       string `json:"state"`
+}
+
+type TelegramEffect struct {
+	OperationKey string `json:"operation_key"`
+	AgentID      string `json:"agent_id"`
+	AccountID    string `json:"account_id"`
+	SenderID     string `json:"sender_id"`
+	Peer         string `json:"peer"`
+	SourceKey    string `json:"source_key"`
+	Kind         string `json:"kind"`
+	InputJson    string `json:"input_json"`
+	State        string `json:"state"`
+	Text         string `json:"text"`
+	Body         []byte `json:"body"`
+	Name         string `json:"name"`
+	ResultJson   string `json:"result_json"`
+	Error        string `json:"error"`
+	CreatedAt    int64  `json:"created_at"`
 }
 
 type TelegramSetting struct {
@@ -270,6 +303,7 @@ type TelegramSetting struct {
 	PairingCode    string `json:"pairing_code"`
 	PairingExpires int64  `json:"pairing_expires"`
 	RetryAt        int64  `json:"retry_at"`
+	Options        string `json:"options"`
 }
 
 type WechatRuntime struct {
