@@ -25,7 +25,10 @@ func NewToolService(db *sql.DB, service *Service, wake func(int64)) *ToolService
 }
 
 func routineCaller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (sqlc.Conversation, sqlc.Submission, error) {
-	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: c.AgentID, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
+	if c.Scope != "" {
+		return sqlc.Conversation{}, sqlc.Submission{}, ErrInvalid
+	}
+	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: c.AgentID, ExecutionScope: c.Scope, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
 	if err != nil {
 		return conv, sqlc.Submission{}, err
 	}

@@ -12,6 +12,26 @@ export function TelegramOptionsFields({
   return (
     <>
       <details>
+        <summary className="cursor-pointer text-[13px] text-muted-foreground">Group input</summary>
+        <div className="mt-3 flex flex-col gap-4">
+          <Field
+            label="Require group mention"
+            hint="Off by default. Only paired senders can trigger work. Group resources stay isolated in either mode."
+          >
+            {({ id }) => (
+              <Select
+                id={id}
+                value={value.requireMention ? "on" : "off"}
+                onChange={(e) => onChange({ ...value, requireMention: e.target.value === "on" })}
+              >
+                <option value="off">Off, respond to paired senders</option>
+                <option value="on">On, require a mention or reply</option>
+              </Select>
+            )}
+          </Field>
+        </div>
+      </details>
+      <details>
         <summary className="cursor-pointer text-[13px] text-muted-foreground">Delivery and previews</summary>
         <div className="mt-3 flex flex-col gap-4">
           <Field label="Silent delivery" hint="Send new bot messages without notification sound.">

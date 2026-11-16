@@ -89,14 +89,16 @@ type BackgroundCommand struct {
 }
 
 type ChannelCommand struct {
-	AgentID     string        `json:"agent_id"`
-	SourceKey   string        `json:"source_key"`
-	Peer        string        `json:"peer"`
-	ChannelKey  string        `json:"channel_key"`
-	Command     string        `json:"command"`
-	Answer      string        `json:"answer"`
-	Completed   int64         `json:"completed"`
-	DeliveredAt sql.NullInt64 `json:"delivered_at"`
+	AgentID        string        `json:"agent_id"`
+	SourceKey      string        `json:"source_key"`
+	Peer           string        `json:"peer"`
+	ChannelKey     string        `json:"channel_key"`
+	Command        string        `json:"command"`
+	Answer         string        `json:"answer"`
+	Completed      int64         `json:"completed"`
+	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
+	ChannelContext string        `json:"channel_context"`
+	RenderedReply  string        `json:"rendered_reply"`
 }
 
 type ChannelPeer struct {
@@ -119,20 +121,22 @@ type CompactReceipt struct {
 }
 
 type Conversation struct {
-	ID            int64         `json:"id"`
-	AgentID       string        `json:"agent_id"`
-	ChannelKey    string        `json:"channel_key"`
-	ExecutionID   sql.NullInt64 `json:"execution_id"`
-	CreatedAt     int64         `json:"created_at"`
-	Title         string        `json:"title"`
-	ModelProvider string        `json:"model_provider"`
-	ModelID       string        `json:"model_id"`
-	ThinkingLevel string        `json:"thinking_level"`
-	AbortPending  int64         `json:"abort_pending"`
-	ArchivedAt    sql.NullInt64 `json:"archived_at"`
-	Cwd           string        `json:"cwd"`
-	ForkedFrom    sql.NullInt64 `json:"forked_from"`
-	ParentID      sql.NullInt64 `json:"parent_id"`
+	ID             int64         `json:"id"`
+	AgentID        string        `json:"agent_id"`
+	ChannelKey     string        `json:"channel_key"`
+	ExecutionID    sql.NullInt64 `json:"execution_id"`
+	CreatedAt      int64         `json:"created_at"`
+	Title          string        `json:"title"`
+	ModelProvider  string        `json:"model_provider"`
+	ModelID        string        `json:"model_id"`
+	ThinkingLevel  string        `json:"thinking_level"`
+	AbortPending   int64         `json:"abort_pending"`
+	ArchivedAt     sql.NullInt64 `json:"archived_at"`
+	Cwd            string        `json:"cwd"`
+	ForkedFrom     sql.NullInt64 `json:"forked_from"`
+	ParentID       sql.NullInt64 `json:"parent_id"`
+	ExecutionScope string        `json:"execution_scope"`
+	ScopeContext   string        `json:"scope_context"`
 }
 
 type Dream struct {
@@ -276,6 +280,26 @@ type TelegramAlbumMember struct {
 	ReceivedAt  int64  `json:"received_at"`
 	BatchSource string `json:"batch_source"`
 	State       string `json:"state"`
+}
+
+type TelegramCallback struct {
+	ID              string        `json:"id"`
+	AgentID         string        `json:"agent_id"`
+	SourceID        string        `json:"source_id"`
+	Part            int64         `json:"part"`
+	Ordinal         int64         `json:"ordinal"`
+	Peer            string        `json:"peer"`
+	ChannelContext  string        `json:"channel_context"`
+	ConversationID  int64         `json:"conversation_id"`
+	ExecutionScope  string        `json:"execution_scope"`
+	ExecutionID     int64         `json:"execution_id"`
+	ContextRevision string        `json:"context_revision"`
+	Label           string        `json:"label"`
+	ObjectID        string        `json:"object_id"`
+	Action          string        `json:"action"`
+	MessageID       string        `json:"message_id"`
+	ExpiresAt       int64         `json:"expires_at"`
+	ConsumedAt      sql.NullInt64 `json:"consumed_at"`
 }
 
 type TelegramEffect struct {

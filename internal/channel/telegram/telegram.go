@@ -84,6 +84,7 @@ type Bot struct {
 	rateMu    sync.Mutex
 	retryAt   time.Time
 	albumWake chan struct{}
+	username  string
 }
 
 // New returns a Bot. Register it with the channel manager to start it.
@@ -104,8 +105,14 @@ func New(cfg Config, chats *channel.Manager) *Bot {
 // Run receives messages and sends replies until ctx is done.
 func (b *Bot) Run(ctx context.Context) error {
 	if err := b.call(ctx, "setMyCommands", map[string]any{"commands": []map[string]string{
-		{"command": "clear", "description": "Clear the main context"},
-		{"command": "stop", "description": "Stop the main answer and its background work"},
+		{"command": "menu", "description": "Open current conversation controls"},
+		{"command": "status", "description": "Show current conversation status"},
+		{"command": "settings", "description": "Show Telegram preferences"},
+		{"command": "sessions", "description": "List direct children of this conversation"},
+		{"command": "workflows", "description": "Resume saved child workflows"},
+		{"command": "question", "description": "Show this conversation's open question"},
+		{"command": "clear", "description": "Clear the current conversation context"},
+		{"command": "stop", "description": "Stop the current conversation and its child work"},
 		{"command": "help", "description": "List commands"},
 	}}, nil); err != nil {
 		slog.Warn("telegram: command menu", "err", err)
@@ -121,7 +128,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	for {
 		var updates []update
 		err := b.call(ctx, "getUpdates", map[string]any{
-			"offset": offset, "timeout": 30, "allowed_updates": []string{"message"},
+			"offset": offset, "timeout": 30, "allowed_updates": []string{"message", "edited_message", "callback_query"},
 		}, &updates)
 		for _, u := range updates {
 			if err = b.receive(ctx, u); err != nil {
@@ -150,6 +157,9 @@ func (b *Bot) Run(ctx context.Context) error {
 }
 
 func (b *Bot) receive(ctx context.Context, u update) error {
+	if u.Callback != nil {
+		return b.receiveCallback(ctx, u.Callback)
+	}
 	m := u.Message
 	edited := u.EditedMessage != nil
 	if edited {
@@ -157,6 +167,9 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	}
 	if m == nil || m.From == nil || !m.hasContent() {
 		return nil
+	}
+	if m.Chat.Type == "group" || m.Chat.Type == "supergroup" {
+		return b.receiveGroup(ctx, u, m, edited)
 	}
 	if m.Chat.Type != "private" {
 		return nil
@@ -178,6 +191,15 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	}
 	if !slices.Contains(b.cfg.AllowedUsers, m.From.ID) {
 		slog.Warn("telegram: ignored a message from a user who is not allowed", "user", m.From.ID)
+		return nil
+	}
+	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
+	identity := chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10), MediaGroup: m.MediaGroupID}
+	allowed, err := b.chats.TelegramInputAllowed(ctx, peer, identity)
+	if err != nil {
+		return err
+	}
+	if !allowed {
 		return nil
 	}
 	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
@@ -223,8 +245,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if edited {
 		content = fmt.Sprintf("Correction to Telegram message %d (earlier actions are not undone):\n%s", m.ID, content)
 	}
-	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
-	incoming := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10), MediaGroup: m.MediaGroupID}}
+	incoming := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: identity}
 	if selected, kind := m.selectedMedia(); selected != nil {
 		incoming.ChannelContext.FileID = selected.ID
 		incoming.ChannelContext.MediaKind = kind
@@ -392,9 +413,10 @@ func split(text string, limit int) []string {
 // Bot API types, with only the fields that dex reads.
 
 type update struct {
-	UpdateID      int64    `json:"update_id"`
-	Message       *message `json:"message"`
-	EditedMessage *message `json:"edited_message"`
+	Callback      *callbackQuery `json:"callback_query"`
+	UpdateID      int64          `json:"update_id"`
+	Message       *message       `json:"message"`
+	EditedMessage *message       `json:"edited_message"`
 }
 
 type user struct {
@@ -402,20 +424,24 @@ type user struct {
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
 	Username  string `json:"username"`
+	IsBot     bool   `json:"is_bot"`
 }
 
 type remoteChat struct {
-	ID    int64  `json:"id"`
-	Type  string `json:"type"`
-	Title string `json:"title"`
+	ID      int64  `json:"id"`
+	Type    string `json:"type"`
+	Title   string `json:"title"`
+	IsForum bool   `json:"is_forum"`
 }
 
 type message struct {
-	ID      int64      `json:"message_id"`
-	From    *user      `json:"from"`
-	Chat    remoteChat `json:"chat"`
-	ReplyTo *message   `json:"reply_to_message"`
-	Quote   *struct {
+	ThreadID int64      `json:"message_thread_id"`
+	IsTopic  bool       `json:"is_topic_message"`
+	ID       int64      `json:"message_id"`
+	From     *user      `json:"from"`
+	Chat     remoteChat `json:"chat"`
+	ReplyTo  *message   `json:"reply_to_message"`
+	Quote    *struct {
 		Text string `json:"text"`
 	} `json:"quote"`
 	ForwardOrigin *struct {

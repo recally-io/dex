@@ -5,7 +5,7 @@ FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.id = @submission_id AND s.status = 'pending' AND s.channel_revoked = 0
   AND s.origin LIKE 'telegram:%'
-  AND c.agent_id = @agent_id AND c.execution_id = @execution_id
+  AND c.agent_id = @agent_id AND c.execution_scope = @execution_scope AND c.execution_id = @execution_id
   AND c.parent_id IS NULL AND a.archived_at IS NULL
   AND (SELECT count(*) FROM channel_reply_files f WHERE f.submission_id = s.id) < 10
 ON CONFLICT DO NOTHING;

@@ -63,7 +63,9 @@ func (b *Bot) flushAlbums(ctx context.Context) (time.Duration, error) {
 		if parseErr != nil {
 			return delay, parseErr
 		}
-		b.startPreview(ctx, batch.Source, chatID)
+		if chatID > 0 {
+			b.startPreview(ctx, batch.Source, chatID)
+		}
 		if err != nil {
 			return delay, err
 		}

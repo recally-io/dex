@@ -25,7 +25,7 @@ func (b *Bot) Send(ctx context.Context, peer, deliveryID string, index int, part
 	case part.File != nil:
 		id, err = b.sendFile(ctx, peer, part.File)
 	default:
-		id, err = b.sendText(ctx, peer, deliveryID, index, part.Text)
+		id, err = b.sendText(ctx, peer, deliveryID, index, part.Text, part.Buttons)
 	}
 	if id != "" {
 		receipt.MessageIDs = []string{id}
@@ -42,7 +42,7 @@ func (b *Bot) Send(ctx context.Context, peer, deliveryID string, index int, part
 }
 
 func (b *Bot) sendFile(ctx context.Context, peer string, file *channel.File) (string, error) {
-	chatID, err := peerID(peer)
+	chatID, topicID, err := parsePeer(peer)
 	if err != nil {
 		return "", err
 	}
@@ -52,6 +52,11 @@ func (b *Bot) sendFile(ctx context.Context, peer string, file *channel.File) (st
 		form := multipart.NewWriter(&body)
 		if err := form.WriteField("chat_id", strconv.FormatInt(chatID, 10)); err != nil {
 			return "", err
+		}
+		if topicID > 0 {
+			if err := form.WriteField("message_thread_id", strconv.FormatInt(topicID, 10)); err != nil {
+				return "", err
+			}
 		}
 		if b.cfg.Options.Silent {
 			if err := form.WriteField("disable_notification", "true"); err != nil {

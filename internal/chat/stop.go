@@ -98,6 +98,11 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		return withdrawal{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if command != nil {
+		if err := checkTelegramControl(ctx, q, command.SourceKey, agentID, id); err != nil {
+			return withdrawal{}, err
+		}
+	}
 	if call != nil {
 		prior, err := q.GetRoutineToolOperation(ctx, call.task.Key)
 		if err == nil {
@@ -134,7 +139,11 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 			if err := q.DiscardTelegramInputEffects(ctx, agentID); err != nil {
 				return withdrawal{}, err
 			}
-			if err := q.DiscardTelegramAlbums(ctx, agentID); err != nil {
+			if err := q.DiscardPrivateTelegramAlbums(ctx, agentID); err != nil {
+				return withdrawal{}, err
+			}
+		} else if c.ExecutionScope != "" && !c.ParentID.Valid {
+			if err := discardGroupAlbums(ctx, q, c); err != nil {
 				return withdrawal{}, err
 			}
 		}
@@ -152,7 +161,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		// holds one gate only. The abort request above is durable, and the dispatcher of that bot
 		// carries it out. Holding two gates could deadlock two parents that stop each other's children.
 		if c.ExecutionID.Valid && c.AgentID == agentID {
-			targets = append(targets, engine.Ref{AgentID: agentID, ID: c.ExecutionID.Int64})
+			targets = append(targets, engine.Ref{AgentID: agentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope})
 		}
 	}
 	if command != nil {
@@ -190,7 +199,7 @@ func (s *Service) withdrawQueuedParentInputs(ctx context.Context, q *sqlc.Querie
 			continue
 		}
 		if c.ExecutionID.Valid {
-			outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}, p.ID)
+			outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope}, p.ID)
 			if err != nil {
 				return err
 			}
@@ -223,6 +232,6 @@ func (s *Service) abort(ctx context.Context, target engine.Ref) (completed bool,
 		slog.Warn("cancel native execution", "execution", target.ID, "err", err)
 		return false, err
 	}
-	err = s.q.FinishExecutionAbort(callCtx, sqlc.FinishExecutionAbortParams{AgentID: target.AgentID, ExecutionID: sql.NullInt64{Int64: target.ID, Valid: true}})
+	err = s.q.FinishExecutionAbort(callCtx, sqlc.FinishExecutionAbortParams{AgentID: target.AgentID, ExecutionScope: target.Scope, ExecutionID: sql.NullInt64{Int64: target.ID, Valid: true}})
 	return err == nil, err
 }

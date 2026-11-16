@@ -374,7 +374,7 @@ func (h *handler) listChats(ctx context.Context, agentID string) (api.ListChats2
 			return api.ListChats200JSONResponse{}, err
 		}
 		if full.ExecutionID > 0 {
-			refOf[i] = engine.Ref{AgentID: owner, ID: full.ExecutionID}
+			refOf[i] = engine.Ref{AgentID: owner, ID: full.ExecutionID, Scope: full.ExecutionScope}
 			refs = append(refs, refOf[i])
 		}
 	}

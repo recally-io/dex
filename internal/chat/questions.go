@@ -81,6 +81,16 @@ func (s *Service) questionView(ctx context.Context, row sqlc.Question) (*Questio
 // question. The source input must still run, the chat must not be archived, and the chat must
 // have no other question that waits.
 func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a engine.AskUserArgs) (engine.QuestionInfo, error) {
+	if r.Scope != "" {
+		return engine.QuestionInfo{}, ErrQuestionInvalid
+	}
+	return s.askQuestion(ctx, r, a, nil)
+}
+
+func (s *Service) ToolGroupQuestion(ctx context.Context, r engine.TaskContext, a engine.AskUserArgs) (engine.QuestionInfo, error) {
+	if r.Scope == "" || !strings.HasPrefix(r.Key, r.AgentID+"/"+r.Scope+"/") {
+		return engine.QuestionInfo{}, ErrQuestionInvalid
+	}
 	return s.askQuestion(ctx, r, a, nil)
 }
 
@@ -92,6 +102,15 @@ func NormalizeText(s string) string { return strings.TrimSpace(s) }
 // askQuestion saves a question. An action question also needs a user input as its source, and the
 // action must be allowed now; control runs the action only when the owner approves it.
 func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engine.AskUserArgs, action *questionAction) (engine.QuestionInfo, error) {
+	if r.Scope != "" {
+		conv, _, err := groupCaller(ctx, s.q, r)
+		if err != nil {
+			return engine.QuestionInfo{}, err
+		}
+		if action != nil || conv.ParentID.Valid {
+			return engine.QuestionInfo{}, ErrQuestionInvalid
+		}
+	}
 	// One line, so the answer wrapper "Answer to: <question>" has an unambiguous first line.
 	text := strings.Join(strings.Fields(a.Question), " ")
 	if text == "" || utf8.RuneCountInString(text) > maxQuestion || len(a.Options) < 2 || len(a.Options) > 4 {
@@ -125,17 +144,17 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engin
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return engine.QuestionInfo{}, err
 	}
-	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
+	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionScope: r.Scope, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
 		return engine.QuestionInfo{}, err
 	}
-	if !Writable(conv.ChannelKey) || conv.ParentID.Valid {
+	if r.Scope == "" && !Writable(conv.ChannelKey) || conv.ParentID.Valid {
 		return engine.QuestionInfo{}, fmt.Errorf("%w: only Main and Chat sessions ask the user", ErrQuestionInvalid)
 	}
 	if conv.ArchivedAt.Valid {
 		return engine.QuestionInfo{}, fmt.Errorf("%w: the chat is archived", ErrQuestionClosed)
 	}
-	source, err := liveSource(ctx, q, r)
+	source, err := sessionSource(ctx, q, r)
 	if err != nil {
 		return engine.QuestionInfo{}, err
 	}
@@ -172,7 +191,7 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engin
 // answerContent loads the open question for an answer inside the receipt transaction and returns
 // the content that the model reads. For an action question it also decides the action; see
 // decideAnswer.
-func answerContent(ctx context.Context, q *sqlc.Queries, agentID string, chatID int64, questionID, answer, origin string) (answerDecision, error) {
+func answerContent(ctx context.Context, q *sqlc.Queries, agentID string, chatID int64, questionID, answer, origin string, identity ChannelContext) (answerDecision, error) {
 	row, err := q.GetQuestion(ctx, questionID)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && (row.AgentID != agentID || row.ConversationID != chatID)) {
 		return answerDecision{}, ErrQuestionClosed
@@ -182,6 +201,29 @@ func answerContent(ctx context.Context, q *sqlc.Queries, agentID string, chatID 
 	}
 	if row.Status != "open" {
 		return answerDecision{}, ErrQuestionClosed
+	}
+	conv, err := q.GetConversation(ctx, chatID)
+	if err != nil {
+		return answerDecision{}, err
+	}
+	if conv.ExecutionScope != "" {
+		original, err := q.GetSubmission(ctx, row.SourceSubmissionID)
+		if err != nil {
+			return answerDecision{}, err
+		}
+		var actor ChannelContext
+		if err := json.Unmarshal([]byte(original.ChannelContext), &actor); err != nil {
+			return answerDecision{}, err
+		}
+		if row.Action.Valid || original.Origin != origin || actor.AccountID != identity.AccountID || actor.SenderID != identity.SenderID || actor.ChatID != identity.ChatID || actor.TopicID != identity.TopicID {
+			return answerDecision{}, ErrQuestionClosed
+		}
+		if err := authorizeGroupSource(ctx, q, conv, original); err != nil {
+			if errors.Is(err, ErrGroupUnauthorized) {
+				return answerDecision{}, ErrQuestionClosed
+			}
+			return answerDecision{}, err
+		}
 	}
 	d := answerDecision{Content: answerPrefix + row.Text + "\n" + answer}
 	if row.Action.Valid {
@@ -240,6 +282,9 @@ func (s *Service) withQuestion(ctx context.Context, id string, event engine.Outc
 		return event, err
 	}
 	rendered := renderQuestion(row, q.Options, row.AgentID, conv.ChannelKey == MainKey, quotes(reply.Origin))
+	if conv.ExecutionScope != "" {
+		rendered = row.Text + "\n\n" + strings.Join(q.Options, "\n") + "\n\nOnly the initiating paired sender can answer in this conversation."
+	}
 	if event.Answer != "" {
 		rendered = event.Answer + "\n\n" + rendered
 	}

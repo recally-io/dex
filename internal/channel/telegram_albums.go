@@ -9,6 +9,10 @@ import (
 	"github.com/recally-io/dex/internal/upload"
 )
 
+func (m *Manager) KnownTelegramAlbum(ctx context.Context, peer string, identity chat.ChannelContext) (bool, error) {
+	return m.chats.KnownTelegramAlbum(ctx, m.agentID, peer, identity)
+}
+
 func (m *Manager) StoreTelegramAlbum(ctx context.Context, peer, source string, msg chat.Message) error {
 	return m.chats.StoreTelegramAlbum(ctx, m.agentID, peer, source, msg)
 }
@@ -28,9 +32,15 @@ func (m *Manager) CleanupTelegramAlbums(ctx context.Context, store *upload.Store
 		return err
 	}
 	for _, item := range pending {
-		for _, file := range item.Attachments {
-			if err := store.Remove(file.ID); err != nil && !errors.Is(err, upload.ErrNotFound) {
+		if item.Context.ChatID < 0 {
+			if err := m.chats.RemoveGroupUploads(m.agentID, item.Context, item.Attachments); err != nil {
 				return err
+			}
+		} else {
+			for _, file := range item.Attachments {
+				if err := store.Remove(file.ID); err != nil && !errors.Is(err, upload.ErrNotFound) {
+					return err
+				}
 			}
 		}
 		if err := m.chats.ClearDiscardedTelegramUpload(ctx, m.agentID, item.Source); err != nil {

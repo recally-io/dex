@@ -72,16 +72,17 @@ func (q *Queries) CountChannelPending(ctx context.Context, arg CountChannelPendi
 }
 
 const createChannelCommand = `-- name: CreateChannelCommand :exec
-INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command) VALUES (?, ?, ?, ?, ?)
+INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context) VALUES (?, ?, ?, ?, ?, coalesce(nullif(CAST(? AS TEXT), ''), '{}'))
 ON CONFLICT DO NOTHING
 `
 
 type CreateChannelCommandParams struct {
-	AgentID    string `json:"agent_id"`
-	SourceKey  string `json:"source_key"`
-	Peer       string `json:"peer"`
-	ChannelKey string `json:"channel_key"`
-	Command    string `json:"command"`
+	AgentID        string `json:"agent_id"`
+	SourceKey      string `json:"source_key"`
+	Peer           string `json:"peer"`
+	ChannelKey     string `json:"channel_key"`
+	Command        string `json:"command"`
+	ChannelContext string `json:"channel_context"`
 }
 
 func (q *Queries) CreateChannelCommand(ctx context.Context, arg CreateChannelCommandParams) error {
@@ -91,6 +92,7 @@ func (q *Queries) CreateChannelCommand(ctx context.Context, arg CreateChannelCom
 		arg.Peer,
 		arg.ChannelKey,
 		arg.Command,
+		arg.ChannelContext,
 	)
 	return err
 }
@@ -112,7 +114,7 @@ func (q *Queries) FeishuCredentialOwner(ctx context.Context, appID string) (Feis
 }
 
 const getChannelCommand = `-- name: GetChannelCommand :one
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at FROM channel_commands WHERE source_key = ?
+SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE source_key = ?
 `
 
 func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (ChannelCommand, error) {
@@ -127,6 +129,8 @@ func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (Chan
 		&i.Answer,
 		&i.Completed,
 		&i.DeliveredAt,
+		&i.ChannelContext,
+		&i.RenderedReply,
 	)
 	return i, err
 }
@@ -226,7 +230,7 @@ func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow
 }
 
 const listChannelCommandReplies = `-- name: ListChannelCommandReplies :many
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
+SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
 AND agent_id = ?1 AND peer LIKE ?2 || '%' ORDER BY rowid
 `
 
@@ -253,6 +257,8 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, arg ListChannel
 			&i.Answer,
 			&i.Completed,
 			&i.DeliveredAt,
+			&i.ChannelContext,
+			&i.RenderedReply,
 		); err != nil {
 			return nil, err
 		}
@@ -268,7 +274,7 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, arg ListChannel
 }
 
 const listChannelCommands = `-- name: ListChannelCommands :many
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at FROM channel_commands WHERE agent_id = ? AND completed = 0
+SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE agent_id = ? AND completed = 0
 `
 
 func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]ChannelCommand, error) {
@@ -289,6 +295,8 @@ func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]Ch
 			&i.Answer,
 			&i.Completed,
 			&i.DeliveredAt,
+			&i.ChannelContext,
+			&i.RenderedReply,
 		); err != nil {
 			return nil, err
 		}
@@ -406,6 +414,15 @@ type MarkChannelReplyDeliveredParams struct {
 
 func (q *Queries) MarkChannelReplyDelivered(ctx context.Context, arg MarkChannelReplyDeliveredParams) error {
 	_, err := q.db.ExecContext(ctx, markChannelReplyDelivered, arg.DeliveredAt, arg.ID)
+	return err
+}
+
+const revokeChannelSubmission = `-- name: RevokeChannelSubmission :exec
+UPDATE submissions SET channel_revoked = 1 WHERE id = ?
+`
+
+func (q *Queries) RevokeChannelSubmission(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, revokeChannelSubmission, id)
 	return err
 }
 

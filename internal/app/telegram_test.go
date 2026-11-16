@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -35,6 +36,7 @@ type fakeTelegram struct {
 	failAfter      atomic.Int64
 	sendCount      atomic.Int64
 	pollOffset     atomic.Int64
+	lastCallback   atomic.Int64
 	failSend       atomic.Bool
 	failMedia      atomic.Bool
 	mediaSent      chan telegramMedia
@@ -43,6 +45,7 @@ type fakeTelegram struct {
 	groupAttempts  chan telegramGroup
 	groupSent      chan telegramGroup
 	mediaSuccesses atomic.Int64
+	fileRequests   atomic.Int64
 	mediaFailAfter atomic.Int64
 	attempted      chan struct{}
 	srv            *httptest.Server
@@ -57,6 +60,12 @@ type fakeTelegram struct {
 	events      chan platformEvent
 	nextID      int64
 	deliveries  []channelSend
+	keyboards   map[int64][][]telegramButton
+}
+
+type telegramButton struct {
+	Text string `json:"text"`
+	Data string `json:"callback_data"`
 }
 
 type platformFailure struct {
@@ -71,6 +80,7 @@ type platformEvent struct {
 
 type sentMessage struct {
 	ChatID      int64  `json:"chat_id"`
+	TopicID     int64  `json:"message_thread_id"`
 	Text        string `json:"text"`
 	ParseMode   string `json:"parse_mode"`
 	Silent      bool   `json:"disable_notification"`
@@ -85,7 +95,7 @@ const fakeToken = "123:secret"
 
 func newFakeTelegram(t *testing.T) *fakeTelegram {
 	t.Helper()
-	f := &fakeTelegram{sent: make(chan sentMessage, 64), attempted: make(chan struct{}, 64), mediaSent: make(chan telegramMedia, 64), mediaAttempts: make(chan telegramMedia, 64), mediaCalls: make(chan time.Time, 64), groupAttempts: make(chan telegramGroup, 64), groupSent: make(chan telegramGroup, 64), failures: map[string][]platformFailure{}, files: map[string]string{}, events: make(chan platformEvent, 512)}
+	f := &fakeTelegram{sent: make(chan sentMessage, 64), attempted: make(chan struct{}, 64), mediaSent: make(chan telegramMedia, 64), mediaAttempts: make(chan telegramMedia, 64), mediaCalls: make(chan time.Time, 64), groupAttempts: make(chan telegramGroup, 64), groupSent: make(chan telegramGroup, 64), keyboards: map[int64][][]telegramButton{}, failures: map[string][]platformFailure{}, files: map[string]string{}, events: make(chan platformEvent, 512)}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -190,7 +200,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		media := telegramMedia{Method: method, Chat: r.FormValue("chat_id"), Name: header.Filename, Body: string(body), At: time.Now()}
+		media := telegramMedia{Method: method, Chat: r.FormValue("chat_id"), Topic: r.FormValue("message_thread_id"), Name: header.Filename, Body: string(body), At: time.Now()}
 		f.mediaAttempts <- media
 		if f.failMedia.Load() || f.mediaFailAfter.Load() > 0 && f.mediaSuccesses.Load() >= f.mediaFailAfter.Load() {
 			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 500, "description": "temporary media failure"})
@@ -245,7 +255,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		result = updates
-	case "sendMessage", "editMessageText", "sendMessageDraft", "sendChatAction", "setMyCommands", "setMessageReaction", "editMessageCaption", "deleteMessage", "copyMessage", "forwardMessage":
+	case "sendMessage", "editMessageText", "sendMessageDraft", "sendChatAction", "setMyCommands", "setMessageReaction", "editMessageCaption", "deleteMessage", "copyMessage", "forwardMessage", "answerCallbackQuery":
 		if method == "sendMessage" {
 			select {
 			case f.attempted <- struct{}{}:
@@ -259,9 +269,13 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		var m struct {
 			sentMessage
-			MessageID int64  `json:"message_id"`
-			Caption   string `json:"caption"`
-			Reaction  []struct {
+			ReplyMarkup struct {
+				Rows [][]telegramButton `json:"inline_keyboard"`
+			} `json:"reply_markup"`
+			CallbackQueryID string `json:"callback_query_id"`
+			MessageID       int64  `json:"message_id"`
+			Caption         string `json:"caption"`
+			Reaction        []struct {
 				Emoji string `json:"emoji"`
 			} `json:"reaction"`
 			Commands []struct {
@@ -269,6 +283,9 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			} `json:"commands"`
 		}
 		_ = json.UnmarshalRead(r.Body, &m)
+		if method == "answerCallbackQuery" {
+			m.MessageID, _ = strconv.ParseInt(m.CallbackQueryID, 10, 64)
+		}
 		if method == "editMessageCaption" {
 			m.Text = m.Caption
 		}
@@ -297,6 +314,9 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.nextID++
 		id := f.nextID
+		if len(m.ReplyMarkup.Rows) > 0 {
+			f.keyboards[id] = m.ReplyMarkup.Rows
+		}
 		f.mu.Unlock()
 		if method == "sendMessage" || (method == "editMessageText" && m.ParseMode != "") {
 			f.mu.Lock()
@@ -323,6 +343,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			result = true
 		}
 	case "getFile":
+		f.fileRequests.Add(1)
 		var p struct {
 			ID string `json:"file_id"`
 		}
@@ -406,12 +427,12 @@ func TestTelegramIgnoresUsersWhoAreNotAllowed(t *testing.T) {
 	f.message(1, 99, 8, "let me in")
 	f.mu.Lock()
 	f.updates = append(f.updates, map[string]any{"update_id": int64(2), "message": map[string]any{
-		"from": map[string]any{"id": 42}, "chat": map[string]any{"id": -100, "type": "supergroup"}, "text": "owner in a group",
+		"from": map[string]any{"id": 99}, "chat": map[string]any{"id": -100, "type": "supergroup"}, "text": "unpaired in a group",
 	}})
 	f.mu.Unlock()
 	f.message(3, 42, 7, "ok")
 
-	// Then only user 42 gets an answer, and dex stores nothing for chat 8. The bot handles updates
+	// Then the unpaired sender gets no private or group grant. The bot handles updates
 	// in order, so it handled the first one before the answer to the second.
 	got := f.next(t)
 	got.ID = 0 // the fake assigns IDs; only the quote-reply test reads them

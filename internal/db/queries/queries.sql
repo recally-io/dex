@@ -67,8 +67,8 @@ RETURNING *;
 
 -- name: EnsureConversation :one
 -- The title and the settings are set only when the conversation is created.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at, execution_scope, scope_context)
+VALUES (?, ?, ?, ?, ?, ?, ?, @execution_scope, coalesce(nullif(CAST(@scope_context AS TEXT), ''), '{}'))
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
 RETURNING *;
 
@@ -79,7 +79,7 @@ VALUES (
     @agent_id,
     coalesce((
         SELECT c.channel_key FROM conversations c
-        WHERE c.agent_id = @agent_id AND c.channel_key LIKE 'chat:%' AND c.archived_at IS NULL
+        WHERE c.agent_id = @agent_id AND c.channel_key LIKE 'chat:%' AND c.execution_scope = '' AND c.archived_at IS NULL
             AND c.forked_from IS NULL
             AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message')
         ORDER BY c.created_at DESC, c.id DESC LIMIT 1
@@ -92,8 +92,8 @@ RETURNING *;
 -- name: CreateFork :one
 -- A fork is a new Chat with the settings and the parent of its source. execution_id is NULL when
 -- the fork starts empty, so the first message creates the native conversation.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, parent_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, parent_id, created_at, execution_scope, scope_context)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ArchiveChat :exec
@@ -222,6 +222,7 @@ SELECT
     c.archived_at,
     c.parent_id,
     c.execution_id,
+    c.execution_scope,
     c.forked_from,
     f.title AS forked_from_title,
     f.channel_key AS forked_from_key,
@@ -327,6 +328,7 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE
     c.agent_id = @agent_id
     AND c.channel_key NOT LIKE 'dream:%' AND c.parent_id IS NULL
+    AND c.execution_scope = ''
     AND s.kind = 'message'
     AND s.status != 'pending'
     AND (s.settled_at > @after_settled_at OR (s.settled_at = @after_settled_at AND s.id > @after_id))
@@ -425,10 +427,10 @@ UPDATE submissions SET admitted_at = ? WHERE id = ? AND admitted_at IS NULL;
 UPDATE conversations SET abort_pending = 1 WHERE id = ? AND execution_id IS NOT NULL;
 
 -- name: FinishExecutionAbort :exec
-UPDATE conversations SET abort_pending = 0 WHERE agent_id = ? AND execution_id = ?;
+UPDATE conversations SET abort_pending = 0 WHERE agent_id = ? AND execution_scope = ? AND execution_id = ?;
 
 -- name: ListPendingExecutionAborts :many
-SELECT id, agent_id, execution_id FROM conversations WHERE abort_pending = 1;
+SELECT id, agent_id, execution_id, execution_scope FROM conversations WHERE abort_pending = 1;
 
 -- name: SetConversationCwd :exec
 UPDATE conversations SET cwd = ? WHERE id = ? AND agent_id = ?;

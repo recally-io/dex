@@ -23,10 +23,13 @@ import (
 // Text is opaque, platform-rendered content from the same Bot's Parts. It can
 // contain HTML, Markdown, or card markup and is not universal plain text.
 // Manager stores parts as JSON and passes them back to that Bot unchanged.
+// File and Text are the shared variants. Group and Buttons come only from
+// Telegram planning; another adapter decides itself whether it accepts them.
 type Part struct {
-	Text  string `json:"text,omitempty"`
-	File  *File  `json:"file,omitempty"`
-	Group []File `json:"group,omitempty"`
+	Buttons []Button `json:"buttons,omitempty"`
+	Text    string   `json:"text,omitempty"`
+	File    *File    `json:"file,omitempty"`
+	Group   []File   `json:"group,omitempty"`
 }
 
 // File identifies a temporary outbox snapshot, not an artifact entry.
@@ -67,7 +70,12 @@ func (m *Manager) QueueFile(ctx context.Context, caller engine.TaskContext, name
 	if caller.AgentID != m.agentID || caller.Key == "" {
 		return false, errors.New("invalid file delivery caller")
 	}
-	conv, err := m.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: m.agentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
+	if caller.Scope != "" {
+		if err := m.chats.AuthorizeGroup(ctx, caller); err != nil {
+			return false, err
+		}
+	}
+	conv, err := m.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: m.agentID, ExecutionScope: caller.Scope, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
 	if err != nil {
 		return false, err
 	}
@@ -95,7 +103,7 @@ func (m *Manager) QueueFile(ctx context.Context, caller engine.TaskContext, name
 		return false, err
 	}
 	n, err := m.q.QueueChannelReplyFile(ctx, sqlc.QueueChannelReplyFileParams{
-		OperationKey: caller.Key, SubmissionID: source.ID, AgentID: m.agentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true},
+		OperationKey: caller.Key, SubmissionID: source.ID, AgentID: m.agentID, ExecutionScope: caller.Scope, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true},
 		Name: name, MimeType: http.DetectContentType(body), Body: body,
 	})
 	if err != nil {
@@ -137,6 +145,33 @@ func (m *Manager) replyParts(ctx context.Context, bot Bot, r sqlc.ListChannelRep
 		}
 		parts = group.GroupParts(parts)
 	}
+	if strings.HasPrefix(r.Origin, "telegram:") {
+		question, err := m.q.GetQuestionBySource(ctx, r.ID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		if err == nil {
+			var identity chat.ChannelContext
+			if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
+				return nil, err
+			}
+			target, err := m.chats.ChannelConversation(ctx, m.agentID, r.Origin, identity)
+			if err != nil {
+				if errors.Is(err, chat.ErrGroupUnauthorized) {
+					return parts, nil
+				}
+				return nil, err
+			}
+			actions, err := questionActions(question)
+			if err != nil {
+				return nil, err
+			}
+			parts, err = m.addButtons(ctx, parts, r.ID, r.Origin, identity, target, actions)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	encoded, err := json.Marshal(parts)
 	if err != nil {
 		return nil, err
@@ -157,6 +192,9 @@ func (m *Manager) authorizedReply(ctx context.Context, platform string, r sqlc.L
 	}
 	if platform != "telegram" {
 		return true, nil
+	}
+	if strings.HasPrefix(current.Origin, "telegram:-") {
+		return m.chats.GroupReplyAllowed(ctx, m.agentID, current.ID)
 	}
 	cfg, err := m.q.GetTelegramSettings(ctx, m.agentID)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -22,10 +22,10 @@ import (
 func (m *Manager) telegramCaller(ctx context.Context, caller engine.TaskContext) (sqlc.Submission, chat.ChannelContext, error) {
 	var empty sqlc.Submission
 	var channelContext chat.ChannelContext
-	if caller.AgentID != m.agentID || caller.Key == "" {
+	if caller.AgentID != m.agentID || caller.Key == "" || caller.Scope != "" {
 		return empty, channelContext, errors.New("invalid Telegram tool caller")
 	}
-	conversation, err := m.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: m.agentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
+	conversation, err := m.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: m.agentID, ExecutionScope: caller.Scope, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
 	if err != nil {
 		return empty, channelContext, err
 	}

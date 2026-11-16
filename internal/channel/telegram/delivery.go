@@ -28,18 +28,28 @@ func (b *Bot) Parts(reply chat.Reply) []channel.Part {
 	return channel.TextParts(parts)
 }
 
-func peerID(key string) (int64, error) {
-	id, ok := strings.CutPrefix(key, channelPrefix)
-	chatID, err := strconv.ParseInt(id, 10, 64)
-	if !ok || err != nil || chatID <= 0 {
-		return 0, fmt.Errorf("%w: invalid Telegram private destination", channel.ErrPermanent)
+func parsePeer(key string) (int64, int64, error) {
+	remote, ok := strings.CutPrefix(key, channelPrefix)
+	chat, topic, thread := strings.Cut(remote, ":")
+	chatID, err := strconv.ParseInt(chat, 10, 64)
+	if !ok || err != nil || chatID == 0 || strconv.FormatInt(chatID, 10) != chat {
+		return 0, 0, fmt.Errorf("%w: invalid Telegram destination", channel.ErrPermanent)
 	}
-	return chatID, nil
+	var topicID int64
+	if thread {
+		topicID, err = strconv.ParseInt(topic, 10, 64)
+		if chatID > 0 || err != nil || topicID <= 0 || strconv.FormatInt(topicID, 10) != topic {
+			return 0, 0, fmt.Errorf("%w: invalid Telegram topic", channel.ErrPermanent)
+		}
+	}
+	return chatID, topicID, nil
 }
 
+func peerID(key string) (int64, error) { chatID, _, err := parsePeer(key); return chatID, err }
+
 // sendText replaces its preview and confirms one final part. The caller stores progress.
-func (b *Bot) sendText(ctx context.Context, key, deliveryID string, index int, part string) (string, error) {
-	chatID, err := peerID(key)
+func (b *Bot) sendText(ctx context.Context, key, deliveryID string, index int, part string, buttons []channel.Button) (string, error) {
+	chatID, topicID, err := parsePeer(key)
 	if err != nil {
 		return "", err
 	}
@@ -49,6 +59,12 @@ func (b *Bot) sendText(ctx context.Context, key, deliveryID string, index int, p
 	}
 	method := "sendMessage"
 	params := map[string]any{"chat_id": chatID, "text": part, "parse_mode": "HTML"}
+	if len(buttons) > 0 {
+		params["reply_markup"] = b.keyboard(buttons)
+	}
+	if topicID > 0 {
+		params["message_thread_id"] = topicID
+	}
 	if previewID != 0 {
 		method = "editMessageText"
 		params["message_id"] = previewID

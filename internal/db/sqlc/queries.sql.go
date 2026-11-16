@@ -345,23 +345,25 @@ func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error 
 }
 
 const createFork = `-- name: CreateFork :one
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, parent_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, parent_id, created_at, execution_scope, scope_context)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context
 `
 
 type CreateForkParams struct {
-	AgentID       string        `json:"agent_id"`
-	ChannelKey    string        `json:"channel_key"`
-	Title         string        `json:"title"`
-	ModelProvider string        `json:"model_provider"`
-	ModelID       string        `json:"model_id"`
-	ThinkingLevel string        `json:"thinking_level"`
-	Cwd           string        `json:"cwd"`
-	ExecutionID   sql.NullInt64 `json:"execution_id"`
-	ForkedFrom    sql.NullInt64 `json:"forked_from"`
-	ParentID      sql.NullInt64 `json:"parent_id"`
-	CreatedAt     int64         `json:"created_at"`
+	AgentID        string        `json:"agent_id"`
+	ChannelKey     string        `json:"channel_key"`
+	Title          string        `json:"title"`
+	ModelProvider  string        `json:"model_provider"`
+	ModelID        string        `json:"model_id"`
+	ThinkingLevel  string        `json:"thinking_level"`
+	Cwd            string        `json:"cwd"`
+	ExecutionID    sql.NullInt64 `json:"execution_id"`
+	ForkedFrom     sql.NullInt64 `json:"forked_from"`
+	ParentID       sql.NullInt64 `json:"parent_id"`
+	CreatedAt      int64         `json:"created_at"`
+	ExecutionScope string        `json:"execution_scope"`
+	ScopeContext   string        `json:"scope_context"`
 }
 
 // A fork is a new Chat with the settings and the parent of its source. execution_id is NULL when
@@ -379,6 +381,8 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 		arg.ForkedFrom,
 		arg.ParentID,
 		arg.CreatedAt,
+		arg.ExecutionScope,
+		arg.ScopeContext,
 	)
 	var i Conversation
 	err := row.Scan(
@@ -396,6 +400,8 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 		&i.Cwd,
 		&i.ForkedFrom,
 		&i.ParentID,
+		&i.ExecutionScope,
+		&i.ScopeContext,
 	)
 	return i, err
 }
@@ -506,20 +512,22 @@ func (q *Queries) DreamBoundary(ctx context.Context, agentID string) (DreamBound
 }
 
 const ensureConversation = `-- name: EnsureConversation :one
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at, execution_scope, scope_context)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, coalesce(nullif(CAST(? AS TEXT), ''), '{}'))
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context
 `
 
 type EnsureConversationParams struct {
-	AgentID       string `json:"agent_id"`
-	ChannelKey    string `json:"channel_key"`
-	Title         string `json:"title"`
-	ModelProvider string `json:"model_provider"`
-	ModelID       string `json:"model_id"`
-	ThinkingLevel string `json:"thinking_level"`
-	CreatedAt     int64  `json:"created_at"`
+	AgentID        string `json:"agent_id"`
+	ChannelKey     string `json:"channel_key"`
+	Title          string `json:"title"`
+	ModelProvider  string `json:"model_provider"`
+	ModelID        string `json:"model_id"`
+	ThinkingLevel  string `json:"thinking_level"`
+	CreatedAt      int64  `json:"created_at"`
+	ExecutionScope string `json:"execution_scope"`
+	ScopeContext   string `json:"scope_context"`
 }
 
 // The title and the settings are set only when the conversation is created.
@@ -532,6 +540,8 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		arg.ModelID,
 		arg.ThinkingLevel,
 		arg.CreatedAt,
+		arg.ExecutionScope,
+		arg.ScopeContext,
 	)
 	var i Conversation
 	err := row.Scan(
@@ -549,6 +559,8 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		&i.Cwd,
 		&i.ForkedFrom,
 		&i.ParentID,
+		&i.ExecutionScope,
+		&i.ScopeContext,
 	)
 	return i, err
 }
@@ -559,7 +571,7 @@ VALUES (
     ?1,
     coalesce((
         SELECT c.channel_key FROM conversations c
-        WHERE c.agent_id = ?1 AND c.channel_key LIKE 'chat:%' AND c.archived_at IS NULL
+        WHERE c.agent_id = ?1 AND c.channel_key LIKE 'chat:%' AND c.execution_scope = '' AND c.archived_at IS NULL
             AND c.forked_from IS NULL
             AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message')
         ORDER BY c.created_at DESC, c.id DESC LIMIT 1
@@ -567,7 +579,7 @@ VALUES (
     '', ?3
 )
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context
 `
 
 type EnsureEmptyChatParams struct {
@@ -595,6 +607,8 @@ func (q *Queries) EnsureEmptyChat(ctx context.Context, arg EnsureEmptyChatParams
 		&i.Cwd,
 		&i.ForkedFrom,
 		&i.ParentID,
+		&i.ExecutionScope,
+		&i.ScopeContext,
 	)
 	return i, err
 }
@@ -633,16 +647,17 @@ func (q *Queries) FinalizeAutomationRun(ctx context.Context, arg FinalizeAutomat
 }
 
 const finishExecutionAbort = `-- name: FinishExecutionAbort :exec
-UPDATE conversations SET abort_pending = 0 WHERE agent_id = ? AND execution_id = ?
+UPDATE conversations SET abort_pending = 0 WHERE agent_id = ? AND execution_scope = ? AND execution_id = ?
 `
 
 type FinishExecutionAbortParams struct {
-	AgentID     string        `json:"agent_id"`
-	ExecutionID sql.NullInt64 `json:"execution_id"`
+	AgentID        string        `json:"agent_id"`
+	ExecutionScope string        `json:"execution_scope"`
+	ExecutionID    sql.NullInt64 `json:"execution_id"`
 }
 
 func (q *Queries) FinishExecutionAbort(ctx context.Context, arg FinishExecutionAbortParams) error {
-	_, err := q.db.ExecContext(ctx, finishExecutionAbort, arg.AgentID, arg.ExecutionID)
+	_, err := q.db.ExecContext(ctx, finishExecutionAbort, arg.AgentID, arg.ExecutionScope, arg.ExecutionID)
 	return err
 }
 
@@ -748,6 +763,7 @@ SELECT
     c.archived_at,
     c.parent_id,
     c.execution_id,
+    c.execution_scope,
     c.forked_from,
     f.title AS forked_from_title,
     f.channel_key AS forked_from_key,
@@ -785,6 +801,7 @@ type GetChatRow struct {
 	ArchivedAt      sql.NullInt64  `json:"archived_at"`
 	ParentID        sql.NullInt64  `json:"parent_id"`
 	ExecutionID     sql.NullInt64  `json:"execution_id"`
+	ExecutionScope  string         `json:"execution_scope"`
 	ForkedFrom      sql.NullInt64  `json:"forked_from"`
 	ForkedFromTitle sql.NullString `json:"forked_from_title"`
 	ForkedFromKey   sql.NullString `json:"forked_from_key"`
@@ -809,6 +826,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 		&i.ArchivedAt,
 		&i.ParentID,
 		&i.ExecutionID,
+		&i.ExecutionScope,
 		&i.ForkedFrom,
 		&i.ForkedFromTitle,
 		&i.ForkedFromKey,
@@ -819,7 +837,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id FROM conversations WHERE id = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context FROM conversations WHERE id = ?
 `
 
 func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
@@ -840,12 +858,14 @@ func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, 
 		&i.Cwd,
 		&i.ForkedFrom,
 		&i.ParentID,
+		&i.ExecutionScope,
+		&i.ScopeContext,
 	)
 	return i, err
 }
 
 const getConversationByKey = `-- name: GetConversationByKey :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id FROM conversations WHERE agent_id = ? AND channel_key = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context FROM conversations WHERE agent_id = ? AND channel_key = ?
 `
 
 type GetConversationByKeyParams struct {
@@ -871,6 +891,8 @@ func (q *Queries) GetConversationByKey(ctx context.Context, arg GetConversationB
 		&i.Cwd,
 		&i.ForkedFrom,
 		&i.ParentID,
+		&i.ExecutionScope,
+		&i.ScopeContext,
 	)
 	return i, err
 }
@@ -1366,6 +1388,7 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE
     c.agent_id = ?1
     AND c.channel_key NOT LIKE 'dream:%' AND c.parent_id IS NULL
+    AND c.execution_scope = ''
     AND s.kind = 'message'
     AND s.status != 'pending'
     AND (s.settled_at > ?2 OR (s.settled_at = ?2 AND s.id > ?3))
@@ -1523,13 +1546,14 @@ func (q *Queries) ListOpenSubmissions(ctx context.Context, conversationID int64)
 }
 
 const listPendingExecutionAborts = `-- name: ListPendingExecutionAborts :many
-SELECT id, agent_id, execution_id FROM conversations WHERE abort_pending = 1
+SELECT id, agent_id, execution_id, execution_scope FROM conversations WHERE abort_pending = 1
 `
 
 type ListPendingExecutionAbortsRow struct {
-	ID          int64         `json:"id"`
-	AgentID     string        `json:"agent_id"`
-	ExecutionID sql.NullInt64 `json:"execution_id"`
+	ID             int64         `json:"id"`
+	AgentID        string        `json:"agent_id"`
+	ExecutionID    sql.NullInt64 `json:"execution_id"`
+	ExecutionScope string        `json:"execution_scope"`
 }
 
 func (q *Queries) ListPendingExecutionAborts(ctx context.Context) ([]ListPendingExecutionAbortsRow, error) {
@@ -1541,7 +1565,12 @@ func (q *Queries) ListPendingExecutionAborts(ctx context.Context) ([]ListPending
 	items := []ListPendingExecutionAbortsRow{}
 	for rows.Next() {
 		var i ListPendingExecutionAbortsRow
-		if err := rows.Scan(&i.ID, &i.AgentID, &i.ExecutionID); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.ExecutionID,
+			&i.ExecutionScope,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

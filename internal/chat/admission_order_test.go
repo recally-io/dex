@@ -39,6 +39,13 @@ func startNative(t *testing.T, model string) *nativeTest {
 	}
 	var service *Service
 	agents, err := engine.New(engine.Config{DataDir: dir, Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, Tasks: engine.TaskTools{
+		AuthorizeGroup: func(ctx context.Context, c engine.TaskContext) error { return service.AuthorizeGroup(ctx, c) },
+		GroupQuestion: func(ctx context.Context, c engine.TaskContext, args engine.AskUserArgs) (engine.QuestionInfo, error) {
+			return service.ToolGroupQuestion(ctx, c, args)
+		},
+		GroupSession: func(ctx context.Context, c engine.TaskContext, args engine.GroupSessionArgs) (engine.GroupSessionResult, error) {
+			return service.ToolGroupSession(ctx, c, args)
+		},
 		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
 			return service.ToolReadDreamMessage(ctx, c, request)
 		},

@@ -24,6 +24,45 @@ func (q *Queries) ClearDiscardedTelegramAlbumMember(ctx context.Context, arg Cle
 	return err
 }
 
+const discardGroupTelegramAlbums = `-- name: DiscardGroupTelegramAlbums :exec
+UPDATE telegram_album_members SET state = 'discarded'
+WHERE agent_id = ?1 AND account_id = ?2 AND peer = ?3
+  AND (CAST(?4 AS TEXT) = '' OR sender_id = ?4)
+  AND (CAST(?5 AS INTEGER) > 0 OR coalesce(json_extract(input_json, '$.ChannelContext.topicShared'), 0) = CAST(?6 AS INTEGER))
+  AND state IN ('collecting', 'sealed')
+`
+
+type DiscardGroupTelegramAlbumsParams struct {
+	AgentID     string `json:"agent_id"`
+	AccountID   string `json:"account_id"`
+	Peer        string `json:"peer"`
+	SenderID    string `json:"sender_id"`
+	TopicID     int64  `json:"topic_id"`
+	TopicShared int64  `json:"topic_shared"`
+}
+
+func (q *Queries) DiscardGroupTelegramAlbums(ctx context.Context, arg DiscardGroupTelegramAlbumsParams) error {
+	_, err := q.db.ExecContext(ctx, discardGroupTelegramAlbums,
+		arg.AgentID,
+		arg.AccountID,
+		arg.Peer,
+		arg.SenderID,
+		arg.TopicID,
+		arg.TopicShared,
+	)
+	return err
+}
+
+const discardPrivateTelegramAlbums = `-- name: DiscardPrivateTelegramAlbums :exec
+UPDATE telegram_album_members SET state = 'discarded'
+WHERE agent_id = ? AND peer NOT LIKE 'telegram:-%' AND state IN ('collecting', 'sealed')
+`
+
+func (q *Queries) DiscardPrivateTelegramAlbums(ctx context.Context, agentID string) error {
+	_, err := q.db.ExecContext(ctx, discardPrivateTelegramAlbums, agentID)
+	return err
+}
+
 const discardTelegramAlbums = `-- name: DiscardTelegramAlbums :exec
 UPDATE telegram_album_members SET state = 'discarded'
 WHERE agent_id = ? AND state IN ('collecting', 'sealed')
@@ -31,6 +70,20 @@ WHERE agent_id = ? AND state IN ('collecting', 'sealed')
 
 func (q *Queries) DiscardTelegramAlbums(ctx context.Context, agentID string) error {
 	_, err := q.db.ExecContext(ctx, discardTelegramAlbums, agentID)
+	return err
+}
+
+const discardUnauthorizedTelegramAlbums = `-- name: DiscardUnauthorizedTelegramAlbums :exec
+UPDATE telegram_album_members SET state = 'discarded'
+WHERE telegram_album_members.agent_id = ?1 AND state IN ('collecting', 'sealed')
+ AND NOT EXISTS(SELECT 1 FROM agents a JOIN telegram_settings t ON t.agent_id = a.id
+   WHERE a.id = ?1 AND a.archived_at IS NULL
+    AND substr(t.token, 1, instr(t.token, ':') - 1) = telegram_album_members.account_id
+    AND instr(',' || replace(t.allowed_users, ' ', '') || ',', ',' || telegram_album_members.sender_id || ',') > 0)
+`
+
+func (q *Queries) DiscardUnauthorizedTelegramAlbums(ctx context.Context, agentID string) error {
+	_, err := q.db.ExecContext(ctx, discardUnauthorizedTelegramAlbums, agentID)
 	return err
 }
 
@@ -77,18 +130,44 @@ func (q *Queries) HasEarlierTelegramAlbumBatch(ctx context.Context, arg HasEarli
 	return exists, err
 }
 
+const hasTelegramAlbumGroup = `-- name: HasTelegramAlbumGroup :one
+SELECT EXISTS(SELECT 1 FROM telegram_album_members WHERE agent_id = ? AND group_key = ? AND state <> 'discarded')
+`
+
+type HasTelegramAlbumGroupParams struct {
+	AgentID  string `json:"agent_id"`
+	GroupKey string `json:"group_key"`
+}
+
+func (q *Queries) HasTelegramAlbumGroup(ctx context.Context, arg HasTelegramAlbumGroupParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasTelegramAlbumGroup, arg.AgentID, arg.GroupKey)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const isTelegramAlbumSealed = `-- name: IsTelegramAlbumSealed :one
 SELECT EXISTS(SELECT 1 FROM telegram_album_members
-WHERE agent_id = ?1 AND batch_source = ?2 AND state = 'sealed')
+WHERE agent_id = ?1 AND batch_source = ?2 AND state = 'sealed'
+ AND peer = ?3 AND account_id = ?4 AND sender_id = ?5)
 `
 
 type IsTelegramAlbumSealedParams struct {
 	AgentID     string `json:"agent_id"`
 	BatchSource string `json:"batch_source"`
+	Peer        string `json:"peer"`
+	AccountID   string `json:"account_id"`
+	SenderID    string `json:"sender_id"`
 }
 
 func (q *Queries) IsTelegramAlbumSealed(ctx context.Context, arg IsTelegramAlbumSealedParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, isTelegramAlbumSealed, arg.AgentID, arg.BatchSource)
+	row := q.db.QueryRowContext(ctx, isTelegramAlbumSealed,
+		arg.AgentID,
+		arg.BatchSource,
+		arg.Peer,
+		arg.AccountID,
+		arg.SenderID,
+	)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err

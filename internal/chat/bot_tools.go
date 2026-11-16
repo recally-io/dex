@@ -28,7 +28,7 @@ const archiveAction = "archive"
 // UserOrigin reports whether an input origin is a person: the web UI or a paired channel peer.
 // It is an allow-list. Task, automation, dream, and unknown inputs are not people.
 func UserOrigin(origin string) bool {
-	return origin == "web" || strings.HasPrefix(origin, "telegram:") || strings.HasPrefix(origin, "feishu:") || strings.HasPrefix(origin, "wechat:")
+	return origin == "web" || strings.HasPrefix(origin, "telegram:") && positiveTelegramID(strings.TrimPrefix(origin, "telegram:")) || strings.HasPrefix(origin, "feishu:") || strings.HasPrefix(origin, "wechat:")
 }
 
 // questionAction is the action that control runs when the owner approves a question.
@@ -125,7 +125,10 @@ func (s *Service) botArchived(agentID string) {
 // Main, a Chat, or an automation session. Changing a bot also needs a person's input in the conversation: a task result, an
 // automation run, or a dream cannot change a bot, as with routine tools.
 func (s *Service) ToolBotCaller(ctx context.Context, r engine.TaskContext, change bool) error {
-	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
+	if r.Scope != "" {
+		return ErrBotCaller
+	}
+	conv, err := s.toolCaller(ctx, r)
 	if err != nil {
 		return err
 	}

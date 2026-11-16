@@ -26,7 +26,7 @@ func (s *Service) RecoverSessions(ctx context.Context) error {
 	}
 	refs := make([]engine.Ref, 0, len(aborts))
 	for _, c := range aborts {
-		refs = append(refs, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64})
+		refs = append(refs, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope})
 	}
 	return s.engine.Recover(ctx, refs)
 }
@@ -42,7 +42,7 @@ type recoveredInput struct {
 // it sits in the native queue or only in the control database, and the result of the interrupted
 // turn counts them.
 func (s *Service) recoverChild(ctx context.Context, c sqlc.ListRecoveryChildrenRow) error {
-	ref := engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}
+	ref := engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope}
 	pending, err := s.q.ListChildPending(ctx, c.ID)
 	if err != nil {
 		return err

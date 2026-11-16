@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/MichaelKinsy/PiG/ai"
@@ -11,7 +12,7 @@ import (
 
 func fakeProvider() *ai.ModelsProvider {
 	defs := []ai.FauxModelDefinition{}
-	for _, id := range []string{"echo", "context", "shout", "bash", "memory", "section", "tool", "spawn", "think", "mixed", "files"} {
+	for _, id := range []string{"echo", "context", "prompt", "direct", "direct-content", "shout", "bash", "memory", "section", "tool", "spawn", "think", "mixed", "files"} {
 		defs = append(defs, ai.FauxModelDefinition{ID: id, Reasoning: id == "think"})
 	}
 	faux := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "faux", Models: defs, TokensPerSecond: 200})
@@ -24,6 +25,22 @@ func fakeProvider() *ai.ModelsProvider {
 			}
 		}
 		switch m.ID {
+		case "prompt":
+			systems := []ai.Message{}
+			for _, message := range t.Messages() {
+				if message.MessageRole() == "system" {
+					systems = append(systems, message)
+				}
+			}
+			body, err := json.Marshal(systems)
+			if err != nil {
+				return ai.AssistantMessage{}, err
+			}
+			pattern, err := regexp.Compile(text)
+			if err != nil {
+				return ai.AssistantMessage{}, err
+			}
+			return fakeText(strings.Join(pattern.FindAllString(string(body), -1), ",")), nil
 		case "context":
 			users := []ai.UserContent{}
 			for _, message := range t.Messages() {
@@ -48,17 +65,21 @@ func fakeProvider() *ai.ModelsProvider {
 				return fakeText("bash: " + strings.TrimSpace(ai.ContentText(result.Content, ""))), nil
 			}
 			return fakeCall("bash", map[string]any{"command": fakeBashCommand(text)}), nil
-		case "tool":
+		case "tool", "direct", "direct-content":
 			name, argsText, hasArgs := strings.Cut(text, " ")
 			if result, ok := last.(ai.ToolResultMessage); ok && result.ToolName == name {
 				prefix := "tool: "
 				if result.IsError {
 					prefix = "tool error: "
 				}
+				if m.ID == "direct-content" {
+					body, err := json.Marshal(result.Content)
+					return fakeText(prefix + string(body)), err
+				}
 				return fakeText(prefix + strings.TrimSpace(ai.ContentText(result.Content, ""))), nil
 			}
 			_, afterResult := last.(ai.ToolResultMessage)
-			if !afterResult && !fakeExposed(t, name) {
+			if m.ID == "tool" && !afterResult && !fakeExposed(t, name) {
 				return fakeCall("tool_search", map[string]any{"query": name}), nil
 			}
 			args := map[string]any{}

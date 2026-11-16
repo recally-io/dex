@@ -27,7 +27,7 @@ func (h *Hub) childState(ctx context.Context, parentID, chatID int64, agentID st
 		return childEvent{}, chat.ErrNotFound
 	}
 	if running == nil && c.ExecutionID != 0 {
-		if run, available := h.agents.ChildRunning(engine.Ref{AgentID: agentID, ID: c.ExecutionID}); available {
+		if run, available := h.agents.ChildRunning(engine.Ref{AgentID: agentID, ID: c.ExecutionID, Scope: c.ExecutionScope}); available {
 			running = &run
 		}
 	}

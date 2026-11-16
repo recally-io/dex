@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,9 +34,11 @@ type agentOpening struct {
 }
 
 type agentResources struct {
-	harness harness.Harness
-	store   durable.Storage
-	loaded  *loadedExtensions
+	harness        harness.Harness
+	store          durable.Storage
+	loaded         *loadedExtensions
+	groupRoot      *os.Root
+	groupExtension *durable.Extension
 }
 
 type activityRecord struct {
@@ -151,22 +154,34 @@ func (a *Agents) Recover(ctx context.Context, refs []Ref) error {
 		return errors.New("recovery must precede opening agents")
 	}
 	for _, ref := range refs {
+		if ref.Scope != "" {
+			if err := validateGroupScope(ref.Scope); err != nil {
+				return err
+			}
+		}
 		if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 {
 			return fmt.Errorf("%w: recovery reference", ErrInvalidInput)
 		}
 	}
 	for _, ref := range refs {
-		if a.recovering[ref.AgentID] == nil {
-			a.recovering[ref.AgentID] = map[durable.ConversationId]bool{}
+		key := resourceKey(ref)
+		if a.recovering[key] == nil {
+			a.recovering[key] = map[durable.ConversationId]bool{}
 		}
-		a.recovering[ref.AgentID][durable.ConversationId(ref.ID)] = true
+		a.recovering[key][durable.ConversationId(ref.ID)] = true
 	}
 	return nil
 }
 
-func (a *Agents) harness(ctx context.Context, agentID string) (harness.Harness, error) {
+func (a *Agents) harness(ctx context.Context, agentID string, scopes ...string) (harness.Harness, error) {
 	if !agentIDPattern.MatchString(agentID) {
 		return nil, fmt.Errorf("%w: agent ID", ErrInvalidInput)
+	}
+	if len(scopes) > 0 && scopes[0] != "" {
+		if err := validateGroupScope(scopes[0]); err != nil {
+			return nil, err
+		}
+		agentID = resourceKey(Ref{AgentID: agentID, Scope: scopes[0]})
 	}
 	for {
 		if err := ctx.Err(); err != nil {
@@ -228,7 +243,7 @@ func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *ag
 	defer func() {
 		if resultErr != nil {
 			cleanup := context.WithoutCancel(ctx)
-			resultErr = errors.Join(resultErr, resource.harness.Close(cleanup), resource.loaded.Close(cleanup))
+			resultErr = errors.Join(resultErr, resource.harness.Close(cleanup), resource.closeExtras(cleanup))
 		}
 	}()
 	isolated := map[durable.ConversationId]bool{}
@@ -264,6 +279,9 @@ func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *ag
 }
 
 func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, resultErr error) {
+	if owner, scope, group := strings.Cut(agentID, "/"); group {
+		return a.openGroup(ctx, Ref{AgentID: owner, Scope: scope})
+	}
 	if err := a.Catalog.DiscoveryReady(); err != nil {
 		return nil, err
 	}
@@ -373,7 +391,7 @@ func (a *Agents) conversation(ctx context.Context, ref Ref) (harness.Conversatio
 	if ref.ID <= 0 {
 		return nil, fmt.Errorf("%w: conversation ID", ErrInvalidInput)
 	}
-	h, err := a.harness(ctx, ref.AgentID)
+	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
 	if err != nil {
 		return nil, err
 	}
@@ -410,16 +428,16 @@ func (a *Agents) Create(ctx context.Context, agentID string, options Options) (R
 		return Ref{}, err
 	}
 	defer a.end()
-	h, err := a.harness(ctx, agentID)
+	h, err := a.harness(ctx, agentID, options.Scope)
 	if err != nil {
 		return Ref{}, err
 	}
-	change := a.agentChange(agentID, options)
+	change := a.changeFor(Ref{AgentID: agentID, Scope: options.Scope}, options)
 	conversation, err := h.CreateConversation(ctx, harness.ConversationCreateOptions{Ownership: durable.ConversationOwnership{Kind: durable.ConversationOwnerless}, Agent: &change})
 	if err != nil {
 		return Ref{}, err
 	}
-	return Ref{AgentID: agentID, ID: int64(conversation.Id())}, nil
+	return Ref{AgentID: agentID, Scope: options.Scope, ID: int64(conversation.Id())}, nil
 }
 
 // Fork copies the committed history of ref into a new native conversation, which keeps the
@@ -486,7 +504,7 @@ func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool) 
 	if err != nil {
 		return Ref{}, false, err
 	}
-	return Ref{AgentID: ref.AgentID, ID: int64(copied.Id())}, true, nil
+	return Ref{AgentID: ref.AgentID, Scope: ref.Scope, ID: int64(copied.Id())}, true, nil
 }
 
 // finishedAnswer reports an assistant message without tool calls. A fork after a tool call would
@@ -619,7 +637,7 @@ func (a *Agents) Continue(ctx context.Context, ref Ref, requestID string, option
 		return err
 	}
 	// The user can choose another model after a model error; the continued run uses it.
-	if err := conversation.Configure(ctx, a.agentChange(ref.AgentID, options)); err != nil {
+	if err := conversation.Configure(ctx, a.changeFor(ref, options)); err != nil {
 		return err
 	}
 	_, err = conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeContinue, RequestId: &requestID})
@@ -650,10 +668,10 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID s
 		return 0, err
 	}
 	// The summary uses the conversation model, so it must be the chat's current choice.
-	if err := conversation.Configure(ctx, a.agentChange(ref.AgentID, options)); err != nil {
+	if err := conversation.Configure(ctx, a.changeFor(ref, options)); err != nil {
 		return 0, err
 	}
-	h, err := a.harness(ctx, ref.AgentID)
+	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
 	if err != nil {
 		return 0, err
 	}
@@ -770,6 +788,11 @@ func waitSubmission(ctx context.Context, h harness.Harness, id durable.Submissio
 }
 
 func (a *Agents) Abort(ctx context.Context, ref Ref) error {
+	if ref.Scope != "" {
+		if err := validateGroupScope(ref.Scope); err != nil {
+			return err
+		}
+	}
 	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 {
 		return fmt.Errorf("%w: cancellation reference", ErrInvalidInput)
 	}
@@ -781,12 +804,13 @@ func (a *Agents) Abort(ctx context.Context, ref Ref) error {
 	// Stop may cancel open work while maintenance blocks new admission.
 	a.operations.Add(1)
 	a.active++
-	if a.resources[ref.AgentID] == nil || a.opening[ref.AgentID] != nil {
-		if a.recovering[ref.AgentID] == nil {
-			a.recovering[ref.AgentID] = map[durable.ConversationId]bool{}
+	key := resourceKey(ref)
+	if a.resources[key] == nil || a.opening[key] != nil {
+		if a.recovering[key] == nil {
+			a.recovering[key] = map[durable.ConversationId]bool{}
 		}
 		// Opening must isolate stored work before Harness.Resume can start it.
-		a.recovering[ref.AgentID][durable.ConversationId(ref.ID)] = true
+		a.recovering[key][durable.ConversationId(ref.ID)] = true
 	}
 	a.mu.Unlock()
 	defer a.end()
@@ -826,7 +850,7 @@ func (a *Agents) dropQueuedSummaries(ctx context.Context, ref Ref, conversation 
 	if err != nil {
 		return err
 	}
-	h, err := a.harness(ctx, ref.AgentID)
+	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
 	if err != nil {
 		return err
 	}
@@ -962,7 +986,7 @@ func (a *Agents) close(ctx context.Context) {
 	// Harnesses must stop starting model streams before Models.Close waits for them.
 	errs = append(errs, a.Catalog.Close())
 	for _, resource := range resources {
-		errs = append(errs, resource.loaded.Close(ctx))
+		errs = append(errs, resource.closeExtras(ctx))
 	}
 	a.closeErr = errors.Join(errs...)
 	close(a.closeDone)
@@ -989,6 +1013,9 @@ func (a *Agents) StaleExtensions() map[string]string {
 	a.mu.Lock()
 	loaded := map[string]string{}
 	for id, resource := range a.resources {
+		if resource.loaded == nil {
+			continue
+		}
 		loaded[id] = resource.loaded.stamp
 	}
 	a.mu.Unlock()
