@@ -155,8 +155,9 @@ func renderNode(n ast.Node, source []byte, out *[]fragment, enhanced bool) {
 	case *ast.Image:
 		if enhanced {
 			u, err := url.Parse(string(n.Destination))
-			if err == nil && (u.Scheme == "https" || u.Scheme == "http") && len(n.Destination) <= 1024 {
-				open, end = `<a href="`+html.EscapeString(string(n.Destination))+`">`, "</a>"
+			escaped := html.EscapeString(string(n.Destination))
+			if err == nil && (u.Scheme == "https" || u.Scheme == "http") && len(escaped) <= 1024 {
+				open, end = `<a href="`+escaped+`">`, "</a>"
 			}
 			if n.FirstChild() == nil {
 				*out = append(*out, fragment{text: "image: " + string(n.Destination)})
@@ -165,8 +166,14 @@ func renderNode(n ast.Node, source []byte, out *[]fragment, enhanced bool) {
 		}
 	case *ast.Link:
 		u, err := url.Parse(string(n.Destination))
-		if err == nil && (u.Scheme == "https" || u.Scheme == "http" || u.Scheme == "tg" || u.Scheme == "mailto") && len(n.Destination) <= 1024 {
-			open, end = `<a href="`+html.EscapeString(string(n.Destination))+`">`, "</a>"
+		escaped := html.EscapeString(string(n.Destination))
+		// An attribute cannot be split. Keep the old budget for legacy cursors.
+		size := len(n.Destination)
+		if enhanced {
+			size = len(escaped)
+		}
+		if err == nil && (u.Scheme == "https" || u.Scheme == "http" || u.Scheme == "tg" || u.Scheme == "mailto") && size <= 1024 {
+			open, end = `<a href="`+escaped+`">`, "</a>"
 		}
 	case *ast.AutoLink:
 		*out = append(*out, fragment{text: string(n.Label(source))})

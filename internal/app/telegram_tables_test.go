@@ -48,6 +48,15 @@ func TestUserReadsTelegramTableAsLabeledRows(t *testing.T) {
 	if !strings.Contains(got.Text, "<a href=\"https://example.com\">文档</a>\nColumn 2") {
 		t.Fatalf("header-only table lost: %+v", got)
 	}
+	// Escaped URL attributes must not exceed the indivisible tag budget.
+	f.message(4, 42, 42, "URL budget:\n\n| Link |\n| --- |\n| [large URL](https://example.com/?"+strings.Repeat("&", 980)+") |")
+	got = f.next(t)
+	if !strings.Contains(got.Text, "large URL") {
+		got = f.next(t)
+	}
+	if len(utf16.Encode([]rune(got.Text))) > 4096 || !strings.Contains(got.Text, "<b>Link</b>: large URL") {
+		t.Fatalf("oversized URL must keep readable text without a link: units=%d", len(utf16.Encode([]rune(got.Text))))
+	}
 }
 
 func TestUserReceivesCompleteLongTelegramTable(t *testing.T) {

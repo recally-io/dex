@@ -1319,7 +1319,9 @@ so dex needs no public URL.
   with one labeled field per line. Each field keeps its header, safe links and
   inline formatting. Empty headers use `Column N`; empty cells use `—`.
   Header-only tables keep their headers. This uses ordinary message HTML,
-  not the separate Rich Messages or Widgets APIs.
+  not the separate Rich Messages or Widgets APIs. Link and image URLs above
+  1024 bytes after HTML escaping keep their text without a link. Legacy reply
+  cursors keep the original URL budget.
   The sender splits at block boundaries and closes code tags in each part.
   Each part has at most 4096
   UTF-16 code units, including markup. A rejected HTML part retries as plain
