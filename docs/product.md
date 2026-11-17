@@ -321,11 +321,15 @@ time. Cancelled execution stays cancelled. A dex restart does not prove that old
 tool processes ended. Before another execution, the main agent must check prior
 artifacts and side effects. In the built-in `local` environment, tools run on
 the host without a sandbox. Bots bound to a `pi-env` SSH target or an `e2b`
-cloud sandbox execute file, shell, and background tools remotely with explicit
+sandbox execute file, shell, and background tools remotely with explicit
 `.env` variables only, while `memory_*` tools stay on `<data dir>/memory` on the
-control host. For `e2b` bots, sandboxes auto-pause when idle, resume
-automatically on the next message, and support stateless **Reset sandbox** in
-Bot settings. The SDK
+control host. The Environment settings page discovers hosts from `~/.ssh/config`
+(without reading private keys), tests connections before saving, and clears
+changed SSH host keys on confirmation. For `e2b` bots, `e2b` supports both E2B
+Cloud and custom E2B-compatible endpoints (such as self-hosted clouds,
+Kubernetes gateways, or local Docker and VM adapters) with optional API keys and
+configurable idle `autoPause`, automatic resume or recreation, and stateless
+**Reset sandbox** in Bot settings. The SDK
 requests cancellation of local commands and MCP calls. It does not guarantee
 that detached processes or remote jobs stop. A completed MCP call can return
 its report. CLI tools must be logged in and run without user input. Long work

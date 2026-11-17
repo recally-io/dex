@@ -971,8 +971,19 @@ cancellation. It does not prove that the remote job stopped. Before another
 turn, the parent must check artifacts and prior actions.
 
 Tools run through [`internal/execenv`](../../internal/execenv) using the
-built-in `local` provider, a remote `pi-env` SSH connection, or an `e2b` cloud
-sandbox ([ADR 0022](decisions/0022-execution-environments.md)). Memory tools
+built-in `local` provider, a remote `pi-env` SSH connection, or an `e2b`
+sandbox endpoint ([ADR 0022](decisions/0022-execution-environments.md)).
+`GET /api/settings/environments/ssh-config` parses `~/.ssh/config` (including
+`Include` directives) and lists private key filenames without reading key bytes.
+`POST /api/settings/environments/probe` validates and probes unsaved settings,
+using a temporary `known_hosts` file for new SSH targets. When a remote SSH host
+key rotates, probes report `hostKeyChanged`, and
+`POST /api/settings/environments/{environmentId}/forget-host-key` clears the
+saved entry. For `e2b`, each environment can select E2B Cloud or override
+`apiUrl`, `domain`, `envdUrl` (header-routed or `{sandboxId}`/`{port}`
+templates), and `autoPause`, with optional secrets on custom endpoints,
+HTTP `*.localhost` loopback dialing, `/timeout` + `GET /sandboxes/{id}` fallback
+when `/connect` is unsupported, and `uname -sm` platform detection. Memory tools
 (`memory_search`, `memory_read`, `memory_write`, `memory_edit`) stay bound to
 `<data dir>/memory/` on the control host. CLI tools must be
 logged in and run in the foreground with non-interactive options. Long work
