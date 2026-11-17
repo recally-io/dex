@@ -23,16 +23,17 @@ type TelegramDelivery struct {
 	Messages int    `json:"messages"`
 }
 type TelegramResult struct {
-	DeliveryID string             `json:"deliveryId,omitempty"`
-	Status     string             `json:"status"`
-	Text       string             `json:"text,omitempty"`
-	MessageIDs []string           `json:"messageIds,omitempty"`
-	Deliveries []TelegramDelivery `json:"deliveries,omitempty"`
+	MessageKind string             `json:"messageKind,omitempty"`
+	DeliveryID  string             `json:"deliveryId,omitempty"`
+	Status      string             `json:"status"`
+	Text        string             `json:"text,omitempty"`
+	MessageIDs  []string           `json:"messageIds,omitempty"`
+	Deliveries  []TelegramDelivery `json:"deliveries,omitempty"`
 }
 
 func telegramExtension(agentID string, call func(context.Context, TaskContext, TelegramRequest) (TelegramResult, error)) *durable.Extension {
 	return &durable.Extension{Name: "telegram", Tools: []*durable.ToolRegistration{{
-		Name: "telegram_message", Description: "For a Telegram Main input only: list this peer's confirmed bot deliveries; edit text/caption, delete, react, copy or forward a selected stored delivery back to this same peer. Edits use plain text. Speak uses explicitly configured TTS and queues native audio. Always keep its readable text in your final answer. Do not repeat a failed speech request without a new user instruction. No arbitrary peer/message IDs are accepted.",
+		Name: "telegram_message", Description: "For a Telegram Main input only: list this peer's confirmed bot deliveries; edit text/caption, delete, react, copy or forward a selected stored delivery back to this same peer. Rich text edits accept Markdown; legacy text and caption edits use plain text. Speak uses explicitly configured TTS and queues native audio. Always keep its readable text in your final answer. Do not repeat a failed speech request without a new user instruction. No arbitrary peer/message IDs are accepted.",
 		Replay: durable.ReplaySafe,
 		Parameters: map[string]any{"type": "object", "required": []string{"action"}, "additionalProperties": false, "properties": map[string]any{
 			"action":     map[string]any{"type": "string", "enum": []string{"list", "edit", "edit_caption", "delete", "react", "copy", "forward", "speak"}},

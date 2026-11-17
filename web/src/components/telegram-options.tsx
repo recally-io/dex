@@ -46,7 +46,10 @@ export function TelegramOptionsFields({
               </Select>
             )}
           </Field>
-          <Field label="Link previews">
+          <Field
+            label="Link previews (legacy text)"
+            hint="Rich Messages have no link-preview setting. This applies only to older ordinary text messages."
+          >
             {({ id }) => (
               <Select
                 id={id}

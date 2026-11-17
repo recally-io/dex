@@ -117,7 +117,7 @@ func (b *Bot) sendGroup(ctx context.Context, peer string, files []channel.File) 
 	if len(result) != len(files) {
 		return channel.Receipt{}, errors.New("telegram media group outcome unknown: incomplete message IDs")
 	}
-	receipt := channel.Receipt{}
+	receipt := channel.Receipt{Kind: "media"}
 	seen := map[int64]bool{}
 	for _, message := range result {
 		if message.ID <= 0 || seen[message.ID] {

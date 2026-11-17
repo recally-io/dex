@@ -18,18 +18,22 @@ import (
 	"github.com/recally-io/dex/internal/upload"
 )
 
-// Part is one rendered text message or one native media delivery.
-//
-// Text is opaque, platform-rendered content from the same Bot's Parts. It can
-// contain HTML, Markdown, or card markup and is not universal plain text.
-// Manager stores parts as JSON and passes them back to that Bot unchanged.
-// File and Text are the shared variants. Group and Buttons come only from
-// Telegram planning; another adapter decides itself whether it accepts them.
+// RichMessage is frozen Telegram rich HTML. Version 1 has no embedded media.
+// Old Text parts remain ordinary platform payloads and are never re-rendered.
+type RichMessage struct {
+	Version int    `json:"version"`
+	HTML    string `json:"html"`
+}
+
+// Part is one frozen platform payload. Text is opaque HTML, Markdown, or card
+// markup, not universal plain text. Rich, Group, and Buttons come from Telegram
+// planning. Manager passes the stored variant back to the same Bot unchanged.
 type Part struct {
-	Buttons []Button `json:"buttons,omitempty"`
-	Text    string   `json:"text,omitempty"`
-	File    *File    `json:"file,omitempty"`
-	Group   []File   `json:"group,omitempty"`
+	Rich    *RichMessage `json:"rich,omitempty"`
+	Buttons []Button     `json:"buttons,omitempty"`
+	Text    string       `json:"text,omitempty"`
+	File    *File        `json:"file,omitempty"`
+	Group   []File       `json:"group,omitempty"`
 }
 
 // File identifies a temporary outbox snapshot, not an artifact entry.
@@ -45,7 +49,33 @@ type File struct {
 }
 
 // Receipt contains the message IDs confirmed by a platform call.
-type Receipt struct{ MessageIDs []string }
+type Receipt struct {
+	MessageIDs []string
+	Kind       string
+}
+
+// RemoteMessage keeps the actual confirmed message kind, not its planned part index.
+// Albums and rejected parts make remote and part indexes different.
+type RemoteMessage struct {
+	ID   string `json:"id"`
+	Kind string `json:"kind,omitempty"`
+}
+
+func (r *RemoteMessage) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		return json.Unmarshal(data, &r.ID)
+	}
+	type remote RemoteMessage
+	return json.Unmarshal(data, (*remote)(r))
+}
+
+func (r RemoteMessage) MarshalJSON() ([]byte, error) {
+	if r.Kind == "" {
+		return json.Marshal(r.ID)
+	}
+	type remote RemoteMessage
+	return json.Marshal(remote(r))
+}
 
 // TextParts keeps text-only adapters on the shared part contract.
 func TextParts(texts []string) []Part {
@@ -227,11 +257,11 @@ func (m *Manager) authorizedReply(ctx context.Context, platform string, r sqlc.L
 	return false, nil
 }
 
-func (m *Manager) confirmPart(ctx context.Context, r sqlc.ListChannelRepliesRow, receipt Receipt, remotes *[]string) error {
+func (m *Manager) confirmPart(ctx context.Context, r sqlc.ListChannelRepliesRow, receipt Receipt, remotes *[]RemoteMessage) error {
 	return m.confirmDelivery(ctx, r, receipt, remotes, false)
 }
 
-func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.ListChannelRepliesRow, receipt Receipt, remotes *[]string, member bool) error {
+func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.ListChannelRepliesRow, receipt Receipt, remotes *[]RemoteMessage, member bool) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -246,7 +276,10 @@ func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.ListChannelReplies
 			return err
 		}
 	}
-	next := append(append([]string{}, (*remotes)...), receipt.MessageIDs...)
+	next := append([]RemoteMessage{}, (*remotes)...)
+	for _, id := range receipt.MessageIDs {
+		next = append(next, RemoteMessage{ID: id, Kind: receipt.Kind})
+	}
 	encoded, err := json.Marshal(next)
 	if err != nil {
 		return err

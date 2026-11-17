@@ -8,7 +8,7 @@ import (
 )
 
 // sendReplyPart confirms either the whole group or one fallback member at a time.
-func (m *Manager) sendReplyPart(ctx context.Context, platform string, bot Bot, r sqlc.ListChannelRepliesRow, index int, part Part, remotes *[]string) error {
+func (m *Manager) sendReplyPart(ctx context.Context, platform string, bot Bot, r sqlc.ListChannelRepliesRow, index int, part Part, remotes *[]RemoteMessage) error {
 	if len(part.Group) == 0 || r.ChannelGroupFallback == 0 {
 		receipt, err := m.sendPart(ctx, bot, r.Origin, r.ID, index, part)
 		if !errors.Is(err, ErrGroupRejected) {

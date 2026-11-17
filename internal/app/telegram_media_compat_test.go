@@ -34,20 +34,19 @@ func TestUserLegacyPartialTelegramReplyKeepsOriginalRendering(t *testing.T) {
 	t.Parallel()
 	// Given a confirmed first text part, as an older version stored before frozen reply payloads.
 	f := newFakeTelegram(t)
-	f.failAfter.Store(1)
+	f.failSend.Store(true)
 	data := t.TempDir()
 	d := startTelegram(t, f, data, 42)
 	f.message(1, 42, 42, strings.Repeat("a", 5000)+"\n\n~~removed~~")
-	_ = f.next(t)
 	conn := controlWriteDB(t, data)
 	eventually(t, "confirmed first part and pending remainder", func() (bool, any) {
-		n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND delivered_parts=1 AND delivered_at IS NULL")
+		n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND rendered_reply<>'' AND delivered_parts=0 AND delivered_at IS NULL")
 		return n == 1, n
 	})
 	d.stop()
-	execSQL(t, conn, "UPDATE submissions SET rendered_reply='' WHERE source_key='telegram:123:1'")
+	execSQL(t, conn, "UPDATE submissions SET rendered_reply='',delivered_parts=1,channel_remote_ids='[\"900\"]' WHERE source_key='telegram:123:1'")
 	// When the current renderer resumes, the legacy cursor still uses the original Markdown rules.
-	f.failAfter.Store(0)
+	f.failSend.Store(false)
 	startDex(t, data, f.srv.URL)
 	got := f.next(t).Text
 	if !strings.Contains(got, "~~removed~~") || strings.Contains(got, "<s>") {

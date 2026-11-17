@@ -80,11 +80,9 @@ func (m *Manager) flushNotifications(ctx context.Context, platform string, bot B
 		return err
 	}
 	for _, d := range rows {
-		parts := []string{}
+		var parts []Part
 		if d.RenderedParts == "" {
-			for _, part := range bot.Parts(chat.Reply{Status: "done", Answer: d.Body}) {
-				parts = append(parts, part.Text)
-			}
+			parts = bot.Parts(chat.Reply{Status: "done", Answer: d.Body, LegacyDelivery: d.Parts > 0})
 			data, err := json.Marshal(parts)
 			if err != nil {
 				return err
@@ -93,7 +91,12 @@ func (m *Manager) flushNotifications(ctx context.Context, platform string, bot B
 				return err
 			}
 		} else if err := json.Unmarshal([]byte(d.RenderedParts), &parts); err != nil {
-			return err
+			// Earlier notifications froze only their platform Text strings.
+			var legacy []string
+			if err := json.Unmarshal([]byte(d.RenderedParts), &legacy); err != nil {
+				return err
+			}
+			parts = TextParts(legacy)
 		}
 		for i := int(d.Parts); i < len(parts); i++ {
 			current, err := m.q.GetRoutineNotification(ctx, d.RunID)
@@ -113,7 +116,7 @@ func (m *Manager) flushNotifications(ctx context.Context, platform string, bot B
 				}
 				break
 			}
-			_, err = bot.Send(ctx, d.Peer, "routine:"+d.RunID, i, Part{Text: parts[i]})
+			_, err = bot.Send(ctx, d.Peer, "routine:"+d.RunID, i, parts[i])
 			if errors.Is(err, ErrPermanent) {
 				if err := m.q.SetRoutineNotificationStatus(ctx, sqlc.SetRoutineNotificationStatusParams{RunID: d.RunID, Status: "rejected", Reason: "platform rejected delivery"}); err != nil {
 					return err

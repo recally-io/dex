@@ -30,7 +30,7 @@ func (m *message) selectedMedia() (*media, string) {
 
 func (m *message) hasContent() bool {
 	file, _ := m.selectedMedia()
-	return m.Text != "" || m.Caption != "" || file != nil || m.Location != nil || m.Contact != nil || m.Poll != nil
+	return m.Text != "" || m.Caption != "" || len(m.Rich) > 0 || file != nil || m.Location != nil || m.Contact != nil || m.Poll != nil
 }
 
 func authorName(u *user) string {
@@ -87,7 +87,7 @@ func (m *message) contextNote() string {
 		text, name, id := "", "unknown sender", int64(0)
 		if reply := m.ReplyTo; reply != nil {
 			name, id = authorName(reply.From), reply.ID
-			text = cmp.Or(reply.Text, reply.Caption)
+			text = reply.body()
 			if text == "" {
 				if file, kind := reply.selectedMedia(); file != nil {
 					text = "[" + kind + ": " + file.Name + "]"

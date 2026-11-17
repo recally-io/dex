@@ -93,7 +93,7 @@ type Finisher interface {
 
 // Controller performs one agent-requested action on a confirmed remote message.
 type Controller interface {
-	Control(ctx context.Context, peer, remote string, args engine.TelegramRequest) (Receipt, error)
+	Control(ctx context.Context, peer string, remote RemoteMessage, args engine.TelegramRequest) (Receipt, error)
 }
 
 type runtime struct {
@@ -466,7 +466,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 		if err != nil {
 			return err
 		}
-		var remotes []string
+		var remotes []RemoteMessage
 		if err := json.Unmarshal([]byte(r.ChannelRemoteIds), &remotes); err != nil {
 			return err
 		}

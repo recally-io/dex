@@ -47,9 +47,9 @@ func TestUserQueuedTelegramMessageDoesNotTakeFirstPreview(t *testing.T) {
 	// Then the first final answer replaces the preview that showed its text.
 	preview := f.next(t)
 	if preview.ParseMode != "" || !strings.HasPrefix(answer, preview.Text) {
-		t.Fatalf("first answer has no plain preview: mode=%q text=%q", preview.ParseMode, preview.Text)
+		t.Fatalf("first answer has no rich preview: mode=%q text=%q", preview.ParseMode, preview.Text)
 	}
-	created := f.nextEvent(t, "sendMessage")
+	created := f.nextEvent(t, "sendRichMessage")
 	deadline := time.NewTimer(30 * time.Second)
 	defer deadline.Stop()
 	for {

@@ -75,7 +75,7 @@ func (m *Manager) TelegramAction(ctx context.Context, caller engine.TaskContext,
 			if target.AccountID != identity.AccountID || target.SenderID != identity.SenderID {
 				continue
 			}
-			var ids []string
+			var ids []RemoteMessage
 			if err := json.Unmarshal([]byte(row.ChannelRemoteIds), &ids); err != nil {
 				return result, err
 			}
@@ -122,6 +122,9 @@ func (m *Manager) TelegramAction(ctx context.Context, caller engine.TaskContext,
 	if args.Index < 0 || args.Index >= len(ids) {
 		return engine.TelegramResult{}, errors.New("telegram message index is outside the confirmed delivery")
 	}
+	if ids[args.Index].Kind == "rich-v1" && args.Action == "edit_caption" {
+		return engine.TelegramResult{}, errors.New("rich messages have no media caption")
+	}
 	if args.Action == "edit" || args.Action == "edit_caption" {
 		limit := 4096
 		if args.Action == "edit_caption" {
@@ -130,7 +133,7 @@ func (m *Manager) TelegramAction(ctx context.Context, caller engine.TaskContext,
 		if args.Action == "edit" && strings.TrimSpace(args.Text) == "" {
 			return engine.TelegramResult{}, errors.New("telegram text edits need nonempty text")
 		}
-		if len(utf16.Encode([]rune(args.Text))) > limit {
+		if ids[args.Index].Kind != "rich-v1" && len(utf16.Encode([]rune(args.Text))) > limit {
 			return engine.TelegramResult{}, fmt.Errorf("telegram edit text exceeds %d UTF-16 units", limit)
 		}
 	}
@@ -148,7 +151,7 @@ func (m *Manager) TelegramAction(ctx context.Context, caller engine.TaskContext,
 		return engine.TelegramResult{}, errors.New("telegram control transport is unavailable")
 	}
 	receipt, callErr := transport.Control(ctx, source.Origin, ids[args.Index], args)
-	result := engine.TelegramResult{Status: "done", MessageIDs: receipt.MessageIDs}
+	result := engine.TelegramResult{Status: "done", MessageIDs: receipt.MessageIDs, MessageKind: receipt.Kind}
 	if len(receipt.MessageIDs) > 0 {
 		result.DeliveryID = "operation:" + caller.Key
 	}
@@ -266,7 +269,7 @@ func (m *Manager) speak(ctx context.Context, caller engine.TaskContext, source s
 	return engine.TelegramResult{Status: "native audio queued", Text: text}, nil
 }
 
-func (m *Manager) telegramIDs(ctx context.Context, source sqlc.Submission, identity chat.ChannelContext, id string) ([]string, error) {
+func (m *Manager) telegramIDs(ctx context.Context, source sqlc.Submission, identity chat.ChannelContext, id string) ([]RemoteMessage, error) {
 	if key, ok := strings.CutPrefix(id, "operation:"); ok {
 		effect, err := m.q.GetTelegramEffect(ctx, key)
 		if err != nil {
@@ -288,7 +291,11 @@ func (m *Manager) telegramIDs(ctx context.Context, source sqlc.Submission, ident
 		}
 		var result engine.TelegramResult
 		err = json.Unmarshal([]byte(effect.ResultJson), &result)
-		return result.MessageIDs, err
+		messages := make([]RemoteMessage, len(result.MessageIDs))
+		for i, id := range result.MessageIDs {
+			messages[i] = RemoteMessage{ID: id, Kind: result.MessageKind}
+		}
+		return messages, err
 	}
 	target, err := m.q.GetSubmission(ctx, id)
 	if err != nil {
@@ -301,7 +308,7 @@ func (m *Manager) telegramIDs(ctx context.Context, source sqlc.Submission, ident
 	if target.ConversationID != source.ConversationID || target.Origin != source.Origin || target.ChannelRevoked != 0 || !target.DeliveredAt.Valid || targetIdentity.AccountID != identity.AccountID || targetIdentity.SenderID != identity.SenderID {
 		return nil, errors.New("telegram delivery is outside the current sender and peer")
 	}
-	var ids []string
+	var ids []RemoteMessage
 	err = json.Unmarshal([]byte(target.ChannelRemoteIds), &ids)
 	return ids, err
 }
