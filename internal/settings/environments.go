@@ -3,7 +3,7 @@ package settings
 import (
 	"context"
 	"database/sql"
-	"encoding/json/v2"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"strings"
@@ -22,26 +22,15 @@ var (
 	ErrConflict = errors.New("execution environment conflict")
 )
 
-// EnvironmentConfigView holds the public union of pi-env and e2b configuration fields.
-type EnvironmentConfigView struct {
-	Host           string `json:"host,omitempty"`
-	User           string `json:"user,omitempty"`
-	Port           *int   `json:"port,omitempty"`
-	IdentityFile   string `json:"identityFile,omitempty"`
-	WorkspaceDir   string `json:"workspaceDir,omitempty"`
-	Template       string `json:"template,omitempty"`
-	TimeoutSeconds *int   `json:"timeoutSeconds,omitempty"`
-}
-
 // Environment is the public view of a saved execution environment without its write-only secret.
 type Environment struct {
-	ID        string                `json:"id"`
-	Name      string                `json:"name"`
-	Kind      execenv.Kind          `json:"kind"`
-	Config    EnvironmentConfigView `json:"config"`
-	SecretSet bool                  `json:"secretSet"`
-	CreatedAt int64                 `json:"createdAt"`
-	UpdatedAt int64                 `json:"updatedAt"`
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	Kind      execenv.Kind   `json:"kind"`
+	Config    jsontext.Value `json:"config"`
+	SecretSet bool           `json:"secretSet"`
+	CreatedAt int64          `json:"createdAt"`
+	UpdatedAt int64          `json:"updatedAt"`
 }
 
 // EnvironmentInput creates or updates an execution environment.
@@ -119,20 +108,6 @@ func (s *Service) UpdateEnvironment(ctx context.Context, id string, in Environme
 	if err != nil {
 		return Environment{}, err
 	}
-	if kind == execenv.KindPiEnv && s.dataDir != "" {
-		oldCfg, _ := execenv.ParsePiEnvConfig(saved.Config)
-		newCfg, _ := execenv.ParsePiEnvConfig(configJSON)
-		oldPort, newPort := 0, 0
-		if oldCfg.Port != nil {
-			oldPort = *oldCfg.Port
-		}
-		if newCfg.Port != nil {
-			newPort = *newCfg.Port
-		}
-		if oldCfg.Host != newCfg.Host || oldPort != newPort {
-			_ = execenv.ForgetPiEnvHostKey(s.dataDir, id)
-		}
-	}
 	row, err := s.q.UpdateEnvironment(ctx, sqlc.UpdateEnvironmentParams{
 		Name:      name,
 		Kind:      string(kind),
@@ -144,6 +119,7 @@ func (s *Service) UpdateEnvironment(ctx context.Context, id string, in Environme
 	if err != nil {
 		return Environment{}, err
 	}
+	_ = s.envs.OnEnvironmentUpdated(execenv.SpecFromRow(saved), execenv.SpecFromRow(row))
 	return environmentView(row)
 }
 
@@ -175,8 +151,8 @@ func (s *Service) DeleteEnvironment(ctx context.Context, id string) error {
 		}
 		return fmt.Errorf("%w: execution environment %q is used by %d active bot(s)", ErrConflict, saved.Name, max(1, len(users)))
 	}
-	if saved.Kind == string(execenv.KindPiEnv) && s.dataDir != "" {
-		_ = execenv.ForgetPiEnvHostKey(s.dataDir, id)
+	if s.envs != nil {
+		_ = s.envs.OnEnvironmentDeleted(execenv.SpecFromRow(saved))
 	}
 	return nil
 }
@@ -197,10 +173,68 @@ func (s *Service) TestEnvironment(ctx context.Context, id string) (execenv.TestR
 		return execenv.TestResult{}, errors.New("execution environment manager is not configured")
 	}
 	res, err := s.envs.TestEnvironment(ctx, execenv.SpecFromRow(row))
-	if errors.Is(err, execenv.ErrInvalidConfig) {
-		return execenv.TestResult{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+	return res, wrapInvalidConfig(err)
+}
+
+// DiscoverSSHConfig discovers concrete host aliases and candidate identity files from the control host's ~/.ssh.
+func (s *Service) DiscoverSSHConfig(_ context.Context) (execenv.SSHConfigDiscovery, error) {
+	if s.envs == nil {
+		return execenv.SSHConfigDiscovery{Hosts: []execenv.SSHHostEntry{}, IdentityFiles: []string{}}, nil
 	}
-	return res, err
+	return s.envs.DiscoverSSHConfig()
+}
+
+// ProbeEnvironment tests connectivity for an unsaved or edited environment input without persisting changes.
+func (s *Service) ProbeEnvironment(ctx context.Context, existingID string, in EnvironmentInput) (execenv.TestResult, error) {
+	if s.envs == nil {
+		return execenv.TestResult{}, errors.New("execution environment manager is not configured")
+	}
+	id := strings.TrimSpace(existingID)
+	kind := execenv.Kind(strings.TrimSpace(in.Kind))
+	secret := strings.TrimSpace(in.Secret)
+	var savedSpec *execenv.EnvironmentSpec
+	if id != "" {
+		saved, err := s.q.GetEnvironment(ctx, id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return execenv.TestResult{}, ErrNotFound
+		}
+		if err != nil {
+			return execenv.TestResult{}, err
+		}
+		spec := execenv.SpecFromRow(saved)
+		savedSpec = &spec
+		if secret == "" && spec.Kind == kind {
+			secret = spec.Secret
+		}
+	}
+	res, err := s.envs.ProbeEnvironment(ctx, savedSpec, execenv.EnvironmentSpec{
+		ID:     id,
+		Kind:   kind,
+		Config: normalizeRawJSON(in.Config),
+		Secret: secret,
+	})
+	return res, wrapInvalidConfig(err)
+}
+
+// ForgetEnvironmentHostKey removes saved SSH known_hosts entries for environment id so the next connect re-trusts via TOFU.
+func (s *Service) ForgetEnvironmentHostKey(ctx context.Context, id string) error {
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
+		return ErrNotFound
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	saved, err := s.q.GetEnvironment(ctx, trimmedID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if s.envs == nil {
+		return errors.New("execution environment manager is not configured")
+	}
+	return wrapInvalidConfig(s.envs.ForgetHostKey(execenv.SpecFromRow(saved)))
 }
 
 func (s *Service) prepareEnvironmentInput(ctx context.Context, envID string, in EnvironmentInput, secret string) (string, execenv.Kind, string, error) {
@@ -208,91 +242,51 @@ func (s *Service) prepareEnvironmentInput(ctx context.Context, envID string, in 
 	if n := utf8.RuneCountInString(name); n < 1 || n > 60 {
 		return "", "", "", fmt.Errorf("%w: name must be 1 to 60 characters", ErrInvalid)
 	}
+	if s.envs == nil {
+		return "", "", "", errors.New("execution environment manager is not configured")
+	}
 	kind := execenv.Kind(strings.TrimSpace(in.Kind))
-	rawCfg := strings.TrimSpace(string(in.Config))
-	if rawCfg == "" || rawCfg == "null" {
-		rawCfg = "{}"
+	normalizedCfg, err := s.envs.NormalizeAndValidate(ctx, execenv.EnvironmentSpec{
+		ID:     envID,
+		Kind:   kind,
+		Config: normalizeRawJSON(in.Config),
+		Secret: strings.TrimSpace(secret),
+	})
+	if err != nil {
+		return "", "", "", wrapInvalidConfig(err)
 	}
-	switch kind {
-	case execenv.KindPiEnv:
-		cfg, err := execenv.ParsePiEnvConfig(rawCfg)
-		if err != nil {
-			return "", "", "", fmt.Errorf("%w: %w", ErrInvalid, err)
-		}
-		encoded, err := json.Marshal(cfg)
-		if err != nil {
-			return "", "", "", err
-		}
-		rawCfg = string(encoded)
-	case execenv.KindE2B:
-		if strings.TrimSpace(secret) == "" {
-			return "", "", "", fmt.Errorf("%w: e2b api key is required", ErrInvalid)
-		}
-		cfg, err := execenv.ParseE2BConfig(rawCfg)
-		if err != nil {
-			return "", "", "", fmt.Errorf("%w: %w", ErrInvalid, err)
-		}
-		if err := execenv.ValidateE2BConfig(cfg); err != nil {
-			return "", "", "", fmt.Errorf("%w: %w", ErrInvalid, err)
-		}
-		encoded, err := json.Marshal(cfg)
-		if err != nil {
-			return "", "", "", err
-		}
-		rawCfg = string(encoded)
-	case execenv.KindLocal:
-		return "", "", "", fmt.Errorf("%w: unsupported environment kind %q", ErrInvalid, kind)
-	default:
-		return "", "", "", fmt.Errorf("%w: unsupported environment kind %q", ErrInvalid, kind)
+	return name, kind, normalizedCfg, nil
+}
+
+func normalizeRawJSON(raw []byte) string {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return "{}"
 	}
-	if s.envs != nil {
-		err := s.envs.ValidateEnvironment(ctx, execenv.EnvironmentSpec{
-			ID:     envID,
-			Name:   name,
-			Kind:   kind,
-			Config: rawCfg,
-			Secret: strings.TrimSpace(secret),
-		})
-		if err != nil {
-			return "", "", "", fmt.Errorf("%w: %w", ErrInvalid, err)
-		}
+	return trimmed
+}
+
+func wrapInvalidConfig(err error) error {
+	if errors.Is(err, execenv.ErrInvalidConfig) {
+		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	return name, kind, rawCfg, nil
+	return err
 }
 
 func environmentView(row sqlc.ExecutionEnvironment) (Environment, error) {
-	kind := execenv.Kind(row.Kind)
-	var cfgView EnvironmentConfigView
-	switch kind {
-	case execenv.KindPiEnv:
-		cfg, err := execenv.ParsePiEnvConfig(row.Config)
-		if err != nil {
-			return Environment{}, err
-		}
-		cfgView = EnvironmentConfigView{
-			Host:         cfg.Host,
-			User:         cfg.User,
-			Port:         cfg.Port,
-			IdentityFile: cfg.IdentityFile,
-			WorkspaceDir: cfg.WorkspaceDir,
-		}
-	case execenv.KindE2B:
-		cfg, err := execenv.ParseE2BConfig(row.Config)
-		if err != nil {
-			return Environment{}, err
-		}
-		cfgView = EnvironmentConfigView{
-			WorkspaceDir:   cfg.WorkspaceDir,
-			Template:       cfg.Template,
-			TimeoutSeconds: cfg.TimeoutSeconds,
-		}
-	case execenv.KindLocal:
+	rawCfg := strings.TrimSpace(row.Config)
+	if rawCfg == "" || rawCfg == "null" {
+		rawCfg = "{}"
+	}
+	cfg := jsontext.Value(rawCfg)
+	if !cfg.IsValid() {
+		return Environment{}, fmt.Errorf("%w: invalid stored environment config", ErrInvalid)
 	}
 	return Environment{
 		ID:        row.ID,
 		Name:      row.Name,
-		Kind:      kind,
-		Config:    cfgView,
+		Kind:      execenv.Kind(row.Kind),
+		Config:    cfg,
 		SecretSet: row.Secret != "",
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,

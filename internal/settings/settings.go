@@ -68,7 +68,6 @@ type Service struct {
 	q       *sqlc.Queries
 	catalog *engine.Catalog
 	agents  ToolSettings
-	dataDir string
 	envs    *execenv.Manager
 	// Serializes provider save and apply. Agent and channel changes have their own lock.
 	mu sync.Mutex
@@ -79,11 +78,10 @@ func New(q *sqlc.Queries, catalog *engine.Catalog, agents ToolSettings) *Service
 	return &Service{q: q, catalog: catalog, agents: agents}
 }
 
-// ConfigureEnvironments attaches the execution environment manager and data directory.
-func (s *Service) ConfigureEnvironments(dataDir string, envs *execenv.Manager) {
+// ConfigureEnvironments attaches the execution environment manager.
+func (s *Service) ConfigureEnvironments(envs *execenv.Manager) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.dataDir = dataDir
 	s.envs = envs
 }
 

@@ -1,11 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
-import { createAgentMutation, listAgentsQueryKey } from "../api/generated/@tanstack/react-query.gen";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  createAgentMutation,
+  listAgentsQueryKey,
+  listEnvironmentsOptions,
+} from "../api/generated/@tanstack/react-query.gen";
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
+import { environmentOptionLabel } from "../lib/environments";
 import { queryClient } from "../lib/queries";
 import { Modal } from "./dialog";
-import { Field, Input } from "./form";
+import { Field, Input, Select } from "./form";
 import { Button } from "./ui/button";
 import { Failure, Loading } from "./feedback";
 import { ModelPicker } from "./model-picker";
@@ -28,6 +33,9 @@ function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void 
   const [name, setName] = useState("");
   const [model, setModel] = useState({ provider: initial.provider, modelId: initial.modelId });
   const [modelName, setModelName] = useState(initial.modelId || "Choose model");
+  const [environmentId, setEnvironmentId] = useState("");
+  const environmentsQuery = useQuery(listEnvironmentsOptions());
+  const environments = environmentsQuery.data?.environments ?? [];
   const navigate = useNavigate();
 
   const create = useMutation({
@@ -69,7 +77,14 @@ function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void 
           event.preventDefault();
 
           if (trimmed && Array.from(trimmed).length <= 40 && !create.isPending)
-            create.mutate({ body: { name: trimmed, ...model, thinkingLevel: initial.thinkingLevel } });
+            create.mutate({
+              body: {
+                name: trimmed,
+                ...model,
+                thinkingLevel: initial.thinkingLevel,
+                environmentId: environmentId || undefined,
+              },
+            });
         }}
       >
         <Field label="Name">
@@ -106,6 +121,24 @@ function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void 
             />
           )}
         </Field>
+        {environments.length > 0 ? (
+          <Field label="Execution environment">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={environmentId}
+                onChange={(event) => setEnvironmentId(event.target.value)}
+              >
+                <option value="">This computer (local)</option>
+                {environments.map((env) => (
+                  <option key={env.id} value={env.id}>
+                    {environmentOptionLabel(env)}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        ) : null}
         {create.isError ? <Failure title="Could not create bot" error={create.error} /> : null}
       </form>
     </Modal>

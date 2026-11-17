@@ -13,6 +13,7 @@ import { errorText, refreshChats, refreshEnvironments } from "../lib/queries";
 
 import { saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
+import { environmentBotHint, environmentOptionLabel } from "../lib/environments";
 import { ModelPicker } from "../components/model-picker";
 import { ThinkingPicker } from "../components/thinking-picker";
 import { Failure, Spinner } from "../components/feedback";
@@ -307,7 +308,7 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
 
   const resetSandbox = useMutation({
     ...resetAgentEnvironmentMutation(),
-    onSuccess: () => notify("E2B sandbox reset. The next message starts a fresh sandbox."),
+    onSuccess: () => notify("Sandbox reset. The next message starts a fresh sandbox."),
     onError: (err) => notify(errorText(err)),
   });
 
@@ -322,10 +323,13 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
           </label>
           <p id="bot-environment-hint" className="mt-0.5 text-[12.5px] text-muted-foreground">
             {current
-              ? `Runs tools in ${current.name} (${current.kind}).`
+              ? environmentBotHint(current)
               : missingSelection
                 ? `Configured environment (${environmentId}) is missing.`
-                : "Runs tools and workspaces on this computer."}
+                : "Runs tools and workspaces on this computer."}{" "}
+            <Link className="font-medium text-primary underline" to="/environment">
+              Manage environments
+            </Link>
           </p>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
@@ -350,11 +354,11 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
             disabled={save.isPending || environments.isPending}
             onChange={(event) => save.mutate(event.target.value)}
           >
-            <option value="">Local (this computer)</option>
+            <option value="">This computer (local)</option>
             {missingSelection ? <option value={environmentId}>Missing ({environmentId})</option> : null}
             {list.map((env) => (
               <option key={env.id} value={env.id}>
-                {env.name} ({env.kind})
+                {environmentOptionLabel(env)}
               </option>
             ))}
           </Select>

@@ -633,9 +633,17 @@ export type EnvironmentConfig = {
     user?: string;
     port?: number;
     identityFile?: string;
+    /**
+     * Starts the remote SSH runtime and captures environment variables through the user's login shell ($SHELL -l). Defaults to true when omitted.
+     */
+    loginShell?: boolean;
     workspaceDir?: string;
+    apiUrl?: string;
+    domain?: string;
+    envdUrl?: string;
     template?: string;
     timeoutSeconds?: number;
+    autoPause?: boolean;
 };
 
 export type Environment = {
@@ -657,7 +665,20 @@ export type EnvironmentInput = {
     kind: EnvironmentKind;
     config?: EnvironmentConfig;
     /**
-     * Write-only secret. Empty or omitted on update keeps the saved secret.
+     * Write-only secret. Required for E2B Cloud; optional for custom E2B endpoints. Empty or omitted on update keeps the saved secret.
+     */
+    secret?: string;
+};
+
+export type EnvironmentProbeInput = {
+    /**
+     * Optional existing environment ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
+     */
+    environmentId?: string;
+    kind: EnvironmentKind;
+    config?: EnvironmentConfig;
+    /**
+     * Optional write-only secret. When environmentId is set and secret is omitted or empty, uses the saved secret.
      */
     secret?: string;
 };
@@ -668,7 +689,23 @@ export type EnvironmentTestResult = {
     arch?: string;
     home?: string;
     warnings?: Array<string>;
+    hostKeyChanged?: boolean;
     error?: string;
+};
+
+export type SshHostEntry = {
+    alias: string;
+    hostName?: string;
+    user?: string;
+    port?: number;
+    identityFile?: string;
+    proxyJump?: string;
+    source?: string;
+};
+
+export type SshConfigDiscovery = {
+    hosts: Array<SshHostEntry>;
+    identityFiles: Array<string>;
 };
 
 export type Channels = {
@@ -1451,6 +1488,64 @@ export type CreateEnvironmentResponses = {
 
 export type CreateEnvironmentResponse = CreateEnvironmentResponses[keyof CreateEnvironmentResponses];
 
+export type DiscoverSshConfigData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/environments/ssh-config';
+};
+
+export type DiscoverSshConfigErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DiscoverSshConfigError = DiscoverSshConfigErrors[keyof DiscoverSshConfigErrors];
+
+export type DiscoverSshConfigResponses = {
+    /**
+     * Discovered SSH hosts and identity file paths.
+     */
+    200: SshConfigDiscovery;
+};
+
+export type DiscoverSshConfigResponse = DiscoverSshConfigResponses[keyof DiscoverSshConfigResponses];
+
+export type ProbeEnvironmentData = {
+    body: EnvironmentProbeInput;
+    path?: never;
+    query?: never;
+    url: '/api/settings/environments/probe';
+};
+
+export type ProbeEnvironmentErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ProbeEnvironmentError = ProbeEnvironmentErrors[keyof ProbeEnvironmentErrors];
+
+export type ProbeEnvironmentResponses = {
+    /**
+     * Probe result.
+     */
+    200: EnvironmentTestResult;
+};
+
+export type ProbeEnvironmentResponse = ProbeEnvironmentResponses[keyof ProbeEnvironmentResponses];
+
 export type DeleteEnvironmentData = {
     body?: never;
     path: {
@@ -1555,6 +1650,41 @@ export type TestEnvironmentResponses = {
 };
 
 export type TestEnvironmentResponse = TestEnvironmentResponses[keyof TestEnvironmentResponses];
+
+export type ForgetEnvironmentHostKeyData = {
+    body?: never;
+    path: {
+        environmentId: string;
+    };
+    query?: never;
+    url: '/api/settings/environments/{environmentId}/forget-host-key';
+};
+
+export type ForgetEnvironmentHostKeyErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ForgetEnvironmentHostKeyError = ForgetEnvironmentHostKeyErrors[keyof ForgetEnvironmentHostKeyErrors];
+
+export type ForgetEnvironmentHostKeyResponses = {
+    /**
+     * Host key cleared.
+     */
+    200: Ok;
+};
+
+export type ForgetEnvironmentHostKeyResponse = ForgetEnvironmentHostKeyResponses[keyof ForgetEnvironmentHostKeyResponses];
 
 export type ListModelsData = {
     body?: never;

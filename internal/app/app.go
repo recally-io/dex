@@ -250,6 +250,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	envs := execenv.NewManager(execenv.ManagerConfig{
 		DataDir:    cfg.DataDir,
+		SSHHome:    cfg.Home,
 		Queries:    q,
 		SSHProgram: cfg.SSHProgram,
 		E2BAPIURL:  cfg.E2BAPIURL,
@@ -295,7 +296,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		manager.Set("telegram", telegram.New(*config, manager)) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
 	}
 	prefs = settings.New(q, native.Catalog, native)
-	prefs.ConfigureEnvironments(cfg.DataDir, envs)
+	prefs.ConfigureEnvironments(envs)
 	if err := prefs.ApplyOnePassword(ctx); err != nil {
 		return nil, err
 	}
