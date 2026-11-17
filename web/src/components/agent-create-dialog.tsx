@@ -7,6 +7,7 @@ import {
   listEnvironmentsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
+import { environmentOptionLabel } from "../lib/environments";
 import { queryClient } from "../lib/queries";
 import { Modal } from "./dialog";
 import { Field, Input, Select } from "./form";
@@ -128,10 +129,10 @@ function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void 
                 value={environmentId}
                 onChange={(event) => setEnvironmentId(event.target.value)}
               >
-                <option value="">Local (this computer)</option>
+                <option value="">This computer (local)</option>
                 {environments.map((env) => (
                   <option key={env.id} value={env.id}>
-                    {env.name} ({env.kind})
+                    {environmentOptionLabel(env)}
                   </option>
                 ))}
               </Select>

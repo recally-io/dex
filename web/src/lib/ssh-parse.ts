@@ -32,6 +32,7 @@ const sshValueFlags = new Set([
 
 function validPort(raw: string): number | undefined {
   if (!/^\d+$/.test(raw)) return undefined;
+
   const n = Number(raw);
 
   return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : undefined;
@@ -61,6 +62,7 @@ function splitUserHostPort(raw: string): { host: string; user?: string; port?: n
     const close = rest.indexOf("]");
 
     if (close <= 1) return null;
+
     host = rest.slice(1, close);
     const tail = rest.slice(close + 1);
 
@@ -92,60 +94,22 @@ function splitUserHostPort(raw: string): { host: string; user?: string; port?: n
   return { host, user, port };
 }
 
-function tokenizeShell(raw: string): string[] {
-  const tokens: string[] = [];
-  let cur = "";
-  let quote: '"' | "'" | null = null;
-  let started = false;
-
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i];
-
-    if (quote) {
-      if (ch === quote) quote = null;
-      else {
-        cur += ch;
-        started = true;
-      }
-
-      continue;
-    }
-
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      started = true;
-    } else if (/\s/.test(ch)) {
-      if (started) {
-        tokens.push(cur);
-        cur = "";
-        started = false;
-      }
-    } else {
-      cur += ch;
-      started = true;
-    }
-  }
-
-  if (started) tokens.push(cur);
-
-  return tokens;
-}
-
 function parseSshCommand(raw: string): ParsedSshTarget | null {
-  const tokens = tokenizeShell(raw.trim());
+  const tokens = raw.trim().match(/(?:"[^"]*"|'[^']*'|\S)+/g) ?? [];
+  const unquoted = tokens.map((tok) => tok.replace(/^["']|["']$/g, ""));
 
-  if (tokens.length < 2 || tokens[0].toLowerCase() !== "ssh") return null;
+  if (unquoted.length < 2 || unquoted[0].toLowerCase() !== "ssh") return null;
 
   let user: string | undefined;
   let port: number | undefined;
   let identityFile: string | undefined;
   let targetToken = "";
 
-  for (let i = 1; i < tokens.length; i++) {
-    const tok = tokens[i];
+  for (let i = 1; i < unquoted.length; i++) {
+    const tok = unquoted[i];
 
     if (tok === "--") {
-      if (i + 1 < tokens.length) targetToken = tokens[i + 1];
+      targetToken = unquoted[i + 1] ?? "";
       break;
     }
 
@@ -154,7 +118,7 @@ function parseSshCommand(raw: string): ParsedSshTarget | null {
       const attached = tok.slice(2);
 
       if (sshValueFlags.has(flag)) {
-        const val = attached || tokens[++i] || "";
+        const val = attached || unquoted[++i] || "";
 
         if (flag === "p") port = validPort(val) ?? port;
         else if (flag === "i" && val) identityFile = val;
@@ -168,8 +132,7 @@ function parseSshCommand(raw: string): ParsedSshTarget | null {
     break;
   }
 
-  if (!targetToken) return null;
-  const parsedTarget = splitUserHostPort(targetToken);
+  const parsedTarget = targetToken ? splitUserHostPort(targetToken) : null;
 
   if (!parsedTarget) return null;
 
@@ -182,91 +145,12 @@ function parseSshCommand(raw: string): ParsedSshTarget | null {
   };
 }
 
-function parseSshConfigSnippet(raw: string): ParsedSshTarget | null {
-  const lines = raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith("#"));
-
-  if (lines.length < 2) return null;
-
-  let alias = "";
-  let hostName = "";
-  let user: string | undefined;
-  let port: number | undefined;
-  let identityFile: string | undefined;
-  let matchedDirective = false;
-
-  for (const line of lines) {
-    const eqOrSpace = line.match(/^([A-Za-z]+)(?:\s*=\s*|\s+)(.+)$/);
-
-    if (!eqOrSpace) continue;
-    const key = eqOrSpace[1].toLowerCase();
-    const valTokens = tokenizeShell(eqOrSpace[2]);
-
-    if (valTokens.length === 0) continue;
-
-    switch (key) {
-      case "host":
-        if (!alias) {
-          const firstConcrete = valTokens.find((p) => !p.startsWith("!") && !/[*?]/.test(p));
-
-          if (firstConcrete) alias = firstConcrete;
-        }
-
-        break;
-      case "hostname":
-        hostName = valTokens[0];
-        matchedDirective = true;
-        break;
-      case "user":
-        user = valTokens[0];
-        matchedDirective = true;
-        break;
-      case "port": {
-        const parsed = validPort(valTokens[0]);
-
-        if (parsed !== undefined) {
-          port = parsed;
-          matchedDirective = true;
-        }
-
-        break;
-      }
-
-      case "identityfile":
-        identityFile = valTokens[0];
-        matchedDirective = true;
-        break;
-    }
-  }
-
-  if (!matchedDirective && !alias) return null;
-  const host = hostName || alias;
-
-  if (!host) return null;
-
-  return {
-    host,
-    user,
-    port,
-    identityFile,
-    suggestedName: alias || host,
-  };
-}
-
 export function parseSshTargetInput(raw: string): ParsedSshTarget | null {
   const trimmed = raw.trim();
 
-  if (!trimmed) return null;
+  if (!trimmed || /[\r\n]/.test(trimmed)) return null;
 
-  if (/[\r\n]/.test(trimmed)) {
-    return parseSshConfigSnippet(trimmed);
-  }
-
-  if (/^ssh\s+/i.test(trimmed)) {
-    return parseSshCommand(trimmed);
-  }
+  if (/^ssh\s+/i.test(trimmed)) return parseSshCommand(trimmed);
 
   if (/^ssh:\/\//i.test(trimmed)) {
     try {
@@ -274,10 +158,13 @@ export function parseSshTargetInput(raw: string): ParsedSshTarget | null {
       const host = url.hostname.replace(/^\[|\]$/g, "");
 
       if (!host) return null;
-      const user = url.username ? decodeURIComponent(url.username) : undefined;
-      const port = url.port ? validPort(url.port) : undefined;
 
-      return { host, user, port, suggestedName: host };
+      return {
+        host,
+        user: url.username ? decodeURIComponent(url.username) : undefined,
+        port: url.port ? validPort(url.port) : undefined,
+        suggestedName: host,
+      };
     } catch {
       return null;
     }
@@ -285,34 +172,9 @@ export function parseSshTargetInput(raw: string): ParsedSshTarget | null {
 
   const parsed = splitUserHostPort(trimmed);
 
-  if (!parsed) return null;
-
-  if (!parsed.user && parsed.port === undefined && !trimmed.startsWith("[")) {
+  if (!parsed || (!parsed.user && parsed.port === undefined && !trimmed.startsWith("["))) {
     return null;
   }
 
   return { ...parsed, suggestedName: parsed.host };
-}
-
-export function inferE2BDomain(apiUrl: string): string {
-  const trimmed = apiUrl.trim();
-
-  if (!trimmed) return "";
-
-  try {
-    const url = new URL(trimmed);
-    const lowerHost = url.hostname.toLowerCase();
-
-    if (lowerHost.startsWith("api.") && lowerHost.length > 4) {
-      return url.host.slice(4);
-    }
-
-    if (lowerHost === "localhost") {
-      return url.host;
-    }
-
-    return "";
-  } catch {
-    return "";
-  }
 }

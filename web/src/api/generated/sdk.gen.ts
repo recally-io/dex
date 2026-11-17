@@ -271,7 +271,7 @@ export const testEnvironment = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * Removes stored SSH host key entries for a pi-env environment so the next test or open re-trusts the host key via TOFU.
+ * Removes stored SSH host key entries for an SSH environment so the next test or open re-trusts the host key via TOFU.
  */
 export const forgetEnvironmentHostKey = <ThrowOnError extends boolean = false>(options: Options<ForgetEnvironmentHostKeyData, ThrowOnError>): RequestResult<ForgetEnvironmentHostKeyResponses, ForgetEnvironmentHostKeyErrors, ThrowOnError> => (options.client ?? client).post<ForgetEnvironmentHostKeyResponses, ForgetEnvironmentHostKeyErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {

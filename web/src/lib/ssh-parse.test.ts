@@ -1,11 +1,12 @@
 import { expect, test } from "vite-plus/test";
-import { inferE2BDomain, parseSshTargetInput } from "./ssh-parse";
+import { parseSshTargetInput } from "./ssh-parse";
 
-test("parseSshTargetInput leaves plain hostnames alone", () => {
+test("parseSshTargetInput leaves plain hostnames and multiline blocks alone", () => {
   expect(parseSshTargetInput("")).toBeNull();
   expect(parseSshTargetInput("dev.example.com")).toBeNull();
   expect(parseSshTargetInput("my-ssh-alias")).toBeNull();
   expect(parseSshTargetInput("fe80::1")).toBeNull();
+  expect(parseSshTargetInput("Host foo\n  HostName bar")).toBeNull();
 });
 
 test("parseSshTargetInput parses user@host:port and ssh:// URLs", () => {
@@ -51,32 +52,4 @@ test("parseSshTargetInput parses ssh CLI commands", () => {
     identityFile: undefined,
     suggestedName: "prod-box",
   });
-});
-
-test("parseSshTargetInput parses pasted ssh config snippets", () => {
-  const snippet = `
-Host gpu-box
-  HostName 10.20.30.40
-  User ml
-  Port 2222
-  IdentityFile "~/.ssh/gpu key"
-`;
-
-  expect(parseSshTargetInput(snippet)).toEqual({
-    host: "10.20.30.40",
-    user: "ml",
-    port: 2222,
-    identityFile: "~/.ssh/gpu key",
-    suggestedName: "gpu-box",
-  });
-});
-
-test("inferE2BDomain infers sandbox domain from api.* and localhost URLs", () => {
-  expect(inferE2BDomain("https://api.cn-hangzhou.sandbox.aliyuncs.com")).toBe(
-    "cn-hangzhou.sandbox.aliyuncs.com",
-  );
-  expect(inferE2BDomain("https://api.example.com:8443")).toBe("example.com:8443");
-  expect(inferE2BDomain("http://localhost:3000")).toBe("localhost:3000");
-  expect(inferE2BDomain("http://127.0.0.1:3000")).toBe("");
-  expect(inferE2BDomain("not-a-url")).toBe("");
 });

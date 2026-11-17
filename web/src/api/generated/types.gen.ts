@@ -633,6 +633,10 @@ export type EnvironmentConfig = {
     user?: string;
     port?: number;
     identityFile?: string;
+    /**
+     * Starts the remote SSH runtime and captures environment variables through the user's login shell ($SHELL -l). Defaults to true when omitted.
+     */
+    loginShell?: boolean;
     workspaceDir?: string;
     apiUrl?: string;
     domain?: string;

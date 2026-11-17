@@ -307,11 +307,19 @@ try {
     assert.equal(importedSsh.kind, "pi-env");
     assert.equal(importedSsh.config.host, "browser-ssh-box");
 
+    await poll("no internal pi-env jargon shown in environment cards", () =>
+      evaluate("!document.body.innerText.includes('pi-env') && document.body.innerText.includes('SSH')"),
+    );
+
     await click("Add environment");
     await poll("add environment dialog", () => evaluate("!!document.querySelector('[role=\"dialog\"]')"));
-    await evaluate(
-      `[...document.querySelectorAll('[role="dialog"] button')].find(b => b.textContent.includes('E2B Sandbox')).click()`,
+    await click("Advanced options");
+    await poll("login shell defaults to enabled", () =>
+      evaluate(
+        "document.querySelector('[role=\"dialog\"] [aria-label=\"Use login shell\"]')?.getAttribute('aria-checked') === 'true'",
+      ),
     );
+    await tap('[role="dialog"] button[aria-label="Sandbox"]');
     await type('[role="dialog"] input[placeholder="E2B Sandbox"]', "E2B Browser Env");
     await type('[role="dialog"] input[placeholder="e2b_..."]', "e2b_browser_secret");
     await evaluate(
@@ -339,13 +347,10 @@ try {
 
     await click("Add environment");
     await poll("add custom e2b dialog", () => evaluate("!!document.querySelector('[role=\"dialog\"]')"));
-    await evaluate(
-      `[...document.querySelectorAll('[role="dialog"] button')].find(b => b.textContent.includes('E2B Sandbox')).click()`,
-    );
-    await tap('[role="dialog"] button[aria-label="Custom endpoint"]');
-    await type('[role="dialog"] input[placeholder="E2B Sandbox"]', "Docker E2B Gateway");
+    await tap('[role="dialog"] button[aria-label="Sandbox"]');
+    await tap('[role="dialog"] button[aria-label="Local Docker / VM"]');
+    await type('[role="dialog"] input[placeholder="Local Docker sandbox"]', "Docker E2B Gateway");
     await type('[role="dialog"] input[placeholder="http://localhost:3000"]', "http://localhost:3000");
-    await tap('[role="dialog"] [aria-label="Auto-pause on idle"]');
     await evaluate(
       `[...document.querySelectorAll('[role="dialog"] button')].find(b => b.textContent.trim() === 'Add environment').click()`,
     );
@@ -357,9 +362,10 @@ try {
     assert.equal(customEnv.secretSet, false);
     assert.equal(customEnv.config.apiUrl, "http://localhost:3000");
     assert.equal(customEnv.config.autoPause, false);
-    await poll("custom e2b card shows no api key", () =>
+    assert.equal(customEnv.config.timeoutSeconds, 3600);
+    await poll("local sandbox card shows Local sandbox badge and No API key", () =>
       evaluate(
-        "document.body.innerText.includes('Docker E2B Gateway') && document.body.innerText.includes('No API key')",
+        "document.body.innerText.includes('Docker E2B Gateway') && document.body.innerText.includes('Local sandbox') && document.body.innerText.includes('No API key')",
       ),
     );
 
@@ -379,7 +385,7 @@ try {
     );
     await click("Reset sandbox");
     await poll("reset notification visible", () =>
-      evaluate("document.body.innerText.includes('E2B sandbox reset')"),
+      evaluate("document.body.innerText.includes('Sandbox reset')"),
     );
 
     await visit("/environment");
