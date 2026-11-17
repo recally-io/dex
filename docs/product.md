@@ -319,17 +319,20 @@ After a dex restart, running execution becomes interrupted and does not restart
 automatically. Queued execution that never started can start for the first
 time. Cancelled execution stays cancelled. A dex restart does not prove that old
 tool processes ended. Before another execution, the main agent must check prior
-artifacts and side effects. In the built-in `local` environment, tools run on
-the host without a sandbox. Bots bound to a `pi-env` SSH target or an `e2b`
-sandbox execute file, shell, and background tools remotely with explicit
-`.env` variables only, while `memory_*` tools stay on `<data dir>/memory` on the
-control host. The Environment settings page discovers hosts from `~/.ssh/config`
-(without reading private keys), tests connections before saving, and clears
-changed SSH host keys on confirmation. For `e2b` bots, `e2b` supports both E2B
-Cloud and custom E2B-compatible endpoints (such as self-hosted clouds,
-Kubernetes gateways, or local Docker and VM adapters) with optional API keys and
-configurable idle `autoPause`, automatic resume or recreation, and stateless
-**Reset sandbox** in Bot settings. The SDK
+artifacts and side effects. In the built-in **This computer** (`local`) environment, tools run on
+the host without a sandbox. The Environment page configures remote **SSH Machine**
+(`pi-env`) and **Sandbox** (`e2b`) targets without showing internal driver names
+in the UI. Remote bots execute file, shell, and background tools remotely with
+explicit `.env` variables plus the remote shell environment, while `memory_*`
+tools stay on `<data dir>/memory` on the control host. SSH machines use the
+remote user's login shell by default (`loginShell`, default `true`), keep a
+persistent workspace disk, discover hosts from `~/.ssh/config` (without reading
+private keys), test connections before saving, and clear changed SSH host keys
+on confirmation. Sandbox environments offer **E2B Cloud**, **Local Docker /
+VM** (defaulting `autoPause: false` and `timeoutSeconds: 3600`), and **Custom
+endpoint** presets, show whether disk state is snapshot-persisted or ephemeral,
+support optional API keys, automatic resume or recreation, and stateless **Reset
+sandbox** in Bot settings. The SDK
 requests cancellation of local commands and MCP calls. It does not guarantee
 that detached processes or remote jobs stop. A completed MCP call can return
 its report. CLI tools must be logged in and run without user input. Long work
