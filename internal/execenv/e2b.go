@@ -14,6 +14,7 @@ import (
 	"io"
 	"maps"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -38,13 +39,30 @@ const (
 	maxConnectFrameBytes     = 16 * 1024 * 1024
 )
 
-var errE2BNotFound = errors.New("e2b resource not found")
+var (
+	errE2BNotFound    = errors.New("e2b resource not found")
+	errE2BUnsupported = errors.New("e2b endpoint unsupported")
+)
 
-// E2BConfig holds stored JSON settings for an E2B cloud sandbox environment.
+// E2BConfig holds stored JSON settings for an E2B-compatible sandbox execution environment.
 type E2BConfig struct {
+	APIURL         string `json:"apiUrl,omitempty"`
+	Domain         string `json:"domain,omitempty"`
+	EnvdURL        string `json:"envdUrl,omitempty"`
 	Template       string `json:"template,omitempty"`
 	WorkspaceDir   string `json:"workspaceDir,omitempty"`
 	TimeoutSeconds *int   `json:"timeoutSeconds,omitempty"`
+	AutoPause      *bool  `json:"autoPause,omitempty"`
+}
+
+// IsCustomEndpoint reports whether any custom E2B control or data-plane endpoint is configured.
+func (c E2BConfig) IsCustomEndpoint() bool {
+	return c.APIURL != "" || c.Domain != "" || c.EnvdURL != ""
+}
+
+// AutoPauseEnabled reports whether server-side idle auto-pause is enabled (default true).
+func (c E2BConfig) AutoPauseEnabled() bool {
+	return c.AutoPause == nil || *c.AutoPause
 }
 
 // ParseE2BConfig decodes and normalizes raw JSON configuration for e2b.
@@ -57,6 +75,9 @@ func ParseE2BConfig(raw string) (E2BConfig, error) {
 	if err := json.Unmarshal([]byte(trimmed), &cfg); err != nil {
 		return E2BConfig{}, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
+	cfg.APIURL = strings.TrimRight(strings.TrimSpace(cfg.APIURL), "/")
+	cfg.Domain = strings.TrimRight(strings.TrimSpace(cfg.Domain), "/")
+	cfg.EnvdURL = strings.TrimRight(strings.TrimSpace(cfg.EnvdURL), "/")
 	cfg.Template = cmp.Or(strings.TrimSpace(cfg.Template), defaultE2BTemplate)
 	cfg.WorkspaceDir = cmp.Or(strings.TrimSpace(cfg.WorkspaceDir), defaultE2BWorkspaceDir)
 	timeout := defaultE2BTimeoutSeconds
@@ -64,11 +85,34 @@ func ParseE2BConfig(raw string) (E2BConfig, error) {
 		timeout = *cfg.TimeoutSeconds
 	}
 	cfg.TimeoutSeconds = &timeout
+	if cfg.AutoPause != nil {
+		cfg.AutoPause = new(*cfg.AutoPause)
+	}
 	return cfg, nil
 }
 
 // ValidateE2BConfig validates an E2B configuration.
 func ValidateE2BConfig(cfg E2BConfig) error {
+	if cfg.APIURL != "" {
+		if err := validateE2BURL("apiUrl", cfg.APIURL); err != nil {
+			return err
+		}
+	}
+	if cfg.Domain != "" {
+		if strings.ContainsAny(cfg.Domain, "\x00\r\n \t/?#@") || strings.Contains(cfg.Domain, "://") ||
+			strings.HasPrefix(cfg.Domain, ".") || strings.HasSuffix(cfg.Domain, ".") {
+			return fmt.Errorf("%w: domain must be a hostname (without scheme or path)", ErrInvalidConfig)
+		}
+	}
+	if cfg.EnvdURL != "" {
+		if strings.ContainsAny(cfg.EnvdURL, "\x00\r\n") {
+			return fmt.Errorf("%w: envdUrl contains invalid characters", ErrInvalidConfig)
+		}
+		expanded := expandEnvdTemplate(cfg.EnvdURL, "sbx", e2bEnvdPort)
+		if err := validateE2BURL("envdUrl", expanded); err != nil {
+			return err
+		}
+	}
 	if cfg.Template == "" || strings.ContainsAny(cfg.Template, "\x00\r\n") {
 		return fmt.Errorf("%w: template must not be empty or contain control characters", ErrInvalidConfig)
 	}
@@ -84,6 +128,34 @@ func ValidateE2BConfig(cfg E2BConfig) error {
 	return nil
 }
 
+func validateE2BURL(field, raw string) error {
+	if strings.ContainsAny(raw, "\x00\r\n") {
+		return fmt.Errorf("%w: %s contains invalid characters", ErrInvalidConfig, field)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("%w: %s is invalid: %w", ErrInvalidConfig, field, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("%w: %s must use http or https", ErrInvalidConfig, field)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("%w: %s must include a host", ErrInvalidConfig, field)
+	}
+	if u.User != nil {
+		return fmt.Errorf("%w: %s must not embed credentials", ErrInvalidConfig, field)
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("%w: %s must not include query parameters or fragments", ErrInvalidConfig, field)
+	}
+	return nil
+}
+
+func expandEnvdTemplate(raw, sandboxID string, port int) string {
+	r := strings.NewReplacer("{sandboxId}", sandboxID, "{port}", strconv.Itoa(port))
+	return strings.TrimRight(r.Replace(raw), "/")
+}
+
 type e2bSandbox struct {
 	SandboxID       string  `json:"sandboxID"`
 	EnvdAccessToken string  `json:"envdAccessToken,omitempty"`
@@ -91,25 +163,28 @@ type e2bSandbox struct {
 }
 
 type e2bControlClient struct {
-	apiURL     string
-	envdURL    string
-	apiKey     string
-	httpClient *http.Client
+	apiURL         string
+	defaultEnvdURL string
+	cfg            E2BConfig
+	apiKey         string
+	httpClient     *http.Client
 }
 
-func (c *e2bControlClient) createSandbox(ctx context.Context, template string, timeoutSec int, meta map[string]string) (*e2bSandbox, error) {
+func (c *e2bControlClient) createSandbox(ctx context.Context, template string, timeoutSec int, autoPause bool, meta map[string]string) (*e2bSandbox, error) {
 	req := struct {
 		TemplateID string            `json:"templateID"`
 		Timeout    int               `json:"timeout"`
-		AutoPause  bool              `json:"autoPause"`
-		AutoResume map[string]bool   `json:"autoResume"`
+		AutoPause  bool              `json:"autoPause,omitzero"`
+		AutoResume map[string]bool   `json:"autoResume,omitempty"`
 		Metadata   map[string]string `json:"metadata,omitempty"`
 	}{
 		TemplateID: template,
 		Timeout:    timeoutSec,
-		AutoPause:  true,
-		AutoResume: map[string]bool{"enabled": true},
 		Metadata:   meta,
+	}
+	if autoPause {
+		req.AutoPause = true
+		req.AutoResume = map[string]bool{"enabled": true}
 	}
 	var out e2bSandbox
 	if err := c.doJSON(ctx, http.MethodPost, "/v2/sandboxes", req, &out); err != nil {
@@ -124,6 +199,14 @@ func (c *e2bControlClient) connectSandbox(ctx context.Context, sandboxID string,
 	}{Timeout: timeoutSec}
 	var out e2bSandbox
 	if err := c.doJSON(ctx, http.MethodPost, "/v2/sandboxes/"+url.PathEscape(sandboxID)+"/connect", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *e2bControlClient) getSandbox(ctx context.Context, sandboxID string) (*e2bSandbox, error) {
+	var out e2bSandbox
+	if err := c.doJSON(ctx, http.MethodGet, "/sandboxes/"+url.PathEscape(sandboxID), nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -145,13 +228,14 @@ func (c *e2bControlClient) killSandbox(ctx context.Context, sandboxID string) er
 }
 
 func (c *e2bControlClient) envdFor(sb *e2bSandbox) *envdClient {
-	baseURL := strings.TrimRight(c.envdURL, "/")
-	if baseURL == "" {
-		domain := defaultE2BDomain
-		if sb.Domain != nil && strings.TrimSpace(*sb.Domain) != "" {
-			domain = strings.TrimSpace(*sb.Domain)
-		}
-		baseURL = fmt.Sprintf("https://%d-%s.%s", e2bEnvdPort, sb.SandboxID, domain)
+	baseURL := ""
+	switch {
+	case c.cfg.EnvdURL != "":
+		baseURL = expandEnvdTemplate(c.cfg.EnvdURL, sb.SandboxID, e2bEnvdPort)
+	case !c.cfg.IsCustomEndpoint() && strings.TrimSpace(c.defaultEnvdURL) != "":
+		baseURL = strings.TrimRight(c.defaultEnvdURL, "/")
+	default:
+		baseURL = c.resolveSubdomainEnvdURL(sb)
 	}
 	return &envdClient{
 		baseURL:     baseURL,
@@ -159,6 +243,38 @@ func (c *e2bControlClient) envdFor(sb *e2bSandbox) *envdClient {
 		accessToken: sb.EnvdAccessToken,
 		httpClient:  c.httpClient,
 	}
+}
+
+func (c *e2bControlClient) resolveSubdomainEnvdURL(sb *e2bSandbox) string {
+	scheme := "https"
+	if strings.HasPrefix(strings.ToLower(c.apiURL), "http://") {
+		scheme = "http"
+	}
+	domain := ""
+	switch {
+	case sb.Domain != nil && strings.TrimSpace(*sb.Domain) != "":
+		domain = strings.TrimSpace(*sb.Domain)
+	case c.cfg.Domain != "":
+		domain = c.cfg.Domain
+	case c.cfg.APIURL != "":
+		if u, err := url.Parse(c.cfg.APIURL); err == nil && u.Host != "" {
+			hostname := u.Hostname()
+			if net.ParseIP(hostname) != nil {
+				return strings.TrimRight(c.cfg.APIURL, "/")
+			}
+			if len(hostname) > 4 && strings.EqualFold(hostname[:4], "api.") {
+				domain = u.Host[4:]
+			} else {
+				domain = u.Host
+			}
+		}
+	default:
+		domain = defaultE2BDomain
+	}
+	if domain == "" {
+		domain = defaultE2BDomain
+	}
+	return fmt.Sprintf("%s://%d-%s.%s", scheme, e2bEnvdPort, sb.SandboxID, domain)
 }
 
 func (c *e2bControlClient) doJSON(ctx context.Context, method, reqPath string, body any, out any) error {
@@ -174,7 +290,9 @@ func (c *e2bControlClient) doJSON(ctx context.Context, method, reqPath string, b
 	if err != nil {
 		return err
 	}
-	req.Header.Set("X-API-Key", c.apiKey)
+	if c.apiKey != "" {
+		req.Header.Set("X-API-Key", c.apiKey)
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -199,10 +317,14 @@ func (c *e2bControlClient) doJSON(ctx context.Context, method, reqPath string, b
 	}
 	_ = json.Unmarshal(raw, &apiErr)
 	msg := cmp.Or(strings.TrimSpace(apiErr.Message), strings.TrimSpace(string(raw)), resp.Status)
-	if resp.StatusCode == http.StatusNotFound {
+	switch resp.StatusCode {
+	case http.StatusNotFound:
 		return fmt.Errorf("%w: %s", errE2BNotFound, msg)
+	case http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		return fmt.Errorf("%w: %s", errE2BUnsupported, msg)
+	default:
+		return fmt.Errorf("e2b api (%d): %s", resp.StatusCode, msg)
 	}
-	return fmt.Errorf("e2b api (%d): %s", resp.StatusCode, msg)
 }
 
 type protoInt64 int64
@@ -566,6 +688,7 @@ type cachedE2BSession struct {
 	envID       string
 	specKey     string
 	sandboxID   string
+	accessToken string
 	envd        *envdClient
 	home        string
 	workspace   string
@@ -585,7 +708,7 @@ type e2bRuntime struct {
 
 func newE2BRuntime(q *sqlc.Queries, apiURL, envdURL string, httpClient *http.Client) *e2bRuntime {
 	if httpClient == nil {
-		httpClient = &http.Client{}
+		httpClient = newE2BHTTPClient()
 	}
 	return &e2bRuntime{
 		q:          q,
@@ -595,6 +718,29 @@ func newE2BRuntime(q *sqlc.Queries, apiURL, envdURL string, httpClient *http.Cli
 		agentLocks: map[string]*sync.Mutex{},
 		sessions:   map[string]cachedE2BSession{},
 	}
+}
+
+func newE2BHTTPClient() *http.Client {
+	var transport *http.Transport
+	if base, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = base.Clone()
+	} else {
+		transport = &http.Transport{}
+	}
+	baseDialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err == nil && isLocalhostSubdomain(host) {
+			addr = net.JoinHostPort("127.0.0.1", port)
+		}
+		return baseDialer.DialContext(ctx, network, addr)
+	}
+	return &http.Client{Transport: transport}
+}
+
+func isLocalhostSubdomain(host string) bool {
+	lower := strings.ToLower(strings.TrimSuffix(host, "."))
+	return strings.HasSuffix(lower, ".localhost") && len(lower) > len(".localhost")
 }
 
 func (r *e2bRuntime) lockAgent(agentID string) func() {
@@ -609,24 +755,35 @@ func (r *e2bRuntime) lockAgent(agentID string) func() {
 	return mu.Unlock
 }
 
-func (r *e2bRuntime) control(apiKey string) *e2bControlClient {
+func (r *e2bRuntime) control(cfg E2BConfig, apiKey string) *e2bControlClient {
+	apiURL := r.apiURL
+	switch {
+	case cfg.APIURL != "":
+		apiURL = cfg.APIURL
+	case cfg.Domain != "":
+		apiURL = "https://api." + cfg.Domain
+	}
 	return &e2bControlClient{
-		apiURL:     r.apiURL,
-		envdURL:    r.envdURL,
-		apiKey:     strings.TrimSpace(apiKey),
-		httpClient: r.httpClient,
+		apiURL:         apiURL,
+		defaultEnvdURL: r.envdURL,
+		cfg:            cfg,
+		apiKey:         strings.TrimSpace(apiKey),
+		httpClient:     r.httpClient,
 	}
 }
 
 func (r *e2bRuntime) validate(spec EnvironmentSpec) (E2BConfig, error) {
-	if strings.TrimSpace(spec.Secret) == "" {
-		return E2BConfig{}, fmt.Errorf("%w: e2b api key is required", ErrInvalidConfig)
-	}
 	cfg, err := ParseE2BConfig(spec.Config)
 	if err != nil {
 		return E2BConfig{}, err
 	}
-	return cfg, ValidateE2BConfig(cfg)
+	if err := ValidateE2BConfig(cfg); err != nil {
+		return E2BConfig{}, err
+	}
+	if !cfg.IsCustomEndpoint() && strings.TrimSpace(spec.Secret) == "" {
+		return E2BConfig{}, fmt.Errorf("%w: e2b api key is required", ErrInvalidConfig)
+	}
+	return cfg, nil
 }
 
 func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec EnvironmentSpec) (*envdClient, string, string, string, int, error) {
@@ -661,18 +818,43 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Environme
 		persistedID = cached.sandboxID
 	}
 
-	ctrl := r.control(spec.Secret)
+	ctrl := r.control(cfg, spec.Secret)
 	var sb *e2bSandbox
 	if persistedID != "" {
 		sb, err = ctrl.connectSandbox(ctx, persistedID, timeoutSec)
-		if errors.Is(err, errE2BNotFound) {
+		switch {
+		case errors.Is(err, errE2BNotFound):
 			sb = nil
-		} else if err != nil {
+		case errors.Is(err, errE2BUnsupported):
+			tErr := ctrl.setTimeout(ctx, persistedID, timeoutSec)
+			if errors.Is(tErr, errE2BNotFound) {
+				sb = nil
+				break
+			}
+			if tErr != nil && !errors.Is(tErr, errE2BUnsupported) {
+				return nil, "", "", "", 0, tErr
+			}
+			gotSB, gErr := ctrl.getSandbox(ctx, persistedID)
+			switch {
+			case gErr == nil:
+				sb = gotSB
+			case errors.Is(gErr, errE2BNotFound):
+				sb = nil
+			case errors.Is(gErr, errE2BUnsupported):
+				var tok string
+				if hasCached && cached.sandboxID == persistedID {
+					tok = cached.accessToken
+				}
+				sb = &e2bSandbox{SandboxID: persistedID, EnvdAccessToken: tok}
+			default:
+				return nil, "", "", "", 0, gErr
+			}
+		case err != nil:
 			return nil, "", "", "", 0, err
 		}
 	}
 	if sb == nil {
-		sb, err = ctrl.createSandbox(ctx, cfg.Template, timeoutSec, map[string]string{
+		sb, err = ctrl.createSandbox(ctx, cfg.Template, timeoutSec, cfg.AutoPauseEnabled(), map[string]string{
 			"dex_agent_id":       agentID,
 			"dex_environment_id": spec.ID,
 		})
@@ -710,6 +892,7 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Environme
 		envID:       spec.ID,
 		specKey:     specKey,
 		sandboxID:   sb.SandboxID,
+		accessToken: sb.EnvdAccessToken,
 		envd:        envd,
 		home:        home,
 		workspace:   workspace,
@@ -739,8 +922,8 @@ func (r *e2bRuntime) test(ctx context.Context, spec EnvironmentSpec) (TestResult
 	if err != nil {
 		return TestResult{}, err
 	}
-	ctrl := r.control(spec.Secret)
-	sb, err := ctrl.createSandbox(ctx, cfg.Template, 60, map[string]string{"dex_probe": "true"})
+	ctrl := r.control(cfg, spec.Secret)
+	sb, err := ctrl.createSandbox(ctx, cfg.Template, 60, cfg.AutoPauseEnabled(), map[string]string{"dex_probe": "true"})
 	if err != nil {
 		return TestResult{OK: false, Error: err.Error()}, nil
 	}
@@ -760,7 +943,43 @@ func (r *e2bRuntime) test(ctx context.Context, spec EnvironmentSpec) (TestResult
 	if err := makeEnvdDirAll(ctx, envd, workspace); err != nil {
 		return TestResult{OK: false, Home: home, Error: err.Error()}, nil
 	}
-	return TestResult{OK: true, Platform: "linux", Arch: "x64", Home: home}, nil
+	platform, arch := probeEnvdPlatformArch(ctx, envd)
+	return TestResult{OK: true, Platform: platform, Arch: arch, Home: home}, nil
+}
+
+func probeEnvdPlatformArch(ctx context.Context, envd *envdClient) (platform, arch string) {
+	platform, arch = "linux", "x64"
+	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	var stdout bytes.Buffer
+	err := envd.startProcess(probeCtx, map[string]any{
+		"cmd":  "/bin/sh",
+		"args": []string{"-lc", "uname -sm"},
+	}, func(ev envdProcessEvent) error {
+		if ev.Data != nil && len(ev.Data.Stdout) > 0 {
+			stdout.Write(ev.Data.Stdout)
+		}
+		return nil
+	})
+	if err != nil {
+		return platform, arch
+	}
+	fields := strings.Fields(strings.TrimSpace(stdout.String()))
+	if len(fields) >= 1 {
+		switch strings.ToLower(fields[0]) {
+		case "linux", "darwin":
+			platform = strings.ToLower(fields[0])
+		}
+	}
+	if len(fields) >= 2 {
+		switch strings.ToLower(fields[1]) {
+		case "x86_64", "amd64":
+			arch = "x64"
+		case "aarch64", "arm64":
+			arch = "arm64"
+		}
+	}
+	return platform, arch
 }
 
 func (r *e2bRuntime) resetAgent(ctx context.Context, agentID string) error {
@@ -787,10 +1006,17 @@ func (r *e2bRuntime) resetAgent(ctx context.Context, agentID string) error {
 		return nil
 	}
 	envRow, err := r.q.GetEnvironment(ctx, row.EnvironmentID)
-	if err != nil || Kind(envRow.Kind) != KindE2B || strings.TrimSpace(envRow.Secret) == "" {
+	if err != nil || Kind(envRow.Kind) != KindE2B {
 		return nil //nolint:nilerr // missing or non-e2b environment requires no remote kill.
 	}
-	return r.control(envRow.Secret).killSandbox(ctx, sandboxID)
+	cfg, parseErr := ParseE2BConfig(envRow.Config)
+	if parseErr != nil {
+		return nil //nolint:nilerr // malformed config should not block clearing local sandbox reference.
+	}
+	if !cfg.IsCustomEndpoint() && strings.TrimSpace(envRow.Secret) == "" {
+		return nil
+	}
+	return r.control(cfg, envRow.Secret).killSandbox(ctx, sandboxID)
 }
 
 func (r *e2bRuntime) cleanupSandbox(ctx context.Context, agentID, envID, sandboxID string) {
@@ -806,12 +1032,19 @@ func (r *e2bRuntime) cleanupSandbox(ctx context.Context, agentID, envID, sandbox
 		return
 	}
 	envRow, err := r.q.GetEnvironment(ctx, envID)
-	if err != nil || Kind(envRow.Kind) != KindE2B || strings.TrimSpace(envRow.Secret) == "" {
+	if err != nil || Kind(envRow.Kind) != KindE2B {
+		return
+	}
+	cfg, parseErr := ParseE2BConfig(envRow.Config)
+	if parseErr != nil {
+		return
+	}
+	if !cfg.IsCustomEndpoint() && strings.TrimSpace(envRow.Secret) == "" {
 		return
 	}
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
-	_ = r.control(envRow.Secret).killSandbox(cleanupCtx, sandboxID)
+	_ = r.control(cfg, envRow.Secret).killSandbox(cleanupCtx, sandboxID)
 }
 
 func resolveE2BWorkspace(configured, home string) string {
@@ -885,7 +1118,9 @@ func (h *e2bHandle) Env(ctx context.Context, cwd string, extraEnv map[string]str
 			return envd, sbID, err
 		},
 		renew: func(renCtx context.Context, sbID string) {
-			_ = h.rt.control(h.spec.Secret).setTimeout(renCtx, sbID, h.timeoutSec)
+			if cfg, parseErr := ParseE2BConfig(h.spec.Config); parseErr == nil {
+				_ = h.rt.control(cfg, h.spec.Secret).setTimeout(renCtx, sbID, h.timeoutSec)
+			}
 		},
 	}, nil
 }

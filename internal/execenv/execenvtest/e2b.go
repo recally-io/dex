@@ -39,14 +39,20 @@ type fakeSandbox struct {
 // FakeE2BServer simulates E2B's control-plane REST API and sandbox envd endpoints.
 type FakeE2BServer struct {
 	apiKey  string
+	apiMux  *http.ServeMux
+	envdMux *http.ServeMux
 	apiSrv  *httptest.Server
 	envdSrv *httptest.Server
 
-	mu        sync.Mutex
-	nextID    int
-	counts    FakeE2BCounts
-	sandboxes map[string]*fakeSandbox
-	procs     map[uint32]*exec.Cmd
+	mu                 sync.Mutex
+	nextID             int
+	counts             FakeE2BCounts
+	lastAutoPause      bool
+	lastAutoResume     bool
+	connectUnsupported bool
+	returnDomain       string
+	sandboxes          map[string]*fakeSandbox
+	procs              map[uint32]*exec.Cmd
 }
 
 // NewFakeE2B starts an isolated FakeE2BServer expecting apiKey.
@@ -59,7 +65,16 @@ func NewFakeE2B(t *testing.T, apiKey string) *FakeE2BServer {
 	}
 
 	apiMux := http.NewServeMux()
-	apiMux.HandleFunc("POST /v2/sandboxes", s.withAPIKey(func(w http.ResponseWriter, _ *http.Request) {
+	apiMux.HandleFunc("POST /v2/sandboxes", s.withAPIKey(func(w http.ResponseWriter, r *http.Request) {
+		var createReq struct {
+			AutoPause  bool `json:"autoPause"`
+			AutoResume *struct {
+				Enabled bool `json:"enabled"`
+			} `json:"autoResume"`
+		}
+		if r.Body != nil {
+			_ = json.UnmarshalRead(r.Body, &createReq)
+		}
 		s.mu.Lock()
 		s.nextID++
 		id := fmt.Sprintf("sbx-%d", s.nextID)
@@ -68,12 +83,24 @@ func NewFakeE2B(t *testing.T, apiKey string) *FakeE2BServer {
 		_ = os.MkdirAll(filepath.Join(root, "home", "user"), 0o700)
 		s.sandboxes[id] = &fakeSandbox{id: id, token: tok, root: root}
 		s.counts.Created++
+		s.lastAutoPause = createReq.AutoPause
+		s.lastAutoResume = createReq.AutoResume != nil && createReq.AutoResume.Enabled
+		domain := s.returnDomain
 		s.mu.Unlock()
-		writeTestJSON(w, http.StatusCreated, map[string]any{"sandboxID": id, "envdAccessToken": tok})
+		resp := map[string]any{"sandboxID": id, "envdAccessToken": tok}
+		if domain != "" {
+			resp["domain"] = domain
+		}
+		writeTestJSON(w, http.StatusCreated, resp)
 	}))
 	apiMux.HandleFunc("POST /v2/sandboxes/{id}/connect", s.withAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		s.mu.Lock()
+		if s.connectUnsupported {
+			s.mu.Unlock()
+			writeTestJSON(w, http.StatusNotImplemented, map[string]string{"message": "connect not implemented"})
+			return
+		}
 		sb := s.sandboxes[id]
 		if sb == nil || sb.killed {
 			s.mu.Unlock()
@@ -83,8 +110,31 @@ func NewFakeE2B(t *testing.T, apiKey string) *FakeE2BServer {
 		sb.paused = false
 		s.counts.Connected++
 		tok := sb.token
+		domain := s.returnDomain
 		s.mu.Unlock()
-		writeTestJSON(w, http.StatusOK, map[string]any{"sandboxID": id, "envdAccessToken": tok})
+		resp := map[string]any{"sandboxID": id, "envdAccessToken": tok}
+		if domain != "" {
+			resp["domain"] = domain
+		}
+		writeTestJSON(w, http.StatusOK, resp)
+	}))
+	apiMux.HandleFunc("GET /sandboxes/{id}", s.withAPIKey(func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		s.mu.Lock()
+		sb := s.sandboxes[id]
+		if sb == nil || sb.killed {
+			s.mu.Unlock()
+			writeTestJSON(w, http.StatusNotFound, map[string]string{"message": "sandbox not found"})
+			return
+		}
+		tok := sb.token
+		domain := s.returnDomain
+		s.mu.Unlock()
+		resp := map[string]any{"sandboxID": id, "envdAccessToken": tok}
+		if domain != "" {
+			resp["domain"] = domain
+		}
+		writeTestJSON(w, http.StatusOK, resp)
 	}))
 	apiMux.HandleFunc("POST /sandboxes/{id}/timeout", s.withAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -130,6 +180,8 @@ func NewFakeE2B(t *testing.T, apiKey string) *FakeE2BServer {
 	envdMux.HandleFunc("POST /process.Process/Start", s.handleProcessStart)
 	envdMux.HandleFunc("POST /process.Process/SendSignal", s.handleSendSignal)
 
+	s.apiMux = apiMux
+	s.envdMux = envdMux
 	s.apiSrv = httptest.NewServer(apiMux)
 	s.envdSrv = httptest.NewServer(envdMux)
 	t.Cleanup(func() {
@@ -141,6 +193,48 @@ func NewFakeE2B(t *testing.T, apiKey string) *FakeE2BServer {
 
 func (s *FakeE2BServer) APIURL() string  { return s.apiSrv.URL }
 func (s *FakeE2BServer) EnvdURL() string { return s.envdSrv.URL }
+
+// StartCombinedServer starts a single HTTP server routing both control-plane and envd endpoints,
+// returning its base URL and a function that reports the last Host header seen by envd.
+func (s *FakeE2BServer) StartCombinedServer(t *testing.T) (baseURL string, lastEnvdHost func() string) {
+	t.Helper()
+	var mu sync.Mutex
+	var recordedHost string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v2/") || strings.HasPrefix(r.URL.Path, "/sandboxes/") {
+			s.apiMux.ServeHTTP(w, r)
+			return
+		}
+		mu.Lock()
+		recordedHost = r.Host
+		mu.Unlock()
+		s.envdMux.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL, func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return recordedHost
+	}
+}
+
+func (s *FakeE2BServer) SetConnectUnsupported(v bool) {
+	s.mu.Lock()
+	s.connectUnsupported = v
+	s.mu.Unlock()
+}
+
+func (s *FakeE2BServer) SetReturnDomain(domain string) {
+	s.mu.Lock()
+	s.returnDomain = domain
+	s.mu.Unlock()
+}
+
+func (s *FakeE2BServer) LastCreateAutoPause() (autoPause, autoResume bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastAutoPause, s.lastAutoResume
+}
 
 func (s *FakeE2BServer) Counts() FakeE2BCounts {
 	s.mu.Lock()
@@ -179,6 +273,14 @@ func (s *FakeE2BServer) HostPath(sandboxID, sandboxPath string) string {
 
 func (s *FakeE2BServer) withAPIKey(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if s.apiKey == "" {
+			if len(r.Header.Values("X-API-Key")) > 0 {
+				writeTestJSON(w, http.StatusUnauthorized, map[string]string{"message": "unexpected api key"})
+				return
+			}
+			next(w, r)
+			return
+		}
 		if r.Header.Get("X-API-Key") != s.apiKey {
 			writeTestJSON(w, http.StatusUnauthorized, map[string]string{"message": "unauthorized"})
 			return

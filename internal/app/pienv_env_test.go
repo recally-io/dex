@@ -31,12 +31,13 @@ type apiEnvironment struct {
 }
 
 type apiEnvironmentTestResult struct {
-	OK       bool     `json:"ok"`
-	Platform string   `json:"platform"`
-	Arch     string   `json:"arch"`
-	Home     string   `json:"home"`
-	Warnings []string `json:"warnings"`
-	Error    string   `json:"error"`
+	OK             bool     `json:"ok"`
+	Platform       string   `json:"platform"`
+	Arch           string   `json:"arch"`
+	Home           string   `json:"home"`
+	Warnings       []string `json:"warnings"`
+	HostKeyChanged bool     `json:"hostKeyChanged"`
+	Error          string   `json:"error"`
 }
 
 func TestUserManagesPiEnvEnvironmentAndExecutesBotRemotely(t *testing.T) {
@@ -113,4 +114,101 @@ func TestUserManagesPiEnvEnvironmentAndExecutesBotRemotely(t *testing.T) {
 	defAgent.EnvironmentID = ""
 	d.must(t, http.MethodPut, "/api/agents/default", defAgent, &defAgent)
 	d.must(t, http.MethodDelete, "/api/settings/environments/"+created.ID, nil, nil, http.StatusOK)
+}
+
+func TestUserDiscoversSSHConfigProbesAndRecoversHostKey(t *testing.T) {
+	dataDir := t.TempDir()
+	localHome := t.TempDir()
+	sshDir := filepath.Join(localHome, ".ssh")
+	if err := os.MkdirAll(sshDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sshDir, "config"), []byte(
+		"Host buildbox\n  HostName 10.0.0.5\n  User builder\n  Port 2200\n  ProxyJump gw\n\nHost github.com\n  User git\n",
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sshDir, "work_ed25519"), []byte("KEY"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sshDir, "work_ed25519.pub"), []byte("ssh-ed25519 AAA"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sshFix := execenvtest.NewFakeSSH(t)
+	d := startDexHome(t, app.Config{
+		DataDir:    dataDir,
+		SSHProgram: sshFix.SSHProgram,
+	}, localHome)
+
+	// Given local ~/.ssh/config and key files, GET /ssh-config lists concrete hosts and private key filenames.
+	var discovery struct {
+		Hosts []struct {
+			Alias     string `json:"alias"`
+			HostName  string `json:"hostName"`
+			User      string `json:"user"`
+			Port      int    `json:"port"`
+			ProxyJump string `json:"proxyJump"`
+		} `json:"hosts"`
+		IdentityFiles []string `json:"identityFiles"`
+	}
+	d.must(t, http.MethodGet, "/api/settings/environments/ssh-config", nil, &discovery)
+	if len(discovery.Hosts) != 1 || discovery.Hosts[0].Alias != "buildbox" || discovery.Hosts[0].Port != 2200 || discovery.Hosts[0].ProxyJump != "gw" {
+		t.Fatalf("unexpected ssh discovery hosts: %+v", discovery.Hosts)
+	}
+	if len(discovery.IdentityFiles) != 1 || discovery.IdentityFiles[0] != "~/.ssh/work_ed25519" {
+		t.Fatalf("unexpected identityFiles: %+v", discovery.IdentityFiles)
+	}
+
+	// Pre-save probe verifies connectivity without creating <dataDir>/ssh_known_hosts.
+	var preProbe apiEnvironmentTestResult
+	d.must(t, http.MethodPost, "/api/settings/environments/probe", map[string]any{
+		"kind":   "pi-env",
+		"config": map[string]any{"host": "buildbox"},
+	}, &preProbe, http.StatusOK)
+	if !preProbe.OK || preProbe.Home != sshFix.RemoteHome {
+		t.Fatalf("pre-save probe=%+v", preProbe)
+	}
+	if _, statErr := os.Stat(filepath.Join(dataDir, "ssh_known_hosts")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected ephemeral pre-save probe not to create ssh_known_hosts, statErr=%v", statErr)
+	}
+
+	// Save environment and trust initial host key via test.
+	var saved apiEnvironment
+	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
+		"name":   "Build Box",
+		"kind":   "pi-env",
+		"config": map[string]any{"host": "buildbox"},
+	}, &saved, http.StatusCreated)
+
+	var firstTest apiEnvironmentTestResult
+	d.must(t, http.MethodPost, "/api/settings/environments/"+saved.ID+"/test", nil, &firstTest, http.StatusOK)
+	if !firstTest.OK {
+		t.Fatalf("firstTest=%+v", firstTest)
+	}
+
+	// When remote host key rotates, test and edit-probe both flag hostKeyChanged=true until forgotten.
+	sshFix.RotateHostKey(t)
+	var rotatedTest apiEnvironmentTestResult
+	d.must(t, http.MethodPost, "/api/settings/environments/"+saved.ID+"/test", nil, &rotatedTest, http.StatusOK)
+	if rotatedTest.OK || !rotatedTest.HostKeyChanged {
+		t.Fatalf("expected HostKeyChanged=true after key rotation, got %+v", rotatedTest)
+	}
+
+	var editProbe apiEnvironmentTestResult
+	d.must(t, http.MethodPost, "/api/settings/environments/probe", map[string]any{
+		"environmentId": saved.ID,
+		"kind":          "pi-env",
+		"config":        map[string]any{"host": "buildbox"},
+	}, &editProbe, http.StatusOK)
+	if editProbe.OK || !editProbe.HostKeyChanged {
+		t.Fatalf("expected edit probe with unchanged host to detect HostKeyChanged=true, got %+v", editProbe)
+	}
+
+	d.must(t, http.MethodPost, "/api/settings/environments/"+saved.ID+"/forget-host-key", nil, nil, http.StatusOK)
+	var recoveredTest apiEnvironmentTestResult
+	d.must(t, http.MethodPost, "/api/settings/environments/"+saved.ID+"/test", nil, &recoveredTest, http.StatusOK)
+	if !recoveredTest.OK || recoveredTest.HostKeyChanged {
+		t.Fatalf("expected recovery after forget-host-key, got %+v", recoveredTest)
+	}
 }

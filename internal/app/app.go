@@ -250,6 +250,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	envs := execenv.NewManager(execenv.ManagerConfig{
 		DataDir:    cfg.DataDir,
+		SSHHome:    cfg.Home,
 		Queries:    q,
 		SSHProgram: cfg.SSHProgram,
 		E2BAPIURL:  cfg.E2BAPIURL,

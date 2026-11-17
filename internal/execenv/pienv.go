@@ -85,11 +85,20 @@ func ForgetPiEnvHostKey(dataDir, envID string) error {
 }
 
 func sshTarget(dataDir, envID string, cfg PiEnvConfig, sshProgram string) pienv.SshTarget {
+	return sshTargetWithKnownHosts(
+		filepath.Join(dataDir, "ssh_known_hosts"),
+		"dex-pi-env-"+envID,
+		cfg,
+		sshProgram,
+	)
+}
+
+func sshTargetWithKnownHosts(knownHostsFile, hostKeyAlias string, cfg PiEnvConfig, sshProgram string) pienv.SshTarget {
 	target := pienv.SshTarget{
 		Host:           cfg.Host,
 		Port:           cfg.Port,
-		KnownHostsFile: filepath.Join(dataDir, "ssh_known_hosts"),
-		HostKeyAlias:   "dex-pi-env-" + envID,
+		KnownHostsFile: knownHostsFile,
+		HostKeyAlias:   hostKeyAlias,
 	}
 	if cfg.User != "" {
 		target.User = new(cfg.User)
@@ -158,17 +167,33 @@ func (r *piEnvRuntime) open(ctx context.Context, agentID, envID string, cfg PiEn
 	return h, nil
 }
 
-func (r *piEnvRuntime) test(ctx context.Context, envID string, cfg PiEnvConfig) (TestResult, error) {
-	if err := ValidatePiEnvConfig(r.dataDir, envID, cfg, r.sshProgram); err != nil {
+func (r *piEnvRuntime) probe(ctx context.Context, envID string, cfg PiEnvConfig, ephemeralKnownHosts bool) (TestResult, error) {
+	probeAlias := envID
+	if probeAlias == "" {
+		probeAlias = "probe"
+	}
+	if err := ValidatePiEnvConfig(r.dataDir, probeAlias, cfg, r.sshProgram); err != nil {
 		return TestResult{}, err
 	}
-	if err := os.MkdirAll(r.dataDir, 0o700); err != nil {
-		return TestResult{}, err
+
+	var target pienv.SshTarget
+	if ephemeralKnownHosts || envID == "" {
+		tmpDir, err := os.MkdirTemp("", "dex-ssh-probe-*")
+		if err != nil {
+			return TestResult{}, err
+		}
+		defer func() { _ = os.RemoveAll(tmpDir) }()
+		target = sshTargetWithKnownHosts(filepath.Join(tmpDir, "known_hosts"), "dex-pi-env-probe", cfg, r.sshProgram)
+	} else {
+		if err := os.MkdirAll(r.dataDir, 0o700); err != nil {
+			return TestResult{}, err
+		}
+		target = sshTarget(r.dataDir, envID, cfg, r.sshProgram)
 	}
-	target := sshTarget(r.dataDir, envID, cfg, r.sshProgram)
+
 	remote, err := r.detectWithTOFU(ctx, target)
 	if err != nil {
-		return TestResult{OK: false, Error: err.Error()}, nil
+		return TestResult{OK: false, HostKeyChanged: isHostKeyChanged(err), Error: err.Error()}, nil
 	}
 	binary, err := r.resolveDaemon(ctx, remote)
 	if err != nil {
@@ -180,7 +205,14 @@ func (r *piEnvRuntime) test(ctx context.Context, envID string, cfg PiEnvConfig) 
 		LoginShell: true,
 	})
 	if err != nil {
-		return TestResult{OK: false, Platform: remote.Platform, Arch: remote.Arch, Home: remote.Home, Error: err.Error()}, nil
+		return TestResult{
+			OK:             false,
+			Platform:       remote.Platform,
+			Arch:           remote.Arch,
+			Home:           remote.Home,
+			HostKeyChanged: isHostKeyChanged(err),
+			Error:          err.Error(),
+		}, nil
 	}
 	defer conn.Close()
 
@@ -194,7 +226,7 @@ func (r *piEnvRuntime) test(ctx context.Context, envID string, cfg PiEnvConfig) 
 	}
 	env := pienv.NewRemoteExecutionEnv(pienv.RemoteExecutionEnvOptions{
 		Connection: conn,
-		ID:         "pi-env:test:" + envID,
+		ID:         "pi-env:test:" + probeAlias,
 		Cwd:        detected.Home,
 	})
 	if err := env.CreateDir(ctx, baseWS, &durableenv.CreateDirOptions{Recursive: new(true)}); err != nil {
@@ -207,6 +239,11 @@ func (r *piEnvRuntime) test(ctx context.Context, envID string, cfg PiEnvConfig) 
 		Home:     detected.Home,
 		Warnings: detected.Warnings,
 	}, nil
+}
+
+func isHostKeyChanged(err error) bool {
+	_, changed := errors.AsType[*pienv.HostKeyChangedError](err)
+	return changed
 }
 
 func (r *piEnvRuntime) detectWithTOFU(ctx context.Context, target pienv.SshTarget) (pienv.RemotePlatform, error) {

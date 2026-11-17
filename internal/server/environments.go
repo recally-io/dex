@@ -66,19 +66,64 @@ func (h *handler) TestEnvironment(ctx context.Context, req api.TestEnvironmentRe
 	if err != nil {
 		return nil, err
 	}
-	var warnings *[]string
-	if len(res.Warnings) > 0 {
-		copied := slices.Clone(res.Warnings)
-		warnings = &copied
+	return api.TestEnvironment200JSONResponse(environmentTestResultView(res)), nil
+}
+
+func (h *handler) ProbeEnvironment(ctx context.Context, req api.ProbeEnvironmentRequestObject) (api.ProbeEnvironmentResponseObject, error) {
+	if req.Body == nil {
+		return nil, errInvalid
 	}
-	return api.TestEnvironment200JSONResponse{
-		Ok:       res.OK,
-		Platform: optional(res.Platform),
-		Arch:     optional(res.Arch),
-		Home:     optional(res.Home),
-		Warnings: warnings,
-		Error:    optional(res.Error),
+	rawConfig, err := encodeEnvironmentConfig(req.Body.Config)
+	if err != nil {
+		return nil, err
+	}
+	res, err := h.Settings.ProbeEnvironment(ctx, deref(req.Body.EnvironmentId), settings.EnvironmentInput{
+		Kind:   string(req.Body.Kind),
+		Config: rawConfig,
+		Secret: deref(req.Body.Secret),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return api.ProbeEnvironment200JSONResponse(environmentTestResultView(res)), nil
+}
+
+func (h *handler) DiscoverSshConfig(ctx context.Context, _ api.DiscoverSshConfigRequestObject) (api.DiscoverSshConfigResponseObject, error) { //nolint:revive // implements generated api.StrictServerInterface.
+	disc, err := h.Settings.DiscoverSSHConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	hosts := make([]api.SshHostEntry, 0, len(disc.Hosts))
+	for _, entry := range disc.Hosts {
+		var port *int
+		if entry.Port > 0 {
+			port = new(entry.Port)
+		}
+		hosts = append(hosts, api.SshHostEntry{
+			Alias:        entry.Alias,
+			HostName:     optional(entry.HostName),
+			User:         optional(entry.User),
+			Port:         port,
+			IdentityFile: optional(entry.IdentityFile),
+			ProxyJump:    optional(entry.ProxyJump),
+			Source:       optional(entry.Source),
+		})
+	}
+	files := slices.Clone(disc.IdentityFiles)
+	if files == nil {
+		files = []string{}
+	}
+	return api.DiscoverSshConfig200JSONResponse{
+		Hosts:         hosts,
+		IdentityFiles: files,
 	}, nil
+}
+
+func (h *handler) ForgetEnvironmentHostKey(ctx context.Context, req api.ForgetEnvironmentHostKeyRequestObject) (api.ForgetEnvironmentHostKeyResponseObject, error) {
+	if err := h.Settings.ForgetEnvironmentHostKey(ctx, req.EnvironmentId); err != nil {
+		return nil, err
+	}
+	return api.ForgetEnvironmentHostKey200JSONResponse(ok), nil
 }
 
 func (h *handler) ResetAgentEnvironment(ctx context.Context, _ api.ResetAgentEnvironmentRequestObject) (api.ResetAgentEnvironmentResponseObject, error) {
@@ -86,12 +131,12 @@ func (h *handler) ResetAgentEnvironment(ctx context.Context, _ api.ResetAgentEnv
 	if h.Envs == nil {
 		return nil, errors.New("execution environment manager is not configured")
 	}
-	kind, err := h.Envs.AgentEnvironmentKind(ctx, id)
+	canReset, err := h.Envs.CanResetAgent(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if kind != execenv.KindE2B {
-		return nil, fmt.Errorf("%w: environment reset applies only to e2b sandboxes", settings.ErrInvalid)
+	if !canReset {
+		return nil, fmt.Errorf("%w: environment reset applies only to disposable sandboxes", settings.ErrInvalid)
 	}
 	if h.Chats != nil {
 		if err := h.Chats.ResetEnvironment(ctx, id, func(rctx context.Context) error {
@@ -105,14 +150,38 @@ func (h *handler) ResetAgentEnvironment(ctx context.Context, _ api.ResetAgentEnv
 	return api.ResetAgentEnvironment200JSONResponse(ok), nil
 }
 
+func encodeEnvironmentConfig(cfg *api.EnvironmentConfig) ([]byte, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+	return json.Marshal(cfg)
+}
+
+func environmentTestResultView(res execenv.TestResult) api.EnvironmentTestResult {
+	var warnings *[]string
+	if len(res.Warnings) > 0 {
+		copied := slices.Clone(res.Warnings)
+		warnings = &copied
+	}
+	var hostKeyChanged *bool
+	if res.HostKeyChanged {
+		hostKeyChanged = new(true)
+	}
+	return api.EnvironmentTestResult{
+		Ok:             res.OK,
+		Platform:       optional(res.Platform),
+		Arch:           optional(res.Arch),
+		Home:           optional(res.Home),
+		Warnings:       warnings,
+		HostKeyChanged: hostKeyChanged,
+		Error:          optional(res.Error),
+	}
+}
+
 func environmentInput(body api.EnvironmentInput) (settings.EnvironmentInput, error) {
-	var rawConfig []byte
-	if body.Config != nil {
-		encoded, err := json.Marshal(body.Config)
-		if err != nil {
-			return settings.EnvironmentInput{}, err
-		}
-		rawConfig = encoded
+	rawConfig, err := encodeEnvironmentConfig(body.Config)
+	if err != nil {
+		return settings.EnvironmentInput{}, err
 	}
 	return settings.EnvironmentInput{
 		Name:   body.Name,
@@ -133,8 +202,12 @@ func environmentView(env settings.Environment) api.Environment {
 			Port:           env.Config.Port,
 			IdentityFile:   optional(env.Config.IdentityFile),
 			WorkspaceDir:   optional(env.Config.WorkspaceDir),
+			ApiUrl:         optional(env.Config.APIURL),
+			Domain:         optional(env.Config.Domain),
+			EnvdUrl:        optional(env.Config.EnvdURL),
 			Template:       optional(env.Config.Template),
 			TimeoutSeconds: env.Config.TimeoutSeconds,
+			AutoPause:      env.Config.AutoPause,
 		},
 		SecretSet: env.SecretSet,
 		CreatedAt: env.CreatedAt,

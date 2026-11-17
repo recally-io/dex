@@ -895,6 +895,10 @@ type Environment struct {
 
 // EnvironmentConfig defines model for EnvironmentConfig.
 type EnvironmentConfig struct {
+	ApiUrl         *string `json:"apiUrl,omitempty"`
+	AutoPause      *bool   `json:"autoPause,omitempty"`
+	Domain         *string `json:"domain,omitempty"`
+	EnvdUrl        *string `json:"envdUrl,omitempty"`
 	Host           *string `json:"host,omitempty"`
 	IdentityFile   *string `json:"identityFile,omitempty"`
 	Port           *int    `json:"port,omitempty"`
@@ -910,7 +914,7 @@ type EnvironmentInput struct {
 	Kind   EnvironmentKind    `json:"kind"`
 	Name   string             `json:"name"`
 
-	// Secret Write-only secret. Empty or omitted on update keeps the saved secret.
+	// Secret Write-only secret. Required for E2B Cloud; optional for custom E2B endpoints. Empty or omitted on update keeps the saved secret.
 	Secret *string `json:"secret,omitempty"`
 }
 
@@ -922,14 +926,27 @@ type EnvironmentList struct {
 	Environments []Environment `json:"environments"`
 }
 
+// EnvironmentProbeInput defines model for EnvironmentProbeInput.
+type EnvironmentProbeInput struct {
+	Config *EnvironmentConfig `json:"config,omitempty"`
+
+	// EnvironmentId Optional existing environment ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
+	EnvironmentId *string         `json:"environmentId,omitempty"`
+	Kind          EnvironmentKind `json:"kind"`
+
+	// Secret Optional write-only secret. When environmentId is set and secret is omitted or empty, uses the saved secret.
+	Secret *string `json:"secret,omitempty"`
+}
+
 // EnvironmentTestResult defines model for EnvironmentTestResult.
 type EnvironmentTestResult struct {
-	Arch     *string   `json:"arch,omitempty"`
-	Error    *string   `json:"error,omitempty"`
-	Home     *string   `json:"home,omitempty"`
-	Ok       bool      `json:"ok"`
-	Platform *string   `json:"platform,omitempty"`
-	Warnings *[]string `json:"warnings,omitempty"`
+	Arch           *string   `json:"arch,omitempty"`
+	Error          *string   `json:"error,omitempty"`
+	Home           *string   `json:"home,omitempty"`
+	HostKeyChanged *bool     `json:"hostKeyChanged,omitempty"`
+	Ok             bool      `json:"ok"`
+	Platform       *string   `json:"platform,omitempty"`
+	Warnings       *[]string `json:"warnings,omitempty"`
 }
 
 // Error defines model for Error.
@@ -1313,6 +1330,23 @@ type SnapshotEvent struct {
 // SnapshotEventType defines model for SnapshotEvent.Type.
 type SnapshotEventType string
 
+// SshConfigDiscovery defines model for SshConfigDiscovery.
+type SshConfigDiscovery struct {
+	Hosts         []SshHostEntry `json:"hosts"`
+	IdentityFiles []string       `json:"identityFiles"`
+}
+
+// SshHostEntry defines model for SshHostEntry.
+type SshHostEntry struct {
+	Alias        string  `json:"alias"`
+	HostName     *string `json:"hostName,omitempty"`
+	IdentityFile *string `json:"identityFile,omitempty"`
+	Port         *int    `json:"port,omitempty"`
+	ProxyJump    *string `json:"proxyJump,omitempty"`
+	Source       *string `json:"source,omitempty"`
+	User         *string `json:"user,omitempty"`
+}
+
 // TaskItem Marks the result of a child session turn. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
 type TaskItem struct {
 	At      *int64       `json:"at,omitempty"`
@@ -1678,6 +1712,9 @@ type CreateSessionJSONRequestBody = NewSession
 
 // CreateEnvironmentJSONRequestBody defines body for CreateEnvironment for application/json ContentType.
 type CreateEnvironmentJSONRequestBody = EnvironmentInput
+
+// ProbeEnvironmentJSONRequestBody defines body for ProbeEnvironment for application/json ContentType.
+type ProbeEnvironmentJSONRequestBody = EnvironmentProbeInput
 
 // UpdateEnvironmentJSONRequestBody defines body for UpdateEnvironment for application/json ContentType.
 type UpdateEnvironmentJSONRequestBody = EnvironmentInput
@@ -2400,11 +2437,20 @@ type ServerInterface interface {
 	// (POST /api/settings/environments)
 	CreateEnvironment(w http.ResponseWriter, r *http.Request)
 
+	// (POST /api/settings/environments/probe)
+	ProbeEnvironment(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/settings/environments/ssh-config)
+	DiscoverSshConfig(w http.ResponseWriter, r *http.Request)
+
 	// (DELETE /api/settings/environments/{environmentId})
 	DeleteEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
 
 	// (PUT /api/settings/environments/{environmentId})
 	UpdateEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
+
+	// (POST /api/settings/environments/{environmentId}/forget-host-key)
+	ForgetEnvironmentHostKey(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
 
 	// (POST /api/settings/environments/{environmentId}/test)
 	TestEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
@@ -4518,6 +4564,34 @@ func (siw *ServerInterfaceWrapper) CreateEnvironment(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// ProbeEnvironment operation middleware
+func (siw *ServerInterfaceWrapper) ProbeEnvironment(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProbeEnvironment(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DiscoverSshConfig operation middleware
+func (siw *ServerInterfaceWrapper) DiscoverSshConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DiscoverSshConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteEnvironment operation middleware
 func (siw *ServerInterfaceWrapper) DeleteEnvironment(w http.ResponseWriter, r *http.Request) {
 
@@ -4561,6 +4635,32 @@ func (siw *ServerInterfaceWrapper) UpdateEnvironment(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateEnvironment(w, r, environmentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ForgetEnvironmentHostKey operation middleware
+func (siw *ServerInterfaceWrapper) ForgetEnvironmentHostKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "environmentId" -------------
+	var environmentId EnvironmentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environmentId", r.PathValue("environmentId"), &environmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ForgetEnvironmentHostKey(w, r, environmentId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4870,9 +4970,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/onepassword", wrapper.SetOnePassword)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/environments", wrapper.ListEnvironments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/environments", wrapper.CreateEnvironment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/environments/ssh-config", wrapper.DiscoverSshConfig)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/environments/probe", wrapper.ProbeEnvironment)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/environments/{environmentId}", wrapper.DeleteEnvironment)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/environments/{environmentId}", wrapper.UpdateEnvironment)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/environments/{environmentId}/test", wrapper.TestEnvironment)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/environments/{environmentId}/forget-host-key", wrapper.ForgetEnvironmentHostKey)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/models", wrapper.ListModels)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/provider-models", wrapper.ListProviderModels)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.DeleteProvider)
@@ -9085,6 +9188,111 @@ func (response CreateEnvironmentdefaultJSONResponse) VisitCreateEnvironmentRespo
 	return err
 }
 
+type ProbeEnvironmentRequestObject struct {
+	Body *ProbeEnvironmentJSONRequestBody
+}
+
+type ProbeEnvironmentResponseObject interface {
+	VisitProbeEnvironmentResponse(w http.ResponseWriter) error
+}
+
+type ProbeEnvironment200JSONResponse EnvironmentTestResult
+
+func (response ProbeEnvironment200JSONResponse) VisitProbeEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeEnvironment400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ProbeEnvironment400JSONResponse) VisitProbeEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeEnvironment404JSONResponse Error
+
+func (response ProbeEnvironment404JSONResponse) VisitProbeEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeEnvironmentdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ProbeEnvironmentdefaultJSONResponse) VisitProbeEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverSshConfigRequestObject struct {
+}
+
+type DiscoverSshConfigResponseObject interface {
+	VisitDiscoverSshConfigResponse(w http.ResponseWriter) error
+}
+
+type DiscoverSshConfig200JSONResponse SshConfigDiscovery
+
+func (response DiscoverSshConfig200JSONResponse) VisitDiscoverSshConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverSshConfigdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DiscoverSshConfigdefaultJSONResponse) VisitDiscoverSshConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteEnvironmentRequestObject struct {
 	EnvironmentId EnvironmentId `json:"environmentId"`
 }
@@ -9209,6 +9417,73 @@ type UpdateEnvironmentdefaultJSONResponse struct {
 }
 
 func (response UpdateEnvironmentdefaultJSONResponse) VisitUpdateEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForgetEnvironmentHostKeyRequestObject struct {
+	EnvironmentId EnvironmentId `json:"environmentId"`
+}
+
+type ForgetEnvironmentHostKeyResponseObject interface {
+	VisitForgetEnvironmentHostKeyResponse(w http.ResponseWriter) error
+}
+
+type ForgetEnvironmentHostKey200JSONResponse Ok
+
+func (response ForgetEnvironmentHostKey200JSONResponse) VisitForgetEnvironmentHostKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForgetEnvironmentHostKey400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ForgetEnvironmentHostKey400JSONResponse) VisitForgetEnvironmentHostKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForgetEnvironmentHostKey404JSONResponse Error
+
+func (response ForgetEnvironmentHostKey404JSONResponse) VisitForgetEnvironmentHostKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ForgetEnvironmentHostKeydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ForgetEnvironmentHostKeydefaultJSONResponse) VisitForgetEnvironmentHostKeyResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -9782,11 +10057,20 @@ type StrictServerInterface interface {
 	// (POST /api/settings/environments)
 	CreateEnvironment(ctx context.Context, request CreateEnvironmentRequestObject) (CreateEnvironmentResponseObject, error)
 
+	// (POST /api/settings/environments/probe)
+	ProbeEnvironment(ctx context.Context, request ProbeEnvironmentRequestObject) (ProbeEnvironmentResponseObject, error)
+
+	// (GET /api/settings/environments/ssh-config)
+	DiscoverSshConfig(ctx context.Context, request DiscoverSshConfigRequestObject) (DiscoverSshConfigResponseObject, error)
+
 	// (DELETE /api/settings/environments/{environmentId})
 	DeleteEnvironment(ctx context.Context, request DeleteEnvironmentRequestObject) (DeleteEnvironmentResponseObject, error)
 
 	// (PUT /api/settings/environments/{environmentId})
 	UpdateEnvironment(ctx context.Context, request UpdateEnvironmentRequestObject) (UpdateEnvironmentResponseObject, error)
+
+	// (POST /api/settings/environments/{environmentId}/forget-host-key)
+	ForgetEnvironmentHostKey(ctx context.Context, request ForgetEnvironmentHostKeyRequestObject) (ForgetEnvironmentHostKeyResponseObject, error)
 
 	// (POST /api/settings/environments/{environmentId}/test)
 	TestEnvironment(ctx context.Context, request TestEnvironmentRequestObject) (TestEnvironmentResponseObject, error)
@@ -11895,6 +12179,61 @@ func (sh *strictHandler) CreateEnvironment(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// ProbeEnvironment operation middleware
+func (sh *strictHandler) ProbeEnvironment(w http.ResponseWriter, r *http.Request) {
+	var request ProbeEnvironmentRequestObject
+
+	var body ProbeEnvironmentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ProbeEnvironment(ctx, request.(ProbeEnvironmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ProbeEnvironment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ProbeEnvironmentResponseObject); ok {
+		if err := validResponse.VisitProbeEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DiscoverSshConfig operation middleware
+func (sh *strictHandler) DiscoverSshConfig(w http.ResponseWriter, r *http.Request) {
+	var request DiscoverSshConfigRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DiscoverSshConfig(ctx, request.(DiscoverSshConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DiscoverSshConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DiscoverSshConfigResponseObject); ok {
+		if err := validResponse.VisitDiscoverSshConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // DeleteEnvironment operation middleware
 func (sh *strictHandler) DeleteEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId) {
 	var request DeleteEnvironmentRequestObject
@@ -11947,6 +12286,32 @@ func (sh *strictHandler) UpdateEnvironment(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateEnvironmentResponseObject); ok {
 		if err := validResponse.VisitUpdateEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ForgetEnvironmentHostKey operation middleware
+func (sh *strictHandler) ForgetEnvironmentHostKey(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId) {
+	var request ForgetEnvironmentHostKeyRequestObject
+
+	request.EnvironmentId = environmentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ForgetEnvironmentHostKey(ctx, request.(ForgetEnvironmentHostKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ForgetEnvironmentHostKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ForgetEnvironmentHostKeyResponseObject); ok {
+		if err := validResponse.VisitForgetEnvironmentHostKeyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -233,6 +233,37 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/settings/environments/ssh-config:
+    get:
+      operationId: discoverSshConfig
+      description: Discovers concrete SSH host aliases from ~/.ssh/config and candidate private key paths under ~/.ssh/. Never reads private key contents.
+      responses:
+        "200":
+          description: Discovered SSH hosts and identity file paths.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SshConfigDiscovery" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/settings/environments/probe:
+    post:
+      operationId: probeEnvironment
+      description: Probes connectivity for an unsaved or edited execution environment configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnvironmentProbeInput" }
+      responses:
+        "200":
+          description: Probe result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnvironmentTestResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/settings/environments/{environmentId}:
     parameters:
       - $ref: "#/components/parameters/EnvironmentId"
@@ -278,6 +309,22 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/EnvironmentTestResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/settings/environments/{environmentId}/forget-host-key:
+    parameters:
+      - $ref: "#/components/parameters/EnvironmentId"
+    post:
+      operationId: forgetEnvironmentHostKey
+      description: Removes stored SSH host key entries for a pi-env environment so the next test or open re-trusts the host key via TOFU.
+      responses:
+        "200":
+          description: Host key cleared.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
@@ -2538,8 +2585,12 @@ components:
         port: { type: integer }
         identityFile: { type: string }
         workspaceDir: { type: string }
+        apiUrl: { type: string }
+        domain: { type: string }
+        envdUrl: { type: string }
         template: { type: string }
         timeoutSeconds: { type: integer }
+        autoPause: { type: boolean }
 
     Environment:
       type: object
@@ -2570,7 +2621,20 @@ components:
         config: { $ref: "#/components/schemas/EnvironmentConfig" }
         secret:
           type: string
-          description: Write-only secret. Empty or omitted on update keeps the saved secret.
+          description: Write-only secret. Required for E2B Cloud; optional for custom E2B endpoints. Empty or omitted on update keeps the saved secret.
+
+    EnvironmentProbeInput:
+      type: object
+      required: [kind]
+      properties:
+        environmentId:
+          type: string
+          description: Optional existing environment ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
+        kind: { $ref: "#/components/schemas/EnvironmentKind" }
+        config: { $ref: "#/components/schemas/EnvironmentConfig" }
+        secret:
+          type: string
+          description: Optional write-only secret. When environmentId is set and secret is omitted or empty, uses the saved secret.
 
     EnvironmentTestResult:
       type: object
@@ -2583,7 +2647,31 @@ components:
         warnings:
           type: array
           items: { type: string }
+        hostKeyChanged: { type: boolean }
         error: { type: string }
+
+    SshHostEntry:
+      type: object
+      required: [alias]
+      properties:
+        alias: { type: string }
+        hostName: { type: string }
+        user: { type: string }
+        port: { type: integer }
+        identityFile: { type: string }
+        proxyJump: { type: string }
+        source: { type: string }
+
+    SshConfigDiscovery:
+      type: object
+      required: [hosts, identityFiles]
+      properties:
+        hosts:
+          type: array
+          items: { $ref: "#/components/schemas/SshHostEntry" }
+        identityFiles:
+          type: array
+          items: { type: string }
 
     Channels:
       x-go-type: agent.Channels

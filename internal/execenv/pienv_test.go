@@ -84,18 +84,45 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 		t.Fatalf("exec res=%+v err=%v out=%q", res, err, out.String())
 	}
 
-	// Rotating the remote host key fails verification until forgotten (e.g. on host change).
+	// Rotating the remote host key fails verification with HostKeyChanged=true until forgotten (e.g. on host change).
 	sshFix.RotateHostKey(t)
 	probeChanged, err := mgr.TestEnvironment(t.Context(), execenv.SpecFromRow(envRow))
-	if err != nil || probeChanged.OK {
-		t.Fatalf("expected changed host key probe failure, got %+v err=%v", probeChanged, err)
+	if err != nil || probeChanged.OK || !probeChanged.HostKeyChanged {
+		t.Fatalf("expected changed host key probe failure with HostKeyChanged=true, got %+v err=%v", probeChanged, err)
 	}
 	if err := execenv.ForgetPiEnvHostKey(dataDir, envRow.ID); err != nil {
 		t.Fatal(err)
 	}
 	probeReset, err := mgr.TestEnvironment(t.Context(), execenv.SpecFromRow(envRow))
-	if err != nil || !probeReset.OK {
+	if err != nil || !probeReset.OK || probeReset.HostKeyChanged {
 		t.Fatalf("expected probe recovery after forget, got %+v err=%v", probeReset, err)
+	}
+}
+
+func TestUserProbesUnsavedPiEnvWithoutPollutingKnownHosts(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	sshFix := execenvtest.NewFakeSSH(t)
+
+	mgr := execenv.NewManager(execenv.ManagerConfig{
+		DataDir:    dataDir,
+		Home:       t.TempDir(),
+		SSHProgram: sshFix.SSHProgram,
+	})
+	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
+
+	// When probing an unsaved SSH environment (ephemeralHostKey=true), connectivity succeeds
+	// without writing into <dataDir>/ssh_known_hosts.
+	probe, err := mgr.ProbeEnvironment(t.Context(), execenv.EnvironmentSpec{
+		Name:   "Unsaved SSH",
+		Kind:   execenv.KindPiEnv,
+		Config: `{"host":"preview.internal","workspaceDir":"~/work"}`,
+	}, true)
+	if err != nil || !probe.OK || probe.Home != sshFix.RemoteHome {
+		t.Fatalf("ephemeral probe=%+v err=%v", probe, err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dataDir, "ssh_known_hosts")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected <dataDir>/ssh_known_hosts to stay untouched, statErr=%v", statErr)
 	}
 }
 

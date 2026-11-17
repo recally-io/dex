@@ -1,6 +1,7 @@
 package execenv
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -27,18 +28,20 @@ type EnvironmentSpec struct {
 
 // TestResult reports connectivity and platform details for an environment probe.
 type TestResult struct {
-	OK       bool     `json:"ok"`
-	Platform string   `json:"platform,omitempty"`
-	Arch     string   `json:"arch,omitempty"`
-	Home     string   `json:"home,omitempty"`
-	Warnings []string `json:"warnings,omitempty"`
-	Error    string   `json:"error,omitempty"`
+	OK             bool     `json:"ok"`
+	Platform       string   `json:"platform,omitempty"`
+	Arch           string   `json:"arch,omitempty"`
+	Home           string   `json:"home,omitempty"`
+	Warnings       []string `json:"warnings,omitempty"`
+	HostKeyChanged bool     `json:"hostKeyChanged,omitzero"`
+	Error          string   `json:"error,omitempty"`
 }
 
 // ManagerConfig configures the execution environment Manager.
 type ManagerConfig struct {
 	DataDir       string
 	Home          string
+	SSHHome       string
 	Queries       *sqlc.Queries
 	SSHProgram    string
 	E2BAPIURL     string
@@ -49,6 +52,7 @@ type ManagerConfig struct {
 // Manager resolves each agent's configured execution environment from control storage.
 type Manager struct {
 	dataDir string
+	home    string
 	q       *sqlc.Queries
 	local   Provider
 	pienv   *piEnvRuntime
@@ -69,12 +73,32 @@ func NewManager(cfg ManagerConfig) *Manager {
 	dataDir := filepath.Clean(cfg.DataDir)
 	return &Manager{
 		dataDir: dataDir,
+		home:    cmp.Or(cfg.SSHHome, cfg.Home),
 		q:       cfg.Queries,
 		local:   NewLocalProvider(dataDir, cfg.Home),
 		pienv:   &piEnvRuntime{dataDir: dataDir, sshProgram: cfg.SSHProgram},
 		e2b:     newE2BRuntime(cfg.Queries, cfg.E2BAPIURL, cfg.E2BEnvdURL, cfg.E2BHTTPClient),
 		handles: map[Handle]struct{}{},
 	}
+}
+
+// DiscoverSSHConfig discovers concrete host entries and private key path candidates under the configured home directory.
+func (m *Manager) DiscoverSSHConfig() (SSHConfigDiscovery, error) {
+	return DiscoverSSHConfig(m.home)
+}
+
+// CanReset reports whether environments of kind maintain disposable remote sandbox state that supports stateless reset.
+func CanReset(kind Kind) bool {
+	return kind == KindE2B
+}
+
+// CanResetAgent reports whether agentID's configured execution environment supports stateless reset.
+func (m *Manager) CanResetAgent(ctx context.Context, agentID string) (bool, error) {
+	kind, err := m.AgentEnvironmentKind(ctx, agentID)
+	if err != nil {
+		return false, err
+	}
+	return CanReset(kind), nil
 }
 
 // ValidateEnvironment checks spec against its backend configuration rules.
@@ -85,7 +109,7 @@ func (m *Manager) ValidateEnvironment(_ context.Context, spec EnvironmentSpec) e
 		if err != nil {
 			return err
 		}
-		return ValidatePiEnvConfig(m.dataDir, spec.ID, cfg, m.pienv.sshProgram)
+		return ValidatePiEnvConfig(m.dataDir, cmp.Or(spec.ID, "probe"), cfg, m.pienv.sshProgram)
 	case KindE2B:
 		_, err := m.e2b.validate(spec)
 		return err
@@ -96,15 +120,21 @@ func (m *Manager) ValidateEnvironment(_ context.Context, spec EnvironmentSpec) e
 	}
 }
 
-// TestEnvironment probes connectivity for spec.
+// TestEnvironment probes connectivity for a saved environment spec.
 func (m *Manager) TestEnvironment(ctx context.Context, spec EnvironmentSpec) (TestResult, error) {
+	return m.ProbeEnvironment(ctx, spec, false)
+}
+
+// ProbeEnvironment probes connectivity for spec. When ephemeralHostKey is true for pi-env,
+// SSH host keys are verified in a temporary known_hosts file without modifying <dataDir>/ssh_known_hosts.
+func (m *Manager) ProbeEnvironment(ctx context.Context, spec EnvironmentSpec, ephemeralHostKey bool) (TestResult, error) {
 	switch spec.Kind {
 	case KindPiEnv:
 		cfg, err := ParsePiEnvConfig(spec.Config)
 		if err != nil {
 			return TestResult{}, err
 		}
-		return m.pienv.test(ctx, spec.ID, cfg)
+		return m.pienv.probe(ctx, spec.ID, cfg, ephemeralHostKey)
 	case KindE2B:
 		return m.e2b.test(ctx, spec)
 	case KindLocal:
