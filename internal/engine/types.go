@@ -3,6 +3,8 @@ package engine
 import (
 	"context"
 	"errors"
+
+	"github.com/recally-io/dex/internal/execenv"
 )
 
 var (
@@ -92,7 +94,9 @@ type Config struct {
 	BaseEnv map[string]string
 	// LoginEnv captures the login shell environment for tools, started from BaseEnv; nil keeps
 	// BaseEnv.
-	LoginEnv  func(ctx context.Context, base map[string]string) (map[string]string, error)
+	LoginEnv func(ctx context.Context, base map[string]string) (map[string]string, error)
+	// ExecEnv configures agent workspace and execution backends. Nil defaults to a host-local provider.
+	ExecEnv   execenv.Provider
 	FakeModel bool
 	Tasks     TaskTools
 	Routines  RoutineTools

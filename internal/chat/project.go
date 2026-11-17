@@ -11,11 +11,12 @@ import (
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/execenv"
 )
 
 var (
 	ErrProjectForbidden = errors.New("only writable sessions can set a project directory")
-	ErrProjectInvalid   = errors.New("invalid project directory")
+	ErrProjectInvalid   = execenv.ErrInvalidPath
 )
 
 // ProjectPath validates paths at the API and tool boundary. Empty restores the workspace.
@@ -45,6 +46,14 @@ func ProjectPath(path string) (string, error) {
 	return path, nil
 }
 
+// ResolveProjectPath validates and normalizes a project path inside the agent's execution environment.
+func (s *Service) ResolveProjectPath(ctx context.Context, agentID, path string) (string, error) {
+	if s.engine != nil {
+		return s.engine.ResolveProjectPath(ctx, agentID, path)
+	}
+	return ProjectPath(path)
+}
+
 // SetProject saves control state first. API changes apply on the next submit.
 func (s *Service) SetProject(ctx context.Context, agentID string, id int64, path string) (string, error) {
 	conv, err := s.q.GetConversation(ctx, id)
@@ -57,7 +66,7 @@ func (s *Service) SetProject(ctx context.Context, agentID string, id int64, path
 	if !acceptsInput(conv.ChannelKey, conv.ParentID) {
 		return "", ErrProjectForbidden
 	}
-	path, err = ProjectPath(path)
+	path, err = s.ResolveProjectPath(ctx, agentID, path)
 	if err != nil {
 		return "", err
 	}
@@ -80,6 +89,9 @@ func (s *Service) RecentProjects(ctx context.Context, agentID string) ([]string,
 	paths, err := s.q.ListRecentProjects(ctx, agentID)
 	if err != nil {
 		return nil, err
+	}
+	if s.engine != nil {
+		return s.engine.FilterProjectPaths(ctx, agentID, paths, 8)
 	}
 	projects := []string{}
 	for _, path := range paths {

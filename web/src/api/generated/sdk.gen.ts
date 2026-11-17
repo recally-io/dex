@@ -602,7 +602,7 @@ export const archiveChat = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Lists visible directories on the dex host, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
+ * Lists visible directories in the selected agent's execution environment, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
  *
  */
 export const listDirectories = <ThrowOnError extends boolean = false>(options?: Options<ListDirectoriesData, ThrowOnError>): RequestResult<ListDirectoriesResponses, ListDirectoriesErrors, ThrowOnError> => (options?.client ?? client).get<ListDirectoriesResponses, ListDirectoriesErrors, ThrowOnError>({

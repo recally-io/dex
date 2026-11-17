@@ -2290,6 +2290,7 @@ export type ListDirectoriesData = {
     path?: never;
     query?: {
         path?: string;
+        agentId?: string;
     };
     url: '/api/directories';
 };

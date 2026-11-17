@@ -965,8 +965,19 @@ func (h *handler) GetChatHistory(ctx context.Context, req api.GetChatHistoryRequ
 	return out, err
 }
 
-func (h *handler) ListDirectories(_ context.Context, req api.ListDirectoriesRequestObject) (api.ListDirectoriesResponseObject, error) {
-	listing, err := chat.ListDirectories(req.Params.Path)
+func (h *handler) ListDirectories(ctx context.Context, req api.ListDirectoriesRequestObject) (api.ListDirectoriesResponseObject, error) {
+	id := "default"
+	if req.Params.AgentId != nil && strings.TrimSpace(*req.Params.AgentId) != "" {
+		id = strings.TrimSpace(*req.Params.AgentId)
+		row, err := h.Agents.Agent(ctx, id)
+		if err == nil && row.ArchivedAt != 0 {
+			return nil, agent.ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	listing, err := h.Chats.ListDirectories(ctx, id, req.Params.Path)
 	if err != nil {
 		return nil, err
 	}

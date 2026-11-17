@@ -44,7 +44,7 @@ export function ChatProject({
   const [draft, setDraft] = useState(cwd || "~");
 
   const listing = useQuery({
-    ...listDirectoriesOptions({ query: { path } }),
+    ...listDirectoriesOptions({ query: { path, agentId } }),
     enabled: open,
     retry: false,
   });

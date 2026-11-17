@@ -1524,7 +1524,8 @@ type CreateUploadMultipartBody struct {
 
 // ListDirectoriesParams defines parameters for ListDirectories.
 type ListDirectoriesParams struct {
-	Path *string `form:"path,omitempty" json:"path,omitempty"`
+	Path    *string `form:"path,omitempty" json:"path,omitempty"`
+	AgentId *string `form:"agentId,omitempty" json:"agentId,omitempty"`
 }
 
 // ListInboxParams defines parameters for ListInbox.
@@ -4145,6 +4146,19 @@ func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *htt
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "agentId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "agentId", r.URL.Query(), &params.AgentId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agentId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
 		}
 		return
 	}

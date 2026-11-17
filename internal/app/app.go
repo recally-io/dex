@@ -27,6 +27,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/scheduler"
 	"github.com/recally-io/dex/internal/server"
@@ -64,6 +65,8 @@ type Config struct {
 	AutomationCheck time.Duration
 	// Background sets the limits of background commands; a zero field takes its default.
 	Background background.Limits
+	// ExecEnv overrides the agent execution environment backend; nil defaults to local host execution.
+	ExecEnv execenv.Provider
 	// Token is the access token that the API requires. Empty means the stored token when
 	// RequireToken is set, and no authentication otherwise.
 	Token        string
@@ -239,11 +242,13 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return botTools.Handlers().Archive(ctx, c, a)
 		},
 	}
-	native, err := engine.New(engine.Config{DataDir: cfg.DataDir, Home: cfg.Home, BaseEnv: cfg.ToolEnv, LoginEnv: cfg.LoginEnv, FakeModel: cfg.FakeModel, Tasks: tools, Routines: routines, Bots: botHandlers})
+	native, err := engine.New(engine.Config{DataDir: cfg.DataDir, Home: cfg.Home, BaseEnv: cfg.ToolEnv, LoginEnv: cfg.LoginEnv, ExecEnv: cfg.ExecEnv, FakeModel: cfg.FakeModel, Tasks: tools, Routines: routines, Bots: botHandlers})
 	if err != nil {
 		cancel()
 		return nil, errors.Join(err, jobs.Close(), conn.Close())
 	}
+	artifacts.SetWorkspaceReader(native.ReadWorkspaceFile)
+	bg.ConfigureEnvOpener(native.ExecEnv)
 	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
 	chats.ConfigureBackground(bg)
 	automations := automation.New(q, chats, time.Now)

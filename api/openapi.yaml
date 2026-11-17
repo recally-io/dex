@@ -759,12 +759,15 @@ paths:
     get:
       operationId: listDirectories
       description: >
-        Lists visible directories on the dex host, including symlinks to directories.
-        An absent path selects home. Paths must be absolute or start with ~ or ~/.
+        Lists visible directories in the selected agent's execution environment, including symlinks
+        to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/.
         Entries are sorted by name without case and capped at 500.
       parameters:
         - in: query
           name: path
+          schema: { type: string }
+        - in: query
+          name: agentId
           schema: { type: string }
       responses:
         "200":

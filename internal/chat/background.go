@@ -37,7 +37,8 @@ func (s *Service) ToolBackgroundStart(ctx context.Context, r engine.TaskContext,
 	row, err := s.background.Start(ctx, background.StartParams{
 		CallKey: r.Key, AgentID: conv.AgentID, ConversationID: conv.ID, SourceRequestID: r.SourceRequestID,
 		Command: a.Command, Wake: a.Wake, Timeout: time.Duration(a.Timeout) * time.Second, Cwd: a.Cwd,
-		DefaultCwd: cmp.Or(conv.Cwd, a.Workspace), Label: a.Label, Env: a.Env, OutputDir: a.OutputDir,
+		DefaultCwd: cmp.Or(conv.Cwd, a.Workspace), Label: a.Label, Env: a.Env,
+		InheritEnv: a.InheritEnv, EnvKind: a.EnvKind, OutputDir: a.OutputDir,
 	})
 	if err != nil {
 		return engine.BackgroundInfo{}, err
