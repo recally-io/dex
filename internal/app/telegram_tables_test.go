@@ -35,7 +35,7 @@ func useRichAnswerProvider(t *testing.T, d *dex) func(string) {
 // richPayloadText checks the real HTTP payload, not a browser approximation.
 func richPayloadText(t *testing.T, message sentMessage) string {
 	t.Helper()
-	if message.RichHTML == "" || message.ParseMode != "" || !utf8.ValidString(message.RichHTML) {
+	if message.RichHTML == "" || !utf8.ValidString(message.RichHTML) {
 		t.Fatalf("not a valid rich payload: %+v", message)
 	}
 	decoder := xml.NewDecoder(strings.NewReader("<root>" + message.RichHTML + "</root>"))

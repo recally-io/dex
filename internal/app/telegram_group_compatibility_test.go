@@ -57,44 +57,6 @@ func TestUserUnsupportedTelegramAlbumKindsKeepNativeSingleMethods(t *testing.T) 
 	}
 }
 
-func TestUserLegacyTelegramFileCursorDoesNotRegroupAfterRestart(t *testing.T) {
-	t.Parallel()
-	// Given an older receipt with confirmed text but no frozen rendering.
-	data := t.TempDir()
-	f := newFakeTelegram(t)
-	f.failMedia.Store(true)
-	d := startTelegram(t, f, data, 42)
-	d.setModel(t, "files")
-	telegramSource(t, data, "one.txt", []byte("one"))
-	telegramSource(t, data, "two.txt", []byte("two"))
-	f.message(1, 42, 7, `["one.txt","two.txt"]`)
-	_ = nextTelegramGroup(t, f.groupAttempts)
-	conn := controlWriteDB(t, data)
-	eventually(t, "text confirmed before group retry", func() (bool, any) {
-		n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND delivered_parts=1 AND channel_retry_at>0")
-		return n == 1, n
-	})
-	d.stop()
-	execSQL(t, conn, "UPDATE submissions SET rendered_reply='' WHERE source_key='telegram:123:1'")
-	// When restored, the old per-file cursor must retain its part boundaries.
-	f.failMedia.Store(false)
-	startDex(t, data, f.srv.URL)
-	for range 2 {
-		if got := nextTelegramMedia(t, f.mediaSent); got.Method != "sendDocument" {
-			t.Fatalf("legacy part=%+v", got)
-		}
-	}
-	eventually(t, "legacy per-file cursor completed", func() (bool, any) {
-		n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND delivered_at IS NOT NULL AND delivered_parts=3")
-		return n == 1, n
-	})
-	select {
-	case group := <-f.groupAttempts:
-		t.Fatalf("legacy receipt regrouped: %+v", group)
-	default:
-	}
-}
-
 func TestUserTelegramGroupFloodWaitSurvivesRestart(t *testing.T) {
 	t.Parallel()
 	// Given a media-group flood wait stored for both the account and its reply.

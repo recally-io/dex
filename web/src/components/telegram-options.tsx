@@ -46,25 +46,6 @@ export function TelegramOptionsFields({
               </Select>
             )}
           </Field>
-          <Field
-            label="Link previews (legacy text)"
-            hint="Rich Messages have no link-preview setting. This applies only to older ordinary text messages."
-          >
-            {({ id }) => (
-              <Select
-                id={id}
-                value={value.linkPreview ?? ""}
-                onChange={(e) => {
-                  // SAFETY: This select contains only the link-preview values in the API contract.
-                  onChange({ ...value, linkPreview: e.target.value as TelegramOptions["linkPreview"] });
-                }}
-              >
-                <option value="">Telegram default</option>
-                <option value="on">Show</option>
-                <option value="off">Hide</option>
-              </Select>
-            )}
-          </Field>
           <Field label="Answer preview">
             {({ id }) => (
               <Select

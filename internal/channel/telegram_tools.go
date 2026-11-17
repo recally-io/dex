@@ -122,19 +122,20 @@ func (m *Manager) TelegramAction(ctx context.Context, caller engine.TaskContext,
 	if args.Index < 0 || args.Index >= len(ids) {
 		return engine.TelegramResult{}, errors.New("telegram message index is outside the confirmed delivery")
 	}
-	if ids[args.Index].Kind == "rich-v1" && args.Action == "edit_caption" {
-		return engine.TelegramResult{}, errors.New("rich messages have no media caption")
-	}
-	if args.Action == "edit" || args.Action == "edit_caption" {
-		limit := 4096
-		if args.Action == "edit_caption" {
-			limit = 1024
+	switch args.Action {
+	case "edit":
+		if ids[args.Index].Kind != "rich-v1" {
+			return engine.TelegramResult{}, errors.New("telegram text edits require a rich message")
 		}
-		if args.Action == "edit" && strings.TrimSpace(args.Text) == "" {
+		if strings.TrimSpace(args.Text) == "" {
 			return engine.TelegramResult{}, errors.New("telegram text edits need nonempty text")
 		}
-		if ids[args.Index].Kind != "rich-v1" && len(utf16.Encode([]rune(args.Text))) > limit {
-			return engine.TelegramResult{}, fmt.Errorf("telegram edit text exceeds %d UTF-16 units", limit)
+	case "edit_caption":
+		if ids[args.Index].Kind != "media" {
+			return engine.TelegramResult{}, errors.New("rich messages have no media caption")
+		}
+		if len(utf16.Encode([]rune(args.Text))) > 1024 {
+			return engine.TelegramResult{}, errors.New("telegram edit caption exceeds 1024 UTF-16 units")
 		}
 	}
 	existing, err := m.effectForTool(ctx, caller, source, identity, args.Action)

@@ -2799,7 +2799,6 @@ components:
           default: false
           description: Require a mention or reply to this bot for group input. Off by default for individually authorized senders. This does not grant access to private resources.
         silent: { type: boolean, default: false }
-        linkPreview: { type: string, enum: ["", "on", "off"] }
         preview: { type: string, enum: ["", auto, edit, draft, "off"] }
         reactions: { type: boolean, default: false }
         stt: { $ref: "#/components/schemas/TelegramSpeechOptions" }

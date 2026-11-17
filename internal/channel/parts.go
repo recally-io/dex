@@ -19,15 +19,14 @@ import (
 )
 
 // RichMessage is frozen Telegram rich HTML. Version 1 has no embedded media.
-// Old Text parts remain ordinary platform payloads and are never re-rendered.
 type RichMessage struct {
 	Version int    `json:"version"`
 	HTML    string `json:"html"`
 }
 
-// Part is one frozen platform payload. Text is opaque HTML, Markdown, or card
-// markup, not universal plain text. Rich, Group, and Buttons come from Telegram
-// planning. Manager passes the stored variant back to the same Bot unchanged.
+// Part is one frozen platform payload. Text holds the payload for text-only
+// platforms such as Feishu and WeChat. Rich, Group, and Buttons come from
+// Telegram planning. Manager passes the stored variant back to the same Bot unchanged.
 type Part struct {
 	Rich    *RichMessage `json:"rich,omitempty"`
 	Buttons []Button     `json:"buttons,omitempty"`
@@ -59,22 +58,6 @@ type Receipt struct {
 type RemoteMessage struct {
 	ID   string `json:"id"`
 	Kind string `json:"kind,omitempty"`
-}
-
-func (r *RemoteMessage) UnmarshalJSON(data []byte) error {
-	if len(data) > 0 && data[0] == '"' {
-		return json.Unmarshal(data, &r.ID)
-	}
-	type remote RemoteMessage
-	return json.Unmarshal(data, (*remote)(r))
-}
-
-func (r RemoteMessage) MarshalJSON() ([]byte, error) {
-	if r.Kind == "" {
-		return json.Marshal(r.ID)
-	}
-	type remote RemoteMessage
-	return json.Marshal(remote(r))
 }
 
 // TextParts keeps text-only adapters on the shared part contract.
@@ -153,7 +136,7 @@ func (m *Manager) replyParts(ctx context.Context, bot Bot, r sqlc.ListChannelRep
 		err := json.Unmarshal([]byte(r.RenderedReply), &parts)
 		return parts, err
 	}
-	parts = bot.Parts(chat.Reply{Status: r.Status, Answer: r.Answer.String, Reason: r.Reason.String, LegacyDelivery: r.DeliveredParts > 0})
+	parts = bot.Parts(chat.Reply{Status: r.Status, Answer: r.Answer.String, Reason: r.Reason.String})
 	if r.Status == "done" {
 		files, err := m.q.ListChannelReplyFiles(ctx, r.ID)
 		if err != nil {
@@ -163,7 +146,7 @@ func (m *Manager) replyParts(ctx context.Context, bot Bot, r sqlc.ListChannelRep
 			parts = append(parts, Part{File: &File{Key: f.OperationKey, Name: f.Name, MimeType: f.MimeType, Size: f.Size.Int64}})
 		}
 	}
-	if group, ok := bot.(GroupParts); ok && r.DeliveredParts == 0 {
+	if group, ok := bot.(GroupParts); ok {
 		for i := range parts {
 			if file := parts[i].File; file != nil {
 				var err error

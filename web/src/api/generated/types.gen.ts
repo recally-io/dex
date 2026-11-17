@@ -913,7 +913,6 @@ export type TelegramOptions = {
      */
     requireMention?: boolean;
     silent?: boolean;
-    linkPreview?: '' | 'on' | 'off';
     preview?: '' | 'auto' | 'edit' | 'draft' | 'off';
     reactions?: boolean;
     stt?: TelegramSpeechOptions;

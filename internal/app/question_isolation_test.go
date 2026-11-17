@@ -22,7 +22,7 @@ func TestUserAnswersQuestionsFromTwoBotsWithTheSameRemoteMessageID(t *testing.T)
 			r.URL.Path = strings.Replace(r.URL.Path, secondToken, fakeToken, 1)
 			bot = second
 		}
-		if !strings.HasSuffix(r.URL.Path, "/sendRichMessage") && !strings.HasSuffix(r.URL.Path, "/sendMessage") {
+		if !strings.HasSuffix(r.URL.Path, "/sendRichMessage") {
 			bot.serve(w, r)
 			return
 		}

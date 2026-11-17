@@ -73,8 +73,7 @@ type Bot interface {
 }
 
 // GroupParts plans native media groups for a reply before Manager freezes it.
-// File bodies are loaded for planning. Manager never calls it for a frozen or
-// partly delivered reply.
+// File bodies are loaded for planning. Manager freezes parts before the first Send.
 type GroupParts interface {
 	GroupParts([]Part) []Part
 }

@@ -1,9 +1,6 @@
 package app_test
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
 func TestUserAnswersTelegramQuestionWithFullQuotedContext(t *testing.T) {
 	t.Parallel()
@@ -27,29 +24,5 @@ func TestUserAnswersTelegramQuestionWithFullQuotedContext(t *testing.T) {
 	conn := controlWriteDB(t, d.dataDir(t))
 	if n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:2' AND content=?", "Answer to: Which color?\nBlue"); n != 1 {
 		t.Fatalf("question answer count=%d", n)
-	}
-}
-
-func TestUserLegacyPartialTelegramReplyKeepsOriginalRendering(t *testing.T) {
-	t.Parallel()
-	// Given a confirmed first text part, as an older version stored before frozen reply payloads.
-	f := newFakeTelegram(t)
-	f.failSend.Store(true)
-	data := t.TempDir()
-	d := startTelegram(t, f, data, 42)
-	f.message(1, 42, 42, strings.Repeat("a", 5000)+"\n\n~~removed~~")
-	conn := controlWriteDB(t, data)
-	eventually(t, "confirmed first part and pending remainder", func() (bool, any) {
-		n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND rendered_reply<>'' AND delivered_parts=0 AND delivered_at IS NULL")
-		return n == 1, n
-	})
-	d.stop()
-	execSQL(t, conn, "UPDATE submissions SET rendered_reply='',delivered_parts=1,channel_remote_ids='[\"900\"]' WHERE source_key='telegram:123:1'")
-	// When the current renderer resumes, the legacy cursor still uses the original Markdown rules.
-	f.failSend.Store(false)
-	startDex(t, data, f.srv.URL)
-	got := f.next(t).Text
-	if !strings.Contains(got, "~~removed~~") || strings.Contains(got, "<s>") {
-		t.Fatalf("legacy reply used a new renderer: %q", got)
 	}
 }

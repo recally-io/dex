@@ -26,16 +26,15 @@ func (b *Bot) Control(ctx context.Context, peer string, remote channel.RemoteMes
 	method := ""
 	switch args.Action {
 	case "edit":
-		method = "editMessageText"
-		if remote.Kind == "rich-v1" {
-			parts := renderRich(args.Text)
-			if len(parts) != 1 {
-				return channel.Receipt{}, fmt.Errorf("%w: rich edit must fit one message", channel.ErrPermanent)
-			}
-			params["rich_message"] = richContent(parts[0].Rich)
-		} else {
-			params["text"] = args.Text
+		if remote.Kind != "rich-v1" {
+			return channel.Receipt{}, fmt.Errorf("%w: telegram text edit requires a rich message", channel.ErrPermanent)
 		}
+		method = "editMessageText"
+		parts := renderRich(args.Text)
+		if len(parts) != 1 {
+			return channel.Receipt{}, fmt.Errorf("%w: rich edit must fit one message", channel.ErrPermanent)
+		}
+		params["rich_message"] = richContent(parts[0].Rich)
 	case "edit_caption":
 		method = "editMessageCaption"
 		params["caption"] = args.Text
@@ -85,11 +84,8 @@ func (b *Bot) Control(ctx context.Context, peer string, remote channel.RemoteMes
 }
 
 func (b *Bot) presentation(params map[string]any, method string) {
-	if b.cfg.Options.Silent && (method == "sendMessage" || method == "sendRichMessage" || method == "copyMessage" || method == "forwardMessage") {
+	if b.cfg.Options.Silent && (method == "sendRichMessage" || method == "copyMessage" || method == "forwardMessage") {
 		params["disable_notification"] = true
-	}
-	if (method == "sendMessage" || method == "editMessageText") && params["rich_message"] == nil && b.cfg.Options.LinkPreview != "" {
-		params["link_preview_options"] = map[string]bool{"is_disabled": b.cfg.Options.LinkPreview == "off"}
 	}
 }
 
