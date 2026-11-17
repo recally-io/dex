@@ -10,24 +10,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/MichaelKinsy/PiG/env/daemon"
 )
 
-// DispatchHelperMain handles --dex-fake-ssh and --dex-pi-env-daemon subprocess invocations from TestMain.
+// DispatchHelperMain handles --dex-fake-ssh subprocess invocations from TestMain.
 func DispatchHelperMain() {
 	if len(os.Args) >= 3 && os.Args[1] == "--dex-fake-ssh" {
 		os.Exit(RunFakeSSH(os.Args[2], os.Args[3:]))
-	}
-	if len(os.Args) >= 5 && os.Args[1] == "--dex-pi-env-daemon" && os.Args[2] == "serve" && os.Args[3] == "--token" {
-		if err := daemon.Serve(os.Stdin, os.Stdout, os.Args[4], daemon.Options{}); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		os.Exit(0)
 	}
 }
 
@@ -38,8 +28,8 @@ type FakeSSHFixture struct {
 	SSHProgram string
 }
 
-// NewFakeSSH sets up a simulated SSH endpoint and pre-seeds the cached pi-env daemon wrapper under dataDir.
-func NewFakeSSH(t *testing.T, dataDir string) *FakeSSHFixture {
+// NewFakeSSH sets up a simulated SSH endpoint backed by the current test executable.
+func NewFakeSSH(t *testing.T) *FakeSSHFixture {
 	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
@@ -59,20 +49,6 @@ func NewFakeSSH(t *testing.T, dataDir string) *FakeSSHFixture {
 
 	sshScript := fmt.Sprintf("#!/bin/sh\nexec %q --dex-fake-ssh %q \"$@\"\n", exe, stateDir)
 	if err := os.WriteFile(f.SSHProgram, []byte(sshScript), 0o700); err != nil { //nolint:gosec // test wrapper script.
-		t.Fatal(err)
-	}
-
-	// Pre-seed cached daemon wrapper so tests do not shell out to `go build`.
-	arch := runtime.GOARCH
-	if arch == "amd64" {
-		arch = "x64"
-	}
-	cacheBin := filepath.Join(dataDir, "cache", "pi-env", runtime.GOOS+"-"+arch, "pi-env")
-	if err := os.MkdirAll(filepath.Dir(cacheBin), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	daemonScript := fmt.Sprintf("#!/bin/sh\nexec %q --dex-pi-env-daemon \"$@\"\n", exe)
-	if err := os.WriteFile(cacheBin, []byte(daemonScript), 0o700); err != nil { //nolint:gosec // test wrapper script.
 		t.Fatal(err)
 	}
 	return f

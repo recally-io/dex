@@ -23,7 +23,7 @@ func TestMain(m *testing.M) {
 func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
-	sshFix := execenvtest.NewFakeSSH(t, dataDir)
+	sshFix := execenvtest.NewFakeSSH(t)
 
 	conn, err := db.Open(t.Context(), filepath.Join(dataDir, "control.sqlite"))
 	if err != nil {
@@ -96,5 +96,48 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 	probeReset, err := mgr.TestEnvironment(t.Context(), execenv.SpecFromRow(envRow))
 	if err != nil || !probeReset.OK {
 		t.Fatalf("expected probe recovery after forget, got %+v err=%v", probeReset, err)
+	}
+}
+
+func TestUserPiEnvBuildsDaemonOutsideModuleCheckout(t *testing.T) {
+	// Given a standalone dex process running in a directory without go.mod (like launchd/systemd WorkingDirectory=$HOME),
+	// a relative DataDir (like DEX_DATA_DIR=.local/dev-data), and no network access to sum.golang.org.
+	t.Chdir(t.TempDir())
+	t.Setenv("GOPROXY", "off")
+	dataDir := filepath.Join(".local", "dev-data")
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sshFix := execenvtest.NewFakeSSH(t)
+
+	conn, err := db.Open(t.Context(), filepath.Join(dataDir, "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	q := sqlc.New(conn)
+
+	now := time.Now().UnixMilli()
+	envRow, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+		ID: "env-standalone", Name: "MacMini", Kind: string(execenv.KindPiEnv),
+		Config: `{"host":"macmini.local","user":"vaayne","workspaceDir":"~/.dex/agents"}`, CreatedAt: now, UpdatedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := execenv.NewManager(execenv.ManagerConfig{
+		DataDir:    dataDir,
+		Home:       t.TempDir(),
+		Queries:    q,
+		SSHProgram: sshFix.SSHProgram,
+	})
+	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
+
+	// When the user tests the pi-env SSH connection without any pre-built daemon cache.
+	probe, err := mgr.TestEnvironment(t.Context(), execenv.SpecFromRow(envRow))
+	// Then dex builds and deploys the real pi-env daemon binary and reports OK.
+	if err != nil || !probe.OK || probe.Home != sshFix.RemoteHome {
+		t.Fatalf("standalone probe=%+v err=%v", probe, err)
 	}
 }
