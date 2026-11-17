@@ -153,10 +153,12 @@ func TestUserRetrySkipsConfirmedTelegramParts(t *testing.T) {
 	// Given an answer that spans two Telegram messages, with the second send failing.
 	f := newFakeTelegram(t)
 	f.failAfter.Store(1)
-	startTelegram(t, f, t.TempDir(), 42)
-	f.message(1, 42, 7, strings.Repeat("a", 4100))
+	d := startTelegram(t, f, t.TempDir(), 42)
+	setAnswer := useRichAnswerProvider(t, d)
+	setAnswer("echo: " + strings.Repeat("a", 33000))
+	f.message(1, 42, 7, "generate long reply")
 	first := f.next(t).Text
-	if len(first) != 4096 {
+	if len(first) != 32768 {
 		t.Fatalf("first length: %d", len(first))
 	}
 	eventually(t, "second send failure", func() (bool, any) { n := f.sendCount.Load(); return n >= 2, n })
@@ -164,7 +166,7 @@ func TestUserRetrySkipsConfirmedTelegramParts(t *testing.T) {
 	f.failAfter.Store(0)
 	// Then only the remaining part is sent.
 	second := f.next(t).Text
-	if first+second != "echo: "+strings.Repeat("a", 4100) {
+	if first+second != "echo: "+strings.Repeat("a", 33000) {
 		t.Fatalf("second part: %q", second)
 	}
 }

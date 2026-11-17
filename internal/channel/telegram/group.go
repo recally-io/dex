@@ -14,10 +14,7 @@ import (
 )
 
 func (b *Bot) groupText(ctx context.Context, m *message) (string, bool, error) {
-	text := m.Text
-	if text == "" {
-		text = m.Caption
-	}
+	text := m.body()
 	acceptUnmentioned := !b.cfg.Options.RequireMention
 	botID, _ := strconv.ParseInt(b.cfg.botID(), 10, 64)
 	replied := m.ReplyTo != nil && m.ReplyTo.From != nil && m.ReplyTo.From.ID == botID
@@ -141,14 +138,19 @@ func (b *Bot) controlPeerReply(ctx context.Context, peer, text string) error {
 	if err != nil {
 		return err
 	}
-	params := map[string]any{"chat_id": chatID, "text": text}
-	if topicID > 0 {
-		params["message_thread_id"] = topicID
+	for _, part := range renderRich(text) {
+		params := map[string]any{"chat_id": chatID, "rich_message": richContent(part.Rich)}
+		if topicID > 0 {
+			params["message_thread_id"] = topicID
+		}
+		b.presentation(params, "sendRichMessage")
+		err = b.call(ctx, "sendRichMessage", params, nil)
+		if api, ok := errors.AsType[*apiError](err); ok && (api.Code == 400 || api.Code == 403) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 	}
-	b.presentation(params, "sendMessage")
-	err = b.call(ctx, "sendMessage", params, nil)
-	if api, ok := errors.AsType[*apiError](err); ok && (api.Code == 400 || api.Code == 403) {
-		return nil
-	}
-	return err
+	return nil
 }

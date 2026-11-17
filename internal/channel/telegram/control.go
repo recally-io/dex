@@ -13,12 +13,12 @@ import (
 )
 
 // Control accepts only a remote ID selected by the channel service from an owned delivery.
-func (b *Bot) Control(ctx context.Context, peer, remote string, args engine.TelegramRequest) (channel.Receipt, error) {
+func (b *Bot) Control(ctx context.Context, peer string, remote channel.RemoteMessage, args engine.TelegramRequest) (channel.Receipt, error) {
 	chatID, err := peerID(peer)
 	if err != nil {
 		return channel.Receipt{}, err
 	}
-	id, err := strconv.ParseInt(remote, 10, 64)
+	id, err := strconv.ParseInt(remote.ID, 10, 64)
 	if err != nil || id <= 0 {
 		return channel.Receipt{}, fmt.Errorf("%w: invalid confirmed message ID", channel.ErrPermanent)
 	}
@@ -27,7 +27,15 @@ func (b *Bot) Control(ctx context.Context, peer, remote string, args engine.Tele
 	switch args.Action {
 	case "edit":
 		method = "editMessageText"
-		params["text"] = args.Text
+		if remote.Kind == "rich-v1" {
+			parts := renderRich(args.Text)
+			if len(parts) != 1 {
+				return channel.Receipt{}, fmt.Errorf("%w: rich edit must fit one message", channel.ErrPermanent)
+			}
+			params["rich_message"] = richContent(parts[0].Rich)
+		} else {
+			params["text"] = args.Text
+		}
 	case "edit_caption":
 		method = "editMessageCaption"
 		params["caption"] = args.Text
@@ -66,7 +74,7 @@ func (b *Bot) Control(ctx context.Context, peer, remote string, args engine.Tele
 	if api, ok := errors.AsType[*apiError](err); ok && (api.Code == 400 || api.Code == 403) {
 		err = fmt.Errorf("%w: %w", channel.ErrPermanent, err)
 	}
-	receipt := channel.Receipt{}
+	receipt := channel.Receipt{Kind: remote.Kind}
 	if err == nil && !noChange && ((args.Action == "delete" || args.Action == "react") && !completed || (args.Action != "delete" && args.Action != "react") && result.ID <= 0) {
 		return receipt, errors.New("telegram operation outcome unknown: invalid API result")
 	}
@@ -77,16 +85,16 @@ func (b *Bot) Control(ctx context.Context, peer, remote string, args engine.Tele
 }
 
 func (b *Bot) presentation(params map[string]any, method string) {
-	if b.cfg.Options.Silent && (method == "sendMessage" || method == "copyMessage" || method == "forwardMessage") {
+	if b.cfg.Options.Silent && (method == "sendMessage" || method == "sendRichMessage" || method == "copyMessage" || method == "forwardMessage") {
 		params["disable_notification"] = true
 	}
-	if (method == "sendMessage" || method == "editMessageText") && b.cfg.Options.LinkPreview != "" {
+	if (method == "sendMessage" || method == "editMessageText") && params["rich_message"] == nil && b.cfg.Options.LinkPreview != "" {
 		params["link_preview_options"] = map[string]bool{"is_disabled": b.cfg.Options.LinkPreview == "off"}
 	}
 }
 
 func (b *Bot) reaction(ctx context.Context, peer, remote, emoji string) error {
-	_, err := b.Control(ctx, peer, remote, engine.TelegramRequest{Action: "react", Emoji: emoji})
+	_, err := b.Control(ctx, peer, channel.RemoteMessage{ID: remote}, engine.TelegramRequest{Action: "react", Emoji: emoji})
 	return err
 }
 

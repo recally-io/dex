@@ -17,7 +17,8 @@ func TestUserTelegramSilentPreviewAndReactionPreferencesAffectDelivery(t *testin
 	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"silent": true, "linkPreview": "off", "preview": "off", "reactions": true}}, nil)
 	f.message(1, 42, 42, "https://example.invalid/hello")
 	got := f.next(t)
-	if !got.Silent || got.LinkPreview == nil || !got.LinkPreview.Disabled {
+	// sendRichMessage has no link_preview_options parameter in the official API.
+	if !got.Silent || got.RichHTML == "" || got.LinkPreview != nil {
 		t.Fatalf("presentation=%+v", got)
 	}
 	// Then processing and terminal reactions refer to the incoming message, without draft or typing calls.
@@ -26,7 +27,7 @@ func TestUserTelegramSilentPreviewAndReactionPreferencesAffectDelivery(t *testin
 		for {
 			select {
 			case event := <-f.events:
-				if event.Method == "sendMessageDraft" || event.Method == "sendChatAction" {
+				if event.Method == "sendRichMessageDraft" || event.Method == "sendChatAction" {
 					t.Errorf("preview off still sent %s", event.Method)
 				}
 				if event.Method == "setMessageReaction" {
@@ -82,12 +83,19 @@ func TestUserTelegramMessageToolsUseOnlyCurrentPeerDeliveries(t *testing.T) {
 	d.setModel(t, "tool")
 	actions := []struct{ action, text, emoji, method string }{{"edit", "replacement", "", "editMessageText"}, {"react", "", "👍", "setMessageReaction"}, {"copy", "", "", "copyMessage"}, {"forward", "", "", "forwardMessage"}, {"delete", "", "", "deleteMessage"}}
 	var copied struct {
-		DeliveryID string   `json:"deliveryId"`
-		MessageIDs []string `json:"messageIds"`
+		MessageKind string   `json:"messageKind"`
+		DeliveryID  string   `json:"deliveryId"`
+		MessageIDs  []string `json:"messageIds"`
 	}
 	for i, action := range actions {
 		args, _ := json.Marshal(map[string]any{"action": action.action, "deliveryId": delivery, "index": 0, "text": action.text, "emoji": action.emoji})
 		f.message(int64(i+2), 42, 42, "telegram_message "+string(args))
+		if action.action == "edit" {
+			edited := f.next(t)
+			if edited.RichHTML != "<p>"+action.text+"</p>" {
+				t.Fatalf("rich edit payload=%+v", edited)
+			}
+		}
 		answer := html.UnescapeString(f.next(t).Text)
 		if !strings.Contains(answer, `"status":"done"`) {
 			t.Fatalf("%s result=%q", action.action, answer)
@@ -106,8 +114,23 @@ func TestUserTelegramMessageToolsUseOnlyCurrentPeerDeliveries(t *testing.T) {
 	if got := html.UnescapeString(f.next(t).Text); !strings.Contains(got, copied.DeliveryID) || copied.DeliveryID == "" {
 		t.Fatalf("copied delivery missing from list: %q", got)
 	}
+	if copied.MessageKind != "rich-v1" {
+		t.Fatalf("copy lost actual rich kind: %+v", copied)
+	}
+	editArgs, _ := json.Marshal(map[string]any{"action": "edit", "deliveryId": copied.DeliveryID, "index": 0, "text": "**copied**"})
+	f.message(31, 42, 42, "telegram_message "+string(editArgs))
+	if edited := f.next(t); edited.RichHTML != "<p><b>copied</b></p>" {
+		t.Fatalf("copied rich edit=%+v", edited)
+	}
+	if answer := f.next(t); !strings.Contains(answer.Text, "done") {
+		t.Fatalf("copied edit result=%+v", answer)
+	}
+	editEvent := f.nextEvent(t, "editMessageText")
+	if fmt.Sprint(editEvent.MessageID) != copied.MessageIDs[0] || editEvent.RichHTML != "<p><b>copied</b></p>" {
+		t.Fatalf("copied edit target/payload=%+v", editEvent)
+	}
 	copiedArgs, _ := json.Marshal(map[string]any{"action": "delete", "deliveryId": copied.DeliveryID, "index": 0})
-	f.message(31, 42, 42, "telegram_message "+string(copiedArgs))
+	f.message(32, 42, 42, "telegram_message "+string(copiedArgs))
 	if got := f.next(t).Text; !strings.Contains(got, "done") {
 		t.Fatalf("copied message delete=%q", got)
 	}
@@ -121,7 +144,7 @@ func TestUserTelegramMessageToolsUseOnlyCurrentPeerDeliveries(t *testing.T) {
 	if got := f.next(t).Text; !strings.Contains(got, "outside the current sender and peer") {
 		t.Fatalf("foreign peer action=%q", got)
 	}
-	if n := count(t, conn, "SELECT count(*) FROM telegram_effects WHERE kind IN ('edit','react','copy','forward','delete') AND state='done'"); n != len(actions)+1 {
+	if n := count(t, conn, "SELECT count(*) FROM telegram_effects WHERE kind IN ('edit','react','copy','forward','delete') AND state='done'"); n != len(actions)+2 {
 		t.Fatalf("operation receipts=%d", n)
 	}
 }

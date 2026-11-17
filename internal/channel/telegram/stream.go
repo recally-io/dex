@@ -153,24 +153,29 @@ func (b *Bot) watchPreview(ctx context.Context, id string, chatID int64, p *prev
 			if current == "" {
 				continue
 			}
-			current = split(current, 4000)[0]
+			parts := renderRich(current)
+			if len(parts) == 0 {
+				continue
+			}
+			content := parts[0].Rich
+			current = content.HTML
 			if current == last || time.Since(lastSend) < time.Second {
 				continue
 			}
 			if drafts {
-				err = b.call(ctx, "sendMessageDraft", map[string]any{"chat_id": chatID, "draft_id": draftID, "text": current}, nil)
+				err = b.call(ctx, "sendRichMessageDraft", map[string]any{"chat_id": chatID, "draft_id": draftID, "rich_message": richContent(content)}, nil)
 				if err != nil {
 					drafts = false
 				}
 			}
 			if !drafts {
-				params := map[string]any{"chat_id": chatID, "text": current}
+				params := map[string]any{"chat_id": chatID, "rich_message": richContent(content)}
 				if p.messageID == 0 {
 					var result struct {
 						ID int64 `json:"message_id"`
 					}
-					b.presentation(params, "sendMessage")
-					err = b.call(ctx, "sendMessage", params, &result)
+					b.presentation(params, "sendRichMessage")
+					err = b.call(ctx, "sendRichMessage", params, &result)
 					if err == nil {
 						p.messageID = result.ID
 					}

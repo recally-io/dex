@@ -18,7 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf16"
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
@@ -235,10 +234,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		}
 		return b.controlReply(ctx, m.Chat.ID, "Cannot read this attachment. Send a supported file under 20 MB.")
 	}
-	content := m.Text
-	if content == "" {
-		content = m.Caption
-	}
+	content := m.body()
 	if m.ForwardOrigin != nil {
 		content = "Forwarded message:\n" + content
 	}
@@ -317,14 +313,7 @@ func (e *apiError) Error() string { return fmt.Sprintf("Telegram API %d: %s", e.
 
 // controlReply allows polling to pass a permanently rejected acknowledgement.
 func (b *Bot) controlReply(ctx context.Context, chatID int64, text string) error {
-	params := map[string]any{"chat_id": chatID, "text": text}
-	b.presentation(params, "sendMessage")
-	err := b.call(ctx, "sendMessage", params, nil)
-	if e, ok := errors.AsType[*apiError](err); ok && (e.Code == 400 || e.Code == 403) {
-		slog.Warn("telegram: skipped a rejected control reply", "err", err)
-		return nil
-	}
-	return err
+	return b.controlPeerReply(ctx, channelPrefix+strconv.FormatInt(chatID, 10), text)
 }
 
 func (b *Bot) call(ctx context.Context, method string, params, result any) error {
@@ -392,24 +381,6 @@ func (b *Bot) request(ctx context.Context, method string, body io.Reader, conten
 	return json.Unmarshal(out.Result, result)
 }
 
-// split cuts text into parts of at most limit UTF-16 code units, between runes.
-func split(text string, limit int) []string {
-	var parts []string
-	start, n := 0, 0
-	for i, r := range text {
-		size := utf16.RuneLen(r)
-		if size < 0 {
-			size = 1 // invalid rune; Go encodes it as U+FFFD
-		}
-		if n+size > limit {
-			parts = append(parts, text[start:i])
-			start, n = i, 0
-		}
-		n += size
-	}
-	return append(parts, text[start:])
-}
-
 // Bot API types, with only the fields that dex reads.
 
 type update struct {
@@ -435,12 +406,13 @@ type remoteChat struct {
 }
 
 type message struct {
-	ThreadID int64      `json:"message_thread_id"`
-	IsTopic  bool       `json:"is_topic_message"`
-	ID       int64      `json:"message_id"`
-	From     *user      `json:"from"`
-	Chat     remoteChat `json:"chat"`
-	ReplyTo  *message   `json:"reply_to_message"`
+	Rich     jsontext.Value `json:"rich_message,omitempty"`
+	ThreadID int64          `json:"message_thread_id"`
+	IsTopic  bool           `json:"is_topic_message"`
+	ID       int64          `json:"message_id"`
+	From     *user          `json:"from"`
+	Chat     remoteChat     `json:"chat"`
+	ReplyTo  *message       `json:"reply_to_message"`
 	Quote    *struct {
 		Text string `json:"text"`
 	} `json:"quote"`

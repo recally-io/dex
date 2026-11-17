@@ -20,6 +20,9 @@ func (b *Bot) Send(ctx context.Context, peer, deliveryID string, index int, part
 	var err error
 	receipt := channel.Receipt{}
 	switch {
+	case part.Rich != nil:
+		id, err = b.sendRich(ctx, peer, deliveryID, index, part)
+		receipt.Kind = "rich-v1"
 	case len(part.Group) > 0:
 		receipt, err = b.sendGroup(ctx, peer, part.Group)
 	case part.File != nil:
@@ -28,6 +31,9 @@ func (b *Bot) Send(ctx context.Context, peer, deliveryID string, index int, part
 		id, err = b.sendText(ctx, peer, deliveryID, index, part.Text, part.Buttons)
 	}
 	if id != "" {
+		if part.File != nil {
+			receipt.Kind = "media"
+		}
 		receipt.MessageIDs = []string{id}
 	}
 	if api, ok := errors.AsType[*apiError](err); ok {

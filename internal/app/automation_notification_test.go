@@ -122,7 +122,7 @@ func TestUserRoutineDeliversToAuthorizedTelegramOwner(t *testing.T) {
 	settledRoutine(t, d, routine["id"].(string), run.ID)
 	// Then its actual platform destination receives the summary.
 	got := f.next(t)
-	if got.ChatID != 42 || !strings.Contains(got.Text, "fixture notification") {
+	if got.ChatID != 42 || got.RichHTML == "" || !strings.Contains(got.Text, "fixture notification") {
 		t.Fatalf("delivery: %+v", got)
 	}
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/recally-io/dex/internal/chat"
 )
 
-// Parts renders a final reply into independently valid HTML messages.
+// Parts freezes all new text as Rich Messages. Only historical cursors use HTML.
 func (b *Bot) Parts(reply chat.Reply) []channel.Part {
 	text := reply.Answer
 	if reply.Status != "done" {
@@ -21,7 +21,10 @@ func (b *Bot) Parts(reply chat.Reply) []channel.Part {
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
 	}
-	parts := render(text, !reply.LegacyDelivery)
+	if !reply.LegacyDelivery {
+		return renderRich(text)
+	}
+	parts := renderLegacy(text)
 	if len(parts) == 0 {
 		return channel.TextParts([]string{html.EscapeString(text)})
 	}

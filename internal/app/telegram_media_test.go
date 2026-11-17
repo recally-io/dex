@@ -102,12 +102,12 @@ func TestUserGetsTelegramGFMWithoutUnsupportedHTML(t *testing.T) {
 	// When the model returns tasks, a table, ordered items, strikeout and a code language.
 	f.message(1, 42, 42, "Formatting:\n\n- [x] finished\n- [ ] waiting\n\n| Name | Count |\n| --- | --- |\n| Dex | 2 |\n\n3. third\n4. fourth\n\n~~removed~~\n\n```go\nfmt.Println(1)\n```")
 	got := f.next(t)
-	for _, want := range []string{"☑", "☐", "Name", "Dex", "3.", "4.", "<s>removed</s>", `class="language-go"`} {
+	for _, want := range []string{"<table>", "☑", "☐", "Name", "Dex", "3.", "4.", "<s>removed</s>", `class="language-go"`} {
 		if !strings.Contains(got.Text, want) {
 			t.Fatalf("missing %q: %s", want, got.Text)
 		}
 	}
-	for _, tag := range []string{"<table", "<input", "<ul", "<p>"} {
+	for _, tag := range []string{"<input", "<ul", "<p>"} {
 		if strings.Contains(got.Text, tag) {
 			t.Fatalf("unsupported Telegram HTML: %s", got.Text)
 		}

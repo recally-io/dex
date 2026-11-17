@@ -1315,25 +1315,44 @@ so dex needs no public URL.
   a new correction input. It does not replace the earlier input or undo its actions.
   Reply, quote, and forward context cannot change sender authorization. Attachments
   and forwarded or edited command text do not execute shared channel controls.
-- Goldmark parses Markdown into Telegram HTML. The sender splits at block
-  boundaries and closes code tags in each part. Each part has at most 4096
-  UTF-16 code units, including markup. A rejected HTML part retries as plain
-  text. The shared durable sender retries final-send failures, including 429,
-  with a delay from 5 to 60 seconds. Markup and escaped characters count
-  toward the current splitter limit. This can produce more parts than
-  Telegram requires. Keep these boundaries stable for stored delivery progress.
+- Goldmark parses all new text into versioned Rich Message HTML parts, including
+  plain replies, lists, code, tables, menus and text notifications. `sendRichMessage`
+  sends each frozen part. Lists keep their ordered or bullet markers. Raw HTML
+  stays escaped text. Markdown images keep linked alt text; they do not request
+  remote media. Link URLs have a 1024-byte budget after HTML escaping.
+  The renderer limits each part to 32768 decoded Unicode characters and 500
+  blocks. Formatting stays within 16 nesting levels. Native tables have at most
+  20 columns; row splits repeat the header. A table with more columns or a row
+  that cannot fit with its header becomes labeled rich paragraphs before freezing.
+  Long text and code cells split without truncation. No API error selects a
+  different text format. Unknown responses and 5xx retry the same frozen method;
+  429 retains the existing account and outbox wait.
+  Existing frozen ordinary HTML parts remain unchanged. A historical cursor
+  without a frozen payload keeps the original parser, raw URL budget and 4096
+  UTF-16 chunk boundaries. Only that legacy path has the old plain-text rejection
+  fallback. Notifications read both old string arrays and new typed parts.
+  Confirmed message IDs retain their actual kind, including copy and forward
+  results. Old ID string arrays remain readable; album IDs do not use part indexes.
 - Each pending submission has a native watch through `live.Hub`. The bot
-  updates a private draft at most once per second. If drafts fail, the bot
-  sends one preview and edits it. Typing refreshes every 4 seconds. Previews
+  updates a private rich draft at most once per second with `sendRichMessageDraft`.
+  If drafts fail, the bot sends a rich preview and edits it. Final replacement
+  and tool edits use `editMessageText.rich_message`. A definite missing preview
+  can create a new rich final message; an unknown edit cannot change methods. Typing refreshes every 4 seconds. Previews
   are best effort. Queued user items do not start answer segments. The final
   reply stops and joins its preview before delivery. Runtime shutdown removes
   preview messages that have no final owner. Preview registration and final
   lookup use one lock; attachment downloads do not hold this lock.
   Saved `options.preview` can select drafts, message edits, or no previews and
   no typing. `options.silent` applies to new text, media, and copied or forwarded
-  messages. `options.linkPreview` controls text link previews. Optional reactions
+  messages. `options.linkPreview` still controls legacy ordinary HTML sends;
+  the Rich Messages API has no corresponding link-preview option. Optional reactions
   show input processing and final status. Terminal reaction retries do not repeat
   already confirmed reply parts.
+- Incoming rich messages keep bounded text from paragraphs, inline formatting,
+  tables and nested blocks. The iterative reader caps text at 65536 characters,
+  work at 20000 steps and JSON nesting at 64; a limit adds an explicit note.
+  Rich input has a content label so embedded slash commands stay text. It does
+  not fetch embedded media. Full rich quote fidelity is not implemented.
 - Photos use the largest size. Documents, photos, voice, audio, video, video notes,
   animations, and stickers pass through `upload.Store`, with a 20 MiB limit.
   Captions become message text. The agent and web transcript use the same upload
@@ -1354,7 +1373,9 @@ so dex needs no public URL.
   this authority. API time and permission limits still apply. The effect receipt
   binds the native operation and source. An interrupted control operation becomes
   unknown and does not run again automatically. Copy and forward results retain
-  their remote IDs for later authorized operations.
+  their remote IDs and actual message kinds for later authorized operations.
+  Rich edits accept Markdown and must fit one rich message. Legacy text and
+  media caption edits keep plain text and their original API limits.
 - Speech is off by default. `options.stt` and `options.tts` require an explicit
   saved custom provider, audio model, and data-sending consent. TTS also requires
   an explicit voice. The provider must have an explicit base URL and support

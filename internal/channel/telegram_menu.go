@@ -213,7 +213,7 @@ func (m *Manager) addButtons(ctx context.Context, parts []Part, source, peer str
 	}
 	index := -1
 	for i := range parts {
-		if parts[i].Text != "" {
+		if parts[i].Text != "" || parts[i].Rich != nil {
 			index = i
 		}
 	}
