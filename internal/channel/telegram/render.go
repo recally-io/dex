@@ -93,21 +93,49 @@ func renderNode(n ast.Node, source []byte, out *[]fragment, enhanced bool) {
 		*out = append(*out, fragment{text: mark})
 		return
 	case *extast.Table:
-		var rows []string
-		for row := n.FirstChild(); row != nil; row = row.NextSibling() {
-			var cells []string
-			for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
-				var tokens []fragment
-				renderNode(cell, source, &tokens, enhanced)
-				var text strings.Builder
-				for _, token := range tokens {
-					text.WriteString(token.text)
-				}
-				cells = append(cells, strings.TrimSpace(text.String()))
-			}
-			rows = append(rows, strings.Join(cells, " | "))
+		// Ordinary sendMessage HTML has no tables. Labeled rows wrap on narrow
+		// screens and retain links without a display-width or font dependency.
+		header := n.FirstChild()
+		var labels [][]fragment
+		for cell := header.FirstChild(); cell != nil; cell = cell.NextSibling() {
+			labels = append(labels, tableCell(cell, source, "Column "+strconv.Itoa(len(labels)+1)))
 		}
-		*out = append(*out, fragment{open: "<pre>", close: "</pre>"}, fragment{text: strings.Join(rows, "\n")}, fragment{close: "</pre>"})
+		if header.NextSibling() == nil {
+			for i, label := range labels {
+				if i > 0 {
+					*out = append(*out, fragment{text: "\n"})
+				}
+				*out = append(*out, label...)
+			}
+			return
+		}
+		index := 1
+		for row := header.NextSibling(); row != nil; row = row.NextSibling() {
+			if index > 1 {
+				*out = append(*out, fragment{text: "\n\n"})
+			}
+			*out = append(*out, fragment{text: strconv.Itoa(index) + ".\n"})
+			column := 0
+			for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
+				if column > 0 {
+					*out = append(*out, fragment{text: "\n"})
+				}
+				label := labels[column]
+				// Telegram code entities cannot be nested inside bold entities.
+				bold := !slices.ContainsFunc(label, func(token fragment) bool { return token.open == "<code>" })
+				if bold {
+					*out = append(*out, fragment{open: "<b>", close: "</b>"})
+				}
+				*out = append(*out, label...)
+				if bold {
+					*out = append(*out, fragment{close: "</b>"})
+				}
+				*out = append(*out, fragment{text: ": "})
+				*out = append(*out, tableCell(cell, source, "—")...)
+				column++
+			}
+			index++
+		}
 		return
 	case *ast.Blockquote:
 		if enhanced {
@@ -189,6 +217,17 @@ func renderNode(n ast.Node, source []byte, out *[]fragment, enhanced bool) {
 	case *ast.ListItem, *ast.Paragraph:
 		*out = append(*out, fragment{text: "\n"})
 	}
+}
+
+func tableCell(cell ast.Node, source []byte, empty string) []fragment {
+	var tokens []fragment
+	renderNode(cell, source, &tokens, true)
+	for _, token := range tokens {
+		if strings.TrimSpace(token.text) != "" {
+			return tokens
+		}
+	}
+	return []fragment{{text: empty}}
 }
 
 func units(s string) int {

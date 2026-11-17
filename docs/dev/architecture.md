@@ -1315,8 +1315,13 @@ so dex needs no public URL.
   a new correction input. It does not replace the earlier input or undo its actions.
   Reply, quote, and forward context cannot change sender authorization. Attachments
   and forwarded or edited command text do not execute shared channel controls.
-- Goldmark parses Markdown into Telegram HTML. The sender splits at block
-  boundaries and closes code tags in each part. Each part has at most 4096
+- Goldmark parses Markdown into Telegram HTML. Tables become numbered rows
+  with one labeled field per line. Each field keeps its header, safe links and
+  inline formatting. Empty headers use `Column N`; empty cells use `—`.
+  Header-only tables keep their headers. This uses ordinary message HTML,
+  not the separate Rich Messages or Widgets APIs.
+  The sender splits at block boundaries and closes code tags in each part.
+  Each part has at most 4096
   UTF-16 code units, including markup. A rejected HTML part retries as plain
   text. The shared durable sender retries final-send failures, including 429,
   with a delay from 5 to 60 seconds. Markup and escaped characters count
