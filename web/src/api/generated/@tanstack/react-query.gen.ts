@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acquireMaintenance, archiveChat, beginFeishu, beginWechatLogin, clearContext, compactChat, continueChat, createAgent, createAutomation, createChat, createSession, createTelegramPairing, createUpload, deleteArtifact, deleteAutomation, deleteExtensionEnv, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, dismissInboxItem, forkChat, getAgent, getArtifact, getAutomation, getChannels, getChat, getChatHistory, getChatItem, getExtensions, getFeishu, getHealth, getMainChat, getNotificationTargets, getOnePassword, getSettings, getTurnChat, getUpload, getWork, listAgents, listArchivedAgents, listArtifacts, listAutomationRuns, listAutomations, listChats, listDirectories, listInbox, listModels, listProviderModels, listRecentProjects, type Options, pollFeishu, pollWechatLogin, previewSchedule, putExtensionEnv, readInboxItem, releaseMaintenance, reloadExtensions, renameArtifact, restoreAgent, restoreInboxItem, runAutomation, sendMessage, setChatProject, setChatSettings, setFeishu, setOnePassword, setPrimaryNotificationTarget, setProvider, setTelegram, unarchiveChat, updateAgent, updateAutomation, withdrawMessage } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, ArchiveChatData, ArchiveChatError, ArchiveChatResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CompactChatData, CompactChatError, ContinueChatData, ContinueChatError, ContinueChatResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteArtifactData, DeleteArtifactError, DeleteArtifactResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteExtensionEnvData, DeleteExtensionEnvError, DeleteExtensionEnvResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, DismissInboxItemData, DismissInboxItemError, DismissInboxItemResponse, ForkChatData, ForkChatError, ForkChatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetArtifactData, GetArtifactError, GetArtifactResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatItemData, GetChatItemError, GetChatItemResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetNotificationTargetsData, GetNotificationTargetsError, GetNotificationTargetsResponse, GetOnePasswordData, GetOnePasswordError, GetOnePasswordResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTurnChatData, GetTurnChatError, GetTurnChatResponse, GetUploadData, GetUploadError, GetUploadResponse, GetWorkData, GetWorkError, GetWorkResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListArchivedAgentsData, ListArchivedAgentsError, ListArchivedAgentsResponse, ListArtifactsData, ListArtifactsError, ListArtifactsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListDirectoriesData, ListDirectoriesError, ListDirectoriesResponse, ListInboxData, ListInboxError, ListInboxResponse, ListModelsData, ListModelsError, ListModelsResponse, ListProviderModelsData, ListProviderModelsError, ListProviderModelsResponse, ListRecentProjectsData, ListRecentProjectsError, ListRecentProjectsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, PutExtensionEnvData, PutExtensionEnvError, PutExtensionEnvResponse, ReadInboxItemData, ReadInboxItemError, ReadInboxItemResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RenameArtifactData, RenameArtifactError, RenameArtifactResponse, RestoreAgentData, RestoreAgentError, RestoreAgentResponse, RestoreInboxItemData, RestoreInboxItemError, RestoreInboxItemResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatProjectData, SetChatProjectError, SetChatProjectResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetOnePasswordData, SetOnePasswordError, SetOnePasswordResponse, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetError, SetPrimaryNotificationTargetResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, UnarchiveChatData, UnarchiveChatError, UnarchiveChatResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse, WithdrawMessageData, WithdrawMessageError, WithdrawMessageResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, archiveChat, beginFeishu, beginWechatLogin, clearContext, compactChat, continueChat, createAgent, createAutomation, createChat, createEnvironment, createSession, createTelegramPairing, createUpload, deleteArtifact, deleteAutomation, deleteEnvironment, deleteExtensionEnv, deleteFeishu, deleteProvider, deleteTelegram, deleteWechat, dismissInboxItem, forkChat, getAgent, getArtifact, getAutomation, getChannels, getChat, getChatHistory, getChatItem, getExtensions, getFeishu, getHealth, getMainChat, getNotificationTargets, getOnePassword, getSettings, getTurnChat, getUpload, getWork, listAgents, listArchivedAgents, listArtifacts, listAutomationRuns, listAutomations, listChats, listDirectories, listEnvironments, listInbox, listModels, listProviderModels, listRecentProjects, type Options, pollFeishu, pollWechatLogin, previewSchedule, putExtensionEnv, readInboxItem, releaseMaintenance, reloadExtensions, renameArtifact, restoreAgent, restoreInboxItem, runAutomation, sendMessage, setChatProject, setChatSettings, setFeishu, setOnePassword, setPrimaryNotificationTarget, setProvider, setTelegram, testEnvironment, unarchiveChat, updateAgent, updateAutomation, updateEnvironment, withdrawMessage } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, ArchiveChatData, ArchiveChatError, ArchiveChatResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, ClearContextData, ClearContextError, ClearContextResponse, CompactChatData, CompactChatError, ContinueChatData, ContinueChatError, ContinueChatResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateEnvironmentData, CreateEnvironmentError, CreateEnvironmentResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteArtifactData, DeleteArtifactError, DeleteArtifactResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteEnvironmentData, DeleteEnvironmentError, DeleteEnvironmentResponse, DeleteExtensionEnvData, DeleteExtensionEnvError, DeleteExtensionEnvResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, DismissInboxItemData, DismissInboxItemError, DismissInboxItemResponse, ForkChatData, ForkChatError, ForkChatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetArtifactData, GetArtifactError, GetArtifactResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatItemData, GetChatItemError, GetChatItemResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetNotificationTargetsData, GetNotificationTargetsError, GetNotificationTargetsResponse, GetOnePasswordData, GetOnePasswordError, GetOnePasswordResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetTurnChatData, GetTurnChatError, GetTurnChatResponse, GetUploadData, GetUploadError, GetUploadResponse, GetWorkData, GetWorkError, GetWorkResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListArchivedAgentsData, ListArchivedAgentsError, ListArchivedAgentsResponse, ListArtifactsData, ListArtifactsError, ListArtifactsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListChatsData, ListChatsError, ListChatsResponse, ListDirectoriesData, ListDirectoriesError, ListDirectoriesResponse, ListEnvironmentsData, ListEnvironmentsError, ListEnvironmentsResponse, ListInboxData, ListInboxError, ListInboxResponse, ListModelsData, ListModelsError, ListModelsResponse, ListProviderModelsData, ListProviderModelsError, ListProviderModelsResponse, ListRecentProjectsData, ListRecentProjectsError, ListRecentProjectsResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, PutExtensionEnvData, PutExtensionEnvError, PutExtensionEnvResponse, ReadInboxItemData, ReadInboxItemError, ReadInboxItemResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RenameArtifactData, RenameArtifactError, RenameArtifactResponse, RestoreAgentData, RestoreAgentError, RestoreAgentResponse, RestoreInboxItemData, RestoreInboxItemError, RestoreInboxItemResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatProjectData, SetChatProjectError, SetChatProjectResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetOnePasswordData, SetOnePasswordError, SetOnePasswordResponse, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetError, SetPrimaryNotificationTargetResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramResponse, TestEnvironmentData, TestEnvironmentError, TestEnvironmentResponse, UnarchiveChatData, UnarchiveChatError, UnarchiveChatResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse, UpdateEnvironmentData, UpdateEnvironmentError, UpdateEnvironmentResponse, WithdrawMessageData, WithdrawMessageError, WithdrawMessageResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -228,6 +228,92 @@ export const setOnePasswordMutation = (options?: Partial<Options<SetOnePasswordD
     const mutationOptions: UseMutationOptions<SetOnePasswordResponse, SetOnePasswordError, Options<SetOnePasswordData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await setOnePassword({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listEnvironmentsQueryKey = (options?: Options<ListEnvironmentsData>) => createQueryKey('listEnvironments', options);
+
+/**
+ * Saved execution environments, without secrets. Built-in local is implicit when a bot has empty environmentId.
+ */
+export const listEnvironmentsOptions = (options?: Options<ListEnvironmentsData>) => queryOptions<ListEnvironmentsResponse, ListEnvironmentsError, ListEnvironmentsResponse, ReturnType<typeof listEnvironmentsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listEnvironments({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listEnvironmentsQueryKey(options)
+});
+
+/**
+ * Creates a new execution environment.
+ */
+export const createEnvironmentMutation = (options?: Partial<Options<CreateEnvironmentData>>): UseMutationOptions<CreateEnvironmentResponse, CreateEnvironmentError, Options<CreateEnvironmentData>> => {
+    const mutationOptions: UseMutationOptions<CreateEnvironmentResponse, CreateEnvironmentError, Options<CreateEnvironmentData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createEnvironment({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Deletes an execution environment if no active bot uses it (409 when in use).
+ */
+export const deleteEnvironmentMutation = (options?: Partial<Options<DeleteEnvironmentData>>): UseMutationOptions<DeleteEnvironmentResponse, DeleteEnvironmentError, Options<DeleteEnvironmentData>> => {
+    const mutationOptions: UseMutationOptions<DeleteEnvironmentResponse, DeleteEnvironmentError, Options<DeleteEnvironmentData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteEnvironment({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Updates an execution environment. Empty or omitted secret keeps the saved secret. Open bots using it reload when idle.
+ */
+export const updateEnvironmentMutation = (options?: Partial<Options<UpdateEnvironmentData>>): UseMutationOptions<UpdateEnvironmentResponse, UpdateEnvironmentError, Options<UpdateEnvironmentData>> => {
+    const mutationOptions: UseMutationOptions<UpdateEnvironmentResponse, UpdateEnvironmentError, Options<UpdateEnvironmentData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await updateEnvironment({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Probes connectivity, platform metadata, and base workspace readiness.
+ */
+export const testEnvironmentMutation = (options?: Partial<Options<TestEnvironmentData>>): UseMutationOptions<TestEnvironmentResponse, TestEnvironmentError, Options<TestEnvironmentData>> => {
+    const mutationOptions: UseMutationOptions<TestEnvironmentResponse, TestEnvironmentError, Options<TestEnvironmentData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await testEnvironment({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

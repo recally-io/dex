@@ -1,4 +1,5 @@
 import { EnvKeys } from "../components/env-keys";
+import { ExecutionEnvironments } from "../components/execution-environments";
 import { OnePasswordSettings } from "../components/one-password";
 import { FramedPage, Note, Section } from "../components/page";
 import { GlobalSettingsSwitcher } from "../components/settings-switcher";
@@ -9,9 +10,10 @@ export function EnvironmentPage() {
       eyebrow="Settings for this computer"
       title="Environment"
       toolbar={<GlobalSettingsSwitcher page="/environment" />}
-      description="Tools of all bots start from your login shell environment, then these keys. Set keys for one bot in its Tools tab. Changes apply automatically when all bots are idle."
+      description="Tools of all bots start from your login shell environment, then these keys. Configure execution environments and 1Password here, or set keys for one bot in its Tools tab. Changes apply automatically when all bots are idle."
     >
       <EnvKeys target={{ scope: "dex" }} n={1} />
+      <ExecutionEnvironments n={2} />
       <OnePasswordSettings n={3} />
       <Section n={4} title="Secret storage">
         <Note tone="warn">

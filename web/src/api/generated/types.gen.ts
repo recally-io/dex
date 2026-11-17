@@ -626,6 +626,49 @@ export type OnePasswordInput = {
     serviceAccountToken?: string;
 };
 
+export type EnvironmentKind = 'pi-env';
+
+export type EnvironmentConfig = {
+    host?: string;
+    user?: string;
+    port?: number;
+    identityFile?: string;
+    workspaceDir?: string;
+};
+
+export type Environment = {
+    id: string;
+    name: string;
+    kind: EnvironmentKind;
+    config: EnvironmentConfig;
+    secretSet: boolean;
+    createdAt: number;
+    updatedAt: number;
+};
+
+export type EnvironmentList = {
+    environments: Array<Environment>;
+};
+
+export type EnvironmentInput = {
+    name: string;
+    kind: EnvironmentKind;
+    config?: EnvironmentConfig;
+    /**
+     * Write-only secret. Empty or omitted on update keeps the saved secret.
+     */
+    secret?: string;
+};
+
+export type EnvironmentTestResult = {
+    ok: boolean;
+    platform?: string;
+    arch?: string;
+    home?: string;
+    warnings?: Array<string>;
+    error?: string;
+};
+
 export type Channels = {
     telegram: Telegram;
     wechat: Wechat;
@@ -662,6 +705,10 @@ export type Agent = {
     thinkingLevel: ThinkingLevel;
     instructions: string;
     /**
+     * Empty means the built-in local host environment.
+     */
+    environmentId: string;
+    /**
      * Archive time in Unix milliseconds. Absent for an active agent.
      */
     readonly archivedAt?: number;
@@ -679,6 +726,10 @@ export type AgentInput = {
     modelId: string;
     thinkingLevel: ThinkingLevel;
     instructions?: string;
+    /**
+     * Empty or "local" selects the built-in local host environment.
+     */
+    environmentId?: string;
 };
 
 /**
@@ -1002,6 +1053,10 @@ export type AgentWritable = {
     modelId: string;
     thinkingLevel: ThinkingLevel;
     instructions: string;
+    /**
+     * Empty means the built-in local host environment.
+     */
+    environmentId: string;
 };
 
 export type AgentId = string;
@@ -1009,6 +1064,8 @@ export type AgentId = string;
 export type AutomationId = string;
 
 export type ChatId = number;
+
+export type EnvironmentId = string;
 
 export type GetWorkData = {
     body?: never;
@@ -1337,6 +1394,165 @@ export type SetOnePasswordResponses = {
 };
 
 export type SetOnePasswordResponse = SetOnePasswordResponses[keyof SetOnePasswordResponses];
+
+export type ListEnvironmentsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/environments';
+};
+
+export type ListEnvironmentsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListEnvironmentsError = ListEnvironmentsErrors[keyof ListEnvironmentsErrors];
+
+export type ListEnvironmentsResponses = {
+    /**
+     * Execution environments.
+     */
+    200: EnvironmentList;
+};
+
+export type ListEnvironmentsResponse = ListEnvironmentsResponses[keyof ListEnvironmentsResponses];
+
+export type CreateEnvironmentData = {
+    body: EnvironmentInput;
+    path?: never;
+    query?: never;
+    url: '/api/settings/environments';
+};
+
+export type CreateEnvironmentErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateEnvironmentError = CreateEnvironmentErrors[keyof CreateEnvironmentErrors];
+
+export type CreateEnvironmentResponses = {
+    /**
+     * Created.
+     */
+    201: Environment;
+};
+
+export type CreateEnvironmentResponse = CreateEnvironmentResponses[keyof CreateEnvironmentResponses];
+
+export type DeleteEnvironmentData = {
+    body?: never;
+    path: {
+        environmentId: string;
+    };
+    query?: never;
+    url: '/api/settings/environments/{environmentId}';
+};
+
+export type DeleteEnvironmentErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteEnvironmentError = DeleteEnvironmentErrors[keyof DeleteEnvironmentErrors];
+
+export type DeleteEnvironmentResponses = {
+    /**
+     * Removed.
+     */
+    200: Ok;
+};
+
+export type DeleteEnvironmentResponse = DeleteEnvironmentResponses[keyof DeleteEnvironmentResponses];
+
+export type UpdateEnvironmentData = {
+    body: EnvironmentInput;
+    path: {
+        environmentId: string;
+    };
+    query?: never;
+    url: '/api/settings/environments/{environmentId}';
+};
+
+export type UpdateEnvironmentErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type UpdateEnvironmentError = UpdateEnvironmentErrors[keyof UpdateEnvironmentErrors];
+
+export type UpdateEnvironmentResponses = {
+    /**
+     * Updated.
+     */
+    200: Environment;
+};
+
+export type UpdateEnvironmentResponse = UpdateEnvironmentResponses[keyof UpdateEnvironmentResponses];
+
+export type TestEnvironmentData = {
+    body?: never;
+    path: {
+        environmentId: string;
+    };
+    query?: never;
+    url: '/api/settings/environments/{environmentId}/test';
+};
+
+export type TestEnvironmentErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type TestEnvironmentError = TestEnvironmentErrors[keyof TestEnvironmentErrors];
+
+export type TestEnvironmentResponses = {
+    /**
+     * Probe result.
+     */
+    200: EnvironmentTestResult;
+};
+
+export type TestEnvironmentResponse = TestEnvironmentResponses[keyof TestEnvironmentResponses];
 
 export type ListModelsData = {
     body?: never;

@@ -15,7 +15,7 @@ import (
 func reloadStale(native *engine.Agents, chats *chat.Service) func(context.Context) {
 	refused := map[string]string{} // agent ID -> stamp that failed validation
 	return func(ctx context.Context) {
-		for id, stamp := range native.StaleExtensions() {
+		for id, stamp := range native.StaleExtensions(ctx) {
 			if refused[id] == stamp {
 				continue
 			}

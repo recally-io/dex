@@ -272,7 +272,7 @@ func TestUserGroupDoesNotStartPrivateMCPOrCaptureOwnerEnvironment(t *testing.T) 
 	}
 	_ = coreWait(t, s)
 	// Then initialization and status checks neither connect to private tools nor load their environment.
-	if stale := a.StaleExtensions(); len(stale) != 0 {
+	if stale := a.StaleExtensions(t.Context()); len(stale) != 0 {
 		t.Fatalf("group is tracked as private extension resources: %v", stale)
 	}
 	if contacts.Load() != 0 || captures.Load() != 0 {

@@ -23,6 +23,14 @@ const (
 // ErrInvalidPath is returned when a requested project or directory path fails validation.
 var ErrInvalidPath = errors.New("invalid project directory")
 
+// ErrInvalidConfig is returned when an execution environment configuration is invalid.
+var ErrInvalidConfig = errors.New("invalid execution environment configuration")
+
+// StampProvider computes a configuration stamp for an agent's execution environment.
+type StampProvider interface {
+	Stamp(ctx context.Context, agentID string) (string, bool)
+}
+
 // Handle represents an opened execution environment bound to one agent.
 type Handle interface {
 	Kind() Kind

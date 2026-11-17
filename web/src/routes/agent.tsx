@@ -3,7 +3,11 @@ import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { getMainChatOptions, setChatSettingsMutation } from "../api/generated/@tanstack/react-query.gen";
+import {
+  getMainChatOptions,
+  listEnvironmentsOptions,
+  setChatSettingsMutation,
+} from "../api/generated/@tanstack/react-query.gen";
 import { refreshChats } from "../lib/queries";
 
 import { saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
@@ -13,7 +17,7 @@ import { ThinkingPicker } from "../components/thinking-picker";
 import { Failure } from "../components/feedback";
 import { FramedPage, Note, Panel, Section } from "../components/page";
 import { BotSettingsSwitcher } from "../components/settings-switcher";
-import { Input } from "../components/form";
+import { Input, Select } from "../components/form";
 import { InstructionsEditor } from "../components/instructions-editor";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -186,6 +190,7 @@ function Agent({ settings }: { settings: Settings }) {
               </Note>
             </div>
           ) : null}
+          <ExecutionEnvironmentRow environmentId={settings.agent.environmentId} />
         </Panel>
       </Section>
     </>
@@ -271,6 +276,76 @@ function NameRow({ name }: { name: string }) {
       {save.isError ? (
         <div className="mt-3">
           <Failure title="Could not save name" error={save.error} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
+  const agentId = useAgentId();
+  const { notify } = useApp();
+  const environments = useQuery(listEnvironmentsOptions());
+  const list = environments.data?.environments ?? [];
+  const current = list.find((env) => env.id === environmentId);
+
+  const save = useMutation({
+    mutationFn: (nextId: string) => saveAgent(agentId, (agent) => ({ ...agent, environmentId: nextId })),
+    onSuccess: (_, nextId) => {
+      const target = list.find((env) => env.id === nextId);
+
+      notify(
+        target
+          ? `Execution environment is now ${target.name}. Open sessions reload when idle.`
+          : "Execution environment is now Local. Open sessions reload when idle.",
+      );
+    },
+  });
+
+  const missingSelection = !!environmentId && !environments.isPending && !current;
+
+  return (
+    <div className="border-t border-border px-4 py-3.5">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <label htmlFor="bot-environment" className="text-[14px] font-medium text-foreground">
+            Execution environment
+          </label>
+          <p id="bot-environment-hint" className="mt-0.5 text-[12.5px] text-muted-foreground">
+            {current
+              ? `Runs tools in ${current.name} (${current.kind}).`
+              : missingSelection
+                ? `Configured environment (${environmentId}) is missing.`
+                : "Runs tools and workspaces on this computer."}
+          </p>
+        </div>
+        <Select
+          id="bot-environment"
+          aria-label="Execution environment"
+          aria-describedby="bot-environment-hint"
+          aria-invalid={save.isError || missingSelection}
+          className="w-full sm:w-[220px]"
+          value={environmentId}
+          disabled={save.isPending || environments.isPending}
+          onChange={(event) => save.mutate(event.target.value)}
+        >
+          <option value="">Local (this computer)</option>
+          {missingSelection ? <option value={environmentId}>Missing ({environmentId})</option> : null}
+          {list.map((env) => (
+            <option key={env.id} value={env.id}>
+              {env.name} ({env.kind})
+            </option>
+          ))}
+        </Select>
+      </div>
+      {environments.isError ? (
+        <div className="mt-3">
+          <Failure title="Could not load environments" error={environments.error} />
+        </div>
+      ) : null}
+      {save.isError ? (
+        <div className="mt-3">
+          <Failure title="Could not save execution environment" error={save.error} />
         </div>
       ) : null}
     </div>

@@ -19,6 +19,7 @@ type BotInfo struct {
 	ThinkingLevel string `json:"thinkingLevel,omitempty"`
 	// Instructions is the first line in bot_list and the full text in bot_get.
 	Instructions    string   `json:"instructions"`
+	EnvironmentID   string   `json:"environmentId,omitempty"`
 	Skills          []string `json:"skills,omitempty"`
 	McpServers      []string `json:"mcpServers,omitempty"`
 	RunningSessions *int64   `json:"runningSessions,omitempty"`

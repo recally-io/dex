@@ -22,6 +22,7 @@ type apiAgent struct {
 	ModelID       string `json:"modelId"`
 	ThinkingLevel string `json:"thinkingLevel"`
 	Instructions  string `json:"instructions"`
+	EnvironmentID string `json:"environmentId"`
 }
 
 func TestUserCreatesAndValidatesAgents(t *testing.T) {
