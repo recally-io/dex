@@ -319,7 +319,13 @@ After a dex restart, running execution becomes interrupted and does not restart
 automatically. Queued execution that never started can start for the first
 time. Cancelled execution stays cancelled. A dex restart does not prove that old
 tool processes ended. Before another execution, the main agent must check prior
-artifacts and side effects. Tools run on the host without a sandbox. The SDK
+artifacts and side effects. In the built-in `local` environment, tools run on
+the host without a sandbox. Bots bound to a `pi-env` SSH target or an `e2b`
+cloud sandbox execute file, shell, and background tools remotely with explicit
+`.env` variables only, while `memory_*` tools stay on `<data dir>/memory` on the
+control host. For `e2b` bots, sandboxes auto-pause when idle, resume
+automatically on the next message, and support stateless **Reset sandbox** in
+Bot settings. The SDK
 requests cancellation of local commands and MCP calls. It does not guarantee
 that detached processes or remote jobs stop. A completed MCP call can return
 its report. CLI tools must be logged in and run without user input. Long work
@@ -359,9 +365,12 @@ and task-specific automation result routing are later work. Other chat channels 
   the channels and the routines as they were. A routine whose time passed while
   the bot was archived runs again only if it is at most one hour late.
 - Native desktop applications. Use a browser to access the web UI.
-- More than one host. One machine runs one dex process.
-- Sandboxes. Agent tools run on the host, inside the selected project directory or the agent workspace.
-- Shared object storage. Agent files are local directories.
+- More than one host. One machine runs one dex controller process; individual bots
+  can execute tools remotely via `pi-env` or `e2b`.
+- Built-in OS virtualization for `local` bots. Local bots run tools on the host;
+  configure `pi-env` or `e2b` for isolated execution.
+- Shared object storage across controllers. Control files live on the host;
+  remote bots stage uploads and read/write files in their bound environment.
 - Automatic failover or data replication.
 
 ## Extension files

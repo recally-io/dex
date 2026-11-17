@@ -626,7 +626,7 @@ export type OnePasswordInput = {
     serviceAccountToken?: string;
 };
 
-export type EnvironmentKind = 'pi-env';
+export type EnvironmentKind = 'pi-env' | 'e2b';
 
 export type EnvironmentConfig = {
     host?: string;
@@ -634,6 +634,8 @@ export type EnvironmentConfig = {
     port?: number;
     identityFile?: string;
     workspaceDir?: string;
+    template?: string;
+    timeoutSeconds?: number;
 };
 
 export type Environment = {
@@ -2271,6 +2273,45 @@ export type RestoreAgentResponses = {
 };
 
 export type RestoreAgentResponse = RestoreAgentResponses[keyof RestoreAgentResponses];
+
+export type ResetAgentEnvironmentData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/environment/reset';
+};
+
+export type ResetAgentEnvironmentErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ResetAgentEnvironmentError = ResetAgentEnvironmentErrors[keyof ResetAgentEnvironmentErrors];
+
+export type ResetAgentEnvironmentResponses = {
+    /**
+     * Reset completed.
+     */
+    200: Ok;
+};
+
+export type ResetAgentEnvironmentResponse = ResetAgentEnvironmentResponses[keyof ResetAgentEnvironmentResponses];
 
 export type GetTurnChatData = {
     body?: never;

@@ -698,6 +698,28 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/environment/reset:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: resetAgentEnvironment
+      description: >
+        Kills any persisted E2B sandbox for an idle agent, clears its sandbox ID,
+        and releases open resources so the next turn provisions a fresh sandbox.
+      responses:
+        "200":
+          description: Reset completed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/turns/{turnId}:
     parameters:
       - in: path
@@ -2506,7 +2528,7 @@ components:
 
     EnvironmentKind:
       type: string
-      enum: [pi-env]
+      enum: [pi-env, e2b]
 
     EnvironmentConfig:
       type: object
@@ -2516,6 +2538,8 @@ components:
         port: { type: integer }
         identityFile: { type: string }
         workspaceDir: { type: string }
+        template: { type: string }
+        timeoutSeconds: { type: integer }
 
     Environment:
       type: object

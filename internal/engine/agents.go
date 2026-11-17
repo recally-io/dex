@@ -1302,6 +1302,81 @@ func (a *Agents) finishOpening(agentID string, opening *agentOpening) {
 	opening.cancel()
 }
 
+// CloseAgent verifies agentID has no active tasks, submissions, or openings, then closes and removes
+// its open runtime resources so the next turn opens a fresh execution handle.
+func (a *Agents) CloseAgent(ctx context.Context, agentID string) error {
+	if !agentIDPattern.MatchString(agentID) {
+		return ErrInvalidInput
+	}
+	matchKey := func(key string) bool { return key == agentID || strings.HasPrefix(key, agentID+"/") }
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return ErrClosed
+	}
+	for key := range a.opening {
+		if matchKey(key) {
+			a.mu.Unlock()
+			return ErrBusy
+		}
+	}
+	var keys []string
+	for key := range a.resources {
+		if matchKey(key) {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		a.mu.Unlock()
+		return ctx.Err()
+	}
+	_, cancel := context.WithCancel(ctx)
+	closing := &agentOpening{done: make(chan struct{}), cancel: cancel}
+	openKeys := append([]string{agentID}, keys...)
+	for _, key := range openKeys {
+		a.opening[key] = closing
+	}
+	a.operations.Add(1)
+	a.active++
+	resources := make([]*agentResources, 0, len(keys))
+	for _, key := range keys {
+		resources = append(resources, a.resources[key])
+	}
+	a.mu.Unlock()
+	defer a.end()
+	defer func() {
+		a.mu.Lock()
+		for _, key := range openKeys {
+			delete(a.opening, key)
+		}
+		close(closing.done)
+		a.mu.Unlock()
+		closing.cancel()
+	}()
+
+	for _, res := range resources {
+		state, err := res.harness.Inspect(ctx)
+		if err != nil {
+			return err
+		}
+		if len(state.Tasks) > 0 || len(state.Submissions) > 0 {
+			return ErrBusy
+		}
+	}
+	a.mu.Lock()
+	for _, key := range keys {
+		delete(a.resources, key)
+	}
+	a.mu.Unlock()
+
+	cleanupCtx := context.WithoutCancel(ctx)
+	var errs []error
+	for _, res := range resources {
+		errs = append(errs, res.harness.Close(cleanupCtx), res.closeExtras(cleanupCtx))
+	}
+	return errors.Join(errs...)
+}
+
 func (a *Agents) source(ctx context.Context, ref Ref) (string, error) {
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {

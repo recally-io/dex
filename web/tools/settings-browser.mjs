@@ -280,6 +280,78 @@ try {
     results.push({ scenario: "serialized session settings", writes, saved });
   }
 
+  {
+    await visit("/environment");
+    await click("Add environment");
+    await poll("add environment dialog", () => evaluate("!!document.querySelector('[role=\"dialog\"]')"));
+    await evaluate(
+      `[...document.querySelectorAll('[role="dialog"] button')].find(b => b.textContent.includes('E2B Cloud Sandbox')).click()`,
+    );
+    await type('[role="dialog"] input[placeholder="E2B Sandbox"]', "E2B Browser Env");
+    await type('[role="dialog"] input[placeholder="e2b_..."]', "e2b_browser_secret");
+    await evaluate(
+      `[...document.querySelectorAll('[role="dialog"] button')].find(b => b.textContent.trim() === 'Add environment').click()`,
+    );
+
+    const createdEnv = await poll("e2b environment created", async () =>
+      (await api("/api/settings/environments")).environments.find((env) => env.name === "E2B Browser Env"),
+    );
+
+    assert.equal(createdEnv.kind, "e2b");
+    assert.equal(createdEnv.secretSet, true);
+    await poll("e2b card visible without secret leak", () =>
+      evaluate(
+        "document.body.innerText.includes('E2B Browser Env') && document.body.innerText.includes('API key saved') && !document.body.innerText.includes('e2b_browser_secret')",
+      ),
+    );
+
+    await tap('button[aria-label="Edit E2B Browser Env"]');
+    await poll("saved e2b secret hidden", () =>
+      evaluate("document.querySelector('[role=\"dialog\"]').innerText.includes('Saved API key')"),
+    );
+    await click("Save changes");
+    await poll("edit dialog closed", () => evaluate("!document.querySelector('[role=\"dialog\"]')"));
+
+    await visit("/a/default/agent");
+    await poll("bot environment selector loaded", () =>
+      evaluate(`!!document.querySelector('#bot-environment option[value="${createdEnv.id}"]')`),
+    );
+    await evaluate(`(() => {
+      const select = document.querySelector('#bot-environment');
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, ${JSON.stringify(createdEnv.id)});
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`);
+    await poll("stateless reset sandbox button visible", () =>
+      evaluate(
+        "!![...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Reset sandbox' && !b.disabled)",
+      ),
+    );
+    await click("Reset sandbox");
+    await poll("reset notification visible", () =>
+      evaluate("document.body.innerText.includes('E2B sandbox reset')"),
+    );
+
+    await evaluate(`(() => {
+      const select = document.querySelector('#bot-environment');
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, "");
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`);
+    await poll(
+      "bot restored to local environment",
+      async () => (await api("/api/agents/default")).environmentId === "",
+    );
+    await visit("/environment");
+    await tap('button[aria-label="Remove E2B Browser Env"]');
+    await click("Remove environment");
+    await poll(
+      "e2b environment removed",
+      async () =>
+        !(await api("/api/settings/environments")).environments.some((env) => env.id === createdEnv.id),
+    );
+
+    results.push({ scenario: "e2b settings and stateless reset ui", envId: createdEnv.id });
+  }
+
   await writeFile(join(evidence, "results.json"), JSON.stringify(results, null, 2));
   console.log(`PASS ${JSON.stringify(results)}; evidence: ${evidence}`);
 } catch (error) {

@@ -1,6 +1,12 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Environment, EnvironmentConfig, EnvironmentTestResult } from "../api/generated/types.gen";
+import type {
+  Environment,
+  EnvironmentConfig,
+  EnvironmentInput,
+  EnvironmentKind,
+  EnvironmentTestResult,
+} from "../api/generated/types.gen";
 import {
   createEnvironmentMutation,
   deleteEnvironmentMutation,
@@ -13,10 +19,15 @@ import { errorText, refreshEnvironments } from "../lib/queries";
 import { Confirm } from "./confirm";
 import { Modal } from "./dialog";
 import { Failure, Loading, Spinner } from "./feedback";
-import { Field, Input } from "./form";
+import { Field, Input, RadioSegments, SavedSecret } from "./form";
 import { Facts, Mono, Panel, Section } from "./page";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+
+const environmentKinds = [
+  { value: "pi-env", label: "pi-env (SSH)" },
+  { value: "e2b", label: "E2B Cloud Sandbox" },
+] as const;
 
 export function ExecutionEnvironments({ n }: { n: number }) {
   const query = useQuery(listEnvironmentsOptions());
@@ -97,6 +108,7 @@ function EnvironmentCard({
 }) {
   const { notify } = useApp();
   const [probe, setProbe] = useState<EnvironmentTestResult | null>(null);
+  const isE2B = env.kind === "e2b";
 
   const test = useMutation({
     ...testEnvironmentMutation(),
@@ -107,13 +119,21 @@ function EnvironmentCard({
     onError: (err) => notify(errorText(err)),
   });
 
-  const rows: [string, ReactNode][] = [["Target", <Mono key="target">{formatSshTarget(env.config)}</Mono>]];
+  const rows: [string, ReactNode][] = [];
 
-  if (env.config.identityFile) {
-    rows.push(["Identity file", <Mono key="id">{env.config.identityFile}</Mono>]);
+  if (isE2B) {
+    rows.push(["Template", <Mono key="tpl">{env.config.template || "base"}</Mono>]);
+    rows.push(["Workspace", <Mono key="ws">{env.config.workspaceDir || "/home/user/workspace"}</Mono>]);
+    rows.push(["Auto-pause timeout", `${env.config.timeoutSeconds ?? 300}s`]);
+  } else {
+    rows.push(["Target", <Mono key="target">{formatSshTarget(env.config)}</Mono>]);
+
+    if (env.config.identityFile) {
+      rows.push(["Identity file", <Mono key="id">{env.config.identityFile}</Mono>]);
+    }
+
+    rows.push(["Workspace", <Mono key="ws">{env.config.workspaceDir || "~/.dex/agents"}</Mono>]);
   }
-
-  rows.push(["Workspace", <Mono key="ws">{env.config.workspaceDir || "~/.dex/agents"}</Mono>]);
 
   return (
     <Panel>
@@ -121,6 +141,18 @@ function EnvironmentCard({
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <h3 className="text-[14px] font-medium text-foreground">{env.name}</h3>
           <Mono className="text-[11.5px]">{env.kind}</Mono>
+          {isE2B ? (
+            <Badge
+              variant="secondary"
+              className={
+                env.secretSet
+                  ? "h-5 bg-green-tint px-2 text-[11px] text-green"
+                  : "h-5 bg-orange-tint px-2 text-[11px] text-orange"
+              }
+            >
+              {env.secretSet ? "API key saved" : "API key missing"}
+            </Badge>
+          ) : null}
         </div>
         <Button
           size="xs"
@@ -179,12 +211,17 @@ function EnvironmentCard({
 
 function EnvironmentDialog({ existing, onClose }: { existing?: Environment; onClose: () => void }) {
   const { notify } = useApp();
+  const [kind, setKind] = useState<EnvironmentKind>(existing?.kind ?? "pi-env");
   const [name, setName] = useState(existing?.name ?? "");
   const [host, setHost] = useState(existing?.config.host ?? "");
   const [user, setUser] = useState(existing?.config.user ?? "");
   const [port, setPort] = useState(existing?.config.port ? String(existing.config.port) : "");
   const [identityFile, setIdentityFile] = useState(existing?.config.identityFile ?? "");
   const [workspaceDir, setWorkspaceDir] = useState(existing?.config.workspaceDir ?? "");
+  const [secret, setSecret] = useState("");
+  const [replaceSecret, setReplaceSecret] = useState(!existing?.secretSet);
+  const [template, setTemplate] = useState(existing?.config.template ?? "base");
+  const [timeoutSeconds, setTimeoutSeconds] = useState(String(existing?.config.timeoutSeconds ?? 300));
   const [tried, setTried] = useState(false);
 
   const create = useMutation({
@@ -209,23 +246,41 @@ function EnvironmentDialog({ existing, onClose }: { existing?: Environment; onCl
   const mutationError = create.error ?? update.error;
   const trimmedPort = port.trim();
   const parsedPort = trimmedPort ? Number(trimmedPort) : undefined;
+  const trimmedTimeout = timeoutSeconds.trim();
+  const parsedTimeout = trimmedTimeout ? Number(trimmedTimeout) : 300;
   const trimmedWS = workspaceDir.trim();
 
-  const errors: Partial<Record<"name" | "host" | "port" | "workspaceDir", string>> = {};
+  const errors: Partial<
+    Record<"name" | "host" | "port" | "secret" | "template" | "timeoutSeconds" | "workspaceDir", string>
+  > = {};
 
   if (!name.trim() || Array.from(name.trim()).length > 60) {
     errors.name = "Enter a name between 1 and 60 characters.";
   }
 
-  if (!host.trim()) {
-    errors.host = "Enter a host name or SSH config alias.";
-  }
+  if (kind === "pi-env") {
+    if (!host.trim()) {
+      errors.host = "Enter a host name or SSH config alias.";
+    }
 
-  if (
-    trimmedPort &&
-    (parsedPort === undefined || !Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535)
-  ) {
-    errors.port = "Port must be between 1 and 65535.";
+    if (
+      trimmedPort &&
+      (parsedPort === undefined || !Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535)
+    ) {
+      errors.port = "Port must be between 1 and 65535.";
+    }
+  } else {
+    if (!existing?.secretSet && !secret.trim()) {
+      errors.secret = "Enter your E2B API key.";
+    }
+
+    if (!template.trim()) {
+      errors.template = "Enter a template ID (for example base).";
+    }
+
+    if (!Number.isInteger(parsedTimeout) || parsedTimeout < 1 || parsedTimeout > 86400) {
+      errors.timeoutSeconds = "Timeout must be between 1 and 86400 seconds.";
+    }
   }
 
   if (trimmedWS && !trimmedWS.startsWith("/") && trimmedWS !== "~" && !trimmedWS.startsWith("~/")) {
@@ -239,15 +294,27 @@ function EnvironmentDialog({ existing, onClose }: { existing?: Environment; onCl
 
     if (Object.keys(errors).length > 0 || pending) return;
 
-    const config: EnvironmentConfig = {
-      host: host.trim(),
-      user: user.trim() || undefined,
-      port: parsedPort,
-      identityFile: identityFile.trim() || undefined,
-      workspaceDir: trimmedWS || undefined,
-    };
+    const config: EnvironmentConfig =
+      kind === "e2b"
+        ? {
+            template: template.trim() || "base",
+            timeoutSeconds: parsedTimeout,
+            workspaceDir: trimmedWS || undefined,
+          }
+        : {
+            host: host.trim(),
+            user: user.trim() || undefined,
+            port: parsedPort,
+            identityFile: identityFile.trim() || undefined,
+            workspaceDir: trimmedWS || undefined,
+          };
 
-    const body = { name: name.trim(), kind: "pi-env" as const, config };
+    const body: EnvironmentInput = {
+      name: name.trim(),
+      kind,
+      config,
+      secret: kind === "e2b" && secret.trim() ? secret.trim() : undefined,
+    };
 
     if (existing) {
       update.mutate({ path: { environmentId: existing.id }, body });
@@ -259,7 +326,7 @@ function EnvironmentDialog({ existing, onClose }: { existing?: Environment; onCl
   return (
     <Modal
       title={existing ? `Edit ${existing.name}` : "Add execution environment"}
-      description="Run bots remotely over SSH using pi-env."
+      description="Run bots over SSH with pi-env or inside persistent E2B cloud sandboxes."
       pending={pending}
       onClose={onClose}
       footer={
@@ -282,78 +349,167 @@ function EnvironmentDialog({ existing, onClose }: { existing?: Environment; onCl
           submit();
         }}
       >
+        {!existing ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[12.5px] font-medium text-foreground">Kind</span>
+            <RadioSegments
+              label="Environment kind"
+              options={environmentKinds}
+              value={kind}
+              onChange={(next) => {
+                setKind(next);
+                setTried(false);
+              }}
+            />
+          </div>
+        ) : null}
+
         <Field label="Name" error={show("name")}>
           {({ id, describedBy, invalid }) => (
             <Input
               id={id}
               aria-describedby={describedBy}
               aria-invalid={invalid}
-              placeholder="Build server"
+              placeholder={kind === "e2b" ? "E2B Sandbox" : "Build server"}
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
           )}
         </Field>
 
-        <Field label="Host" hint="Hostname, IP address, or ~/.ssh/config alias." error={show("host")}>
-          {({ id, describedBy, invalid }) => (
-            <Input
-              id={id}
-              aria-describedby={describedBy}
-              aria-invalid={invalid}
-              className="font-mono"
-              placeholder="dev.example.com"
-              value={host}
-              onChange={(event) => setHost(event.target.value)}
-            />
-          )}
-        </Field>
+        {kind === "pi-env" ? (
+          <>
+            <Field label="Host" hint="Hostname, IP address, or ~/.ssh/config alias." error={show("host")}>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  aria-invalid={invalid}
+                  className="font-mono"
+                  placeholder="dev.example.com"
+                  value={host}
+                  onChange={(event) => setHost(event.target.value)}
+                />
+              )}
+            </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="User" hint="Optional; uses SSH config default.">
-            {({ id, describedBy }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                className="font-mono"
-                placeholder="ubuntu"
-                value={user}
-                onChange={(event) => setUser(event.target.value)}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="User" hint="Optional; uses SSH config default.">
+                {({ id, describedBy }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    className="font-mono"
+                    placeholder="ubuntu"
+                    value={user}
+                    onChange={(event) => setUser(event.target.value)}
+                  />
+                )}
+              </Field>
+
+              <Field label="Port" hint="Optional; defaults to 22." error={show("port")}>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    aria-invalid={invalid}
+                    className="font-mono"
+                    placeholder="22"
+                    value={port}
+                    onChange={(event) => setPort(event.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+
+            <Field label="Identity file" hint="Optional private key path on this computer.">
+              {({ id, describedBy }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  className="font-mono"
+                  placeholder="~/.ssh/id_ed25519"
+                  value={identityFile}
+                  onChange={(event) => setIdentityFile(event.target.value)}
+                />
+              )}
+            </Field>
+          </>
+        ) : (
+          <>
+            {existing?.secretSet && !replaceSecret ? (
+              <SavedSecret
+                label="API key"
+                text="Saved API key"
+                hint="Stored write-only on this computer. Leave unchanged or replace it."
+                action="Replace"
+                onReplace={() => setReplaceSecret(true)}
               />
+            ) : (
+              <Field
+                label="API key"
+                hint="Write-only E2B API key. Never returned after saving."
+                error={show("secret")}
+              >
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    type="password"
+                    autoComplete="off"
+                    aria-describedby={describedBy}
+                    aria-invalid={invalid}
+                    className="font-mono"
+                    placeholder="e2b_..."
+                    value={secret}
+                    onChange={(event) => setSecret(event.target.value)}
+                  />
+                )}
+              </Field>
             )}
-          </Field>
 
-          <Field label="Port" hint="Optional; defaults to 22." error={show("port")}>
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                aria-invalid={invalid}
-                className="font-mono"
-                placeholder="22"
-                value={port}
-                onChange={(event) => setPort(event.target.value)}
-              />
-            )}
-          </Field>
-        </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Template" hint="E2B sandbox template ID." error={show("template")}>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    aria-invalid={invalid}
+                    className="font-mono"
+                    placeholder="base"
+                    value={template}
+                    onChange={(event) => setTemplate(event.target.value)}
+                  />
+                )}
+              </Field>
 
-        <Field label="Identity file" hint="Optional private key path on this computer.">
-          {({ id, describedBy }) => (
-            <Input
-              id={id}
-              aria-describedby={describedBy}
-              className="font-mono"
-              placeholder="~/.ssh/id_ed25519"
-              value={identityFile}
-              onChange={(event) => setIdentityFile(event.target.value)}
-            />
-          )}
-        </Field>
+              <Field
+                label="Auto-pause timeout (s)"
+                hint="Idle sandboxes auto-pause after this delay."
+                error={show("timeoutSeconds")}
+              >
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    aria-invalid={invalid}
+                    className="font-mono"
+                    placeholder="300"
+                    value={timeoutSeconds}
+                    onChange={(event) => setTimeoutSeconds(event.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+          </>
+        )}
 
         <Field
           label="Workspace directory"
-          hint="Optional base directory on the remote host (default ~/.dex/agents)."
+          hint={
+            kind === "e2b"
+              ? "Directory inside the sandbox (default /home/user/workspace)."
+              : "Optional base directory on the remote host (default ~/.dex/agents)."
+          }
           error={show("workspaceDir")}
         >
           {({ id, describedBy, invalid }) => (
@@ -362,7 +518,7 @@ function EnvironmentDialog({ existing, onClose }: { existing?: Environment; onCl
               aria-describedby={describedBy}
               aria-invalid={invalid}
               className="font-mono"
-              placeholder="~/.dex/agents"
+              placeholder={kind === "e2b" ? "/home/user/workspace" : "~/.dex/agents"}
               value={workspaceDir}
               onChange={(event) => setWorkspaceDir(event.target.value)}
             />
@@ -392,7 +548,7 @@ function DeleteEnvironmentDialog({ env, onClose }: { env: Environment; onClose: 
   return (
     <Confirm
       title={`Remove ${env.name}?`}
-      description="dex deletes this environment configuration and forgets any stored SSH host key for it."
+      description="dex deletes this environment configuration."
       confirmLabel="Remove environment"
       pending={remove.isPending}
       error={remove.error}

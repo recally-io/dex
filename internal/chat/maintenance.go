@@ -74,3 +74,38 @@ func (s *Service) ReloadExtensions(ctx context.Context, agentID string) error {
 	defer func() { unlock(); s.Wake() }()
 	return s.engine.Reload(ctx, agentID)
 }
+
+// ResetEnvironment verifies agentID is idle, closes its active runtime resources and background
+// commands, and invokes reset to tear down remote sandbox state.
+func (s *Service) ResetEnvironment(ctx context.Context, agentID string, reset func(context.Context) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	unlock, err := s.lockAgent(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	defer func() { unlock(); s.Wake() }()
+
+	pending, err := s.q.CountPendingAgent(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	if pending > 0 {
+		return ErrConversationBusy
+	}
+	if s.engine != nil {
+		if err := s.engine.CloseAgent(ctx, agentID); err != nil {
+			return err
+		}
+	}
+	if s.background != nil {
+		if err := s.background.StopAgent(ctx, agentID); err != nil {
+			return err
+		}
+	}
+	if reset != nil {
+		return reset(ctx)
+	}
+	return nil
+}

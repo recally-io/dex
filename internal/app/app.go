@@ -69,6 +69,9 @@ type Config struct {
 	ExecEnv execenv.Provider
 	// SSHProgram replaces the ssh executable used by pi-env in tests.
 	SSHProgram string
+	// E2BAPIURL and E2BEnvdURL replace the E2B Cloud and sandbox envd endpoints in tests.
+	E2BAPIURL  string
+	E2BEnvdURL string
 	// Token is the access token that the API requires. Empty means the stored token when
 	// RequireToken is set, and no authentication otherwise.
 	Token        string
@@ -245,7 +248,13 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return botTools.Handlers().Archive(ctx, c, a)
 		},
 	}
-	envs := execenv.NewManager(execenv.ManagerConfig{DataDir: cfg.DataDir, Queries: q, SSHProgram: cfg.SSHProgram})
+	envs := execenv.NewManager(execenv.ManagerConfig{
+		DataDir:    cfg.DataDir,
+		Queries:    q,
+		SSHProgram: cfg.SSHProgram,
+		E2BAPIURL:  cfg.E2BAPIURL,
+		E2BEnvdURL: cfg.E2BEnvdURL,
+	})
 	execProvider := cfg.ExecEnv
 	if execProvider == nil {
 		execProvider = envs
@@ -298,11 +307,21 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
+	agentsService.OnEnvironmentChanged = func(changeCtx context.Context, agentID, oldEnvID, oldSandboxID string) {
+		_ = native.CloseAgent(changeCtx, agentID)
+		envs.CleanupSandbox(changeCtx, agentID, oldEnvID, oldSandboxID)
+	}
 	botTools = agent.BotTools{Agents: agentsService, Chats: chats, Extensions: native.Extensions}
 	// An approved archive commits in a chat receipt; the channels stop right after it.
 	chats.OnBotArchived = func(id string) {
 		if err := bg.StopAgent(runCtx, id); err != nil {
 			slog.Error("stop background commands of an archived bot", "agent", id, "err", err)
+		}
+		if err := native.CloseAgent(runCtx, id); err != nil && !errors.Is(err, engine.ErrBusy) {
+			slog.Warn("close runtime resources of an archived bot", "agent", id, "err", err)
+		}
+		if err := envs.ResetAgent(runCtx, id); err != nil {
+			slog.Warn("cleanup sandbox of an archived bot", "agent", id, "err", err)
 		}
 		if err := agentsService.StopChannels(runCtx, id); err != nil {
 			slog.Error("stop channels of an archived bot", "agent", id, "err", err)
@@ -350,6 +369,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	a.handler = server.New(server.Config{
 		RuntimeReady: func(ctx context.Context) bool { return native.Health(ctx) == nil },
 		Engine:       native,
+		Envs:         envs,
 		Chats:        chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})
 	a.wg.Go(func() { chats.Run(runCtx) })

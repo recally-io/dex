@@ -3,9 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/recally-io/dex/internal/api"
+	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/settings"
 )
 
@@ -78,6 +81,30 @@ func (h *handler) TestEnvironment(ctx context.Context, req api.TestEnvironmentRe
 	}, nil
 }
 
+func (h *handler) ResetAgentEnvironment(ctx context.Context, _ api.ResetAgentEnvironmentRequestObject) (api.ResetAgentEnvironmentResponseObject, error) {
+	id := agentID(ctx)
+	if h.Envs == nil {
+		return nil, errors.New("execution environment manager is not configured")
+	}
+	kind, err := h.Envs.AgentEnvironmentKind(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if kind != execenv.KindE2B {
+		return nil, fmt.Errorf("%w: environment reset applies only to e2b sandboxes", settings.ErrInvalid)
+	}
+	if h.Chats != nil {
+		if err := h.Chats.ResetEnvironment(ctx, id, func(rctx context.Context) error {
+			return h.Envs.ResetAgent(rctx, id)
+		}); err != nil {
+			return nil, err
+		}
+	} else if err := h.Envs.ResetAgent(ctx, id); err != nil {
+		return nil, err
+	}
+	return api.ResetAgentEnvironment200JSONResponse(ok), nil
+}
+
 func environmentInput(body api.EnvironmentInput) (settings.EnvironmentInput, error) {
 	var rawConfig []byte
 	if body.Config != nil {
@@ -101,11 +128,13 @@ func environmentView(env settings.Environment) api.Environment {
 		Name: env.Name,
 		Kind: api.EnvironmentKind(env.Kind),
 		Config: api.EnvironmentConfig{
-			Host:         optional(env.Config.Host),
-			User:         optional(env.Config.User),
-			Port:         env.Config.Port,
-			IdentityFile: optional(env.Config.IdentityFile),
-			WorkspaceDir: optional(env.Config.WorkspaceDir),
+			Host:           optional(env.Config.Host),
+			User:           optional(env.Config.User),
+			Port:           env.Config.Port,
+			IdentityFile:   optional(env.Config.IdentityFile),
+			WorkspaceDir:   optional(env.Config.WorkspaceDir),
+			Template:       optional(env.Config.Template),
+			TimeoutSeconds: env.Config.TimeoutSeconds,
 		},
 		SecretSet: env.SecretSet,
 		CreatedAt: env.CreatedAt,

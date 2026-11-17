@@ -47,3 +47,8 @@ WHERE id = @agent_id AND environment_id = @environment_id;
 UPDATE agents
 SET environment_sandbox_id = ''
 WHERE id = @agent_id;
+
+-- name: CountPendingAgent :one
+SELECT count(*)
+FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+WHERE c.agent_id = ? AND s.status = 'pending';

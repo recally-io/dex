@@ -26,6 +26,7 @@ import (
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/upload"
@@ -45,6 +46,7 @@ type Config struct {
 	RuntimeReady func(context.Context) bool
 	// Engine owns native execution and extensions.
 	Engine *engine.Agents
+	Envs   *execenv.Manager
 
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string

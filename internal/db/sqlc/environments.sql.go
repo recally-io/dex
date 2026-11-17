@@ -20,6 +20,19 @@ func (q *Queries) ClearAgentEnvironmentSandboxID(ctx context.Context, agentID st
 	return err
 }
 
+const countPendingAgent = `-- name: CountPendingAgent :one
+SELECT count(*)
+FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+WHERE c.agent_id = ? AND s.status = 'pending'
+`
+
+func (q *Queries) CountPendingAgent(ctx context.Context, agentID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPendingAgent, agentID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createEnvironment = `-- name: CreateEnvironment :one
 INSERT INTO execution_environments (id, name, kind, config, secret, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)

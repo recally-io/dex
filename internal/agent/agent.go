@@ -33,17 +33,18 @@ var thinkingLevels = []string{"off", "minimal", "low", "medium", "high", "xhigh"
 
 // Service owns agent writes and channel setup sessions.
 type Service struct {
-	q               *sqlc.Queries
-	checkModel      func(context.Context, string, string) error
-	wechatOptions   wechat.Options
-	onWechat        func(string, *wechat.Config)
-	wechatDB        *sql.DB
-	ChannelStatus   func(string, string) channel.Status
-	apiURL          string
-	onTelegram      func(string, *telegram.Config)
-	feishuAPIURL    string
-	feishuRegistrar feishu.Registrar
-	onFeishu        func(string, *feishu.Config)
+	q                    *sqlc.Queries
+	checkModel           func(context.Context, string, string) error
+	wechatOptions        wechat.Options
+	onWechat             func(string, *wechat.Config)
+	wechatDB             *sql.DB
+	ChannelStatus        func(string, string) channel.Status
+	OnEnvironmentChanged func(ctx context.Context, agentID, oldEnvID, oldSandboxID string)
+	apiURL               string
+	onTelegram           func(string, *telegram.Config)
+	feishuAPIURL         string
+	feishuRegistrar      feishu.Registrar
+	onFeishu             func(string, *feishu.Config)
 	// One lock orders credential checks, saves, runtime changes, and setup sessions
 	// across agents. Model checks take the settings lock; settings never takes this lock.
 	mu       sync.Mutex
@@ -126,19 +127,35 @@ func (s *Service) ListAgents(ctx context.Context) ([]Agent, error) {
 
 // SaveAgent changes one agent. Its next message uses the settings.
 func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, err := s.Agent(ctx, id); err != nil {
-		return err
-	}
-	a, err := s.cleanAgent(ctx, a)
+	var oldRow sqlc.Agent
+	err := func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		var getErr error
+		oldRow, getErr = s.q.GetAgent(ctx, id)
+		if errors.Is(getErr, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if getErr != nil {
+			return getErr
+		}
+		var cleanErr error
+		a, cleanErr = s.cleanAgent(ctx, a)
+		if cleanErr != nil {
+			return cleanErr
+		}
+		return s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
+			ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
+			EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
+		})
+	}()
 	if err != nil {
 		return err
 	}
-	return s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
-		ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
-		EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
-	})
+	if oldRow.EnvironmentID != a.EnvironmentID && s.OnEnvironmentChanged != nil {
+		s.OnEnvironmentChanged(ctx, id, oldRow.EnvironmentID, oldRow.EnvironmentSandboxID)
+	}
+	return nil
 }
 
 // CreateAgent stores an agent without changing global provider configuration.
