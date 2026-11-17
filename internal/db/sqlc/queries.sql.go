@@ -189,9 +189,9 @@ func (q *Queries) CreateAccessTokenIfMissing(ctx context.Context, token string) 
 }
 
 const createAgent = `-- name: CreateAgent :one
-INSERT INTO agents (id, name, model_provider, model_id, thinking_level, instructions, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at
+INSERT INTO agents (id, name, model_provider, model_id, thinking_level, instructions, environment_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id
 `
 
 type CreateAgentParams struct {
@@ -201,6 +201,7 @@ type CreateAgentParams struct {
 	ModelID       string `json:"model_id"`
 	ThinkingLevel string `json:"thinking_level"`
 	Instructions  string `json:"instructions"`
+	EnvironmentID string `json:"environment_id"`
 	CreatedAt     int64  `json:"created_at"`
 }
 
@@ -212,6 +213,7 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent
 		arg.ModelID,
 		arg.ThinkingLevel,
 		arg.Instructions,
+		arg.EnvironmentID,
 		arg.CreatedAt,
 	)
 	var i Agent
@@ -225,6 +227,8 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent
 		&i.ThinkingLevel,
 		&i.PrimaryNotificationTargetID,
 		&i.ArchivedAt,
+		&i.EnvironmentID,
+		&i.EnvironmentSandboxID,
 	)
 	return i, err
 }
@@ -673,7 +677,7 @@ func (q *Queries) GetAccessToken(ctx context.Context) (string, error) {
 }
 
 const getAgent = `-- name: GetAgent :one
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at FROM agents WHERE id = ?
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id FROM agents WHERE id = ?
 `
 
 func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
@@ -689,6 +693,8 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
 		&i.ThinkingLevel,
 		&i.PrimaryNotificationTargetID,
 		&i.ArchivedAt,
+		&i.EnvironmentID,
+		&i.EnvironmentSandboxID,
 	)
 	return i, err
 }
@@ -1072,7 +1078,7 @@ func (q *Queries) ListAgentIDs(ctx context.Context) ([]string, error) {
 }
 
 const listAgents = `-- name: ListAgents :many
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at FROM agents WHERE archived_at IS NULL ORDER BY created_at, id
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id FROM agents WHERE archived_at IS NULL ORDER BY created_at, id
 `
 
 // Active bots only. Startup starts channels for these bots.
@@ -1095,6 +1101,8 @@ func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
 			&i.ThinkingLevel,
 			&i.PrimaryNotificationTargetID,
 			&i.ArchivedAt,
+			&i.EnvironmentID,
+			&i.EnvironmentSandboxID,
 		); err != nil {
 			return nil, err
 		}
@@ -1110,7 +1118,7 @@ func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
 }
 
 const listArchivedAgents = `-- name: ListArchivedAgents :many
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at FROM agents WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id FROM agents WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id
 `
 
 func (q *Queries) ListArchivedAgents(ctx context.Context) ([]Agent, error) {
@@ -1132,6 +1140,8 @@ func (q *Queries) ListArchivedAgents(ctx context.Context) ([]Agent, error) {
 			&i.ThinkingLevel,
 			&i.PrimaryNotificationTargetID,
 			&i.ArchivedAt,
+			&i.EnvironmentID,
+			&i.EnvironmentSandboxID,
 		); err != nil {
 			return nil, err
 		}
@@ -2008,7 +2018,15 @@ func (q *Queries) UnarchiveChat(ctx context.Context, arg UnarchiveChatParams) er
 }
 
 const updateAgentSettings = `-- name: UpdateAgentSettings :exec
-UPDATE agents SET name = ?, model_provider = ?, model_id = ?, thinking_level = ?, instructions = ? WHERE id = ?
+UPDATE agents SET
+    name = ?1,
+    model_provider = ?2,
+    model_id = ?3,
+    thinking_level = ?4,
+    instructions = ?5,
+    environment_sandbox_id = CASE WHEN environment_id = ?6 THEN environment_sandbox_id ELSE '' END,
+    environment_id = ?6
+WHERE id = ?7
 `
 
 type UpdateAgentSettingsParams struct {
@@ -2017,6 +2035,7 @@ type UpdateAgentSettingsParams struct {
 	ModelID       string `json:"model_id"`
 	ThinkingLevel string `json:"thinking_level"`
 	Instructions  string `json:"instructions"`
+	EnvironmentID string `json:"environment_id"`
 	ID            string `json:"id"`
 }
 
@@ -2027,6 +2046,7 @@ func (q *Queries) UpdateAgentSettings(ctx context.Context, arg UpdateAgentSettin
 		arg.ModelID,
 		arg.ThinkingLevel,
 		arg.Instructions,
+		arg.EnvironmentID,
 		arg.ID,
 	)
 	return err

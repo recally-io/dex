@@ -38,6 +38,7 @@ type agentResources struct {
 	store          durable.Storage
 	loaded         *loadedExtensions
 	execHandle     execenv.Handle
+	execStamp      string
 	groupRoot      *os.Root
 	groupExtension *durable.Extension
 }
@@ -296,6 +297,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := a.memory.Open(ctx); err != nil {
 		return nil, err
 	}
+	execStamp, _ := a.execStamp(ctx, agentID)
 	execHandle, err := a.config.ExecEnv.Open(ctx, agentID)
 	if err != nil {
 		return nil, err
@@ -386,7 +388,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err != nil {
 		return nil, err
 	}
-	return &agentResources{harness: h, store: store, loaded: loaded, execHandle: execHandle}, nil
+	return &agentResources{harness: h, store: store, loaded: loaded, execHandle: execHandle, execStamp: execStamp}, nil
 }
 
 // Withdrawal and abort marks commit before the paused Harness can run saved work.
@@ -1181,22 +1183,35 @@ func (a *Agents) OnePasswordCLI(ctx context.Context) string {
 	return findOp(env)
 }
 
-// StaleExtensions returns the open agents whose extension files, shell rc files, or 1Password
-// settings changed after their load, with the current stamp of each.
-func (a *Agents) StaleExtensions() map[string]string {
+func (a *Agents) execStamp(ctx context.Context, agentID string) (string, bool) {
+	if sp, ok := a.config.ExecEnv.(execenv.StampProvider); ok {
+		return sp.Stamp(ctx, agentID)
+	}
+	return "", true
+}
+
+// StaleExtensions returns the open agents whose extension files, shell rc files, 1Password
+// settings, or execution environment changed after their load, with the current stamp of each.
+func (a *Agents) StaleExtensions(ctx context.Context) map[string]string {
 	a.mu.Lock()
-	loaded := map[string]string{}
+	type loadedState struct {
+		extStamp  string
+		execStamp string
+	}
+	loaded := map[string]loadedState{}
 	for id, resource := range a.resources {
 		if resource.loaded == nil {
 			continue
 		}
-		loaded[id] = resource.loaded.stamp
+		loaded[id] = loadedState{extStamp: resource.loaded.stamp, execStamp: resource.execStamp}
 	}
 	a.mu.Unlock()
 	stale := map[string]string{}
-	for id, stamp := range loaded {
-		if current := a.files(id).stamp(); current != stamp {
-			stale[id] = current
+	for id, state := range loaded {
+		currentExt := a.files(id).stamp()
+		currentExec, ok := a.execStamp(ctx, id)
+		if currentExt != state.extStamp || (ok && currentExec != state.execStamp) {
+			stale[id] = currentExt + "|" + currentExec
 		}
 	}
 	return stale
@@ -1219,7 +1234,8 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	a.mu.Unlock()
 	if resource != nil {
 		info.Servers = resource.loaded.ServerInfo()
-		info.ReloadPending = a.files(agentID).stamp() != resource.loaded.stamp
+		currentExec, ok := a.execStamp(ctx, agentID)
+		info.ReloadPending = a.files(agentID).stamp() != resource.loaded.stamp || (ok && currentExec != resource.execStamp)
 	}
 	return info, nil
 }

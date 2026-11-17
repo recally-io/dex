@@ -22,6 +22,7 @@ import (
 
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/execenv/execenvtest"
 	"github.com/recally-io/dex/internal/mcptest"
 )
 
@@ -37,6 +38,7 @@ type dex struct {
 }
 
 func TestMain(m *testing.M) {
+	execenvtest.DispatchHelperMain()
 	// The tests start this binary as a stdio MCP server; see mcpServer.
 	if dir := os.Getenv("DEX_TEST_MCP_DIR"); dir != "" {
 		if err := (&mcptest.Server{Dir: dir, Prefix: os.Getenv("DEX_TEST_MCP_PREFIX"),
@@ -139,8 +141,12 @@ func cmpOr(want []int, def int) int {
 
 func (d *dex) setModel(t *testing.T, modelID string) {
 	t.Helper()
-	d.must(t, http.MethodPut, "/api/agents/default",
-		map[string]string{"name": "Dex", "provider": "faux", "modelId": modelID, "thinkingLevel": "off", "instructions": ""}, nil)
+	var current apiAgent
+	d.must(t, http.MethodGet, "/api/agents/default", nil, &current)
+	current.Provider = "faux"
+	current.ModelID = modelID
+	current.ThinkingLevel = "off"
+	d.must(t, http.MethodPut, "/api/agents/default", current, nil)
 }
 
 type chatInfo struct {

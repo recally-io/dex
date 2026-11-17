@@ -205,6 +205,83 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/settings/environments:
+    get:
+      operationId: listEnvironments
+      description: Saved execution environments, without secrets. Built-in local is implicit when a bot has empty environmentId.
+      responses:
+        "200":
+          description: Execution environments.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnvironmentList" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createEnvironment
+      description: Creates a new execution environment.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnvironmentInput" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Environment" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/settings/environments/{environmentId}:
+    parameters:
+      - $ref: "#/components/parameters/EnvironmentId"
+    put:
+      operationId: updateEnvironment
+      description: Updates an execution environment. Empty or omitted secret keeps the saved secret. Open bots using it reload when idle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnvironmentInput" }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Environment" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteEnvironment
+      description: Deletes an execution environment if no active bot uses it (409 when in use).
+      responses:
+        "200":
+          description: Removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/settings/environments/{environmentId}/test:
+    parameters:
+      - $ref: "#/components/parameters/EnvironmentId"
+    post:
+      operationId: testEnvironment
+      description: Probes connectivity, platform metadata, and base workspace readiness.
+      responses:
+        "200":
+          description: Probe result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnvironmentTestResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/models:
     get:
       operationId: listModels
@@ -1622,6 +1699,11 @@ components:
       in: path
       required: true
       schema: { type: integer, format: int64 }
+    EnvironmentId:
+      name: environmentId
+      in: path
+      required: true
+      schema: { type: string }
 
   securitySchemes:
     bearer: { type: http, scheme: bearer }
@@ -2422,6 +2504,63 @@ components:
         connectToken: { type: string }
         serviceAccountToken: { type: string }
 
+    EnvironmentKind:
+      type: string
+      enum: [pi-env]
+
+    EnvironmentConfig:
+      type: object
+      properties:
+        host: { type: string }
+        user: { type: string }
+        port: { type: integer }
+        identityFile: { type: string }
+        workspaceDir: { type: string }
+
+    Environment:
+      type: object
+      required: [id, name, kind, config, secretSet, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        kind: { $ref: "#/components/schemas/EnvironmentKind" }
+        config: { $ref: "#/components/schemas/EnvironmentConfig" }
+        secretSet: { type: boolean }
+        createdAt: { type: integer, format: int64 }
+        updatedAt: { type: integer, format: int64 }
+
+    EnvironmentList:
+      type: object
+      required: [environments]
+      properties:
+        environments:
+          type: array
+          items: { $ref: "#/components/schemas/Environment" }
+
+    EnvironmentInput:
+      type: object
+      required: [name, kind]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        kind: { $ref: "#/components/schemas/EnvironmentKind" }
+        config: { $ref: "#/components/schemas/EnvironmentConfig" }
+        secret:
+          type: string
+          description: Write-only secret. Empty or omitted on update keeps the saved secret.
+
+    EnvironmentTestResult:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
+        platform: { type: string }
+        arch: { type: string }
+        home: { type: string }
+        warnings:
+          type: array
+          items: { type: string }
+        error: { type: string }
+
     Channels:
       x-go-type: agent.Channels
       x-go-type-import:
@@ -2459,7 +2598,14 @@ components:
       x-go-type-import:
         path: github.com/recally-io/dex/internal/agent
       type: object
-      required: [name, provider, modelId, thinkingLevel, instructions]
+      required: [
+        name,
+        provider,
+        modelId,
+        thinkingLevel,
+        instructions,
+        environmentId,
+      ]
       properties:
         id: { type: string, readOnly: true, description: The agent ID. }
         activity:
@@ -2477,6 +2623,10 @@ components:
         modelId: { type: string, description: Empty when no model is chosen. }
         thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
         instructions: { type: string }
+        environmentId: {
+          type: string,
+          description: Empty means the built-in local host environment.,
+        }
         archivedAt:
           type: integer
           format: int64
@@ -2500,6 +2650,10 @@ components:
         modelId: { type: string, description: Empty when no model is chosen. }
         thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
         instructions: { type: string }
+        environmentId: {
+          type: string,
+          description: Empty or "local" selects the built-in local host environment.,
+        }
 
     ThinkingLevel:
       type: string

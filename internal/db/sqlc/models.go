@@ -23,6 +23,8 @@ type Agent struct {
 	ThinkingLevel               string         `json:"thinking_level"`
 	PrimaryNotificationTargetID sql.NullString `json:"primary_notification_target_id"`
 	ArchivedAt                  sql.NullInt64  `json:"archived_at"`
+	EnvironmentID               string         `json:"environment_id"`
+	EnvironmentSandboxID        string         `json:"environment_sandbox_id"`
 }
 
 type Artifact struct {
@@ -145,6 +147,16 @@ type Dream struct {
 	ThroughSettledAt int64  `json:"through_settled_at"`
 	ThroughID        string `json:"through_id"`
 	CreatedAt        int64  `json:"created_at"`
+}
+
+type ExecutionEnvironment struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	Config    string `json:"config"`
+	Secret    string `json:"secret"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
 }
 
 type FeishuSetting struct {

@@ -74,6 +74,7 @@ type Agent struct {
 	ModelID       string    `json:"modelId"`
 	ThinkingLevel string    `json:"thinkingLevel"`
 	Instructions  string    `json:"instructions"`
+	EnvironmentID string    `json:"environmentId"`
 	// ArchivedAt is the archive time in Unix milliseconds; zero for an active bot.
 	ArchivedAt int64 `json:"archivedAt,omitzero"`
 }
@@ -98,7 +99,7 @@ func (s *Service) Agent(ctx context.Context, id string) (Agent, error) {
 
 func agentView(row sqlc.Agent) Agent {
 	return Agent{ID: row.ID, Name: row.Name, Provider: row.ModelProvider, ModelID: row.ModelID,
-		ThinkingLevel: row.ThinkingLevel, Instructions: row.Instructions, ArchivedAt: row.ArchivedAt.Int64}
+		ThinkingLevel: row.ThinkingLevel, Instructions: row.Instructions, EnvironmentID: row.EnvironmentID, ArchivedAt: row.ArchivedAt.Int64}
 }
 
 // ListAgents returns agents and their activity in creation order.
@@ -136,7 +137,7 @@ func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
 	}
 	return s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
 		ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
-		ID: id, Name: a.Name,
+		EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
 	})
 }
 
@@ -150,7 +151,7 @@ func (s *Service) CreateAgent(ctx context.Context, a Agent) (Agent, error) {
 	}
 	row, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{
 		ID: uuid.NewV7().String(), Name: a.Name, ModelProvider: a.Provider, ModelID: a.ModelID,
-		ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions, CreatedAt: time.Now().UnixMilli(),
+		ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, CreatedAt: time.Now().UnixMilli(),
 	})
 	return agentView(row), err
 }
@@ -162,6 +163,17 @@ func (s *Service) cleanAgent(ctx context.Context, a Agent) (Agent, error) {
 	}
 	if !slices.Contains(thinkingLevels, a.ThinkingLevel) {
 		return a, fmt.Errorf("%w: unknown thinking level %q", ErrInvalid, a.ThinkingLevel)
+	}
+	a.EnvironmentID = strings.TrimSpace(a.EnvironmentID)
+	if a.EnvironmentID == "local" {
+		a.EnvironmentID = ""
+	}
+	if a.EnvironmentID != "" {
+		if _, err := s.q.GetEnvironment(ctx, a.EnvironmentID); errors.Is(err, sql.ErrNoRows) {
+			return a, fmt.Errorf("%w: execution environment %q does not exist", ErrInvalid, a.EnvironmentID)
+		} else if err != nil {
+			return a, err
+		}
 	}
 	if a.ModelID != "" {
 		if err := s.checkModel(ctx, a.Provider, a.ModelID); err != nil {

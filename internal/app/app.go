@@ -65,8 +65,10 @@ type Config struct {
 	AutomationCheck time.Duration
 	// Background sets the limits of background commands; a zero field takes its default.
 	Background background.Limits
-	// ExecEnv overrides the agent execution environment backend; nil defaults to local host execution.
+	// ExecEnv overrides the agent execution environment backend; nil uses the multi-driver manager.
 	ExecEnv execenv.Provider
+	// SSHProgram replaces the ssh executable used by pi-env in tests.
+	SSHProgram string
 	// Token is the access token that the API requires. Empty means the stored token when
 	// RequireToken is set, and no authentication otherwise.
 	Token        string
@@ -77,6 +79,7 @@ type Config struct {
 type App struct {
 	db         *sql.DB
 	engine     *engine.Agents
+	envs       *execenv.Manager
 	handler    http.Handler
 	bots       *channelRegistry
 	jobs       *scheduler.Scheduler
@@ -242,10 +245,15 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return botTools.Handlers().Archive(ctx, c, a)
 		},
 	}
-	native, err := engine.New(engine.Config{DataDir: cfg.DataDir, Home: cfg.Home, BaseEnv: cfg.ToolEnv, LoginEnv: cfg.LoginEnv, ExecEnv: cfg.ExecEnv, FakeModel: cfg.FakeModel, Tasks: tools, Routines: routines, Bots: botHandlers})
+	envs := execenv.NewManager(execenv.ManagerConfig{DataDir: cfg.DataDir, Queries: q, SSHProgram: cfg.SSHProgram})
+	execProvider := cfg.ExecEnv
+	if execProvider == nil {
+		execProvider = envs
+	}
+	native, err := engine.New(engine.Config{DataDir: cfg.DataDir, Home: cfg.Home, BaseEnv: cfg.ToolEnv, LoginEnv: cfg.LoginEnv, ExecEnv: execProvider, FakeModel: cfg.FakeModel, Tasks: tools, Routines: routines, Bots: botHandlers})
 	if err != nil {
 		cancel()
-		return nil, errors.Join(err, jobs.Close(), conn.Close())
+		return nil, errors.Join(err, envs.Close(context.WithoutCancel(ctx)), jobs.Close(), conn.Close())
 	}
 	artifacts.SetWorkspaceReader(native.ReadWorkspaceFile)
 	bg.ConfigureEnvOpener(native.ExecEnv)
@@ -255,7 +263,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	routineTools = automation.NewToolService(conn, automations, chats.AutomationCommitted)
 	hub = live.New(chats, native)
 	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
-	a := &App{db: conn, engine: native, bots: bots, jobs: jobs, background: bg, cancel: cancel}
+	a := &App{db: conn, engine: native, envs: envs, bots: bots, jobs: jobs, background: bg, cancel: cancel}
 	defer func() { //nolint:contextcheck // Shutdown joins the app lifetime.
 		if err != nil {
 			err = errors.Join(err, a.Close())
@@ -278,6 +286,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		manager.Set("telegram", telegram.New(*config, manager)) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
 	}
 	prefs = settings.New(q, native.Catalog, native)
+	prefs.ConfigureEnvironments(cfg.DataDir, envs)
 	if err := prefs.ApplyOnePassword(ctx); err != nil {
 		return nil, err
 	}
@@ -393,7 +402,7 @@ func (a *App) Close() error {
 	a.cancel()
 	a.wg.Wait()
 	a.background.Close()
-	return errors.Join(err, a.engine.Close(context.Background()), a.db.Close())
+	return errors.Join(err, a.engine.Close(context.Background()), a.envs.Close(context.Background()), a.db.Close())
 }
 
 // ToolEnv selects the process values that tools inherit when the login shell is not available.

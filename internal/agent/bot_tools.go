@@ -14,7 +14,7 @@ import (
 
 // Patch changes the fields that are not nil.
 type Patch struct {
-	Name, Instructions, Provider, ModelID, ThinkingLevel *string
+	Name, Instructions, Provider, ModelID, ThinkingLevel, EnvironmentID *string
 }
 
 // PatchAgent merges a patch into a saved active agent and applies the checks of SaveAgent. The
@@ -33,7 +33,7 @@ func (s *Service) PatchAgent(ctx context.Context, id string, p Patch) (Agent, er
 	for _, f := range []struct {
 		dst *string
 		src *string
-	}{{&a.Name, p.Name}, {&a.Instructions, p.Instructions}, {&a.Provider, p.Provider}, {&a.ModelID, p.ModelID}, {&a.ThinkingLevel, p.ThinkingLevel}} {
+	}{{&a.Name, p.Name}, {&a.Instructions, p.Instructions}, {&a.Provider, p.Provider}, {&a.ModelID, p.ModelID}, {&a.ThinkingLevel, p.ThinkingLevel}, {&a.EnvironmentID, p.EnvironmentID}} {
 		if f.src != nil {
 			*f.dst = *f.src
 		}
@@ -44,7 +44,7 @@ func (s *Service) PatchAgent(ctx context.Context, id string, p Patch) (Agent, er
 	}
 	err = s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
 		ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
-		ID: id, Name: a.Name,
+		EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
 	})
 	a.ArchivedAt = 0
 	return a, err
@@ -86,7 +86,7 @@ type BotTools struct {
 }
 
 func botInfo(a Agent) engine.BotInfo {
-	return engine.BotInfo{ID: a.ID, Name: a.Name, Provider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions}
+	return engine.BotInfo{ID: a.ID, Name: a.Name, Provider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions, EnvironmentID: a.EnvironmentID}
 }
 
 // Handlers returns the engine callbacks.

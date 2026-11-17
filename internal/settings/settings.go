@@ -17,6 +17,7 @@ import (
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/execenv"
 )
 
 // ErrInvalid wraps the errors of a change that the service refuses.
@@ -67,6 +68,8 @@ type Service struct {
 	q       *sqlc.Queries
 	catalog *engine.Catalog
 	agents  ToolSettings
+	dataDir string
+	envs    *execenv.Manager
 	// Serializes provider save and apply. Agent and channel changes have their own lock.
 	mu sync.Mutex
 }
@@ -74,6 +77,14 @@ type Service struct {
 // New returns the global settings service.
 func New(q *sqlc.Queries, catalog *engine.Catalog, agents ToolSettings) *Service {
 	return &Service{q: q, catalog: catalog, agents: agents}
+}
+
+// ConfigureEnvironments attaches the execution environment manager and data directory.
+func (s *Service) ConfigureEnvironments(dataDir string, envs *execenv.Manager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dataDir = dataDir
+	s.envs = envs
 }
 
 // Get returns all settings. It asks the runtime which providers exist.
