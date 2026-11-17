@@ -23,7 +23,7 @@ import (
 const (
 	defaultPiEnvWorkspaceBase = "~/.dex/agents"
 	pigModulePath             = "github.com/MichaelKinsy/PiG"
-	piEnvCmdPkg               = pigModulePath + "/cmd/pi-env"
+	piEnvDaemonSubpkg         = "./env/cmd/pi-env"
 )
 
 // PiEnvConfig holds stored JSON settings for a pi-env SSH execution environment.
@@ -239,7 +239,8 @@ func (r *piEnvRuntime) resolveDaemon(ctx context.Context, remote pienv.RemotePla
 	if err != nil {
 		return "", err
 	}
-	cachePath := filepath.Join(r.dataDir, "cache", "pi-env", remote.Platform+"-"+remote.Arch, binName)
+	cacheVer := cmp.Or(pigVersionFromBuildInfo(), "dev")
+	cachePath := filepath.Join(r.dataDir, "cache", "pi-env", cacheVer, remote.Platform+"-"+remote.Arch, binName)
 
 	r.buildMu.Lock()
 	defer r.buildMu.Unlock()
@@ -288,30 +289,56 @@ func daemonBuildTarget(remote pienv.RemotePlatform) (goos, goarch, binName strin
 }
 
 func buildPiEnvDaemon(ctx context.Context, goBin, goos, goarch, outPath string) error {
-	workDir := ""
-	if exec.CommandContext(ctx, goBin, "list", "-m", pigModulePath).Run() != nil { //nolint:gosec // goBin comes from exec.LookPath("go").
-		ver := pigVersionFromBuildInfo()
-		if ver == "" {
-			return fmt.Errorf("cannot locate %s module for pi-env daemon build", pigModulePath)
-		}
-		tmpMod, err := os.MkdirTemp("", "dex-pi-env-build-")
-		if err != nil {
-			return err
-		}
-		defer func() { _ = os.RemoveAll(tmpMod) }()
-		goMod := fmt.Sprintf("module dex-pi-env-build\n\ngo 1.27\n\nrequire %s %s\n", pigModulePath, ver)
-		if err := os.WriteFile(filepath.Join(tmpMod, "go.mod"), []byte(goMod), 0o600); err != nil {
-			return err
-		}
-		workDir = tmpMod
+	absOutPath, err := filepath.Abs(outPath)
+	if err != nil {
+		return err
 	}
-	cmd := exec.CommandContext(ctx, goBin, "build", "-trimpath", "-ldflags=-s -w", "-o", outPath, piEnvCmdPkg) //nolint:gosec // fixed build arguments.
-	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS="+goos, "GOARCH="+goarch)
+	pigDir, err := locatePiGModuleDir(ctx, goBin)
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, goBin, "build", "-mod=readonly", "-trimpath", "-ldflags=-s -w", "-o", absOutPath, piEnvDaemonSubpkg) //nolint:gosec // goBin comes from exec.LookPath("go") with fixed arguments.
+	cmd.Dir = pigDir
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOWORK=off", "GOTOOLCHAIN=local", "GOOS="+goos, "GOARCH="+goarch)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("build pi-env daemon (%s/%s): %w: %s", goos, goarch, err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+func locatePiGModuleDir(ctx context.Context, goBin string) (string, error) {
+	listCmd := exec.CommandContext(ctx, goBin, "list", "-m", "-f", "{{.Dir}}", pigModulePath) //nolint:gosec // goBin comes from exec.LookPath("go").
+	listCmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
+	if out, err := listCmd.Output(); err == nil {
+		if dir := strings.TrimSpace(string(out)); dir != "" {
+			if _, statErr := os.Stat(filepath.Join(dir, "env", "cmd", "pi-env")); statErr == nil {
+				return dir, nil
+			}
+		}
+	}
+	ver := pigVersionFromBuildInfo()
+	if ver == "" {
+		return "", fmt.Errorf("cannot locate %s module for pi-env daemon build", pigModulePath)
+	}
+	dlCmd := exec.CommandContext(ctx, goBin, "mod", "download", "-json", pigModulePath+"@"+ver) //nolint:gosec // fixed module path and build-info version.
+	dlCmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
+	out, dlErr := dlCmd.CombinedOutput()
+	var mod struct {
+		Dir   string `json:"Dir"`
+		Error string `json:"Error"`
+	}
+	if err := json.Unmarshal(out, &mod); err == nil {
+		if mod.Error != "" {
+			return "", fmt.Errorf("locate %s@%s: %s", pigModulePath, ver, mod.Error)
+		}
+		if mod.Dir != "" {
+			return mod.Dir, nil
+		}
+	}
+	if dlErr != nil {
+		return "", fmt.Errorf("locate %s@%s: %w: %s", pigModulePath, ver, dlErr, strings.TrimSpace(string(out)))
+	}
+	return "", fmt.Errorf("cannot locate %s@%s directory", pigModulePath, ver)
 }
 
 func pigVersionFromBuildInfo() string {

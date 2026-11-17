@@ -43,7 +43,7 @@ func TestUserManagesPiEnvEnvironmentAndExecutesBotRemotely(t *testing.T) {
 	t.Setenv("HOST_PIENV_SECRET", "do-not-leak")
 	dataDir := t.TempDir()
 	localHome := t.TempDir()
-	sshFix := execenvtest.NewFakeSSH(t, dataDir)
+	sshFix := execenvtest.NewFakeSSH(t)
 
 	if err := os.MkdirAll(filepath.Join(sshFix.RemoteHome, "remote-proj", ".git"), 0o700); err != nil {
 		t.Fatal(err)
