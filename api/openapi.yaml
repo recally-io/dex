@@ -318,7 +318,7 @@ paths:
       - $ref: "#/components/parameters/EnvironmentId"
     post:
       operationId: forgetEnvironmentHostKey
-      description: Removes stored SSH host key entries for a pi-env environment so the next test or open re-trusts the host key via TOFU.
+      description: Removes stored SSH host key entries for an SSH environment so the next test or open re-trusts the host key via TOFU.
       responses:
         "200":
           description: Host key cleared.
@@ -2584,6 +2584,9 @@ components:
         user: { type: string }
         port: { type: integer }
         identityFile: { type: string }
+        loginShell:
+          type: boolean
+          description: Starts the remote SSH runtime and captures environment variables through the user's login shell ($SHELL -l). Defaults to true when omitted.
         workspaceDir: { type: string }
         apiUrl: { type: string }
         domain: { type: string }

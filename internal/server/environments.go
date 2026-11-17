@@ -19,7 +19,11 @@ func (h *handler) ListEnvironments(ctx context.Context, _ api.ListEnvironmentsRe
 	}
 	out := make([]api.Environment, len(envs))
 	for i, env := range envs {
-		out[i] = environmentView(env)
+		view, viewErr := environmentView(env)
+		if viewErr != nil {
+			return nil, viewErr
+		}
+		out[i] = view
 	}
 	return api.ListEnvironments200JSONResponse{Environments: out}, nil
 }
@@ -36,7 +40,11 @@ func (h *handler) CreateEnvironment(ctx context.Context, req api.CreateEnvironme
 	if err != nil {
 		return nil, err
 	}
-	return api.CreateEnvironment201JSONResponse(environmentView(created)), nil
+	view, err := environmentView(created)
+	if err != nil {
+		return nil, err
+	}
+	return api.CreateEnvironment201JSONResponse(view), nil
 }
 
 func (h *handler) UpdateEnvironment(ctx context.Context, req api.UpdateEnvironmentRequestObject) (api.UpdateEnvironmentResponseObject, error) {
@@ -51,7 +59,11 @@ func (h *handler) UpdateEnvironment(ctx context.Context, req api.UpdateEnvironme
 	if err != nil {
 		return nil, err
 	}
-	return api.UpdateEnvironment200JSONResponse(environmentView(updated)), nil
+	view, err := environmentView(updated)
+	if err != nil {
+		return nil, err
+	}
+	return api.UpdateEnvironment200JSONResponse(view), nil
 }
 
 func (h *handler) DeleteEnvironment(ctx context.Context, req api.DeleteEnvironmentRequestObject) (api.DeleteEnvironmentResponseObject, error) {
@@ -191,26 +203,20 @@ func environmentInput(body api.EnvironmentInput) (settings.EnvironmentInput, err
 	}, nil
 }
 
-func environmentView(env settings.Environment) api.Environment {
+func environmentView(env settings.Environment) (api.Environment, error) {
+	var cfg api.EnvironmentConfig
+	if len(env.Config) > 0 {
+		if err := json.Unmarshal(env.Config, &cfg); err != nil {
+			return api.Environment{}, err
+		}
+	}
 	return api.Environment{
-		Id:   env.ID,
-		Name: env.Name,
-		Kind: api.EnvironmentKind(env.Kind),
-		Config: api.EnvironmentConfig{
-			Host:           optional(env.Config.Host),
-			User:           optional(env.Config.User),
-			Port:           env.Config.Port,
-			IdentityFile:   optional(env.Config.IdentityFile),
-			WorkspaceDir:   optional(env.Config.WorkspaceDir),
-			ApiUrl:         optional(env.Config.APIURL),
-			Domain:         optional(env.Config.Domain),
-			EnvdUrl:        optional(env.Config.EnvdURL),
-			Template:       optional(env.Config.Template),
-			TimeoutSeconds: env.Config.TimeoutSeconds,
-			AutoPause:      env.Config.AutoPause,
-		},
+		Id:        env.ID,
+		Name:      env.Name,
+		Kind:      api.EnvironmentKind(env.Kind),
+		Config:    cfg,
 		SecretSet: env.SecretSet,
 		CreatedAt: env.CreatedAt,
 		UpdatedAt: env.UpdatedAt,
-	}
+	}, nil
 }

@@ -1,6 +1,7 @@
 package execenv
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json/v2"
@@ -11,9 +12,11 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
+	"time"
 	"uuid"
 
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
@@ -24,18 +27,27 @@ const (
 	defaultPiEnvWorkspaceBase = "~/.dex/agents"
 	pigModulePath             = "github.com/MichaelKinsy/PiG"
 	piEnvDaemonSubpkg         = "./env/cmd/pi-env"
+	remoteLoginEnvMarker      = "__DEX_LOGIN_ENV__"
 )
 
-// PiEnvConfig holds stored JSON settings for a pi-env SSH execution environment.
+var validRemoteEnvName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// PiEnvConfig holds stored JSON settings for an SSH execution environment.
 type PiEnvConfig struct {
 	Host         string `json:"host,omitempty"`
 	User         string `json:"user,omitempty"`
 	Port         *int   `json:"port,omitempty"`
 	IdentityFile string `json:"identityFile,omitempty"`
+	LoginShell   *bool  `json:"loginShell,omitempty"`
 	WorkspaceDir string `json:"workspaceDir,omitempty"`
 }
 
-// ParsePiEnvConfig decodes and normalizes raw JSON configuration for pi-env.
+// LoginShellEnabled reports whether SSH sessions use the remote user's login shell (default true).
+func (c PiEnvConfig) LoginShellEnabled() bool {
+	return c.LoginShell == nil || *c.LoginShell
+}
+
+// ParsePiEnvConfig decodes and normalizes raw JSON configuration for SSH environments.
 func ParsePiEnvConfig(raw string) (PiEnvConfig, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" || trimmed == "null" {
@@ -50,8 +62,10 @@ func ParsePiEnvConfig(raw string) (PiEnvConfig, error) {
 	cfg.IdentityFile = strings.TrimSpace(cfg.IdentityFile)
 	cfg.WorkspaceDir = strings.TrimSpace(cfg.WorkspaceDir)
 	if cfg.Port != nil {
-		p := *cfg.Port
-		cfg.Port = &p
+		cfg.Port = new(*cfg.Port)
+	}
+	if cfg.LoginShell != nil {
+		cfg.LoginShell = new(*cfg.LoginShell)
 	}
 	return cfg, nil
 }
@@ -76,12 +90,22 @@ func ValidatePiEnvConfig(dataDir, envID string, cfg PiEnvConfig, sshProgram stri
 	return nil
 }
 
-// ForgetPiEnvHostKey clears any stored SSH host keys for envID.
-func ForgetPiEnvHostKey(dataDir, envID string) error {
+func forgetPiEnvHostKey(dataDir, envID string) error {
 	if dataDir == "" || envID == "" {
 		return nil
 	}
 	return pienv.ForgetHostKey(sshTarget(dataDir, envID, PiEnvConfig{Host: "placeholder"}, ""))
+}
+
+func samePiEnvEndpoint(a, b PiEnvConfig) bool {
+	var portA, portB int
+	if a.Port != nil {
+		portA = *a.Port
+	}
+	if b.Port != nil {
+		portB = *b.Port
+	}
+	return a.Host == b.Host && portA == portB
 }
 
 func sshTarget(dataDir, envID string, cfg PiEnvConfig, sshProgram string) pienv.SshTarget {
@@ -113,16 +137,36 @@ func sshTargetWithKnownHosts(knownHostsFile, hostKeyAlias string, cfg PiEnvConfi
 }
 
 type piEnvRuntime struct {
+	baseDriver
 	dataDir    string
 	sshProgram string
 	buildMu    sync.Mutex
 }
 
-func (r *piEnvRuntime) open(ctx context.Context, agentID, envID string, cfg PiEnvConfig) (Handle, error) {
-	if err := ValidatePiEnvConfig(r.dataDir, envID, cfg, r.sshProgram); err != nil {
+func (r *piEnvRuntime) normalizeAndValidate(_ context.Context, spec EnvironmentSpec) (string, error) {
+	cfg, err := ParsePiEnvConfig(spec.Config)
+	if err != nil {
+		return "", err
+	}
+	if err := ValidatePiEnvConfig(r.dataDir, cmp.Or(spec.ID, "probe"), cfg, r.sshProgram); err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(cfg)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
+
+func (r *piEnvRuntime) open(ctx context.Context, agentID string, spec EnvironmentSpec) (Handle, error) {
+	cfg, err := ParsePiEnvConfig(spec.Config)
+	if err != nil {
 		return nil, err
 	}
-	target := sshTarget(r.dataDir, envID, cfg, r.sshProgram)
+	if err := ValidatePiEnvConfig(r.dataDir, spec.ID, cfg, r.sshProgram); err != nil {
+		return nil, err
+	}
+	target := sshTarget(r.dataDir, spec.ID, cfg, r.sshProgram)
 	remote, err := r.detectWithTOFU(ctx, target)
 	if err != nil {
 		return nil, err
@@ -131,10 +175,11 @@ func (r *piEnvRuntime) open(ctx context.Context, agentID, envID string, cfg PiEn
 	if err != nil {
 		return nil, err
 	}
+	loginShell := cfg.LoginShellEnabled()
 	conn, detected, err := pienv.ConnectSsh(ctx, pienv.SshConnectOptions{
 		SshTarget:  target,
 		Binary:     &binary,
-		LoginShell: true,
+		LoginShell: loginShell,
 	})
 	if err != nil {
 		return nil, err
@@ -149,11 +194,16 @@ func (r *piEnvRuntime) open(ctx context.Context, agentID, envID string, cfg PiEn
 		return nil, err
 	}
 	workspace := joinRemoteSegments(baseWS, sep, agentID, "workspace")
+	var loginEnv map[string]string
+	if loginShell && detected.Platform != "windows" {
+		loginEnv = captureRemoteLoginEnv(ctx, conn, detected.Home)
+	}
 	h := &piEnvHandle{
 		id:        agentID,
 		workspace: workspace,
 		home:      detected.Home,
 		conn:      conn,
+		loginEnv:  loginEnv,
 	}
 	env, err := h.Env(ctx, workspace, nil)
 	if err != nil {
@@ -167,11 +217,20 @@ func (r *piEnvRuntime) open(ctx context.Context, agentID, envID string, cfg PiEn
 	return h, nil
 }
 
-func (r *piEnvRuntime) probe(ctx context.Context, envID string, cfg PiEnvConfig, ephemeralKnownHosts bool) (TestResult, error) {
-	probeAlias := envID
-	if probeAlias == "" {
-		probeAlias = "probe"
+func (r *piEnvRuntime) probe(ctx context.Context, saved *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
+	cfg, err := ParsePiEnvConfig(spec.Config)
+	if err != nil {
+		return TestResult{}, err
 	}
+	ephemeralKnownHosts := true
+	envID := ""
+	if saved != nil && saved.Kind == KindPiEnv && saved.ID != "" {
+		if oldCfg, parseErr := ParsePiEnvConfig(saved.Config); parseErr == nil && samePiEnvEndpoint(oldCfg, cfg) {
+			ephemeralKnownHosts = false
+			envID = saved.ID
+		}
+	}
+	probeAlias := cmp.Or(envID, "probe")
 	if err := ValidatePiEnvConfig(r.dataDir, probeAlias, cfg, r.sshProgram); err != nil {
 		return TestResult{}, err
 	}
@@ -202,7 +261,7 @@ func (r *piEnvRuntime) probe(ctx context.Context, envID string, cfg PiEnvConfig,
 	conn, detected, err := pienv.ConnectSsh(ctx, pienv.SshConnectOptions{
 		SshTarget:  target,
 		Binary:     &binary,
-		LoginShell: true,
+		LoginShell: cfg.LoginShellEnabled(),
 	})
 	if err != nil {
 		return TestResult{
@@ -239,6 +298,88 @@ func (r *piEnvRuntime) probe(ctx context.Context, envID string, cfg PiEnvConfig,
 		Home:     detected.Home,
 		Warnings: detected.Warnings,
 	}, nil
+}
+
+func (r *piEnvRuntime) onUpdated(oldSpec, newSpec EnvironmentSpec) error {
+	if r.dataDir == "" || newSpec.ID == "" {
+		return nil
+	}
+	oldCfg, err := ParsePiEnvConfig(oldSpec.Config)
+	if err != nil {
+		return nil //nolint:nilerr // malformed prior config should still clear host key on endpoint update.
+	}
+	newCfg, err := ParsePiEnvConfig(newSpec.Config)
+	if err != nil || !samePiEnvEndpoint(oldCfg, newCfg) {
+		return forgetPiEnvHostKey(r.dataDir, newSpec.ID)
+	}
+	return nil
+}
+
+func (r *piEnvRuntime) onDeleted(spec EnvironmentSpec) error {
+	if r.dataDir == "" || spec.ID == "" {
+		return nil
+	}
+	return forgetPiEnvHostKey(r.dataDir, spec.ID)
+}
+
+func (r *piEnvRuntime) forgetHostKey(spec EnvironmentSpec) error {
+	if r.dataDir == "" || strings.TrimSpace(spec.ID) == "" {
+		return nil
+	}
+	return forgetPiEnvHostKey(r.dataDir, spec.ID)
+}
+
+func captureRemoteLoginEnv(ctx context.Context, conn *pienv.Connection, home string) map[string]string {
+	probeCtx, cancel := context.WithTimeout(ctx, 7*time.Second)
+	defer cancel()
+	env := pienv.NewRemoteExecutionEnv(pienv.RemoteExecutionEnvOptions{
+		Connection: conn,
+		ID:         "pi-env:login-env",
+		Cwd:        cmp.Or(home, "/"),
+	})
+	var (
+		mu     sync.Mutex
+		stdout bytes.Buffer
+	)
+	res, err := env.Exec(probeCtx, []string{
+		"sh", "-c", `exec "${SHELL:-/bin/sh}" -l -i -c 'printf "%s" ` + remoteLoginEnvMarker + `; env -0'`,
+	}, &durableenv.ShellExecOptions{
+		Timeout:    new(5.0),
+		InheritEnv: new(true),
+		OnOutput: func(_ context.Context, text string, info durableenv.ShellOutputInfo) {
+			if info.Stream == durableenv.ShellStdout {
+				mu.Lock()
+				stdout.WriteString(text)
+				mu.Unlock()
+			}
+		},
+	})
+	if err != nil || res.ExitCode != 0 {
+		return nil
+	}
+	mu.Lock()
+	rawOut := bytes.Clone(stdout.Bytes())
+	mu.Unlock()
+	_, data, ok := bytes.Cut(rawOut, []byte(remoteLoginEnvMarker))
+	if !ok {
+		return nil
+	}
+	parsed := map[string]string{}
+	for item := range bytes.SplitSeq(data, []byte{0}) {
+		key, value, hasEq := strings.Cut(string(item), "=")
+		if !hasEq || !validRemoteEnvName.MatchString(key) {
+			continue
+		}
+		switch key {
+		case "_", "PWD", "OLDPWD", "SHLVL":
+			continue
+		}
+		parsed[key] = value
+	}
+	if len(parsed) == 0 {
+		return nil
+	}
+	return parsed
 }
 
 func isHostKeyChanged(err error) bool {
@@ -437,6 +578,7 @@ type piEnvHandle struct {
 	workspace string
 	home      string
 	conn      *pienv.Connection
+	loginEnv  map[string]string
 	closeOnce sync.Once
 }
 
@@ -449,11 +591,18 @@ func (h *piEnvHandle) Env(ctx context.Context, cwd string, extraEnv map[string]s
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	merged := maps.Clone(h.loginEnv)
+	if len(extraEnv) > 0 {
+		if merged == nil {
+			merged = make(map[string]string, len(extraEnv))
+		}
+		maps.Copy(merged, extraEnv)
+	}
 	return pienv.NewRemoteExecutionEnv(pienv.RemoteExecutionEnvOptions{
 		Connection: h.conn,
 		ID:         "pi-env:" + h.id,
 		Cwd:        cmp.Or(cwd, h.workspace),
-		ShellEnv:   maps.Clone(extraEnv),
+		ShellEnv:   merged,
 	}), nil
 }
 

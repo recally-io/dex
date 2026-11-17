@@ -895,12 +895,15 @@ type Environment struct {
 
 // EnvironmentConfig defines model for EnvironmentConfig.
 type EnvironmentConfig struct {
-	ApiUrl         *string `json:"apiUrl,omitempty"`
-	AutoPause      *bool   `json:"autoPause,omitempty"`
-	Domain         *string `json:"domain,omitempty"`
-	EnvdUrl        *string `json:"envdUrl,omitempty"`
-	Host           *string `json:"host,omitempty"`
-	IdentityFile   *string `json:"identityFile,omitempty"`
+	ApiUrl       *string `json:"apiUrl,omitempty"`
+	AutoPause    *bool   `json:"autoPause,omitempty"`
+	Domain       *string `json:"domain,omitempty"`
+	EnvdUrl      *string `json:"envdUrl,omitempty"`
+	Host         *string `json:"host,omitempty"`
+	IdentityFile *string `json:"identityFile,omitempty"`
+
+	// LoginShell Starts the remote SSH runtime and captures environment variables through the user's login shell ($SHELL -l). Defaults to true when omitted.
+	LoginShell     *bool   `json:"loginShell,omitempty"`
 	Port           *int    `json:"port,omitempty"`
 	Template       *string `json:"template,omitempty"`
 	TimeoutSeconds *int    `json:"timeoutSeconds,omitempty"`

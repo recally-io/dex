@@ -39,8 +39,10 @@ type TestResult struct {
 
 // ManagerConfig configures the execution environment Manager.
 type ManagerConfig struct {
-	DataDir       string
-	Home          string
+	DataDir string
+	// Home overrides the host workspace home for local environments (primarily tests).
+	Home string
+	// SSHHome overrides the directory scanned for ~/.ssh/config and key discovery (falls back to Home, then OS home).
 	SSHHome       string
 	Queries       *sqlc.Queries
 	SSHProgram    string
@@ -49,14 +51,36 @@ type ManagerConfig struct {
 	E2BHTTPClient *http.Client
 }
 
+type driver interface {
+	normalizeAndValidate(ctx context.Context, spec EnvironmentSpec) (string, error)
+	probe(ctx context.Context, saved *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error)
+	open(ctx context.Context, agentID string, spec EnvironmentSpec) (Handle, error)
+	canReset() bool
+	resetAgent(ctx context.Context, agentID string) error
+	cleanupSandbox(ctx context.Context, agentID, envID, sandboxID string)
+	onUpdated(oldSpec, newSpec EnvironmentSpec) error
+	onDeleted(spec EnvironmentSpec) error
+	forgetHostKey(spec EnvironmentSpec) error
+}
+
+type baseDriver struct{}
+
+func (baseDriver) canReset() bool                                         { return false }
+func (baseDriver) resetAgent(context.Context, string) error               { return nil }
+func (baseDriver) cleanupSandbox(context.Context, string, string, string) {}
+func (baseDriver) onUpdated(EnvironmentSpec, EnvironmentSpec) error       { return nil }
+func (baseDriver) onDeleted(EnvironmentSpec) error                        { return nil }
+func (baseDriver) forgetHostKey(EnvironmentSpec) error {
+	return fmt.Errorf("%w: host key reset applies only to SSH environments", ErrInvalidConfig)
+}
+
 // Manager resolves each agent's configured execution environment from control storage.
 type Manager struct {
 	dataDir string
-	home    string
+	sshHome string
 	q       *sqlc.Queries
 	local   Provider
-	pienv   *piEnvRuntime
-	e2b     *e2bRuntime
+	drivers map[Kind]driver
 
 	mu      sync.Mutex
 	closed  bool
@@ -68,28 +92,42 @@ var (
 	_ StampProvider = (*Manager)(nil)
 )
 
-// NewManager constructs an execution environment Manager supporting local, pi-env, and e2b backends.
+// NewManager constructs an execution environment Manager supporting local, SSH (pi-env), and E2B sandbox backends.
 func NewManager(cfg ManagerConfig) *Manager {
 	dataDir := filepath.Clean(cfg.DataDir)
+	pienvDriver := &piEnvRuntime{dataDir: dataDir, sshProgram: cfg.SSHProgram}
+	e2bDriver := newE2BRuntime(cfg.Queries, cfg.E2BAPIURL, cfg.E2BEnvdURL, cfg.E2BHTTPClient)
 	return &Manager{
 		dataDir: dataDir,
-		home:    cmp.Or(cfg.SSHHome, cfg.Home),
+		sshHome: cmp.Or(cfg.SSHHome, cfg.Home),
 		q:       cfg.Queries,
 		local:   NewLocalProvider(dataDir, cfg.Home),
-		pienv:   &piEnvRuntime{dataDir: dataDir, sshProgram: cfg.SSHProgram},
-		e2b:     newE2BRuntime(cfg.Queries, cfg.E2BAPIURL, cfg.E2BEnvdURL, cfg.E2BHTTPClient),
+		drivers: map[Kind]driver{
+			KindPiEnv: pienvDriver,
+			KindE2B:   e2bDriver,
+		},
 		handles: map[Handle]struct{}{},
 	}
 }
 
-// DiscoverSSHConfig discovers concrete host entries and private key path candidates under the configured home directory.
+func (m *Manager) driverFor(kind Kind) (driver, error) {
+	if d, ok := m.drivers[kind]; ok {
+		return d, nil
+	}
+	return nil, fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, kind)
+}
+
+// DiscoverSSHConfig discovers concrete host entries and private key path candidates under the configured SSH home directory.
 func (m *Manager) DiscoverSSHConfig() (SSHConfigDiscovery, error) {
-	return DiscoverSSHConfig(m.home)
+	return DiscoverSSHConfig(m.sshHome)
 }
 
 // CanReset reports whether environments of kind maintain disposable remote sandbox state that supports stateless reset.
-func CanReset(kind Kind) bool {
-	return kind == KindE2B
+func (m *Manager) CanReset(kind Kind) bool {
+	if d, ok := m.drivers[kind]; ok {
+		return d.canReset()
+	}
+	return false
 }
 
 // CanResetAgent reports whether agentID's configured execution environment supports stateless reset.
@@ -98,50 +136,57 @@ func (m *Manager) CanResetAgent(ctx context.Context, agentID string) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	return CanReset(kind), nil
+	return m.CanReset(kind), nil
 }
 
-// ValidateEnvironment checks spec against its backend configuration rules.
-func (m *Manager) ValidateEnvironment(_ context.Context, spec EnvironmentSpec) error {
-	switch spec.Kind {
-	case KindPiEnv:
-		cfg, err := ParsePiEnvConfig(spec.Config)
-		if err != nil {
-			return err
-		}
-		return ValidatePiEnvConfig(m.dataDir, cmp.Or(spec.ID, "probe"), cfg, m.pienv.sshProgram)
-	case KindE2B:
-		_, err := m.e2b.validate(spec)
-		return err
-	case KindLocal:
-		return fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, spec.Kind)
-	default:
-		return fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, spec.Kind)
+// NormalizeAndValidate validates spec against its backend rules and returns the normalized JSON config.
+func (m *Manager) NormalizeAndValidate(ctx context.Context, spec EnvironmentSpec) (string, error) {
+	d, err := m.driverFor(spec.Kind)
+	if err != nil {
+		return "", err
 	}
+	return d.normalizeAndValidate(ctx, spec)
 }
 
 // TestEnvironment probes connectivity for a saved environment spec.
 func (m *Manager) TestEnvironment(ctx context.Context, spec EnvironmentSpec) (TestResult, error) {
-	return m.ProbeEnvironment(ctx, spec, false)
+	return m.ProbeEnvironment(ctx, &spec, spec)
 }
 
-// ProbeEnvironment probes connectivity for spec. When ephemeralHostKey is true for pi-env,
-// SSH host keys are verified in a temporary known_hosts file without modifying <dataDir>/ssh_known_hosts.
-func (m *Manager) ProbeEnvironment(ctx context.Context, spec EnvironmentSpec, ephemeralHostKey bool) (TestResult, error) {
-	switch spec.Kind {
-	case KindPiEnv:
-		cfg, err := ParsePiEnvConfig(spec.Config)
-		if err != nil {
-			return TestResult{}, err
-		}
-		return m.pienv.probe(ctx, spec.ID, cfg, ephemeralHostKey)
-	case KindE2B:
-		return m.e2b.test(ctx, spec)
-	case KindLocal:
-		return TestResult{}, fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, spec.Kind)
-	default:
-		return TestResult{}, fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, spec.Kind)
+// ProbeEnvironment probes connectivity for spec. When saved is provided, drivers may reuse saved host state (such as SSH known_hosts) if the endpoint is unchanged.
+func (m *Manager) ProbeEnvironment(ctx context.Context, saved *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
+	d, err := m.driverFor(spec.Kind)
+	if err != nil {
+		return TestResult{}, err
 	}
+	return d.probe(ctx, saved, spec)
+}
+
+// OnEnvironmentUpdated runs backend-specific housekeeping after an environment configuration changes.
+func (m *Manager) OnEnvironmentUpdated(oldSpec, newSpec EnvironmentSpec) error {
+	d, err := m.driverFor(newSpec.Kind)
+	if err != nil {
+		return err
+	}
+	return d.onUpdated(oldSpec, newSpec)
+}
+
+// OnEnvironmentDeleted runs backend-specific cleanup after an environment row is removed.
+func (m *Manager) OnEnvironmentDeleted(spec EnvironmentSpec) error {
+	d, err := m.driverFor(spec.Kind)
+	if err != nil {
+		return err
+	}
+	return d.onDeleted(spec)
+}
+
+// ForgetHostKey removes saved SSH host trust entries for spec so the next connect re-trusts via TOFU.
+func (m *Manager) ForgetHostKey(spec EnvironmentSpec) error {
+	d, err := m.driverFor(spec.Kind)
+	if err != nil {
+		return err
+	}
+	return d.forgetHostKey(spec)
 }
 
 // AgentEnvironmentKind returns the configured execution environment Kind for agentID.
@@ -166,14 +211,26 @@ func (m *Manager) AgentEnvironmentKind(ctx context.Context, agentID string) (Kin
 	return Kind(envRow.Kind), nil
 }
 
-// ResetAgent kills any persisted E2B sandbox for agentID and clears its sandbox_id.
+// ResetAgent kills any persisted disposable sandbox for agentID and clears its sandbox reference.
 func (m *Manager) ResetAgent(ctx context.Context, agentID string) error {
-	return m.e2b.resetAgent(ctx, agentID)
+	kind, err := m.AgentEnvironmentKind(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	d, err := m.driverFor(kind)
+	if err != nil || !d.canReset() {
+		return nil //nolint:nilerr // non-resettable environments (such as local) need no remote teardown.
+	}
+	return d.resetAgent(ctx, agentID)
 }
 
-// CleanupSandbox best-effort terminates a previous E2B sandbox after an environment switch or bot archive.
+// CleanupSandbox best-effort terminates a previous sandbox after an environment switch or bot archive.
 func (m *Manager) CleanupSandbox(ctx context.Context, agentID, envID, sandboxID string) {
-	m.e2b.cleanupSandbox(ctx, agentID, envID, sandboxID)
+	for _, d := range m.drivers {
+		if d.canReset() {
+			d.cleanupSandbox(ctx, agentID, envID, sandboxID)
+		}
+	}
 }
 
 // Open resolves agentID's environment_id from SQLite and opens a Handle.
@@ -206,21 +263,11 @@ func (m *Manager) Open(ctx context.Context, agentID string) (Handle, error) {
 	}
 
 	spec := SpecFromRow(envRow)
-	var h Handle
-	switch spec.Kind {
-	case KindPiEnv:
-		cfg, parseErr := ParsePiEnvConfig(spec.Config)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		h, err = m.pienv.open(ctx, agentID, spec.ID, cfg)
-	case KindE2B:
-		h, err = m.e2b.open(ctx, agentID, spec)
-	case KindLocal:
-		return nil, fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, envRow.Kind)
-	default:
-		return nil, fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, envRow.Kind)
+	d, err := m.driverFor(spec.Kind)
+	if err != nil {
+		return nil, err
 	}
+	h, err := d.open(ctx, agentID, spec)
 	if err != nil {
 		return nil, err
 	}

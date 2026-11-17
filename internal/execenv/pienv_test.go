@@ -90,7 +90,7 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 	if err != nil || probeChanged.OK || !probeChanged.HostKeyChanged {
 		t.Fatalf("expected changed host key probe failure with HostKeyChanged=true, got %+v err=%v", probeChanged, err)
 	}
-	if err := execenv.ForgetPiEnvHostKey(dataDir, envRow.ID); err != nil {
+	if err := mgr.ForgetHostKey(execenv.SpecFromRow(envRow)); err != nil {
 		t.Fatal(err)
 	}
 	probeReset, err := mgr.TestEnvironment(t.Context(), execenv.SpecFromRow(envRow))
@@ -111,18 +111,103 @@ func TestUserProbesUnsavedPiEnvWithoutPollutingKnownHosts(t *testing.T) {
 	})
 	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
 
-	// When probing an unsaved SSH environment (ephemeralHostKey=true), connectivity succeeds
+	// When probing an unsaved SSH environment (saved == nil), connectivity succeeds
 	// without writing into <dataDir>/ssh_known_hosts.
-	probe, err := mgr.ProbeEnvironment(t.Context(), execenv.EnvironmentSpec{
+	probe, err := mgr.ProbeEnvironment(t.Context(), nil, execenv.EnvironmentSpec{
 		Name:   "Unsaved SSH",
 		Kind:   execenv.KindPiEnv,
 		Config: `{"host":"preview.internal","workspaceDir":"~/work"}`,
-	}, true)
+	})
 	if err != nil || !probe.OK || probe.Home != sshFix.RemoteHome {
 		t.Fatalf("ephemeral probe=%+v err=%v", probe, err)
 	}
 	if _, statErr := os.Stat(filepath.Join(dataDir, "ssh_known_hosts")); !os.IsNotExist(statErr) {
 		t.Fatalf("expected <dataDir>/ssh_known_hosts to stay untouched, statErr=%v", statErr)
+	}
+}
+
+func TestUserPiEnvUsesLoginShellByDefaultAndRespectsOptOut(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	sshFix := execenvtest.NewFakeSSH(t)
+	profile := "echo 'welcome banner'\nexport REMOTE_LOGIN_VAR=from-login\ncase \"$-\" in\n  *i*) export REMOTE_INTERACTIVE_VAR=from-interactive ;;\nesac\n"
+	if err := os.WriteFile(filepath.Join(sshFix.RemoteHome, ".profile"), []byte(profile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := db.Open(t.Context(), filepath.Join(dataDir, "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	q := sqlc.New(conn)
+
+	now := time.Now().UnixMilli()
+	if _, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+		ID: "env-login-default", Name: "Default Login", Kind: string(execenv.KindPiEnv),
+		Config: `{"host":"login.internal"}`, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+		ID: "env-login-off", Name: "No Login", Kind: string(execenv.KindPiEnv),
+		Config: `{"host":"nologin.internal","loginShell":false}`, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, agent := range []sqlc.CreateAgentParams{
+		{ID: "bot-login", Name: "Login Bot", ThinkingLevel: "off", EnvironmentID: "env-login-default", CreatedAt: now},
+		{ID: "bot-nologin", Name: "No Login Bot", ThinkingLevel: "off", EnvironmentID: "env-login-off", CreatedAt: now},
+	} {
+		if _, err := q.CreateAgent(t.Context(), agent); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mgr := execenv.NewManager(execenv.ManagerConfig{
+		DataDir:    dataDir,
+		Home:       t.TempDir(),
+		Queries:    q,
+		SSHProgram: sshFix.SSHProgram,
+	})
+	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
+
+	// Default loginShell (omitted -> true) captures login & interactive shell exports.
+	hLogin, err := mgr.Open(t.Context(), "bot-login")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = hLogin.Close(context.Background()) }()
+	envLogin, err := hLogin.Env(t.Context(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outLogin strings.Builder
+	res, err := envLogin.Exec(t.Context(), `printf "%s|%s" "${REMOTE_LOGIN_VAR:-}" "${REMOTE_INTERACTIVE_VAR:-}"`, &durableenv.ShellExecOptions{
+		InheritEnv: new(true),
+		OnOutput:   func(_ context.Context, text string, _ durableenv.ShellOutputInfo) { outLogin.WriteString(text) },
+	})
+	if err != nil || res.ExitCode != 0 || outLogin.String() != "from-login|from-interactive" {
+		t.Fatalf("default loginShell exec res=%+v err=%v out=%q", res, err, outLogin.String())
+	}
+
+	// Explicit loginShell=false skips login and interactive rc startup.
+	hNoLogin, err := mgr.Open(t.Context(), "bot-nologin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = hNoLogin.Close(context.Background()) }()
+	envNoLogin, err := hNoLogin.Env(t.Context(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outNoLogin strings.Builder
+	res, err = envNoLogin.Exec(t.Context(), `printf "%s|%s|%s" "$REMOTE_SSH_MARKER" "${REMOTE_LOGIN_VAR:-}" "${REMOTE_INTERACTIVE_VAR:-}"`, &durableenv.ShellExecOptions{
+		InheritEnv: new(true),
+		OnOutput:   func(_ context.Context, text string, _ durableenv.ShellOutputInfo) { outNoLogin.WriteString(text) },
+	})
+	if err != nil || res.ExitCode != 0 || outNoLogin.String() != "ssh-fake-ok||" {
+		t.Fatalf("loginShell=false exec res=%+v err=%v out=%q", res, err, outNoLogin.String())
 	}
 }
 

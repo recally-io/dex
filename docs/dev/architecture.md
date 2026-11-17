@@ -973,11 +973,19 @@ turn, the parent must check artifacts and prior actions.
 Tools run through [`internal/execenv`](../../internal/execenv) using the
 built-in `local` provider, a remote `pi-env` SSH connection, or an `e2b`
 sandbox endpoint ([ADR 0022](decisions/0022-execution-environments.md)).
+`execenv.Manager` owns per-kind driver dispatch and lifecycle
+(`NormalizeAndValidate`, `ProbeEnvironment`, `OnEnvironmentUpdated`,
+`OnEnvironmentDeleted`, `ForgetHostKey`, `CanResetAgent`, `ResetAgent`,
+`CleanupSandbox`), keeping `internal/settings` independent of backend config
+schemas and SSH `known_hosts` storage. SSH environments default `loginShell` to
+`true`: they start the daemon via `$SHELL -lc` and capture interactive login
+shell exports via `$SHELL -l -i -c '... env -0'` on open.
 `GET /api/settings/environments/ssh-config` parses `~/.ssh/config` (including
 `Include` directives) and lists private key filenames without reading key bytes.
 `POST /api/settings/environments/probe` validates and probes unsaved settings,
-using a temporary `known_hosts` file for new SSH targets. When a remote SSH host
-key rotates, probes report `hostKeyChanged`, and
+using a temporary `known_hosts` file for new SSH endpoints and reusing saved
+trust entries when the host and port match an existing environment. When a remote
+SSH host key rotates, probes report `hostKeyChanged`, and
 `POST /api/settings/environments/{environmentId}/forget-host-key` clears the
 saved entry. For `e2b`, each environment can select E2B Cloud or override
 `apiUrl`, `domain`, `envdUrl` (header-routed or `{sandboxId}`/`{port}`
