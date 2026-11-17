@@ -325,7 +325,10 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
               ? `Runs tools in ${current.name} (${current.kind}).`
               : missingSelection
                 ? `Configured environment (${environmentId}) is missing.`
-                : "Runs tools and workspaces on this computer."}
+                : "Runs tools and workspaces on this computer."}{" "}
+            <Link className="font-medium text-primary underline" to="/environment">
+              Manage environments
+            </Link>
           </p>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">

@@ -281,11 +281,36 @@ try {
   }
 
   {
+    await mkdir(join(home, ".ssh"), { recursive: true });
+    await writeFile(
+      join(home, ".ssh", "config"),
+      "Host browser-ssh-box\n  HostName 10.0.0.10\n  User ops\n  Port 2222\n",
+    );
+
     await visit("/environment");
+    await poll("ssh config import button visible", () =>
+      evaluate(
+        "!![...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Import SSH config')",
+      ),
+    );
+    await click("Import SSH config");
+    await poll("ssh config import dialog", () =>
+      evaluate("document.querySelector('[role=\"dialog\"]')?.innerText.includes('browser-ssh-box')"),
+    );
+    await tap('[role="dialog"] input[type="checkbox"]');
+    await click("Import 1 host");
+
+    const importedSsh = await poll("ssh environment imported", async () =>
+      (await api("/api/settings/environments")).environments.find((env) => env.name === "browser-ssh-box"),
+    );
+
+    assert.equal(importedSsh.kind, "pi-env");
+    assert.equal(importedSsh.config.host, "browser-ssh-box");
+
     await click("Add environment");
     await poll("add environment dialog", () => evaluate("!!document.querySelector('[role=\"dialog\"]')"));
     await evaluate(
-      `[...document.querySelectorAll('[role="dialog"] button')].find(b => b.textContent.includes('E2B Cloud Sandbox')).click()`,
+      `[...document.querySelectorAll('[role="dialog"] button')].find(b => b.textContent.includes('E2B Sandbox')).click()`,
     );
     await type('[role="dialog"] input[placeholder="E2B Sandbox"]', "E2B Browser Env");
     await type('[role="dialog"] input[placeholder="e2b_..."]', "e2b_browser_secret");
@@ -312,6 +337,32 @@ try {
     await click("Save changes");
     await poll("edit dialog closed", () => evaluate("!document.querySelector('[role=\"dialog\"]')"));
 
+    await click("Add environment");
+    await poll("add custom e2b dialog", () => evaluate("!!document.querySelector('[role=\"dialog\"]')"));
+    await evaluate(
+      `[...document.querySelectorAll('[role="dialog"] button')].find(b => b.textContent.includes('E2B Sandbox')).click()`,
+    );
+    await tap('[role="dialog"] button[aria-label="Custom endpoint"]');
+    await type('[role="dialog"] input[placeholder="E2B Sandbox"]', "Docker E2B Gateway");
+    await type('[role="dialog"] input[placeholder="http://localhost:3000"]', "http://localhost:3000");
+    await tap('[role="dialog"] [aria-label="Auto-pause on idle"]');
+    await evaluate(
+      `[...document.querySelectorAll('[role="dialog"] button')].find(b => b.textContent.trim() === 'Add environment').click()`,
+    );
+
+    const customEnv = await poll("custom e2b created without secret", async () =>
+      (await api("/api/settings/environments")).environments.find((env) => env.name === "Docker E2B Gateway"),
+    );
+
+    assert.equal(customEnv.secretSet, false);
+    assert.equal(customEnv.config.apiUrl, "http://localhost:3000");
+    assert.equal(customEnv.config.autoPause, false);
+    await poll("custom e2b card shows no api key", () =>
+      evaluate(
+        "document.body.innerText.includes('Docker E2B Gateway') && document.body.innerText.includes('No API key')",
+      ),
+    );
+
     await visit("/a/default/agent");
     await poll("bot environment selector loaded", () =>
       evaluate(`!!document.querySelector('#bot-environment option[value="${createdEnv.id}"]')`),
@@ -331,25 +382,42 @@ try {
       evaluate("document.body.innerText.includes('E2B sandbox reset')"),
     );
 
-    await evaluate(`(() => {
-      const select = document.querySelector('#bot-environment');
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, "");
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    })()`);
-    await poll(
-      "bot restored to local environment",
-      async () => (await api("/api/agents/default")).environmentId === "",
-    );
     await visit("/environment");
+    await poll("used by badge visible on bound environment", () =>
+      evaluate("document.body.innerText.includes('Used by')"),
+    );
     await tap('button[aria-label="Remove E2B Browser Env"]');
-    await click("Remove environment");
+    await poll("guided reassign dialog shown", () =>
+      evaluate("document.querySelector('[role=\"dialog\"]')?.innerText.includes('Before removal')"),
+    );
+    await click("Reassign bots and remove");
     await poll(
-      "e2b environment removed",
+      "e2b environment removed with bot reassignment",
       async () =>
-        !(await api("/api/settings/environments")).environments.some((env) => env.id === createdEnv.id),
+        !(await api("/api/settings/environments")).environments.some((env) => env.id === createdEnv.id) &&
+        (await api("/api/agents/default")).environmentId === "",
+    );
+    await poll("reassign dialog closed", () => evaluate("!document.querySelector('[role=\"dialog\"]')"));
+
+    for (const name of ["Docker E2B Gateway", "browser-ssh-box"]) {
+      await tap(`button[aria-label="Remove ${name}"]`);
+      await click("Remove environment");
+      await poll(`${name} remove dialog closed`, () =>
+        evaluate("!document.querySelector('[role=\"dialog\"]')"),
+      );
+    }
+
+    await poll(
+      "all test environments removed",
+      async () => (await api("/api/settings/environments")).environments.length === 0,
     );
 
-    results.push({ scenario: "e2b settings and stateless reset ui", envId: createdEnv.id });
+    results.push({
+      scenario: "ssh config import, custom keyless e2b, stateless reset, and guided removal",
+      envId: createdEnv.id,
+      customEnvId: customEnv.id,
+      importedSshId: importedSsh.id,
+    });
   }
 
   await writeFile(join(evidence, "results.json"), JSON.stringify(results, null, 2));
