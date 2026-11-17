@@ -26,10 +26,9 @@ import (
 
 // Reply is the outcome of one message.
 type Reply struct {
-	LegacyDelivery bool   `json:"-"`
-	Status         string `json:"status"` // "done" or "unanswered"
-	Answer         string `json:"answer,omitempty"`
-	Reason         string `json:"reason,omitempty"`
+	Status string `json:"status"` // "done" or "unanswered"
+	Answer string `json:"answer,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // Chat is one conversation on one channel.

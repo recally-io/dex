@@ -28,7 +28,7 @@ func (b *Bot) Send(ctx context.Context, peer, deliveryID string, index int, part
 	case part.File != nil:
 		id, err = b.sendFile(ctx, peer, part.File)
 	default:
-		id, err = b.sendText(ctx, peer, deliveryID, index, part.Text, part.Buttons)
+		return receipt, fmt.Errorf("%w: unsupported Telegram part", channel.ErrPermanent)
 	}
 	if id != "" {
 		if part.File != nil {

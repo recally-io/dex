@@ -13,7 +13,7 @@ func TestUserGetsNativeRichTelegramTextAndTable(t *testing.T) {
 	// When the model answers with plain text and then a formatted table.
 	f.message(1, 42, 42, "hello")
 	plain := f.next(t)
-	if plain.RichHTML != "<p>echo: hello</p>" || plain.ParseMode != "" {
+	if plain.RichHTML != "<p>echo: hello</p>" {
 		t.Fatalf("new plain text did not use Rich Messages: %+v", plain)
 	}
 	f.message(2, 42, 42, "比较：\n\n| 方案 | 状态 | `key` | |\n| --- | --- | --- | --- |\n| [Dex](https://example.com/?a=1&b=2) | **就绪😀** | `x < y` & 长中文说明 | |\n| Beta | ~~等待~~ | [危险](javascript:alert) | 备注 |")

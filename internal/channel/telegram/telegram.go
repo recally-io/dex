@@ -28,9 +28,6 @@ import (
 
 const channelPrefix = "telegram:"
 
-// Telegram rejects a message longer than 4096 UTF-16 code units.
-const maxMessageLen = 4096
-
 // Config configures a Bot.
 type Config struct {
 	Options Options

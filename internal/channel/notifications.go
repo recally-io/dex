@@ -82,7 +82,7 @@ func (m *Manager) flushNotifications(ctx context.Context, platform string, bot B
 	for _, d := range rows {
 		var parts []Part
 		if d.RenderedParts == "" {
-			parts = bot.Parts(chat.Reply{Status: "done", Answer: d.Body, LegacyDelivery: d.Parts > 0})
+			parts = bot.Parts(chat.Reply{Status: "done", Answer: d.Body})
 			data, err := json.Marshal(parts)
 			if err != nil {
 				return err
@@ -91,12 +91,7 @@ func (m *Manager) flushNotifications(ctx context.Context, platform string, bot B
 				return err
 			}
 		} else if err := json.Unmarshal([]byte(d.RenderedParts), &parts); err != nil {
-			// Earlier notifications froze only their platform Text strings.
-			var legacy []string
-			if err := json.Unmarshal([]byte(d.RenderedParts), &legacy); err != nil {
-				return err
-			}
-			parts = TextParts(legacy)
+			return err
 		}
 		for i := int(d.Parts); i < len(parts); i++ {
 			current, err := m.q.GetRoutineNotification(ctx, d.RunID)

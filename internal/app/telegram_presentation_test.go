@@ -11,14 +11,13 @@ import (
 
 func TestUserTelegramSilentPreviewAndReactionPreferencesAffectDelivery(t *testing.T) {
 	t.Parallel()
-	// Given explicit silent delivery, hidden link previews and no streaming preview.
+	// Given explicit silent delivery and no streaming preview.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"silent": true, "linkPreview": "off", "preview": "off", "reactions": true}}, nil)
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"silent": true, "preview": "off", "reactions": true}}, nil)
 	f.message(1, 42, 42, "https://example.invalid/hello")
 	got := f.next(t)
-	// sendRichMessage has no link_preview_options parameter in the official API.
-	if !got.Silent || got.RichHTML == "" || got.LinkPreview != nil {
+	if !got.Silent || got.RichHTML == "" {
 		t.Fatalf("presentation=%+v", got)
 	}
 	// Then processing and terminal reactions refer to the incoming message, without draft or typing calls.
@@ -182,6 +181,19 @@ func TestUserTelegramCaptionEditSelectsConfirmedFileMessage(t *testing.T) {
 	}
 	if got := f.nextEvent(t, "editMessageCaption"); got.Text != "" {
 		t.Fatalf("caption not cleared: %+v", got)
+	}
+	// Editing a media message with text action is rejected without calling editMessageText.
+	args, _ = json.Marshal(map[string]any{"action": "edit", "deliveryId": delivery, "index": 1, "text": "invalid text edit"})
+	f.message(4, 42, 42, "telegram_message "+string(args))
+	if got := f.next(t).Text; !strings.Contains(got, "telegram text edits require a rich message") {
+		t.Fatalf("media edit=%q", got)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, request := range f.requests {
+		if request.Method == "editMessageText" {
+			t.Fatalf("media text edit reached platform: %+v", request)
+		}
 	}
 }
 

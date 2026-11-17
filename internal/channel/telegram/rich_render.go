@@ -3,6 +3,7 @@ package telegram
 import (
 	"html"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +18,10 @@ import (
 
 	"github.com/recally-io/dex/internal/channel"
 )
+
+type fragment struct{ text, open, close string }
+
+var codeLanguage = regexp.MustCompile(`^[A-Za-z0-9_+-]{1,32}$`)
 
 // Telegram counts decoded text characters and structural blocks, not HTML bytes
 // or UTF-16 units. Reserve two characters when joining independently valid blocks.
@@ -155,6 +160,9 @@ func renderRich(markdown string) []channel.Part {
 		}
 	}
 	out.flush()
+	if len(out.parts) == 0 && strings.TrimSpace(markdown) != "" {
+		return []channel.Part{{Rich: &channel.RichMessage{Version: 1, HTML: "<p>" + html.EscapeString(markdown) + "</p>"}}}
+	}
 	return out.parts
 }
 

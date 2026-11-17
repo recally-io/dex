@@ -53,7 +53,6 @@ type fakeTelegram struct {
 
 	mu          sync.Mutex
 	updates     []map[string]any
-	rejectHTML  bool
 	rejectDraft bool
 	failures    map[string][]platformFailure
 	files       map[string]string
@@ -85,14 +84,10 @@ type sentMessage struct {
 	RichMessage *struct {
 		HTML string `json:"html"`
 	} `json:"rich_message,omitempty"`
-	ChatID      int64  `json:"chat_id"`
-	TopicID     int64  `json:"message_thread_id"`
-	Text        string `json:"text"`
-	ParseMode   string `json:"parse_mode"`
-	Silent      bool   `json:"disable_notification"`
-	LinkPreview *struct {
-		Disabled bool `json:"is_disabled"`
-	} `json:"link_preview_options"`
+	ChatID  int64  `json:"chat_id"`
+	TopicID int64  `json:"message_thread_id"`
+	Text    string `json:"text"`
+	Silent  bool   `json:"disable_notification"`
 	// ID is the message ID that the fake returned for this message.
 	ID int64 `json:"-"`
 }
@@ -170,13 +165,13 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		failure = failures[0]
 		f.failures[method] = failures[1:]
 	}
-	rejectHTML, rejectDraft := f.rejectHTML, f.rejectDraft
+	rejectDraft := f.rejectDraft
 	f.mu.Unlock()
 	if method == "sendMediaGroup" {
 		f.serveMediaGroup(w, r, failure)
 		return
 	}
-	if method == "sendMessage" || method == "sendRichMessage" || method == "sendMessageDraft" || method == "sendRichMessageDraft" || method == "editMessageText" {
+	if method == "sendRichMessage" || method == "sendRichMessageDraft" || method == "editMessageText" {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "read failed", http.StatusInternalServerError)
@@ -207,7 +202,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": failure.Code, "description": "test platform failure", "parameters": map[string]any{"retry_after": failure.Retry}})
 		return
 	}
-	if (method == "sendMessageDraft" || method == "sendRichMessageDraft") && f.draftGate != nil {
+	if method == "sendRichMessageDraft" && f.draftGate != nil {
 		f.events <- platformEvent{Method: "draftStarted"}
 		select {
 		case <-f.draftGate:
@@ -215,7 +210,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var result any = true
+	var result any
 	if mediaField != "" {
 		if err := r.ParseMultipartForm(21 << 20); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -288,8 +283,8 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		result = updates
-	case "sendRichMessage", "sendRichMessageDraft", "sendMessage", "editMessageText", "sendMessageDraft", "sendChatAction", "setMyCommands", "setMessageReaction", "editMessageCaption", "deleteMessage", "copyMessage", "forwardMessage", "answerCallbackQuery":
-		if method == "sendMessage" || method == "sendRichMessage" {
+	case "sendRichMessage", "sendRichMessageDraft", "editMessageText", "sendChatAction", "setMyCommands", "setMessageReaction", "editMessageCaption", "deleteMessage", "copyMessage", "forwardMessage", "answerCallbackQuery":
+		if method == "sendRichMessage" {
 			select {
 			case f.attempted <- struct{}{}:
 			default:
@@ -345,7 +340,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 403, "description": "bot was blocked by the user"})
 			return
 		}
-		if (rejectHTML && m.ParseMode == "HTML") || (rejectDraft && (method == "sendMessageDraft" || method == "sendRichMessageDraft")) {
+		if rejectDraft && method == "sendRichMessageDraft" {
 			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 400, "description": "unsupported markup or draft"})
 			return
 		}
@@ -356,7 +351,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			f.keyboards[id] = m.ReplyMarkup.Rows
 		}
 		f.mu.Unlock()
-		if method == "sendMessage" || method == "sendRichMessage" || (method == "editMessageText" && (m.ParseMode != "" || m.RichHTML != "")) {
+		if method == "sendRichMessage" || (method == "editMessageText" && m.RichHTML != "") {
 			f.mu.Lock()
 			f.deliveries = append(f.deliveries, channelSend{Peer: fmt.Sprint("telegram:", m.ChatID), Text: html.UnescapeString(m.Text)})
 			f.mu.Unlock()
@@ -366,7 +361,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		select {
 		case f.events <- platformEvent{Method: method, Text: m.Text, RichHTML: m.RichHTML, MessageID: func() int64 {
-			if method == "sendMessage" || method == "sendRichMessage" {
+			if method == "sendRichMessage" {
 				return id
 			}
 			return m.MessageID
@@ -398,6 +393,9 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		case f.events <- platformEvent{Method: method, Text: p.ID}:
 		default:
 		}
+	default:
+		http.Error(w, "unsupported method: "+method, http.StatusBadRequest)
+		return
 	}
 	_ = json.MarshalWrite(w, map[string]any{"ok": true, "result": result})
 }
@@ -520,9 +518,9 @@ func TestUserGetsFormattedTelegramAnswer(t *testing.T) {
 	startTelegram(t, f, t.TempDir(), 42)
 	// When the answer contains Markdown and literal HTML characters.
 	f.message(1, 42, 7, "**bold** & `<safe>`")
-	// Then Telegram receives supported HTML with escaped literal text.
+	// Then Telegram receives supported Rich HTML with escaped literal text.
 	got := f.next(t)
-	if got.Text != "echo: <b>bold</b> &amp; <code>&lt;safe&gt;</code>" || got.RichHTML == "" || got.ParseMode != "" {
+	if got.Text != "echo: <b>bold</b> &amp; <code>&lt;safe&gt;</code>" || got.RichHTML == "" {
 		t.Fatalf("formatted answer = %+v", got)
 	}
 }
@@ -599,21 +597,6 @@ func TestUserGetsSplitTelegramCode(t *testing.T) {
 	}
 }
 
-func TestUserNewRichRepliesDoNotUseLegacyHTMLFallback(t *testing.T) {
-	t.Parallel()
-	// Given a Bot API that rejects the old ordinary HTML format.
-	f := newFakeTelegram(t)
-	f.rejectHTML = true
-	startTelegram(t, f, t.TempDir(), 42)
-	// When an answer contains Markdown.
-	f.message(1, 42, 7, "**bold** & `<safe>` [link](https://example.com/?x=1&y=2)")
-	// Then the new rich reply retains formatting without the legacy rejection fallback.
-	got := f.next(t)
-	if got.RichHTML != `<p>echo: <b>bold</b> &amp; <code>&lt;safe&gt;</code> <a href="https://example.com/?x=1&amp;y=2">link</a></p>` || got.ParseMode != "" {
-		t.Fatalf("rich reply = %+v", got)
-	}
-}
-
 func TestUserGetsTelegramAnswerAfterDurableFloodRetry(t *testing.T) {
 	t.Parallel()
 	// Given a Bot API that rejects the first final send with 429.
@@ -674,7 +657,7 @@ func TestUserSeesTelegramEditWhenDraftIsUnsupported(t *testing.T) {
 	f.message(1, 42, 7, input)
 	// Then the bot sends one preview and updates that same message.
 	preview := f.next(t)
-	if preview.ParseMode != "" {
+	if preview.RichHTML == "" {
 		t.Fatalf("preview = %+v", preview)
 	}
 	sent := f.nextEvent(t, "sendRichMessage")
@@ -686,8 +669,8 @@ func TestUserSeesTelegramEditWhenDraftIsUnsupported(t *testing.T) {
 	for final.Text != strings.TrimSpace("echo: "+input) {
 		final = f.next(t)
 	}
-	if final.RichHTML == "" || final.ParseMode != "" || final.Text != strings.TrimSpace("echo: "+input) {
-		t.Fatalf("final = mode %q, length %d", final.ParseMode, len(final.Text))
+	if final.RichHTML == "" || final.Text != strings.TrimSpace("echo: "+input) {
+		t.Fatalf("final = rich %q, length %d", final.RichHTML, len(final.Text))
 	}
 }
 

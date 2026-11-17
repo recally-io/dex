@@ -1307,15 +1307,15 @@ so dex needs no public URL.
   change cancels the previous code. Manual user-ID entry remains available.
   An allowed user who repeats a pairing command receives an already-paired
   reply, including after a lost acknowledgement or restart.
-- The bot registers `/clear`, `/stop`, and `/help`
-  with `setMyCommands`.
+- The bot registers `/menu`, `/status`, `/settings`, `/sessions`, `/workflows`,
+  `/question`, `/clear`, `/stop`, and `/help` with `setMyCommands`.
   The channel manager owns command execution and deduplication.
 - Each update has a stable source key: `telegram:<bot id>:<update id>`.
   A repeated update does not create another submission. An edited message creates
   a new correction input. It does not replace the earlier input or undo its actions.
   Reply, quote, and forward context cannot change sender authorization. Attachments
   and forwarded or edited command text do not execute shared channel controls.
-- Goldmark parses all new text into versioned Rich Message HTML parts, including
+- Goldmark parses all text into versioned Rich Message HTML parts, including
   plain replies, lists, code, tables, menus and text notifications. `sendRichMessage`
   sends each frozen part. Lists keep their ordered or bullet markers. Raw HTML
   stays escaped text. Markdown images keep linked alt text; they do not request
@@ -1327,12 +1327,8 @@ so dex needs no public URL.
   Long text and code cells split without truncation. No API error selects a
   different text format. Unknown responses and 5xx retry the same frozen method;
   429 retains the existing account and outbox wait.
-  Existing frozen ordinary HTML parts remain unchanged. A historical cursor
-  without a frozen payload keeps the original parser, raw URL budget and 4096
-  UTF-16 chunk boundaries. Only that legacy path has the old plain-text rejection
-  fallback. Notifications read both old string arrays and new typed parts.
   Confirmed message IDs retain their actual kind, including copy and forward
-  results. Old ID string arrays remain readable; album IDs do not use part indexes.
+  results. Album IDs do not use part indexes.
 - Each pending submission has a native watch through `live.Hub`. The bot
   updates a private rich draft at most once per second with `sendRichMessageDraft`.
   If drafts fail, the bot sends a rich preview and edits it. Final replacement
@@ -1344,10 +1340,8 @@ so dex needs no public URL.
   lookup use one lock; attachment downloads do not hold this lock.
   Saved `options.preview` can select drafts, message edits, or no previews and
   no typing. `options.silent` applies to new text, media, and copied or forwarded
-  messages. `options.linkPreview` still controls legacy ordinary HTML sends;
-  the Rich Messages API has no corresponding link-preview option. Optional reactions
-  show input processing and final status. Terminal reaction retries do not repeat
-  already confirmed reply parts.
+  messages. Optional reactions show input processing and final status. Terminal
+  reaction retries do not repeat already confirmed reply parts.
 - Incoming rich messages keep bounded text from paragraphs, inline formatting,
   tables and nested blocks. The iterative reader caps text at 65536 characters,
   work at 20000 steps and JSON nesting at 64; a limit adds an explicit note.
@@ -1374,8 +1368,8 @@ so dex needs no public URL.
   binds the native operation and source. An interrupted control operation becomes
   unknown and does not run again automatically. Copy and forward results retain
   their remote IDs and actual message kinds for later authorized operations.
-  Rich edits accept Markdown and must fit one rich message. Legacy text and
-  media caption edits keep plain text and their original API limits.
+  Rich text edits accept Markdown and must fit one rich message. Media caption
+  edits use plain text up to 1024 UTF-16 units.
 - Speech is off by default. `options.stt` and `options.tts` require an explicit
   saved custom provider, audio model, and data-sending consent. TTS also requires
   an explicit voice. The provider must have an explicit base URL and support

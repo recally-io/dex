@@ -14,7 +14,6 @@ import (
 type Options struct {
 	RequireMention bool          `json:"requireMention"`
 	Silent         bool          `json:"silent"`
-	LinkPreview    string        `json:"linkPreview,omitempty"`
 	Preview        string        `json:"preview,omitempty"`
 	Reactions      bool          `json:"reactions"`
 	STT            SpeechOptions `json:"stt"`
@@ -24,9 +23,6 @@ type Options struct {
 type SpeechOptions = speech.Options
 
 func (o Options) Validate() error {
-	if !slices.Contains([]string{"", "on", "off"}, o.LinkPreview) {
-		return errors.New("linkPreview must be on or off")
-	}
 	if !slices.Contains([]string{"", "auto", "edit", "draft", "off"}, o.Preview) {
 		return errors.New("preview must be auto, edit, draft or off")
 	}
