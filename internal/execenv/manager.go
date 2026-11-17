@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -36,10 +37,13 @@ type TestResult struct {
 
 // ManagerConfig configures the execution environment Manager.
 type ManagerConfig struct {
-	DataDir    string
-	Home       string
-	Queries    *sqlc.Queries
-	SSHProgram string
+	DataDir       string
+	Home          string
+	Queries       *sqlc.Queries
+	SSHProgram    string
+	E2BAPIURL     string
+	E2BEnvdURL    string
+	E2BHTTPClient *http.Client
 }
 
 // Manager resolves each agent's configured execution environment from control storage.
@@ -48,6 +52,7 @@ type Manager struct {
 	q       *sqlc.Queries
 	local   Provider
 	pienv   *piEnvRuntime
+	e2b     *e2bRuntime
 
 	mu      sync.Mutex
 	closed  bool
@@ -59,7 +64,7 @@ var (
 	_ StampProvider = (*Manager)(nil)
 )
 
-// NewManager constructs an execution environment Manager supporting local and pi-env backends.
+// NewManager constructs an execution environment Manager supporting local, pi-env, and e2b backends.
 func NewManager(cfg ManagerConfig) *Manager {
 	dataDir := filepath.Clean(cfg.DataDir)
 	return &Manager{
@@ -67,6 +72,7 @@ func NewManager(cfg ManagerConfig) *Manager {
 		q:       cfg.Queries,
 		local:   NewLocalProvider(dataDir, cfg.Home),
 		pienv:   &piEnvRuntime{dataDir: dataDir, sshProgram: cfg.SSHProgram},
+		e2b:     newE2BRuntime(cfg.Queries, cfg.E2BAPIURL, cfg.E2BEnvdURL, cfg.E2BHTTPClient),
 		handles: map[Handle]struct{}{},
 	}
 }
@@ -80,7 +86,10 @@ func (m *Manager) ValidateEnvironment(_ context.Context, spec EnvironmentSpec) e
 			return err
 		}
 		return ValidatePiEnvConfig(m.dataDir, spec.ID, cfg, m.pienv.sshProgram)
-	case KindLocal, KindE2B:
+	case KindE2B:
+		_, err := m.e2b.validate(spec)
+		return err
+	case KindLocal:
 		return fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, spec.Kind)
 	default:
 		return fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, spec.Kind)
@@ -96,11 +105,45 @@ func (m *Manager) TestEnvironment(ctx context.Context, spec EnvironmentSpec) (Te
 			return TestResult{}, err
 		}
 		return m.pienv.test(ctx, spec.ID, cfg)
-	case KindLocal, KindE2B:
+	case KindE2B:
+		return m.e2b.test(ctx, spec)
+	case KindLocal:
 		return TestResult{}, fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, spec.Kind)
 	default:
 		return TestResult{}, fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, spec.Kind)
 	}
+}
+
+// AgentEnvironmentKind returns the configured execution environment Kind for agentID.
+func (m *Manager) AgentEnvironmentKind(ctx context.Context, agentID string) (Kind, error) {
+	if m.q == nil {
+		return KindLocal, nil
+	}
+	row, err := m.q.GetAgent(ctx, agentID)
+	if err != nil {
+		return "", err
+	}
+	if row.EnvironmentID == "" {
+		return KindLocal, nil
+	}
+	envRow, err := m.q.GetEnvironment(ctx, row.EnvironmentID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("execution environment %q not found", row.EnvironmentID)
+	}
+	if err != nil {
+		return "", err
+	}
+	return Kind(envRow.Kind), nil
+}
+
+// ResetAgent kills any persisted E2B sandbox for agentID and clears its sandbox_id.
+func (m *Manager) ResetAgent(ctx context.Context, agentID string) error {
+	return m.e2b.resetAgent(ctx, agentID)
+}
+
+// CleanupSandbox best-effort terminates a previous E2B sandbox after an environment switch or bot archive.
+func (m *Manager) CleanupSandbox(ctx context.Context, agentID, envID, sandboxID string) {
+	m.e2b.cleanupSandbox(ctx, agentID, envID, sandboxID)
 }
 
 // Open resolves agentID's environment_id from SQLite and opens a Handle.
@@ -132,15 +175,18 @@ func (m *Manager) Open(ctx context.Context, agentID string) (Handle, error) {
 		return nil, err
 	}
 
+	spec := SpecFromRow(envRow)
 	var h Handle
-	switch Kind(envRow.Kind) {
+	switch spec.Kind {
 	case KindPiEnv:
-		cfg, parseErr := ParsePiEnvConfig(envRow.Config)
+		cfg, parseErr := ParsePiEnvConfig(spec.Config)
 		if parseErr != nil {
 			return nil, parseErr
 		}
-		h, err = m.pienv.open(ctx, agentID, envRow.ID, cfg)
-	case KindLocal, KindE2B:
+		h, err = m.pienv.open(ctx, agentID, spec.ID, cfg)
+	case KindE2B:
+		h, err = m.e2b.open(ctx, agentID, spec)
+	case KindLocal:
 		return nil, fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, envRow.Kind)
 	default:
 		return nil, fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, envRow.Kind)

@@ -73,15 +73,15 @@ backend readiness and maintenance lifecycle.
 
 ## Sources of truth
 
-| Data                                 | Owner             | Location                                                                  |
-| ------------------------------------ | ----------------- | ------------------------------------------------------------------------- |
-| Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/)) |
-| Transcripts, runs, tool calls, usage | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                     |
-| Agent files                          | the agent's tools | `<data dir>/agents/<id>/workspace/`                                       |
-| Bot artifact files                   | disk              | `<data dir>/agents/<id>/artifacts/<name>`                                 |
-| Uploaded files                       | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>`             |
-| Memory (git repo)                    | the agent's tools | `<data dir>/memory/`                                                      |
-| Skills and MCP servers               | the user's files  | `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/`                  |
+| Data                                 | Owner             | Location                                                                                               |
+| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |
+| Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                              |
+| Transcripts, runs, tool calls, usage | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                                                  |
+| Agent files                          | the agent's tools | `<data dir>/agents/<id>/workspace/` (or remote `pi-env` / `e2b` workspace)                             |
+| Bot artifact files                   | disk              | `<data dir>/agents/<id>/artifacts/<name>`                                                              |
+| Uploaded files                       | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>` (staged to remote workspace when remote) |
+| Memory (git repo)                    | control / tools   | `<data dir>/memory/` (`memory_*` tools)                                                                |
+| Skills and MCP servers               | the user's files  | `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/`                                               |
 
 Control stores the parent of a child session in `conversations.parent_id` and the
 turn that created work for it in `submissions.parent_request_id`. A child session is a
@@ -970,7 +970,11 @@ execution. An aborted MCP call ends the local wait and requests remote
 cancellation. It does not prove that the remote job stopped. Before another
 turn, the parent must check artifacts and prior actions.
 
-Tools use the local `NodeExecutionEnv`, without a sandbox. CLI tools must be
+Tools run through [`internal/execenv`](../../internal/execenv) using the
+built-in `local` provider, a remote `pi-env` SSH connection, or an `e2b` cloud
+sandbox ([ADR 0022](decisions/0022-execution-environments.md)). Memory tools
+(`memory_search`, `memory_read`, `memory_write`, `memory_edit`) stay bound to
+`<data dir>/memory/` on the control host. CLI tools must be
 logged in and run in the foreground with non-interactive options. Long work
 uses [background commands](#background-commands), which dex tracks. Any other
 process must not outlive its turn. A turn can start and supervise a process,
@@ -1625,8 +1629,10 @@ the saved context token before each send, including after a restart.
 
 ## Security
 
-Agent tools (`read`, `write`, `edit`, `bash`) run on the host without a
-sandbox, inside the selected project directory or the agent workspace. The HTTP server listens on
+In `local` mode, agent tools (`read`, `write`, `edit`, `bash`) run on the host
+without a sandbox, inside the selected project directory or agent workspace.
+Bots bound to `pi-env` or `e2b` execute tools inside that remote host or cloud
+sandbox with explicit `.env` variables only (never host secrets). The HTTP server listens on
 `127.0.0.1:8787` by default. On loopback without DEX_TOKEN it has no
 authentication. On any other host, or with DEX_TOKEN, every `/api/` request
 needs the access token ([ADR 0007](decisions/0007-network-access-token.md)).

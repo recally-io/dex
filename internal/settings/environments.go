@@ -22,15 +22,26 @@ var (
 	ErrConflict = errors.New("execution environment conflict")
 )
 
+// EnvironmentConfigView holds the public union of pi-env and e2b configuration fields.
+type EnvironmentConfigView struct {
+	Host           string `json:"host,omitempty"`
+	User           string `json:"user,omitempty"`
+	Port           *int   `json:"port,omitempty"`
+	IdentityFile   string `json:"identityFile,omitempty"`
+	WorkspaceDir   string `json:"workspaceDir,omitempty"`
+	Template       string `json:"template,omitempty"`
+	TimeoutSeconds *int   `json:"timeoutSeconds,omitempty"`
+}
+
 // Environment is the public view of a saved execution environment without its write-only secret.
 type Environment struct {
-	ID        string              `json:"id"`
-	Name      string              `json:"name"`
-	Kind      execenv.Kind        `json:"kind"`
-	Config    execenv.PiEnvConfig `json:"config"`
-	SecretSet bool                `json:"secretSet"`
-	CreatedAt int64               `json:"createdAt"`
-	UpdatedAt int64               `json:"updatedAt"`
+	ID        string                `json:"id"`
+	Name      string                `json:"name"`
+	Kind      execenv.Kind          `json:"kind"`
+	Config    EnvironmentConfigView `json:"config"`
+	SecretSet bool                  `json:"secretSet"`
+	CreatedAt int64                 `json:"createdAt"`
+	UpdatedAt int64                 `json:"updatedAt"`
 }
 
 // EnvironmentInput creates or updates an execution environment.
@@ -213,7 +224,23 @@ func (s *Service) prepareEnvironmentInput(ctx context.Context, envID string, in 
 			return "", "", "", err
 		}
 		rawCfg = string(encoded)
-	case execenv.KindLocal, execenv.KindE2B:
+	case execenv.KindE2B:
+		if strings.TrimSpace(secret) == "" {
+			return "", "", "", fmt.Errorf("%w: e2b api key is required", ErrInvalid)
+		}
+		cfg, err := execenv.ParseE2BConfig(rawCfg)
+		if err != nil {
+			return "", "", "", fmt.Errorf("%w: %w", ErrInvalid, err)
+		}
+		if err := execenv.ValidateE2BConfig(cfg); err != nil {
+			return "", "", "", fmt.Errorf("%w: %w", ErrInvalid, err)
+		}
+		encoded, err := json.Marshal(cfg)
+		if err != nil {
+			return "", "", "", err
+		}
+		rawCfg = string(encoded)
+	case execenv.KindLocal:
 		return "", "", "", fmt.Errorf("%w: unsupported environment kind %q", ErrInvalid, kind)
 	default:
 		return "", "", "", fmt.Errorf("%w: unsupported environment kind %q", ErrInvalid, kind)
@@ -234,15 +261,38 @@ func (s *Service) prepareEnvironmentInput(ctx context.Context, envID string, in 
 }
 
 func environmentView(row sqlc.ExecutionEnvironment) (Environment, error) {
-	cfg, err := execenv.ParsePiEnvConfig(row.Config)
-	if err != nil {
-		return Environment{}, err
+	kind := execenv.Kind(row.Kind)
+	var cfgView EnvironmentConfigView
+	switch kind {
+	case execenv.KindPiEnv:
+		cfg, err := execenv.ParsePiEnvConfig(row.Config)
+		if err != nil {
+			return Environment{}, err
+		}
+		cfgView = EnvironmentConfigView{
+			Host:         cfg.Host,
+			User:         cfg.User,
+			Port:         cfg.Port,
+			IdentityFile: cfg.IdentityFile,
+			WorkspaceDir: cfg.WorkspaceDir,
+		}
+	case execenv.KindE2B:
+		cfg, err := execenv.ParseE2BConfig(row.Config)
+		if err != nil {
+			return Environment{}, err
+		}
+		cfgView = EnvironmentConfigView{
+			WorkspaceDir:   cfg.WorkspaceDir,
+			Template:       cfg.Template,
+			TimeoutSeconds: cfg.TimeoutSeconds,
+		}
+	case execenv.KindLocal:
 	}
 	return Environment{
 		ID:        row.ID,
 		Name:      row.Name,
-		Kind:      execenv.Kind(row.Kind),
-		Config:    cfg,
+		Kind:      kind,
+		Config:    cfgView,
 		SecretSet: row.Secret != "",
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,

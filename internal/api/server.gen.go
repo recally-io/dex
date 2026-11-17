@@ -214,12 +214,15 @@ func (e ChildEventType) Valid() bool {
 
 // Defines values for EnvironmentKind.
 const (
+	E2b   EnvironmentKind = "e2b"
 	PiEnv EnvironmentKind = "pi-env"
 )
 
 // Valid indicates whether the value is a known member of the EnvironmentKind enum.
 func (e EnvironmentKind) Valid() bool {
 	switch e {
+	case E2b:
+		return true
 	case PiEnv:
 		return true
 	default:
@@ -892,11 +895,13 @@ type Environment struct {
 
 // EnvironmentConfig defines model for EnvironmentConfig.
 type EnvironmentConfig struct {
-	Host         *string `json:"host,omitempty"`
-	IdentityFile *string `json:"identityFile,omitempty"`
-	Port         *int    `json:"port,omitempty"`
-	User         *string `json:"user,omitempty"`
-	WorkspaceDir *string `json:"workspaceDir,omitempty"`
+	Host           *string `json:"host,omitempty"`
+	IdentityFile   *string `json:"identityFile,omitempty"`
+	Port           *int    `json:"port,omitempty"`
+	Template       *string `json:"template,omitempty"`
+	TimeoutSeconds *int    `json:"timeoutSeconds,omitempty"`
+	User           *string `json:"user,omitempty"`
+	WorkspaceDir   *string `json:"workspaceDir,omitempty"`
 }
 
 // EnvironmentInput defines model for EnvironmentInput.
@@ -2316,6 +2321,9 @@ type ServerInterface interface {
 
 	// (PUT /api/agents/{agentId}/chats/{chatId}/settings)
 	SetChatSettings(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
+	// (POST /api/agents/{agentId}/environment/reset)
+	ResetAgentEnvironment(w http.ResponseWriter, r *http.Request, agentId string)
 
 	// (GET /api/agents/{agentId}/extensions)
 	GetExtensions(w http.ResponseWriter, r *http.Request, agentId string)
@@ -3880,6 +3888,32 @@ func (siw *ServerInterfaceWrapper) SetChatSettings(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ResetAgentEnvironment operation middleware
+func (siw *ServerInterfaceWrapper) ResetAgentEnvironment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResetAgentEnvironment(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetExtensions operation middleware
 func (siw *ServerInterfaceWrapper) GetExtensions(w http.ResponseWriter, r *http.Request) {
 
@@ -4864,6 +4898,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}", wrapper.UpdateAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/archived-agents", wrapper.ListArchivedAgents)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/archive", wrapper.RestoreAgent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/environment/reset", wrapper.ResetAgentEnvironment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/turns/{turnId}", wrapper.GetTurnChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/main", wrapper.GetMainChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.ListChats)
@@ -7677,6 +7712,87 @@ func (response SetChatSettingsdefaultJSONResponse) VisitSetChatSettingsResponse(
 	return err
 }
 
+type ResetAgentEnvironmentRequestObject struct {
+	AgentId string `json:"agentId"`
+}
+
+type ResetAgentEnvironmentResponseObject interface {
+	VisitResetAgentEnvironmentResponse(w http.ResponseWriter) error
+}
+
+type ResetAgentEnvironment200JSONResponse Ok
+
+func (response ResetAgentEnvironment200JSONResponse) VisitResetAgentEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetAgentEnvironment400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ResetAgentEnvironment400JSONResponse) VisitResetAgentEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetAgentEnvironment404JSONResponse Error
+
+func (response ResetAgentEnvironment404JSONResponse) VisitResetAgentEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetAgentEnvironment409JSONResponse Error
+
+func (response ResetAgentEnvironment409JSONResponse) VisitResetAgentEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetAgentEnvironmentdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ResetAgentEnvironmentdefaultJSONResponse) VisitResetAgentEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetExtensionsRequestObject struct {
 	AgentId string `json:"agentId"`
 }
@@ -9588,6 +9704,9 @@ type StrictServerInterface interface {
 	// (PUT /api/agents/{agentId}/chats/{chatId}/settings)
 	SetChatSettings(ctx context.Context, request SetChatSettingsRequestObject) (SetChatSettingsResponseObject, error)
 
+	// (POST /api/agents/{agentId}/environment/reset)
+	ResetAgentEnvironment(ctx context.Context, request ResetAgentEnvironmentRequestObject) (ResetAgentEnvironmentResponseObject, error)
+
 	// (GET /api/agents/{agentId}/extensions)
 	GetExtensions(ctx context.Context, request GetExtensionsRequestObject) (GetExtensionsResponseObject, error)
 
@@ -11068,6 +11187,32 @@ func (sh *strictHandler) SetChatSettings(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetChatSettingsResponseObject); ok {
 		if err := validResponse.VisitSetChatSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResetAgentEnvironment operation middleware
+func (sh *strictHandler) ResetAgentEnvironment(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request ResetAgentEnvironmentRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResetAgentEnvironment(ctx, request.(ResetAgentEnvironmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResetAgentEnvironment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResetAgentEnvironmentResponseObject); ok {
+		if err := validResponse.VisitResetAgentEnvironmentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

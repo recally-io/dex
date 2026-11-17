@@ -1,0 +1,155 @@
+package execenv_test
+
+import (
+	"context"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	durableenv "github.com/MichaelKinsy/PiG/durable/env"
+	"github.com/recally-io/dex/internal/db"
+	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/execenv/execenvtest"
+)
+
+func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
+	t.Parallel()
+	fake := execenvtest.NewFakeE2B(t, "e2b_test_secret")
+	dataDir := t.TempDir()
+
+	conn, err := db.Open(t.Context(), filepath.Join(dataDir, "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	q := sqlc.New(conn)
+
+	now := time.Now().UnixMilli()
+	envRow, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+		ID: "env-e2b", Name: "E2B Cloud", Kind: string(execenv.KindE2B),
+		Config: `{"template":"base","timeoutSeconds":120}`, Secret: "e2b_test_secret",
+		CreatedAt: now, UpdatedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{
+		ID: "bot-e2b", Name: "E2B Bot", ThinkingLevel: "off", EnvironmentID: envRow.ID, CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	newMgr := func() *execenv.Manager {
+		return execenv.NewManager(execenv.ManagerConfig{
+			DataDir:    dataDir,
+			Queries:    q,
+			E2BAPIURL:  fake.APIURL(),
+			E2BEnvdURL: fake.EnvdURL(),
+		})
+	}
+
+	mgr := newMgr()
+	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
+
+	// Probe creates and cleans up a temporary probe sandbox.
+	probe, err := mgr.TestEnvironment(t.Context(), execenv.SpecFromRow(envRow))
+	if err != nil || !probe.OK || probe.Home != "/home/user" {
+		t.Fatalf("probe=%+v err=%v", probe, err)
+	}
+	if got := fake.Counts(); got.Created != 1 || got.Killed != 1 {
+		t.Fatalf("probe counts=%+v want created=1 killed=1", got)
+	}
+
+	// First Open creates persistent sandbox sbx-2 and stores sandbox_id on agents.
+	h, err := mgr.Open(t.Context(), "bot-e2b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := h.Env(t.Context(), "", map[string]string{"EXPLICIT_E2B": "ok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := env.WriteFile(t.Context(), "notes/todo.txt", "line1\nline2\n"); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := env.OpenBinaryReader(t.Context(), "notes/todo.txt", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scan, err := reader.ScanLines(t.Context(), durableenv.ScanLinesOptions{StartLine: 2})
+	_ = reader.Close(t.Context())
+	if err != nil || scan.Newlines != 2 {
+		t.Fatalf("scan=%+v err=%v", scan, err)
+	}
+
+	var stdout strings.Builder
+	res, err := env.Exec(t.Context(), `printf "%s|%s" "$REMOTE_E2B_MARKER" "$EXPLICIT_E2B"`, &durableenv.ShellExecOptions{
+		InheritEnv: new(true),
+		OnOutput:   func(_ context.Context, text string, _ durableenv.ShellOutputInfo) { stdout.WriteString(text) },
+	})
+	if err != nil || res.ExitCode != 0 || stdout.String() != "e2b-fake-ok|ok" {
+		t.Fatalf("exec=%+v err=%v out=%q", res, err, stdout.String())
+	}
+	_ = h.Close(t.Context())
+
+	agentRow, err := q.GetAgent(t.Context(), "bot-e2b")
+	if err != nil || agentRow.EnvironmentSandboxID != "sbx-2" {
+		t.Fatalf("persisted sandbox=%q err=%v", agentRow.EnvironmentSandboxID, err)
+	}
+
+	// Simulate E2B idle autoPause + dex restart (fresh Manager): next Open reconnects via /connect and preserves files.
+	fake.SimulateAutoPause("sbx-2")
+	mgr2 := newMgr()
+	t.Cleanup(func() { _ = mgr2.Close(context.Background()) })
+
+	h2, err := mgr2.Open(t.Context(), "bot-e2b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env2, err := h2.Env(t.Context(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := env2.ReadTextFile(t.Context(), "notes/todo.txt")
+	if err != nil || text != "line1\nline2\n" {
+		t.Fatalf("read after resume=%q err=%v", text, err)
+	}
+	if got := fake.Counts(); got.Created != 2 || got.Connected < 1 {
+		t.Fatalf("expected reconnect without new sandbox, counts=%+v", got)
+	}
+
+	// ResetAgent kills sbx-2 and clears sandbox_id; next Open provisions sbx-3.
+	if err := mgr2.ResetAgent(t.Context(), "bot-e2b"); err != nil {
+		t.Fatal(err)
+	}
+	agentAfterReset, _ := q.GetAgent(t.Context(), "bot-e2b")
+	if agentAfterReset.EnvironmentSandboxID != "" {
+		t.Fatalf("expected cleared sandbox_id, got %q", agentAfterReset.EnvironmentSandboxID)
+	}
+
+	h3, err := mgr2.Open(t.Context(), "bot-e2b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = h3.Close(t.Context())
+	agentFresh, _ := q.GetAgent(t.Context(), "bot-e2b")
+	if agentFresh.EnvironmentSandboxID != "sbx-3" {
+		t.Fatalf("expected fresh sbx-3 after reset, got %q", agentFresh.EnvironmentSandboxID)
+	}
+
+	// Simulate expired sandbox (404 on /connect): fresh Manager transparently creates sbx-4.
+	fake.SimulateExpire("sbx-3")
+	mgr3 := newMgr()
+	t.Cleanup(func() { _ = mgr3.Close(context.Background()) })
+	h4, err := mgr3.Open(t.Context(), "bot-e2b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = h4.Close(t.Context())
+	agentRecovered, _ := q.GetAgent(t.Context(), "bot-e2b")
+	if agentRecovered.EnvironmentSandboxID != "sbx-4" {
+		t.Fatalf("expected transparent 404 recovery sbx-4, got %q", agentRecovered.EnvironmentSandboxID)
+	}
+}

@@ -6,15 +6,16 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   getMainChatOptions,
   listEnvironmentsOptions,
+  resetAgentEnvironmentMutation,
   setChatSettingsMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { refreshChats } from "../lib/queries";
+import { errorText, refreshChats, refreshEnvironments } from "../lib/queries";
 
 import { saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { ModelPicker } from "../components/model-picker";
 import { ThinkingPicker } from "../components/thinking-picker";
-import { Failure } from "../components/feedback";
+import { Failure, Spinner } from "../components/feedback";
 import { FramedPage, Note, Panel, Section } from "../components/page";
 import { BotSettingsSwitcher } from "../components/settings-switcher";
 import { Input, Select } from "../components/form";
@@ -288,11 +289,13 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
   const environments = useQuery(listEnvironmentsOptions());
   const list = environments.data?.environments ?? [];
   const current = list.find((env) => env.id === environmentId);
+  const isE2B = current?.kind === "e2b";
 
   const save = useMutation({
     mutationFn: (nextId: string) => saveAgent(agentId, (agent) => ({ ...agent, environmentId: nextId })),
-    onSuccess: (_, nextId) => {
+    onSuccess: async (_, nextId) => {
       const target = list.find((env) => env.id === nextId);
+      await refreshEnvironments();
 
       notify(
         target
@@ -300,6 +303,12 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
           : "Execution environment is now Local. Open sessions reload when idle.",
       );
     },
+  });
+
+  const resetSandbox = useMutation({
+    ...resetAgentEnvironmentMutation(),
+    onSuccess: () => notify("E2B sandbox reset. The next message starts a fresh sandbox."),
+    onError: (err) => notify(errorText(err)),
   });
 
   const missingSelection = !!environmentId && !environments.isPending && !current;
@@ -319,24 +328,37 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
                 : "Runs tools and workspaces on this computer."}
           </p>
         </div>
-        <Select
-          id="bot-environment"
-          aria-label="Execution environment"
-          aria-describedby="bot-environment-hint"
-          aria-invalid={save.isError || missingSelection}
-          className="w-full sm:w-[220px]"
-          value={environmentId}
-          disabled={save.isPending || environments.isPending}
-          onChange={(event) => save.mutate(event.target.value)}
-        >
-          <option value="">Local (this computer)</option>
-          {missingSelection ? <option value={environmentId}>Missing ({environmentId})</option> : null}
-          {list.map((env) => (
-            <option key={env.id} value={env.id}>
-              {env.name} ({env.kind})
-            </option>
-          ))}
-        </Select>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          {isE2B ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={resetSandbox.isPending}
+              onClick={() => resetSandbox.mutate({ path: { agentId } })}
+            >
+              {resetSandbox.isPending ? <Spinner /> : null}
+              {resetSandbox.isPending ? "Resetting…" : "Reset sandbox"}
+            </Button>
+          ) : null}
+          <Select
+            id="bot-environment"
+            aria-label="Execution environment"
+            aria-describedby="bot-environment-hint"
+            aria-invalid={save.isError || missingSelection}
+            className="w-full sm:w-[220px]"
+            value={environmentId}
+            disabled={save.isPending || environments.isPending}
+            onChange={(event) => save.mutate(event.target.value)}
+          >
+            <option value="">Local (this computer)</option>
+            {missingSelection ? <option value={environmentId}>Missing ({environmentId})</option> : null}
+            {list.map((env) => (
+              <option key={env.id} value={env.id}>
+                {env.name} ({env.kind})
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
       {environments.isError ? (
         <div className="mt-3">
@@ -346,6 +368,11 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
       {save.isError ? (
         <div className="mt-3">
           <Failure title="Could not save execution environment" error={save.error} />
+        </div>
+      ) : null}
+      {resetSandbox.isError ? (
+        <div className="mt-3">
+          <Failure title="Could not reset sandbox" error={resetSandbox.error} />
         </div>
       ) : null}
     </div>

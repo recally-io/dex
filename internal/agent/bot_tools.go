@@ -20,34 +20,52 @@ type Patch struct {
 // PatchAgent merges a patch into a saved active agent and applies the checks of SaveAgent. The
 // read and the write share one lock, so two patches cannot lose each other's fields.
 func (s *Service) PatchAgent(ctx context.Context, id string, p Patch) (Agent, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	row, err := s.q.GetAgent(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && row.ArchivedAt.Valid) {
-		return Agent{}, ErrNotFound
-	}
-	if err != nil {
-		return Agent{}, err
-	}
-	a := agentView(row)
-	for _, f := range []struct {
-		dst *string
-		src *string
-	}{{&a.Name, p.Name}, {&a.Instructions, p.Instructions}, {&a.Provider, p.Provider}, {&a.ModelID, p.ModelID}, {&a.ThinkingLevel, p.ThinkingLevel}, {&a.EnvironmentID, p.EnvironmentID}} {
-		if f.src != nil {
-			*f.dst = *f.src
+	var (
+		oldRow sqlc.Agent
+		out    Agent
+	)
+	err := func() error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		var getErr error
+		oldRow, getErr = s.q.GetAgent(ctx, id)
+		if errors.Is(getErr, sql.ErrNoRows) || (getErr == nil && oldRow.ArchivedAt.Valid) {
+			return ErrNotFound
 		}
-	}
-	a, err = s.cleanAgent(ctx, a)
+		if getErr != nil {
+			return getErr
+		}
+		a := agentView(oldRow)
+		for _, f := range []struct {
+			dst *string
+			src *string
+		}{{&a.Name, p.Name}, {&a.Instructions, p.Instructions}, {&a.Provider, p.Provider}, {&a.ModelID, p.ModelID}, {&a.ThinkingLevel, p.ThinkingLevel}, {&a.EnvironmentID, p.EnvironmentID}} {
+			if f.src != nil {
+				*f.dst = *f.src
+			}
+		}
+		var cleanErr error
+		a, cleanErr = s.cleanAgent(ctx, a)
+		if cleanErr != nil {
+			return cleanErr
+		}
+		if err := s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
+			ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
+			EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
+		}); err != nil {
+			return err
+		}
+		a.ArchivedAt = 0
+		out = a
+		return nil
+	}()
 	if err != nil {
 		return Agent{}, err
 	}
-	err = s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
-		ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
-		EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
-	})
-	a.ArchivedAt = 0
-	return a, err
+	if oldRow.EnvironmentID != out.EnvironmentID && s.OnEnvironmentChanged != nil {
+		s.OnEnvironmentChanged(ctx, id, oldRow.EnvironmentID, oldRow.EnvironmentSandboxID)
+	}
+	return out, nil
 }
 
 // resolveBot finds an active bot by ID, then by name without regard to case. A name that two bots
