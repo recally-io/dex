@@ -209,7 +209,7 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 	}
 	cwd := inherited.Cwd
 	if a.Cwd != "" {
-		if cwd, err = ProjectPath(a.Cwd); err != nil {
+		if cwd, err = s.ResolveProjectPath(ctx, target.ID, a.Cwd); err != nil {
 			return engine.SessionRef{}, err
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/harness"
+	"github.com/recally-io/dex/internal/execenv"
 )
 
 // Submission joins one durable input and the memory commit that follows its settlement.
@@ -76,10 +77,10 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if input.Model.ModelID == "" {
 			return nil, ErrNoModel
 		}
-		change := a.changeFor(ref, input.Options)
+		change := a.changeFor(ctx, ref, input.Options)
 		if ref.Scope == "" {
 			if input.Automation {
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil, "", "")}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck), botReadExtension(ref.AgentID, a.config.Bots)}}})
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil, false, "", "", "")}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck), botReadExtension(ref.AgentID, a.config.Bots)}}})
 			}
 			// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
 			// so a child, an automation or a dream never gets the tool and needs no removal.
@@ -101,7 +102,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 				// before the upgrade loses the same extensions.
 				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), frontDeskExtension(), routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{childExtension()}}})
 			case dream:
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil, "", ""), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace"), a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil, false, "", "", ""), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, "", a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
 			}
 		}
 		if err := a.groupAttachments(ref, input.Attachments); err != nil {
@@ -116,6 +117,20 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		inputDirectory := a.inputDirectory(ref)
 		if ref.Scope != "" {
 			inputDirectory = ""
+		} else if h := a.execHandle(ref.AgentID); h != nil {
+			inputDirectory = h.Workspace()
+			if h.Kind() != execenv.KindLocal && len(input.Attachments) > 0 {
+				remoteEnv, envErr := h.Env(ctx, inputDirectory, nil)
+				if envErr != nil {
+					return nil, envErr
+				}
+				localWorkspace := filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace")
+				for _, attachment := range input.Attachments {
+					if stageErr := execenv.StageUpload(ctx, remoteEnv, localWorkspace, inputDirectory, attachment.Path); stageErr != nil {
+						return nil, stageErr
+					}
+				}
+			}
 		}
 		_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
 			metadata := InputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
@@ -216,7 +231,7 @@ func inputText(input Input, workspace string) string {
 		text.WriteString("\n- ")
 		// Uploads stay in the workspace. An absolute path keeps working after set_project changes
 		// the cwd, also later in the same run. Group inputs use relative resource paths instead.
-		text.WriteString(filepath.Join(workspace, attachment.Path))
+		text.WriteString(execenv.JoinTargetPath(workspace, filepath.ToSlash(attachment.Path)))
 	}
 	return text.String()
 }

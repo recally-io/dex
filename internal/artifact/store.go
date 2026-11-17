@@ -33,13 +33,24 @@ type Info struct {
 	ModifiedAt string
 }
 
+// WorkspaceReader reads up to maxBytes of a workspace-relative regular non-symlink file.
+type WorkspaceReader func(ctx context.Context, agentID, relPath string, maxBytes int64) ([]byte, error)
+
 // Service has no artifact index. The mutex only orders concurrent file mutations.
 type Service struct {
-	dataDir string
-	mu      sync.Mutex
+	dataDir       string
+	readWorkspace WorkspaceReader
+	mu            sync.Mutex
 }
 
 func New(dataDir string) *Service { return &Service{dataDir: dataDir} }
+
+// SetWorkspaceReader configures how Deliver reads files from agent workspaces.
+func (s *Service) SetWorkspaceReader(fn WorkspaceReader) {
+	s.mu.Lock()
+	s.readWorkspace = fn
+	s.mu.Unlock()
+}
 
 func checkName(name string) error {
 	if strings.TrimSpace(name) == "" || name == "." || name == ".." || len(name) > 255 || strings.ContainsAny(name, "/\\") || strings.ContainsFunc(name, unicode.IsControl) {
@@ -220,7 +231,7 @@ func (s *Service) Delete(agentID, name string) error {
 }
 
 // Deliver copies a workspace file under its actual name. Existing names are conflicts.
-func (s *Service) Deliver(_ context.Context, caller engine.TaskContext, path string) (engine.ArtifactInfo, error) {
+func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path string) (engine.ArtifactInfo, error) {
 	if caller.Scope != "" {
 		return engine.ArtifactInfo{}, errors.New("group files require an audience-scoped delivery path")
 	}
@@ -230,6 +241,19 @@ func (s *Service) Deliver(_ context.Context, caller engine.TaskContext, path str
 	name := filepath.Base(path)
 	if err := checkName(name); err != nil {
 		return engine.ArtifactInfo{}, err
+	}
+	s.mu.Lock()
+	reader := s.readWorkspace
+	s.mu.Unlock()
+	if reader != nil {
+		data, err := reader(ctx, caller.AgentID, path, MaxSize)
+		if err != nil {
+			return engine.ArtifactInfo{}, err
+		}
+		if int64(len(data)) > MaxSize {
+			return engine.ArtifactInfo{}, errors.New("deliver a regular file of at most 20 MB")
+		}
+		return s.storeDeliveredBytes(caller.AgentID, name, data)
 	}
 	home, err := os.OpenRoot(agent.Home(s.dataDir, caller.AgentID))
 	if err != nil {
@@ -277,4 +301,32 @@ func (s *Service) Deliver(_ context.Context, caller engine.TaskContext, path str
 		return engine.ArtifactInfo{}, errors.New("artifact exceeds 20 MB")
 	}
 	return engine.ArtifactInfo{Name: name, Size: size, URL: "/api/agents/" + url.PathEscape(caller.AgentID) + "/artifacts/" + url.PathEscape(name)}, nil
+}
+
+func (s *Service) storeDeliveredBytes(agentID, name string, data []byte) (engine.ArtifactInfo, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, err := s.root(agentID, true)
+	if err != nil {
+		return engine.ArtifactInfo{}, err
+	}
+	defer root.Close()
+	out, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if os.IsExist(err) {
+		return engine.ArtifactInfo{}, ErrConflict
+	}
+	if err != nil {
+		return engine.ArtifactInfo{}, err
+	}
+	_, writeErr := out.Write(data)
+	closeErr := out.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		_ = root.Remove(name)
+		return engine.ArtifactInfo{}, err
+	}
+	return engine.ArtifactInfo{
+		Name: name,
+		Size: int64(len(data)),
+		URL:  "/api/agents/" + url.PathEscape(agentID) + "/artifacts/" + url.PathEscape(name),
+	}, nil
 }

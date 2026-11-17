@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -16,7 +17,9 @@ import (
 
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/MichaelKinsy/PiG/durable"
+	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/MichaelKinsy/PiG/mcp"
+	"github.com/recally-io/dex/internal/execenv"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -68,18 +71,22 @@ type agentExtensions struct {
 	levels              []ExtensionLevel
 	workspace, agentDir string
 	// home only expands ~/ in AGENTS.md imports; it is not an extension level.
-	home   string
-	env    *toolEnv
-	mu     sync.Mutex
-	loaded *loadedExtensions
+	home       string
+	env        *toolEnv
+	execHandle execenv.Handle
+	mu         sync.Mutex
+	loaded     *loadedExtensions
+	skillsMu   sync.Mutex
+	skillStamp string
 }
 type loadedExtensions struct {
-	Extension *durable.Extension
-	Env       map[string]string
-	HasTools  bool
-	Servers   []McpServerInfo
-	clients   []*mcp.Client
-	mu        sync.Mutex
+	Extension   *durable.Extension
+	Env         map[string]string
+	ExplicitEnv map[string]string
+	HasTools    bool
+	Servers     []McpServerInfo
+	clients     []*mcp.Client
+	mu          sync.Mutex
 	// stamp is the file and settings stamp before the load; a different stamp means stale.
 	stamp string
 }
@@ -112,9 +119,10 @@ type serverEntry struct {
 	config serverConfig
 }
 type extensionScan struct {
-	info    ExtensionInfo
-	env     map[string]string
-	servers []serverEntry
+	info     ExtensionInfo
+	env      map[string]string
+	explicit map[string]string
+	servers  []serverEntry
 }
 
 var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -127,13 +135,29 @@ var headerVar = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 var envWrites sync.Mutex
 
 func newAgentExtensions(home, dataDir, agentID string, env *toolEnv) *agentExtensions {
+	return newAgentExtensionsWithEnv(home, dataDir, agentID, nil, env)
+}
+
+func newAgentExtensionsWithEnv(home, dataDir, agentID string, handle execenv.Handle, env *toolEnv) *agentExtensions {
 	agentDir := filepath.Join(dataDir, "agents", agentID)
-	a := &agentExtensions{env: env, home: home, agentDir: agentDir, workspace: filepath.Join(agentDir, "workspace")}
+	workspace := filepath.Join(agentDir, "workspace")
+	if handle != nil {
+		workspace = handle.Workspace()
+	}
+	a := &agentExtensions{env: env, home: home, agentDir: agentDir, workspace: workspace, execHandle: handle}
 	for _, l := range []ExtensionLevel{{"dex", dataDir}, {"agent", agentDir}} {
 		l.Dir = canonicalExtensionPath(filepath.Join(l.Dir, ".agents"))
 		a.levels = append(a.levels, l)
 	}
 	return a
+}
+
+func (a *agentExtensions) isRemote() bool {
+	return a.execHandle != nil && a.execHandle.Kind() != execenv.KindLocal
+}
+
+func (a *agentExtensions) remoteSkillsRoot() string {
+	return execenv.JoinTargetPath(a.workspace, ".dex", "skills")
 }
 func canonicalExtensionPath(path string) string {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
@@ -158,27 +182,71 @@ func distinctLevels(levels []ExtensionLevel) []ExtensionLevel {
 	return out
 }
 
-// skills reads the skills of the three file levels and of the project level, cwd/.agents/skills.
+// skillsContext reads the skills of the three file levels and of the project level, cwd/.agents/skills.
 // The project level holds only skills; mcp.json and .env stay with the file levels.
-func (a *agentExtensions) skills(cwd string, errs *[]string) []SkillInfo {
-	levels := append(slices.Clone(a.levels), ExtensionLevel{"project", canonicalExtensionPath(filepath.Join(cwd, ".agents"))})
+func (a *agentExtensions) skillsContext(ctx context.Context, remoteEnv durableenv.ExecutionEnv, cwd string, errs *[]string) []SkillInfo {
+	if cwd == "" {
+		cwd = a.workspace
+	}
+	projectDir := canonicalExtensionPath(filepath.Join(cwd, ".agents"))
+	if a.isRemote() {
+		projectDir = execenv.JoinTargetPath(cwd, ".agents")
+		if remoteEnv != nil {
+			if canon, err := remoteEnv.CanonicalPath(ctx, projectDir); err == nil {
+				projectDir = canon
+			}
+		}
+	}
+	levels := append(slices.Clone(a.levels), ExtensionLevel{"project", projectDir})
 	byName := map[string]SkillInfo{}
 	for _, l := range distinctLevels(levels) {
-		dir := filepath.Join(l.Dir, "skills")
-		if _, err := os.Stat(dir); err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				*errs = append(*errs, dir+": cannot read skills")
+		var dir string
+		var found []SkillInfo
+		if l.Scope == "project" && a.isRemote() {
+			env := remoteEnv
+			if env == nil {
+				var err error
+				env, err = a.execHandle.Env(ctx, cwd, nil)
+				if err != nil {
+					*errs = append(*errs, l.Dir+": cannot open execution environment for skills")
+					continue
+				}
 			}
-			continue
+			dir = execenv.JoinTargetPath(l.Dir, "skills")
+			info, err := execenv.StatFollow(ctx, env, dir)
+			if err != nil {
+				if fe, ok := errors.AsType[*durableenv.FileError](err); !ok || fe.Code != durableenv.FileErrorNotFound {
+					*errs = append(*errs, dir+": cannot read skills")
+				}
+				continue
+			}
+			if info.Kind != durableenv.FileKindDirectory {
+				continue
+			}
+			found = findSkillsRemote(ctx, env, dir, map[string]bool{}, errs)
+		} else {
+			dir = filepath.Join(l.Dir, "skills")
+			if _, err := os.Stat(dir); err != nil {
+				if !errors.Is(err, os.ErrNotExist) {
+					*errs = append(*errs, dir+": cannot read skills")
+				}
+				continue
+			}
+			found = findSkills(dir, map[string]bool{}, errs)
 		}
 		level := map[string]bool{}
-		for _, skill := range findSkills(dir, map[string]bool{}, errs) {
+		for _, skill := range found {
 			if level[skill.Name] {
 				*errs = append(*errs, skill.Path+": another skill in "+dir+" has the name "+skill.Name)
 				continue
 			}
 			level[skill.Name] = true
 			skill.Scope = l.Scope
+			if l.Scope != "project" && a.isRemote() {
+				if rel, relErr := filepath.Rel(dir, skill.Path); relErr == nil {
+					skill.Path = execenv.JoinTargetPath(a.remoteSkillsRoot(), l.Scope, filepath.ToSlash(rel))
+				}
+			}
 			_, skill.Overrides = byName[skill.Name]
 			byName[skill.Name] = skill
 		}
@@ -186,6 +254,99 @@ func (a *agentExtensions) skills(cwd string, errs *[]string) []SkillInfo {
 	out := []SkillInfo{}
 	for _, name := range slices.Sorted(maps.Keys(byName)) {
 		out = append(out, byName[name])
+	}
+	return out
+}
+
+func (a *agentExtensions) syncRemoteSkills(ctx context.Context, env durableenv.ExecutionEnv) error {
+	if !a.isRemote() {
+		return nil
+	}
+	if env == nil {
+		var err error
+		env, err = a.execHandle.Env(ctx, a.workspace, nil)
+		if err != nil {
+			return err
+		}
+	}
+	stamp := a.hostSkillsStamp()
+	a.skillsMu.Lock()
+	defer a.skillsMu.Unlock()
+	if a.skillStamp == stamp {
+		return nil
+	}
+	root := a.remoteSkillsRoot()
+	for _, l := range a.distinct() {
+		if err := execenv.SyncSkills(ctx, env, l.Dir, execenv.JoinTargetPath(root, l.Scope)); err != nil {
+			return err
+		}
+	}
+	a.skillStamp = stamp
+	return nil
+}
+
+func (a *agentExtensions) hostSkillsStamp() string {
+	var b strings.Builder
+	for _, l := range a.distinct() {
+		dir := filepath.Join(l.Dir, "skills")
+		fmt.Fprintf(&b, "%s:%s\n", l.Scope, dir)
+		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+			if err != nil {
+				fmt.Fprintf(&b, "err:%s:%v\n", p, err)
+				return nil
+			}
+			name := d.Name()
+			if d.IsDir() && p != dir && (strings.HasPrefix(name, ".") || name == "node_modules") {
+				return filepath.SkipDir
+			}
+			if info, statErr := d.Info(); statErr == nil {
+				fmt.Fprintf(&b, "%s|%v|%d|%d\n", p, info.Mode(), info.Size(), info.ModTime().UnixNano())
+			}
+			return nil
+		})
+	}
+	return b.String()
+}
+
+func findSkillsRemote(ctx context.Context, env durableenv.ExecutionEnv, dir string, seen map[string]bool, errs *[]string) []SkillInfo {
+	resolved, err := env.CanonicalPath(ctx, dir)
+	if err != nil || seen[resolved] {
+		return nil
+	}
+	seen[resolved] = true
+	skillPath := execenv.JoinTargetPath(dir, "SKILL.md")
+	if info, err := execenv.StatFollow(ctx, env, skillPath); err == nil && info.Kind == durableenv.FileKindFile {
+		name := filepath.Base(dir)
+		if strings.HasPrefix(dir, "/") {
+			name = path.Base(dir)
+		}
+		skill := SkillInfo{Name: name, Path: skillPath}
+		data, readErr := env.ReadTextFile(ctx, skillPath)
+		if readErr != nil {
+			skill.Error = "cannot read SKILL.md"
+		} else {
+			skill.Name, skill.Description, skill.Error = parseSkill(data, skill.Name)
+		}
+		return []SkillInfo{skill}
+	}
+	entries, err := env.ListDir(ctx, dir)
+	if err != nil {
+		*errs = append(*errs, dir+": cannot read skills")
+		return nil
+	}
+	var out []SkillInfo
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name, ".") || entry.Name == "node_modules" {
+			continue
+		}
+		isDir := entry.Kind == durableenv.FileKindDirectory
+		if entry.Kind == durableenv.FileKindSymlink {
+			target, statErr := execenv.StatFollow(ctx, env, entry.Path)
+			isDir = statErr == nil && target.Kind == durableenv.FileKindDirectory
+		}
+		if isDir {
+			out = append(out, findSkillsRemote(ctx, env, entry.Path, seen, errs)...)
+		}
 	}
 	return out
 }
@@ -322,12 +483,16 @@ func (a *agentExtensions) stamp() string {
 		}
 	})
 }
-func (a *agentExtensions) scan(base map[string]string) extensionScan {
-	s := extensionScan{info: ExtensionInfo{Levels: a.levels, Skills: []SkillInfo{}, Servers: []McpServerInfo{}, Env: []EnvKeyInfo{}, Warnings: []string{}, Errors: []string{}}, env: maps.Clone(base)}
+func (a *agentExtensions) scan(ctx context.Context, base map[string]string, remoteEnv durableenv.ExecutionEnv) extensionScan {
+	s := extensionScan{
+		info:     ExtensionInfo{Levels: a.levels, Skills: []SkillInfo{}, Servers: []McpServerInfo{}, Env: []EnvKeyInfo{}, Warnings: []string{}, Errors: []string{}},
+		env:      maps.Clone(base),
+		explicit: map[string]string{},
+	}
 	if s.env == nil {
 		s.env = map[string]string{}
 	}
-	s.info.Skills = a.skills(a.workspace, &s.info.Warnings)
+	s.info.Skills = a.skillsContext(ctx, remoteEnv, a.workspace, &s.info.Warnings)
 	servers := map[string]serverEntry{}
 	valid, validEnv := true, true
 	for _, l := range a.distinct() {
@@ -365,9 +530,11 @@ func (a *agentExtensions) scan(base map[string]string) extensionScan {
 			s.info.Env = append(s.info.Env, EnvKeyInfo{Key: key, Scope: l.Scope, Hints: envHints(vars[key])})
 		}
 		maps.Copy(s.env, vars)
+		maps.Copy(s.explicit, vars)
 	}
 	if !validEnv {
 		s.env = maps.Clone(base)
+		s.explicit = map[string]string{}
 	}
 	if valid {
 		for _, name := range slices.Sorted(maps.Keys(servers)) {
@@ -375,7 +542,7 @@ func (a *agentExtensions) scan(base map[string]string) extensionScan {
 			s.info.Servers = append(s.info.Servers, servers[name].info)
 		}
 	}
-	for _, md := range a.agentsMD("") {
+	for _, md := range a.agentsMDContext(ctx, "") {
 		s.info.Warnings = append(s.info.Warnings, md.warnings...)
 	}
 	for _, name := range []string{"skills", "mcp.json"} {
@@ -390,8 +557,16 @@ func (a *agentExtensions) Info(ctx context.Context) (ExtensionInfo, error) {
 	if ctx.Err() != nil {
 		return ExtensionInfo{}, context.Cause(ctx)
 	}
+	var remoteEnv durableenv.ExecutionEnv
+	if a.isRemote() {
+		var err error
+		remoteEnv, err = a.execHandle.Env(ctx, a.workspace, nil)
+		if err != nil {
+			return ExtensionInfo{}, err
+		}
+	}
 	base, op, warning := a.env.snapshot()
-	s := a.scan(base)
+	s := a.scan(ctx, base, remoteEnv)
 	if warning != "" {
 		s.info.Warnings = append(s.info.Warnings, warning)
 	}
@@ -415,7 +590,7 @@ func (a *agentExtensions) Validate(ctx context.Context) error {
 		return context.Cause(ctx)
 	}
 	base, _, _ := a.env.snapshot()
-	scan := a.scan(base)
+	scan := a.scan(ctx, base, nil)
 	if len(scan.info.Errors) > 0 {
 		return &EnvEditError{Message: strings.Join(scan.info.Errors, "\n")}
 	}
@@ -424,21 +599,38 @@ func (a *agentExtensions) Validate(ctx context.Context) error {
 func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 	// Take the stamp first, so that a change during the load makes the agent stale.
 	stamp := a.stamp()
+	var remoteEnv durableenv.ExecutionEnv
+	if a.isRemote() {
+		var err error
+		remoteEnv, err = a.execHandle.Env(ctx, a.workspace, nil)
+		if err != nil {
+			return nil, err
+		}
+		if err := a.syncRemoteSkills(ctx, remoteEnv); err != nil {
+			return nil, err
+		}
+	}
 	base, op := a.env.load(ctx)
-	s := a.scan(base)
+	s := a.scan(ctx, base, remoteEnv)
 	op.apply(s.env)
+	op.apply(s.explicit)
 	// Keep the status slice stable before any connection can call OnClose.
-	loaded := &loadedExtensions{Env: s.env, Servers: s.info.Servers, Extension: &durable.Extension{Name: "extensions"}, stamp: stamp}
+	loaded := &loadedExtensions{Env: s.env, ExplicitEnv: s.explicit, Servers: s.info.Servers, Extension: &durable.Extension{Name: "extensions"}, stamp: stamp}
 	opPath := findOp(s.env)
 	guide := extensionGuide(a.levels, secretsGuide(op, opPath), envScopeGuide(s.info.Env, opPath))
-	loaded.Extension.Sections = []*durable.PromptSection{{Key: "extension-guide", Render: func(context.Context, durable.PromptInput) (*string, error) { return new(guide), nil }}, {Key: "skills", Render: func(_ context.Context, input durable.PromptInput) (*string, error) {
+	loaded.Extension.Sections = []*durable.PromptSection{{Key: "extension-guide", Render: func(context.Context, durable.PromptInput) (*string, error) { return new(guide), nil }}, {Key: "skills", Render: func(renderCtx context.Context, input durable.PromptInput) (*string, error) {
 		// The project level follows the conversation's cwd, which the request's environment has.
 		cwd := a.workspace
 		if input.Env != nil {
 			cwd = input.Env.Cwd()
 		}
+		if a.isRemote() {
+			if err := a.syncRemoteSkills(renderCtx, input.Env); err != nil {
+				return nil, err
+			}
+		}
 		errs := []string{}
-		return skillsText(a.skills(cwd, &errs)), nil
+		return skillsText(a.skillsContext(renderCtx, input.Env, cwd, &errs)), nil
 	}}}
 	loaded.Extension.Sections = append(loaded.Extension.Sections, &durable.PromptSection{Key: "project", Render: func(_ context.Context, input durable.PromptInput) (*string, error) {
 		cwd := a.workspace

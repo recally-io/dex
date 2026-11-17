@@ -1,10 +1,15 @@
 package engine
 
 import (
+	"context"
 	"fmt"
-	"os"
+	"path"
 	"path/filepath"
 	"strings"
+
+	durableenv "github.com/MichaelKinsy/PiG/durable/env"
+	envnode "github.com/MichaelKinsy/PiG/durable/env/node"
+	"github.com/recally-io/dex/internal/execenv"
 )
 
 // agentsMDDepth is how many import levels below an AGENTS.md dex follows.
@@ -21,6 +26,8 @@ type agentsMD struct {
 }
 
 type agentsMDReader struct {
+	ctx  context.Context
+	env  durableenv.ExecutionEnv
 	home string
 	// confine is the real project directory; empty means no limit (the agent level).
 	confine  string
@@ -29,27 +36,50 @@ type agentsMDReader struct {
 	warnings []string
 }
 
-// readAgentsMD reads path and the files that it imports with `@path` tokens. A relative import
-// starts at the directory of the real file, so a symlinked file works for its author. The text of
-// each imported file follows the text of the file that first names it. A file is read once, which
-// also ends import cycles.
-func readAgentsMD(path, home, confine string) agentsMD {
-	resolved, ok := regularFile(path)
+// readAgentsMD reads path and the files that it imports with `@path` tokens on the local host.
+func readAgentsMD(targetPath, home, confine string) agentsMD {
+	return readAgentsMDLocal(context.Background(), targetPath, home, confine)
+}
+
+func readAgentsMDLocal(ctx context.Context, targetPath, home, confine string) agentsMD {
+	env := envnode.NewNodeExecutionEnv(envnode.NodeExecutionEnvOptions{Cwd: filepath.Dir(targetPath)})
+	return readAgentsMDEnv(ctx, env, targetPath, home, confine)
+}
+
+func readAgentsMDEnv(ctx context.Context, env durableenv.ExecutionEnv, targetPath, home, confine string) agentsMD {
+	r := &agentsMDReader{ctx: ctx, env: env, home: home, confine: confine, seen: map[string]bool{}}
+	resolved, ok := r.regularFile(targetPath)
 	if !ok {
 		return agentsMD{}
 	}
-	r := &agentsMDReader{home: home, confine: confine, seen: map[string]bool{}}
 	if !r.allowed(resolved) {
-		r.warnings = append(r.warnings, path+": the file is outside the project directory and dex skips it")
+		r.warnings = append(r.warnings, targetPath+": the file is outside the project directory and dex skips it")
 		return agentsMD{warnings: r.warnings}
 	}
 	r.load(resolved, 0)
 	return agentsMD{text: strings.TrimSpace(r.out.String()), path: resolved, warnings: r.warnings}
 }
 
+func (r *agentsMDReader) regularFile(target string) (string, bool) {
+	resolved, err := r.env.CanonicalPath(r.ctx, target)
+	if err != nil {
+		return "", false
+	}
+	info, err := r.env.FileInfo(r.ctx, resolved)
+	return resolved, err == nil && info.Kind == durableenv.FileKindFile
+}
+
 func (r *agentsMDReader) allowed(resolved string) bool {
 	if r.confine == "" {
 		return true
+	}
+	if strings.HasPrefix(r.confine, "/") && strings.HasPrefix(resolved, "/") {
+		cleanConfine := path.Clean(r.confine)
+		cleanResolved := path.Clean(resolved)
+		if cleanConfine == "/" {
+			return true
+		}
+		return cleanResolved == cleanConfine || strings.HasPrefix(cleanResolved, cleanConfine+"/")
 	}
 	rel, err := filepath.Rel(r.confine, resolved)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
@@ -57,7 +87,7 @@ func (r *agentsMDReader) allowed(resolved string) bool {
 
 func (r *agentsMDReader) load(resolved string, depth int) {
 	r.seen[resolved] = true
-	data, err := os.ReadFile(resolved) //nolint:gosec // A regular file that an AGENTS.md names.
+	data, err := r.env.ReadBinaryFile(r.ctx, resolved)
 	if err != nil {
 		r.warnings = append(r.warnings, resolved+": cannot read the file")
 		return
@@ -67,8 +97,12 @@ func (r *agentsMDReader) load(resolved string, depth int) {
 		r.out.WriteString("\n\nImported file " + resolved + ":\n\n")
 	}
 	r.out.WriteString(text)
+	parentDir := filepath.Dir(resolved)
+	if strings.HasPrefix(resolved, "/") {
+		parentDir = path.Dir(resolved)
+	}
 	for _, token := range importTokens(text) {
-		target, ok := r.resolve(filepath.Dir(resolved), token)
+		target, ok := r.resolve(parentDir, token)
 		switch {
 		case !ok:
 			if strings.Contains(token, "/") || strings.HasSuffix(token, ".md") {
@@ -85,28 +119,18 @@ func (r *agentsMDReader) load(resolved string, depth int) {
 	}
 }
 
-// resolve returns the real path of the regular file that token names.
 func (r *agentsMDReader) resolve(dir, token string) (string, bool) {
-	path := token
+	resolved := token
 	switch {
 	case strings.HasPrefix(token, "~/"):
 		if r.home == "" {
 			return "", false
 		}
-		path = filepath.Join(r.home, token[2:])
-	case !filepath.IsAbs(token):
-		path = filepath.Join(dir, token)
+		resolved = execenv.JoinTargetPath(r.home, filepath.ToSlash(token[2:]))
+	case !execenv.IsAbsPath(token):
+		resolved = execenv.JoinTargetPath(dir, filepath.ToSlash(token))
 	}
-	return regularFile(path)
-}
-
-func regularFile(path string) (string, bool) {
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return "", false
-	}
-	stat, err := os.Stat(resolved)
-	return resolved, err == nil && stat.Mode().IsRegular()
+	return r.regularFile(resolved)
 }
 
 // importTokens returns the paths of the `@path` tokens in text, in order. A token starts a line
@@ -213,7 +237,11 @@ func maskCodeSpans(line string) string {
 // AGENTS.md, the agent's own instructions, then the AGENTS.md in cwd. The most specific text comes
 // last. Without any AGENTS.md the result is own. An empty cwd means the agent workspace.
 func (a *agentExtensions) instructions(cwd, own string) string {
-	files := a.agentsMD(cwd)
+	return a.instructionsContext(context.Background(), cwd, own)
+}
+
+func (a *agentExtensions) instructionsContext(ctx context.Context, cwd, own string) string {
+	files := a.agentsMDContext(ctx, cwd)
 	var parts []string
 	for _, md := range files[:len(files)-1] {
 		if md.text != "" {
@@ -229,21 +257,28 @@ func (a *agentExtensions) instructions(cwd, own string) string {
 	return strings.Join(parts, "\n\n---\n\n")
 }
 
-// agentsMD reads AGENTS.md at the dex level, the agent level, and the project (cwd), in this order.
-// The last entry is always the project. Equal dex and agent directories give one file. dex never
-// reads the user home. The dex and agent owners write their files, so their imports have no path
-// limit. A project import stays inside the project directory.
-func (a *agentExtensions) agentsMD(cwd string) []agentsMD {
+// agentsMDContext reads AGENTS.md at the dex level, the agent level, and the project (cwd), in this order.
+func (a *agentExtensions) agentsMDContext(ctx context.Context, cwd string) []agentsMD {
 	if cwd == "" {
 		cwd = a.workspace
 	}
 	var out []agentsMD
 	for _, l := range a.distinct() {
-		md := readAgentsMD(filepath.Join(l.Dir, "AGENTS.md"), a.home, "")
+		md := readAgentsMDLocal(ctx, filepath.Join(l.Dir, "AGENTS.md"), a.home, "")
 		md.scope = l.Scope
 		out = append(out, md)
 	}
-	project := readAgentsMD(filepath.Join(cwd, "AGENTS.md"), a.home, canonicalExtensionPath(cwd))
+	var project agentsMD
+	if a.isRemote() {
+		if env, err := a.execHandle.Env(ctx, cwd, nil); err == nil {
+			if canonCwd, err := env.CanonicalPath(ctx, cwd); err == nil {
+				remoteHome, _ := a.execHandle.Home(ctx)
+				project = readAgentsMDEnv(ctx, env, execenv.JoinTargetPath(cwd, "AGENTS.md"), remoteHome, canonCwd)
+			}
+		}
+	} else {
+		project = readAgentsMDLocal(ctx, filepath.Join(cwd, "AGENTS.md"), a.home, canonicalExtensionPath(cwd))
+	}
 	project.scope = "project"
 	return append(out, project)
 }

@@ -18,10 +18,10 @@ import (
 	"github.com/MichaelKinsy/PiG/chord"
 	"github.com/MichaelKinsy/PiG/durable"
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
-	envnode "github.com/MichaelKinsy/PiG/durable/env/node"
 	"github.com/MichaelKinsy/PiG/durable/harness"
 	storage "github.com/MichaelKinsy/PiG/durable/storage/sqlite/node"
 	"github.com/MichaelKinsy/PiG/durable/toolsearch"
+	"github.com/recally-io/dex/internal/execenv"
 )
 
 var configureReporter sync.Once
@@ -37,6 +37,7 @@ type agentResources struct {
 	harness        harness.Harness
 	store          durable.Storage
 	loaded         *loadedExtensions
+	execHandle     execenv.Handle
 	groupRoot      *os.Root
 	groupExtension *durable.Extension
 }
@@ -106,6 +107,9 @@ func New(config Config) (*Agents, error) {
 		}
 	}
 	config.BaseEnv = maps.Clone(config.BaseEnv)
+	if config.ExecEnv == nil {
+		config.ExecEnv = execenv.NewLocalProvider(config.DataDir, "")
+	}
 	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: NewMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
 }
 
@@ -286,14 +290,23 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		return nil, err
 	}
 	dir := filepath.Join(a.config.DataDir, "agents", agentID)
-	workspace := filepath.Join(dir, "workspace")
-	if err := os.MkdirAll(workspace, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
 	if err := a.memory.Open(ctx); err != nil {
 		return nil, err
 	}
-	files := a.files(agentID)
+	execHandle, err := a.config.ExecEnv.Open(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if resultErr != nil {
+			resultErr = errors.Join(resultErr, execHandle.Close(context.WithoutCancel(ctx)))
+		}
+	}()
+	workspace := execHandle.Workspace()
+	files := a.filesWithHandle(agentID, execHandle)
 	loaded, err := files.Load(ctx)
 	if err != nil {
 		return nil, err
@@ -306,8 +319,17 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	inheritEnv := execHandle.Kind() != execenv.KindLocal
+	toolEnv := loaded.Env
+	if inheritEnv {
+		toolEnv = loaded.ExplicitEnv
+	}
+	bgOutputDir := filepath.Join(dir, "background")
+	if inheritEnv {
+		bgOutputDir = execenv.JoinTargetPath(workspace, ".dex", "background")
+	}
 	registry := harness.CreateRegistry()
-	extensions := []*durable.Extension{telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(loaded.Env), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), backgroundExtension(agentID, a.config.Tasks.Background, loaded.Env, filepath.Join(dir, "background"), workspace), workLoopExtension(), artifactExtension(agentID, workspace, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
+	extensions := []*durable.Extension{telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(toolEnv, inheritEnv), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), backgroundExtension(agentID, a.config.Tasks.Background, toolEnv, inheritEnv, execHandle.Kind(), bgOutputDir, workspace), workLoopExtension(), artifactExtension(agentID, workspace, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
 	}), loaded.Extension}
 	if loaded.HasTools {
@@ -340,17 +362,22 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if resultErr != nil {
+			resultErr = errors.Join(resultErr, store.Close(context.WithoutCancel(ctx)))
+		}
+	}()
 	h, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{
 		Models: a.Catalog.Models, Registry: registry,
 		Settings: func() *harness.HarnessSettings {
 			return &harness.HarnessSettings{Extensions: extensions, AfterFailedRun: durable.AfterFailedRunContinue, SteeringMode: durable.QueueAll}
 		},
-		Env: func(_ context.Context, target harness.EnvTarget) (durableenv.ExecutionEnv, error) {
+		Env: func(envCtx context.Context, target harness.EnvTarget) (durableenv.ExecutionEnv, error) {
 			cwd := workspace
 			if target.Cwd != nil {
 				cwd = *target.Cwd
 			}
-			return envnode.NewNodeExecutionEnv(envnode.NodeExecutionEnvOptions{Cwd: cwd, ShellEnv: loaded.Env}), nil
+			return execHandle.Env(envCtx, cwd, toolEnv)
 		},
 		OnReport: func(report durable.Report) {
 			slog.Error("agent execution", "agent", agentID, "type", report.Kind, "error", report.Error)
@@ -359,7 +386,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err != nil {
 		return nil, err
 	}
-	return &agentResources{harness: h, store: store, loaded: loaded}, nil
+	return &agentResources{harness: h, store: store, loaded: loaded, execHandle: execHandle}, nil
 }
 
 // Withdrawal and abort marks commit before the paused Harness can run saved work.
@@ -418,8 +445,8 @@ func agentChange(options Options) harness.AgentChange {
 
 // agentChange adds the AGENTS.md text to the instructions. It reads the files at each admission,
 // so an edit applies from the next input of a conversation.
-func (a *Agents) agentChange(agentID string, options Options) harness.AgentChange {
-	options.Instructions = a.files(agentID).instructions(options.Cwd, options.Instructions)
+func (a *Agents) agentChange(ctx context.Context, agentID string, options Options) harness.AgentChange {
+	options.Instructions = a.filesWithHandle(agentID, a.execHandle(agentID)).instructionsContext(ctx, options.Cwd, options.Instructions)
 	return agentChange(options)
 }
 
@@ -432,7 +459,7 @@ func (a *Agents) Create(ctx context.Context, agentID string, options Options) (R
 	if err != nil {
 		return Ref{}, err
 	}
-	change := a.changeFor(Ref{AgentID: agentID, Scope: options.Scope}, options)
+	change := a.changeFor(ctx, Ref{AgentID: agentID, Scope: options.Scope}, options)
 	conversation, err := h.CreateConversation(ctx, harness.ConversationCreateOptions{Ownership: durable.ConversationOwnership{Kind: durable.ConversationOwnerless}, Agent: &change})
 	if err != nil {
 		return Ref{}, err
@@ -637,7 +664,7 @@ func (a *Agents) Continue(ctx context.Context, ref Ref, requestID string, option
 		return err
 	}
 	// The user can choose another model after a model error; the continued run uses it.
-	if err := conversation.Configure(ctx, a.changeFor(ref, options)); err != nil {
+	if err := conversation.Configure(ctx, a.changeFor(ctx, ref, options)); err != nil {
 		return err
 	}
 	_, err = conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeContinue, RequestId: &requestID})
@@ -668,7 +695,7 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID s
 		return 0, err
 	}
 	// The summary uses the conversation model, so it must be the chat's current choice.
-	if err := conversation.Configure(ctx, a.changeFor(ref, options)); err != nil {
+	if err := conversation.Configure(ctx, a.changeFor(ctx, ref, options)); err != nil {
 		return 0, err
 	}
 	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
@@ -988,12 +1015,159 @@ func (a *Agents) close(ctx context.Context) {
 	for _, resource := range resources {
 		errs = append(errs, resource.closeExtras(ctx))
 	}
+	errs = append(errs, a.config.ExecEnv.Close(ctx))
 	a.closeErr = errors.Join(errs...)
 	close(a.closeDone)
 }
 
 func (a *Agents) files(agentID string) *agentExtensions {
 	return newAgentExtensions(a.config.Home, a.config.DataDir, agentID, a.env)
+}
+
+func (a *Agents) filesWithHandle(agentID string, handle execenv.Handle) *agentExtensions {
+	return newAgentExtensionsWithEnv(a.config.Home, a.config.DataDir, agentID, handle, a.env)
+}
+
+func (a *Agents) execHandle(agentID string) execenv.Handle {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if res := a.resources[agentID]; res != nil {
+		return res.execHandle
+	}
+	return nil
+}
+
+func (a *Agents) withHandle(ctx context.Context, agentID string, fn func(execenv.Handle) error) error {
+	if !agentIDPattern.MatchString(agentID) {
+		return ErrInvalidInput
+	}
+	if err := a.begin(); err != nil {
+		return err
+	}
+	defer a.end()
+	if h := a.execHandle(agentID); h != nil {
+		return fn(h)
+	}
+	h, err := a.config.ExecEnv.Open(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = h.Close(context.WithoutCancel(ctx)) }()
+	return fn(h)
+}
+
+// ReadWorkspaceFile reads up to maxBytes of a workspace-relative regular non-symlink file.
+func (a *Agents) ReadWorkspaceFile(ctx context.Context, agentID, relPath string, maxBytes int64) ([]byte, error) {
+	var data []byte
+	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
+		env, envErr := h.Env(ctx, h.Workspace(), nil)
+		if envErr != nil {
+			return envErr
+		}
+		var readErr error
+		data, readErr = execenv.ReadWorkspaceFile(ctx, env, h.Workspace(), relPath, maxBytes)
+		return readErr
+	})
+	return data, err
+}
+
+// ResolveProjectPath validates and normalizes a project path inside the agent's execution environment.
+func (a *Agents) ResolveProjectPath(ctx context.Context, agentID, raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", nil
+	}
+	var resolved string
+	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
+		home, homeErr := h.Home(ctx)
+		if homeErr != nil {
+			home = ""
+		}
+		env, envErr := h.Env(ctx, h.Workspace(), nil)
+		if envErr != nil {
+			return envErr
+		}
+		var err error
+		resolved, err = execenv.ResolveProjectPath(ctx, env, home, raw)
+		return err
+	})
+	return resolved, err
+}
+
+// FilterProjectPaths keeps up to limit existing directory paths from paths inside the agent's environment.
+func (a *Agents) FilterProjectPaths(ctx context.Context, agentID string, paths []string, limit int) ([]string, error) {
+	if len(paths) == 0 || limit <= 0 {
+		return []string{}, nil
+	}
+	var existing []string
+	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
+		home, _ := h.Home(ctx)
+		env, envErr := h.Env(ctx, h.Workspace(), nil)
+		if envErr != nil {
+			return envErr
+		}
+		for _, p := range paths {
+			if _, resErr := execenv.ResolveProjectPath(ctx, env, home, p); resErr == nil {
+				existing = append(existing, p)
+				if len(existing) >= limit {
+					break
+				}
+			}
+		}
+		return nil
+	})
+	if existing == nil {
+		existing = []string{}
+	}
+	return existing, err
+}
+
+// ListDirectories lists browsable directories for the agent's execution environment.
+func (a *Agents) ListDirectories(ctx context.Context, agentID string, path *string) (execenv.DirectoryListing, error) {
+	var listing execenv.DirectoryListing
+	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
+		home, homeErr := h.Home(ctx)
+		if homeErr != nil || home == "" {
+			return fmt.Errorf("%w: home directory is unavailable", execenv.ErrInvalidPath)
+		}
+		env, envErr := h.Env(ctx, h.Workspace(), nil)
+		if envErr != nil {
+			return envErr
+		}
+		var listErr error
+		listing, listErr = execenv.ListDirectories(ctx, env, home, path)
+		return listErr
+	})
+	return listing, err
+}
+
+// ExecEnv opens an ExecutionEnv for background or ad-hoc execution in the agent's environment.
+// Callers must invoke release (when non-nil) once finished.
+func (a *Agents) ExecEnv(ctx context.Context, agentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error) {
+	if !agentIDPattern.MatchString(agentID) {
+		return nil, "", "", nil, ErrInvalidInput
+	}
+	if err := a.begin(); err != nil {
+		return nil, "", "", nil, err
+	}
+	defer a.end()
+	if h := a.execHandle(agentID); h != nil {
+		env, err := h.Env(ctx, cwd, extraEnv)
+		if err != nil {
+			return nil, "", "", nil, err
+		}
+		return env, h.Workspace(), h.Kind(), func() {}, nil
+	}
+	h, err := a.config.ExecEnv.Open(ctx, agentID)
+	if err != nil {
+		return nil, "", "", nil, err
+	}
+	env, err := h.Env(ctx, cwd, extraEnv)
+	if err != nil {
+		_ = h.Close(context.WithoutCancel(ctx))
+		return nil, "", "", nil, err
+	}
+	closeCtx := context.WithoutCancel(ctx)
+	return env, h.Workspace(), h.Kind(), func() { _ = h.Close(closeCtx) }, nil
 }
 
 // SetOnePassword changes the 1Password credentials of tools. Open agents become stale and
@@ -1031,7 +1205,12 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	if !agentIDPattern.MatchString(agentID) {
 		return ExtensionInfo{}, ErrInvalidInput
 	}
-	info, err := a.files(agentID).Info(ctx)
+	var info ExtensionInfo
+	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
+		var infoErr error
+		info, infoErr = a.filesWithHandle(agentID, h).Info(ctx)
+		return infoErr
+	})
 	if err != nil {
 		return info, err
 	}
@@ -1090,7 +1269,7 @@ func (a *Agents) Reload(ctx context.Context, agentID string) error {
 	a.mu.Unlock()
 	if old != nil {
 		cleanup := context.WithoutCancel(openCtx)
-		if err := errors.Join(old.harness.Close(cleanup), old.loaded.Close(cleanup)); err != nil {
+		if err := errors.Join(old.harness.Close(cleanup), old.closeExtras(cleanup)); err != nil {
 			a.finishOpening(agentID, opening)
 			return err
 		}

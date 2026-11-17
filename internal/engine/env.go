@@ -25,12 +25,12 @@ func bashDefaultTimeout(raw any) (any, error) {
 	return input, nil
 }
 
-func codingTools(environment map[string]string) *durable.Extension {
+func codingTools(environment map[string]string, inheritEnv bool) *durable.Extension {
 	extension := tools.CreateCodingTools(nil)
 	for i, tool := range extension.Tools {
 		if tool.Name == "bash" {
 			bash := tools.CreateBashTool(&tools.BashToolOptions{Prepare: func(_ context.Context, execution *tools.BashExecution, _ durable.ToolExecutionApi) error {
-				execution.InheritEnv = false
+				execution.InheritEnv = inheritEnv
 				execution.Env = maps.Clone(environment)
 				return nil
 			}})

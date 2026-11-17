@@ -2,25 +2,26 @@ package chat
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/recally-io/dex/internal/execenv"
 )
 
-type DirectoryEntry struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-	Git  bool   `json:"git"`
-}
+type DirectoryEntry = execenv.DirectoryEntry
 
-type DirectoryListing struct {
-	Path      string           `json:"path"`
-	Parent    string           `json:"parent"`
-	Home      string           `json:"home"`
-	Entries   []DirectoryEntry `json:"entries"`
-	Truncated bool             `json:"truncated"`
+type DirectoryListing = execenv.DirectoryListing
+
+// ListDirectories exposes names and paths in the selected agent's execution environment.
+func (s *Service) ListDirectories(ctx context.Context, agentID string, path *string) (DirectoryListing, error) {
+	if s.engine != nil {
+		return s.engine.ListDirectories(ctx, agentID, path)
+	}
+	return ListDirectories(path)
 }
 
 // ListDirectories exposes names and paths, with the same validation as project changes.

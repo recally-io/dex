@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,7 +30,9 @@ import (
 	"time"
 	"uuid"
 
+	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/execenv"
 )
 
 // Wake modes.
@@ -133,8 +136,40 @@ type StartParams struct {
 	DefaultCwd string
 	Label      string
 	Env        map[string]string
+	InheritEnv bool
+	EnvKind    execenv.Kind
 	// OutputDir holds the output file.
 	OutputDir string
+}
+
+// ExecEnvOpener acquires an execution environment for a non-local background command.
+type ExecEnvOpener func(ctx context.Context, agentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error)
+
+// OutputHooks receive live command output chunks and events from a Runner.
+type OutputHooks struct {
+	OnStdoutLine func(line string)
+	OnSizeLimit  func()
+}
+
+// ProcessResult is the outcome and bounded tail output of a completed background process.
+type ProcessResult struct {
+	ExitCode int
+	Tail     string
+}
+
+// RunningProcess controls one launched background command.
+type RunningProcess interface {
+	PID() int64
+	Wait() ProcessResult
+	Terminate(reason string, grace time.Duration)
+	Abandon()
+}
+
+// Runner starts and supervises background commands inside a local or remote execution environment.
+type Runner interface {
+	ValidateDir(ctx context.Context, p StartParams, cwd string) error
+	PrepareOutput(ctx context.Context, p StartParams, id string) (string, error)
+	Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks OutputHooks) (RunningProcess, error)
 }
 
 // Manager owns the processes of background commands.
@@ -148,14 +183,22 @@ type Manager struct {
 
 	wg sync.WaitGroup // supervisors and delayed kills
 
-	mu     sync.Mutex // starts, so the cap and the call key checks are atomic
-	closed bool
-	procs  map[string]*proc
+	mu        sync.Mutex // starts, so the cap and the call key checks are atomic
+	closed    bool
+	procs     map[string]*proc
+	envOpener ExecEnvOpener
 }
 
 // New returns a manager. changed runs after a wake-up is stored and may be nil.
 func New(db *sql.DB, now func() time.Time, limits Limits, changed func(conversationID int64)) *Manager {
 	return &Manager{db: db, q: sqlc.New(db), now: now, limits: limits.withDefaults(), changed: changed, procs: make(map[string]*proc)}
+}
+
+// ConfigureEnvOpener installs the execution environment opener used for non-local agents.
+func (m *Manager) ConfigureEnvOpener(opener ExecEnvOpener) {
+	m.mu.Lock()
+	m.envOpener = opener
+	m.mu.Unlock()
 }
 
 // Recover marks every starting and running command unknown. Call it once at start, before any
@@ -185,19 +228,12 @@ func (m *Manager) Close() {
 
 type proc struct {
 	row  sqlc.BackgroundCommand
-	cmd  *exec.Cmd
-	pipe *os.File // read end of stdout, for a lines command
+	run  RunningProcess
+	done chan struct{} // closed when the final state is stored
 
-	exited chan struct{} // closed when the leader is reaped
-	done   chan struct{} // closed when the final state is stored
-
-	// mu guards the fields below. sweeping is set once supervise owns the group: from then on terminate
-	// sends no signal, so a late signal cannot reach a group that dex already ended.
-	mu          sync.Mutex
-	reason      string
-	terminating bool
-	sweeping    bool
-	termAt      time.Time // when terminate sent the first SIGTERM
+	// mu guards reason so the first termination reason wins until the final state is stored.
+	mu     sync.Mutex
+	reason string
 
 	// Lines state. eventMu orders wake-ups.
 	eventMu      sync.Mutex
@@ -208,6 +244,16 @@ type proc struct {
 	sent         int
 	windowAt     time.Time
 	windowN      int
+}
+
+func (m *Manager) runnerFor(kind execenv.Kind, opener ExecEnvOpener) (Runner, error) {
+	if kind == "" || kind == execenv.KindLocal {
+		return &localRunner{limits: m.limits, wg: &m.wg}, nil
+	}
+	if opener == nil {
+		return nil, fmt.Errorf("%w: remote background runner is unavailable", ErrInvalid)
+	}
+	return NewEnvRunner(opener, m.limits), nil
 }
 
 // Start runs a command in the background and returns its row. The row exists before the process:
@@ -233,11 +279,19 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 		p.Timeout = cmp.Or(p.Timeout, m.limits.ExitTimeout)
 	}
 	cwd := p.Cwd
-	if !filepath.IsAbs(cwd) {
-		cwd = filepath.Join(p.DefaultCwd, cwd)
+	if !execenv.IsAbsPath(cwd) {
+		cwd = execenv.JoinTargetPath(p.DefaultCwd, cwd)
 	}
-	if info, err := os.Stat(cwd); err != nil || !info.IsDir() {
-		return sqlc.BackgroundCommand{}, fmt.Errorf("%w: %s is not a directory", ErrInvalid, cwd)
+
+	m.mu.Lock()
+	opener := m.envOpener
+	m.mu.Unlock()
+	runner, err := m.runnerFor(p.EnvKind, opener)
+	if err != nil {
+		return sqlc.BackgroundCommand{}, err
+	}
+	if err := runner.ValidateDir(ctx, p, cwd); err != nil {
+		return sqlc.BackgroundCommand{}, err
 	}
 
 	m.mu.Lock()
@@ -259,10 +313,10 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 	}
 
 	id := uuid.NewV7().String()
-	if err := os.MkdirAll(p.OutputDir, 0o700); err != nil {
+	output, err := runner.PrepareOutput(ctx, p, id)
+	if err != nil {
 		return sqlc.BackgroundCommand{}, err
 	}
-	output := filepath.Join(p.OutputDir, id+".log")
 	label := cmp.Or(strings.TrimSpace(p.Label), cut(p.Command, 60))
 	timeoutMs := sql.NullInt64{}
 	if p.Timeout > 0 {
@@ -278,7 +332,7 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 	if created == 0 {
 		return sqlc.BackgroundCommand{}, fmt.Errorf("%w: the call key is in use", ErrInvalid)
 	}
-	started, err := m.launch(ctx, p, cwd, output)
+	started, err := m.launch(ctx, runner, id, p, cwd, output)
 	if err != nil {
 		// The command never ran, so no row stays and a replayed call can try again.
 		if derr := m.q.DeleteBackgroundCommand(context.WithoutCancel(ctx), id); derr != nil {
@@ -302,7 +356,7 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 }
 
 func (m *Manager) markRunning(ctx context.Context, id string, started *proc) (sqlc.BackgroundCommand, error) {
-	pid := int64(started.cmd.Process.Pid)
+	pid := started.run.PID()
 	if _, err := m.q.MarkBackgroundCommandRunning(ctx, sqlc.MarkBackgroundCommandRunningParams{ID: id, Pid: pid, Pgid: pid, StartedAt: m.now().UnixMilli()}); err != nil {
 		return sqlc.BackgroundCommand{}, err
 	}
@@ -312,13 +366,10 @@ func (m *Manager) markRunning(ctx context.Context, id string, started *proc) (sq
 // abandon ends a process that no supervisor follows, because the row could not be stored as running.
 // The row stays with the state stopped, so the replay of the call finds it.
 func (m *Manager) abandon(ctx context.Context, started *proc, id string) {
-	signal(started, syscall.SIGKILL)
-	<-started.exited
-	if started.pipe != nil {
-		_ = started.pipe.Close()
-	}
+	started.run.Abandon()
+	res := started.run.Wait()
 	_, err := m.q.FinishBackgroundCommand(ctx, sqlc.FinishBackgroundCommandParams{
-		ID: id, State: StateStopped, ExitStatus: sql.NullInt64{Int64: int64(exitStatus(started.cmd.ProcessState)), Valid: true}, Reason: reasonStartFailed, EndedAt: sql.NullInt64{Int64: m.now().UnixMilli(), Valid: true},
+		ID: id, State: StateStopped, ExitStatus: sql.NullInt64{Int64: int64(res.ExitCode), Valid: true}, Reason: reasonStartFailed, EndedAt: sql.NullInt64{Int64: m.now().UnixMilli(), Valid: true},
 	})
 	if err != nil {
 		// The row stays in state starting, and the next start of dex marks it unknown.
@@ -326,53 +377,16 @@ func (m *Manager) abandon(ctx context.Context, started *proc, id string) {
 	}
 }
 
-// launch starts the process. A lines command writes stdout to a pipe that dex reads. Every other
-// stream goes straight to the output file, so the process does not depend on dex for its output.
-func (m *Manager) launch(ctx context.Context, p StartParams, cwd, output string) (*proc, error) {
-	file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // The path is under the agent data directory.
+func (m *Manager) launch(ctx context.Context, runner Runner, id string, p StartParams, cwd, output string) (*proc, error) {
+	started := &proc{done: make(chan struct{})}
+	run, err := runner.Start(ctx, p, id, cwd, output, OutputHooks{
+		OnStdoutLine: func(line string) { m.event(started, line) }, //nolint:contextcheck // line batching outlives the start tool call
+		OnSizeLimit:  func() { m.terminate(started, reasonOutputLimit) },
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
-	shell := "sh"
-	if path, err := exec.LookPath("bash"); err == nil {
-		shell = path
-	}
-	// The process outlives the start call, so the context must not cancel it.
-	cmd := exec.CommandContext(context.WithoutCancel(ctx), shell, "-c", p.Command) //nolint:gosec // Running the command of the model is the purpose of the tool.
-	cmd.Dir = cwd
-	cmd.Env = make([]string, 0, len(p.Env))
-	for k, v := range p.Env {
-		cmd.Env = append(cmd.Env, k+"="+v)
-	}
-	// A new session makes the shell the leader of its own process group, so a stop reaches
-	// everything that the command started.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	cmd.Stderr = file
-	started := &proc{cmd: cmd, exited: make(chan struct{}), done: make(chan struct{})}
-	var write *os.File
-	if p.Wake == WakeLines {
-		if started.pipe, write, err = os.Pipe(); err != nil {
-			return nil, err
-		}
-		cmd.Stdout = write
-	} else {
-		cmd.Stdout = file
-	}
-	err = cmd.Start()
-	if write != nil {
-		_ = write.Close()
-	}
-	if err != nil {
-		if started.pipe != nil {
-			_ = started.pipe.Close()
-		}
-		return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
-	}
-	go func() {
-		_ = cmd.Wait()
-		close(started.exited)
-	}()
+	started.run = run
 	return started, nil
 }
 
@@ -382,42 +396,14 @@ func (m *Manager) supervise(p *proc, timeout time.Duration) {
 	if timeout > 0 {
 		timer = time.AfterFunc(timeout, func() { m.terminate(p, reasonTimeout) })
 	}
-	pumped := make(chan struct{})
-	if p.pipe != nil {
-		go func() { defer close(pumped); m.pump(p) }()
-	} else {
-		close(pumped)
-	}
-	poll := time.NewTicker(sizePoll)
-	defer poll.Stop()
-wait:
-	for {
-		select {
-		case <-p.exited:
-			break wait
-		case <-poll.C:
-			if info, err := os.Stat(p.row.OutputPath); err == nil && info.Size() > m.limits.OutputBytes {
-				m.terminate(p, reasonOutputLimit)
-			}
-		}
-	}
+	res := p.run.Wait()
 	if timer != nil {
 		timer.Stop()
-	}
-	// The command owns its group. Members that outlive the leader end now, so no process stays
-	// that no tool can stop. After this the group is gone and supervise sends no more signals.
-	m.sweep(p)
-	if p.pipe != nil {
-		// A process that left the group can hold the pipe open. The pipe holds what the command wrote
-		// before it ended, so a short deadline loses nothing.
-		_ = p.pipe.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		<-pumped
-		_ = p.pipe.Close()
 	}
 	p.mu.Lock()
 	reason := p.reason
 	p.mu.Unlock()
-	state, status := StateExited, exitStatus(p.cmd.ProcessState)
+	state := StateExited
 	switch reason {
 	case "":
 	case reasonTimeout:
@@ -429,7 +415,7 @@ wait:
 	if reason != reasonStop {
 		p.flush(m)
 	}
-	m.finish(p, state, status, reason)
+	m.finish(p, state, res.ExitCode, reason, res.Tail)
 	m.mu.Lock()
 	delete(m.procs, p.row.ID)
 	m.mu.Unlock()
@@ -472,11 +458,11 @@ func (m *Manager) storeEnd(ctx context.Context, p *proc, state string, status in
 
 // finish stores the final state and the end wake-up in one transaction, so a crash cannot leave
 // an ended row without its wake-up.
-func (m *Manager) finish(p *proc, state string, status int, reason string) {
+func (m *Manager) finish(p *proc, state string, status int, reason, tailText string) {
 	ctx := context.Background()
 	var wake *sqlc.CreateBackgroundWakeParams
 	if reason != reasonStop {
-		params, err := m.wakeParams(p, "end", endBody(p.row, state, status, reason, m.limits))
+		params, err := m.wakeParams(p, "end", endBody(p.row, state, status, reason, m.limits, tailText))
 		if err != nil {
 			slog.Error("encode background end wake-up", "id", p.row.ID, "err", err)
 		} else {
@@ -498,52 +484,7 @@ func (m *Manager) finish(p *proc, state string, status int, reason string) {
 	}
 }
 
-// sweep ends the process group after its leader exited: SIGTERM, then SIGKILL after the grace
-// period. A group ID stays in use while a member runs, so a signal cannot reach an unrelated
-// process until the last member is gone. sweep stops signalling when the group is empty.
-//
-// The leader is reaped, so its PID can be reused once the group is empty. A signal that arrives in
-// that window could hit another group. dex accepts it: closing it needs delayed reaping.
-func (m *Manager) sweep(p *proc) {
-	p.mu.Lock()
-	p.sweeping = true
-	termAt := p.termAt
-	p.mu.Unlock()
-	if !groupAlive(p) {
-		return
-	}
-	if termAt.IsZero() {
-		signal(p, syscall.SIGTERM)
-		termAt = time.Now()
-	}
-	// A stop that sent SIGTERM before the leader ended has used part of the grace already.
-	if waitGroupGone(p, time.Until(termAt.Add(m.limits.Grace))) {
-		return
-	}
-	signal(p, syscall.SIGKILL)
-	if !waitGroupGone(p, time.Second) {
-		slog.Warn("background process group survives SIGKILL", "id", p.row.ID, "pgid", p.cmd.Process.Pid)
-	}
-}
-
-func groupAlive(p *proc) bool {
-	return !errors.Is(syscall.Kill(-p.cmd.Process.Pid, 0), syscall.ESRCH)
-}
-
-func waitGroupGone(p *proc, limit time.Duration) bool {
-	deadline := time.Now().Add(limit)
-	for groupAlive(p) {
-		if !time.Now().Before(deadline) {
-			return false
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	return true
-}
-
-// terminate sends SIGTERM to the process group, and SIGKILL after the grace period unless supervise
-// took the group first: once the leader ended, supervise sweeps the group and terminate sends no
-// signal. The first reason wins, until the final state is stored.
+// terminate requests shutdown of a running command. The first reason wins until the final state is stored.
 func (m *Manager) terminate(p *proc, reason string) {
 	select {
 	case <-p.done:
@@ -551,31 +492,11 @@ func (m *Manager) terminate(p *proc, reason string) {
 	default:
 	}
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if p.reason == "" {
 		p.reason = reason
 	}
-	if p.terminating || p.sweeping {
-		return
-	}
-	p.terminating = true
-	p.termAt = time.Now()
-	signal(p, syscall.SIGTERM)
-	m.wg.Go(func() {
-		select {
-		case <-p.exited:
-		case <-time.After(m.limits.Grace):
-			p.mu.Lock()
-			defer p.mu.Unlock()
-			if !p.sweeping {
-				signal(p, syscall.SIGKILL)
-			}
-		}
-	})
-}
-
-func signal(p *proc, sig syscall.Signal) {
-	_ = syscall.Kill(-p.cmd.Process.Pid, sig)
+	p.mu.Unlock()
+	p.run.Terminate(reason, m.limits.Grace)
 }
 
 // Stop ends the process group of one command of a session and waits until the state is stored.
@@ -657,17 +578,217 @@ func (m *Manager) owned(ctx context.Context, conversationID int64, id string) (s
 	return row, err
 }
 
+// localRunner spawns OS child processes directly on the control host.
+type localRunner struct {
+	limits Limits
+	wg     *sync.WaitGroup
+}
+
+func (r *localRunner) ValidateDir(_ context.Context, _ StartParams, cwd string) error {
+	if info, err := os.Stat(cwd); err != nil || !info.IsDir() {
+		return fmt.Errorf("%w: %s is not a directory", ErrInvalid, cwd)
+	}
+	return nil
+}
+
+func (r *localRunner) PrepareOutput(_ context.Context, p StartParams, id string) (string, error) {
+	if err := os.MkdirAll(p.OutputDir, 0o700); err != nil {
+		return "", err
+	}
+	return filepath.Join(p.OutputDir, id+".log"), nil
+}
+
+func (r *localRunner) Start(ctx context.Context, p StartParams, id, cwd, output string, hooks OutputHooks) (RunningProcess, error) {
+	file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // The path is under the agent data directory.
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+	shell := "sh"
+	if shellPath, err := exec.LookPath("bash"); err == nil {
+		shell = shellPath
+	}
+	// The process outlives the start call, so the context must not cancel it.
+	cmd := exec.CommandContext(context.WithoutCancel(ctx), shell, "-c", p.Command) //nolint:gosec // Running the command of the model is the purpose of the tool.
+	cmd.Dir = cwd
+	cmd.Env = make([]string, 0, len(p.Env))
+	for k, v := range p.Env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	// A new session makes the shell the leader of its own process group, so a stop reaches
+	// everything that the command started.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stderr = file
+	lp := &localProc{
+		id:         id,
+		outputPath: output,
+		cmd:        cmd,
+		limits:     r.limits,
+		wg:         r.wg,
+		hooks:      hooks,
+		exited:     make(chan struct{}),
+	}
+	var write *os.File
+	if p.Wake == WakeLines {
+		if lp.pipe, write, err = os.Pipe(); err != nil {
+			return nil, err
+		}
+		cmd.Stdout = write
+	} else {
+		cmd.Stdout = file
+	}
+	err = cmd.Start()
+	if write != nil {
+		_ = write.Close()
+	}
+	if err != nil {
+		if lp.pipe != nil {
+			_ = lp.pipe.Close()
+		}
+		return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	go func() {
+		_ = cmd.Wait()
+		close(lp.exited)
+	}()
+	return lp, nil
+}
+
+type localProc struct {
+	id         string
+	outputPath string
+	cmd        *exec.Cmd
+	pipe       *os.File
+	limits     Limits
+	wg         *sync.WaitGroup
+	hooks      OutputHooks
+	exited     chan struct{}
+
+	mu          sync.Mutex
+	terminating bool
+	sweeping    bool
+	termAt      time.Time
+}
+
+func (p *localProc) PID() int64 {
+	return int64(p.cmd.Process.Pid)
+}
+
+func (p *localProc) Wait() ProcessResult {
+	pumped := make(chan struct{})
+	if p.pipe != nil {
+		go func() { defer close(pumped); p.pump() }()
+	} else {
+		close(pumped)
+	}
+	poll := time.NewTicker(sizePoll)
+	defer poll.Stop()
+wait:
+	for {
+		select {
+		case <-p.exited:
+			break wait
+		case <-poll.C:
+			if info, err := os.Stat(p.outputPath); err == nil && info.Size() > p.limits.OutputBytes {
+				if p.hooks.OnSizeLimit != nil {
+					p.hooks.OnSizeLimit()
+				}
+			}
+		}
+	}
+	// The command owns its group. Members that outlive the leader end now, so no process stays
+	// that no tool can stop. After this the group is gone and Terminate sends no more signals.
+	p.sweep()
+	if p.pipe != nil {
+		// A process that left the group can hold the pipe open. The pipe holds what the command wrote
+		// before it ended, so a short deadline loses nothing.
+		_ = p.pipe.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		<-pumped
+		_ = p.pipe.Close()
+	}
+	return ProcessResult{
+		ExitCode: exitStatus(p.cmd.ProcessState),
+		Tail:     tail(p.outputPath),
+	}
+}
+
+func (p *localProc) Terminate(_ string, grace time.Duration) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.terminating || p.sweeping {
+		return
+	}
+	p.terminating = true
+	p.termAt = time.Now()
+	p.signal(syscall.SIGTERM)
+	p.wg.Go(func() {
+		select {
+		case <-p.exited:
+		case <-time.After(grace):
+			p.mu.Lock()
+			defer p.mu.Unlock()
+			if !p.sweeping {
+				p.signal(syscall.SIGKILL)
+			}
+		}
+	})
+}
+
+func (p *localProc) Abandon() {
+	p.signal(syscall.SIGKILL)
+}
+
+func (p *localProc) signal(sig syscall.Signal) {
+	_ = syscall.Kill(-p.cmd.Process.Pid, sig)
+}
+
+func (p *localProc) groupAlive() bool {
+	return !errors.Is(syscall.Kill(-p.cmd.Process.Pid, 0), syscall.ESRCH)
+}
+
+func (p *localProc) sweep() {
+	p.mu.Lock()
+	p.sweeping = true
+	termAt := p.termAt
+	p.mu.Unlock()
+	if !p.groupAlive() {
+		return
+	}
+	if termAt.IsZero() {
+		p.signal(syscall.SIGTERM)
+		termAt = time.Now()
+	}
+	if p.waitGroupGone(time.Until(termAt.Add(p.limits.Grace))) {
+		return
+	}
+	p.signal(syscall.SIGKILL)
+	if !p.waitGroupGone(time.Second) {
+		slog.Warn("background process group survives SIGKILL", "id", p.id, "pgid", p.cmd.Process.Pid)
+	}
+}
+
+func (p *localProc) waitGroupGone(limit time.Duration) bool {
+	deadline := time.Now().Add(limit)
+	for p.groupAlive() {
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return true
+}
+
 // pump reads the stdout of a lines command. It copies every byte to the output file and turns
 // each line into an event. It keeps reading after an error, so the process never blocks on a full pipe.
-func (m *Manager) pump(p *proc) {
-	file, err := os.OpenFile(p.row.OutputPath, os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // The path is under the agent data directory.
+func (p *localProc) pump() {
+	file, err := os.OpenFile(p.outputPath, os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // The path is under the agent data directory.
 	if err != nil {
-		slog.Error("open background output", "id", p.row.ID, "err", err)
+		slog.Error("open background output", "id", p.id, "err", err)
 		file = nil
 	} else {
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 	}
-	lines := lineSplitter{emit: func(line string) { m.event(p, line) }}
+	lines := lineSplitter{emit: p.hooks.OnStdoutLine}
 	buf := make([]byte, 32<<10)
 	writeFailed := false
 	for {
@@ -676,7 +797,7 @@ func (m *Manager) pump(p *proc) {
 			if file != nil && !writeFailed {
 				if _, werr := file.Write(buf[:n]); werr != nil {
 					writeFailed = true
-					slog.Error("write background output", "id", p.row.ID, "err", werr)
+					slog.Error("write background output", "id", p.id, "err", werr)
 				}
 			}
 			lines.feed(buf[:n])
@@ -684,12 +805,202 @@ func (m *Manager) pump(p *proc) {
 		if err != nil {
 			// The end of the stream, a deadline after the leader ended, and a closed pipe are normal ends.
 			if !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrDeadlineExceeded) && !errors.Is(err, os.ErrClosed) {
-				slog.Error("read background output", "id", p.row.ID, "err", err)
+				slog.Error("read background output", "id", p.id, "err", err)
 			}
 			lines.end()
 			return
 		}
 	}
+}
+
+// EnvRunner executes background commands over an agent's durableenv.ExecutionEnv.
+type EnvRunner struct {
+	openEnv ExecEnvOpener
+	limits  Limits
+}
+
+// NewEnvRunner creates a Runner that executes commands via durableenv.ExecutionEnv.
+func NewEnvRunner(openEnv ExecEnvOpener, limits Limits) *EnvRunner {
+	return &EnvRunner{openEnv: openEnv, limits: limits.withDefaults()}
+}
+
+func (r *EnvRunner) ValidateDir(ctx context.Context, p StartParams, cwd string) error {
+	execEnv, _, _, release, err := r.openEnv(ctx, p.AgentID, cwd, p.Env)
+	if err != nil {
+		return err
+	}
+	if release != nil {
+		defer release()
+	}
+	info, err := execenv.StatFollow(ctx, execEnv, cwd)
+	if err != nil || info.Kind != durableenv.FileKindDirectory {
+		return fmt.Errorf("%w: %s is not a directory", ErrInvalid, cwd)
+	}
+	return nil
+}
+
+func (r *EnvRunner) PrepareOutput(ctx context.Context, p StartParams, id string) (string, error) {
+	execEnv, workspace, _, release, err := r.openEnv(ctx, p.AgentID, p.DefaultCwd, p.Env)
+	if err != nil {
+		return "", err
+	}
+	if release != nil {
+		defer release()
+	}
+	outDir := cmp.Or(p.OutputDir, execenv.JoinTargetPath(workspace, ".dex", "background"))
+	if err := execEnv.CreateDir(ctx, outDir, &durableenv.CreateDirOptions{Recursive: new(true)}); err != nil {
+		return "", err
+	}
+	outputPath := execenv.JoinTargetPath(outDir, id+".log")
+	if err := execEnv.WriteFile(ctx, outputPath, ""); err != nil {
+		return "", err
+	}
+	return outputPath, nil
+}
+
+func (r *EnvRunner) Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks OutputHooks) (RunningProcess, error) {
+	baseCtx := context.WithoutCancel(ctx)
+	execEnv, _, _, release, err := r.openEnv(baseCtx, p.AgentID, cwd, p.Env)
+	if err != nil {
+		return nil, err
+	}
+	execCtx, cancel := context.WithCancel(baseCtx) //nolint:gosec // cancel is stored on ep and invoked in Terminate/Abandon; execution intentionally outlives Start call
+	ep := &envProc{
+		id:         id,
+		execEnv:    execEnv,
+		cwd:        cwd,
+		outputPath: outputPath,
+		command:    p.Command,
+		env:        maps.Clone(p.Env),
+		inheritEnv: p.InheritEnv,
+		wake:       p.Wake,
+		limits:     r.limits,
+		hooks:      hooks,
+		cancel:     cancel,
+		release:    release,
+		ready:      make(chan struct{}),
+		done:       make(chan struct{}),
+		lines:      lineSplitter{emit: hooks.OnStdoutLine},
+	}
+	go ep.run(execCtx)
+	return ep, nil
+}
+
+type envProc struct {
+	id         string
+	execEnv    durableenv.ExecutionEnv
+	cwd        string
+	outputPath string
+	command    string
+	env        map[string]string
+	inheritEnv bool
+	wake       string
+	limits     Limits
+	hooks      OutputHooks
+	cancel     context.CancelFunc
+	release    func()
+	readyOnce  sync.Once
+	ready      chan struct{}
+	done       chan struct{}
+
+	outMu        sync.Mutex
+	totalBytes   int64
+	tailFallback []byte
+	lines        lineSplitter
+
+	result ProcessResult
+}
+
+func (p *envProc) PID() int64 { return 0 }
+
+func (p *envProc) activate() {
+	p.readyOnce.Do(func() { close(p.ready) })
+}
+
+func (p *envProc) run(execCtx context.Context) {
+	defer close(p.done)
+	defer p.cancel()
+	defer func() {
+		if p.release != nil {
+			p.release()
+		}
+	}()
+	<-p.ready
+	if execCtx.Err() != nil {
+		p.result = ProcessResult{ExitCode: 143}
+		return
+	}
+	script := `( eval "$1" ) 2>&1 | tee -a "$2"; exit "${PIPESTATUS[0]}"`
+	if p.wake == WakeLines {
+		script = `( eval "$1" ) 2>>"$2" | tee -a "$2"; exit "${PIPESTATUS[0]}"`
+	}
+	res, err := p.execEnv.Exec(execCtx, []string{"/bin/bash", "-c", script, "dex-bg", p.command, p.outputPath}, &durableenv.ShellExecOptions{
+		Cwd:        p.cwd,
+		Env:        p.env,
+		InheritEnv: new(p.inheritEnv),
+		OnOutput:   p.onOutput,
+	})
+	p.outMu.Lock()
+	if p.wake == WakeLines {
+		p.lines.end()
+	}
+	total := p.totalBytes
+	fallback := bytes.Clone(p.tailFallback)
+	p.outMu.Unlock()
+
+	status := res.ExitCode
+	if err != nil {
+		if ee, ok := errors.AsType[*durableenv.ExecutionError](err); ok && ee.Code == durableenv.ExecutionErrorAborted {
+			status = 143
+		} else {
+			if status == 0 {
+				status = 1
+			}
+			if total == 0 {
+				fallback = append(fallback, (err.Error() + "\n")...)
+			}
+		}
+	}
+	var tailText string
+	if len(fallback) > 0 {
+		tailText = formatTailBytes(fallback, total > int64(len(fallback)))
+	}
+	p.result = ProcessResult{ExitCode: status, Tail: tailText}
+}
+
+func (p *envProc) onOutput(_ context.Context, text string, info durableenv.ShellOutputInfo) {
+	if text == "" {
+		return
+	}
+	p.outMu.Lock()
+	defer p.outMu.Unlock()
+	p.totalBytes += int64(len(text))
+	p.tailFallback = append(p.tailFallback, text...)
+	maxKeep := max(tailBytes*2, 8192)
+	if len(p.tailFallback) > maxKeep {
+		p.tailFallback = bytes.Clone(p.tailFallback[len(p.tailFallback)-maxKeep:])
+	}
+	if p.limits.OutputBytes > 0 && p.totalBytes > p.limits.OutputBytes && p.hooks.OnSizeLimit != nil {
+		p.hooks.OnSizeLimit()
+	}
+	if p.wake == WakeLines && info.Stream == durableenv.ShellStdout {
+		p.lines.feed([]byte(text))
+	}
+}
+
+func (p *envProc) Wait() ProcessResult {
+	p.activate()
+	<-p.done
+	return p.result
+}
+
+func (p *envProc) Terminate(_ string, _ time.Duration) {
+	p.cancel()
+}
+
+func (p *envProc) Abandon() {
+	p.cancel()
+	p.activate()
 }
 
 // lineSplitter turns a byte stream into lines. A line over longestLine is cut, and the rest of it
@@ -832,7 +1143,7 @@ type result struct {
 	OutputFile string   `json:"outputFile"`
 }
 
-func endBody(row sqlc.BackgroundCommand, state string, status int, reason string, limits Limits) result {
+func endBody(row sqlc.BackgroundCommand, state string, status int, reason string, limits Limits, tailText string) result {
 	body := result{ID: row.ID, Label: row.Label, Event: state, ExitStatus: &status, OutputFile: row.OutputPath}
 	switch reason {
 	case reasonTimeout:
@@ -844,7 +1155,7 @@ func endBody(row sqlc.BackgroundCommand, state string, status int, reason string
 	case reasonShutdown:
 		body.Notice = "dex stopped the command because dex shut down. Start it again if the work is not finished."
 	}
-	body.Output = tail(row.OutputPath)
+	body.Output = tailText
 	return body
 }
 
@@ -868,7 +1179,7 @@ func tail(path string) string {
 	if err != nil {
 		return ""
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil {
 		return ""
@@ -878,8 +1189,12 @@ func tail(path string) string {
 	if _, err := file.ReadAt(data, start); err != nil && !errors.Is(err, io.EOF) {
 		return ""
 	}
+	return formatTailBytes(data, start > 0)
+}
+
+func formatTailBytes(data []byte, trimmedStart bool) string {
 	text := strings.TrimRight(string(data), "\n")
-	if start > 0 {
+	if trimmedStart {
 		// The first line is cut in the middle.
 		if _, rest, ok := strings.Cut(text, "\n"); ok {
 			text = rest
