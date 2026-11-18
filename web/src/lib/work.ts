@@ -1,25 +1,9 @@
 import { getWorkOptions } from "../api/generated/@tanstack/react-query.gen";
 import type { AgentActivity, Chat, InboxItem, Work } from "../api/generated/types.gen";
 
-export function automationNeedsYou(
-  id: string,
-  setup: boolean,
-  items: Pick<InboxItem, "automationId" | "outcome" | "dismissed">[],
-) {
-  return (
-    setup || items.some((item) => item.automationId === id && item.outcome === "failed" && !item.dismissed)
-  );
-}
-
 /** The question that waits for the user. An answered question is already on its way and does not count. */
-export function openQuestion(chat: Pick<Chat, "question">) {
+function openQuestion(chat: Pick<Chat, "question">) {
   return chat.question?.status === "open" ? chat.question : undefined;
-}
-
-export function boardBucket(chat: Pick<Chat, "busy" | "question">): "needs" | "working" | "idle" {
-  if (openQuestion(chat)) return "needs";
-
-  return chat.busy ? "working" : "idle";
 }
 
 export type BotStatus = "needs" | "working" | undefined;
@@ -45,24 +29,19 @@ export function botStatus(
   const sessions = work?.sessions.filter((item) => item.agentId === agentId) ?? [];
 
   if (
-    sessions.some((item) => boardBucket(item.chat) === "needs") ||
+    sessions.some((item) => openQuestion(item.chat)) ||
     work?.inbox.some((item) => item.agentId === agentId && item.outcome === "failed" && !item.dismissed) ||
     work?.automations.some((item) => item.agentId === agentId && item.setup)
   )
     return "needs";
 
-  if ((activity?.activeSessions ?? 0) > 0 || sessions.some((item) => boardBucket(item.chat) === "working"))
-    return "working";
+  if ((activity?.activeSessions ?? 0) > 0 || sessions.some((item) => item.chat.busy)) return "working";
 
   return undefined;
 }
 
-// Bot status reads no schedule, so the range is the smallest that the API accepts. One fixed range
-// gives the sidebar and the drawer button one shared query.
-const opened = Date.now();
-
 export const workOptions = () => ({
-  ...getWorkOptions({ query: { from: opened, to: opened + 1 } }),
+  ...getWorkOptions(),
   refetchInterval: 10_000,
 });
 

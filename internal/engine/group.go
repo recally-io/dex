@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -128,7 +129,7 @@ func openGroupResources(dir string) (*os.Root, error) {
 }
 
 func (a *Agents) openGroup(ctx context.Context, ref Ref) (_ *agentResources, resultErr error) {
-	if err := a.Catalog.DiscoveryReady(); err != nil {
+	if err := a.Catalog.discoveryReady(); err != nil {
 		return nil, err
 	}
 	dir, err := a.groupDirectory(ref)
@@ -426,4 +427,94 @@ func (a *Agents) groupAttachments(ref Ref, attachments []Attachment) error {
 		}
 	}
 	return nil
+}
+
+func (a *Agents) groupDeliveryTool(ref Ref, root *os.Root) *durable.ToolRegistration {
+	return &durable.ToolRegistration{Name: "group_deliver", Description: "Queue a file explicitly published in this bot/chat/topic audience for this source's Telegram reply. This cannot read private workspace or bot-wide artifacts. Queued is not remote confirmation.", Replay: durable.ReplaySafe, Parameters: map[string]any{"type": "object", "required": []string{"path"}, "additionalProperties": false, "properties": map[string]any{"path": map[string]any{"type": "string", "minLength": 1}}}, Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+		args, err := durable.FromJsonValue[struct {
+			Path string `json:"path"`
+		}](raw)
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		file, err := openGroupResource(root, args.Path)
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		source, err := taskSource(ctx, api)
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		caller := TaskContext{AgentID: ref.AgentID, Scope: ref.Scope, ConversationID: int64(api.ConversationId()), SourceRequestID: source, Key: fmt.Sprintf("%s/%s/%d", ref.AgentID, ref.Scope, api.TaskId())}
+		name := filepath.Base(args.Path)
+		if err := a.config.Tasks.DeliverGroupFile(ctx, caller, name, file); err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		result, err := json.Marshal(ArtifactInfo{Name: name, Size: info.Size(), ChannelDelivery: "queued"})
+		return durable.ToolExecutionResult{Output: []ai.ToolResultMessageContent{ai.TextContent{Text: string(result)}}}, err
+	}}
+}
+
+func (a *Agents) groupQuestionTool(ref Ref) *durable.ToolRegistration {
+	return &durable.ToolRegistration{Name: "group_question", Description: "Ask the initiating paired sender one public question with 2 to 4 options and end this turn. Call this tool alone. This cannot authorize owner actions, private resources or privileges.", Replay: durable.ReplaySafe, Parameters: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"question", "options"}, "properties": map[string]any{"question": map[string]any{"type": "string", "minLength": 1}, "options": map[string]any{"type": "array", "minItems": 2, "maxItems": 4, "items": map[string]any{"type": "string", "minLength": 1}}}}, Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+		args, err := durable.FromJsonValue[AskUserArgs](raw)
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		caller, err := turnEndingCall(ctx, api, ref.AgentID, "group_question")
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		caller.Scope = ref.Scope
+		caller.Key = fmt.Sprintf("%s/%s/%d", ref.AgentID, ref.Scope, api.TaskId())
+		question, err := a.config.Tasks.GroupQuestion(ctx, caller, args)
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		encoded, err := json.Marshal(question)
+		return durable.ToolExecutionResult{Output: []ai.ToolResultMessageContent{ai.TextContent{Text: string(encoded)}}, Control: &durable.ToolControl{Terminate: true}}, err
+	}}
+}
+
+// GroupSessionArgs exposes only parent-owned work in the current audience.
+type GroupSessionArgs struct {
+	Action  string `json:"action"`
+	ID      string `json:"id,omitempty"`
+	Title   string `json:"title,omitempty"`
+	Message string `json:"message,omitempty"`
+	Mode    string `json:"mode,omitempty"`
+}
+
+type GroupSessionResult struct {
+	Session  *SessionRef  `json:"session,omitempty"`
+	Sessions []SessionRef `json:"sessions,omitempty"`
+	Page     *SessionPage `json:"page,omitempty"`
+}
+
+func (a *Agents) groupSessionTool(ref Ref) *durable.ToolRegistration {
+	return &durable.ToolRegistration{Name: "group_session", Description: "Start, list, read, send to or stop a direct child of this conversation in the same bot/chat/topic audience. Children inherit group-only resources and the initiating sender's current authorization. No private sessions, cross-bot work, projects or model overrides. Children cannot delegate. Return published resource paths to the parent for Telegram delivery.", Replay: durable.ReplaySafe, Parameters: map[string]any{"type": "object", "required": []string{"action"}, "additionalProperties": false, "properties": map[string]any{
+		"action": map[string]any{"type": "string", "enum": []string{"start", "list", "read", "send", "stop"}},
+		"id":     map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "message": map[string]any{"type": "string"}, "mode": map[string]any{"type": "string", "enum": []string{"queue", "steer"}},
+	}}, Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+		args, err := durable.FromJsonValue[GroupSessionArgs](raw)
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		source, err := taskSource(ctx, api)
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		caller := TaskContext{AgentID: ref.AgentID, Scope: ref.Scope, ConversationID: int64(api.ConversationId()), SourceRequestID: source, Key: fmt.Sprintf("%s/%s/%d", ref.AgentID, ref.Scope, api.TaskId())}
+		result, err := a.config.Tasks.GroupSession(ctx, caller, args)
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		encoded, err := json.Marshal(result)
+		return durable.ToolExecutionResult{Output: []ai.ToolResultMessageContent{ai.TextContent{Text: string(encoded)}}}, err
+	}}
 }

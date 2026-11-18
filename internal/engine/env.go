@@ -1,31 +1,34 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"maps"
+	"time"
 
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/tools"
 )
 
-const defaultBashTimeoutSeconds = 120.0
-
 // bashDefaultTimeout leaves validation and process cancellation to the native bash tool.
-func bashDefaultTimeout(raw any) (any, error) {
-	input, err := durable.FromJsonValue[map[string]any](raw)
-	if err != nil {
-		return nil, err
+func bashDefaultTimeout(timeoutSeconds float64) func(any) (any, error) {
+	return func(raw any) (any, error) {
+		input, err := durable.FromJsonValue[map[string]any](raw)
+		if err != nil {
+			return nil, err
+		}
+		if input == nil {
+			return raw, nil
+		}
+		if input["timeout"] == nil {
+			input["timeout"] = timeoutSeconds
+		}
+		return input, nil
 	}
-	if input == nil {
-		return raw, nil
-	}
-	if input["timeout"] == nil {
-		input["timeout"] = defaultBashTimeoutSeconds
-	}
-	return input, nil
 }
 
-func codingTools(environment map[string]string, inheritEnv bool) *durable.Extension {
+func codingTools(environment map[string]string, inheritEnv bool, bashTimeout time.Duration) *durable.Extension {
+	timeoutSeconds := cmp.Or(bashTimeout, 120*time.Second).Seconds()
 	extension := tools.CreateCodingTools(nil)
 	for i, tool := range extension.Tools {
 		if tool.Name == "bash" {
@@ -40,7 +43,7 @@ func codingTools(environment map[string]string, inheritEnv bool) *durable.Extens
 					timeout["description"] = "Timeout in seconds. The default is 120 seconds."
 				}
 			}
-			bash.PrepareArguments = bashDefaultTimeout
+			bash.PrepareArguments = bashDefaultTimeout(timeoutSeconds)
 			extension.Tools[i] = bash
 		}
 	}

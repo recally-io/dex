@@ -8,52 +8,53 @@ import (
 )
 
 func TestUserSendsTelegramVoiceAudioVideoAnimationAndSticker(t *testing.T) {
-	for _, kind := range []struct{ field, label, name string }{
-		{"voice", "Voice", "voice.ogg"}, {"audio", "Audio", "music.mp3"}, {"video", "Video", "clip.mp4"},
-		{"video_note", "Video note", "circle.mp4"}, {"animation", "Animation", "animation.gif"}, {"sticker", "Sticker", "animated.tgs"},
-	} {
-		t.Run(kind.field, func(t *testing.T) {
-			t.Parallel()
-			// Given a media type that Telegram supplies as one file.
-			f := newFakeTelegram(t)
-			f.files[kind.name] = "opaque media bytes"
-			data := t.TempDir()
-			d := startTelegram(t, f, data, 42)
-			// When an authorized user sends it, the file and its type enter the native transcript.
-			f.mu.Lock()
-			f.updates = append(f.updates, map[string]any{"update_id": int64(1), "message": map[string]any{
-				"message_id": 1, "from": map[string]any{"id": 42}, "chat": map[string]any{"id": 42, "type": "private"}, "caption": "inspect",
-				kind.field: map[string]any{"file_id": kind.name, "file_name": kind.name, "duration": 3, "emoji": "🙂", "is_animated": true},
-			}})
-			f.mu.Unlock()
-			answer := f.next(t).Text
-			if !strings.Contains(answer, kind.label) {
-				t.Fatalf("media type lost: %q", answer)
-			}
-			if kind.field == "voice" && !strings.Contains(answer, "not configured") {
-				t.Fatalf("voice claimed transcription without a provider: %q", answer)
-			}
-			watch := d.watch(t, d.mainChat(t))
-			watch.until(t, "media in native input", func(tr *transcript) bool {
-				for _, item := range tr.items {
-					if item.Kind == "user" && len(item.Attachments) == 1 {
-						return true
-					}
-				}
-				return false
-			})
-			// Then the actual bytes remain readable through the bot-scoped upload path.
-			for _, item := range watch.tr.items {
-				if item.Kind != "user" || len(item.Attachments) != 1 {
-					continue
-				}
-				file := item.Attachments[0]
-				body, err := os.ReadFile(filepath.Join(data, "agents", "default", "workspace", file.Path))
-				if err != nil || string(body) != "opaque media bytes" {
-					t.Fatalf("media=%+v bytes=%q err=%v", file, body, err)
+	t.Parallel()
+	// Given all six Telegram media types sharing one bot session.
+	kinds := []struct{ field, label, name string }{
+		{"voice", "Voice", "voice.ogg"},
+		{"audio", "Audio", "music.mp3"},
+		{"video", "Video", "clip.mp4"},
+		{"video_note", "Video note", "circle.mp4"},
+		{"animation", "Animation", "animation.gif"},
+		{"sticker", "Sticker", "animated.tgs"},
+	}
+	f := newFakeTelegram(t)
+	for _, kind := range kinds {
+		f.files[kind.name] = "opaque media bytes"
+	}
+	data := t.TempDir()
+	d := startTelegram(t, f, data, 42)
+	watch := d.watch(t, d.mainChat(t))
+	for i, kind := range kinds {
+		id := int64(i + 1)
+		f.mu.Lock()
+		f.updates = append(f.updates, map[string]any{"update_id": id, "message": map[string]any{
+			"message_id": id, "from": map[string]any{"id": 42}, "chat": map[string]any{"id": 42, "type": "private"}, "caption": "inspect",
+			kind.field: map[string]any{"file_id": kind.name, "file_name": kind.name, "duration": 3, "emoji": "🙂", "is_animated": true},
+		}})
+		f.mu.Unlock()
+		answer := f.next(t).Text
+		if !strings.Contains(answer, kind.label) {
+			t.Fatalf("%s media type lost: %q", kind.field, answer)
+		}
+		if kind.field == "voice" && !strings.Contains(answer, "not configured") {
+			t.Fatalf("voice claimed transcription without a provider: %q", answer)
+		}
+		var userItem item
+		watch.until(t, kind.field+" media in native input", func(tr *transcript) bool {
+			seen := 0
+			for _, it := range tr.items {
+				if it.Kind == "user" && len(it.Attachments) == 1 {
+					seen++
+					userItem = it
 				}
 			}
+			return seen == i+1
 		})
+		body, err := os.ReadFile(filepath.Join(data, "agents", "default", "workspace", userItem.Attachments[0].Path))
+		if err != nil || string(body) != "opaque media bytes" {
+			t.Fatalf("%s media=%+v bytes=%q err=%v", kind.field, userItem.Attachments[0], body, err)
+		}
 	}
 }
 
@@ -111,5 +112,43 @@ func TestUserGetsTelegramGFMWithoutUnsupportedHTML(t *testing.T) {
 		if strings.Contains(got.Text, tag) {
 			t.Fatalf("unsupported Telegram HTML: %s", got.Text)
 		}
+	}
+}
+
+func TestUserTelegramStructuredMessagesAndForwardedCommand(t *testing.T) {
+	t.Parallel()
+	// Given non-file structured messages and a forwarded /clear sharing one Telegram session.
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, t.TempDir(), 42)
+	for i, input := range []struct {
+		kind, want string
+		value      any
+	}{
+		{"location", "latitude 1.5, longitude 2.5", map[string]any{"latitude": 1.5, "longitude": 2.5}},
+		{"contact", "Example Person; phone +10000000000", map[string]any{"first_name": "Example", "last_name": "Person", "phone_number": "+10000000000"}},
+		{"poll", "Blue (2 votes)", map[string]any{"question": "Choose a color", "options": []map[string]any{{"text": "Blue", "voter_count": 2}, {"text": "Green", "voter_count": 1}}}},
+	} {
+		id := int64(i + 1)
+		f.mu.Lock()
+		f.updates = append(f.updates, map[string]any{"update_id": id, "message": map[string]any{
+			"message_id": id, "from": map[string]any{"id": 42}, "chat": map[string]any{"id": 42, "type": "private"}, input.kind: input.value,
+		}})
+		f.mu.Unlock()
+		if got := f.next(t).Text; !strings.Contains(got, input.want) {
+			t.Fatalf("%s structured message lost: %q", input.kind, got)
+		}
+	}
+	f.mu.Lock()
+	f.updates = append(f.updates, map[string]any{"update_id": int64(4), "message": map[string]any{
+		"message_id": 4, "from": map[string]any{"id": 42}, "chat": map[string]any{"id": 42, "type": "private"}, "text": "/clear",
+		"forward_origin": map[string]any{"type": "hidden_user", "sender_user_name": "Original sender"},
+	}})
+	f.mu.Unlock()
+	if got := f.next(t).Text; !strings.Contains(got, "Forwarded message:\n/clear") {
+		t.Fatalf("forward ran as a command: %q", got)
+	}
+	conn := controlWriteDB(t, d.dataDir(t))
+	if n := count(t, conn, "SELECT count(*) FROM channel_commands WHERE source_key='telegram:123:4'"); n != 0 {
+		t.Fatalf("forward created %d control commands", n)
 	}
 }

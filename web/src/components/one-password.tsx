@@ -23,12 +23,11 @@ const modes = [
  * 1Password credentials for the op CLI of tools. dex does not read secrets: the prompt tells
  * bots to run op read. Tokens are write-only.
  */
-export function OnePasswordSettings({ n }: { n: number }) {
+export function OnePasswordSettings() {
   const query = useQuery(getOnePasswordOptions());
 
   return (
     <Section
-      n={n}
       title="1Password"
       caption="Bots read secrets with the op CLI. dex gives op the credentials and never reads a secret itself."
     >

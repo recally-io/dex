@@ -131,11 +131,7 @@ func TestUserReinstallKeepsStoredOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When reinstall supplies only the port, retain all omitted configuration.
-	got := stored
-	f := flags("service install")
-	f.BoolVar(&got.AutoUpdate, "auto-update", got.AutoUpdate, "Enable updates")
-	f.StringVar(&got.Channel, "channel", got.Channel, "Update channel")
-	err = configured(f, []string{"--port", "18788"}, &got)
+	got, err := parseInstallConfig(m, []string{"--port", "18788"})
 	stored.Port = 18788
 	if err != nil || got != stored {
 		t.Fatalf("reinstall lost stored options: %+v: %v", got, err)

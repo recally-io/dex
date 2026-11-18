@@ -52,13 +52,12 @@ func TestUserChatProjectRunsAndClearsToWorkspace(t *testing.T) {
 	}
 }
 
-func TestUserChatProjectRejectsInvalidPaths(t *testing.T) {
+func TestUserChatProjectRejectsInvalidPathsAndReadOnlySessions(t *testing.T) {
 	t.Parallel()
+	d := startDex(t, t.TempDir(), "")
+	id := d.newSession(t).ID
 	for _, kind := range []string{"relative", "missing", "file"} {
-		t.Run(kind, func(t *testing.T) {
-			// Given an invalid project path.
-			d := startDex(t, t.TempDir(), "")
-			id := d.newSession(t).ID
+		t.Run("invalid_"+kind, func(t *testing.T) {
 			path := "relative/path"
 			if kind == "missing" {
 				path = filepath.Join(t.TempDir(), "missing")
@@ -67,50 +66,19 @@ func TestUserChatProjectRejectsInvalidPaths(t *testing.T) {
 				path = filepath.Join(t.TempDir(), "file")
 				writeFile(t, path, "file")
 			}
-			// When the user sets it, the API refuses it without changing the Chat.
+			// When the user sets an invalid path, the API refuses it without changing the Chat.
 			d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": path}, nil, http.StatusBadRequest)
 			assertProject(t, d, id, "")
 		})
 	}
-}
-
-func TestUserMainProjectPersistsAndRunsNextInput(t *testing.T) {
-	t.Parallel()
-	// Given Main and an existing project directory.
-	data := t.TempDir()
-	project, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	d := startDex(t, data, "")
-	d.setModel(t, "bash")
-	id := d.mainChat(t)
-	// When the user sets the project and restarts dex, the setting persists.
-	d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": project}, nil)
-	d.stop()
-	d = startDex(t, data, "")
-	assertProject(t, d, id, project)
-	// Then the next input runs in that directory.
-	if got := taskTurn(t, d, id, "pwd"); got != "bash: "+project {
-		t.Fatal(got)
-	}
-}
-
-func TestUserChatProjectLoadsSkills(t *testing.T) {
-	t.Parallel()
-	// Given a skill that exists only in a project directory.
-	project := t.TempDir()
-	writeSkill(t, filepath.Join(project, ".agents", "skills"), "project-check", "description: Project-only check")
-	d := startDex(t, t.TempDir(), "")
-	d.setModel(t, "section")
-	id := d.newSession(t).ID
-	// When the user selects the project, its skill enters the prompt.
-	d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": project}, nil)
-	if got := taskTurn(t, d, id, "skills"); !strings.Contains(got, "Project-only check") {
-		t.Fatal(got)
-	}
-	if got := taskTurn(t, d, id, "project"); !strings.Contains(got, project) || !strings.Contains(got, "set_project") {
-		t.Fatal(got)
+	for _, key := range []string{"telegram:7", "task:test", "automation:test", "dream:test"} {
+		t.Run("readonly_"+key, func(t *testing.T) {
+			roID := sessionFixture(t, d, key, 1)
+			// When a user tries to set or clear its project, the API returns 403.
+			for _, path := range []string{t.TempDir(), ""} {
+				d.must(t, http.MethodPut, projectURL(roID), map[string]string{"cwd": path}, nil, http.StatusForbidden)
+			}
+		})
 	}
 }
 
@@ -141,45 +109,6 @@ func TestUserChatToolSetsProjectForLaterMessages(t *testing.T) {
 	assertProject(t, d, id, "")
 }
 
-func TestUserMainToolSetsProject(t *testing.T) {
-	t.Parallel()
-	// Given Main with a valid directory.
-	d := startDex(t, t.TempDir(), "")
-	id := d.mainChat(t)
-	project := t.TempDir()
-	// When set_project runs, it saves the project for subsequent input.
-	got := taskTool(t, d, id, "set_project", map[string]string{"path": project})
-	if !strings.Contains(got, project) {
-		t.Fatalf("set_project result: %s", got)
-	}
-	assertProject(t, d, id, project)
-}
-
-func TestUserChatTaskInheritsProject(t *testing.T) {
-	t.Parallel()
-	// Given a Chat with a selected project.
-	data, project := t.TempDir(), t.TempDir()
-	project, err := filepath.EvalSymlinks(project)
-	if err != nil {
-		t.Fatal(err)
-	}
-	d := startDex(t, data, "")
-	id := d.newSession(t).ID
-	d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": project}, nil)
-	// When the Chat spawns a bash task, its command uses the parent's project.
-	spawnExecution(t, d, id, "Project task", "pwd > task-cwd", "bash")
-	task := waitExecution(t, taskResultDB(t, data), id, "Project task", "done")
-	// Then both the shell artifact and the saved report prove the directory.
-	content, err := os.ReadFile(filepath.Join(project, "task-cwd"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.TrimSpace(string(content)) != project {
-		t.Fatalf("task cwd: %s", content)
-	}
-	t.Logf("task=%s cwd=%s report=%q", task.ID, project, task.Report)
-}
-
 func TestUserChatProjectExpandsHomeAndSurvivesRestart(t *testing.T) {
 	t.Parallel()
 	// Given a Chat with a project expressed relative to the server's home.
@@ -199,22 +128,6 @@ func TestUserChatProjectExpandsHomeAndSurvivesRestart(t *testing.T) {
 	// Then restarting dex keeps the saved project directory.
 	d = startDex(t, data, "")
 	assertProject(t, d, id, filepath.Clean(home))
-}
-
-func TestUserOtherSessionsRefuseProject(t *testing.T) {
-	t.Parallel()
-	for _, key := range []string{"telegram:7", "task:test", "automation:test", "dream:test"} {
-		t.Run(key, func(t *testing.T) {
-			// Given a stored conversation outside Chat sessions.
-			data := t.TempDir()
-			d := startDex(t, data, "")
-			id := sessionFixture(t, d, key, 1)
-			// When a user tries to set or clear its project, the API returns 403.
-			for _, path := range []string{t.TempDir(), ""} {
-				d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": path}, nil, http.StatusForbidden)
-			}
-		})
-	}
 }
 
 func TestUserChatProjectKeepsUploadedFilesAccessible(t *testing.T) {

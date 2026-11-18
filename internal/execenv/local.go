@@ -39,19 +39,21 @@ func (p *localProvider) Open(ctx context.Context, agentID string) (Handle, error
 	if err := os.MkdirAll(workspace, 0o700); err != nil {
 		return nil, err
 	}
-	return &localHandle{id: agentID, workspace: workspace, home: p.home}, nil
+	return &localHandle{workspace: workspace, home: p.home}, nil
+}
+
+func (p *localProvider) Stamp(context.Context, string) (string, bool) {
+	return string(KindLocal), true
 }
 
 func (p *localProvider) Close(context.Context) error { return nil }
 
 type localHandle struct {
-	id        string
 	workspace string
 	home      string
 }
 
 func (h *localHandle) Kind() Kind        { return KindLocal }
-func (h *localHandle) ID() string        { return h.id }
 func (h *localHandle) Workspace() string { return h.workspace }
 
 func (h *localHandle) Home(ctx context.Context) (string, error) {

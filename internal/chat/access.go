@@ -16,7 +16,7 @@ import (
 
 var (
 	ErrSessionNotFound = errors.New("session not found")
-	ErrSessionInvalid  = errors.New("invalid session request")
+	errSessionInvalid  = errors.New("invalid session request")
 )
 
 // acceptsInput is the one rule for user input, project and model changes. Main and Chat sessions
@@ -41,7 +41,7 @@ func (s *Service) writeTransaction(ctx context.Context) (*sql.Tx, *sqlc.Queries,
 // toolCaller validates the execution owner of a tool call and returns its conversation.
 func (s *Service) toolCaller(ctx context.Context, r engine.TaskContext) (sqlc.Conversation, error) {
 	if r.Scope != "" {
-		return sqlc.Conversation{}, ErrSessionInvalid
+		return sqlc.Conversation{}, errSessionInvalid
 	}
 	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionScope: r.Scope, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
@@ -52,7 +52,7 @@ func (s *Service) toolCaller(ctx context.Context, r engine.TaskContext) (sqlc.Co
 		return conv, err
 	}
 	if source.ConversationID != conv.ID {
-		return conv, ErrSessionInvalid
+		return conv, errSessionInvalid
 	}
 	return conv, nil
 }
@@ -60,7 +60,7 @@ func (s *Service) toolCaller(ctx context.Context, r engine.TaskContext) (sqlc.Co
 // liveSource returns the input that started the run of the caller, and fails when that run is over.
 func liveSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Submission, error) {
 	if r.Scope != "" {
-		return sqlc.Submission{}, ErrSessionInvalid
+		return sqlc.Submission{}, errSessionInvalid
 	}
 	if err := db.RequireActive(ctx, q, r.AgentID); err != nil {
 		return sqlc.Submission{}, err
@@ -74,7 +74,7 @@ func liveSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sql
 		return source, err
 	}
 	if source.ConversationID != conv.ID || source.Status != "pending" {
-		return source, fmt.Errorf("%w: the source run is no longer active", ErrSessionInvalid)
+		return source, fmt.Errorf("%w: the source run is no longer active", errSessionInvalid)
 	}
 	return source, nil
 }
@@ -101,7 +101,7 @@ func (s *Service) sessionParent(ctx context.Context, r engine.TaskContext) (sqlc
 		return conv, err
 	}
 	if conv.ParentID.Valid || strings.HasPrefix(conv.ChannelKey, dream.Channel) {
-		return conv, fmt.Errorf("%w: only a conversation without a parent manages child sessions", ErrSessionInvalid)
+		return conv, fmt.Errorf("%w: only a conversation without a parent manages child sessions", errSessionInvalid)
 	}
 	return conv, nil
 }

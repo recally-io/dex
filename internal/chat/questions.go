@@ -19,8 +19,8 @@ var (
 	ErrQuestionClosed = errors.New("the question is closed")
 	// ErrQuestionInvalid means the question or its options do not fit the limits.
 	ErrQuestionInvalid = errors.New("invalid question")
-	// ErrQuestionOpen means the conversation has a question that is not settled yet.
-	ErrQuestionOpen = errors.New("a question is already open")
+	// errQuestionOpen means the conversation has a question that is not settled yet.
+	errQuestionOpen = errors.New("a question is already open")
 )
 
 const (
@@ -173,7 +173,7 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engin
 			return engine.QuestionInfo{}, err
 		}
 	default:
-		return engine.QuestionInfo{}, ErrQuestionOpen
+		return engine.QuestionInfo{}, errQuestionOpen
 	}
 	id := uuid.NewV7().String()
 	params := sqlc.CreateQuestionParams{ID: id, AgentID: r.AgentID, ConversationID: conv.ID, SourceSubmissionID: source.ID, ToolOperationKey: r.Key, Text: text, OptionsJson: string(encoded), CreatedAt: s.now().UnixMilli()}

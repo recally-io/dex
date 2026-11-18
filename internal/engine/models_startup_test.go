@@ -41,7 +41,11 @@ func TestUserProviderEditRejectsOldCatalogAndLateDiscovery(t *testing.T) {
 	catalog := NewCatalog(false)
 	defer catalog.Close()
 	p := ProviderSettings{ID: "local", API: "openai-completions", BaseURL: server.URL + "/old"}
-	if _, err := catalog.Configure(t.Context(), []ProviderSettings{p}); err != nil {
+	d, err := catalog.ConfigureAsync(t.Context(), []ProviderSettings{p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Wait(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	// When the provider is edited twice while the middle discovery is held.
@@ -98,7 +102,11 @@ func TestUserUnrelatedSaveKeepsCatalogAndOpenAgentUsable(t *testing.T) {
 	defer unblock()
 	a := coreEngine(t, Config{})
 	p := ProviderSettings{ID: "known", API: "openai-completions", BaseURL: server.URL}
-	if _, err := a.Catalog.Configure(t.Context(), []ProviderSettings{p}); err != nil {
+	d, err := a.Catalog.ConfigureAsync(t.Context(), []ProviderSettings{p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Wait(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	ref := coreCreate(t, a, "alpha", coreOptions("echo"))

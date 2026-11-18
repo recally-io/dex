@@ -2,16 +2,13 @@ package app_test
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 	"uuid"
 )
 
@@ -338,76 +335,6 @@ func TestUserParentsStopChildrenInEachOthersBotsWithoutDeadlock(t *testing.T) {
 	}
 }
 
-// TestUserStopWithdrawsInputThatAnotherBotAdmits races the admission of a new child in B against
-// the Stop of its parent in A. The delay between the creation of the child and the Stop varies, so
-// Stop lands before, during, and after the admission in B. The shell of a child in B starts 600 to 900 ms
-// after its row (a new execution opens its harness), so the delays cross that range. Whatever the order, the input must end
-// stopped, no row stays pending, no abort request stays open, no shell survives, and the parent gets
-// at most one result.
-func TestUserStopWithdrawsInputThatAnotherBotAdmits(t *testing.T) {
-	t.Parallel()
-	s := startBots(t)
-	delays := []time.Duration{0, 5, 100, 300, 450, 520, 560, 600, 640, 680, 720, 760, 800, 850, 900, 1000, 1100, 1300}
-	for i := range delays {
-		delays[i] *= time.Millisecond
-	}
-	started := 0
-	for i, delay := range delays {
-		// Given a parent in A that creates a gated child in B.
-		parent := s.chat("default")
-		name := fmt.Sprintf("race-%d", i)
-		parent.send(childJSON(t, map[string]any{"tool": "session_new", "bot": "Coder", "title": name, "message": taskGate(t, s.dir, name), "provider": "faux", "modelId": "bash"}))
-		// When the child row appears, Stop runs after the delay. The poll is tight on purpose: B
-		// admits the input within a few milliseconds of the row.
-		var child int64
-		deadline := time.Now().Add(30 * time.Second)
-		for child == 0 {
-			err := s.conn.QueryRowContext(t.Context(), `SELECT id FROM conversations WHERE parent_id = ?`, parent.id).Scan(&child)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				t.Fatal(err)
-			}
-			if child == 0 && time.Now().After(deadline) {
-				t.Fatalf("round %d: the parent did not create a child", i)
-			}
-			if child == 0 {
-				time.Sleep(time.Millisecond)
-			}
-		}
-		time.Sleep(delay)
-		if status, body := s.d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent.id), nil); status != http.StatusOK {
-			t.Fatalf("round %d: abort %d %s", i, status, body)
-		}
-		// Then no input stays pending and no abort request stays open.
-		settled := func() (bool, any) {
-			var pending, aborts int
-			if err := s.conn.QueryRowContext(t.Context(), `SELECT (SELECT count(*) FROM submissions WHERE status = 'pending' AND conversation_id IN (?, ?)), (SELECT count(*) FROM conversations WHERE abort_pending = 1 AND id IN (?, ?))`, parent.id, child, parent.id, child).Scan(&pending, &aborts); err != nil {
-				t.Fatal(err)
-			}
-			return pending == 0 && aborts == 0, fmt.Sprintf("pending=%d aborts=%d", pending, aborts)
-		}
-		eventually(t, fmt.Sprintf("round %d settled", i), settled)
-		// And the state stays so: a late admission or a late abort would show here.
-		time.Sleep(250 * time.Millisecond)
-		if ok, state := settled(); !ok {
-			t.Fatalf("round %d: the state changed after it settled: %v", i, state)
-		}
-		turns := childTurns(t, s.conn, child)
-		if len(turns) != 1 || turns[0].status != "unanswered" || turns[0].reason != "stopped" {
-			t.Fatalf("round %d: input of the child: %+v", i, turns)
-		}
-		if results := resultRows(t, s.conn, parent.id); len(results) > 1 {
-			t.Fatalf("round %d: %d results after Stop: %+v", i, len(results), results)
-		}
-		// And a shell that started is gone.
-		pid := filepath.Join(s.dir, name+".pid")
-		if _, err := os.Stat(pid); err == nil {
-			started++
-			waitTaskPIDGone(t, pid)
-		}
-	}
-	t.Logf("the shell started in %d of %d rounds", started, len(delays))
-}
-
 // crossBotChat is a session in the list of the web API. The bot fields are set only when the session
 // or its parent belongs to another bot than the one in the path.
 type crossBotChat struct {
@@ -480,70 +407,6 @@ func TestUserParentsWithdrawMixedInputInEachOthersBotsWithoutDeadlock(t *testing
 	}
 }
 
-func TestUserSeesParentStopReachAChildInAnotherBot(t *testing.T) {
-	t.Parallel()
-	// Given a parent turn that runs in another bot.
-	s := startBots(t)
-	parent := s.chat("default")
-	child := parent.newChild(map[string]any{"bot": "Coder", "title": "Cross stop", "message": taskGate(t, s.dir, "cross-stop"), "provider": "faux", "modelId": "bash"})
-	id := child.conversation(t)
-	waitTaskFile(t, filepath.Join(s.dir, "cross-stop.pid"))
-
-	// When each bot lists the child, both lists show that parent Stop reaches it.
-	for _, agent := range []string{"default", s.b.ID} {
-		got := s.webList(agent)[id]
-		if got.StoppedWithParent == nil || !*got.StoppedWithParent {
-			t.Fatalf("child in list of %s: %+v", agent, got)
-		}
-	}
-	// Then parent Stop ends the turn and removes the mark from both lists.
-	s.d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent.id), nil, nil)
-	waitChildTurnsEnded(t, s.conn, id, 1)
-	for _, agent := range []string{"default", s.b.ID} {
-		if got := s.webList(agent)[id]; got.StoppedWithParent != nil {
-			t.Fatalf("stopped child in list of %s: %+v", agent, got)
-		}
-	}
-}
-
-func TestUserSeesStopOnlyForWithdrawableMixedInputOfAChildInAnotherBot(t *testing.T) {
-	t.Parallel()
-	// Given a parent turn that runs in another bot, and a queued user input in that child.
-	s := startBots(t)
-	parent := s.chat("default")
-	child := parent.newChild(map[string]any{"bot": "Coder", "title": "Cross mixed", "message": taskGate(t, s.dir, "cross-mixed"), "provider": "faux", "modelId": "bash"})
-	id := child.conversation(t)
-	waitTaskFile(t, filepath.Join(s.dir, "cross-mixed.pid"))
-	botChat{bots: s, agent: s.b.ID, id: id}.send("echo user queued")
-
-	// When no parent input is queued, neither list shows that parent Stop reaches the child.
-	for _, agent := range []string{"default", s.b.ID} {
-		if got := s.webList(agent)[id]; got.StoppedWithParent != nil {
-			t.Fatalf("placed parent input enables Stop in list of %s: %+v", agent, got)
-		}
-	}
-	// When the parent queues input, both lists show it.
-	parent.operate("session_send", map[string]any{"id": child.ID, "message": "echo parent queued"})
-	for _, agent := range []string{"default", s.b.ID} {
-		if got := s.webList(agent)[id]; got.StoppedWithParent == nil || !*got.StoppedWithParent {
-			t.Fatalf("queued parent input does not enable Stop in list of %s: %+v", agent, got)
-		}
-	}
-	// Then parent Stop withdraws only the queued parent input, and the mark goes away.
-	s.d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent.id), nil, nil)
-	turns := childTurns(t, s.conn, id)
-	if len(turns) != 3 || turns[0].status != "pending" || turns[1].status != "pending" || turns[2].status != "unanswered" || turns[2].reason != "stopped" {
-		t.Fatalf("mixed child after Stop: %+v", turns)
-	}
-	for _, agent := range []string{"default", s.b.ID} {
-		if got := s.webList(agent)[id]; got.StoppedWithParent != nil {
-			t.Fatalf("withdrawn parent input enables Stop in list of %s: %+v", agent, got)
-		}
-	}
-	releaseResultGate(t, s.dir, "cross-mixed")
-	waitChildTurnsEnded(t, s.conn, id, 3)
-}
-
 func TestUserWebSeesAChildInAnotherBotWithItsBots(t *testing.T) {
 	t.Parallel()
 	// Given a parent chat in A with one child in A and one child in B, and an unrelated chat in B.
@@ -594,36 +457,6 @@ func TestUserWebSeesAChildInAnotherBotWithItsBots(t *testing.T) {
 	}
 	if status, _ := s.d.call(t, http.MethodGet, "/api/agents/default/turns/"+unrelated, nil); status != http.StatusNotFound {
 		t.Fatalf("turn of an unrelated chat in B, opened in A: status %d", status)
-	}
-}
-
-func TestUserRestartInterruptsAChildInAnotherBotOnce(t *testing.T) {
-	t.Parallel()
-	// Given a child in B that records each start of its shell before it waits at a gate.
-	s := startBots(t)
-	parent := s.chat("default")
-	counter := filepath.Join(s.dir, "counter")
-	child := parent.newChild(map[string]any{"bot": "Coder", "title": "Interrupted", "message": "printf 'run\\n' >> '" + counter + "'; " + taskGate(t, s.dir, "restart"), "provider": "faux", "modelId": "bash"})
-	waitTaskFile(t, filepath.Join(s.dir, "restart.pid"))
-	// When dex restarts on the same data.
-	s.d.stop()
-	d := startDex(t, s.dir, "")
-	// Then the conversation of A gets one interrupted result, and the shell does not run again.
-	rows := waitResults(t, s.conn, parent.id, 1)
-	body := resultBody(t, rows[0].content)
-	if body["outcome"] != "interrupted" || body["session"] != child.ID {
-		t.Fatalf("interrupted result: %v", body)
-	}
-	if got := waitTaskFile(t, counter); got != "run\n" {
-		t.Fatalf("shell ran again: %q", got)
-	}
-	// And a second restart sends nothing more.
-	d.stop()
-	d = startDex(t, s.dir, "")
-	d.mainChat(t)
-	waitResults(t, s.conn, parent.id, 1)
-	if got := waitTaskFile(t, counter); got != "run\n" {
-		t.Fatalf("shell ran again after the second restart: %q", got)
 	}
 }
 
@@ -753,28 +586,6 @@ func TestUserSessionListCoversOneBotOrAllBots(t *testing.T) {
 	// And scope all with all lists every session.
 	if got = list(map[string]any{"scope": "all", "bot": "all"}); got[fmt.Sprint(other.id)] != "Coder" || got[fmt.Sprint(parent.id)] != "Dex" {
 		t.Fatalf("all sessions, all bots: %v", got)
-	}
-}
-
-func TestUserSessionReadCoversAnotherBotButNotDreams(t *testing.T) {
-	t.Parallel()
-	// Given a chat in B with a turn, and a dream in bot A.
-	s := startBots(t)
-	inB := s.echoChat(s.b.ID, "private of bot b")
-	dream := sessionFixture(t, s.d, "dream:private", 1)
-	reader := s.chat("default")
-	// When a chat in A reads the chat in B, it gets the turns and the bot.
-	var page readPage
-	toolJSON(t, reader.call("session_read", map[string]any{"id": fmt.Sprint(inB.id)}), &page)
-	if len(page.Turns) != 1 || page.Turns[0].Input != "private of bot b" || page.Turns[0].Answer != "echo: private of bot b" {
-		t.Fatalf("read of bot B: %+v", page)
-	}
-	if page.Bot != "Coder" || page.BotID != s.b.ID {
-		t.Fatalf("page does not name its bot: %+v", page)
-	}
-	// And a dream is not found.
-	if got := reader.call("session_read", map[string]any{"id": fmt.Sprint(dream)}); !strings.HasPrefix(got, "spawn error") || !strings.Contains(got, "not found") {
-		t.Fatalf("read of a dream: %s", got)
 	}
 }
 

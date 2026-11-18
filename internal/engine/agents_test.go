@@ -135,7 +135,7 @@ func TestUserNativeSubmissionSurvivesReopen(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var metadata InputMetadata
+		var metadata inputMetadata
 		if err := json.Unmarshal(raw, &metadata); err != nil {
 			t.Fatal(err)
 		}
@@ -387,5 +387,88 @@ func TestUserQueuedInputContinuesAfterModelFailure(t *testing.T) {
 	}
 	if outcome := coreWait(t, queued); outcome.Status != "done" || outcome.Answer != "next input answered" {
 		t.Fatalf("next outcome: %+v", outcome)
+	}
+}
+
+func TestUserChildSubmitStripsForegroundTools(t *testing.T) {
+	a := coreEngine(t, Config{})
+	ref := coreCreate(t, a, "alpha", coreOptions("direct"))
+	for _, tool := range []string{"session_new", "ask_user", "create_routine"} {
+		sub, err := a.Submit(t.Context(), ref, Input{
+			RequestID: "child-" + tool,
+			Content:   tool + " {}",
+			Kind:      "message",
+			Origin:    "task",
+			Source:    "dex:alpha/task/1",
+			Child:     true,
+			Options:   coreOptions("direct"),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if outcome := coreWait(t, sub); !strings.HasPrefix(outcome.Answer, "tool error:") {
+			t.Fatalf("child tool %s was unexpectedly available: %+v", tool, outcome)
+		}
+	}
+}
+
+func TestUserMaintenanceBlocksTranscriptRecovery(t *testing.T) {
+	for _, method := range []string{"watch", "history"} {
+		t.Run(method, func(t *testing.T) {
+			t.Parallel()
+			config, dir := Config{DataDir: t.TempDir(), Home: t.TempDir()}, t.TempDir()
+			started, release := filepath.Join(dir, "started"), filepath.Join(dir, "release")
+			defer func() { _ = os.WriteFile(release, nil, 0o600) }()
+			first := coreEngine(t, config)
+			ref := coreCreate(t, first, "default", coreOptions("bash"))
+			command := "touch '" + started + "'; while [ ! -f '" + release + "' ]; do sleep 0.02; done; echo done"
+			if _, err := first.Submit(t.Context(), ref, Input{RequestID: "first", Content: command, Origin: "web", Source: "dex:default/chat/test", Options: coreOptions("bash")}); err != nil {
+				t.Fatal(err)
+			}
+			coreFile(t, started)
+			if _, err := first.Submit(t.Context(), ref, Input{RequestID: "second", Content: command, Origin: "web", Source: "dex:default/chat/test", Options: coreOptions("bash")}); err != nil {
+				t.Fatal(err)
+			}
+			if err := first.Close(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(started); err != nil {
+				t.Fatal(err)
+			}
+			second := coreEngine(t, config)
+			if err := second.Quiesce(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+
+			read := func() error {
+				if method == "history" {
+					_, err := second.History(t.Context(), ref, 1, 1)
+					return err
+				}
+				watch, err := second.Watch(t.Context(), ref)
+				if err == nil {
+					watch.Close()
+				}
+				return err
+			}
+			if err := read(); !errors.Is(err, ErrMaintenance) {
+				t.Fatalf("maintenance read: %v", err)
+			}
+			if _, err := os.Stat(started); err == nil {
+				t.Fatal("read resumed execution during maintenance")
+			}
+
+			second.Resume()
+			if err := read(); err != nil {
+				t.Fatal(err)
+			}
+			coreFile(t, started)
+			if err := second.Quiesce(t.Context()); !errors.Is(err, ErrBusy) {
+				t.Fatalf("maintenance accepted active execution: %v", err)
+			}
+			if err := os.WriteFile(release, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

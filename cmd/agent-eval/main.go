@@ -376,7 +376,7 @@ func run(ctx context.Context, t task, repetition int, model string, rows []sqlc.
 				}
 				r.ToolCalls++
 				tools[item.Name]++
-				if item.Name == "spawn_task" {
+				if item.Name == "session_new" || item.Name == "spawn_task" {
 					r.Spawns++
 				}
 				if item.Name == "read" && t.Skill != "" {

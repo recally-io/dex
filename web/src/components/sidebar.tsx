@@ -11,8 +11,10 @@ import type { BotStatus } from "../lib/work";
 import { cn } from "../lib/utils";
 import { AgentAvatar } from "./agent-avatar";
 import { AgentCreateDialog } from "./agent-create-dialog";
-import { row } from "./chat-list";
 import { Button, buttonVariants } from "./ui/button";
+
+const row =
+  "h-8 min-w-0 justify-start gap-2 rounded-[9px] border-0 px-2 text-[13px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground aria-[current=page]:bg-card aria-[current=page]:text-foreground aria-[current=page]:shadow-[0_0_0_1px_var(--border),0_1px_2px_rgb(0_0_0/0.06)]";
 
 const statusLabel = { needs: "Needs you", working: "Working" } as const;
 

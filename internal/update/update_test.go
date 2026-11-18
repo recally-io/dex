@@ -218,7 +218,7 @@ func TestUserUpdateLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if other, err := lockUpdate(path); !errors.Is(err, ErrBusy) {
+	if other, err := lockUpdate(path); !errors.Is(err, errBusy) {
 		if other != nil {
 			other()
 		}

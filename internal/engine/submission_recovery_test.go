@@ -52,7 +52,7 @@ func TestUserSubmissionReplayNeedsNoCurrentModel(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var metadata InputMetadata
+		var metadata inputMetadata
 		if err := json.Unmarshal(raw, &metadata); err != nil {
 			t.Fatal(err)
 		}

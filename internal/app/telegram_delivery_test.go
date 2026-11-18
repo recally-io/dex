@@ -134,3 +134,26 @@ func TestUserWebArtifactDoesNotBroadcastToTelegram(t *testing.T) {
 	default:
 	}
 }
+
+func TestUserReceivesNativeTelegramAudioVoiceVideoAndAnimation(t *testing.T) {
+	t.Parallel()
+	// Given explicit result files in supported native media containers sharing one Telegram session.
+	data := t.TempDir()
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, data, 42)
+	d.setModel(t, "tool")
+	for i, media := range []struct{ name, body, method string }{
+		{"music.mp3", "ID3\x04\x00\x00\x00\x00\x00\x00music", "sendAudio"},
+		{"voice.ogg", "OggS\x00\x00\x00\x00\x00\x00OpusHeadvoice", "sendVoice"},
+		{"clip.mp4", "\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom", "sendVideo"},
+		{"music.m4a", "\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00mp42isom", "sendAudio"},
+		{"animation.gif", "GIF89aanimation", "sendAnimation"},
+	} {
+		telegramSource(t, data, media.name, []byte(media.body))
+		f.message(int64(i+1), 42, 42, `deliver_file {"path":"`+media.name+`"}`)
+		got := nextTelegramMedia(t, f.mediaSent)
+		if got.Method != media.method || got.Name != media.name || got.Body != media.body {
+			t.Fatalf("%s native media=%+v want=%s", media.name, got, media.method)
+		}
+	}
+}

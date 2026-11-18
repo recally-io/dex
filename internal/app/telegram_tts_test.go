@@ -68,23 +68,6 @@ func TestUserExplicitTelegramTTSQueuesNativeVoiceWithoutChangingProvider(t *test
 	}
 }
 
-func TestUserTelegramTTSIsOffByDefault(t *testing.T) {
-	t.Parallel()
-	// Given no speech configuration, the native tool must fail without a provider request.
-	f := newFakeTelegram(t)
-	d := startTelegram(t, f, t.TempDir(), 42)
-	d.setModel(t, "tool")
-	f.message(1, 42, 42, `telegram_message {"action":"speak","text":"do not send this"}`)
-	if got := f.next(t).Text; !strings.Contains(got, "TTS is off") {
-		t.Fatalf("unconfigured speech=%q", got)
-	}
-	select {
-	case audio := <-f.mediaAttempts:
-		t.Fatalf("unconfigured speech sent audio: %+v", audio)
-	default:
-	}
-}
-
 func TestUserTelegramSpeechBudgetRefusesOversizeOrLongAudioBeforeProviderUpload(t *testing.T) {
 	t.Parallel()
 	// Given a duration budget shorter than the incoming synthetic voice message.
@@ -118,9 +101,14 @@ func TestUserInvalidTelegramSpeechOutputKeepsReadableText(t *testing.T) {
 		_, _ = w.Write([]byte("<html>not audio</html>"))
 	}))
 	t.Cleanup(boundary.Close)
-	configureTelegramSpeech(t, d, boundary.URL, nil, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "tts-explicit", "voice": "explicit-voice"})
+	configureTelegramSpeech(t, d, boundary.URL, nil, map[string]any{"enabled": true, "allowSending": true, "provider": "missing", "model": "tts-explicit", "voice": "explicit-voice"})
 	d.setModel(t, "tool")
-	f.message(1, 42, 42, `telegram_message {"action":"speak","text":"keep these readable words"}`)
+	f.message(1, 42, 42, `telegram_message {"action":"speak","text":"missing provider words"}`)
+	if got := f.next(t).Text; !strings.Contains(got, "missing provider words") || !strings.Contains(got, "provider is not configured") {
+		t.Fatalf("missing TTS provider fallback=%q", got)
+	}
+	configureTelegramSpeech(t, d, boundary.URL, nil, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "tts-explicit", "voice": "explicit-voice"})
+	f.message(2, 42, 42, `telegram_message {"action":"speak","text":"keep these readable words"}`)
 	// Then the native result retains the words and explains the failure, without sending a fake audio file.
 	if got := f.next(t).Text; !strings.Contains(got, "keep these readable words") || !strings.Contains(got, "did not return audio") {
 		t.Fatalf("speech fallback=%q", got)

@@ -101,13 +101,8 @@ func (b *Bot) receiveGroup(ctx context.Context, u update, m *message, edited boo
 		content = fmt.Sprintf("Correction to Telegram message %d (earlier actions are not undone):\n%s", m.ID, content)
 	}
 	incoming := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: identity}
-	if selected, kind := m.selectedMedia(); selected != nil {
-		incoming.ChannelContext.FileID = selected.ID
-		incoming.ChannelContext.MediaKind = kind
-	}
 	if m.ReplyTo != nil {
 		incoming.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
-		incoming.ChannelContext.ReplyTo = incoming.ReplyTo
 	}
 	// A group retains original audio. It never borrows the private speech consent or provider.
 	var receiveErr error

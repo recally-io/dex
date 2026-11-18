@@ -54,10 +54,6 @@ WHERE agent_id = ? AND state = 'discarded' AND input_json <> '{}';
 UPDATE telegram_album_members SET input_json = '{}'
 WHERE agent_id = ? AND source_key = ? AND state = 'discarded';
 
--- name: DiscardTelegramAlbums :exec
-UPDATE telegram_album_members SET state = 'discarded'
-WHERE agent_id = ? AND state IN ('collecting', 'sealed');
-
 -- name: IsTelegramAlbumSealed :one
 SELECT EXISTS(SELECT 1 FROM telegram_album_members
 WHERE agent_id = @agent_id AND batch_source = @batch_source AND state = 'sealed'

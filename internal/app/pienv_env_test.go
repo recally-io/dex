@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -108,6 +109,30 @@ func TestUserManagesPiEnvEnvironmentAndExecutesBotRemotely(t *testing.T) {
 	_, body := readArtifact(t, d, "default", "hello.txt")
 	if !strings.Contains(string(body), "from-pienv") {
 		t.Fatalf("artifact body=%q", body)
+	}
+
+	// Remote background command and remote project path resolution.
+	conn := taskResultDB(t, dataDir)
+	d.setModel(t, "spawn")
+	bgStarted := bgStart(t, d, chatID, map[string]any{"command": `printf "%s\n" "$REMOTE_SSH_MARKER"`})
+	if bgStarted.OutputFile == "" {
+		t.Fatalf("missing remote background outputFile: %+v", bgStarted)
+	}
+	wakes := waitWakes(t, conn, chatID, 1)
+	if wakes[0].result.Event != "exited" || !strings.Contains(wakes[0].result.Output, "ssh-fake-ok") {
+		t.Fatalf("unexpected remote background wake: %+v", wakes[0].result)
+	}
+	remoteProject := filepath.Join(sshFix.RemoteHome, "remote-proj")
+	if projRes := taskTool(t, d, chatID, "set_project", map[string]any{"path": "~/remote-proj"}); strings.HasPrefix(projRes, "tool error:") {
+		t.Fatalf("set_project failed: %s", projRes)
+	}
+	assertProject(t, d, chatID, remoteProject)
+	var recent struct {
+		Projects []string `json:"projects"`
+	}
+	d.must(t, http.MethodGet, "/api/agents/default/projects", nil, &recent)
+	if !slices.Equal(recent.Projects, []string{remoteProject}) {
+		t.Fatalf("recent projects=%v want=[%s]", recent.Projects, remoteProject)
 	}
 
 	// Switching bot back to local allows deleting the environment.

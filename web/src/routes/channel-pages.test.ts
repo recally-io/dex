@@ -11,7 +11,8 @@ import {
   getNotificationTargetsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { AppProvider } from "../lib/app-state";
-import { ChannelPage } from "./channels";
+import { ChannelPage, ChannelsPage } from "./channels";
+import { FeishuChannel } from "./feishu";
 import type { ChannelId } from "../components/channel-kit";
 
 const path = { path: { agentId: "default" } };
@@ -104,4 +105,61 @@ test("user sees that Telegram speech is off before any provider is selected", as
   // Then the page shows the data-sending boundary before the user opens the editor.
   expect(html).toContain("Speech is off");
   expect(html).toContain("selected provider");
+});
+
+test("user keeps the saved Lark platform when opening settings", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
+  client.setQueryData(getFeishuOptions(path).queryKey, {
+    brand: "lark",
+    appId: "lark-app",
+    enabled: true,
+    paired: true,
+    status: "running",
+    error: "",
+  });
+
+  const router = createRouter({
+    routeTree: createRootRoute({ component: FeishuChannel }),
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+  });
+
+  await router.load();
+
+  const html = renderToStaticMarkup(
+    createElement(QueryClientProvider, { client }, createElement(RouterProvider, { router })),
+  );
+
+  expect(html).toContain('<option value="lark" selected="">Lark</option>');
+  expect(html).not.toContain('<option value="feishu" selected="">');
+
+  client.clear();
+});
+
+test("user sees Needs owner for unpaired Feishu on ChannelsPage", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
+  client.setQueryData(getChannelsOptions(path).queryKey, {
+    feishu: { enabled: true, appId: "app", brand: "feishu", paired: false, status: "needs_login", error: "" },
+    telegram: { enabled: false, allowedUsers: [], status: { state: "off" } },
+    wechat: { enabled: false, status: { state: "off" } },
+  });
+  client.setQueryData(getNotificationTargetsOptions(path).queryKey, { primaryId: "", targets: [] });
+
+  const router = createRouter({
+    routeTree: createRootRoute({ component: ChannelsPage }),
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+  });
+
+  await router.load();
+
+  const html = renderToStaticMarkup(
+    createElement(
+      QueryClientProvider,
+      { client },
+      createElement(AppProvider, null, createElement(RouterProvider, { router })),
+    ),
+  );
+
+  expect(html).toContain("Needs owner");
+
+  client.clear();
 });

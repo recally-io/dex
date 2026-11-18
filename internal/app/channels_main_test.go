@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"database/sql"
 	"encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -435,4 +436,82 @@ func TestUserChannelMainStopKeepsChatAndAutomationWork(t *testing.T) {
 		t.Fatalf("main has pending input: %d %v", pending, err)
 	}
 	t.Logf("artifact: stopped main=%d; preserved Chat=%d and automation=%s", main, chat, auto.ID)
+}
+
+func assertSubmissionOrigin(t *testing.T, conn *sql.DB, id, want string) {
+	t.Helper()
+	var got string
+	if err := conn.QueryRowContext(t.Context(), "SELECT origin FROM submissions WHERE id=?", id).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("submission %s origin=%q want=%q", id, got, want)
+	}
+}
+
+func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
+	t.Parallel()
+	// Given a Stop whose withdrawal commits but whose completion fails.
+	f := newFakeTelegram(t)
+	dir := t.TempDir()
+	d := startTelegram(t, f, dir, 42)
+	conn := sessionDB(t, d)
+	main := d.mainChat(t)
+	d.setModel(t, "bash")
+	first := d.send(t, main, taskGate(t, dir, "first-stop"))
+	waitTaskFile(t, filepath.Join(dir, "first-stop.pid"))
+	failChannelCommandCompletion(t, conn)
+	f.message(1, 42, 7, "/stop")
+	waitResultSubmission(t, conn, first, "unanswered")
+	waitChannelCommandFailure(t, d)
+	d.must(t, http.MethodDelete, "/api/agents/default/channels/telegram", nil, nil)
+	waitTaskPIDGone(t, filepath.Join(dir, "first-stop.pid"))
+	spawnExecution(t, d, main, "Later task", taskGate(t, dir, "later-task"), "bash")
+	waitTaskFile(t, filepath.Join(dir, "later-task.pid"))
+	d.setModel(t, "bash")
+	later := d.send(t, main, taskGate(t, dir, "later-turn"))
+	waitTaskFile(t, filepath.Join(dir, "later-turn.pid"))
+
+	// When command delivery retries while the new turn and task run.
+	if _, err := conn.ExecContext(t.Context(), "DROP TRIGGER fail_command_completion"); err != nil {
+		t.Fatal(err)
+	}
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
+	waitTaskChannelText(t, f, "Stop requested.")
+	if got := resultSubmission(t, conn, later); got.status != "pending" {
+		t.Fatalf("replayed Stop withdrew later running input: %+v", got)
+	}
+	waitExecution(t, conn, main, "Later task", "running")
+
+	// Then both new processes remain alive and finish through the native engine.
+	for _, name := range []string{"later-turn", "later-task"} {
+		if taskPIDGone(t, filepath.Join(dir, name+".pid")) {
+			t.Fatalf("replayed Stop aborted %s", name)
+		}
+	}
+	releaseResultGate(t, dir, "later-turn")
+	waitResultSubmission(t, conn, later, "done")
+	d.setModel(t, "spawn")
+	releaseResultGate(t, dir, "later-task")
+	task := waitExecution(t, conn, main, "Later task", "done")
+	result := waitResultSubmission(t, conn, task.ResultID, "done")
+	if !strings.Contains(result.answer, "gate released") {
+		t.Fatalf("later task answer missing: %+v", result)
+	}
+	t.Logf("artifact: later input=%s; task=%s status=%s report=%q", later, task.ID, task.Status, task.Report)
+}
+
+func failChannelCommandCompletion(t *testing.T, conn *sql.DB) {
+	t.Helper()
+	if _, err := conn.ExecContext(t.Context(), "CREATE TRIGGER fail_command_completion BEFORE UPDATE OF completed ON channel_commands BEGIN SELECT RAISE(ABORT,'command completion failure'); END"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func waitChannelCommandFailure(t *testing.T, d *dex) {
+	t.Helper()
+	eventually(t, "command completion failure", func() (bool, any) {
+		_, body := d.call(t, http.MethodGet, "/api/agents/default/channels", nil)
+		return strings.Contains(body, "command completion failure"), "waiting for the database error"
+	})
 }

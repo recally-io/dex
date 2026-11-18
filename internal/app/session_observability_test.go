@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserReadsSafeLiveToolsOfChildInAnotherBot(t *testing.T) {
+	t.Parallel()
 	// Given a child in another bot that prints its private environment and keeps running.
 	bots := startBots(t)
 	parent := bots.chat("default")

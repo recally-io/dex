@@ -7,6 +7,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -59,8 +60,6 @@ func New(q *sqlc.Queries, checkModel func(context.Context, string, string) error
 
 // Activity summarizes one agent for the agent list.
 type Activity struct {
-	InboxUnread        int64 `json:"inboxUnread"`
-	InboxFailed        int64 `json:"inboxFailed"`
 	RoutineFailed      bool  `json:"routineFailed"`
 	ActiveSessions     int64 `json:"activeSessions"`
 	RunningChannels    int64 `json:"runningChannels"`
@@ -118,7 +117,7 @@ func (s *Service) ListAgents(ctx context.Context) ([]Agent, error) {
 	agents := make([]Agent, len(rows))
 	for i, row := range rows {
 		agents[i] = agentView(row.Agent)
-		current := Activity{InboxUnread: row.InboxUnread, InboxFailed: row.InboxFailed, RoutineFailed: row.RoutineFailed == 1, ActiveSessions: row.ActiveSessions, EnabledAutomations: row.EnabledAutomations}
+		current := Activity{RoutineFailed: row.RoutineFailed == 1, ActiveSessions: row.ActiveSessions, EnabledAutomations: row.EnabledAutomations}
 		if s.ChannelStatus != nil {
 			for _, platform := range []string{"telegram", "wechat", "feishu"} {
 				if s.ChannelStatus(row.Agent.ID, platform).State == "running" {
@@ -295,9 +294,7 @@ func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram
 	if err := json.Unmarshal([]byte(row.Options), &options); err != nil {
 		return nil, err
 	}
-	return &telegram.Config{Options: options, Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(agentID, row.Token), RetryAt: row.RetryAt,
-		RateLimit: s.telegramRateLimit(agentID, row.Token),
-	}, nil
+	return &telegram.Config{Options: options, Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(agentID, row.Token), RetryAt: row.RetryAt}, nil
 }
 
 // SetTelegram saves the bot configuration and restarts the bot. An empty token keeps the saved
@@ -333,7 +330,6 @@ func (s *Service) SetTelegram(ctx context.Context, agentID string, token string,
 		cfg.Options = *options
 	}
 	cfg.Pair = s.pairTelegram(agentID, cfg.Token)
-	cfg.RateLimit = s.telegramRateLimit(agentID, cfg.Token)
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
@@ -391,4 +387,9 @@ func parseUsers(s string) ([]int64, error) {
 		users = append(users, id)
 	}
 	return users, nil
+}
+
+// Home returns the storage root for an agent in the resolved data directory.
+func Home(dataDir, id string) string {
+	return filepath.Join(dataDir, "agents", id)
 }

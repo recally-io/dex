@@ -43,6 +43,20 @@ func parse(f *flag.FlagSet, args []string) error {
 	}
 	return nil
 }
+
+func parseInstallConfig(m service.Manager, args []string) (service.Config, error) {
+	c, err := m.Read()
+	if errors.Is(err, os.ErrNotExist) {
+		c, err = service.Defaults()
+	}
+	if err != nil {
+		return c, err
+	}
+	f := flags("service install")
+	f.BoolVar(&c.AutoUpdate, "auto-update", c.AutoUpdate, "Enable daily updates (requires stored gh credentials)")
+	f.StringVar(&c.Channel, "channel", c.Channel, "Update channel: stable or prerelease")
+	return c, configured(f, args, &c)
+}
 func usage() {
 	fmt.Fprintln(os.Stderr, "Usage: dex [serve|version|service|update|open|doctor|token] [options]\n  No command: serve in the foreground.\n  dex service install: start now and at login.\n  Use dex <command> --help for options.")
 }
@@ -104,17 +118,8 @@ func serviceCommand(ctx context.Context, args []string) error {
 	}
 	switch action {
 	case "install":
-		c, err := m.Read()
-		if errors.Is(err, os.ErrNotExist) {
-			c, err = service.Defaults()
-		}
+		c, err := parseInstallConfig(m, args)
 		if err != nil {
-			return err
-		}
-		f := flags("service install")
-		f.BoolVar(&c.AutoUpdate, "auto-update", c.AutoUpdate, "Enable daily updates (requires stored gh credentials)")
-		f.StringVar(&c.Channel, "channel", c.Channel, "Update channel: stable or prerelease")
-		if err := configured(f, args, &c); err != nil {
 			return err
 		}
 		c.Executable, err = service.Executable()

@@ -16,16 +16,16 @@ import (
 )
 
 const MainKey = "main"
-const ChatPrefix = "chat:"
+const chatPrefix = "chat:"
 
 func Writable(key string) bool {
-	return key == MainKey || strings.HasPrefix(key, ChatPrefix)
+	return key == MainKey || strings.HasPrefix(key, chatPrefix)
 }
 
 // Create reuses an empty Chat without opening an execution context or requiring a model.
 func (s *Service) Create(ctx context.Context, agentID string) (Chat, error) {
 	c, err := s.q.EnsureEmptyChat(ctx, sqlc.EnsureEmptyChatParams{
-		AgentID: agentID, ChannelKey: ChatPrefix + uuid.NewV7().String(), CreatedAt: s.now().UnixMilli(),
+		AgentID: agentID, ChannelKey: chatPrefix + uuid.NewV7().String(), CreatedAt: s.now().UnixMilli(),
 	})
 	if err != nil {
 		return Chat{}, err
@@ -44,7 +44,7 @@ func (s *Service) SetArchived(ctx context.Context, agentID string, id int64, arc
 		return Chat{}, err
 	}
 	// A child session from before child sessions has a task: key. It is a child, so the user can archive it.
-	if !strings.HasPrefix(c.ChannelKey, ChatPrefix) && c.ParentID == 0 {
+	if !strings.HasPrefix(c.ChannelKey, chatPrefix) && c.ParentID == 0 {
 		return Chat{}, ErrNotArchivable
 	}
 	if archived {
@@ -265,4 +265,28 @@ func inputOrigin(key string) string {
 		peer, _, _ := strings.Cut(key, "/")
 		return peer
 	}
+}
+
+// ErrSettingsForbidden is a settings change for a session that takes no input and is not an automation.
+var ErrSettingsForbidden = errors.New("this session is read-only; its model cannot change")
+
+// SetChat replaces the settings that chat chatID overrides. The next message of the chat uses them.
+func (s *Service) SetChat(ctx context.Context, agentID string, chatID int64, c Settings) error {
+	// One rule with SetProject: a session that accepts input accepts settings. Automation sessions
+	// take no input but keep their own model for the next run.
+	chat, err := s.Get(ctx, agentID, chatID)
+	if err != nil {
+		return err
+	}
+	if !chat.Writable && !strings.HasPrefix(chat.ChannelKey, "automation:") {
+		return ErrSettingsForbidden
+	}
+	if s.checkSettings != nil {
+		if err := s.checkSettings(ctx, c); err != nil {
+			return err
+		}
+	}
+	return s.q.SetConversationSettings(ctx, sqlc.SetConversationSettingsParams{
+		ModelProvider: c.Provider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel, ID: chatID, AgentID: agentID,
+	})
 }

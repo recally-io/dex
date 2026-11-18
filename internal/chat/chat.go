@@ -80,8 +80,6 @@ type ChannelContext struct {
 	AccountID   string `json:"accountId,omitempty"`
 	SenderID    string `json:"senderId,omitempty"`
 	MessageID   string `json:"messageId,omitempty"`
-	ReplyTo     string `json:"replyTo,omitempty"`
-	FileID      string `json:"fileId,omitempty"`
 	MediaKind   string `json:"mediaKind,omitempty"`
 	MediaGroup  string `json:"mediaGroup,omitempty"`
 }
@@ -393,7 +391,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				return 0, err
 			}
 			if effect.AgentID != agentID || effect.State == "discarded" {
-				return 0, fmt.Errorf("%w: speech input discarded before admission", ErrSessionInvalid)
+				return 0, fmt.Errorf("%w: speech input discarded before admission", errSessionInvalid)
 			}
 		}
 		if m.AlbumSource != "" {
@@ -402,7 +400,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				return 0, err
 			}
 			if !sealed {
-				return 0, fmt.Errorf("%w: album was discarded before admission", ErrSessionInvalid)
+				return 0, fmt.Errorf("%w: album was discarded before admission", errSessionInvalid)
 			}
 		}
 		attachments, err := json.Marshal(m.Attachments)
@@ -487,7 +485,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				return 0, err
 			}
 		}
-		if created > 0 && strings.HasPrefix(channelKey, ChatPrefix) {
+		if created > 0 && strings.HasPrefix(channelKey, chatPrefix) {
 			if err := q.SetFirstChatTitle(ctx, sqlc.SetFirstChatTitleParams{ID: conv.ID, Title: chatTitle}); err != nil {
 				return 0, err
 			}
@@ -897,7 +895,7 @@ func (s *Service) execution(ctx context.Context, id int64, agentID string, optio
 		return engine.Ref{}, err
 	}
 	if conv.AgentID != agentID {
-		return engine.Ref{}, ErrSessionInvalid
+		return engine.Ref{}, errSessionInvalid
 	}
 	options.Scope = conv.ExecutionScope
 	if conv.ExecutionID.Valid {

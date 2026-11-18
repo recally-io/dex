@@ -30,11 +30,21 @@ type e2bExecEnv struct {
 	home       string
 	timeoutSec int
 	shellEnv   map[string]string
-	acquire    func(ctx context.Context) (*envdClient, string, error)
-	renew      func(ctx context.Context, sandboxID string)
+	handle     *e2bHandle
 
 	cwdMu sync.RWMutex
 	cwd   string
+}
+
+func (e *e2bExecEnv) acquire(ctx context.Context) (*envdClient, string, error) {
+	envd, _, _, sbID, _, err := e.handle.rt.acquire(ctx, e.handle.agentID, e.handle.spec)
+	return envd, sbID, err
+}
+
+func (e *e2bExecEnv) renew(ctx context.Context, sbID string) {
+	if cfg, parseErr := parseE2BConfig(e.handle.spec.Config); parseErr == nil {
+		_ = e.handle.rt.control(cfg, e.handle.spec.Secret).setTimeout(ctx, sbID, e.handle.timeoutSec)
+	}
 }
 
 var _ durableenv.ExecutionEnv = (*e2bExecEnv)(nil)
@@ -420,7 +430,7 @@ func (e *e2bExecEnv) Exec(ctx context.Context, command any, options *durableenv.
 	}
 
 	// Keep sandbox TTL alive during long-running commands; E2B autoPause handles idle periods.
-	if e.renew != nil && sbID != "" && e.timeoutSec > 0 {
+	if e.handle != nil && sbID != "" && e.timeoutSec > 0 {
 		interval := max(time.Duration(e.timeoutSec)*time.Second/2, 5*time.Second)
 		go func() {
 			ticker := time.NewTicker(interval)
@@ -443,14 +453,13 @@ func (e *e2bExecEnv) Exec(ctx context.Context, command any, options *durableenv.
 		seenLines    int
 		spilled      bool
 		spillPath    string
-		callbackErr  error
 		exitCode     int
 		gotEnd       bool
 		processError string
 	)
 
 	feed := func(raw []byte, stream durableenv.ShellStream, dec *durableenv.StreamDecoder) {
-		if len(raw) == 0 || callbackErr != nil {
+		if len(raw) == 0 {
 			return
 		}
 		if options.Spill != nil {

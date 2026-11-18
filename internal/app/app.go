@@ -107,13 +107,11 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err != nil {
 		return nil, errors.Join(err, conn.Close())
 	}
-	jobs, err := scheduler.New()
-	if err != nil {
-		return nil, errors.Join(err, conn.Close())
-	}
+	jobs := scheduler.New()
 
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	var (
+		artifacts     *artifact.Service
 		chats         *chat.Service
 		routineTools  *automation.ToolService
 		prefs         *settings.Service
@@ -121,12 +119,12 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		hub           *live.Hub
 		bots          *channelRegistry
 	)
-	artifacts := artifact.New(cfg.DataDir)
 	bg := background.New(conn, time.Now, cfg.Background, func(id int64) { chats.WakeConversation(id) })
 	// A previous run owned the processes of running commands. This must precede any new command.
 	if err := bg.Recover(ctx); err != nil {
 		cancel()
-		return nil, errors.Join(err, jobs.Close(), conn.Close())
+		jobs.Close()
+		return nil, errors.Join(err, conn.Close())
 	}
 	tools := engine.TaskTools{
 		AuthorizeGroup: func(ctx context.Context, c engine.TaskContext) error { return chats.AuthorizeGroup(ctx, c) },
@@ -229,25 +227,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return routineTools.Run(ctx, c, id)
 		},
 	}
-	// Bot tools need the services that exist only after the engine, so these closures bind late.
-	var botTools agent.BotTools
-	botHandlers := engine.BotTools{
-		List: func(ctx context.Context, c engine.TaskContext) ([]engine.BotInfo, error) {
-			return botTools.Handlers().List(ctx, c)
-		},
-		Get: func(ctx context.Context, c engine.TaskContext, ref string) (engine.BotInfo, error) {
-			return botTools.Handlers().Get(ctx, c, ref)
-		},
-		Create: func(ctx context.Context, c engine.TaskContext, p engine.BotPatch) (engine.BotInfo, error) {
-			return botTools.Handlers().Create(ctx, c, p)
-		},
-		Update: func(ctx context.Context, c engine.TaskContext, p engine.BotPatch) (engine.BotInfo, error) {
-			return botTools.Handlers().Update(ctx, c, p)
-		},
-		Archive: func(ctx context.Context, c engine.TaskContext, a engine.BotDeleteArgs) (engine.QuestionInfo, error) {
-			return botTools.Handlers().Archive(ctx, c, a)
-		},
-	}
+	// Bot tools need the services that exist only after the engine, so handlers bind to the pointer.
+	botTools := &agent.BotTools{}
 	envs := execenv.NewManager(execenv.ManagerConfig{
 		DataDir:    cfg.DataDir,
 		SSHHome:    cfg.Home,
@@ -269,7 +250,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		FakeModel: cfg.FakeModel,
 		Tasks:     tools,
 		Routines:  routines,
-		Bots:      botHandlers,
+		Bots:      botTools.Handlers(),
 		FallbackModel: func(ctx context.Context, agentID string) engine.ModelRef {
 			row, err := q.GetAgent(ctx, agentID)
 			if err != nil {
@@ -280,14 +261,15 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	})
 	if err != nil {
 		cancel()
-		return nil, errors.Join(err, envs.Close(context.WithoutCancel(ctx)), jobs.Close(), conn.Close())
+		jobs.Close()
+		return nil, errors.Join(err, envs.Close(context.WithoutCancel(ctx)), conn.Close())
 	}
-	artifacts.SetWorkspaceReader(native.ReadWorkspaceFile)
+	artifacts = artifact.New(cfg.DataDir, native.ReadWorkspaceFile)
 	bg.ConfigureEnvOpener(native.ExecEnv)
 	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
 	chats.ConfigureBackground(bg)
 	automations := automation.New(q, chats, time.Now)
-	routineTools = automation.NewToolService(conn, automations, chats.AutomationCommitted)
+	routineTools = automation.NewToolService(conn, automations, chats.WakeConversation)
 	hub = live.New(chats, native)
 	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
 	a := &App{db: conn, engine: native, envs: envs, bots: bots, jobs: jobs, background: bg, cancel: cancel}
@@ -308,12 +290,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 		config.Uploads = uploads
 		config.Speech = prefs.SpeechEndpoint
-		config.Watch = agentStreams{hub, agentID}.Open
-		config.Report = func(state, reason string) { manager.Report("telegram", channel.Status{State: state, Reason: reason}) }
+		config.Watch = func(ctx context.Context, chatID int64) (io.ReadCloser, error) { return hub.Open(ctx, agentID, chatID) }
 		manager.Set("telegram", telegram.New(*config, manager)) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
 	}
-	prefs = settings.New(q, native.Catalog, native)
-	prefs.ConfigureEnvironments(envs)
+	prefs = settings.New(q, native.Catalog, native, envs)
 	if err := prefs.ApplyOnePassword(ctx); err != nil {
 		return nil, err
 	}
@@ -329,7 +309,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		_ = native.CloseAgent(changeCtx, agentID)
 		envs.CleanupSandbox(changeCtx, agentID, oldEnvID, oldSandboxID)
 	}
-	botTools = agent.BotTools{Agents: agentsService, Chats: chats, Extensions: native.Extensions}
+	*botTools = agent.BotTools{Agents: agentsService, Chats: chats, Extensions: native.Extensions}
 	// An approved archive commits in a chat receipt; the channels stop right after it.
 	chats.OnBotArchived = func(id string) {
 		if err := bg.StopAgent(runCtx, id); err != nil {
@@ -353,7 +333,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			manager.Set("feishu", nil)
 			return
 		}
-		manager.Set("feishu", feishu.New(*config, manager, agentStreams{hub, agentID}, uploads, func(ctx context.Context, owner, code string) (bool, error) {
+		manager.Set("feishu", feishu.New(*config, manager, func(ctx context.Context, chatID int64) (io.ReadCloser, error) { return hub.Open(ctx, agentID, chatID) }, uploads, func(ctx context.Context, owner, code string) (bool, error) {
 			return agentsService.PairFeishu(ctx, agentID, owner, code)
 		}))
 	}
@@ -385,10 +365,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 
 	a.handler = server.New(server.Config{
-		RuntimeReady: func(ctx context.Context) bool { return native.Health(ctx) == nil },
-		Engine:       native,
-		Envs:         envs,
-		Chats:        chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
+		Engine: native,
+		Envs:   envs,
+		Chats:  chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})
 	a.wg.Go(func() { chats.Run(runCtx) })
 	a.wg.Go(func() {
@@ -399,17 +378,18 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 	})
 	every := cmp.Or(cfg.DreamEvery, 24*time.Hour)
-	dreamer := dream.New(q, chats, every, time.Now)
-	err = errors.Join(
-		jobs.Every("dream", min(every, time.Hour), dreamer.Check),
-		jobs.Every("automations", cmp.Or(cfg.AutomationCheck, time.Minute), automations.Check),
-		// Polling keeps one mechanism for page saves and hand edits; use file events if 3 s is slow.
-		jobs.Every("extensions", 3*time.Second, reloadStale(native, chats)),
-	)
-	if err != nil {
+	dreamer := dream.New(q, chats.Post, every, time.Now)
+	if err := jobs.Every("dream", min(every, time.Hour), dreamer.Check); err != nil {
 		return nil, err
 	}
-	jobs.Start()
+	if err := jobs.Every("automations", cmp.Or(cfg.AutomationCheck, time.Minute), automations.Check); err != nil {
+		return nil, err
+	}
+	// Polling keeps one mechanism for page saves and hand edits; use file events if 3 s is slow.
+	if err := jobs.Every("extensions", 3*time.Second, reloadStale(native, chats)); err != nil {
+		return nil, err
+	}
+	jobs.Start(runCtx)
 	for _, agent := range agents {
 		tg, err := agentsService.TelegramConfig(ctx, agent.ID)
 		if err != nil {
@@ -435,12 +415,12 @@ func (a *App) Handler() http.Handler { return a.handler }
 
 // Close stops business services, closes native execution, and closes business storage.
 func (a *App) Close() error {
-	err := a.jobs.Close()
+	a.jobs.Close()
 	a.bots.Close()
 	a.cancel()
 	a.wg.Wait()
 	a.background.Close()
-	return errors.Join(err, a.engine.Close(context.Background()), a.envs.Close(context.Background()), a.db.Close())
+	return errors.Join(a.engine.Close(context.Background()), a.envs.Close(context.Background()), a.db.Close())
 }
 
 // ToolEnv selects the process values that tools inherit when the login shell is not available.
@@ -457,12 +437,25 @@ func ToolEnv(environ []string) map[string]string {
 	return env
 }
 
-// agentStreams binds channel previews to their agent.
-type agentStreams struct {
-	hub     *live.Hub
-	agentID string
-}
-
-func (s agentStreams) Open(ctx context.Context, chatID int64) (io.ReadCloser, error) {
-	return s.hub.Open(ctx, s.agentID, chatID)
+// reloadStale reloads each open agent whose extension files, shell rc files, or 1Password
+// settings changed. Reload needs all agents idle, so a busy engine waits for a later run. An
+// invalid configuration is not tried again until its files change.
+func reloadStale(native *engine.Agents, chats *chat.Service) func(context.Context) {
+	refused := map[string]string{} // agent ID -> stamp that failed validation
+	return func(ctx context.Context) {
+		for id, stamp := range native.StaleExtensions(ctx) {
+			if refused[id] == stamp {
+				continue
+			}
+			err := chats.ReloadExtensions(ctx, id)
+			switch {
+			case err == nil:
+				delete(refused, id)
+				slog.Info("reloaded extensions after a change", "agent", id)
+			case errors.Is(err, engine.ErrInvalidInput):
+				refused[id] = stamp
+				slog.Warn("extension change not applied; fix the configuration", "agent", id)
+			}
+		}
+	}
 }

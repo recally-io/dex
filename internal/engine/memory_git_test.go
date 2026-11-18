@@ -12,7 +12,7 @@ func TestUserMemoryGitIgnoresAgentRepositoryCommands(t *testing.T) {
 	for _, command := range []string{"hook", "fsmonitor"} {
 		t.Run(command, func(t *testing.T) {
 			// Given a memory repository with an agent-controlled Git command.
-			repo := NewMemoryRepo(t.TempDir(), map[string]string{"PATH": os.Getenv("PATH")})
+			repo := newMemoryRepo(t.TempDir(), map[string]string{"PATH": os.Getenv("PATH")})
 			if err := repo.Open(t.Context()); err != nil {
 				t.Fatal(err)
 			}
@@ -51,7 +51,7 @@ func TestUserMemoryGitIgnoresAgentRepositoryCommands(t *testing.T) {
 func TestUserMemoryGitDoesNotInheritProcessSecrets(t *testing.T) {
 	// Given an agent-controlled clean filter and a value outside the explicit tool environment.
 	t.Setenv("DEX_PROCESS_SENTINEL", "process-only-test-value")
-	repo := NewMemoryRepo(t.TempDir(), map[string]string{"PATH": os.Getenv("PATH")})
+	repo := newMemoryRepo(t.TempDir(), map[string]string{"PATH": os.Getenv("PATH")})
 	if err := repo.Open(t.Context()); err != nil {
 		t.Fatal(err)
 	}

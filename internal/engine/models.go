@@ -85,15 +85,6 @@ func (d *Discovery) Wait(ctx context.Context) (map[string]string, error) {
 	}
 }
 
-// Configure registers providers and waits for discovery, for synchronous callers.
-func (c *Catalog) Configure(ctx context.Context, providers []ProviderSettings) (map[string]string, error) {
-	discovery, err := c.ConfigureAsync(ctx, providers)
-	if err != nil {
-		return nil, err
-	}
-	return discovery.Wait(ctx)
-}
-
 // ConfigureAsync registers credentials and static models before returning.
 // New, changed, and failed dynamic providers need discovery. Other providers keep their catalogs.
 func (c *Catalog) ConfigureAsync(ctx context.Context, providers []ProviderSettings) (*Discovery, error) {
@@ -204,8 +195,8 @@ func sameProviderSettings(a, b ProviderSettings) bool {
 	return a.ID == b.ID && a.Name == b.Name && a.API == b.API && a.BaseURL == b.BaseURL && a.APIKey == b.APIKey && slices.Equal(a.Models, b.Models)
 }
 
-// DiscoveryReady is a nonblocking gate for cold harness opens that can resume stored work.
-func (c *Catalog) DiscoveryReady() error {
+// discoveryReady is a nonblocking gate for cold harness opens that can resume stored work.
+func (c *Catalog) discoveryReady() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, current := range c.custom {

@@ -17,7 +17,7 @@ func lockUpdate(path string) (func(), error) {
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		_ = f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, ErrBusy
+			return nil, errBusy
 		}
 		return nil, err
 	}

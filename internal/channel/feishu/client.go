@@ -25,18 +25,19 @@ type Config struct {
 	APIURL    string
 }
 
-// Client owns the platform token cache and REST requests.
-type Client struct {
-	resourceTimeout time.Duration
-	cfg             Config
-	http            *http.Client
-	mu              sync.Mutex
-	token           string
-	expires         time.Time
+const resourceTimeout = 5 * time.Minute
+
+// client owns the platform token cache and REST requests.
+type client struct {
+	cfg     Config
+	http    *http.Client
+	mu      sync.Mutex
+	token   string
+	expires time.Time
 }
 
-// NewClient creates a client without making a request.
-func NewClient(cfg Config) *Client {
+// newClient creates a client without making a request.
+func newClient(cfg Config) *client {
 	if cfg.APIURL == "" {
 		cfg.APIURL = "https://open.feishu.cn"
 		if cfg.Brand == "lark" {
@@ -45,15 +46,15 @@ func NewClient(cfg Config) *Client {
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert // dex does not replace the standard transport.
 	transport.ResponseHeaderTimeout = 30 * time.Second
-	return &Client{cfg: cfg, http: &http.Client{Transport: transport}, resourceTimeout: 5 * time.Minute}
+	return &client{cfg: cfg, http: &http.Client{Transport: transport}}
 }
 
-// APIError contains only codes, so a platform response cannot disclose credentials.
-type APIError struct{ Status, Code int }
+// apiError contains only codes, so a platform response cannot disclose credentials.
+type apiError struct{ Status, Code int }
 
-func (e *APIError) Error() string { return fmt.Sprintf("feishu HTTP %d, code %d", e.Status, e.Code) }
+func (e *apiError) Error() string { return fmt.Sprintf("feishu HTTP %d, code %d", e.Status, e.Code) }
 
-func (c *Client) tenantToken(ctx context.Context) (string, error) {
+func (c *client) tenantToken(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if time.Now().Before(c.expires) {
@@ -83,13 +84,13 @@ type response struct {
 	body io.ReadCloser
 }
 
-func (c *Client) authorized(ctx context.Context, method, path string, body any, stream bool) (response, error) {
+func (c *client) authorized(ctx context.Context, method, path string, body any, stream bool) (response, error) {
 	token, err := c.tenantToken(ctx)
 	if err != nil {
 		return response{}, err
 	}
 	data, err := c.execute(ctx, method, path, body, token, stream)
-	if e, ok := errors.AsType[*APIError](err); ok && (e.Code == 99991663 || e.Code == 99991668 || e.Code == 99991661) {
+	if e, ok := errors.AsType[*apiError](err); ok && (e.Code == 99991663 || e.Code == 99991668 || e.Code == 99991661) {
 		c.mu.Lock()
 		if c.token == token {
 			c.expires = time.Time{}
@@ -104,13 +105,13 @@ func (c *Client) authorized(ctx context.Context, method, path string, body any, 
 	return data, err
 }
 
-func (c *Client) request(ctx context.Context, method, path string, body any, token string) ([]byte, error) {
+func (c *client) request(ctx context.Context, method, path string, body any, token string) ([]byte, error) {
 	result, err := c.execute(ctx, method, path, body, token, false)
 	return result.data, err
 }
 
 // execute owns failures and retries; only a successful resource transfers body ownership.
-func (c *Client) execute(ctx context.Context, method, path string, body any, token string, stream bool) (response, error) {
+func (c *client) execute(ctx context.Context, method, path string, body any, token string, stream bool) (response, error) {
 	if !stream {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
@@ -156,7 +157,7 @@ func (c *Client) execute(ctx context.Context, method, path string, body any, tok
 				}
 				err = json.Unmarshal(data, &envelope)
 				if resp.StatusCode < 200 || resp.StatusCode >= 300 || stream || (err == nil && envelope.Code != 0) {
-					err = &APIError{resp.StatusCode, envelope.Code}
+					err = &apiError{resp.StatusCode, envelope.Code}
 				}
 				retry = retryable(resp.StatusCode, envelope.Code)
 			} else {
@@ -203,7 +204,7 @@ func pause(ctx context.Context, delay time.Duration) error {
 }
 
 // Send creates a message. deliveryID stays the same across retries.
-func (c *Client) Send(ctx context.Context, receiver, kind, content, deliveryID string) (string, error) {
+func (c *client) Send(ctx context.Context, receiver, kind, content, deliveryID string) (string, error) {
 	data, err := c.authorized(ctx, http.MethodPost, "/open-apis/im/v1/messages?receive_id_type=open_id", map[string]string{"receive_id": receiver, "msg_type": kind, "content": content, "uuid": deliveryID}, false)
 	if err != nil {
 		return "", err
@@ -223,15 +224,15 @@ func (c *Client) Send(ctx context.Context, receiver, kind, content, deliveryID s
 }
 
 // Patch replaces an interactive card.
-func (c *Client) Patch(ctx context.Context, id, content string) error {
+func (c *client) Patch(ctx context.Context, id, content string) error {
 	_, err := c.authorized(ctx, http.MethodPatch, "/open-apis/im/v1/messages/"+url.PathEscape(id), map[string]string{"content": content}, false)
 	return err
 }
 
 // Download streams one message resource to the caller. The caller closes the body.
-func (c *Client) Download(ctx context.Context, messageID, key, kind string) (io.ReadCloser, error) {
+func (c *client) Download(ctx context.Context, messageID, key, kind string) (io.ReadCloser, error) {
 	// Bound the full resource read, including error bodies, without the REST 30-second limit.
-	ctx, cancel := context.WithTimeout(ctx, c.resourceTimeout)
+	ctx, cancel := context.WithTimeout(ctx, resourceTimeout)
 	path := "/open-apis/im/v1/messages/" + url.PathEscape(messageID) + "/resources/" + url.PathEscape(key) + "?type=" + url.QueryEscape(kind)
 	result, err := c.authorized(ctx, http.MethodGet, path, nil, true)
 	if err != nil {
@@ -251,14 +252,14 @@ func (b *resourceBody) Close() error {
 	return b.ReadCloser.Close()
 }
 
-// TextContent encodes the platform's text content field.
-func TextContent(text string) string {
+// textContent encodes the platform's text content field.
+func textContent(text string) string {
 	b, _ := json.Marshal(map[string]string{"text": text})
 	return string(b)
 }
 
-// Parts splits UTF-8 text below the platform content limit.
-func Parts(text string) []string {
+// parts splits UTF-8 text below the platform content limit.
+func parts(text string) []string {
 	const limit = 4000
 	var parts []string
 	for len(text) > limit {

@@ -27,8 +27,8 @@ func TestUserLocalProviderManagesWorkspaceAndEnv(t *testing.T) {
 	}
 	defer func() { _ = h.Close(context.Background()) }()
 
-	if h.Kind() != execenv.KindLocal || h.ID() != "default" {
-		t.Fatalf("unexpected handle metadata: kind=%q id=%q", h.Kind(), h.ID())
+	if h.Kind() != execenv.KindLocal {
+		t.Fatalf("unexpected handle metadata: kind=%q", h.Kind())
 	}
 	wantWS := filepath.Join(dataDir, "agents", "default", "workspace")
 	if h.Workspace() != wantWS {

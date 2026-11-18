@@ -28,7 +28,11 @@ func TestUserCatalogDiscoversModelsAndReplacesCredentials(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[{"id":"reason","display_name":"Reason","reasoning":true,"context_window":8192}]}`))
 	}))
 	defer server.Close()
-	failures, err := catalog.Configure(t.Context(), []ProviderSettings{{ID: "local", Name: "Local", API: "openai-completions", BaseURL: server.URL, APIKey: "test-key"}})
+	d, err := catalog.ConfigureAsync(t.Context(), []ProviderSettings{{ID: "local", Name: "Local", API: "openai-completions", BaseURL: server.URL, APIKey: "test-key"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failures, err := d.Wait(t.Context())
 	if err != nil || len(failures) != 0 {
 		t.Fatalf("configure: %v %v", failures, err)
 	}
@@ -36,7 +40,11 @@ func TestUserCatalogDiscoversModelsAndReplacesCredentials(t *testing.T) {
 	if err != nil || len(available) != 1 || available[0].Name != "Reason" || len(available[0].ThinkingLevels) < 2 {
 		t.Fatalf("models: %#v %v", available, err)
 	}
-	if _, err = catalog.Configure(t.Context(), nil); err != nil {
+	d, err = catalog.ConfigureAsync(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = d.Wait(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	available, err = catalog.Available(t.Context())
@@ -76,7 +84,11 @@ func TestUserDiscoveryFailureDoesNotExposeSecrets(t *testing.T) {
 	defer server.Close()
 	catalog := NewCatalog(false)
 	defer catalog.Models.Close()
-	failures, err := catalog.Configure(t.Context(), []ProviderSettings{{ID: "local", API: "openai-responses", BaseURL: server.URL + "/SECRET", APIKey: "SECRET"}})
+	d, err := catalog.ConfigureAsync(t.Context(), []ProviderSettings{{ID: "local", API: "openai-responses", BaseURL: server.URL + "/SECRET", APIKey: "SECRET"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failures, err := d.Wait(t.Context())
 	if err != nil || !strings.Contains(failures["local"], "HTTP 503") || strings.Contains(failures["local"], "SECRET") {
 		t.Fatalf("failure: %v %v", failures, err)
 	}
@@ -106,7 +118,11 @@ func TestUserCustomAPIsUseTheirDiscoveryContracts(t *testing.T) {
 			}
 			catalog := NewCatalog(false)
 			defer catalog.Models.Close()
-			failures, err := catalog.Configure(t.Context(), []ProviderSettings{{ID: "custom", API: api, BaseURL: base, APIKey: "test"}})
+			d, err := catalog.ConfigureAsync(t.Context(), []ProviderSettings{{ID: "custom", API: api, BaseURL: base, APIKey: "test"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			failures, err := d.Wait(t.Context())
 			if err != nil || len(failures) > 0 {
 				t.Fatalf("configure: %v %v", failures, err)
 			}
@@ -145,7 +161,10 @@ func TestUserModelDiscoveryHasABoundedRequestAndCanBeCanceled(t *testing.T) {
 	finished := make(chan error, 1)
 	before := time.Now()
 	go func() {
-		_, err := catalog.Configure(ctx, []ProviderSettings{{ID: "unresponsive", API: "openai-completions", BaseURL: server.URL + "/private-url", APIKey: "private-key"}})
+		d, err := catalog.ConfigureAsync(ctx, []ProviderSettings{{ID: "unresponsive", API: "openai-completions", BaseURL: server.URL + "/private-url", APIKey: "private-key"}})
+		if err == nil {
+			_, err = d.Wait(ctx)
+		}
 		finished <- err
 	}()
 	var request *http.Request

@@ -7,7 +7,6 @@ import {
   parentName,
   sessionAgentId,
   sessionKind,
-  startedBy,
 } from "./sessions";
 
 test("user sees one count for every busy session", () => {
@@ -63,13 +62,4 @@ test("a child row names its parent by ID: Main only for the ID of Main, and an a
 test("a child session in another bot opens in that bot and names it", () => {
   expect(sessionAgentId({}, "default")).toBe("default");
   expect(sessionAgentId({ agentId: "coder" }, "default")).toBe("coder");
-
-  // No parent, no byline.
-  expect(startedBy({}, undefined)).toBeUndefined();
-  // A parent in this bot has a title in the list.
-  expect(startedBy({ parentId: 1 }, "Main")).toBe("Main");
-  expect(startedBy({ parentId: 1 }, undefined)).toBe("a chat");
-  // A child in another bot adds that bot, and a parent in another bot is named by its bot.
-  expect(startedBy({ parentId: 1, agentName: "Coder" }, "Main")).toBe("Main · Coder");
-  expect(startedBy({ parentId: 1, parentAgentName: "Dex" }, undefined)).toBe("Dex");
 });

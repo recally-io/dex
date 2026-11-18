@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json/v2"
-	"errors"
 	"fmt"
 	"slices"
 
@@ -140,9 +139,6 @@ func (h *handler) ForgetEnvironmentHostKey(ctx context.Context, req api.ForgetEn
 
 func (h *handler) ResetAgentEnvironment(ctx context.Context, _ api.ResetAgentEnvironmentRequestObject) (api.ResetAgentEnvironmentResponseObject, error) {
 	id := agentID(ctx)
-	if h.Envs == nil {
-		return nil, errors.New("execution environment manager is not configured")
-	}
 	canReset, err := h.Envs.CanResetAgent(ctx, id)
 	if err != nil {
 		return nil, err
@@ -150,13 +146,9 @@ func (h *handler) ResetAgentEnvironment(ctx context.Context, _ api.ResetAgentEnv
 	if !canReset {
 		return nil, fmt.Errorf("%w: environment reset applies only to disposable sandboxes", settings.ErrInvalid)
 	}
-	if h.Chats != nil {
-		if err := h.Chats.ResetEnvironment(ctx, id, func(rctx context.Context) error {
-			return h.Envs.ResetAgent(rctx, id)
-		}); err != nil {
-			return nil, err
-		}
-	} else if err := h.Envs.ResetAgent(ctx, id); err != nil {
+	if err := h.Chats.ResetEnvironment(ctx, id, func(rctx context.Context) error {
+		return h.Envs.ResetAgent(rctx, id)
+	}); err != nil {
 		return nil, err
 	}
 	return api.ResetAgentEnvironment200JSONResponse(ok), nil

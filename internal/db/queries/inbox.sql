@@ -22,14 +22,6 @@ WHERE automation_runs.id = sqlc.arg(id) AND (
         AND (outcome = 'failed' OR automation_runs.status = 'failed' OR s.status = 'unanswered' OR (outcome = 'changed' AND duplicate = 0)))
 );
 
--- name: RestoreInboxItem :execrows
-UPDATE automation_runs SET dismissed_at = NULL
-WHERE automation_runs.id = sqlc.arg(id) AND (
-    (automation_runs.status = 'failed' AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.id = automation_runs.id)) OR
-    EXISTS (SELECT 1 FROM submissions s WHERE s.id = automation_runs.id AND s.status <> 'pending'
-        AND (outcome = 'failed' OR automation_runs.status = 'failed' OR s.status = 'unanswered' OR (outcome = 'changed' AND duplicate = 0)))
-);
-
 -- name: DismissInboxItem :execrows
 UPDATE automation_runs SET dismissed_at = coalesce(dismissed_at, sqlc.arg(now))
 WHERE automation_runs.id = sqlc.arg(id) AND (

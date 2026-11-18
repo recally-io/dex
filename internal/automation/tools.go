@@ -93,13 +93,6 @@ func (s *ToolService) Get(ctx context.Context, c engine.TaskContext, id string) 
 	return out, nil
 }
 
-// transactionPoster reuses normal run/input storage within the operation receipt transaction.
-type transactionPoster struct{ q *sqlc.Queries }
-
-func (p transactionPoster) EnqueueAutomation(ctx context.Context, in chat.AutomationInput) (int64, bool, error) {
-	return chat.StoreAutomationInput(ctx, p.q, in)
-}
-
 // mutate returns the committed result even when replay occurs after input settlement.
 // A new mutation must still have an active source; the writer lock orders it with Stop.
 func (s *ToolService) mutate(ctx context.Context, c engine.TaskContext, action string, invoke func(*Service, sqlc.Conversation) (any, error), out any) error {
@@ -132,7 +125,13 @@ func (s *ToolService) mutate(ctx context.Context, c engine.TaskContext, action s
 	if source.Status != "pending" {
 		return invalid("the source run is no longer active")
 	}
-	local := New(q, transactionPoster{q}, s.service.now)
+	local := &Service{
+		q: q,
+		enqueue: func(ctx context.Context, in chat.AutomationInput) (int64, bool, error) {
+			return chat.StoreAutomationInput(ctx, q, in)
+		},
+		now: s.service.now,
+	}
 	result, err := invoke(local, conv)
 	if err != nil {
 		return err

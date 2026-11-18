@@ -38,7 +38,7 @@ export function saveModel(agentId: string, provider: string, modelId: string) {
   return saveAgent(agentId, (saved) => ({ ...saved, provider, modelId }));
 }
 
-export type AgentModel = { label: string; ok: boolean; model?: Model };
+type AgentModel = { label: string; ok: boolean; model?: Model };
 
 export function findModel(provider: string, modelId: string, models: Model[] | undefined): AgentModel {
   if (!modelId) return { label: "Choose a model", ok: false };

@@ -36,7 +36,7 @@ import "./styles.css";
 function Missing({ title, description }: { title: string; description: string }) {
   return (
     <FramedPage title={title} description={description}>
-      <Section n={1} title="Go back">
+      <Section title="Go back">
         <Link className={buttonVariants({ size: "sm", variant: "secondary" })} to="/">
           Open timeline
         </Link>
@@ -251,7 +251,7 @@ const router = createRouter({
   ]),
   defaultErrorComponent: ({ error, reset }) => (
     <FramedPage title="Could not open this page" description={errorText(error)}>
-      <Section n={1} title="What to do" caption="The error can be temporary.">
+      <Section title="What to do" caption="The error can be temporary.">
         <Button size="sm" variant="secondary" onClick={reset}>
           Try again
         </Button>

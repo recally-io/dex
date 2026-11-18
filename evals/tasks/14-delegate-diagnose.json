@@ -13,7 +13,7 @@
   "project": true,
   "minSpawn": 1,
   "maxSpawn": 1,
-  "tools": ["spawn_task", "report_task"],
+  "tools": ["session_new"],
   "contains": ["discount.go", "go test"],
   "outputFiles": {
     "total.go": "return price(n) + discount(n) }",

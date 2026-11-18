@@ -36,7 +36,7 @@ export function ExtensionsPage() {
           of Git. Disabling a server does not remove environment keys.
         </Note>
       </div>
-      <Section n={1} title="Built in" caption="Always on. You cannot turn them off.">
+      <Section title="Built in" caption="Always on. You cannot turn them off.">
         <Panel>
           <Facts
             monoLabels
@@ -73,7 +73,7 @@ export function ExtensionsPage() {
 function Catalog({ extensions: e, agentId }: { extensions: Extensions; agentId: string }) {
   return (
     <>
-      <Section n={2} title="File levels" caption="Each holds skills/, mcp.json and .env.">
+      <Section title="File levels" caption="Each holds skills/, mcp.json and .env.">
         <Panel>
           <ul className="divide-y divide-border">
             {e.levels.map((level) => (
@@ -86,7 +86,7 @@ function Catalog({ extensions: e, agentId }: { extensions: Extensions; agentId: 
         </Panel>
       </Section>
       {e.warnings.length || e.errors.length ? (
-        <Section n={3} title="Configuration">
+        <Section title="Configuration">
           {e.warnings.length ? (
             <Note tone="warn">
               <ul className="[overflow-wrap:anywhere]">
@@ -110,7 +110,6 @@ function Catalog({ extensions: e, agentId }: { extensions: Extensions; agentId: 
         </Section>
       ) : null}
       <Section
-        n={4}
         title="Skills"
         caption="Edits apply to the next model request. The project level is .agents/skills in the bot workspace and is narrower than the bot."
       >
@@ -122,7 +121,6 @@ function Catalog({ extensions: e, agentId }: { extensions: Extensions; agentId: 
         />
       </Section>
       <Section
-        n={5}
         title="MCP servers"
         caption="mcp.json changes apply automatically. Tools are available through tool_search."
       >
@@ -138,7 +136,7 @@ function Catalog({ extensions: e, agentId }: { extensions: Extensions; agentId: 
           }
         />
       </Section>
-      <EnvKeys target={{ scope: "agent", agentId }} n={6} />
+      <EnvKeys target={{ scope: "agent", agentId }} />
     </>
   );
 }

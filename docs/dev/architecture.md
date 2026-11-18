@@ -290,7 +290,7 @@ One owner can create several agents. `GET /api/agents` returns
 counts sessions and automations across all agents. A child session counts when it has pending input, like any other visible session. Each session
 counts once. Channel counts come from the app registry. The web polls this
 list every three seconds and shares its cache across agent pages. The same
-response includes per-agent `inboxUnread`, `inboxFailed`, and `routineFailed`.
+response includes per-agent `routineFailed`.
 These fields come from the activity SQL query. `POST /api/agents` accepts a name
 and optional primary model, thinking level, fallback model, instructions, and
 execution environment. Omitted fields copy the built-in `default` agent; a model
@@ -376,8 +376,7 @@ share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
   Owner facts go in shared `MEMORY.md` and its topic files. Role experience
   and ways of working go in `agents/<agentId>/`, with its own `MEMORY.md`
   entry point. This keeps one bot's habits out of the owner's preferences.
-- **Dream.** The [scheduler](../../internal/scheduler/scheduler.go), a
-  wrapper of gocron, runs [`dream.Dreamer`](../../internal/dream/dream.go)
+- **Dream.** The [scheduler](../../internal/scheduler/scheduler.go) runs [`dream.Dreamer`](../../internal/dream/dream.go)
   at start and then every hour. The schedule only causes a check; the
   `dreams` table decides. One Dreamer checks every agent. When an agent has a
   model, none of that agent's submissions are pending, no dream is pending

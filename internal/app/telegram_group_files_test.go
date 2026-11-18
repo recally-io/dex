@@ -24,6 +24,7 @@ func (f *fakeTelegram) groupAlbum(group string, firstID, topic int64, files ...s
 }
 
 func TestUserTelegramGroupAlbumKeepsAllMembersInTopicAudience(t *testing.T) {
+	t.Parallel()
 	// Given an album whose first member mentions the bot and later members have no trigger text.
 	directory := t.TempDir()
 	f := newFakeTelegram(t)
@@ -46,6 +47,7 @@ func TestUserTelegramGroupAlbumKeepsAllMembersInTopicAudience(t *testing.T) {
 }
 
 func TestUserTelegramGroupPublishesOnlyAudienceFilesToItsTopic(t *testing.T) {
+	t.Parallel()
 	// Given one explicitly published group file and a private bot workspace file.
 	directory := t.TempDir()
 	resources := filepath.Join(directory, "agents", "default", "telegram-groups", "tg_123_-100_7", "resources")
@@ -92,6 +94,7 @@ func TestUserTelegramGroupPublishesOnlyAudienceFilesToItsTopic(t *testing.T) {
 }
 
 func TestUserTelegramGroupReadsPublishedImageWithoutPrivateFilesystem(t *testing.T) {
+	t.Parallel()
 	// Given an explicitly published image in one audience, without a process or generic file tool.
 	directory := t.TempDir()
 	resources := filepath.Join(directory, "agents", "default", "telegram-groups", "tg_123_-100_7", "resources")
@@ -118,6 +121,7 @@ func TestUserTelegramGroupReadsPublishedImageWithoutPrivateFilesystem(t *testing
 }
 
 func TestUserTelegramGroupStopDiscardsOnlyOwnedPendingAlbums(t *testing.T) {
+	t.Parallel()
 	// Given staged albums in private Main and two group topics, held before sealing.
 	directory := t.TempDir()
 	f := newFakeTelegram(t)

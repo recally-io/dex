@@ -127,7 +127,7 @@ func TestUserTelegramGroupScopeDoesNotGrantOwnerOrActorAccess(t *testing.T) {
 			t.Fatalf("history crossed scope: %v", users)
 		}
 	}
-	if UserOrigin("telegram:-100:7") || UserOrigin("telegram:-100") {
+	if userOrigin("telegram:-100:7") || userOrigin("telegram:-100") {
 		t.Fatal("group input acquired private owner-origin authority")
 	}
 }

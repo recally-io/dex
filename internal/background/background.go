@@ -45,7 +45,7 @@ const (
 const (
 	// StateStarting is the state of a row before its process exists. A crash can leave it.
 	StateStarting = "starting"
-	StateRunning  = "running"
+	stateRunning  = "running"
 	StateExited   = "exited"
 	StateStopped  = "stopped"
 	StateTimedOut = "timed_out"
@@ -70,10 +70,10 @@ const (
 var (
 	// ErrInvalid is a request that no state change can fix.
 	ErrInvalid = errors.New("invalid background command")
-	// ErrLimit means that the bot runs the most background commands that it may run.
-	ErrLimit = errors.New("too many background commands")
-	// ErrNotFound means that the session has no background command with the ID.
-	ErrNotFound = errors.New("background command not found")
+	// errLimit means that the bot runs the most background commands that it may run.
+	errLimit = errors.New("too many background commands")
+	// errNotFound means that the session has no background command with the ID.
+	errNotFound = errors.New("background command not found")
 )
 
 // Limits bound the cost of background commands. A zero field takes its default.
@@ -145,31 +145,31 @@ type StartParams struct {
 // ExecEnvOpener acquires an execution environment for a non-local background command.
 type ExecEnvOpener func(ctx context.Context, agentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error)
 
-// OutputHooks receive live command output chunks and events from a Runner.
-type OutputHooks struct {
+// outputHooks receive live command output chunks and events from a runner.
+type outputHooks struct {
 	OnStdoutLine func(line string)
 	OnSizeLimit  func()
 }
 
-// ProcessResult is the outcome and bounded tail output of a completed background process.
-type ProcessResult struct {
+// processResult is the outcome and bounded tail output of a completed background process.
+type processResult struct {
 	ExitCode int
 	Tail     string
 }
 
-// RunningProcess controls one launched background command.
-type RunningProcess interface {
+// runningProcess controls one launched background command.
+type runningProcess interface {
 	PID() int64
-	Wait() ProcessResult
-	Terminate(reason string, grace time.Duration)
+	Wait() processResult
+	Terminate(grace time.Duration)
 	Abandon()
 }
 
-// Runner starts and supervises background commands inside a local or remote execution environment.
-type Runner interface {
+// runner starts and supervises background commands inside a local or remote execution environment.
+type runner interface {
 	ValidateDir(ctx context.Context, p StartParams, cwd string) error
 	PrepareOutput(ctx context.Context, p StartParams, id string) (string, error)
-	Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks OutputHooks) (RunningProcess, error)
+	Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks outputHooks) (runningProcess, error)
 }
 
 // Manager owns the processes of background commands.
@@ -228,7 +228,7 @@ func (m *Manager) Close() {
 
 type proc struct {
 	row  sqlc.BackgroundCommand
-	run  RunningProcess
+	run  runningProcess
 	done chan struct{} // closed when the final state is stored
 
 	// mu guards reason so the first termination reason wins until the final state is stored.
@@ -246,14 +246,14 @@ type proc struct {
 	windowN      int
 }
 
-func (m *Manager) runnerFor(kind execenv.Kind, opener ExecEnvOpener) (Runner, error) {
+func (m *Manager) runnerFor(kind execenv.Kind, opener ExecEnvOpener) (runner, error) {
 	if kind == "" || kind == execenv.KindLocal {
 		return &localRunner{limits: m.limits, wg: &m.wg}, nil
 	}
 	if opener == nil {
 		return nil, fmt.Errorf("%w: remote background runner is unavailable", ErrInvalid)
 	}
-	return NewEnvRunner(opener, m.limits), nil
+	return newEnvRunner(opener, m.limits), nil
 }
 
 // Start runs a command in the background and returns its row. The row exists before the process:
@@ -309,7 +309,7 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 		return sqlc.BackgroundCommand{}, err
 	}
 	if int(running) >= m.limits.MaxRunning {
-		return sqlc.BackgroundCommand{}, fmt.Errorf("%w: this bot runs %d; stop one or wait for one to end", ErrLimit, running)
+		return sqlc.BackgroundCommand{}, fmt.Errorf("%w: this bot runs %d; stop one or wait for one to end", errLimit, running)
 	}
 
 	id := uuid.NewV7().String()
@@ -377,9 +377,9 @@ func (m *Manager) abandon(ctx context.Context, started *proc, id string) {
 	}
 }
 
-func (m *Manager) launch(ctx context.Context, runner Runner, id string, p StartParams, cwd, output string) (*proc, error) {
+func (m *Manager) launch(ctx context.Context, r runner, id string, p StartParams, cwd, output string) (*proc, error) {
 	started := &proc{done: make(chan struct{})}
-	run, err := runner.Start(ctx, p, id, cwd, output, OutputHooks{
+	run, err := r.Start(ctx, p, id, cwd, output, outputHooks{
 		OnStdoutLine: func(line string) { m.event(started, line) }, //nolint:contextcheck // line batching outlives the start tool call
 		OnSizeLimit:  func() { m.terminate(started, reasonOutputLimit) },
 	})
@@ -496,7 +496,7 @@ func (m *Manager) terminate(p *proc, reason string) {
 		p.reason = reason
 	}
 	p.mu.Unlock()
-	p.run.Terminate(reason, m.limits.Grace)
+	p.run.Terminate(m.limits.Grace)
 }
 
 // Stop ends the process group of one command of a session and waits until the state is stored.
@@ -506,7 +506,7 @@ func (m *Manager) Stop(ctx context.Context, conversationID int64, id string) (sq
 		return row, err
 	}
 	switch row.State {
-	case StateStarting, StateRunning:
+	case StateStarting, stateRunning:
 	case StateUnknown:
 		// The process can be gone, and the OS can have given its PID to another process.
 		return row, fmt.Errorf("%w: dex crashed and cannot confirm which process is this command; stop it by hand if it still runs (PID %d)", ErrInvalid, row.Pid)
@@ -573,7 +573,7 @@ func (m *Manager) List(ctx context.Context, conversationID int64) ([]sqlc.Backgr
 func (m *Manager) owned(ctx context.Context, conversationID int64, id string) (sqlc.BackgroundCommand, error) {
 	row, err := m.q.GetBackgroundCommand(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && row.ConversationID != conversationID {
-		return row, fmt.Errorf("%w: %s", ErrNotFound, id)
+		return row, fmt.Errorf("%w: %s", errNotFound, id)
 	}
 	return row, err
 }
@@ -598,7 +598,7 @@ func (r *localRunner) PrepareOutput(_ context.Context, p StartParams, id string)
 	return filepath.Join(p.OutputDir, id+".log"), nil
 }
 
-func (r *localRunner) Start(ctx context.Context, p StartParams, id, cwd, output string, hooks OutputHooks) (RunningProcess, error) {
+func (r *localRunner) Start(ctx context.Context, p StartParams, id, cwd, output string, hooks outputHooks) (runningProcess, error) {
 	file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // The path is under the agent data directory.
 	if err != nil {
 		return nil, err
@@ -661,7 +661,7 @@ type localProc struct {
 	pipe       *os.File
 	limits     Limits
 	wg         *sync.WaitGroup
-	hooks      OutputHooks
+	hooks      outputHooks
 	exited     chan struct{}
 
 	mu          sync.Mutex
@@ -674,7 +674,7 @@ func (p *localProc) PID() int64 {
 	return int64(p.cmd.Process.Pid)
 }
 
-func (p *localProc) Wait() ProcessResult {
+func (p *localProc) Wait() processResult {
 	pumped := make(chan struct{})
 	if p.pipe != nil {
 		go func() { defer close(pumped); p.pump() }()
@@ -706,13 +706,13 @@ wait:
 		<-pumped
 		_ = p.pipe.Close()
 	}
-	return ProcessResult{
+	return processResult{
 		ExitCode: exitStatus(p.cmd.ProcessState),
 		Tail:     tail(p.outputPath),
 	}
 }
 
-func (p *localProc) Terminate(_ string, grace time.Duration) {
+func (p *localProc) Terminate(grace time.Duration) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.terminating || p.sweeping {
@@ -813,18 +813,18 @@ func (p *localProc) pump() {
 	}
 }
 
-// EnvRunner executes background commands over an agent's durableenv.ExecutionEnv.
-type EnvRunner struct {
+// envRunner executes background commands over an agent's durableenv.ExecutionEnv.
+type envRunner struct {
 	openEnv ExecEnvOpener
 	limits  Limits
 }
 
-// NewEnvRunner creates a Runner that executes commands via durableenv.ExecutionEnv.
-func NewEnvRunner(openEnv ExecEnvOpener, limits Limits) *EnvRunner {
-	return &EnvRunner{openEnv: openEnv, limits: limits.withDefaults()}
+// newEnvRunner creates a runner that executes commands via durableenv.ExecutionEnv.
+func newEnvRunner(openEnv ExecEnvOpener, limits Limits) *envRunner {
+	return &envRunner{openEnv: openEnv, limits: limits}
 }
 
-func (r *EnvRunner) ValidateDir(ctx context.Context, p StartParams, cwd string) error {
+func (r *envRunner) ValidateDir(ctx context.Context, p StartParams, cwd string) error {
 	execEnv, _, _, release, err := r.openEnv(ctx, p.AgentID, cwd, p.Env)
 	if err != nil {
 		return err
@@ -839,7 +839,7 @@ func (r *EnvRunner) ValidateDir(ctx context.Context, p StartParams, cwd string) 
 	return nil
 }
 
-func (r *EnvRunner) PrepareOutput(ctx context.Context, p StartParams, id string) (string, error) {
+func (r *envRunner) PrepareOutput(ctx context.Context, p StartParams, id string) (string, error) {
 	execEnv, workspace, _, release, err := r.openEnv(ctx, p.AgentID, p.DefaultCwd, p.Env)
 	if err != nil {
 		return "", err
@@ -858,7 +858,7 @@ func (r *EnvRunner) PrepareOutput(ctx context.Context, p StartParams, id string)
 	return outputPath, nil
 }
 
-func (r *EnvRunner) Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks OutputHooks) (RunningProcess, error) {
+func (r *envRunner) Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks outputHooks) (runningProcess, error) {
 	baseCtx := context.WithoutCancel(ctx)
 	execEnv, _, _, release, err := r.openEnv(baseCtx, p.AgentID, cwd, p.Env)
 	if err != nil {
@@ -896,7 +896,7 @@ type envProc struct {
 	inheritEnv bool
 	wake       string
 	limits     Limits
-	hooks      OutputHooks
+	hooks      outputHooks
 	cancel     context.CancelFunc
 	release    func()
 	readyOnce  sync.Once
@@ -908,7 +908,7 @@ type envProc struct {
 	tailFallback []byte
 	lines        lineSplitter
 
-	result ProcessResult
+	result processResult
 }
 
 func (p *envProc) PID() int64 { return 0 }
@@ -927,7 +927,7 @@ func (p *envProc) run(execCtx context.Context) {
 	}()
 	<-p.ready
 	if execCtx.Err() != nil {
-		p.result = ProcessResult{ExitCode: 143}
+		p.result = processResult{ExitCode: 143}
 		return
 	}
 	script := `( eval "$1" ) 2>&1 | tee -a "$2"; exit "${PIPESTATUS[0]}"`
@@ -965,7 +965,7 @@ func (p *envProc) run(execCtx context.Context) {
 	if len(fallback) > 0 {
 		tailText = formatTailBytes(fallback, total > int64(len(fallback)))
 	}
-	p.result = ProcessResult{ExitCode: status, Tail: tailText}
+	p.result = processResult{ExitCode: status, Tail: tailText}
 }
 
 func (p *envProc) onOutput(_ context.Context, text string, info durableenv.ShellOutputInfo) {
@@ -988,13 +988,13 @@ func (p *envProc) onOutput(_ context.Context, text string, info durableenv.Shell
 	}
 }
 
-func (p *envProc) Wait() ProcessResult {
+func (p *envProc) Wait() processResult {
 	p.activate()
 	<-p.done
 	return p.result
 }
 
-func (p *envProc) Terminate(_ string, _ time.Duration) {
+func (p *envProc) Terminate(_ time.Duration) {
 	p.cancel()
 }
 

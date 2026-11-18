@@ -333,7 +333,6 @@ func TestUserConnectsLocalhostSubdomainE2BViaLoopbackDialer(t *testing.T) {
 
 	probe, err := mgr.TestEnvironment(t.Context(), execenv.EnvironmentSpec{
 		ID:     "env-localhost",
-		Name:   "Edvabe Localhost",
 		Kind:   execenv.KindE2B,
 		Config: fmt.Sprintf(`{"apiUrl":%q}`, localhostAPI),
 	})

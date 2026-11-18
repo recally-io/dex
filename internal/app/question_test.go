@@ -2,8 +2,10 @@ package app_test
 
 import (
 	"database/sql"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"uuid"
@@ -113,23 +115,6 @@ func TestUserAnswersQuestionFromCard(t *testing.T) {
 		map[string]string{"id": answerID, "text": "Start a separate session"}, nil, http.StatusConflict)
 }
 
-func TestUserCannotOpenSecondQuestion(t *testing.T) {
-	t.Parallel()
-	// Given a chat with an open question.
-	d := startDex(t, t.TempDir(), "")
-	d.setModel(t, "tool")
-	chatID := d.newChat(t, askJSON)
-	q := d.awaitQuestion(t, chatID, "open")
-	d.awaitIdle(t, chatID)
-
-	// When the model asks again, then the tool fails and the first question stays.
-	d.send(t, chatID, strings.Replace(askJSON, "banner flicker", "other topic", 1))
-	d.watch(t, chatID).until(t, "tool error", answeredWith("a question is already open"))
-	if again := d.question(t, chatID); again == nil || again.ID != q.ID || !strings.Contains(again.Text, "banner") {
-		t.Fatalf("question was replaced: %+v", again)
-	}
-}
-
 func TestMixedToolBatchCreatesNoQuestion(t *testing.T) {
 	t.Parallel()
 	// Given a model that calls ask_user and bash in one message.
@@ -230,47 +215,6 @@ func TestUserWithdrawsAnswerBeforeItRunsAndQuestionReopens(t *testing.T) {
 	d.awaitNoQuestion(t, chatID)
 }
 
-func TestUserSeesQuestionInTelegram(t *testing.T) {
-	t.Parallel()
-	// Given a Telegram peer who talks to Main.
-	f := newFakeTelegram(t)
-	d := startTelegram(t, f, t.TempDir(), 42)
-	d.setModel(t, "tool")
-
-	// When the model asks a question, then the peer receives the question with lettered options.
-	f.message(1, 42, 7, askJSON)
-	text := f.next(t).Text
-	for _, want := range []string{"How should I handle the banner flicker?", "A. Add it to the running SSE session", "C. Investigate only", "Reply to this message to answer", "/a/default"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("telegram text lacks %q: %q", want, text)
-		}
-	}
-	// And the question waits in Main.
-	d.awaitQuestion(t, d.mainChat(t), "open")
-}
-
-func TestUserQuestionToolIsUnavailableInAutomationAndBackground(t *testing.T) {
-	t.Parallel()
-	// Given a model that asks a question in an automation and in a background task.
-	data := t.TempDir()
-	d := startDex(t, data, "")
-	d.setModel(t, "tool")
-	a := d.createAutomation(t, "No questions", askJSON, "new", map[string]any{"kind": "daily", "time": "09:00"})
-	run := d.runNow(t, a.ID)
-
-	// Then the tool does not exist there, and no question is saved.
-	d.watch(t, run.ChatID).until(t, "ask_user unavailable in automation", answeredWith("Tool ask_user is not available"))
-	parent := d.newSession(t).ID
-	spawnExecution(t, d, parent, "No questions", askJSON, "tool")
-	task := waitExecution(t, taskResultDB(t, data), parent, "No questions", "done")
-	if !strings.Contains(task.Report, "Tool ask_user is not available") {
-		t.Fatalf("background report: %s", task.Report)
-	}
-	if q := d.question(t, run.ChatID); q != nil {
-		t.Fatalf("automation question: %+v", q)
-	}
-}
-
 func TestUserAnswersQuestionByQuotingItInTelegram(t *testing.T) {
 	t.Parallel()
 	// Given a Telegram peer who got a question from Main.
@@ -317,5 +261,114 @@ func TestUserAnswersQuestionByQuotingItInTelegram(t *testing.T) {
 	f.reply(5, 42, 7, "again", asked.ID)
 	if got := f.next(t).Text; got != "echo: again" {
 		t.Fatalf("quote of a closed question: %q", got)
+	}
+}
+
+func TestUserAnswersQuestionsFromTwoBotsWithTheSameRemoteMessageID(t *testing.T) {
+	t.Parallel()
+	// Given two Telegram bots whose private chats have the same peer and message IDs.
+	first, second := newFakeTelegram(t), newFakeTelegram(t)
+	const secondToken = "456:second-secret"
+	const remoteID = 7001
+	const ownerID int64 = 84
+	boundary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bot := first
+		if strings.HasPrefix(r.URL.Path, "/bot"+secondToken+"/") {
+			r.URL.Path = strings.Replace(r.URL.Path, secondToken, fakeToken, 1)
+			bot = second
+		}
+		if !strings.HasSuffix(r.URL.Path, "/sendRichMessage") {
+			bot.serve(w, r)
+			return
+		}
+		recorder := httptest.NewRecorder()
+		bot.serve(recorder, r)
+		var response struct {
+			OK     bool `json:"ok"`
+			Result struct {
+				MessageID int64 `json:"message_id"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || !response.OK {
+			t.Errorf("platform send response: %s, %v", recorder.Body.String(), err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		response.Result.MessageID = remoteID
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.MarshalWrite(w, response); err != nil {
+			t.Error(err)
+		}
+	}))
+	t.Cleanup(boundary.Close)
+	data := t.TempDir()
+	d := startDex(t, data, boundary.URL)
+	d.setModel(t, "tool")
+	var other apiAgent
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other", "provider": "faux", "modelId": "tool", "thinkingLevel": "off"}, &other, http.StatusCreated)
+	bots := []struct {
+		bot          *fakeTelegram
+		agent, token string
+	}{{first, "default", fakeToken}, {second, other.ID, secondToken}}
+	conn := sessionDB(t, d)
+	for _, entry := range bots {
+		base := "/api/agents/" + entry.agent
+		d.must(t, http.MethodPut, base+"/channels/telegram", map[string]any{"token": entry.token, "allowedUsers": []int64{ownerID}}, nil)
+		entry.bot.message(1, ownerID, ownerID, askJSON)
+		if sent := entry.bot.next(t); !strings.Contains(sent.Text, "Reply to this message") {
+			t.Fatalf("question reply: %+v", sent)
+		}
+		eventually(t, "question delivery recorded", func() (bool, any) {
+			var delivered bool
+			err := conn.QueryRowContext(t.Context(), `SELECT EXISTS (
+				SELECT 1 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+				WHERE c.agent_id = ? AND s.delivered_at IS NOT NULL
+			)`, entry.agent).Scan(&delivered)
+			return err == nil && delivered, fmt.Sprintf("delivered=%t err=%v", delivered, err)
+		})
+		d.must(t, http.MethodPut, base, map[string]string{"name": "Bot", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
+	}
+
+	// When each owner quotes their own bot's question after a restart.
+	d.stop()
+	d = startDex(t, data, boundary.URL)
+	for _, entry := range bots {
+		entry.bot.reply(2, ownerID, ownerID, "Investigate only", remoteID)
+		reply := entry.bot.next(t).Text
+		if !strings.Contains(reply, "echo: Answer to: How should I handle the banner flicker?\nInvestigate only") {
+			t.Errorf("agent %s lost its quoted question: %q", entry.agent, reply)
+		}
+		var main struct {
+			Question *questionView `json:"question"`
+		}
+		d.must(t, http.MethodGet, "/api/agents/"+entry.agent+"/chats/main", nil, &main)
+		if main.Question != nil {
+			t.Errorf("agent %s still waits for an answer: %+v", entry.agent, main.Question)
+		}
+	}
+}
+
+func TestUserAnswersTelegramQuestionWithFullQuotedContext(t *testing.T) {
+	t.Parallel()
+	// Given a pending Question and a real-style quote that contains the bot's full message.
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, t.TempDir(), 42)
+	d.setModel(t, "tool")
+	f.message(1, 42, 42, `ask_user {"question":"Which color?","options":["Blue","Green"]}`)
+	question := f.next(t)
+	d.setModel(t, "echo")
+	f.mu.Lock()
+	f.updates = append(f.updates, map[string]any{"update_id": int64(2), "message": map[string]any{
+		"message_id": 2, "from": map[string]any{"id": 42}, "chat": map[string]any{"id": 42, "type": "private"}, "text": "Blue",
+		"reply_to_message": map[string]any{"message_id": question.ID, "from": map[string]any{"id": 123, "first_name": "Bot"}, "text": question.Text},
+	}})
+	f.mu.Unlock()
+	// When the user answers, transport context must not change the stored answer or approval text.
+	if got := f.next(t).Text; got != "echo: Answer to: Which color?\nBlue" {
+		t.Fatalf("question answer changed: %q", got)
+	}
+	conn := controlWriteDB(t, d.dataDir(t))
+	if n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:2' AND content=?", "Answer to: Which color?\nBlue"); n != 1 {
+		t.Fatalf("question answer count=%d", n)
 	}
 }

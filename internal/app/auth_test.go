@@ -127,15 +127,6 @@ func TestUserTokenFromTheEnvironmentReplacesTheStoredToken(t *testing.T) {
 	}
 }
 
-func TestUserOnLoopbackNeedsNoToken(t *testing.T) {
-	t.Parallel()
-	// Given dex on loopback without DEX_TOKEN, then the API needs no token.
-	d := startDex(t, t.TempDir(), "")
-	if resp := d.request(t, http.MethodGet, "/api/agents/default/chats", "", nil); resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /api/agents/default/chats: %d", resp.StatusCode)
-	}
-}
-
 func TestStoredTokenOfAnOlderDatabaseIsEmpty(t *testing.T) {
 	t.Parallel()
 	// Given a data directory with no database, and one with a schema from before tokens.

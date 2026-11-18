@@ -12,13 +12,6 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-// ToolSettings receives the settings that tools use. *engine.Agents implements it.
-type ToolSettings interface {
-	SetOnePassword(engine.OnePassword)
-	OnePasswordCLI(ctx context.Context) string
-	ResolveProviderAPIKey(context.Context, string) (string, error)
-}
-
 // OnePassword is the 1Password view for the web UI. Tokens are write-only: requests send them,
 // responses report only whether one is saved.
 type OnePassword struct {

@@ -15,7 +15,7 @@ import (
 
 // NewProvider returns a Provider of kind rooted at rootDir/agents/<id>/workspace with homeDir and isolated baseEnv.
 func NewProvider(kind execenv.Kind, rootDir, homeDir string, baseEnv map[string]string) execenv.Provider {
-	return execenv.ProviderFunc(func(ctx context.Context, agentID string) (execenv.Handle, error) {
+	return providerFunc(func(ctx context.Context, agentID string) (execenv.Handle, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -25,20 +25,27 @@ func NewProvider(kind execenv.Kind, rootDir, homeDir string, baseEnv map[string]
 		}
 		envVars := map[string]string{"PATH": os.Getenv("PATH"), "HOME": homeDir}
 		maps.Copy(envVars, baseEnv)
-		return &isolatedHandle{kind: kind, id: agentID, ws: ws, home: homeDir, baseEnv: envVars}, nil
+		return &isolatedHandle{kind: kind, ws: ws, home: homeDir, baseEnv: envVars}, nil
 	})
 }
 
+type providerFunc func(ctx context.Context, agentID string) (execenv.Handle, error)
+
+func (f providerFunc) Open(ctx context.Context, agentID string) (execenv.Handle, error) {
+	return f(ctx, agentID)
+}
+
+func (f providerFunc) Stamp(context.Context, string) (string, bool) { return "", true }
+func (f providerFunc) Close(context.Context) error                  { return nil }
+
 type isolatedHandle struct {
 	kind    execenv.Kind
-	id      string
 	ws      string
 	home    string
 	baseEnv map[string]string
 }
 
 func (h *isolatedHandle) Kind() execenv.Kind                       { return h.kind }
-func (h *isolatedHandle) ID() string                               { return h.id }
 func (h *isolatedHandle) Workspace() string                        { return h.ws }
 func (h *isolatedHandle) Home(ctx context.Context) (string, error) { return h.home, ctx.Err() }
 func (h *isolatedHandle) Close(context.Context) error              { return nil }

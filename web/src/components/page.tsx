@@ -1,6 +1,5 @@
 import { createContext, useContext, useId, type ReactNode } from "react";
 import { Menu, PanelLeft } from "lucide-react";
-import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
 
 export const ShellContext = createContext<{
@@ -10,61 +9,15 @@ export const ShellContext = createContext<{
   sidebar?: { open: boolean; toggle: () => void; attention: boolean };
 }>({ openDrawer: () => {}, attention: false });
 
-export type PageHeaderProps = {
-  title: ReactNode;
-  /** Renders the title as the page heading, which takes focus after navigation. */
-  heading?: boolean;
-  avatar?: ReactNode;
-  /** A link back to the parent page, shown before the title. */
-  crumb?: ReactNode;
-  badge?: ReactNode;
-  actions?: ReactNode;
-  /** False where the page sits inside another pane that has its own drawer button. */
-  menu?: boolean;
-  className?: string;
-};
-
 /** The title bar of every page. One height at every width. */
-export function PageHeader({
-  title,
-  heading = false,
-  avatar,
-  crumb,
-  badge,
-  actions,
-  menu = true,
-  className,
-}: PageHeaderProps) {
-  const Title = heading ? "h1" : "span";
-
+function PageHeader({ title }: { title: ReactNode }) {
   return (
-    <header
-      className={cn(
-        "flex h-12 shrink-0 items-center gap-2 border-b border-border pr-2 pl-3 sm:pl-4",
-        className,
-      )}
-    >
-      {menu ? <MenuButton /> : null}
-      {avatar}
-      {crumb ? (
-        <>
-          {crumb}
-          <span aria-hidden className="text-ring">
-            /
-          </span>
-        </>
-      ) : null}
-      <Title
-        id={heading ? "page-title" : undefined}
-        tabIndex={heading ? -1 : undefined}
-        // The global heading font is for page headings; the bar keeps the body face on every page.
-        className="max-w-[60%] min-w-0 shrink-0 truncate font-sans text-[14px] font-semibold tracking-[-0.01em] text-foreground outline-none"
-      >
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border pr-2 pl-3 sm:pl-4">
+      <MenuButton />
+      <span className="max-w-[60%] min-w-0 shrink-0 truncate font-sans text-[14px] font-semibold tracking-[-0.01em] text-foreground outline-none">
         {title}
-      </Title>
-      {badge}
+      </span>
       <span className="min-w-0 flex-1" />
-      {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
     </header>
   );
 }
@@ -119,11 +72,9 @@ export const InPaneContext = createContext(false);
 /** The rounded main pane. Below lg it has a small bar with the drawer button. */
 export function MainPane({
   children,
-  bar = true,
   headerTitle = "dex",
 }: {
   children: ReactNode;
-  bar?: boolean;
   headerTitle?: ReactNode;
 }) {
   if (useContext(InPaneContext))
@@ -131,7 +82,7 @@ export function MainPane({
 
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-      {bar ? <PageHeader title={headerTitle} /> : null}
+      <PageHeader title={headerTitle} />
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
     </section>
   );
@@ -245,8 +196,6 @@ export function Section({
   action,
   children,
 }: {
-  /** Positional label kept for the call sites; the heading carries the order now. */
-  n?: number;
   title: string;
   caption?: ReactNode;
   action?: ReactNode;
@@ -323,15 +272,6 @@ export function Note({ children, tone = "neutral" }: { children: ReactNode; tone
     >
       {children}
     </div>
-  );
-}
-
-// Marks a capability that this version of dex does not have.
-export function NotAvailable() {
-  return (
-    <Badge variant="secondary" className="h-5 shrink-0 px-2 text-[11.5px]">
-      Not yet available
-    </Badge>
   );
 }
 

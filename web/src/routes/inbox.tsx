@@ -10,19 +10,13 @@ import {
   readInboxItem,
   dismissInboxItem,
 } from "../api/generated/sdk.gen";
-import { queryClient, refreshChats } from "../lib/queries";
+import { refreshChats, refreshWork } from "../lib/queries";
 import { inboxOptions, resultQuote } from "../lib/inbox";
+import { newId } from "../lib/utils";
 import { Empty, FramedPage, Section } from "../components/page";
 import { Failure, Loading } from "../components/feedback";
 import { Button, buttonVariants } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-
-async function refreshInbox() {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: [{ _id: "listInbox" }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "listAgents" }] }),
-  ]);
-}
 
 export function InboxResultPage({ runId }: { runId: string }) {
   const inbox = useQuery({ ...inboxOptions(), refetchInterval: 10_000 });
@@ -45,7 +39,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
   const read = useMutation({
     mutationFn: async (runId: string) => {
       await readInboxItem({ path: { runId }, throwOnError: true });
-      await refreshInbox();
+      await refreshWork();
     },
   });
 
@@ -60,7 +54,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
   const done = useMutation({
     mutationFn: async (result: InboxItem) => {
       await dismissInboxItem({ path: { runId: result.runId }, throwOnError: true });
-      await refreshInbox();
+      await refreshWork();
       await navigate({ to: "/a/$agentId/automations", params: { agentId: result.agentId } });
     },
   });
@@ -76,7 +70,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
 
       if (!continuation.current) {
         const chat = await createChat({ path: { agentId }, throwOnError: true });
-        continuation.current = { chatId: chat.data.id, messageId: crypto.randomUUID() };
+        continuation.current = { chatId: chat.data.id, messageId: newId() };
       }
 
       const { chatId, messageId } = continuation.current;
@@ -95,7 +89,6 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
       description={item ? `${item.agentName} · ${new Date(item.createdAt).toLocaleString()}` : undefined}
     >
       <Section
-        n={1}
         title="Result"
         action={
           item ? (

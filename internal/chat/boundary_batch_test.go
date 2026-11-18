@@ -16,7 +16,7 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-func TestRound3FinalBoundaryBatch(t *testing.T) {
+func TestUserFinalBoundaryBatch(t *testing.T) {
 	for _, withdrawFirst := range []bool{false, true} {
 		t.Run(fmt.Sprint("withdrawFirst=", withdrawFirst), func(t *testing.T) {
 			r := startNative(t, "echo")
@@ -99,7 +99,7 @@ func TestRound3FinalBoundaryBatch(t *testing.T) {
 	}
 }
 
-func TestRound3MixedParentStopDuringMaintenance(t *testing.T) {
+func TestUserMixedParentStopDuringMaintenance(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
 	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Maintenance", Message: "first"})
@@ -147,7 +147,7 @@ func TestRound3MixedParentStopDuringMaintenance(t *testing.T) {
 	t.Log("ErrMaintenance rolls back Stop; an explicit retry after release stops only parent input")
 }
 
-func TestRound3UserInputAfterStopSnapshotSurvives(t *testing.T) {
+func TestUserInputAfterStopSnapshotSurvives(t *testing.T) {
 	r := startNative(t, "bash")
 	parent, source := taskParent(t, r)
 	marker := filepath.Join(r.dir, "root-started")

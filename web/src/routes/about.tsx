@@ -19,7 +19,7 @@ export function AboutPage() {
       <Section title="Appearance" caption="Applies to this browser.">
         <ThemeToggle />
       </Section>
-      <Section n={1} title="This server">
+      <Section title="This server">
         {health.isPending ? (
           <Loading />
         ) : health.isError ? (
@@ -48,7 +48,7 @@ export function AboutPage() {
           </Panel>
         )}
       </Section>
-      <Section n={2} title="Files" caption="Everything is in the data directory.">
+      <Section title="Files" caption="Everything is in the data directory.">
         {health.data ? (
           <Panel>
             <Facts
@@ -70,23 +70,22 @@ export function AboutPage() {
           Set <Mono>DEX_DATA_DIR</Mono> to use a different directory.
         </p>
       </Section>
-      <Section n={3} title="How it runs">
+      <Section title="How it runs">
         <Panel className="px-4 py-3.5">
           <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] leading-6 text-muted-foreground marker:text-muted-foreground">
-            <li>The control process serves this page and the API, and keeps chats in control.sqlite.</li>
-            <li>The worker process runs the bot and its tools. Control restarts it when it stops.</li>
+            <li>dex serves this page and the API, runs bots, and keeps chats in control.sqlite.</li>
             <li>The data directory holds the database, the bot memory and the workspace.</li>
           </ul>
         </Panel>
       </Section>
-      <Section n={4} title="Safety">
+      <Section title="Safety">
         <div className="flex flex-col gap-3">
           <Note tone="warn">
-            Tools run without a sandbox, and the server has no sign-in. Keep dex on 127.0.0.1.
+            Host tools run without a sandbox. Keep dex on 127.0.0.1 unless you set an access token.
           </Note>
           <Panel className="px-4 py-3.5">
             <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] leading-6 text-muted-foreground marker:text-muted-foreground">
-              <li>The web page has no sign-in. Any program that can reach the port can use dex.</li>
+              <li>Without an access token, any program that can reach the port can use dex.</li>
               <li>The bot runs read, write, edit and bash on this computer without a sandbox.</li>
               <li>Allowed Telegram users reach the same bot, tools and memory.</li>
               <li>Keys and tokens are write-only in the API and plain text in the data directory.</li>
@@ -94,10 +93,9 @@ export function AboutPage() {
           </Panel>
         </div>
       </Section>
-      <Section n={5} title="This design">
+      <Section title="This design">
         <p className="px-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
-          The look comes from Beautiful UI by slev12397 (MIT): its tokens, atoms and the layout of
-          beautifului.dev.
+          Built with shadcn/ui components and design inspiration from Beautiful UI by slev12397 (MIT).
         </p>
       </Section>
     </FramedPage>

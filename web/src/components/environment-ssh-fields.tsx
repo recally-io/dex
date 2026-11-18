@@ -7,12 +7,10 @@ import { Note } from "./page";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 
-export type SshFormController = {
+type SshFormController = {
   errors: Partial<Record<"name" | "host" | "port" | "workspaceDir", string>>;
   hasConfigErrors: boolean;
   hasErrors: boolean;
-  buildConfig: () => EnvironmentConfig;
-  name: string;
   submitBody: () => { name: string; kind: "pi-env"; config: EnvironmentConfig };
   probeBody: (environmentId?: string) => {
     environmentId?: string;
@@ -134,8 +132,6 @@ export function useSshEnvironmentForm(
     errors,
     hasConfigErrors: !!(errors.host || errors.port || errors.workspaceDir),
     hasErrors: Object.keys(errors).length > 0,
-    buildConfig,
-    name: name.trim(),
     submitBody: () => ({ name: name.trim(), kind: "pi-env", config: buildConfig() }),
     probeBody: (environmentId?: string) => ({ environmentId, kind: "pi-env", config: buildConfig() }),
     viewProps: {

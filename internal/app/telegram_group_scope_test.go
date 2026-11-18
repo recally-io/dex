@@ -25,6 +25,7 @@ func (f *fakeTelegram) groupMedia(updateID, sender, chat, topic int64, kind, fil
 }
 
 func TestUserTelegramGroupTopicCannotReadPrivateMain(t *testing.T) {
+	t.Parallel()
 	// Given a private Main that already contains private conversation context.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
@@ -47,6 +48,7 @@ func TestUserTelegramGroupTopicCannotReadPrivateMain(t *testing.T) {
 }
 
 func TestUserTelegramGroupClearStaysInCurrentTopic(t *testing.T) {
+	t.Parallel()
 	// Given private Main and two topic conversations with distinct context.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
@@ -78,6 +80,7 @@ func TestUserTelegramGroupClearStaysInCurrentTopic(t *testing.T) {
 }
 
 func TestUserTelegramGroupChecksCurrentPairingBeforeDownloadAndPublishesOnlyInAudience(t *testing.T) {
+	t.Parallel()
 	// Given a running transport whose cached actor list is older than the control settings.
 	directory := t.TempDir()
 	f := newFakeTelegram(t)
@@ -111,6 +114,7 @@ func TestUserTelegramGroupChecksCurrentPairingBeforeDownloadAndPublishesOnlyInAu
 }
 
 func TestUserTelegramGroupAudioDoesNotBorrowPrivateSpeechConsent(t *testing.T) {
+	t.Parallel()
 	// Given explicit STT consent for private Telegram, with a deterministic local provider.
 	directory := t.TempDir()
 	f := newFakeTelegram(t)
@@ -131,6 +135,7 @@ func TestUserTelegramGroupAudioDoesNotBorrowPrivateSpeechConsent(t *testing.T) {
 }
 
 func TestUserTelegramGroupStopCannotStopMainOrAnotherTopic(t *testing.T) {
+	t.Parallel()
 	// Given long native model streams in Main and two independent topic audiences.
 	directory := t.TempDir()
 	f := newFakeTelegram(t)
@@ -158,6 +163,7 @@ func TestUserTelegramGroupStopCannotStopMainOrAnotherTopic(t *testing.T) {
 }
 
 func TestUserTelegramGroupTriggerAndGeneralTopicKeepSessionRules(t *testing.T) {
+	t.Parallel()
 	// Given paired group actors and a context-sensitive model.
 	directory := t.TempDir()
 	f := newFakeTelegram(t)
@@ -199,6 +205,7 @@ func TestUserTelegramGroupTriggerAndGeneralTopicKeepSessionRules(t *testing.T) {
 }
 
 func TestUserTelegramGroupDefaultDoesNotRequireMentionForPairedSender(t *testing.T) {
+	t.Parallel()
 	// Given the agreed default: pairing grants input, not private owner resources.
 	directory := t.TempDir()
 	f := newFakeTelegram(t)

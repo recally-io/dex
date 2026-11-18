@@ -3,6 +3,7 @@ package app_test
 import (
 	"database/sql"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -134,4 +135,17 @@ func TestUserOpensLegacyTaskData(t *testing.T) {
 		return titles["Ended"] && titles["Continued"]
 	})
 	d.chats(t)
+	for _, k := range tasks {
+		var opened webChat
+		d.must(t, http.MethodGet, "/api/agents/default/turns/"+k.id, nil, &opened)
+		if opened.ID != k.conversation || opened.ParentID == nil || *opened.ParentID != 1 || opened.ReadOnly || opened.Channel != "web" {
+			t.Fatalf("%s: %+v", k.title, opened)
+		}
+	}
+	if got := d.archive(t, http.MethodPut, tasks[0].conversation, http.StatusOK); got.ArchivedAt == nil {
+		t.Fatalf("archived: %+v", got)
+	}
+	if got := d.archive(t, http.MethodDelete, tasks[0].conversation, http.StatusOK); got.ArchivedAt != nil {
+		t.Fatalf("restored: %+v", got)
+	}
 }

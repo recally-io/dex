@@ -3,6 +3,7 @@ package dream_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/recally-io/dex/internal/chat"
@@ -118,7 +120,7 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 	if _, err := chats.Post(t.Context(), "busy", "chat:active", "", "busy-pending", "working"); err != nil {
 		t.Fatal(err)
 	}
-	d := dream.New(q, chats, 24*time.Hour, clock)
+	d := dream.New(q, chats.Post, 24*time.Hour, clock)
 
 	// When concurrent checks run, only the idle agent gets one dream.
 	var checks sync.WaitGroup
@@ -147,7 +149,7 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 	// Then the unfinished dream blocks another agent even after its foreground input settles.
 	close(busyRelease)
 	waitDone("busy-pending")
-	dream.New(q, chats, 24*time.Hour, clock).Check(t.Context())
+	dream.New(q, chats.Post, 24*time.Hour, clock).Check(t.Context())
 	if _, err := q.LatestDream(t.Context(), "busy"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("parallel dream admitted: %v", err)
 	}
@@ -168,5 +170,74 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 	latest, err := q.LatestDream(t.Context(), "idle")
 	if err != nil || latest.ID != idle.ID {
 		t.Fatalf("idle dream repeated: %v", err)
+	}
+}
+
+func TestUserDreamClipsLongMessageAndCapsBatchBytes(t *testing.T) {
+	data := t.TempDir()
+	conn, err := db.Open(t.Context(), filepath.Join(data, "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	q := sqlc.New(conn)
+	if err := q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "default", Name: "Dex"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: "default", Name: "Dex", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
+		t.Fatal(err)
+	}
+	conv, err := q.EnsureConversation(t.Context(), sqlc.EnsureConversationParams{AgentID: "default", ChannelKey: "chat:clip", Title: "Clip", CreatedAt: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	longContent := strings.Repeat("记", 3000) + "MIDDLE_OMITTED" + strings.Repeat("忆", 1000)
+	longAnswer := strings.Repeat("a", 4000)
+	for i := range 35 {
+		content := strings.Repeat("x", 4000)
+		if i == 0 {
+			content = longContent
+		}
+		id := fmt.Sprintf("msg-%02d", i)
+		createdAt := int64(100 + i)
+		if _, err := q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
+			ID: id, ConversationID: conv.ID, Content: content, Attachments: "null", Origin: "web", Kind: "message", CreatedAt: createdAt,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := conn.ExecContext(t.Context(), `UPDATE submissions SET status = 'done', answer = ?, settled_at = ? WHERE id = ?`, longAnswer, createdAt+1, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var posted string
+	d := dream.New(q, func(_ context.Context, _, _, _, _, content string) (int64, error) {
+		posted = content
+		return conv.ID, nil
+	}, time.Hour, func() time.Time { return time.UnixMilli(100).Add(2 * time.Hour) })
+	d.Check(t.Context())
+	if !strings.HasPrefix(posted, dream.Header) || !utf8.ValidString(posted) {
+		t.Fatalf("unexpected posted digest: validUTF8=%t len=%d", utf8.ValidString(posted), len(posted))
+	}
+	lines := strings.Split(strings.TrimSpace(strings.TrimPrefix(posted, dream.Header)), "\n")
+	if len(lines) == 0 || len(lines) >= 35 || len(posted) > 100_000+len(dream.Header)+5000 {
+		t.Fatalf("expected bounded batch of records, got %d records (%d bytes)", len(lines), len(posted))
+	}
+	var first, last struct {
+		MessageID string `json:"message_id"`
+		User      string `json:"user"`
+		UserCut   bool   `json:"user_cut"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatal(err)
+	}
+	if first.MessageID != "msg-00" || !first.UserCut || !strings.HasPrefix(first.User, strings.Repeat("记", 3000)+"\n[…]\n") || !strings.HasSuffix(first.User, strings.Repeat("忆", 1000)) || strings.Contains(first.User, "MIDDLE_OMITTED") {
+		t.Fatalf("clipped first record = %+v", first)
+	}
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &last); err != nil {
+		t.Fatal(err)
+	}
+	var throughID string
+	if err := conn.QueryRowContext(t.Context(), `SELECT through_id FROM dreams WHERE agent_id = 'default' ORDER BY created_at DESC LIMIT 1`).Scan(&throughID); err != nil || throughID != last.MessageID {
+		t.Fatalf("dream boundary through_id=%q err=%v, want %s", throughID, err, last.MessageID)
 	}
 }

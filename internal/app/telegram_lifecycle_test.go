@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserTelegramSettingsStopBeforeWrite(t *testing.T) {
+	t.Parallel()
 	for _, method := range []string{http.MethodPut, http.MethodDelete} {
 		t.Run(method, func(t *testing.T) {
 			// Given a bot with an outstanding long poll and a locked settings database.
@@ -82,6 +83,7 @@ func TestUserTelegramSettingsStopBeforeWrite(t *testing.T) {
 }
 
 func TestUserTelegramContinuesAfterSettingsWriteFails(t *testing.T) {
+	t.Parallel()
 	for _, method := range []string{http.MethodPut, http.MethodDelete} {
 		t.Run(method, func(t *testing.T) {
 			// Given an active bot and a database that rejects the requested write.

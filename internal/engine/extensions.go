@@ -23,7 +23,6 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-type Scope = string
 type ExtensionLevel struct {
 	Scope string `json:"scope"`
 	Dir   string `json:"dir"`
@@ -74,8 +73,6 @@ type agentExtensions struct {
 	home       string
 	env        *toolEnv
 	execHandle execenv.Handle
-	mu         sync.Mutex
-	loaded     *loadedExtensions
 	skillsMu   sync.Mutex
 	skillStamp string
 }
@@ -91,7 +88,7 @@ type loadedExtensions struct {
 	stamp string
 }
 
-func (l *loadedExtensions) ServerInfo() []McpServerInfo {
+func (l *loadedExtensions) serverInfo() []McpServerInfo {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return slices.Clone(l.Servers)
@@ -134,11 +131,7 @@ var headerVar = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 // A shared lock keeps edits to shared dex files from losing another agent's changes.
 var envWrites sync.Mutex
 
-func newAgentExtensions(home, dataDir, agentID string, env *toolEnv) *agentExtensions {
-	return newAgentExtensionsWithEnv(home, dataDir, agentID, nil, env)
-}
-
-func newAgentExtensionsWithEnv(home, dataDir, agentID string, handle execenv.Handle, env *toolEnv) *agentExtensions {
+func newAgentExtensions(home, dataDir, agentID string, handle execenv.Handle, env *toolEnv) *agentExtensions {
 	agentDir := filepath.Join(dataDir, "agents", agentID)
 	workspace := filepath.Join(agentDir, "workspace")
 	if handle != nil {
@@ -574,13 +567,6 @@ func (a *agentExtensions) Info(ctx context.Context) (ExtensionInfo, error) {
 	if op.Mode != "" && findOp(s.env) == "" {
 		s.info.Warnings = append(s.info.Warnings, "1Password is set up, but the op CLI is not in the PATH of the tool environment; install it or add its directory to PATH in a shell rc file")
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.loaded != nil {
-		a.loaded.mu.Lock()
-		defer a.loaded.mu.Unlock()
-		s.info.Servers = slices.Clone(a.loaded.Servers)
-	}
 	return s.info, nil
 }
 
@@ -678,9 +664,6 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 		})
 	}
 	loaded.HasTools = len(loaded.Extension.Tools) > 0
-	a.mu.Lock()
-	a.loaded = loaded
-	a.mu.Unlock()
 	return loaded, nil
 }
 func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env map[string]string) (*mcp.Client, []*durable.ToolRegistration, error) {

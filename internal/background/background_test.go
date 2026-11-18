@@ -418,10 +418,22 @@ func TestAnEndThatMeetsABusyDatabaseIsStoredOnRetry(t *testing.T) {
 	if _, err := lock.ExecContext(t.Context(), "BEGIN IMMEDIATE"); err != nil {
 		t.Fatal(err)
 	}
+	short.SetMaxIdleConns(0)
+	before := short.Stats().MaxIdleClosed
 	if err := os.WriteFile(gate, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(250 * time.Millisecond)
+	waitCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for short.Stats().MaxIdleClosed <= before {
+		select {
+		case <-waitCtx.Done():
+			t.Fatal("background finish did not attempt store while database was locked")
+		case <-tick.C:
+		}
+	}
 	if _, err := lock.ExecContext(t.Context(), "ROLLBACK"); err != nil {
 		t.Fatal(err)
 	}

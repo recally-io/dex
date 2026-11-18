@@ -17,17 +17,17 @@ import (
 // outcomeSeparator joins the answer and the decision that control writes for an action question.
 const outcomeSeparator = "\n\n"
 
-// ErrBotCaller means that the conversation or the input of a bot tool call may not use the tool.
-var ErrBotCaller = errors.New("bot tool not allowed here")
+// errBotCaller means that the conversation or the input of a bot tool call may not use the tool.
+var errBotCaller = errors.New("bot tool not allowed here")
 
 const maxArchiveReason = 500
 
 // archiveAction is the one action that a question can carry (ADR 0016).
 const archiveAction = "archive"
 
-// UserOrigin reports whether an input origin is a person: the web UI or a paired channel peer.
+// userOrigin reports whether an input origin is a person: the web UI or a paired channel peer.
 // It is an allow-list. Task, automation, dream, and unknown inputs are not people.
-func UserOrigin(origin string) bool {
+func userOrigin(origin string) bool {
 	return origin == "web" || strings.HasPrefix(origin, "telegram:") && positiveTelegramID(strings.TrimPrefix(origin, "telegram:")) || strings.HasPrefix(origin, "feishu:") || strings.HasPrefix(origin, "wechat:")
 }
 
@@ -46,7 +46,7 @@ func (a *questionAction) store(p *sqlc.CreateQuestionParams) {
 // allowed refuses an action question that must not be asked: the source must be a person's input,
 // and the bot must be archivable now. The answer is checked again when it arrives.
 func (a *questionAction) allowed(ctx context.Context, q *sqlc.Queries, r engine.TaskContext, source sqlc.Submission) error {
-	if source.Kind != "message" || !UserOrigin(source.Origin) {
+	if source.Kind != "message" || !userOrigin(source.Origin) {
 		return fmt.Errorf("%w: this action needs a user input in this conversation", ErrQuestionInvalid)
 	}
 	if a.agentID == r.AgentID {
@@ -90,7 +90,7 @@ func (d *answerDecision) decide(ctx context.Context, q *sqlc.Queries, row sqlc.Q
 		return err
 	}
 	var outcome string
-	if !UserOrigin(origin) || NormalizeText(answer) != NormalizeText(row.ApproveText.String) {
+	if !userOrigin(origin) || NormalizeText(answer) != NormalizeText(row.ApproveText.String) {
 		outcome = fmt.Sprintf("dex: Not approved. Bot %q is not archived.", bot.Name)
 	} else if err := db.CheckArchive(ctx, q, bot.ID); err == nil {
 		d.archive = bot.ID
@@ -126,30 +126,30 @@ func (s *Service) botArchived(agentID string) {
 // automation run, or a dream cannot change a bot, as with routine tools.
 func (s *Service) ToolBotCaller(ctx context.Context, r engine.TaskContext, change bool) error {
 	if r.Scope != "" {
-		return ErrBotCaller
+		return errBotCaller
 	}
 	conv, err := s.toolCaller(ctx, r)
 	if err != nil {
 		return err
 	}
 	if conv.ParentID.Valid {
-		return fmt.Errorf("%w: a child session cannot use bot tools", ErrBotCaller)
+		return fmt.Errorf("%w: a child session cannot use bot tools", errBotCaller)
 	}
 	if !change {
 		if !Writable(conv.ChannelKey) && !strings.HasPrefix(conv.ChannelKey, "automation:") {
-			return fmt.Errorf("%w: bot tools need Main, a Chat, or an automation session", ErrBotCaller)
+			return fmt.Errorf("%w: bot tools need Main, a Chat, or an automation session", errBotCaller)
 		}
 		return nil
 	}
 	if !Writable(conv.ChannelKey) {
-		return fmt.Errorf("%w: changing a bot needs Main or a Chat", ErrBotCaller)
+		return fmt.Errorf("%w: changing a bot needs Main or a Chat", errBotCaller)
 	}
 	source, err := s.q.GetSubmission(ctx, r.SourceRequestID)
 	if err != nil {
 		return err
 	}
-	if source.ConversationID != conv.ID || source.Kind != "message" || !UserOrigin(source.Origin) {
-		return fmt.Errorf("%w: changing a bot needs a user input in this conversation", ErrBotCaller)
+	if source.ConversationID != conv.ID || source.Kind != "message" || !userOrigin(source.Origin) {
+		return fmt.Errorf("%w: changing a bot needs a user input in this conversation", errBotCaller)
 	}
 	return nil
 }

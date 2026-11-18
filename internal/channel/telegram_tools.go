@@ -19,6 +19,13 @@ import (
 	"github.com/recally-io/dex/internal/speech"
 )
 
+type telegramBot interface {
+	GroupParts([]Part) []Part
+	WakeMedia()
+	Finish(ctx context.Context, peer string, source chat.ChannelContext, status string) error
+	Control(ctx context.Context, peer string, remote RemoteMessage, args engine.TelegramRequest) (Receipt, error)
+}
+
 func (m *Manager) telegramCaller(ctx context.Context, caller engine.TaskContext) (sqlc.Submission, chat.ChannelContext, error) {
 	var empty sqlc.Submission
 	var channelContext chat.ChannelContext
@@ -147,7 +154,7 @@ func (m *Manager) TelegramAction(ctx context.Context, caller engine.TaskContext,
 		err := json.Unmarshal([]byte(existing.ResultJson), &result)
 		return result, err
 	}
-	transport, ok := runtime.bot.(Controller)
+	transport, ok := runtime.bot.(telegramBot)
 	if !ok {
 		return engine.TelegramResult{}, errors.New("telegram control transport is unavailable")
 	}

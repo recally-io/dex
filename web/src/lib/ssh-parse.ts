@@ -1,4 +1,4 @@
-export type ParsedSshTarget = {
+type ParsedSshTarget = {
   host: string;
   user?: string;
   port?: number;

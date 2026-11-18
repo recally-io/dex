@@ -117,7 +117,7 @@ func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
 						continue
 					}
 					found++
-					var metadata InputMetadata
+					var metadata inputMetadata
 					raw, err := json.Marshal(entry.Data)
 					if err != nil {
 						t.Fatal(err)
@@ -125,7 +125,7 @@ func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
 					if err := json.Unmarshal(raw, &metadata); err != nil {
 						t.Fatal(err)
 					}
-					expected := InputMetadata{RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle, Reason: "aborted"}
+					expected := inputMetadata{RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle, Reason: "aborted"}
 					if !reflect.DeepEqual(metadata, expected) || len(entry.Model) != 0 {
 						t.Fatalf("passive metadata: %+v; model=%+v", metadata, entry.Model)
 					}

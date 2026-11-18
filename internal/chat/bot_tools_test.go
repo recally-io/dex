@@ -293,7 +293,7 @@ func TestBotToolCallerNeedsAPersonInMainOrAChat(t *testing.T) {
 				t.Fatal(err)
 			}
 			err = r.service.ToolBotCaller(t.Context(), engine.TaskContext{AgentID: "bot", ConversationID: next, SourceRequestID: id}, c.change)
-			if (err == nil) != c.want || (err != nil && !errors.Is(err, ErrBotCaller)) {
+			if (err == nil) != c.want || (err != nil && !errors.Is(err, errBotCaller)) {
 				t.Fatalf("err=%v want allowed=%v", err, c.want)
 			}
 		})
@@ -316,7 +316,7 @@ func TestBotToolCallerRefusesAChildSessionWithAChatKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(row.ChannelKey, ChatPrefix) || !row.ParentID.Valid {
+	if !strings.HasPrefix(row.ChannelKey, chatPrefix) || !row.ParentID.Valid {
 		t.Fatalf("child: key %q, parent %v", row.ChannelKey, row.ParentID)
 	}
 	if _, err := r.conn.ExecContext(t.Context(), "UPDATE conversations SET execution_id = 7000 WHERE id = ?", row.ID); err != nil {
@@ -327,8 +327,8 @@ func TestBotToolCallerRefusesAChildSessionWithAChatKey(t *testing.T) {
 	}
 	for _, change := range []bool{false, true} {
 		err := r.service.ToolBotCaller(t.Context(), engine.TaskContext{AgentID: "bot", ConversationID: 7000, SourceRequestID: "child-followup"}, change)
-		if !errors.Is(err, ErrBotCaller) {
-			t.Errorf("change=%v: err=%v, want ErrBotCaller", change, err)
+		if !errors.Is(err, errBotCaller) {
+			t.Errorf("change=%v: err=%v, want errBotCaller", change, err)
 		}
 	}
 }

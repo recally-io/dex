@@ -44,7 +44,7 @@ func (s *Service) KnownTelegramAlbum(ctx context.Context, agentID, peer string, 
 func (s *Service) StoreTelegramAlbum(ctx context.Context, agentID, peer, source string, msg Message) error {
 	actor, err := strconv.ParseInt(msg.ChannelContext.SenderID, 10, 64)
 	if err != nil || actor <= 0 || msg.ChannelContext.AccountID == "" || msg.ChannelContext.MediaGroup == "" || len(msg.Attachments) != 1 {
-		return fmt.Errorf("%w: invalid Telegram album member", ErrSessionInvalid)
+		return fmt.Errorf("%w: invalid Telegram album member", errSessionInvalid)
 	}
 	group, err := telegramAlbumKey(peer, msg.ChannelContext)
 	if err != nil {
@@ -94,7 +94,7 @@ func (s *Service) StoreTelegramAlbum(ctx context.Context, agentID, peer, source 
 		return err
 	}
 	if n != 1 {
-		return fmt.Errorf("%w: Telegram album authorization changed", ErrSessionInvalid)
+		return fmt.Errorf("%w: Telegram album authorization changed", errSessionInvalid)
 	}
 	return tx.Commit()
 }
@@ -200,7 +200,7 @@ func (s *Service) FinishTelegramAlbum(ctx context.Context, agentID, source strin
 		return err
 	}
 	if receipt.ID == "" {
-		return fmt.Errorf("%w: album input has no business receipt", ErrSessionInvalid)
+		return fmt.Errorf("%w: album input has no business receipt", errSessionInvalid)
 	}
 	return s.q.TransferTelegramAlbumMembers(ctx, sqlc.TransferTelegramAlbumMembersParams{AgentID: agentID, BatchSource: source})
 }

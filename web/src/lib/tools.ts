@@ -13,7 +13,7 @@ export type ContentBlock =
 
 type TaskBlock = { kind: "task"; item: Extract<Item, { kind: "task" }>; blocks: ContentBlock[] };
 
-export type Block = ContentBlock | TaskBlock;
+type Block = ContentBlock | TaskBlock;
 
 // A result owns the items up to the next input. Keep original indices for Retry and streaming.
 export function blocks(items: Item[]): Block[] {
@@ -55,7 +55,7 @@ function inMemory(path: string, memory?: string) {
 }
 
 // A memory search is a bash call that names the memory folder.
-export function touchesMemory(tool: ToolItem, memory?: string) {
+function touchesMemory(tool: ToolItem, memory?: string) {
   return inMemory(arg(tool, "path"), memory) || (!!memory && arg(tool, "command").includes(memory));
 }
 

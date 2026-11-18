@@ -18,6 +18,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/speech"
 )
 
 // ErrInvalid wraps the errors of a change that the service refuses.
@@ -67,22 +68,15 @@ type Provider struct {
 type Service struct {
 	q       *sqlc.Queries
 	catalog *engine.Catalog
-	agents  ToolSettings
+	agents  *engine.Agents
 	envs    *execenv.Manager
 	// Serializes provider save and apply. Agent and channel changes have their own lock.
 	mu sync.Mutex
 }
 
 // New returns the global settings service.
-func New(q *sqlc.Queries, catalog *engine.Catalog, agents ToolSettings) *Service {
-	return &Service{q: q, catalog: catalog, agents: agents}
-}
-
-// ConfigureEnvironments attaches the execution environment manager.
-func (s *Service) ConfigureEnvironments(envs *execenv.Manager) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.envs = envs
+func New(q *sqlc.Queries, catalog *engine.Catalog, agents *engine.Agents, envs *execenv.Manager) *Service {
+	return &Service{q: q, catalog: catalog, agents: agents, envs: envs}
 }
 
 // Get returns all settings. It asks the runtime which providers exist.
@@ -91,7 +85,7 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 	if err != nil {
 		return Settings{}, err
 	}
-	builtins, err := s.builtins(ctx)
+	builtins, err := s.catalog.Builtins(ctx)
 	if err != nil {
 		return Settings{}, err
 	}
@@ -127,10 +121,6 @@ func (s *Service) provider(r sqlc.Provider, models []engine.ModelInfo) Provider 
 		ID: r.ID, Name: r.Name, API: r.Api, BaseURL: r.BaseUrl, KeySet: r.ApiKey != "", Models: splitModels(r.Models),
 		ModelCount: count, Error: msg,
 	}
-}
-
-func (s *Service) builtins(ctx context.Context) ([]engine.ProviderInfo, error) {
-	return s.catalog.Builtins(ctx)
 }
 
 // Models returns the configured native model catalog.
@@ -184,7 +174,7 @@ func (s *Service) SetProvider(ctx context.Context, p Provider) (Provider, error)
 			s.mu.Unlock()
 		}
 	}()
-	builtins, err := s.builtins(ctx)
+	builtins, err := s.catalog.Builtins(ctx)
 	if err != nil {
 		return Provider{}, err
 	}
@@ -292,15 +282,6 @@ func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 	return err
 }
 
-// ApplyProviders registers saved providers and waits for this operation's discovery.
-func (s *Service) ApplyProviders(ctx context.Context) (map[string]string, error) {
-	discovery, err := s.RegisterProviders(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return discovery.Wait(ctx)
-}
-
 // RegisterProviders applies saved credentials and static models without waiting for network.
 func (s *Service) RegisterProviders(ctx context.Context) (*engine.Discovery, error) {
 	rows, err := s.q.ListProviders(ctx)
@@ -312,6 +293,31 @@ func (s *Service) RegisterProviders(ctx context.Context) (*engine.Discovery, err
 		providers[i] = engine.ProviderSettings{ID: r.ID, Name: r.Name, API: r.Api, BaseURL: r.BaseUrl, APIKey: r.ApiKey, Models: splitModels(r.Models)}
 	}
 	return s.catalog.ConfigureAsync(ctx, providers)
+}
+
+// SpeechEndpoint reuses a saved provider, but never assumes its model supports audio.
+func (s *Service) SpeechEndpoint(ctx context.Context, id string) (speech.Endpoint, error) {
+	row, err := s.q.GetProvider(ctx, id)
+	if err != nil {
+		return speech.Endpoint{}, errors.New("speech provider is not configured")
+	}
+	if row.BaseUrl == "" || row.Api == "anthropic-messages" {
+		return speech.Endpoint{}, errors.New("speech needs an explicit OpenAI-compatible provider base URL")
+	}
+	key, err := s.catalog.ProviderAPIKey(ctx, id)
+	if err != nil {
+		return speech.Endpoint{}, errors.New("speech provider credentials are unavailable")
+	}
+	if strings.HasPrefix(key, "op://") {
+		if s.agents == nil {
+			return speech.Endpoint{}, errors.New("speech provider credential references are unavailable")
+		}
+		key, err = s.agents.ResolveProviderAPIKey(ctx, key)
+		if err != nil {
+			return speech.Endpoint{}, errors.New("speech provider credentials are unavailable")
+		}
+	}
+	return speech.Endpoint{URL: row.BaseUrl, APIKey: key}, nil
 }
 
 // checkBaseURL accepts an absolute http or https URL without user info, so the API key is the

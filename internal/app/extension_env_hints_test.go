@@ -2,7 +2,6 @@ package app_test
 
 import (
 	"net/http"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -98,39 +97,4 @@ func TestUserSeesShapeHintsForAPastedAssignmentWithoutValues(t *testing.T) {
 		}
 	}
 	t.Log("artifact: hints for assignment, empty, whitespace and op-reference; none for base64; prompt lists key names and hints only")
-}
-
-func TestUserSavesAnAssignmentLikeValueAndGetsTheHintBack(t *testing.T) {
-	t.Parallel()
-	// Given a bot with no .env.
-	data := t.TempDir()
-	d := startDexHome(t, app.Config{DataDir: data}, t.TempDir())
-	// When the user saves the pasted line and a base64 value.
-	save := func(key, value string) envKeyHints {
-		t.Helper()
-		var out envKeyHints
-		d.must(t, http.MethodPut, "/api/agents/default/extensions/env", map[string]string{"scope": "agent", "key": key, "value": value}, &out)
-		return out
-	}
-	save("GOOD_BASE64_KEY", base64Value)
-	out := save("CLAUDE_CODE_OAUTH_TOKEN", pastedValue)
-	// And the response body, which the user's browser receives, holds no part of the value.
-	_, raw := d.call(t, http.MethodPut, "/api/agents/default/extensions/env", map[string]string{"scope": "agent", "key": "CLAUDE_CODE_OAUTH_TOKEN", "value": pastedValue})
-	for _, part := range []string{fakeFragment, "proxy.example"} {
-		if strings.Contains(raw, part) {
-			t.Fatalf("PUT response disclosed %q", part)
-		}
-	}
-	// Then the save works, the response carries the hint, and the file keeps the value.
-	if got := out.agentHints("CLAUDE_CODE_OAUTH_TOKEN"); !slices.Equal(got, []string{"assignment"}) {
-		t.Fatalf("hints = %v, want [assignment]", got)
-	}
-	if got := out.agentHints("GOOD_BASE64_KEY"); len(got) != 0 {
-		t.Fatalf("base64 value got hints %v", got)
-	}
-	file, err := os.ReadFile(filepath.Join(data, "agents", "default", ".agents", ".env"))
-	if err != nil || !strings.Contains(string(file), fakeFragment) {
-		t.Fatalf("value not saved: %v", err)
-	}
-	t.Log("artifact: the PUT response carries the assignment hint; the save is not refused")
 }

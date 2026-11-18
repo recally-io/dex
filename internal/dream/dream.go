@@ -42,15 +42,10 @@ const (
 // Header starts the message of a dream.
 const Header = "Chats since the previous dream, one JSON record per message, oldest first:\n\n"
 
-// Poster stores a message in a chat and admits it to native execution.
-type Poster interface {
-	Post(ctx context.Context, agentID, channelKey, title, id, content string) (int64, error)
-}
-
 // Dreamer starts dreams for all agents, one at a time in the shared memory repo.
 type Dreamer struct {
 	q     *sqlc.Queries
-	chats Poster
+	post  func(ctx context.Context, agentID, channelKey, title, id, content string) (int64, error)
 	mu    sync.Mutex // serializes checks; pending submissions serialize dreams across checks
 	every time.Duration
 	now   func() time.Time
@@ -58,8 +53,8 @@ type Dreamer struct {
 
 // New returns a Dreamer that starts at most one dream per agent in each period every.
 // The agent must have a model and an unread message that settled at least every ago.
-func New(q *sqlc.Queries, chats Poster, every time.Duration, now func() time.Time) *Dreamer {
-	return &Dreamer{q: q, chats: chats, every: every, now: now}
+func New(q *sqlc.Queries, post func(ctx context.Context, agentID, channelKey, title, id, content string) (int64, error), every time.Duration, now func() time.Time) *Dreamer {
+	return &Dreamer{q: q, post: post, every: every, now: now}
 }
 
 // Check starts a dream when one is due. Run it at least once an hour; the dreams table, not the
@@ -144,7 +139,7 @@ func (d *Dreamer) start(ctx context.Context, agentID string) error {
 	if err != nil {
 		return err
 	}
-	_, err = d.chats.Post(ctx, agentID, Channel+id, "", id, text)
+	_, err = d.post(ctx, agentID, Channel+id, "", id, text)
 	return err
 }
 

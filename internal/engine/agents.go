@@ -44,7 +44,6 @@ type agentResources struct {
 }
 
 type activityRecord struct {
-	lastAction     string
 	lastActivityAt int64
 	toolStarted    map[string]int64
 	runningTools   []RunningTool
@@ -61,7 +60,7 @@ func (a *Agents) Activity(refs []Ref) map[Ref]Activity {
 		if r == nil || r.lastActivityAt == 0 {
 			continue
 		}
-		activity := Activity{LastAction: r.lastAction, LastActivityAt: new(r.lastActivityAt), RunningTools: append([]RunningTool(nil), r.runningTools...)}
+		activity := Activity{LastActivityAt: new(r.lastActivityAt), RunningTools: append([]RunningTool(nil), r.runningTools...)}
 		for _, started := range r.toolStarted {
 			if activity.ToolStartedAt == nil || started < *activity.ToolStartedAt {
 				activity.ToolStartedAt = new(started)
@@ -76,7 +75,7 @@ func (a *Agents) Activity(refs []Ref) map[Ref]Activity {
 type Agents struct {
 	Catalog          *Catalog
 	config           Config
-	memory           *MemoryRepo
+	memory           *memoryRepo
 	env              *toolEnv
 	mu               sync.Mutex
 	resources        map[string]*agentResources
@@ -111,7 +110,7 @@ func New(config Config) (*Agents, error) {
 	if config.ExecEnv == nil {
 		config.ExecEnv = execenv.NewLocalProvider(config.DataDir, "")
 	}
-	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: NewMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
+	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
 }
 
 func (a *Agents) begin() error {
@@ -178,15 +177,15 @@ func (a *Agents) Recover(ctx context.Context, refs []Ref) error {
 	return nil
 }
 
-func (a *Agents) harness(ctx context.Context, agentID string, scopes ...string) (harness.Harness, error) {
+func (a *Agents) harness(ctx context.Context, agentID, scope string) (harness.Harness, error) {
 	if !agentIDPattern.MatchString(agentID) {
 		return nil, fmt.Errorf("%w: agent ID", ErrInvalidInput)
 	}
-	if len(scopes) > 0 && scopes[0] != "" {
-		if err := validateGroupScope(scopes[0]); err != nil {
+	if scope != "" {
+		if err := validateGroupScope(scope); err != nil {
 			return nil, err
 		}
-		agentID = resourceKey(Ref{AgentID: agentID, Scope: scopes[0]})
+		agentID = resourceKey(Ref{AgentID: agentID, Scope: scope})
 	}
 	for {
 		if err := ctx.Err(); err != nil {
@@ -287,7 +286,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if owner, scope, group := strings.Cut(agentID, "/"); group {
 		return a.openGroup(ctx, Ref{AgentID: owner, Scope: scope})
 	}
-	if err := a.Catalog.DiscoveryReady(); err != nil {
+	if err := a.Catalog.discoveryReady(); err != nil {
 		return nil, err
 	}
 	dir := filepath.Join(a.config.DataDir, "agents", agentID)
@@ -297,7 +296,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := a.memory.Open(ctx); err != nil {
 		return nil, err
 	}
-	execStamp, _ := a.execStamp(ctx, agentID)
+	execStamp, _ := a.config.ExecEnv.Stamp(ctx, agentID)
 	execHandle, err := a.config.ExecEnv.Open(ctx, agentID)
 	if err != nil {
 		return nil, err
@@ -308,7 +307,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		}
 	}()
 	workspace := execHandle.Workspace()
-	files := a.filesWithHandle(agentID, execHandle)
+	files := a.files(agentID, execHandle)
 	loaded, err := files.Load(ctx)
 	if err != nil {
 		return nil, err
@@ -331,7 +330,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		bgOutputDir = execenv.JoinTargetPath(workspace, ".dex", "background")
 	}
 	registry := harness.CreateRegistry()
-	extensions := []*durable.Extension{telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(toolEnv, inheritEnv), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), backgroundExtension(agentID, a.config.Tasks.Background, toolEnv, inheritEnv, execHandle.Kind(), bgOutputDir, workspace), workLoopExtension(), artifactExtension(agentID, workspace, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
+	extensions := []*durable.Extension{telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(toolEnv, inheritEnv, a.config.BashTimeout), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), backgroundExtension(agentID, a.config.Tasks.Background, toolEnv, inheritEnv, execHandle.Kind(), bgOutputDir, workspace), workLoopExtension(), artifactExtension(agentID, workspace, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
 	}), loaded.Extension}
 	if loaded.HasTools {
@@ -448,7 +447,7 @@ func agentChange(options Options) harness.AgentChange {
 // agentChange adds the AGENTS.md text to the instructions. It reads the files at each admission,
 // so an edit applies from the next input of a conversation.
 func (a *Agents) agentChange(ctx context.Context, agentID string, options Options) harness.AgentChange {
-	options.Instructions = a.filesWithHandle(agentID, a.execHandle(agentID)).instructionsContext(ctx, options.Cwd, options.Instructions)
+	options.Instructions = a.files(agentID, a.execHandle(agentID)).instructionsContext(ctx, options.Cwd, options.Instructions)
 	return agentChange(options)
 }
 
@@ -679,30 +678,30 @@ func (a *Agents) Continue(ctx context.Context, ref Ref, requestID string, option
 // Compact starts a manual compaction and returns its native task ID. It runs beside an active run;
 // a summary made during a run joins the context at the run's next boundary. Instructions tell the
 // summary what to keep.
-func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID string, options Options) (int64, error) {
+func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID string, options Options) error {
 	if options.Model.ModelID == "" {
-		return 0, ErrNoModel
+		return ErrNoModel
 	}
 	if err := a.begin(); err != nil {
-		return 0, err
+		return err
 	}
 	defer a.end()
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer unlock()
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	// The summary uses the conversation model, so it must be the chat's current choice.
 	if err := conversation.Configure(ctx, a.changeFor(ctx, ref, options)); err != nil {
-		return 0, err
+		return err
 	}
 	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	var id durable.TaskId
 	if requestID == "" {
@@ -716,11 +715,11 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID s
 		admission, err = compactOnce(ctx, conversation, durable.ConversationId(ref.ID), requestID, instructions)
 		id = admission.id
 		if err == nil && !admission.created {
-			return int64(id), nil
+			return nil
 		}
 	}
 	if err != nil {
-		return 0, err
+		return err
 	}
 	a.mu.Lock()
 	a.settling++
@@ -731,12 +730,12 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID s
 			slog.Error("note compaction outcome", "agent", ref.AgentID, "conversation", ref.ID, "task", id, "error", err)
 		}
 	})
-	return int64(id), nil
+	return nil
 }
 
-// CompactionNoteKind is the transcript entry for a manual compaction that made no summary. A
+// compactionNoteKind is the transcript entry for a manual compaction that made no summary. A
 // summary is its own pi.compaction entry, so a note is only written for the other outcomes.
-const CompactionNoteKind = "dex.compaction"
+const compactionNoteKind = "dex.compaction"
 
 type compactionNote struct {
 	// Outcome is "nothing" when the context had nothing to compact, otherwise "failed".
@@ -804,7 +803,7 @@ func noteCompaction(ctx context.Context, h harness.Harness, conversation harness
 		return err
 	}
 	requestID := fmt.Sprintf("dex.compaction:%d", id)
-	_, err = conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeWrite, RequestId: &requestID, Entry: &durable.EntryDraft{Kind: CompactionNoteKind, Data: data}})
+	_, err = conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeWrite, RequestId: &requestID, Entry: &durable.EntryDraft{Kind: compactionNoteKind, Data: data}})
 	return err
 }
 
@@ -916,7 +915,7 @@ func withdrawQueuedInputs(ctx context.Context, conversation harness.Conversation
 			if item.Mode == harness.InboxWrite {
 				continue
 			}
-			metadata := InputMetadata{Reason: "aborted"}
+			metadata := inputMetadata{Reason: "aborted"}
 			if item.Entry != nil {
 				data, _ := item.Entry.Get("data")
 				encoded, err := json.Marshal(data)
@@ -1022,12 +1021,8 @@ func (a *Agents) close(ctx context.Context) {
 	close(a.closeDone)
 }
 
-func (a *Agents) files(agentID string) *agentExtensions {
-	return newAgentExtensions(a.config.Home, a.config.DataDir, agentID, a.env)
-}
-
-func (a *Agents) filesWithHandle(agentID string, handle execenv.Handle) *agentExtensions {
-	return newAgentExtensionsWithEnv(a.config.Home, a.config.DataDir, agentID, handle, a.env)
+func (a *Agents) files(agentID string, handle execenv.Handle) *agentExtensions {
+	return newAgentExtensions(a.config.Home, a.config.DataDir, agentID, handle, a.env)
 }
 
 func (a *Agents) execHandle(agentID string) execenv.Handle {
@@ -1183,13 +1178,6 @@ func (a *Agents) OnePasswordCLI(ctx context.Context) string {
 	return findOp(env)
 }
 
-func (a *Agents) execStamp(ctx context.Context, agentID string) (string, bool) {
-	if sp, ok := a.config.ExecEnv.(execenv.StampProvider); ok {
-		return sp.Stamp(ctx, agentID)
-	}
-	return "", true
-}
-
 // StaleExtensions returns the open agents whose extension files, shell rc files, 1Password
 // settings, or execution environment changed after their load, with the current stamp of each.
 func (a *Agents) StaleExtensions(ctx context.Context) map[string]string {
@@ -1208,8 +1196,8 @@ func (a *Agents) StaleExtensions(ctx context.Context) map[string]string {
 	a.mu.Unlock()
 	stale := map[string]string{}
 	for id, state := range loaded {
-		currentExt := a.files(id).stamp()
-		currentExec, ok := a.execStamp(ctx, id)
+		currentExt := a.files(id, nil).stamp()
+		currentExec, ok := a.config.ExecEnv.Stamp(ctx, id)
 		if currentExt != state.extStamp || (ok && currentExec != state.execStamp) {
 			stale[id] = currentExt + "|" + currentExec
 		}
@@ -1223,7 +1211,7 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	var info ExtensionInfo
 	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
 		var infoErr error
-		info, infoErr = a.filesWithHandle(agentID, h).Info(ctx)
+		info, infoErr = a.files(agentID, h).Info(ctx)
 		return infoErr
 	})
 	if err != nil {
@@ -1233,9 +1221,9 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	resource := a.resources[agentID]
 	a.mu.Unlock()
 	if resource != nil {
-		info.Servers = resource.loaded.ServerInfo()
-		currentExec, ok := a.execStamp(ctx, agentID)
-		info.ReloadPending = a.files(agentID).stamp() != resource.loaded.stamp || (ok && currentExec != resource.execStamp)
+		info.Servers = resource.loaded.serverInfo()
+		currentExec, ok := a.config.ExecEnv.Stamp(ctx, agentID)
+		info.ReloadPending = a.files(agentID, nil).stamp() != resource.loaded.stamp || (ok && currentExec != resource.execStamp)
 	}
 	return info, nil
 }
@@ -1243,7 +1231,7 @@ func (a *Agents) EditEnv(ctx context.Context, agentID, scope, key string, value 
 	if !agentIDPattern.MatchString(agentID) {
 		return ExtensionInfo{}, ErrInvalidInput
 	}
-	return a.files(agentID).EditEnv(ctx, scope, key, value)
+	return a.files(agentID, nil).EditEnv(ctx, scope, key, value)
 }
 
 func (a *Agents) Reload(ctx context.Context, agentID string) error {
@@ -1271,11 +1259,11 @@ func (a *Agents) Reload(ctx context.Context, agentID string) error {
 	a.mu.Unlock()
 	defer a.end()
 	// Preflight errors leave the loaded target intact.
-	if err := a.Catalog.DiscoveryReady(); err != nil {
+	if err := a.Catalog.discoveryReady(); err != nil {
 		a.finishOpening(agentID, opening)
 		return err
 	}
-	if err := a.files(agentID).Validate(openCtx); err != nil {
+	if err := a.files(agentID, nil).Validate(openCtx); err != nil {
 		a.finishOpening(agentID, opening)
 		return a.closedDuring(ctx, err)
 	}
@@ -1396,7 +1384,7 @@ func (a *Agents) source(ctx context.Context, ref Ref) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			var metadata InputMetadata
+			var metadata inputMetadata
 			if err := json.Unmarshal(encoded, &metadata); err != nil {
 				return "", err
 			}

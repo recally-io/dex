@@ -215,3 +215,67 @@ func TestUserWebCannotUseTelegramMessageTools(t *testing.T) {
 		return false
 	})
 }
+
+func TestUserTelegramPresentationPreferencesSurviveRestart(t *testing.T) {
+	t.Parallel()
+	// Given a configured bot whose default presentation has not been changed.
+	data := t.TempDir()
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, data, 42)
+	options := map[string]any{"silent": true, "preview": "off", "reactions": true}
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": options}, nil)
+	// When the process restarts, presentation preferences remain separate from the token and allowlist.
+	d.stop()
+	d = startDex(t, data, f.srv.URL)
+	var view struct {
+		Telegram struct {
+			Options struct {
+				Silent    bool   `json:"silent"`
+				Preview   string `json:"preview"`
+				Reactions bool   `json:"reactions"`
+			} `json:"options"`
+		} `json:"telegram"`
+	}
+	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &view)
+	got := view.Telegram.Options
+	if !got.Silent || got.Preview != "off" || !got.Reactions {
+		t.Fatalf("lost Telegram preferences: %+v", got)
+	}
+	// Existing clients that omit options must not reset the saved preferences.
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}}, nil)
+	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &view)
+	if !view.Telegram.Options.Silent {
+		t.Fatal("omitted options reset presentation")
+	}
+}
+
+func TestUserRichTelegramEditCannotCreateMultipleMessages(t *testing.T) {
+	t.Parallel()
+	// Given a confirmed rich reply selected by its owned delivery ID.
+	data := t.TempDir()
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, data, 42)
+	f.message(1, 42, 42, "original")
+	_ = f.next(t)
+	conn := controlWriteDB(t, data)
+	var delivery string
+	eventually(t, "confirmed rich message", func() (bool, any) {
+		err := conn.QueryRowContext(t.Context(), "SELECT id FROM submissions WHERE source_key='telegram:123:1' AND delivered_at IS NOT NULL").Scan(&delivery)
+		return err == nil, delivery
+	})
+	d.setModel(t, "tool")
+	// When an edit would exceed 500 blocks, no remote edit or extra split send is performed.
+	args, _ := json.Marshal(map[string]any{"action": "edit", "deliveryId": delivery, "index": 0, "text": strings.Repeat("a\n\n", 501)})
+	f.message(2, 42, 42, "telegram_message "+string(args))
+	answer := f.next(t)
+	if !strings.Contains(answer.Text, "rich edit must fit one message") {
+		t.Fatalf("oversized edit=%+v", answer)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, request := range f.requests {
+		if request.Method == "editMessageText" {
+			t.Fatalf("oversized edit reached platform: %+v", request)
+		}
+	}
+}

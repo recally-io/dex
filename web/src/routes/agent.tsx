@@ -17,15 +17,29 @@ import { useApp } from "../lib/app-state";
 import { environmentBotHint, environmentOptionLabel } from "../lib/environments";
 import { ModelPicker } from "../components/model-picker";
 import { ThinkingPicker } from "../components/thinking-picker";
-import { Failure, Spinner } from "../components/feedback";
+import { Failure, Loading, Spinner } from "../components/feedback";
 import { FramedPage, Note, Panel, Section } from "../components/page";
 import { BotSettingsSwitcher } from "../components/settings-switcher";
 import { Input, Select } from "../components/form";
 import { InstructionsEditor } from "../components/instructions-editor";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { WithSettings } from "../components/with-settings";
 import { cn } from "../lib/utils";
+
+function WithSettings({ children }: { children: (settings: Settings) => React.ReactNode }) {
+  const agentId = useAgentId();
+  const settings = useAgentSettings(agentId);
+
+  return settings.isPending ? (
+    <Loading />
+  ) : settings.isError ? (
+    <div className="px-5 py-8 sm:px-8">
+      <Failure title="Could not load settings" error={settings.error} retry={() => void settings.refetch()} />
+    </div>
+  ) : (
+    children(settings.data)
+  );
+}
 
 export function AgentPage() {
   const agentId = useAgentId();
@@ -92,7 +106,7 @@ function Agent({ settings }: { settings: Settings }) {
 
   return (
     <>
-      <Section n={1} title="Profile" caption="A change applies from the next message.">
+      <Section title="Profile" caption="A change applies from the next message.">
         <Panel>
           <NameRow name={settings.agent.name} />
           <MainDefaults />

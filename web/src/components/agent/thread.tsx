@@ -58,7 +58,7 @@ function ThreadOpen({
 }
 
 /** Cards consume only the parent's content-free execution stream. */
-export function useThreadData(call: ThreadCall) {
+function useThreadData(call: ThreadCall) {
   const current = useAgentId();
   const context = useContext(ThreadContext);
 
@@ -100,14 +100,6 @@ export function StateBadge({ state }: { state: ThreadState }) {
       {state === "running" ? <Spinner /> : null}
       {stateLabels[state]}
     </Badge>
-  );
-}
-
-export function ExecutionNotice({ state }: { state: ThreadState }) {
-  return (
-    <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
-      {stateLabels[state]}
-    </p>
   );
 }
 

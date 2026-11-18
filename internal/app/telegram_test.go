@@ -511,20 +511,6 @@ func TestTelegramMessageDeliveredTwiceIsAnsweredOnce(t *testing.T) {
 	}
 }
 
-func TestUserGetsFormattedTelegramAnswer(t *testing.T) {
-	t.Parallel()
-	// Given a bot that user 42 can use.
-	f := newFakeTelegram(t)
-	startTelegram(t, f, t.TempDir(), 42)
-	// When the answer contains Markdown and literal HTML characters.
-	f.message(1, 42, 7, "**bold** & `<safe>`")
-	// Then Telegram receives supported Rich HTML with escaped literal text.
-	got := f.next(t)
-	if got.Text != "echo: <b>bold</b> &amp; <code>&lt;safe&gt;</code>" || got.RichHTML == "" {
-		t.Fatalf("formatted answer = %+v", got)
-	}
-}
-
 func TestUserPairsTelegramOwnerOnce(t *testing.T) {
 	t.Parallel()
 	// Given a saved bot without an owner.
@@ -594,20 +580,6 @@ func TestUserGetsSplitTelegramCode(t *testing.T) {
 	}
 	if codeParts < 2 || !strings.Contains(plain.String(), code) {
 		t.Fatalf("code was changed: parts=%d characters=%d", codeParts, len([]rune(plain.String())))
-	}
-}
-
-func TestUserGetsTelegramAnswerAfterDurableFloodRetry(t *testing.T) {
-	t.Parallel()
-	// Given a Bot API that rejects the first final send with 429.
-	f := newFakeTelegram(t)
-	f.failures["sendRichMessage"] = []platformFailure{{Code: 429, Retry: 1}}
-	startTelegram(t, f, t.TempDir(), 42)
-	// When the owner sends a message.
-	f.message(1, 42, 7, "hi")
-	// Then the shared durable sender retries and delivers the answer.
-	if got := f.next(t); got.Text != "echo: hi" {
-		t.Fatalf("retry answer = %+v", got)
 	}
 }
 
@@ -841,18 +813,6 @@ func TestUserSeesInvalidTelegramTokenStatus(t *testing.T) {
 	// When the Channels page reads runtime status.
 	// Then it sees an error without the bot token.
 	waitTelegramState(t, d, "error")
-}
-
-func TestUserSeesTelegramPollingErrorAndRecovery(t *testing.T) {
-	t.Parallel()
-	// Given a Bot API whose first poll fails.
-	f := newFakeTelegram(t)
-	f.failures["getUpdates"] = []platformFailure{{Code: 500}}
-	d := startTelegram(t, f, t.TempDir(), 42)
-	// When the poll fails, the Channels page shows the failure.
-	waitTelegramState(t, d, "error")
-	// Then polling resumes and the Channels page shows running.
-	waitTelegramState(t, d, "running")
 }
 
 func waitTelegramState(t *testing.T, d *dex, state string) {

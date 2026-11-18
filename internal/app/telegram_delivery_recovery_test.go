@@ -33,10 +33,10 @@ func TestUserTelegramPhotoRejectionFallsBackToDocument(t *testing.T) {
 
 func TestUserTelegramMediaFloodWaitSurvivesRestart(t *testing.T) {
 	t.Parallel()
-	// Given a native file send that receives a seven-second account flood wait.
+	// Given a native file send that receives a one-second account flood wait.
 	data := t.TempDir()
 	f := newFakeTelegram(t)
-	f.failures["sendDocument"] = []platformFailure{{Code: 429, Retry: 7}}
+	f.failures["sendDocument"] = []platformFailure{{Code: 429, Retry: 1}}
 	d := startTelegram(t, f, data, 42)
 	d.setModel(t, "tool")
 	telegramSource(t, data, "report.txt", []byte("rate limited"))
@@ -57,7 +57,7 @@ func TestUserTelegramMediaFloodWaitSurvivesRestart(t *testing.T) {
 	}
 	select {
 	case first := <-f.mediaCalls:
-		if got.At.Sub(first) < 7*time.Second {
+		if got.At.Sub(first) < time.Second {
 			t.Fatalf("retry delay=%s", got.At.Sub(first))
 		}
 	default:

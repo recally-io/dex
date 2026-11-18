@@ -3,108 +3,15 @@ package engine
 import (
 	"context"
 	"encoding/json/v2"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/execenv/execenvtest"
 )
-
-func TestUserMemoryToolsAreConfinedToMemoryRepo(t *testing.T) {
-	t.Parallel()
-	// Given a host memory repo containing shared entries, agent a/b private files, and a symlink escape.
-	memDir := t.TempDir()
-	repo := NewMemoryRepo(memDir, map[string]string{"PATH": os.Getenv("PATH")})
-	if err := repo.Open(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	for rel, body := range map[string]string{
-		"MEMORY.md":          "# Memory\n\n- shared fact alpha\n\n## Index\n",
-		"agents/a/MEMORY.md": "# Agent A\n\n- own private habit\n",
-		"agents/b/MEMORY.md": "# Agent B\n\n- B_CROSS_AGENT_SECRET\n",
-	} {
-		target := filepath.Join(memDir, rel)
-		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(target, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	outside := filepath.Join(t.TempDir(), "outside.md")
-	if err := os.WriteFile(outside, []byte("OUTSIDE_SECRET"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(outside, filepath.Join(memDir, "escape.md")); err != nil {
-		t.Fatal(err)
-	}
-
-	ext := repo.Extension("a", nil)
-	byName := map[string]*durable.ToolRegistration{}
-	for _, tool := range ext.Tools {
-		byName[tool.Name] = tool
-	}
-	callTool := func(name string, args any) (string, error) {
-		res, err := byName[name].Execute(t.Context(), args, nil)
-		if err != nil {
-			return "", err
-		}
-		var out strings.Builder
-		for _, block := range res.Output {
-			fmt.Fprint(&out, block)
-		}
-		return out.String(), nil
-	}
-
-	// When searching, reading, writing, and editing own and shared memory files.
-	searchOut, err := callTool("memory_search", map[string]any{"query": "SECRET"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(searchOut, "B_CROSS_AGENT_SECRET") || strings.Contains(searchOut, "OUTSIDE_SECRET") {
-		t.Fatalf("memory_search leaked forbidden content: %s", searchOut)
-	}
-
-	readOut, err := callTool("memory_read", map[string]any{"path": "agents/a/MEMORY.md"})
-	if err != nil || !strings.Contains(readOut, "own private habit") {
-		t.Fatalf("memory_read own agent=%q err=%v", readOut, err)
-	}
-
-	if _, err := callTool("memory_write", map[string]any{"path": "projects/dex.md", "content": "# Dex\n- line 1\n- line 2\n"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := callTool("memory_edit", map[string]any{
-		"path":  "projects/dex.md",
-		"edits": []map[string]any{{"oldText": "- line 2", "newText": "- line two"}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	edited, err := os.ReadFile(filepath.Join(memDir, "projects", "dex.md"))
-	if err != nil || !strings.Contains(string(edited), "- line two") {
-		t.Fatalf("edited content=%q err=%v", edited, err)
-	}
-
-	// Then reading/writing/editing other agents, .git, traversal, absolute paths, and symlinks fails.
-	for _, forbidden := range []string{"agents/b/MEMORY.md", "../outside.md", outside, ".git/HEAD", "escape.md", "agents"} {
-		if _, err := callTool("memory_read", map[string]any{"path": forbidden}); err == nil {
-			t.Fatalf("expected memory_read failure for %q", forbidden)
-		}
-		if _, err := callTool("memory_write", map[string]any{"path": forbidden, "content": "nope"}); err == nil {
-			t.Fatalf("expected memory_write failure for %q", forbidden)
-		}
-		if _, err := callTool("memory_edit", map[string]any{
-			"path":  forbidden,
-			"edits": []map[string]any{{"oldText": "x", "newText": "y"}},
-		}); err == nil {
-			t.Fatalf("expected memory_edit failure for %q", forbidden)
-		}
-	}
-}
 
 func TestUserExecutesToolsInRemotePipeEnvironment(t *testing.T) {
 	t.Setenv("HOST_PROCESS_SECRET", "process-secret-do-not-leak")

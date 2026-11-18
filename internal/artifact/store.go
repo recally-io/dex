@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/url"
 	"os"
@@ -43,13 +42,8 @@ type Service struct {
 	mu            sync.Mutex
 }
 
-func New(dataDir string) *Service { return &Service{dataDir: dataDir} }
-
-// SetWorkspaceReader configures how Deliver reads files from agent workspaces.
-func (s *Service) SetWorkspaceReader(fn WorkspaceReader) {
-	s.mu.Lock()
-	s.readWorkspace = fn
-	s.mu.Unlock()
+func New(dataDir string, readWorkspace WorkspaceReader) *Service {
+	return &Service{dataDir: dataDir, readWorkspace: readWorkspace}
 }
 
 func checkName(name string) error {
@@ -245,62 +239,17 @@ func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path s
 	s.mu.Lock()
 	reader := s.readWorkspace
 	s.mu.Unlock()
-	if reader != nil {
-		data, err := reader(ctx, caller.AgentID, path, MaxSize)
-		if err != nil {
-			return engine.ArtifactInfo{}, err
-		}
-		if int64(len(data)) > MaxSize {
-			return engine.ArtifactInfo{}, errors.New("deliver a regular file of at most 20 MB")
-		}
-		return s.storeDeliveredBytes(caller.AgentID, name, data)
+	if reader == nil {
+		return engine.ArtifactInfo{}, errors.New("workspace reader is not configured")
 	}
-	home, err := os.OpenRoot(agent.Home(s.dataDir, caller.AgentID))
+	data, err := reader(ctx, caller.AgentID, path, MaxSize)
 	if err != nil {
 		return engine.ArtifactInfo{}, err
 	}
-	defer home.Close()
-	workspace, err := openDirectory(home, "workspace")
-	if err != nil {
-		return engine.ArtifactInfo{}, err
-	}
-	defer workspace.Close()
-	source, err := workspace.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		return engine.ArtifactInfo{}, err
-	}
-	defer source.Close()
-	stat, err := source.Stat()
-	if err != nil {
-		return engine.ArtifactInfo{}, err
-	}
-	if !stat.Mode().IsRegular() || stat.Size() > MaxSize {
+	if int64(len(data)) > MaxSize {
 		return engine.ArtifactInfo{}, errors.New("deliver a regular file of at most 20 MB")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	root, err := s.root(caller.AgentID, true)
-	if err != nil {
-		return engine.ArtifactInfo{}, err
-	}
-	defer root.Close()
-	out, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if os.IsExist(err) {
-		return engine.ArtifactInfo{}, ErrConflict
-	}
-	if err != nil {
-		return engine.ArtifactInfo{}, err
-	}
-	size, err := io.Copy(out, io.LimitReader(source, MaxSize+1))
-	err = errors.Join(err, out.Close())
-	if err != nil || size > MaxSize {
-		_ = root.Remove(name)
-		if err != nil {
-			return engine.ArtifactInfo{}, err
-		}
-		return engine.ArtifactInfo{}, errors.New("artifact exceeds 20 MB")
-	}
-	return engine.ArtifactInfo{Name: name, Size: size, URL: "/api/agents/" + url.PathEscape(caller.AgentID) + "/artifacts/" + url.PathEscape(name)}, nil
+	return s.storeDeliveredBytes(caller.AgentID, name, data)
 }
 
 func (s *Service) storeDeliveredBytes(agentID, name string, data []byte) (engine.ArtifactInfo, error) {

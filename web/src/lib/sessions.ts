@@ -1,8 +1,8 @@
 import { format, isToday } from "date-fns";
 import type { Chat } from "../api/generated/types.gen";
 
-export const STALLED_IDLE_MS = 5 * 60 * 1000;
-export const STALLED_TOOL_MS = 30 * 60 * 1000;
+const STALLED_IDLE_MS = 5 * 60 * 1000;
+const STALLED_TOOL_MS = 30 * 60 * 1000;
 
 export function sessionKind(chat: Pick<Chat, "channel" | "main">) {
   if (chat.main) return "Main";
@@ -23,7 +23,7 @@ export function sessionAgentId(chat: Pick<Chat, "agentId">, agentId: string) {
  * Who started a child session. A parent in another bot has no title in this bot's list, so the
  * name of that bot stands for it. A child that runs in another bot adds the name of that bot.
  */
-export function startedBy(
+function startedBy(
   chat: Pick<Chat, "parentId" | "parentAgentName" | "agentName">,
   parentTitle: string | undefined,
 ) {

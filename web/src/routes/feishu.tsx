@@ -213,7 +213,7 @@ export function FeishuChannel() {
 
   return (
     <>
-      <Section n={1} title="Connection">
+      <Section title="Connection">
         {saved.isError ? <Failure title="Cannot read connection" error={saved.error} /> : null}
         {connected ? (
           <>
@@ -250,7 +250,7 @@ export function FeishuChannel() {
         ) : null}
       </Section>
       {connected || setup?.pairingCode ? (
-        <Section n={2} title="Who can use it" caption="Only the paired owner, in a private chat.">
+        <Section title="Who can use it" caption="Only the paired owner, in a private chat.">
           <Panel>
             <Facts rows={[["Owner", saved.data?.paired ? "Paired" : "Not paired"]]} />
           </Panel>

@@ -20,7 +20,6 @@ type media struct {
 	Width      int    `json:"width"`
 	Height     int    `json:"height"`
 	Duration   int    `json:"duration"`
-	MimeType   string `json:"mime_type"`
 	Emoji      string `json:"emoji"`
 	SetName    string `json:"set_name"`
 	IsAnimated bool   `json:"is_animated"`

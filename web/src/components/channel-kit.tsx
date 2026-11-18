@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { Feather, MessageCircle, Send, type LucideIcon } from "lucide-react";
 import {
   getNotificationTargetsOptions,
   setPrimaryNotificationTargetMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { useAgentId } from "../lib/agent-scope";
-import { Crumb } from "./crumb";
 import { Failure } from "./feedback";
 import { FramedPage, Mono, Note, Panel, Section } from "./page";
 import { BotSettingsSwitcher } from "./settings-switcher";
@@ -66,9 +66,19 @@ export function ChannelFrame({
   description: string;
   children: ReactNode;
 }) {
+  const agentId = useAgentId();
+
   return (
     <FramedPage
-      eyebrow={<Crumb to="/a/$agentId/channels">Channels</Crumb>}
+      eyebrow={
+        <Link
+          to="/a/$agentId/channels"
+          params={{ agentId }}
+          className="hover:text-foreground hover:underline"
+        >
+          Channels
+        </Link>
+      }
       title={channelInfo[channel].name}
       badge={state ? <ChannelState channel={channel} state={state} /> : null}
       description={description}
@@ -105,7 +115,7 @@ export function Notifications({ channel }: { channel: ChannelId }) {
   const own = targets.data?.targets.filter((target) => target.platform === channel) ?? [];
 
   return (
-    <Section n={3} title="Notifications" caption="Routines send results to the primary channel.">
+    <Section title="Notifications" caption="Routines send results to the primary channel.">
       <Panel>
         {own.length ? (
           <ul className="divide-y divide-border">
@@ -149,7 +159,7 @@ export function HowToUse({ channel, children }: { channel: ChannelId; children?:
   const name = channelInfo[channel].name;
 
   return (
-    <Section n={4} title="How to use">
+    <Section title="How to use">
       <Panel className="px-4 py-3.5">
         <details>
           <summary className="cursor-pointer text-[13px] text-foreground">Commands and limits</summary>
@@ -189,7 +199,7 @@ export function HowToUse({ channel, children }: { channel: ChannelId; children?:
 
 export function TurnOff({ channel, onTurnOff }: { channel: ChannelId; onTurnOff: () => void }) {
   return (
-    <Section n={5} title="Turn off" caption="The bot stops answering here. The main timeline stays.">
+    <Section title="Turn off" caption="The bot stops answering here. The main timeline stays.">
       <Button size="sm" variant="secondary" className="text-red" onClick={onTurnOff}>
         Turn off {channelInfo[channel].name}
       </Button>

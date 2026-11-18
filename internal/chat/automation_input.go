@@ -37,14 +37,8 @@ func (s *Service) EnqueueAutomation(ctx context.Context, in AutomationInput) (in
 	if err = tx.Commit(); err != nil {
 		return 0, false, err
 	}
-	s.AutomationCommitted(convID)
+	s.WakeConversation(convID)
 	return convID, true, nil
-}
-
-// AutomationCommitted publishes a committed automation input to execution and watchers.
-func (s *Service) AutomationCommitted(chatID int64) {
-	s.signal(chatID)
-	s.Wake()
 }
 
 // StoreAutomationInput stores a run and input in the caller's control transaction.

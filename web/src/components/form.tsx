@@ -24,7 +24,7 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
   return <select {...props} className={cn(fieldClass, "h-9 appearance-auto pr-2", className)} />;
 }
 
-export type FieldIds = { id: string; describedBy: string | undefined; invalid: boolean };
+type FieldIds = { id: string; describedBy: string | undefined; invalid: boolean };
 
 export function Field({
   label,

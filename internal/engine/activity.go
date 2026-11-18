@@ -1,18 +1,11 @@
 package engine
 
 import (
-	"encoding/json/v2"
-	"fmt"
-	"slices"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/harness"
 )
-
-const activityActionLimit = 80
 
 func (a *Agents) updateActivity(ref Ref, event Event, view harness.ConversationView, observedAt int64) {
 	if !event.Running {
@@ -55,20 +48,13 @@ func (a *Agents) updateActivity(ref Ref, event Event, view harness.ConversationV
 			}
 		}
 	}
-	lastAction := ""
-	for _, item := range slices.Backward(event.Items) {
-		if item.Kind == "tool" {
-			lastAction = shortAction(item.Name, item.Args)
-			break
-		}
-	}
 	var running []RunningTool
 	for _, slot := range live.Tools {
 		if slot.Status == harness.ToolSlotRunning {
 			running = append(running, RunningTool{Name: safeToolName(slot.Name), FirstObservedAt: current[slot.CallId]})
 		}
 	}
-	a.activity[ref] = &activityRecord{lastAction: lastAction, lastActivityAt: observedAt, toolStarted: current, runningTools: running}
+	a.activity[ref] = &activityRecord{lastActivityAt: observedAt, toolStarted: current, runningTools: running}
 	a.mu.Unlock()
 }
 
@@ -80,32 +66,6 @@ func safeToolName(name string) string {
 	default:
 		return "other"
 	}
-}
-
-func shortAction(name string, args map[string]any) string {
-	if name == "" {
-		return ""
-	}
-	text := ""
-	for _, key := range []string{"command", "cmd", "query", "path"} {
-		if value, ok := args[key]; ok {
-			text = fmt.Sprint(value)
-			break
-		}
-	}
-	if text == "" && len(args) > 0 {
-		if raw, err := json.Marshal(args); err == nil {
-			text = string(raw)
-		}
-	}
-	action := name
-	if text != "" {
-		action += ": " + strings.Join(strings.Fields(text), " ")
-	}
-	if utf8.RuneCountInString(action) <= activityActionLimit {
-		return action
-	}
-	return string([]rune(action)[:activityActionLimit])
 }
 
 func activityNow() int64 { return time.Now().UnixMilli() }

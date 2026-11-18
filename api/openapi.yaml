@@ -21,16 +21,7 @@ paths:
   /api/work:
     get:
       operationId: getWork
-      description: Sessions and automation activity across bots for a half-open range of at most 31 days.
-      parameters:
-        - in: query
-          name: from
-          required: true
-          schema: { type: integer, format: int64 }
-        - in: query
-          name: to
-          required: true
-          schema: { type: integer, format: int64 }
+      description: Sessions and automation activity across bots.
       responses:
         "200":
           description: Work across bots.
@@ -92,22 +83,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Ok" }
         "404": { $ref: "#/components/responses/Error" }
-        default: { $ref: "#/components/responses/Error" }
-  /api/inbox/{runId}/restore:
-    parameters:
-      - in: path
-        name: runId
-        required: true
-        schema: { type: string }
-    post:
-      operationId: restoreInboxItem
-      description: Undo dismissal without changing read state.
-      responses:
-        "200":
-          description: State saved.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
   /api/session:
     post:
@@ -2147,11 +2122,8 @@ components:
 
     Work:
       type: object
-      required: [agents, sessions, automations, inbox]
+      required: [sessions, automations, inbox]
       properties:
-        agents:
-          type: array
-          items: { $ref: "#/components/schemas/Agent" }
         sessions:
           type: array
           items: { $ref: "#/components/schemas/WorkSession" }
@@ -2169,16 +2141,10 @@ components:
         chat: { $ref: "#/components/schemas/Chat" }
     WorkAutomation:
       type: object
-      required: [agentId, automation, runs, scheduled, setup]
+      required: [agentId, automation, setup]
       properties:
         agentId: { type: string }
         automation: { $ref: "#/components/schemas/Automation" }
-        runs:
-          type: array
-          items: { $ref: "#/components/schemas/AutomationRun" }
-        scheduled:
-          type: array
-          items: { type: integer, format: int64 }
         setup: { type: boolean }
     AutomationList:
       type: object
@@ -2693,16 +2659,12 @@ components:
         path: github.com/recally-io/dex/internal/agent
       type: object
       required: [
-        inboxUnread,
-        inboxFailed,
         routineFailed,
         activeSessions,
         runningChannels,
         enabledAutomations,
       ]
       properties:
-        inboxUnread: { type: integer, format: int64 }
-        inboxFailed: { type: integer, format: int64 }
         routineFailed: { type: boolean }
         activeSessions: { type: integer, format: int64 }
         runningChannels: { type: integer, format: int64 }

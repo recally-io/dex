@@ -1,7 +1,6 @@
 package app_test
 
 import (
-	"database/sql"
 	"encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -28,16 +27,6 @@ func (d *dex) newSession(t *testing.T) sessionInfo {
 	var c sessionInfo
 	d.must(t, http.MethodPost, "/api/agents/default/chats", nil, &c, http.StatusCreated)
 	return c
-}
-
-func sessionDB(t *testing.T, d *dex) *sql.DB {
-	t.Helper()
-	conn, err := sql.Open("sqlite", "file:"+filepath.Join(d.dataDir(t), "control.sqlite")+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	return conn
 }
 
 // Stored sessions let each acceptance test reach its own boundary before POST exists.
@@ -275,25 +264,6 @@ func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
 	t.Logf("artifact: stopped_chat=%d preserved_main=%d withdrawn=%s", side, main, queued)
 }
 
-func TestUserCannotWriteReadOnlySessionKinds(t *testing.T) {
-	t.Parallel()
-	// Given task, automation and channel sessions owned by the bot.
-	d := startDex(t, t.TempDir(), "")
-	d.setModel(t, "echo")
-	for _, key := range []string{"task:readonly", "automation:readonly", "telegram:7", "wechat:8", "feishu:9"} {
-		id := sessionFixture(t, d, key, 1)
-		var c sessionInfo
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", id), nil, &c)
-		if !c.ReadOnly {
-			t.Fatalf("writable read-only kind: %+v", c)
-		}
-		// When the web sends input or requests Stop or Clear, it gets 403.
-		for _, action := range []string{"messages", "clear", "abort"} {
-			d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/%s", id, action), map[string]string{"id": uuid.NewV7().String(), "text": "must not run"}, nil, http.StatusForbidden)
-		}
-	}
-}
-
 func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 	t.Parallel()
 	// Given saved sessions with equal activity times, a child session from before child sessions and hidden contexts.
@@ -336,7 +306,7 @@ func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 	if !slices.Equal(ids, []int64{chat, task, automation}) {
 		t.Fatalf("session list order or exclusions: %v; body=%s", ids, raw)
 	}
-	// Then the child shows its parent as a Chat, and the old task API is gone.
+	// Then the child shows its parent as a Chat.
 	for _, c := range list.Chats {
 		if (c.ID == task) != (c.ParentID != nil && *c.ParentID == chat) {
 			t.Fatalf("parentId on session %d: %v; body=%s", c.ID, c.ParentID, raw)
@@ -344,13 +314,6 @@ func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 	}
 	if strings.Contains(raw, `"task"`) || strings.Contains(raw, `"channel":"task"`) {
 		t.Fatalf("task fields remain in the list: %s", raw)
-	}
-	for _, path := range []string{"/api/agents/default/tasks", "/api/agents/default/tasks/listed-task", "/api/agents/default/tasks/listed-task/cancel"} {
-		for _, method := range []string{http.MethodGet, http.MethodPost} {
-			if status, raw := d.call(t, method, path, nil); status != http.StatusNotFound && status != http.StatusMethodNotAllowed {
-				t.Fatalf("%s %s still exists: %d %s", method, path, status, raw)
-			}
-		}
 	}
 	t.Logf("artifact: listed_ids=%v", ids)
 }

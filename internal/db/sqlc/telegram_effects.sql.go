@@ -208,7 +208,7 @@ func (q *Queries) ListTelegramPeerEffects(ctx context.Context, arg ListTelegramP
 }
 
 const listTelegramPeerReplies = `-- name: ListTelegramPeerReplies :many
-SELECT s.id,s.answer,s.rendered_reply,s.channel_remote_ids,s.channel_context
+SELECT s.id,s.answer,s.channel_remote_ids,s.channel_context
 FROM submissions s JOIN conversations c ON c.id=s.conversation_id
 WHERE c.agent_id=? AND s.origin=? AND s.delivered_at IS NOT NULL AND s.channel_revoked=0
 AND s.channel_remote_ids<>'[]' ORDER BY s.rowid DESC LIMIT 20
@@ -222,7 +222,6 @@ type ListTelegramPeerRepliesParams struct {
 type ListTelegramPeerRepliesRow struct {
 	ID               string         `json:"id"`
 	Answer           sql.NullString `json:"answer"`
-	RenderedReply    string         `json:"rendered_reply"`
 	ChannelRemoteIds string         `json:"channel_remote_ids"`
 	ChannelContext   string         `json:"channel_context"`
 }
@@ -239,7 +238,6 @@ func (q *Queries) ListTelegramPeerReplies(ctx context.Context, arg ListTelegramP
 		if err := rows.Scan(
 			&i.ID,
 			&i.Answer,
-			&i.RenderedReply,
 			&i.ChannelRemoteIds,
 			&i.ChannelContext,
 		); err != nil {

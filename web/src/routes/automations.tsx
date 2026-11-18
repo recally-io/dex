@@ -12,12 +12,18 @@ import {
   runAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { inboxOptions, resultQuote } from "../lib/inbox";
-import { createChat, readInboxItem, sendMessage, setChatProject } from "../api/generated/sdk.gen";
+import {
+  createChat,
+  dismissInboxItem,
+  readInboxItem,
+  sendMessage,
+  setChatProject,
+} from "../api/generated/sdk.gen";
 import { refreshAutomations, refreshChats, refreshWork } from "../lib/queries";
-import { useHandled } from "../lib/handled";
 import { useAgentModel } from "../lib/agent";
 import { ago, runTime, scheduleText } from "../lib/automations";
 import { formatDuration } from "../lib/sessions";
+import { newId } from "../lib/utils";
 import { Failure, Loading, Spinner } from "../components/feedback";
 import { Confirm } from "../components/confirm";
 import { AutomationDialog } from "../components/automation-dialog";
@@ -135,7 +141,6 @@ function AutomationsSection() {
   return (
     <>
       <Section
-        n={1}
         title="All routines"
         caption={`${on} of ${list.length} on. Open one to see its runs.`}
         // SAFETY: ToggleGroup values come only from the two Filter items below.
@@ -223,7 +228,7 @@ function ReplyComposer({
     mutationFn: async () => {
       if (!continuation.current) {
         const chat = await createChat({ path: { agentId }, throwOnError: true });
-        continuation.current = { chatId: chat.data.id, messageId: crypto.randomUUID() };
+        continuation.current = { chatId: chat.data.id, messageId: newId() };
       }
 
       const { chatId, messageId } = continuation.current;
@@ -302,7 +307,14 @@ function RunBlock({
   item?: InboxItem;
 }) {
   const agentId = useAgentId();
-  const handle = useHandled();
+
+  const handle = useMutation({
+    mutationFn: async (runId: string) => {
+      await dismissInboxItem({ path: { runId }, throwOnError: true });
+      await refreshWork();
+    },
+  });
+
   const [replying, setReplying] = useState(false);
   const timeZone = automation.timeZone;
   const failed = run.status === "failed" || run.outcome === "failed";
@@ -351,7 +363,7 @@ function RunBlock({
               size="sm"
               variant="outline"
               disabled={handle.isPending}
-              onClick={() => handle.mutate({ id: run.id, undo: false })}
+              onClick={() => handle.mutate(run.id)}
             >
               Mark handled
             </Button>
@@ -559,7 +571,9 @@ export function AutomationPage({ automationId }: { automationId: string }) {
             title={blocked ?? (busy ? "A run is in progress." : undefined)}
             onClick={() => run.mutate({ path: { agentId, automationId } })}
           >
-            {run.isPending ? <Spinner className="border-background/40 border-t-canvas" /> : null}
+            {run.isPending ? (
+              <Spinner className="border-primary-foreground/30 border-t-primary-foreground" />
+            ) : null}
             {run.isPending ? "Starting…" : "Run now"}
           </Button>
           <PauseButton automation={data} />

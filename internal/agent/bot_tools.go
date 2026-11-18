@@ -12,12 +12,12 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-// Patch changes the fields that are not nil.
-type Patch struct {
+// patch changes the fields that are not nil.
+type patch struct {
 	Name, Instructions, Provider, ModelID, ThinkingLevel, FallbackProvider, FallbackModelID, EnvironmentID *string
 }
 
-func applyPatch(a *Agent, p Patch) {
+func applyPatch(a *Agent, p patch) {
 	for _, f := range []struct {
 		dst *string
 		src *string
@@ -37,9 +37,9 @@ func applyPatch(a *Agent, p Patch) {
 	}
 }
 
-// PatchAgent merges a patch into a saved active agent and applies the checks of SaveAgent. The
+// patchAgent merges a patch into a saved active agent and applies the checks of SaveAgent. The
 // read and the write share one lock, so two patches cannot lose each other's fields.
-func (s *Service) PatchAgent(ctx context.Context, id string, p Patch) (Agent, error) {
+func (s *Service) patchAgent(ctx context.Context, id string, p patch) (Agent, error) {
 	var (
 		oldRow sqlc.Agent
 		out    Agent
@@ -126,11 +126,11 @@ func botInfo(a Agent) engine.BotInfo {
 }
 
 // Handlers returns the engine callbacks.
-func (t BotTools) Handlers() engine.BotTools {
+func (t *BotTools) Handlers() engine.BotTools {
 	return engine.BotTools{List: t.list, Get: t.get, Create: t.create, Update: t.update, Archive: t.archive}
 }
 
-func (t BotTools) list(ctx context.Context, c engine.TaskContext) ([]engine.BotInfo, error) {
+func (t *BotTools) list(ctx context.Context, c engine.TaskContext) ([]engine.BotInfo, error) {
 	if err := t.Chats.ToolBotCaller(ctx, c, false); err != nil {
 		return nil, err
 	}
@@ -158,7 +158,7 @@ func (t BotTools) list(ctx context.Context, c engine.TaskContext) ([]engine.BotI
 	return out, nil
 }
 
-func (t BotTools) get(ctx context.Context, c engine.TaskContext, ref string) (engine.BotInfo, error) {
+func (t *BotTools) get(ctx context.Context, c engine.TaskContext, ref string) (engine.BotInfo, error) {
 	if err := t.Chats.ToolBotCaller(ctx, c, false); err != nil {
 		return engine.BotInfo{}, err
 	}
@@ -180,7 +180,7 @@ func (t BotTools) get(ctx context.Context, c engine.TaskContext, ref string) (en
 	return out, nil
 }
 
-func (t BotTools) create(ctx context.Context, c engine.TaskContext, p engine.BotPatch) (engine.BotInfo, error) {
+func (t *BotTools) create(ctx context.Context, c engine.TaskContext, p engine.BotPatch) (engine.BotInfo, error) {
 	if err := t.Chats.ToolBotCaller(ctx, c, true); err != nil {
 		return engine.BotInfo{}, err
 	}
@@ -192,7 +192,7 @@ func (t BotTools) create(ctx context.Context, c engine.TaskContext, p engine.Bot
 	return botInfo(created), err
 }
 
-func (t BotTools) update(ctx context.Context, c engine.TaskContext, p engine.BotPatch) (engine.BotInfo, error) {
+func (t *BotTools) update(ctx context.Context, c engine.TaskContext, p engine.BotPatch) (engine.BotInfo, error) {
 	if err := t.Chats.ToolBotCaller(ctx, c, true); err != nil {
 		return engine.BotInfo{}, err
 	}
@@ -200,7 +200,7 @@ func (t BotTools) update(ctx context.Context, c engine.TaskContext, p engine.Bot
 	if err != nil {
 		return engine.BotInfo{}, err
 	}
-	updated, err := t.Agents.PatchAgent(ctx, target.ID, Patch{
+	updated, err := t.Agents.patchAgent(ctx, target.ID, patch{
 		Name: p.Name, Instructions: p.Instructions, Provider: p.Provider, ModelID: p.ModelID,
 		ThinkingLevel: p.ThinkingLevel, FallbackProvider: p.FallbackProvider, FallbackModelID: p.FallbackModelID,
 		EnvironmentID: p.EnvironmentID,
@@ -208,7 +208,7 @@ func (t BotTools) update(ctx context.Context, c engine.TaskContext, p engine.Bot
 	return botInfo(updated), err
 }
 
-func (t BotTools) archive(ctx context.Context, c engine.TaskContext, a engine.BotDeleteArgs) (engine.QuestionInfo, error) {
+func (t *BotTools) archive(ctx context.Context, c engine.TaskContext, a engine.BotDeleteArgs) (engine.QuestionInfo, error) {
 	if err := t.Chats.ToolBotCaller(ctx, c, true); err != nil {
 		return engine.QuestionInfo{}, err
 	}
