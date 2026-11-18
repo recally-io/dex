@@ -22,18 +22,28 @@ to read in an afternoon.
 - Bot settings in the web UI: name, model, thinking level, instructions,
   channels, and routines with their runs. The name has 1 to 40 characters
   after spaces are trimmed. Providers, Environment, and About are global pages.
-  Global pages show no bot. A bot page changes only that bot.
+  Global pages under `/settings/general`, `/settings/providers`,
+  `/settings/environment`, `/settings/archived`, and `/settings/about` show no
+  bot (redirects keep `/settings`, `/providers`, `/environment`, `/archived`,
+  `/about`, and `/secrets` working). `/settings/general` holds global bot defaults
+  for primary model, thinking level, fallback model, and default execution
+  environment. Saving global defaults also initializes the `default` bot if it
+  still has no primary model. A bot page changes only that bot.
   Tool keys can be set for one bot in its Tools tab, or for all bots on the
   Environment page.
   The CLI manages the service address, data directory, and update policy.
-- Several agents for one owner, each with a name, model, thinking level,
-  instructions, conversations, automations, and workspace directory. The API
+- Several agents for one owner, each with a name, primary model, thinking
+  level, optional fallback model, instructions, conversations, automations, and
+  workspace directory. The API
   can create, list, read, and update agents. Each agent's API paths include its
   ID, including default. Old API aliases return 404. Global settings contain no
   implicit agent. A resource from another agent returns 404. The session tools
   are the exception (see "Cross-bot sessions"). The web sidebar lists agents
-  with default first. Its `+` dialog creates an agent with a name and model,
-  then opens its empty timeline. Providers stay global. Each agent has its own channels.
+  with default first. Its New bot dialog pre-fills the primary model, fallback
+  model, and execution environment from global bot defaults, then opens the new
+  bot's empty timeline. Providers stay global. Each agent has its own channels.
+  When a bot's primary model is missing or fails before answering, dex switches
+  to the bot's fallback model automatically.
 - Durable conversations: control stores each message before delivery. Saved
   messages, reports, and execution records survive a restart. A restart does
   not attach an old CLI process or prove that its actions occurred once.
@@ -352,9 +362,11 @@ and task-specific automation result routing are later work. Other chat channels 
 
 - Bots: in main or a writable Chat, the owner can ask the agent to list bots
   (`bot_list`), read one bot (`bot_get`), create a bot (`bot_create`), change a
-  bot's name, instructions, model or thinking level (`bot_update`), and archive a
-  bot (`bot_delete`). A change uses the same checks as the web. `bot_create` makes
-  a bot with no channels, skills, MCP servers or `.env` values. Reading also works
+  bot's name, instructions, model, fallback model, or thinking level (`bot_update`), and archive a
+  bot (`bot_delete`). A change uses the same checks as the web. `bot_create`
+  inherits global bot defaults for omitted model, fallback, thinking level, and
+  environment fields, and makes a bot with no channels, skills, MCP servers or
+  `.env` values. Reading also works
   in an automation run. Creating, changing and archiving need a user-input turn
   in main or a Chat, so automation runs, child sessions, dreams and task results
   cannot use them. The tools never show `.env` values.
