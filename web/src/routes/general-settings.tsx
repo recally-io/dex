@@ -1,16 +1,14 @@
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  getAgentQueryKey,
+  getAgentOptions,
   getSettingsOptions,
-  getSettingsQueryKey,
   listAgentsQueryKey,
   listEnvironmentsOptions,
   listModelsOptions,
-  setBotDefaultsMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import type { BotDefaults } from "../api/generated/types.gen";
-import { findModel, thinkingNames } from "../lib/agent";
+import type { Agent } from "../api/generated/types.gen";
+import { findModel, saveAgent, thinkingNames } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { environmentOptionLabel } from "../lib/environments";
 import { queryClient } from "../lib/queries";
@@ -44,21 +42,17 @@ function Chevron() {
 export function GeneralSettingsPage() {
   const { notify } = useApp();
   const settings = useQuery(getSettingsOptions());
+  // New bots copy these fields from the built-in default bot.
+  const template = useQuery(getAgentOptions({ path: { agentId: "default" } }));
   const models = useQuery(listModelsOptions());
   const environments = useQuery(listEnvironmentsOptions());
 
   const save = useMutation({
-    ...setBotDefaultsMutation(),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: getSettingsQueryKey() }),
-        queryClient.invalidateQueries({ queryKey: getAgentQueryKey({ path: { agentId: "default" } }) }),
-        queryClient.invalidateQueries({ queryKey: listAgentsQueryKey() }),
-      ]);
-    },
+    mutationFn: (patch: Partial<Agent>) => saveAgent("default", (saved) => ({ ...saved, ...patch })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: listAgentsQueryKey() }),
   });
 
-  const defaults = settings.data?.defaults;
+  const defaults = template.data;
   const envList = environments.data?.environments ?? [];
 
   const primary = defaults ? findModel(defaults.provider, defaults.modelId, models.data?.models) : undefined;
@@ -75,9 +69,8 @@ export function GeneralSettingsPage() {
     defaults?.environmentId && !environments.isPending && !environments.isError && !currentEnv,
   );
 
-  async function updateDefaults(patch: Partial<BotDefaults>, message: string) {
-    if (!defaults) return;
-    await save.mutateAsync({ body: { ...defaults, ...patch } });
+  async function updateDefaults(patch: Partial<Agent>, message: string) {
+    await save.mutateAsync(patch);
     notify(message);
   }
 
@@ -86,20 +79,24 @@ export function GeneralSettingsPage() {
       eyebrow="Settings for this computer"
       title="General"
       toolbar={<GlobalSettingsSwitcher page="/settings/general" />}
-      description="Default settings for new bots. Existing bots keep their own settings."
+      description="New bots copy these settings from the default bot. Existing bots keep their own settings."
     >
-      {settings.isPending ? (
+      {settings.isPending || template.isPending ? (
         <Loading />
-      ) : settings.isError ? (
+      ) : settings.isError || template.isError ? (
         <div className="px-5 py-8 sm:px-8">
           <Failure
             title="Could not load settings"
-            error={settings.error}
-            retry={() => void settings.refetch()}
+            error={settings.error ?? template.error}
+            retry={() => void Promise.all([settings.refetch(), template.refetch()])}
           />
         </div>
-      ) : defaults ? (
-        <Section n={1} title="Bot defaults" caption="Applied when you create a new bot.">
+      ) : defaults && settings.data ? (
+        <Section
+          n={1}
+          title="Bot defaults"
+          caption="The default bot uses them, and a new bot starts with a copy."
+        >
           <Panel>
             <div className="flex flex-wrap items-center gap-3 px-4 py-3.5">
               <div className="min-w-0 flex-1">

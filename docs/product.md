@@ -25,10 +25,9 @@ to read in an afternoon.
   Global pages under `/settings/general`, `/settings/providers`,
   `/settings/environment`, `/settings/archived`, and `/settings/about` show no
   bot (redirects keep `/settings`, `/providers`, `/environment`, `/archived`,
-  `/about`, and `/secrets` working). `/settings/general` holds global bot defaults
-  for primary model, thinking level, fallback model, and default execution
-  environment. Saving global defaults also initializes the `default` bot if it
-  still has no primary model. A bot page changes only that bot.
+  `/about`, and `/secrets` working). `/settings/general` sets the primary model,
+  thinking level, fallback model, and execution environment of the `default`
+  bot, which new bots copy. A bot page changes only that bot.
   Tool keys can be set for one bot in its Tools tab, or for all bots on the
   Environment page.
   The CLI manages the service address, data directory, and update policy.
@@ -40,7 +39,7 @@ to read in an afternoon.
   implicit agent. A resource from another agent returns 404. The session tools
   are the exception (see "Cross-bot sessions"). The web sidebar lists agents
   with default first. Its New bot dialog pre-fills the primary model, fallback
-  model, and execution environment from global bot defaults, then opens the new
+  model, and execution environment from the `default` bot, then opens the new
   bot's empty timeline. Providers stay global. Each agent has its own channels.
   When a bot's primary model is missing or fails before answering, dex switches
   to the bot's fallback model automatically.
@@ -364,7 +363,7 @@ and task-specific automation result routing are later work. Other chat channels 
   (`bot_list`), read one bot (`bot_get`), create a bot (`bot_create`), change a
   bot's name, instructions, model, fallback model, or thinking level (`bot_update`), and archive a
   bot (`bot_delete`). A change uses the same checks as the web. `bot_create`
-  inherits global bot defaults for omitted model, fallback, thinking level, and
+  copies the `default` bot for omitted model, fallback, thinking level, and
   environment fields, and makes a bot with no channels, skills, MCP servers or
   `.env` values. Reading also works
   in an automation run. Creating, changing and archiving need a user-input turn

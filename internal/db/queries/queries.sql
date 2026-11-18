@@ -498,17 +498,3 @@ INSERT INTO one_password (id, mode, connect_host, connect_token, service_account
 VALUES (1, ?, ?, ?, ?)
 ON CONFLICT (id) DO UPDATE SET mode = excluded.mode, connect_host = excluded.connect_host,
     connect_token = excluded.connect_token, service_account_token = excluded.service_account_token;
-
--- name: GetBotDefaults :one
-SELECT model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, environment_id FROM bot_defaults WHERE id = 1;
-
--- name: SetBotDefaults :exec
-INSERT INTO bot_defaults (id, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, environment_id)
-VALUES (1, @model_provider, @model_id, @thinking_level, @fallback_provider, @fallback_model_id, @environment_id)
-ON CONFLICT (id) DO UPDATE SET
-    model_provider = excluded.model_provider,
-    model_id = excluded.model_id,
-    thinking_level = excluded.thinking_level,
-    fallback_provider = excluded.fallback_provider,
-    fallback_model_id = excluded.fallback_model_id,
-    environment_id = excluded.environment_id;

@@ -762,33 +762,6 @@ func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRu
 	return i, err
 }
 
-const getBotDefaults = `-- name: GetBotDefaults :one
-SELECT model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, environment_id FROM bot_defaults WHERE id = 1
-`
-
-type GetBotDefaultsRow struct {
-	ModelProvider    string `json:"model_provider"`
-	ModelID          string `json:"model_id"`
-	ThinkingLevel    string `json:"thinking_level"`
-	FallbackProvider string `json:"fallback_provider"`
-	FallbackModelID  string `json:"fallback_model_id"`
-	EnvironmentID    string `json:"environment_id"`
-}
-
-func (q *Queries) GetBotDefaults(ctx context.Context) (GetBotDefaultsRow, error) {
-	row := q.db.QueryRowContext(ctx, getBotDefaults)
-	var i GetBotDefaultsRow
-	err := row.Scan(
-		&i.ModelProvider,
-		&i.ModelID,
-		&i.ThinkingLevel,
-		&i.FallbackProvider,
-		&i.FallbackModelID,
-		&i.EnvironmentID,
-	)
-	return i, err
-}
-
 const getChat = `-- name: GetChat :one
 SELECT
     c.id,
@@ -1879,39 +1852,6 @@ func (q *Queries) SetAutomationNextDue(ctx context.Context, arg SetAutomationNex
 		return 0, err
 	}
 	return result.RowsAffected()
-}
-
-const setBotDefaults = `-- name: SetBotDefaults :exec
-INSERT INTO bot_defaults (id, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, environment_id)
-VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
-ON CONFLICT (id) DO UPDATE SET
-    model_provider = excluded.model_provider,
-    model_id = excluded.model_id,
-    thinking_level = excluded.thinking_level,
-    fallback_provider = excluded.fallback_provider,
-    fallback_model_id = excluded.fallback_model_id,
-    environment_id = excluded.environment_id
-`
-
-type SetBotDefaultsParams struct {
-	ModelProvider    string `json:"model_provider"`
-	ModelID          string `json:"model_id"`
-	ThinkingLevel    string `json:"thinking_level"`
-	FallbackProvider string `json:"fallback_provider"`
-	FallbackModelID  string `json:"fallback_model_id"`
-	EnvironmentID    string `json:"environment_id"`
-}
-
-func (q *Queries) SetBotDefaults(ctx context.Context, arg SetBotDefaultsParams) error {
-	_, err := q.db.ExecContext(ctx, setBotDefaults,
-		arg.ModelProvider,
-		arg.ModelID,
-		arg.ThinkingLevel,
-		arg.FallbackProvider,
-		arg.FallbackModelID,
-		arg.EnvironmentID,
-	)
-	return err
 }
 
 const setConversationCwd = `-- name: SetConversationCwd :exec

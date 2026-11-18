@@ -40,11 +40,6 @@ func applyPatch(a *Agent, p Patch) {
 // PatchAgent merges a patch into a saved active agent and applies the checks of SaveAgent. The
 // read and the write share one lock, so two patches cannot lose each other's fields.
 func (s *Service) PatchAgent(ctx context.Context, id string, p Patch) (Agent, error) {
-	return s.updateAgent(ctx, id, func(Agent) (Patch, error) { return p, nil })
-}
-
-// updateAgent is PatchAgent with a patch that build makes from the saved agent under the lock.
-func (s *Service) updateAgent(ctx context.Context, id string, build func(Agent) (Patch, error)) (Agent, error) {
 	var (
 		oldRow sqlc.Agent
 		out    Agent
@@ -61,10 +56,6 @@ func (s *Service) updateAgent(ctx context.Context, id string, build func(Agent) 
 			return getErr
 		}
 		a := agentView(oldRow)
-		p, err := build(a)
-		if err != nil {
-			return err
-		}
 		applyPatch(&a, p)
 		var cleanErr error
 		a, cleanErr = s.cleanAgent(ctx, a)

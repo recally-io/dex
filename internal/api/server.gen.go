@@ -23,7 +23,6 @@ import (
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/wechat"
 )
 
@@ -725,9 +724,6 @@ type AutomationRunList struct {
 	Runs []AutomationRun `json:"runs"`
 }
 
-// BotDefaults defines model for BotDefaults.
-type BotDefaults = settings.BotDefaults
-
 // BoundaryItem defines model for BoundaryItem.
 type BoundaryItem struct {
 	// At The boundary time in milliseconds.
@@ -888,15 +884,15 @@ type ChildEventType string
 
 // CreateAgentInput defines model for CreateAgentInput.
 type CreateAgentInput struct {
-	// EnvironmentId Omitted uses the global default execution environment. Empty or "local" selects the built-in local host environment.
+	// EnvironmentId Omitted copies the default bot's execution environment. Empty or "local" selects the built-in local host environment.
 	EnvironmentId *string `json:"environmentId,omitempty"`
 
-	// FallbackModelId Omitted uses the global default fallback model. Empty chooses none.
+	// FallbackModelId Omitted copies the default bot's fallback model. Empty chooses none.
 	FallbackModelId  *string `json:"fallbackModelId,omitempty"`
 	FallbackProvider *string `json:"fallbackProvider,omitempty"`
 	Instructions     *string `json:"instructions,omitempty"`
 
-	// ModelId Omitted uses the global default model. Empty chooses no model.
+	// ModelId Omitted copies the default bot's model. Empty chooses no model.
 	ModelId *string `json:"modelId,omitempty"`
 
 	// Name The bot name. Trim spaces before validation.
@@ -1319,7 +1315,6 @@ type Settings struct {
 
 	// Builtins All pi-ai built-in providers that take an API key.
 	Builtins []ProviderInfo `json:"builtins"`
-	Defaults BotDefaults    `json:"defaults"`
 
 	// Providers The providers that the user added, in the order of addition.
 	Providers []Provider `json:"providers"`
@@ -1738,9 +1733,6 @@ type PreviewScheduleJSONRequestBody = ScheduleInput
 
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = NewSession
-
-// SetBotDefaultsJSONRequestBody defines body for SetBotDefaults for application/json ContentType.
-type SetBotDefaultsJSONRequestBody = BotDefaults
 
 // CreateEnvironmentJSONRequestBody defines body for CreateEnvironment for application/json ContentType.
 type CreateEnvironmentJSONRequestBody = EnvironmentInput
@@ -2462,9 +2454,6 @@ type ServerInterface interface {
 
 	// (GET /api/settings)
 	GetSettings(w http.ResponseWriter, r *http.Request)
-
-	// (PUT /api/settings/defaults)
-	SetBotDefaults(w http.ResponseWriter, r *http.Request)
 
 	// (GET /api/settings/environments)
 	ListEnvironments(w http.ResponseWriter, r *http.Request)
@@ -4571,20 +4560,6 @@ func (siw *ServerInterfaceWrapper) GetSettings(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
-// SetBotDefaults operation middleware
-func (siw *ServerInterfaceWrapper) SetBotDefaults(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetBotDefaults(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // ListEnvironments operation middleware
 func (siw *ServerInterfaceWrapper) ListEnvironments(w http.ResponseWriter, r *http.Request) {
 
@@ -5015,7 +4990,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/maintenance", wrapper.ReleaseMaintenance)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/maintenance", wrapper.AcquireMaintenance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings", wrapper.GetSettings)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/defaults", wrapper.SetBotDefaults)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/onepassword", wrapper.GetOnePassword)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/onepassword", wrapper.SetOnePassword)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/environments", wrapper.ListEnvironments)
@@ -9147,59 +9121,6 @@ func (response GetSettingsdefaultJSONResponse) VisitGetSettingsResponse(w http.R
 	return err
 }
 
-type SetBotDefaultsRequestObject struct {
-	Body *SetBotDefaultsJSONRequestBody
-}
-
-type SetBotDefaultsResponseObject interface {
-	VisitSetBotDefaultsResponse(w http.ResponseWriter) error
-}
-
-type SetBotDefaults200JSONResponse BotDefaults
-
-func (response SetBotDefaults200JSONResponse) VisitSetBotDefaultsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetBotDefaults400JSONResponse struct{ ErrorJSONResponse }
-
-func (response SetBotDefaults400JSONResponse) VisitSetBotDefaultsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetBotDefaultsdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SetBotDefaultsdefaultJSONResponse) VisitSetBotDefaultsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type ListEnvironmentsRequestObject struct {
 }
 
@@ -10153,9 +10074,6 @@ type StrictServerInterface interface {
 
 	// (GET /api/settings)
 	GetSettings(ctx context.Context, request GetSettingsRequestObject) (GetSettingsResponseObject, error)
-
-	// (PUT /api/settings/defaults)
-	SetBotDefaults(ctx context.Context, request SetBotDefaultsRequestObject) (SetBotDefaultsResponseObject, error)
 
 	// (GET /api/settings/environments)
 	ListEnvironments(ctx context.Context, request ListEnvironmentsRequestObject) (ListEnvironmentsResponseObject, error)
@@ -12223,37 +12141,6 @@ func (sh *strictHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetSettingsResponseObject); ok {
 		if err := validResponse.VisitGetSettingsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SetBotDefaults operation middleware
-func (sh *strictHandler) SetBotDefaults(w http.ResponseWriter, r *http.Request) {
-	var request SetBotDefaultsRequestObject
-
-	var body SetBotDefaultsJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SetBotDefaults(ctx, request.(SetBotDefaultsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SetBotDefaults")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SetBotDefaultsResponseObject); ok {
-		if err := validResponse.VisitSetBotDefaultsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

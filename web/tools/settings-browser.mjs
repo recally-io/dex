@@ -463,7 +463,7 @@ try {
     await poll("default primary picker closed", () => evaluate("!document.querySelector('[cmdk-input]')"));
     await poll(
       "default primary saved",
-      async () => (await api("/api/settings")).defaults.modelId === "default-primary",
+      async () => (await api("/api/agents/default")).modelId === "default-primary",
     );
 
     await tap('button[aria-label="Default fallback model"]');
@@ -474,7 +474,7 @@ try {
     await poll("default fallback picker closed", () => evaluate("!document.querySelector('[cmdk-input]')"));
     await poll(
       "default fallback saved",
-      async () => (await api("/api/settings")).defaults.fallbackModelId === "default-fallback",
+      async () => (await api("/api/agents/default")).fallbackModelId === "default-fallback",
     );
 
     await tap('aside button[aria-label="New bot"]');
@@ -495,7 +495,7 @@ try {
     assert.equal(created.fallbackProvider, "defaults-gw");
     assert.equal(created.fallbackModelId, "default-fallback");
     results.push({
-      scenario: "global bot defaults prefill new bots with primary and fallback models",
+      scenario: "new bots copy the default bot's primary and fallback models from /settings/general",
       botId: created.id,
     });
   }

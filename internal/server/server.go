@@ -661,7 +661,6 @@ func (h *handler) GetSettings(ctx context.Context, _ api.GetSettingsRequestObjec
 		Providers: make([]api.Provider, len(s.Providers)),
 		Builtins:  make([]api.ProviderInfo, len(s.Builtins)),
 		Apis:      s.APIs,
-		Defaults:  s.Defaults,
 	}
 	for i, p := range s.Providers {
 		out.Providers[i] = providerView(p)
@@ -670,20 +669,6 @@ func (h *handler) GetSettings(ctx context.Context, _ api.GetSettingsRequestObjec
 		out.Builtins[i] = api.ProviderInfo{Id: b.ID, Name: b.Name, Source: optional(b.Source)}
 	}
 	return out, nil
-}
-
-func (h *handler) SetBotDefaults(ctx context.Context, req api.SetBotDefaultsRequestObject) (api.SetBotDefaultsResponseObject, error) {
-	if req.Body == nil {
-		return nil, errInvalid
-	}
-	saved, err := h.Settings.SetDefaults(ctx, *req.Body)
-	if err != nil {
-		return nil, err
-	}
-	if err := h.Agents.BackfillDefaultAgent(ctx); err != nil {
-		return nil, err
-	}
-	return api.SetBotDefaults200JSONResponse(saved), nil
 }
 
 func (h *handler) GetOnePassword(ctx context.Context, _ api.GetOnePasswordRequestObject) (api.GetOnePasswordResponseObject, error) {

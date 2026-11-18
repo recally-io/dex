@@ -41,8 +41,6 @@ type Settings struct {
 	Builtins []engine.ProviderInfo `json:"builtins"`
 	// APIs are the APIs of custom providers: ID → name.
 	APIs map[string]string `json:"apis"`
-	// Defaults are the default settings applied to newly created bots.
-	Defaults BotDefaults `json:"defaults"`
 }
 
 // thinkingLevels are pi-ai's ModelThinkingLevel values. pi-ai sends the nearest level that the
@@ -109,15 +107,10 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 			providers[i].Name = builtins[j].Name
 		}
 	}
-	defaults, err := s.Defaults(ctx)
-	if err != nil {
-		return Settings{}, err
-	}
 	return Settings{
 		Providers: providers,
 		Builtins:  builtins,
 		APIs:      APIs,
-		Defaults:  defaults,
 	}, nil
 }
 

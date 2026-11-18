@@ -92,16 +92,6 @@ type BackgroundCommand struct {
 	EndedAt          sql.NullInt64 `json:"ended_at"`
 }
 
-type BotDefault struct {
-	ID               int64  `json:"id"`
-	ModelProvider    string `json:"model_provider"`
-	ModelID          string `json:"model_id"`
-	ThinkingLevel    string `json:"thinking_level"`
-	FallbackProvider string `json:"fallback_provider"`
-	FallbackModelID  string `json:"fallback_model_id"`
-	EnvironmentID    string `json:"environment_id"`
-}
-
 type ChannelCommand struct {
 	AgentID        string        `json:"agent_id"`
 	SourceKey      string        `json:"source_key"`

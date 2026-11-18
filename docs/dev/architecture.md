@@ -293,8 +293,8 @@ list every three seconds and shares its cache across agent pages. The same
 response includes per-agent `inboxUnread`, `inboxFailed`, and `routineFailed`.
 These fields come from the activity SQL query. `POST /api/agents` accepts a name
 and optional primary model, thinking level, fallback model, instructions, and
-execution environment. Omitted fields inherit global `bot_defaults` from
-`control.sqlite`. Empty strings override inherited defaults with no model or the
+execution environment. Omitted fields copy the built-in `default` agent; a model
+that is no longer available is not copied. Empty strings choose no model or the
 local environment. `POST /api/agents` returns the created agent with a UUID v7
 ID (`201`). The ID is read-only. `GET` and `PUT` on `/api/agents/{agentId}` read
 and save one agent. Names and models use the same validation for creation and
@@ -347,15 +347,8 @@ with the saved agent ID. See [Extensions](#extensions) for the reload lifecycle.
 The web UI uses the nested agent routes, including live events and upload
 links. Agent resources require an explicit ID, including the default agent.
 The old un-nested API routes return 404. `GET /api/settings` returns global
-providers, built-ins, APIs, and `defaults` (`bot_defaults`).
-`PUT /api/settings/defaults` validates and saves the global default primary
-model, thinking level, fallback model, and execution environment. When the
-built-in `default` agent still has no primary model (`model_id == ''`), saving
-global defaults also backfills the `default` agent after releasing the settings
-lock so the `agent -> settings` lock order holds. `bot_defaults` can name a
-removed provider, model, or execution environment. Creation skips such a
-default, and promotes the default fallback model when the default primary model
-is gone. Channel
+providers, built-ins, and APIs. `/settings/general` edits the `default` agent
+through `PUT /api/agents/default`; there is no separate defaults table. Channel
 setup and status use `/api/agents/{agentId}/channels`, with `/telegram`,
 `/wechat`, and `/feishu` for changes. The old `/api/settings/{platform}` routes
 return 404.

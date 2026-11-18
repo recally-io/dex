@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   createAgentMutation,
-  getSettingsOptions,
+  getAgentOptions,
   listAgentsQueryKey,
   listEnvironmentsOptions,
   listModelsOptions,
@@ -16,17 +16,18 @@ import { Field, Input, Select } from "./form";
 import { Button } from "./ui/button";
 import { Failure, Loading } from "./feedback";
 import { ModelPicker } from "./model-picker";
-import type { BotDefaults, Environment, Model } from "../api/generated/types.gen";
+import type { Agent, Environment, Model } from "../api/generated/types.gen";
 
 export function AgentCreateDialog({ onClose }: { onClose: () => void }) {
-  const settings = useQuery(getSettingsOptions());
+  // A new bot starts with a copy of the default bot's model, fallback, and environment.
+  const template = useQuery(getAgentOptions({ path: { agentId: "default" } }));
   const models = useQuery(listModelsOptions());
   const environments = useQuery(listEnvironmentsOptions());
-  const error = settings.error ?? environments.error;
+  const error = template.error ?? environments.error;
 
-  return settings.data && environments.data ? (
+  return template.data && environments.data ? (
     <CreateForm
-      defaults={settings.data.defaults}
+      defaults={template.data}
       models={models.data?.models}
       environments={environments.data.environments}
       onClose={onClose}
@@ -44,7 +45,7 @@ function CreateForm({
   environments,
   onClose,
 }: {
-  defaults: BotDefaults;
+  defaults: Agent;
   models: Model[] | undefined;
   environments: Environment[];
   onClose: () => void;

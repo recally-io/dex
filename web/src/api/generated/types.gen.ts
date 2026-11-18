@@ -604,25 +604,6 @@ export type Settings = {
     apis: {
         [key: string]: string;
     };
-    defaults: BotDefaults;
-};
-
-export type BotDefaults = {
-    provider: string;
-    /**
-     * Empty when no default model is chosen.
-     */
-    modelId: string;
-    thinkingLevel: ThinkingLevel;
-    fallbackProvider: string;
-    /**
-     * Empty when no default fallback model is chosen. Needs a default model.
-     */
-    fallbackModelId: string;
-    /**
-     * Empty or "local" means the built-in local host environment.
-     */
-    environmentId: string;
 };
 
 export type OnePasswordMode = 'off' | 'connect' | 'service-account';
@@ -807,18 +788,18 @@ export type CreateAgentInput = {
     name: string;
     provider?: string;
     /**
-     * Omitted uses the global default model. Empty chooses no model.
+     * Omitted copies the default bot's model. Empty chooses no model.
      */
     modelId?: string;
     thinkingLevel?: ThinkingLevel;
     fallbackProvider?: string;
     /**
-     * Omitted uses the global default fallback model. Empty chooses none.
+     * Omitted copies the default bot's fallback model. Empty chooses none.
      */
     fallbackModelId?: string;
     instructions?: string;
     /**
-     * Omitted uses the global default execution environment. Empty or "local" selects the built-in local host environment.
+     * Omitted copies the default bot's execution environment. Empty or "local" selects the built-in local host environment.
      */
     environmentId?: string;
 };
@@ -1436,35 +1417,6 @@ export type GetSettingsResponses = {
 };
 
 export type GetSettingsResponse = GetSettingsResponses[keyof GetSettingsResponses];
-
-export type SetBotDefaultsData = {
-    body: BotDefaults;
-    path?: never;
-    query?: never;
-    url: '/api/settings/defaults';
-};
-
-export type SetBotDefaultsErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type SetBotDefaultsError = SetBotDefaultsErrors[keyof SetBotDefaultsErrors];
-
-export type SetBotDefaultsResponses = {
-    /**
-     * Saved.
-     */
-    200: BotDefaults;
-};
-
-export type SetBotDefaultsResponse = SetBotDefaultsResponses[keyof SetBotDefaultsResponses];
 
 export type GetOnePasswordData = {
     body?: never;

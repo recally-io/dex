@@ -14,99 +14,59 @@ import (
 	"github.com/recally-io/dex/internal/execenv/execenvtest"
 )
 
-func TestUserConfiguresBotDefaultsAndCreatesReadyBots(t *testing.T) {
+func TestUserCreatesReadyBotsFromTheDefaultBot(t *testing.T) {
 	t.Parallel()
-	// Given a fresh installation with E2B environments and no configured default bot model.
+	// Given a fresh installation with an E2B environment.
 	fake := execenvtest.NewFakeE2B(t, "e2b_live_secret")
 	d := startDexWith(t, app.Config{
 		DataDir:    t.TempDir(),
 		E2BAPIURL:  fake.APIURL(),
 		E2BEnvdURL: fake.EnvdURL(),
 	})
-
-	var initialSettings api.Settings
-	d.must(t, http.MethodGet, "/api/settings", nil, &initialSettings)
-	if initialSettings.Defaults.ModelID != "" || initialSettings.Defaults.ThinkingLevel != "off" {
-		t.Fatalf("unexpected initial defaults: %+v", initialSettings.Defaults)
-	}
-	var initialDefault api.Agent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &initialDefault)
-	if initialDefault.ModelID != "" {
-		t.Fatalf("expected unconfigured default bot, got %+v", initialDefault)
-	}
-
-	var envA, envB apiEnvironment
+	var env apiEnvironment
 	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
 		"name":   "Default Sandbox",
 		"kind":   "e2b",
 		"config": map[string]any{"template": "base", "timeoutSeconds": 300},
 		"secret": "e2b_live_secret",
-	}, &envA, http.StatusCreated)
-	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
-		"name":   "Disposable Default",
-		"kind":   "e2b",
-		"config": map[string]any{"template": "base", "timeoutSeconds": 300},
-		"secret": "e2b_live_secret",
-	}, &envB, http.StatusCreated)
+	}, &env, http.StatusCreated)
 
-	// When the owner saves global bot defaults, the unconfigured default bot is backfilled.
-	wantDefaults := api.BotDefaults{
-		Provider:         "faux",
-		ModelID:          "echo",
-		ThinkingLevel:    "off",
-		FallbackProvider: "faux",
-		FallbackModelID:  "shout",
-		EnvironmentID:    envA.ID,
-	}
-	var savedDefaults api.BotDefaults
-	d.must(t, http.MethodPut, "/api/settings/defaults", wantDefaults, &savedDefaults)
-	if savedDefaults != wantDefaults {
-		t.Fatalf("saved defaults=%+v want %+v", savedDefaults, wantDefaults)
-	}
-
-	var settingsAfter api.Settings
-	d.must(t, http.MethodGet, "/api/settings", nil, &settingsAfter)
-	if settingsAfter.Defaults != wantDefaults {
-		t.Fatalf("GET /api/settings defaults=%+v want %+v", settingsAfter.Defaults, wantDefaults)
-	}
-
-	var backfilled api.Agent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &backfilled)
-	if backfilled.Provider != "faux" || backfilled.ModelID != "echo" ||
-		backfilled.FallbackProvider != "faux" || backfilled.FallbackModelID != "shout" ||
-		backfilled.EnvironmentID != envA.ID {
-		t.Fatalf("default bot was not backfilled: %+v", backfilled)
-	}
-
-	// Once default has a primary model, updating global defaults leaves it alone.
+	// When the owner configures the default bot.
 	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{
-		"name":          "Dex",
-		"provider":      "faux",
-		"modelId":       "tool",
-		"thinkingLevel": "off",
-		"environmentId": "",
+		"name":             "Dex",
+		"provider":         "faux",
+		"modelId":          "echo",
+		"thinkingLevel":    "off",
+		"fallbackProvider": "faux",
+		"fallbackModelId":  "shout",
+		"environmentId":    env.ID,
 	}, nil)
-	d.must(t, http.MethodPut, "/api/settings/defaults", wantDefaults, nil)
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &backfilled)
-	if backfilled.ModelID != "tool" || backfilled.EnvironmentID != "" {
-		t.Fatalf("configured default bot was overwritten: %+v", backfilled)
-	}
 
-	// Creating a bot with only a name inherits defaults and answers immediately.
+	// Then a bot with only a name copies its model, fallback, and environment and answers at once.
 	var quick api.Agent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Quick Bot"}, &quick, http.StatusCreated)
 	if quick.Provider != "faux" || quick.ModelID != "echo" || quick.ThinkingLevel != "off" ||
-		quick.FallbackProvider != "faux" || quick.FallbackModelID != "shout" || quick.EnvironmentID != envA.ID {
-		t.Fatalf("quick bot did not inherit defaults: %+v", quick)
+		quick.FallbackProvider != "faux" || quick.FallbackModelID != "shout" || quick.EnvironmentID != env.ID {
+		t.Fatalf("quick bot did not copy the default bot: %+v", quick)
 	}
 	var quickMain chatInfo
 	d.must(t, http.MethodGet, "/api/agents/"+quick.ID+"/chats/main", nil, &quickMain)
 	quickWatch := d.watchPath(t, fmt.Sprintf("/api/agents/%s/chats/%d/events", quick.ID, quickMain.ID))
 	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/messages", quick.ID, quickMain.ID),
 		map[string]string{"id": uuid.NewV7().String(), "text": "ready out of the box"}, nil, http.StatusAccepted)
-	quickWatch.until(t, "quick bot answers with default model", answered("echo: ready out of the box"))
+	quickWatch.until(t, "quick bot answers with the copied model", answered("echo: ready out of the box"))
 
-	// Creating a bot via bot_create without model fields also inherits global defaults.
+	// Explicit fields win over the copy.
+	var local api.Agent
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{
+		"name": "Local Bot", "modelId": "tool", "provider": "faux", "environmentId": "",
+	}, &local, http.StatusCreated)
+	if local.ModelID != "tool" || local.EnvironmentID != "" || local.FallbackModelID != "shout" {
+		t.Fatalf("explicit fields = %+v, want faux/tool on this computer with the copied fallback", local)
+	}
+
+	// bot_create without model fields copies the default bot too. The tool session sets its own
+	// model on the default bot, so compare with the default bot as it is now.
 	toolChat := d.newSession(t)
 	_ = taskTool(t, d, toolChat.ID, "bot_create", map[string]string{"name": "Tool Bot"})
 	var listed struct {
@@ -120,25 +80,23 @@ func TestUserConfiguresBotDefaultsAndCreatesReadyBots(t *testing.T) {
 			break
 		}
 	}
-	if foundToolBot == nil || foundToolBot.ModelID != "echo" || foundToolBot.FallbackModelID != "shout" || foundToolBot.EnvironmentID != envA.ID {
-		t.Fatalf("bot_create did not inherit defaults: %+v", listed.Agents)
+	var template api.Agent
+	d.must(t, http.MethodGet, "/api/agents/default", nil, &template)
+	if foundToolBot == nil || foundToolBot.ModelID == "" || foundToolBot.ModelID != template.ModelID ||
+		foundToolBot.FallbackModelID != template.FallbackModelID || foundToolBot.EnvironmentID != env.ID {
+		t.Fatalf("bot_create did not copy the default bot: %+v", listed.Agents)
 	}
 
-	// A new bot skips a default environment that was deleted.
-	nextDefaults := wantDefaults
-	nextDefaults.EnvironmentID = envB.ID
-	d.must(t, http.MethodPut, "/api/settings/defaults", nextDefaults, nil)
-	d.must(t, http.MethodDelete, "/api/settings/environments/"+envB.ID, nil, nil)
-	var local api.Agent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Local Bot"}, &local, http.StatusCreated)
-	if local.EnvironmentID != "" || local.ModelID != "echo" {
-		t.Fatalf("bot after environment deletion = %+v, want echo on this computer", local)
+	// A change to the default bot does not touch existing bots.
+	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{
+		"name": "Dex", "provider": "faux", "modelId": "shout", "thinkingLevel": "off",
+	}, nil)
+	d.must(t, http.MethodGet, "/api/agents/"+quick.ID, nil, &quick)
+	if quick.ModelID != "echo" {
+		t.Fatalf("existing bot changed with the default bot: %+v", quick)
 	}
 
-	// A fallback model needs a model, both in the defaults and in a bot.
-	d.must(t, http.MethodPut, "/api/settings/defaults", api.BotDefaults{
-		ThinkingLevel: "off", FallbackProvider: "faux", FallbackModelID: "shout",
-	}, nil, http.StatusBadRequest)
+	// A fallback model needs a model.
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{
 		"name": "Fallback Only", "modelId": "", "fallbackProvider": "faux", "fallbackModelId": "shout",
 	}, nil, http.StatusBadRequest)
@@ -198,9 +156,6 @@ func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
 	}
 
 	// When the primary provider is deleted, work remains usable and chats still answer via fallback.
-	d.must(t, http.MethodPut, "/api/settings/defaults", api.BotDefaults{
-		Provider: "flaky", ModelID: "broken-primary", ThinkingLevel: "off", FallbackProvider: "faux", FallbackModelID: "echo",
-	}, nil)
 	d.must(t, http.MethodDelete, "/api/settings/providers/flaky", nil, nil)
 
 	now := time.Now()
@@ -218,10 +173,10 @@ func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
 	missingChat := d.newChat(t, "missing provider check")
 	d.watch(t, missingChat).until(t, "fallback answer when primary missing", answered("echo: missing provider check"))
 
-	// When the default model is gone, a new bot uses the default fallback model as its model.
-	var promoted api.Agent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Promoted"}, &promoted, http.StatusCreated)
-	if promoted.Provider != "faux" || promoted.ModelID != "echo" || promoted.FallbackModelID != "" {
-		t.Fatalf("bot with a removed default model = %+v, want faux/echo and no fallback", promoted)
+	// A new bot does not copy the default bot's removed model, and so no fallback model either.
+	var fresh api.Agent
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Fresh"}, &fresh, http.StatusCreated)
+	if fresh.ModelID != "" || fresh.FallbackModelID != "" {
+		t.Fatalf("bot copied a removed model: %+v", fresh)
 	}
 }
