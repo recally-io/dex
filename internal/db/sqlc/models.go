@@ -187,6 +187,43 @@ type OnePassword struct {
 	ServiceAccountToken string `json:"service_account_token"`
 }
 
+type OutboxFile struct {
+	ID           string         `json:"id"`
+	AgentID      string         `json:"agent_id"`
+	OperationKey string         `json:"operation_key"`
+	SubmissionID sql.NullString `json:"submission_id"`
+	OutboxID     sql.NullString `json:"outbox_id"`
+	Name         string         `json:"name"`
+	MimeType     string         `json:"mime_type"`
+	Body         []byte         `json:"body"`
+}
+
+type OutboxMessage struct {
+	ID                 string         `json:"id"`
+	DedupKey           string         `json:"dedup_key"`
+	AgentID            string         `json:"agent_id"`
+	ConversationID     int64          `json:"conversation_id"`
+	SourceSubmissionID sql.NullString `json:"source_submission_id"`
+	Kind               string         `json:"kind"`
+	Peer               string         `json:"peer"`
+	ChannelContext     string         `json:"channel_context"`
+	TopicKey           string         `json:"topic_key"`
+	Body               string         `json:"body"`
+	Reason             string         `json:"reason"`
+	RenderedParts      string         `json:"rendered_parts"`
+	DeliveredParts     int64          `json:"delivered_parts"`
+	GroupFallback      int64          `json:"group_fallback"`
+	GroupCursor        int64          `json:"group_cursor"`
+	RemoteIds          string         `json:"remote_ids"`
+	Status             string         `json:"status"`
+	RetryAt            int64          `json:"retry_at"`
+	Error              string         `json:"error"`
+	ReadAt             sql.NullInt64  `json:"read_at"`
+	DismissedAt        sql.NullInt64  `json:"dismissed_at"`
+	CreatedAt          int64          `json:"created_at"`
+	DeliveredAt        sql.NullInt64  `json:"delivered_at"`
+}
+
 type Provider struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -281,6 +318,7 @@ type Submission struct {
 	ChannelRevoked       int64          `json:"channel_revoked"`
 	ChannelGroupFallback int64          `json:"channel_group_fallback"`
 	ChannelGroupCursor   int64          `json:"channel_group_cursor"`
+	ExitAction           string         `json:"exit_action"`
 }
 
 type TelegramAlbumMember struct {

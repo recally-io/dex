@@ -254,3 +254,25 @@ test("user sees preparation before a child exists and running without text", asy
   expect(html).toContain("Running");
   expect(html).not.toContain("Waiting for model");
 });
+
+test("user sees silent system turn trace folded under task mark", async () => {
+  const items: Item[] = [
+    { kind: "task", id: "r1", taskId: "t1", title: "Background wake" },
+    {
+      kind: "tool",
+      id: "tool-1",
+      name: "stay_silent",
+      args: { reason: "already reported" },
+      status: "done",
+      output: "Staying silent",
+    },
+    { kind: "assistant", id: "a1", text: "Internal thinking note" },
+  ];
+
+  const html = await render(
+    createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: false }),
+  );
+
+  expect(html).toContain("<details");
+  expect(html).toContain("Internal trace (silent)");
+});

@@ -49,7 +49,7 @@ func (m *Manager) telegramCaller(ctx context.Context, caller engine.TaskContext)
 	if channelContext.AccountID == "" || channelContext.SenderID == "" {
 		return empty, channelContext, errors.New("telegram source identity is missing")
 	}
-	allowed, err := m.authorizedReply(ctx, "telegram", sqlc.ListChannelRepliesRow{ID: source.ID, Origin: source.Origin, ChannelContext: source.ChannelContext})
+	allowed, err := m.authorizedReply(ctx, "telegram", source.Origin, source.ChannelContext, source.ID, "")
 	if err != nil {
 		return empty, channelContext, err
 	}

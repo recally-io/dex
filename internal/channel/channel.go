@@ -374,7 +374,7 @@ func (m *Manager) sendPart(ctx context.Context, bot Bot, peer, id string, index 
 	if part.File != nil {
 		file := *part.File
 		part.File = &file
-		part.File.Body, err = m.q.GetChannelReplyFile(ctx, sqlc.GetChannelReplyFileParams{OperationKey: part.File.Key, SubmissionID: id})
+		part.File.Body, err = m.q.GetOutboxFile(ctx, sqlc.GetOutboxFileParams{OperationKey: part.File.Key, OutboxID: sql.NullString{String: id, Valid: true}})
 		if errors.Is(err, sql.ErrNoRows) {
 			err = fmt.Errorf("%w: file snapshot is no longer available", ErrPermanent)
 		}
@@ -382,7 +382,7 @@ func (m *Manager) sendPart(ctx context.Context, bot Bot, peer, id string, index 
 	if len(part.Group) > 0 {
 		files := slices.Clone(part.Group)
 		for i := range files {
-			files[i].Body, err = m.q.GetChannelReplyFile(ctx, sqlc.GetChannelReplyFileParams{OperationKey: files[i].Key, SubmissionID: id})
+			files[i].Body, err = m.q.GetOutboxFile(ctx, sqlc.GetOutboxFileParams{OperationKey: files[i].Key, OutboxID: sql.NullString{String: id, Valid: true}})
 			if errors.Is(err, sql.ErrNoRows) {
 				err = fmt.Errorf("%w: group snapshot is no longer available", ErrPermanent)
 			}
@@ -398,7 +398,7 @@ func (m *Manager) sendPart(ctx context.Context, bot Bot, peer, id string, index 
 	}
 	if errors.Is(err, ErrPermanent) {
 		slog.Warn("channel: skipped a rejected reply part", "delivery", id, "part", index, "err", err)
-		if stored := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: id, Reason: err.Error()}); stored != nil {
+		if stored := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: id, Reason: err.Error()}); stored != nil {
 			return Receipt{}, stored
 		}
 		return Receipt{}, nil
@@ -425,17 +425,17 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 	if err != nil {
 		return err
 	}
-	replies, err := m.q.ListChannelReplies(ctx, sqlc.ListChannelRepliesParams{AgentID: m.agentID, OriginStart: name + ":", OriginEnd: name + ";"})
+	replies, err := m.q.ListPendingOutboxMessages(ctx, sqlc.ListPendingOutboxMessagesParams{AgentID: m.agentID, OriginStart: name + ":", OriginEnd: name + ";"})
 	if err != nil {
 		return err
 	}
 	blocked := make(map[string]bool)
 	for _, r := range replies {
-		if blocked[r.Origin] {
+		if blocked[r.Peer] {
 			continue
 		}
-		if r.ChannelRetryAt > time.Now().UnixMilli() && r.ChannelRevoked == 0 {
-			blocked[r.Origin] = true
+		if r.RetryAt > time.Now().UnixMilli() {
+			blocked[r.Peer] = true
 			continue
 		}
 		parts, err := m.replyParts(ctx, bot, r)
@@ -443,16 +443,16 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 			return err
 		}
 		var remotes []RemoteMessage
-		if err := json.Unmarshal([]byte(r.ChannelRemoteIds), &remotes); err != nil {
+		if err := json.Unmarshal([]byte(r.RemoteIds), &remotes); err != nil {
 			return err
 		}
 		for i := int(r.DeliveredParts); i < len(parts); i++ {
-			allowed, err := m.authorizedReply(ctx, name, r)
+			allowed, err := m.authorizedReply(ctx, name, r.Peer, r.ChannelContext, r.SourceSubmissionID.String, r.ID)
 			if err != nil {
 				return err
 			}
 			if !allowed {
-				if err := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: r.ID, Reason: "destination no longer authorized"}); err != nil {
+				if err := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: r.ID, Reason: "destination no longer authorized"}); err != nil {
 					return err
 				}
 				break
@@ -463,15 +463,20 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 				if flood, ok := errors.AsType[*RetryError](err); ok {
 					retryAt = time.Now().Add(flood.After).UnixMilli()
 				}
-				if stored := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: r.ID, RetryAt: retryAt, Reason: err.Error()}); stored != nil {
+				if stored := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: r.ID, RetryAt: retryAt, Reason: err.Error()}); stored != nil {
 					return errors.Join(err, stored)
+				}
+				if r.SourceSubmissionID.Valid && (r.Kind == "reply" || r.Kind == "question") {
+					if stored := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: r.SourceSubmissionID.String, RetryAt: retryAt, Reason: err.Error()}); stored != nil {
+						return errors.Join(err, stored)
+					}
 				}
 				return err
 			}
-			r.ChannelGroupFallback, r.ChannelGroupCursor = 0, 0
+			r.GroupFallback, r.GroupCursor = 0, 0
 		}
 		if finished, ok := bot.(telegramBot); ok {
-			allowed, err := m.authorizedReply(ctx, name, r)
+			allowed, err := m.authorizedReply(ctx, name, r.Peer, r.ChannelContext, r.SourceSubmissionID.String, r.ID)
 			if err != nil {
 				return err
 			}
@@ -480,16 +485,22 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 				if err := json.Unmarshal([]byte(r.ChannelContext), &source); err != nil {
 					return err
 				}
-				if err := finished.Finish(ctx, r.Origin, source, r.Status); err != nil {
-					if saved := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: r.ID, RetryAt: time.Now().Add(5 * time.Second).UnixMilli(), Reason: err.Error()}); saved != nil {
+				if err := finished.Finish(ctx, r.Peer, source, outboxReplyStatus(r)); err != nil {
+					if saved := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: r.ID, RetryAt: time.Now().Add(5 * time.Second).UnixMilli(), Reason: err.Error()}); saved != nil {
 						return errors.Join(err, saved)
 					}
 					return err
 				}
 			}
 		}
-		if err := m.q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: r.ID, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
+		now := time.Now().UnixMilli()
+		if err := m.q.MarkOutboxDelivered(ctx, sqlc.MarkOutboxDeliveredParams{ID: r.ID, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
 			return err
+		}
+		if r.SourceSubmissionID.Valid && (r.Kind == "reply" || r.Kind == "question") {
+			if err := m.q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: r.SourceSubmissionID.String, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
+				return err
+			}
 		}
 	}
 	acks, err := m.q.ListChannelCommandReplies(ctx, sqlc.ListChannelCommandRepliesParams{AgentID: m.agentID, Prefix: sql.NullString{String: name + ":", Valid: true}})

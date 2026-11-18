@@ -1,9 +1,12 @@
 package chat
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -66,6 +69,14 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 	if err != nil || changed == 0 {
 		return 0, 0, err
 	}
+	sub, err := q.GetSubmission(ctx, id)
+	if err != nil {
+		return 0, 0, err
+	}
+	conv, err := q.GetConversation(ctx, sub.ConversationID)
+	if err != nil {
+		return 0, 0, err
+	}
 	// An answer that ran closes its question. One that never produced a reply opens it again.
 	if event.Status == "done" {
 		err = q.ConsumeQuestion(ctx, sqlc.ConsumeQuestionParams{SubmissionID: sql.NullString{String: id, Valid: true}, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
@@ -85,8 +96,48 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 	if err = q.QueueRoutineNotification(ctx, id); err != nil {
 		return 0, 0, err
 	}
-	if parent, err = s.sendResult(ctx, q, id, event, withdrawn); err != nil {
+	if _, err = writeOutboxOnSettle(ctx, q, sub, conv, event, s.now().UnixMilli()); err != nil {
 		return 0, 0, err
+	}
+	if sub.ExitAction != "stay_silent" {
+		if parent, err = s.sendResult(ctx, q, id, event, withdrawn); err != nil {
+			return 0, 0, err
+		}
+	}
+	if parent == 0 && conv.ParentID.Valid && !sub.ParentRequestID.Valid && event.Status == "unanswered" && event.Reason != "stopped" && event.Reason != "withdrawn" && event.Reason != "aborted" {
+		if archived, aerr := q.ConversationAgentArchived(ctx, conv.ParentID.Int64); aerr != nil {
+			return 0, 0, aerr
+		} else if archived == 0 {
+			body := sessionResult{
+				Session:   strconv.FormatInt(conv.ID, 10),
+				Title:     conv.Title,
+				Turn:      sub.ID,
+				Outcome:   "failed",
+				Reason:    event.Reason,
+				Withdrawn: withdrawn,
+			}
+			if event.Reason == "interrupted" {
+				body.Outcome = "interrupted"
+			}
+			encoded, merr := json.Marshal(struct {
+				Result sessionResult `json:"task-result"`
+			}{body})
+			if merr != nil {
+				return 0, 0, merr
+			}
+			if _, cerr := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
+				ID:             "err:" + sub.ID,
+				ConversationID: conv.ParentID.Int64,
+				Content:        string(encoded),
+				Attachments:    "null",
+				Origin:         cmp.Or(sub.Origin, "web"),
+				Kind:           "task_result",
+				CreatedAt:      s.now().UnixMilli(),
+			}); cerr != nil {
+				return 0, 0, cerr
+			}
+			parent = conv.ParentID.Int64
+		}
 	}
 	return changed, parent, nil
 }

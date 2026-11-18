@@ -896,26 +896,82 @@ export function Transcript({
     );
   }
 
+  const grouped = blocks(items);
+
   return (
     <TranscriptChat.Provider value={chatId}>
-      {blocks(items).map((block) =>
+      {grouped.map((block, blockIndex) =>
         block.kind === "task" ? (
-          <section
+          <TaskSection
             key={block.item.id}
-            aria-label={`Session result: ${block.item.title}`}
-            className="mt-5 flex min-w-0 flex-col gap-3 first:mt-0"
-          >
-            <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />
-            {/* The main agent answers the user here; indenting it made the reply read as background output. */}
-            {block.blocks.length ? (
-              <div className="flex min-w-0 flex-col gap-3">{block.blocks.map(content)}</div>
-            ) : null}
-          </section>
+            block={block}
+            content={content}
+            streaming={running && blockIndex === grouped.length - 1}
+          />
         ) : (
           content(block)
         ),
       )}
     </TranscriptChat.Provider>
+  );
+}
+
+function isSilentSystemTask(taskBlocks: ContentBlock[]): boolean {
+  let hasStaySilent = false;
+  let hasAssistant = false;
+
+  for (const b of taskBlocks) {
+    if (b.kind === "item") {
+      if (b.item.kind === "error") return false;
+
+      if (b.item.kind === "assistant") hasAssistant = true;
+    }
+
+    if (b.kind === "steps") {
+      for (const s of b.steps) {
+        if (s.kind !== "tool") continue;
+
+        if (s.name === "notify_user" || s.name === "ask_user" || s.name === "report_parent") {
+          return false;
+        }
+
+        if (s.name === "stay_silent") hasStaySilent = true;
+      }
+    }
+  }
+
+  return taskBlocks.length > 0 && (hasStaySilent || !hasAssistant);
+}
+
+function TaskSection({
+  block,
+  content,
+  streaming,
+}: {
+  block: { kind: "task"; item: Extract<Item, { kind: "task" }>; blocks: ContentBlock[] };
+  content: (b: ContentBlock) => React.ReactNode;
+  streaming: boolean;
+}) {
+  const silent = !streaming && isSilentSystemTask(block.blocks);
+
+  return (
+    <section
+      aria-label={`Session result: ${block.item.title}`}
+      className="mt-5 flex min-w-0 flex-col gap-3 first:mt-0"
+    >
+      <TranscriptItem item={block.item} live={false} retry={() => {}} canRetry={false} />
+      {block.blocks.length ? (
+        silent ? (
+          <details className="min-w-0 rounded-md border border-border/60 bg-muted/40 px-3 py-1.5 text-[12.5px] text-muted-foreground">
+            <summary className="cursor-pointer select-none font-medium">Internal trace (silent)</summary>
+            <div className="mt-2 flex min-w-0 flex-col gap-3">{block.blocks.map(content)}</div>
+          </details>
+        ) : (
+          /* The main agent answers the user here; indenting it made the reply read as background output. */
+          <div className="flex min-w-0 flex-col gap-3">{block.blocks.map(content)}</div>
+        )
+      ) : null}
+    </section>
   );
 }
 

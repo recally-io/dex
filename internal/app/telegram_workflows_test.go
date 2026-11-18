@@ -233,13 +233,13 @@ func TestUserTelegramSavedWorkflowStaysInAudienceAndUsesItsInitiatingActor(t *te
 	d := startTelegram(t, f, data, 42, 43)
 	d.setModel(t, "spawn")
 	f.groupText(1, 42, -100, 7, `{"tool":"group_session","action":"start","title":"Public saved workflow","message":"{\"tool\":\"group_note\",\"text\":\"public workflow note\"}"}`)
-	for {
-		got := f.next(t)
-		if strings.Contains(got.Text, "task-result:") {
-			break
-		}
-	}
+	_ = f.next(t) // initial group_session dispatch reply
 	conn := controlWriteDB(t, data)
+	eventually(t, "group workflow task_result settles done", func() (bool, any) {
+		var n int
+		err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE kind='task_result' AND status='done'").Scan(&n)
+		return err == nil && n == 1, n
+	})
 	var child int64
 	var scope string
 	if err := conn.QueryRowContext(t.Context(), "SELECT id,execution_scope FROM conversations WHERE parent_id IS NOT NULL").Scan(&child, &scope); err != nil {
@@ -268,15 +268,17 @@ func TestUserTelegramSavedWorkflowStaysInAudienceAndUsesItsInitiatingActor(t *te
 	if event := f.callbackResult(t); event.Text != "Accepted." {
 		t.Fatalf("saved workflow callback=%+v", event)
 	}
-	for {
-		got := f.next(t)
-		if strings.Contains(got.Text, "note-") {
-			if got.ChatID != -100 || got.TopicID != 7 {
-				t.Fatalf("resumed workflow went to private Main: %+v", got)
-			}
-			break
+	eventually(t, "resumed workflow task_result settles done in topic", func() (bool, any) {
+		var content, origin string
+		err := conn.QueryRowContext(t.Context(), "SELECT content, origin FROM submissions WHERE kind='task_result' AND status='done' AND content LIKE '%note-%'").Scan(&content, &origin)
+		if err != nil {
+			return false, err
 		}
-	}
+		if origin != "telegram:-100:7" {
+			t.Fatalf("resumed workflow went to wrong origin %q: %s", origin, content)
+		}
+		return true, origin
+	})
 	var turns, private int
 	var resumedScope string
 	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE conversation_id=? AND parent_request_id IS NOT NULL", child).Scan(&turns); err != nil {

@@ -71,6 +71,22 @@ export function describeTool(tool: ToolItem, memory?: string) {
       : { verb: "Run", target: command };
   }
 
+  if (tool.name === "notify_user") {
+    return { verb: "Notify user", target: arg(tool, "topicKey") || arg(tool, "content") };
+  }
+
+  if (tool.name === "report_parent") {
+    return { verb: "Report parent", target: arg(tool, "content") };
+  }
+
+  if (tool.name === "stay_silent") {
+    return { verb: "Stay silent", target: arg(tool, "reason") };
+  }
+
+  if (tool.name === "background_wait") {
+    return { verb: "Wait background", target: JSON.stringify(tool.args) };
+  }
+
   if (path) {
     const verb = tool.name.charAt(0).toUpperCase() + tool.name.slice(1);
 
