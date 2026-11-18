@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.17.0] - 2026-11-18
+
 ### Added
 
 - **ExecEnv**: Decouple control plane from execution environment, adding `pi-env` and E2B sandbox lifecycle support (#168, #169, #171, #173).
@@ -32,5 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Telegram**: Remove legacy text and delivery shims (#166).
 
-[Unreleased]: https://github.com/recally-io/dex/compare/v0.16.1...HEAD
+[Unreleased]: https://github.com/recally-io/dex/compare/v0.17.0...HEAD
+[v0.17.0]: https://github.com/recally-io/dex/compare/v0.16.1...v0.17.0
 [v0.16.1]: https://github.com/recally-io/dex/compare/v0.16.0...v0.16.1
