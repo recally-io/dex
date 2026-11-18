@@ -171,6 +171,23 @@ type FeishuSetting struct {
 	PairingExpiresAt int64  `json:"pairing_expires_at"`
 }
 
+type FollowupTimer struct {
+	ID                 string         `json:"id"`
+	OperationKey       string         `json:"operation_key"`
+	AgentID            string         `json:"agent_id"`
+	ConversationID     int64          `json:"conversation_id"`
+	RootRequestID      string         `json:"root_request_id"`
+	SourceSubmissionID string         `json:"source_submission_id"`
+	ChainDepth         int64          `json:"chain_depth"`
+	DueAt              int64          `json:"due_at"`
+	TimeZone           string         `json:"time_zone"`
+	Prompt             string         `json:"prompt"`
+	State              string         `json:"state"`
+	FireSubmissionID   sql.NullString `json:"fire_submission_id"`
+	CreatedAt          int64          `json:"created_at"`
+	UpdatedAt          int64          `json:"updated_at"`
+}
+
 type ForkReceipt struct {
 	ID          string `json:"id"`
 	SourceID    int64  `json:"source_id"`

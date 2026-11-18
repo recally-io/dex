@@ -87,6 +87,18 @@ export function describeTool(tool: ToolItem, memory?: string) {
     return { verb: "Wait background", target: JSON.stringify(tool.args) };
   }
 
+  if (tool.name === "timer_set") {
+    return { verb: "Set timer", target: arg(tool, "at") || arg(tool, "prompt") };
+  }
+
+  if (tool.name === "timer_list") {
+    return { verb: "List timers", target: "" };
+  }
+
+  if (tool.name === "timer_cancel") {
+    return { verb: "Cancel timer", target: arg(tool, "id") };
+  }
+
   if (path) {
     const verb = tool.name.charAt(0).toUpperCase() + tool.name.slice(1);
 

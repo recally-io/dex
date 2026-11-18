@@ -93,7 +93,7 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 	if err = q.FinalizeAutomationRun(ctx, sqlc.FinalizeAutomationRunParams{ID: id, ExecutionStatus: event.Status, Failure: reason}); err != nil {
 		return 0, 0, err
 	}
-	if err = q.QueueRoutineNotification(ctx, id); err != nil {
+	if err = queueRoutineOutbox(ctx, q, id, conv.ID, s.now().UnixMilli()); err != nil {
 		return 0, 0, err
 	}
 	if _, err = writeOutboxOnSettle(ctx, q, sub, conv, event, s.now().UnixMilli()); err != nil {

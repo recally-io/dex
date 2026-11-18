@@ -219,6 +219,12 @@ func (s *Service) clear(ctx context.Context, agentID string, chatID int64, reque
 		if err := q.DismissQuestions(ctx, sqlc.DismissQuestionsParams{ConversationID: chatID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
 			return err
 		}
+		if _, err := q.CancelFollowupTimersByConversation(ctx, sqlc.CancelFollowupTimersByConversationParams{
+			ConversationID: chatID,
+			UpdatedAt:      s.now().UnixMilli(),
+		}); err != nil {
+			return err
+		}
 		if c.ChannelKey == MainKey {
 			if err := q.DiscardTelegramInputEffects(ctx, agentID); err != nil {
 				return err
