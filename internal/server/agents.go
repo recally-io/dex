@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 
+	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/api"
 )
 
@@ -18,11 +19,26 @@ func (h *handler) CreateAgent(ctx context.Context, req api.CreateAgentRequestObj
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	agent, err := h.Agents.CreateAgent(ctx, *req.Body)
+	b := req.Body
+	var thinking *string
+	if b.ThinkingLevel != nil {
+		level := string(*b.ThinkingLevel)
+		thinking = &level
+	}
+	created, err := h.Agents.CreateAgentWithDefaults(ctx, agent.Patch{
+		Name:             &b.Name,
+		Provider:         b.Provider,
+		ModelID:          b.ModelId,
+		ThinkingLevel:    thinking,
+		FallbackProvider: b.FallbackProvider,
+		FallbackModelID:  b.FallbackModelId,
+		Instructions:     b.Instructions,
+		EnvironmentID:    b.EnvironmentId,
+	})
 	if err != nil {
 		return nil, err
 	}
-	return api.CreateAgent201JSONResponse(agent), nil
+	return api.CreateAgent201JSONResponse(created), nil
 }
 
 func (h *handler) GetAgent(ctx context.Context, req api.GetAgentRequestObject) (api.GetAgentResponseObject, error) {

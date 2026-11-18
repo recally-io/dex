@@ -85,6 +85,7 @@ type Agents struct {
 	opening          map[string]*agentOpening
 	recovering       map[string]map[durable.ConversationId]bool
 	serial           map[Ref]chan struct{}
+	fallbacks        map[string]ModelRef
 	paused, closed   bool
 	active, settling int
 	operations       sync.WaitGroup
@@ -111,7 +112,7 @@ func New(config Config) (*Agents, error) {
 	if config.ExecEnv == nil {
 		config.ExecEnv = execenv.NewLocalProvider(config.DataDir, "")
 	}
-	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: NewMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
+	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: NewMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, fallbacks: map[string]ModelRef{}, closeDone: make(chan struct{})}, nil
 }
 
 func (a *Agents) begin() error {
@@ -370,7 +371,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		}
 	}()
 	h, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{
-		Models: a.Catalog.Models, Registry: registry,
+		Models: a.modelsFor(agentID), Registry: registry,
 		Settings: func() *harness.HarnessSettings {
 			return &harness.HarnessSettings{Extensions: extensions, AfterFailedRun: durable.AfterFailedRunContinue, SteeringMode: durable.QueueAll}
 		},
@@ -461,6 +462,7 @@ func (a *Agents) Create(ctx context.Context, agentID string, options Options) (R
 	if err != nil {
 		return Ref{}, err
 	}
+	a.setFallback(agentID, options.FallbackModel)
 	change := a.changeFor(ctx, Ref{AgentID: agentID, Scope: options.Scope}, options)
 	conversation, err := h.CreateConversation(ctx, harness.ConversationCreateOptions{Ownership: durable.ConversationOwnership{Kind: durable.ConversationOwnerless}, Agent: &change})
 	if err != nil {
@@ -666,6 +668,7 @@ func (a *Agents) Continue(ctx context.Context, ref Ref, requestID string, option
 		return err
 	}
 	// The user can choose another model after a model error; the continued run uses it.
+	a.setFallback(ref.AgentID, options.FallbackModel)
 	if err := conversation.Configure(ctx, a.changeFor(ctx, ref, options)); err != nil {
 		return err
 	}
@@ -697,6 +700,7 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID s
 		return 0, err
 	}
 	// The summary uses the conversation model, so it must be the chat's current choice.
+	a.setFallback(ref.AgentID, options.FallbackModel)
 	if err := conversation.Configure(ctx, a.changeFor(ctx, ref, options)); err != nil {
 		return 0, err
 	}

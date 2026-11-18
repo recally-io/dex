@@ -108,6 +108,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if err := a.groupAttachments(ref, input.Attachments); err != nil {
 			return nil, err
 		}
+		a.setFallback(ref.AgentID, input.FallbackModel)
 		if err := conversation.Configure(ctx, change); err != nil {
 			return nil, err
 		}

@@ -138,6 +138,29 @@ func (q *Queries) ArchiveChat(ctx context.Context, arg ArchiveChatParams) error 
 	return err
 }
 
+const clearBotDefaultEnvironment = `-- name: ClearBotDefaultEnvironment :exec
+UPDATE bot_defaults SET environment_id = '' WHERE id = 1 AND environment_id = ?1
+`
+
+func (q *Queries) ClearBotDefaultEnvironment(ctx context.Context, environmentID string) error {
+	_, err := q.db.ExecContext(ctx, clearBotDefaultEnvironment, environmentID)
+	return err
+}
+
+const clearBotDefaultProvider = `-- name: ClearBotDefaultProvider :exec
+UPDATE bot_defaults SET
+    model_provider = CASE WHEN model_provider = ?1 THEN '' ELSE model_provider END,
+    model_id = CASE WHEN model_provider = ?1 THEN '' ELSE model_id END,
+    fallback_provider = CASE WHEN fallback_provider = ?1 THEN '' ELSE fallback_provider END,
+    fallback_model_id = CASE WHEN fallback_provider = ?1 THEN '' ELSE fallback_model_id END
+WHERE id = 1
+`
+
+func (q *Queries) ClearBotDefaultProvider(ctx context.Context, providerID string) error {
+	_, err := q.db.ExecContext(ctx, clearBotDefaultProvider, providerID)
+	return err
+}
+
 const conversationAgentArchived = `-- name: ConversationAgentArchived :one
 SELECT CAST(EXISTS (SELECT 1 FROM conversations c JOIN agents a ON a.id = c.agent_id
     WHERE c.id = ?1 AND a.archived_at IS NOT NULL) AS INTEGER)
@@ -189,20 +212,22 @@ func (q *Queries) CreateAccessTokenIfMissing(ctx context.Context, token string) 
 }
 
 const createAgent = `-- name: CreateAgent :one
-INSERT INTO agents (id, name, model_provider, model_id, thinking_level, instructions, environment_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id
+INSERT INTO agents (id, name, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, instructions, environment_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id, fallback_provider, fallback_model_id
 `
 
 type CreateAgentParams struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	ModelProvider string `json:"model_provider"`
-	ModelID       string `json:"model_id"`
-	ThinkingLevel string `json:"thinking_level"`
-	Instructions  string `json:"instructions"`
-	EnvironmentID string `json:"environment_id"`
-	CreatedAt     int64  `json:"created_at"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	ModelProvider    string `json:"model_provider"`
+	ModelID          string `json:"model_id"`
+	ThinkingLevel    string `json:"thinking_level"`
+	FallbackProvider string `json:"fallback_provider"`
+	FallbackModelID  string `json:"fallback_model_id"`
+	Instructions     string `json:"instructions"`
+	EnvironmentID    string `json:"environment_id"`
+	CreatedAt        int64  `json:"created_at"`
 }
 
 func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent, error) {
@@ -212,6 +237,8 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent
 		arg.ModelProvider,
 		arg.ModelID,
 		arg.ThinkingLevel,
+		arg.FallbackProvider,
+		arg.FallbackModelID,
 		arg.Instructions,
 		arg.EnvironmentID,
 		arg.CreatedAt,
@@ -229,6 +256,8 @@ func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent
 		&i.ArchivedAt,
 		&i.EnvironmentID,
 		&i.EnvironmentSandboxID,
+		&i.FallbackProvider,
+		&i.FallbackModelID,
 	)
 	return i, err
 }
@@ -677,7 +706,7 @@ func (q *Queries) GetAccessToken(ctx context.Context) (string, error) {
 }
 
 const getAgent = `-- name: GetAgent :one
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id FROM agents WHERE id = ?
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id, fallback_provider, fallback_model_id FROM agents WHERE id = ?
 `
 
 func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
@@ -695,6 +724,8 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
 		&i.ArchivedAt,
 		&i.EnvironmentID,
 		&i.EnvironmentSandboxID,
+		&i.FallbackProvider,
+		&i.FallbackModelID,
 	)
 	return i, err
 }
@@ -750,6 +781,33 @@ func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRu
 		&i.Duplicate,
 		&i.ReadAt,
 		&i.DismissedAt,
+	)
+	return i, err
+}
+
+const getBotDefaults = `-- name: GetBotDefaults :one
+SELECT model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, environment_id FROM bot_defaults WHERE id = 1
+`
+
+type GetBotDefaultsRow struct {
+	ModelProvider    string `json:"model_provider"`
+	ModelID          string `json:"model_id"`
+	ThinkingLevel    string `json:"thinking_level"`
+	FallbackProvider string `json:"fallback_provider"`
+	FallbackModelID  string `json:"fallback_model_id"`
+	EnvironmentID    string `json:"environment_id"`
+}
+
+func (q *Queries) GetBotDefaults(ctx context.Context) (GetBotDefaultsRow, error) {
+	row := q.db.QueryRowContext(ctx, getBotDefaults)
+	var i GetBotDefaultsRow
+	err := row.Scan(
+		&i.ModelProvider,
+		&i.ModelID,
+		&i.ThinkingLevel,
+		&i.FallbackProvider,
+		&i.FallbackModelID,
+		&i.EnvironmentID,
 	)
 	return i, err
 }
@@ -1078,7 +1136,7 @@ func (q *Queries) ListAgentIDs(ctx context.Context) ([]string, error) {
 }
 
 const listAgents = `-- name: ListAgents :many
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id FROM agents WHERE archived_at IS NULL ORDER BY created_at, id
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id, fallback_provider, fallback_model_id FROM agents WHERE archived_at IS NULL ORDER BY created_at, id
 `
 
 // Active bots only. Startup starts channels for these bots.
@@ -1103,6 +1161,8 @@ func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
 			&i.ArchivedAt,
 			&i.EnvironmentID,
 			&i.EnvironmentSandboxID,
+			&i.FallbackProvider,
+			&i.FallbackModelID,
 		); err != nil {
 			return nil, err
 		}
@@ -1118,7 +1178,7 @@ func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
 }
 
 const listArchivedAgents = `-- name: ListArchivedAgents :many
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id FROM agents WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, environment_id, environment_sandbox_id, fallback_provider, fallback_model_id FROM agents WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id
 `
 
 func (q *Queries) ListArchivedAgents(ctx context.Context) ([]Agent, error) {
@@ -1142,6 +1202,8 @@ func (q *Queries) ListArchivedAgents(ctx context.Context) ([]Agent, error) {
 			&i.ArchivedAt,
 			&i.EnvironmentID,
 			&i.EnvironmentSandboxID,
+			&i.FallbackProvider,
+			&i.FallbackModelID,
 		); err != nil {
 			return nil, err
 		}
@@ -1842,6 +1904,39 @@ func (q *Queries) SetAutomationNextDue(ctx context.Context, arg SetAutomationNex
 	return result.RowsAffected()
 }
 
+const setBotDefaults = `-- name: SetBotDefaults :exec
+INSERT INTO bot_defaults (id, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, environment_id)
+VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
+ON CONFLICT (id) DO UPDATE SET
+    model_provider = excluded.model_provider,
+    model_id = excluded.model_id,
+    thinking_level = excluded.thinking_level,
+    fallback_provider = excluded.fallback_provider,
+    fallback_model_id = excluded.fallback_model_id,
+    environment_id = excluded.environment_id
+`
+
+type SetBotDefaultsParams struct {
+	ModelProvider    string `json:"model_provider"`
+	ModelID          string `json:"model_id"`
+	ThinkingLevel    string `json:"thinking_level"`
+	FallbackProvider string `json:"fallback_provider"`
+	FallbackModelID  string `json:"fallback_model_id"`
+	EnvironmentID    string `json:"environment_id"`
+}
+
+func (q *Queries) SetBotDefaults(ctx context.Context, arg SetBotDefaultsParams) error {
+	_, err := q.db.ExecContext(ctx, setBotDefaults,
+		arg.ModelProvider,
+		arg.ModelID,
+		arg.ThinkingLevel,
+		arg.FallbackProvider,
+		arg.FallbackModelID,
+		arg.EnvironmentID,
+	)
+	return err
+}
+
 const setConversationCwd = `-- name: SetConversationCwd :exec
 UPDATE conversations SET cwd = ? WHERE id = ? AND agent_id = ?
 `
@@ -2023,20 +2118,24 @@ UPDATE agents SET
     model_provider = ?2,
     model_id = ?3,
     thinking_level = ?4,
-    instructions = ?5,
-    environment_sandbox_id = CASE WHEN environment_id = ?6 THEN environment_sandbox_id ELSE '' END,
-    environment_id = ?6
-WHERE id = ?7
+    fallback_provider = ?5,
+    fallback_model_id = ?6,
+    instructions = ?7,
+    environment_sandbox_id = CASE WHEN environment_id = ?8 THEN environment_sandbox_id ELSE '' END,
+    environment_id = ?8
+WHERE id = ?9
 `
 
 type UpdateAgentSettingsParams struct {
-	Name          string `json:"name"`
-	ModelProvider string `json:"model_provider"`
-	ModelID       string `json:"model_id"`
-	ThinkingLevel string `json:"thinking_level"`
-	Instructions  string `json:"instructions"`
-	EnvironmentID string `json:"environment_id"`
-	ID            string `json:"id"`
+	Name             string `json:"name"`
+	ModelProvider    string `json:"model_provider"`
+	ModelID          string `json:"model_id"`
+	ThinkingLevel    string `json:"thinking_level"`
+	FallbackProvider string `json:"fallback_provider"`
+	FallbackModelID  string `json:"fallback_model_id"`
+	Instructions     string `json:"instructions"`
+	EnvironmentID    string `json:"environment_id"`
+	ID               string `json:"id"`
 }
 
 func (q *Queries) UpdateAgentSettings(ctx context.Context, arg UpdateAgentSettingsParams) error {
@@ -2045,6 +2144,8 @@ func (q *Queries) UpdateAgentSettings(ctx context.Context, arg UpdateAgentSettin
 		arg.ModelProvider,
 		arg.ModelID,
 		arg.ThinkingLevel,
+		arg.FallbackProvider,
+		arg.FallbackModelID,
 		arg.Instructions,
 		arg.EnvironmentID,
 		arg.ID,

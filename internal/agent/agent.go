@@ -2,6 +2,7 @@
 package agent
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json/v2"
@@ -20,6 +21,7 @@ import (
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/wechat"
 )
 
@@ -68,16 +70,28 @@ type Activity struct {
 
 // Agent holds the settings of one agent. An empty ModelID means no model is chosen.
 type Agent struct {
-	Activity      *Activity `json:"activity,omitzero"`
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	Provider      string    `json:"provider"`
-	ModelID       string    `json:"modelId"`
-	ThinkingLevel string    `json:"thinkingLevel"`
-	Instructions  string    `json:"instructions"`
-	EnvironmentID string    `json:"environmentId"`
+	Activity         *Activity `json:"activity,omitzero"`
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Provider         string    `json:"provider"`
+	ModelID          string    `json:"modelId"`
+	ThinkingLevel    string    `json:"thinkingLevel"`
+	FallbackProvider string    `json:"fallbackProvider"`
+	FallbackModelID  string    `json:"fallbackModelId"`
+	Instructions     string    `json:"instructions"`
+	EnvironmentID    string    `json:"environmentId"`
 	// ArchivedAt is the archive time in Unix milliseconds; zero for an active bot.
 	ArchivedAt int64 `json:"archivedAt,omitzero"`
+}
+
+// Defaults are the global default settings applied when creating a bot or backfilling the default bot.
+type Defaults struct {
+	Provider         string
+	ModelID          string
+	ThinkingLevel    string
+	FallbackProvider string
+	FallbackModelID  string
+	EnvironmentID    string
 }
 
 // Telegram describes the bot without its token.
@@ -99,8 +113,11 @@ func (s *Service) Agent(ctx context.Context, id string) (Agent, error) {
 }
 
 func agentView(row sqlc.Agent) Agent {
-	return Agent{ID: row.ID, Name: row.Name, Provider: row.ModelProvider, ModelID: row.ModelID,
-		ThinkingLevel: row.ThinkingLevel, Instructions: row.Instructions, EnvironmentID: row.EnvironmentID, ArchivedAt: row.ArchivedAt.Int64}
+	return Agent{
+		ID: row.ID, Name: row.Name, Provider: row.ModelProvider, ModelID: row.ModelID,
+		ThinkingLevel: row.ThinkingLevel, FallbackProvider: row.FallbackProvider, FallbackModelID: row.FallbackModelID,
+		Instructions: row.Instructions, EnvironmentID: row.EnvironmentID, ArchivedAt: row.ArchivedAt.Int64,
+	}
 }
 
 // ListAgents returns agents and their activity in creation order.
@@ -145,8 +162,9 @@ func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
 			return cleanErr
 		}
 		return s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
-			ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
-			EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
+			ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel,
+			FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
+			Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
 		})
 	}()
 	if err != nil {
@@ -168,9 +186,114 @@ func (s *Service) CreateAgent(ctx context.Context, a Agent) (Agent, error) {
 	}
 	row, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{
 		ID: uuid.NewV7().String(), Name: a.Name, ModelProvider: a.Provider, ModelID: a.ModelID,
-		ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, CreatedAt: time.Now().UnixMilli(),
+		ThinkingLevel: a.ThinkingLevel, FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
+		Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, CreatedAt: time.Now().UnixMilli(),
 	})
 	return agentView(row), err
+}
+
+// CreateAgentWithDefaults creates an agent, filling omitted model, thinking, fallback, and
+// environment fields from the saved global bot defaults.
+func (s *Service) CreateAgentWithDefaults(ctx context.Context, p Patch) (Agent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	defs, err := s.q.GetBotDefaults(ctx)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return Agent{}, err
+	}
+	a := Agent{ThinkingLevel: cmp.Or(defs.ThinkingLevel, "off")}
+
+	if p.Provider == nil && p.ModelID == nil && defs.ModelID != "" {
+		switch err := s.checkModel(ctx, defs.ModelProvider, defs.ModelID); {
+		case err == nil:
+			a.Provider, a.ModelID = defs.ModelProvider, defs.ModelID
+		case errors.Is(err, engine.ErrModelsPending):
+			return Agent{}, err
+		}
+	}
+	if p.FallbackProvider == nil && p.FallbackModelID == nil && defs.FallbackModelID != "" {
+		switch err := s.checkModel(ctx, defs.FallbackProvider, defs.FallbackModelID); {
+		case err == nil:
+			a.FallbackProvider, a.FallbackModelID = defs.FallbackProvider, defs.FallbackModelID
+		case errors.Is(err, engine.ErrModelsPending):
+			return Agent{}, err
+		}
+	}
+	if p.EnvironmentID == nil && defs.EnvironmentID != "" {
+		if _, envErr := s.q.GetEnvironment(ctx, defs.EnvironmentID); envErr == nil {
+			a.EnvironmentID = defs.EnvironmentID
+		} else if !errors.Is(envErr, sql.ErrNoRows) {
+			return Agent{}, envErr
+		}
+	}
+
+	applyPatch(&a, p)
+	a, err = s.cleanAgent(ctx, a)
+	if err != nil {
+		return Agent{}, err
+	}
+	row, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{
+		ID: uuid.NewV7().String(), Name: a.Name, ModelProvider: a.Provider, ModelID: a.ModelID,
+		ThinkingLevel: a.ThinkingLevel, FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
+		Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, CreatedAt: time.Now().UnixMilli(),
+	})
+	return agentView(row), err
+}
+
+// BackfillDefaultAgent applies global defaults to the built-in default agent when it still has no primary model.
+func (s *Service) BackfillDefaultAgent(ctx context.Context, d Defaults) error {
+	var oldRow sqlc.Agent
+	var next Agent
+	changed, err := func() (bool, error) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		var getErr error
+		oldRow, getErr = s.q.GetAgent(ctx, "default")
+		if errors.Is(getErr, sql.ErrNoRows) || (getErr == nil && (oldRow.ArchivedAt.Valid || oldRow.ModelID != "")) {
+			return false, nil
+		}
+		if getErr != nil {
+			return false, getErr
+		}
+		orig := agentView(oldRow)
+		next = orig
+		if d.ModelID != "" {
+			next.Provider = d.Provider
+			next.ModelID = d.ModelID
+			next.ThinkingLevel = cmp.Or(d.ThinkingLevel, "off")
+		}
+		if next.FallbackModelID == "" && d.FallbackModelID != "" {
+			next.FallbackProvider = d.FallbackProvider
+			next.FallbackModelID = d.FallbackModelID
+		}
+		if next.EnvironmentID == "" && d.EnvironmentID != "" {
+			next.EnvironmentID = d.EnvironmentID
+		}
+		if next == orig {
+			return false, nil
+		}
+		var cleanErr error
+		next, cleanErr = s.cleanAgent(ctx, next)
+		if cleanErr != nil {
+			return false, cleanErr
+		}
+		if err := s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
+			ModelProvider: next.Provider, ModelID: next.ModelID, ThinkingLevel: next.ThinkingLevel,
+			FallbackProvider: next.FallbackProvider, FallbackModelID: next.FallbackModelID,
+			Instructions: next.Instructions, EnvironmentID: next.EnvironmentID, ID: "default", Name: next.Name,
+		}); err != nil {
+			return false, err
+		}
+		return true, nil
+	}()
+	if err != nil || !changed {
+		return err
+	}
+	if oldRow.EnvironmentID != next.EnvironmentID && s.OnEnvironmentChanged != nil {
+		s.OnEnvironmentChanged(ctx, "default", oldRow.EnvironmentID, oldRow.EnvironmentSandboxID)
+	}
+	return nil
 }
 
 func (s *Service) cleanAgent(ctx context.Context, a Agent) (Agent, error) {
@@ -192,12 +315,23 @@ func (s *Service) cleanAgent(ctx context.Context, a Agent) (Agent, error) {
 			return a, err
 		}
 	}
+	a.Provider = strings.TrimSpace(a.Provider)
+	a.ModelID = strings.TrimSpace(a.ModelID)
 	if a.ModelID != "" {
 		if err := s.checkModel(ctx, a.Provider, a.ModelID); err != nil {
 			return a, err
 		}
 	} else {
 		a.Provider = ""
+	}
+	a.FallbackProvider = strings.TrimSpace(a.FallbackProvider)
+	a.FallbackModelID = strings.TrimSpace(a.FallbackModelID)
+	if a.FallbackModelID != "" {
+		if err := s.checkModel(ctx, a.FallbackProvider, a.FallbackModelID); err != nil {
+			return a, err
+		}
+	} else {
+		a.FallbackProvider = ""
 	}
 	return a, nil
 }

@@ -25,6 +25,8 @@ type Agent struct {
 	ArchivedAt                  sql.NullInt64  `json:"archived_at"`
 	EnvironmentID               string         `json:"environment_id"`
 	EnvironmentSandboxID        string         `json:"environment_sandbox_id"`
+	FallbackProvider            string         `json:"fallback_provider"`
+	FallbackModelID             string         `json:"fallback_model_id"`
 }
 
 type Artifact struct {
@@ -88,6 +90,16 @@ type BackgroundCommand struct {
 	ExitStatus       sql.NullInt64 `json:"exit_status"`
 	Reason           string        `json:"reason"`
 	EndedAt          sql.NullInt64 `json:"ended_at"`
+}
+
+type BotDefault struct {
+	ID               int64  `json:"id"`
+	ModelProvider    string `json:"model_provider"`
+	ModelID          string `json:"model_id"`
+	ThinkingLevel    string `json:"thinking_level"`
+	FallbackProvider string `json:"fallback_provider"`
+	FallbackModelID  string `json:"fallback_model_id"`
+	EnvironmentID    string `json:"environment_id"`
 }
 
 type ChannelCommand struct {

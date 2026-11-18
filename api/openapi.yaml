@@ -176,6 +176,27 @@ paths:
               schema: { $ref: "#/components/schemas/Settings" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/settings/defaults:
+    put:
+      operationId: setBotDefaults
+      description: >
+        Saves the default settings for newly created bots. If the built-in default
+        agent has no primary model yet and a default model is saved, the default
+        agent adopts the saved defaults too.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BotDefaults" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BotDefaults" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/settings/onepassword:
     get:
       operationId: getOnePassword
@@ -662,7 +683,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/AgentInput" }
+            schema: { $ref: "#/components/schemas/CreateAgentInput" }
       responses:
         "201":
           description: The created agent with a UUID v7 ID.
@@ -2527,7 +2548,7 @@ components:
 
     Settings:
       type: object
-      required: [providers, builtins, apis]
+      required: [providers, builtins, apis, defaults]
       properties:
         providers:
           type: array
@@ -2541,6 +2562,37 @@ components:
           type: object
           description: The APIs of custom providers, ID → name.
           additionalProperties: { type: string }
+        defaults: { $ref: "#/components/schemas/BotDefaults" }
+
+    BotDefaults:
+      x-go-type: settings.BotDefaults
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/settings
+      type: object
+      required: [
+        provider,
+        modelId,
+        thinkingLevel,
+        fallbackProvider,
+        fallbackModelId,
+        environmentId,
+      ]
+      properties:
+        provider: { type: string }
+        modelId: {
+          type: string,
+          description: Empty when no default model is chosen.,
+        }
+        thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
+        fallbackProvider: { type: string }
+        fallbackModelId: {
+          type: string,
+          description: Empty when no default fallback model is chosen.,
+        }
+        environmentId: {
+          type: string,
+          description: Empty or "local" means the built-in local host environment.,
+        }
 
     OnePasswordMode:
       type: string
@@ -2718,6 +2770,8 @@ components:
         provider,
         modelId,
         thinkingLevel,
+        fallbackProvider,
+        fallbackModelId,
         instructions,
         environmentId,
       ]
@@ -2737,6 +2791,11 @@ components:
         provider: { type: string }
         modelId: { type: string, description: Empty when no model is chosen. }
         thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
+        fallbackProvider: { type: string }
+        fallbackModelId: {
+          type: string,
+          description: Empty when no fallback model is chosen.,
+        }
         instructions: { type: string }
         environmentId: {
           type: string,
@@ -2764,10 +2823,42 @@ components:
         provider: { type: string }
         modelId: { type: string, description: Empty when no model is chosen. }
         thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
+        fallbackProvider: { type: string }
+        fallbackModelId: {
+          type: string,
+          description: Empty when no fallback model is chosen.,
+        }
         instructions: { type: string }
         environmentId: {
           type: string,
           description: Empty or "local" selects the built-in local host environment.,
+        }
+
+    CreateAgentInput:
+      type: object
+      required: [name]
+      properties:
+        name: {
+          type: string,
+          minLength: 1,
+          maxLength: 40,
+          description: The bot name. Trim spaces before validation.,
+        }
+        provider: { type: string }
+        modelId: {
+          type: string,
+          description: Omitted uses the global default model. Empty chooses no model.,
+        }
+        thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
+        fallbackProvider: { type: string }
+        fallbackModelId: {
+          type: string,
+          description: Omitted uses the global default fallback model. Empty chooses none.,
+        }
+        instructions: { type: string }
+        environmentId: {
+          type: string,
+          description: Omitted uses the global default execution environment. Empty or "local" selects the built-in local host environment.,
         }
 
     ThinkingLevel:

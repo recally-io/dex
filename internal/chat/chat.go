@@ -281,7 +281,7 @@ func (s *Service) Send(ctx context.Context, agentID, channelKey string, m Messag
 	default:
 		model = cmp.Or(c.ModelID, model)
 	}
-	if model == "" {
+	if model == "" && agent.FallbackModelID == "" {
 		return 0, ErrNoModel
 	}
 	return s.enqueue(ctx, agentID, channelKey, "", inputOrigin(channelKey), m)
@@ -813,9 +813,19 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 
 // chatOptions are the run settings of a chat: its own model and thinking level, else the agent's.
 func chatOptions(agent sqlc.Agent, conv sqlc.Conversation) engine.Options {
-	options := engine.Options{Scope: conv.ExecutionScope, Cwd: conv.Cwd, Model: engine.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel), Instructions: agent.Instructions}
+	fallback := engine.ModelRef{Provider: agent.FallbackProvider, ModelID: agent.FallbackModelID}
+	options := engine.Options{
+		Scope:         conv.ExecutionScope,
+		Cwd:           conv.Cwd,
+		Model:         engine.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID},
+		FallbackModel: fallback,
+		ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel),
+		Instructions:  agent.Instructions,
+	}
 	if conv.ModelID != "" {
 		options.Model = engine.ModelRef{Provider: conv.ModelProvider, ModelID: conv.ModelID}
+	} else if options.Model.ModelID == "" && fallback.ModelID != "" {
+		options.Model = fallback
 	}
 	return options
 }

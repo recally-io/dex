@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/settings"
@@ -47,16 +48,13 @@ func (h *handler) GetWork(ctx context.Context, req api.GetWorkRequestObject) (ap
 		if err != nil {
 			return nil, err
 		}
-		unusable := agent.ModelID == ""
-		if !unusable && len(list) > 0 {
-			modelErr := h.Settings.CheckModel(ctx, agent.Provider, agent.ModelID)
-			switch {
-			case modelErr == nil, errors.Is(modelErr, engine.ErrModelsPending):
-			case errors.Is(modelErr, settings.ErrInvalid):
-				unusable = true
-			default:
-				return nil, modelErr
+		var unusable bool
+		if len(list) > 0 {
+			usable, err := h.agentModelUsable(ctx, agent)
+			if err != nil {
+				return nil, err
 			}
+			unusable = !usable
 		}
 		for _, a := range list {
 			runs, err := h.Automations.RunsInRange(ctx, agent.ID, a.ID, from, to, -1)
@@ -71,4 +69,22 @@ func (h *handler) GetWork(ctx context.Context, req api.GetWorkRequestObject) (ap
 		}
 	}
 	return api.GetWork200JSONResponse(out), nil
+}
+
+func (h *handler) agentModelUsable(ctx context.Context, a agent.Agent) (bool, error) {
+	candidates := [2][2]string{{a.Provider, a.ModelID}, {a.FallbackProvider, a.FallbackModelID}}
+	for _, m := range candidates {
+		if m[1] == "" {
+			continue
+		}
+		err := h.Settings.CheckModel(ctx, m[0], m[1])
+		switch {
+		case err == nil, errors.Is(err, engine.ErrModelsPending):
+			return true, nil
+		case errors.Is(err, settings.ErrInvalid):
+		default:
+			return false, err
+		}
+	}
+	return false, nil
 }

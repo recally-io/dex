@@ -9,6 +9,8 @@ UPDATE agents SET
     model_provider = @model_provider,
     model_id = @model_id,
     thinking_level = @thinking_level,
+    fallback_provider = @fallback_provider,
+    fallback_model_id = @fallback_model_id,
     instructions = @instructions,
     environment_sandbox_id = CASE WHEN environment_id = @environment_id THEN environment_sandbox_id ELSE '' END,
     environment_id = @environment_id
@@ -69,8 +71,8 @@ WHERE agents.id = @agent_id AND archived_at IS NULL AND agents.id <> 'default'
 UPDATE agents SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL;
 
 -- name: CreateAgent :one
-INSERT INTO agents (id, name, model_provider, model_id, thinking_level, instructions, environment_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO agents (id, name, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, instructions, environment_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: EnsureConversation :one
@@ -496,3 +498,28 @@ INSERT INTO one_password (id, mode, connect_host, connect_token, service_account
 VALUES (1, ?, ?, ?, ?)
 ON CONFLICT (id) DO UPDATE SET mode = excluded.mode, connect_host = excluded.connect_host,
     connect_token = excluded.connect_token, service_account_token = excluded.service_account_token;
+
+-- name: GetBotDefaults :one
+SELECT model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, environment_id FROM bot_defaults WHERE id = 1;
+
+-- name: SetBotDefaults :exec
+INSERT INTO bot_defaults (id, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, environment_id)
+VALUES (1, @model_provider, @model_id, @thinking_level, @fallback_provider, @fallback_model_id, @environment_id)
+ON CONFLICT (id) DO UPDATE SET
+    model_provider = excluded.model_provider,
+    model_id = excluded.model_id,
+    thinking_level = excluded.thinking_level,
+    fallback_provider = excluded.fallback_provider,
+    fallback_model_id = excluded.fallback_model_id,
+    environment_id = excluded.environment_id;
+
+-- name: ClearBotDefaultProvider :exec
+UPDATE bot_defaults SET
+    model_provider = CASE WHEN model_provider = @provider_id THEN '' ELSE model_provider END,
+    model_id = CASE WHEN model_provider = @provider_id THEN '' ELSE model_id END,
+    fallback_provider = CASE WHEN fallback_provider = @provider_id THEN '' ELSE fallback_provider END,
+    fallback_model_id = CASE WHEN fallback_provider = @provider_id THEN '' ELSE fallback_model_id END
+WHERE id = 1;
+
+-- name: ClearBotDefaultEnvironment :exec
+UPDATE bot_defaults SET environment_id = '' WHERE id = 1 AND environment_id = @environment_id;

@@ -260,7 +260,24 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if execProvider == nil {
 		execProvider = envs
 	}
-	native, err := engine.New(engine.Config{DataDir: cfg.DataDir, Home: cfg.Home, BaseEnv: cfg.ToolEnv, LoginEnv: cfg.LoginEnv, ExecEnv: execProvider, FakeModel: cfg.FakeModel, Tasks: tools, Routines: routines, Bots: botHandlers})
+	native, err := engine.New(engine.Config{
+		DataDir:   cfg.DataDir,
+		Home:      cfg.Home,
+		BaseEnv:   cfg.ToolEnv,
+		LoginEnv:  cfg.LoginEnv,
+		ExecEnv:   execProvider,
+		FakeModel: cfg.FakeModel,
+		Tasks:     tools,
+		Routines:  routines,
+		Bots:      botHandlers,
+		FallbackModel: func(ctx context.Context, agentID string) engine.ModelRef {
+			row, err := q.GetAgent(ctx, agentID)
+			if err != nil {
+				return engine.ModelRef{}
+			}
+			return engine.ModelRef{Provider: row.FallbackProvider, ModelID: row.FallbackModelID}
+		},
+	})
 	if err != nil {
 		cancel()
 		return nil, errors.Join(err, envs.Close(context.WithoutCancel(ctx)), jobs.Close(), conn.Close())
