@@ -78,7 +78,7 @@ Run `mise tasks` for the full list. The main tasks:
 | `generate:api`      | Regenerates the Go server and the TS client from `api/openapi.yaml`                                              |
 | `build:web`         | Builds the web UI into `web/dist`                                                                                |
 | `check:web`         | `tsc`, `vp lint`, `vp fmt --check`, `vp test` in `web/`                                                          |
-| `check:e2e`         | Browser end-to-end tests in `tests/` using `e2e` and the faux provider                                           |
+| `check:e2e`         | Browser end-to-end tests in `web/tests/` using `e2e` and the faux provider                                       |
 | `check:api-drift`   | Fails when the generated API code differs from the contract                                                      |
 
 ## Tests
@@ -96,9 +96,9 @@ assets, runs lint, builds the packages, and runs tests with the race detector.
 with `CGO_ENABLED=0`. It checks that tracked backend-worker files and PiG TUI
 or extension-host dependencies are absent.
 
-Run `mise run check:e2e` to run the browser end-to-end tests in `tests/`. The
-suite builds `web/dist`, starts `dex` with `DEX_FAKE_MODEL=1` and isolated data
-in `.e2e/data/`, and drives the UI with `@e2e-dev/web`.
+Run `mise run check:e2e` to run the browser end-to-end tests in `web/tests/`.
+The suite builds `web/dist`, starts `dex` with `DEX_FAKE_MODEL=1` and isolated
+data in `web/.e2e/data/`, and drives the UI with `@e2e-dev/web`.
 
 A real-provider check is separate. Use a dedicated test data directory and
 credentials for that check.

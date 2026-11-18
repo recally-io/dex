@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Run browser end-to-end tests with e2e"
 #MISE depends=["build:web"]
+#MISE dir="web"
 set -euo pipefail
 bun run test:e2e "$@"
