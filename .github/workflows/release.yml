@@ -85,7 +85,7 @@ jobs:
             git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
             git push origin "$RELEASE_TAG"
           fi
-      - uses: jdx/mise-action@v5.2.7
+      - uses: jdx/mise-action@v5.2.8
         with:
           install: true
           cache: true
