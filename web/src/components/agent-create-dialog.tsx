@@ -3,10 +3,12 @@ import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   createAgentMutation,
+  getSettingsOptions,
   listAgentsQueryKey,
   listEnvironmentsOptions,
+  listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
-import { useAgentSettings, useAgentId } from "../lib/agent-scope";
+import { findModel } from "../lib/agent";
 import { environmentOptionLabel } from "../lib/environments";
 import { queryClient } from "../lib/queries";
 import { Modal } from "./dialog";
@@ -14,28 +16,54 @@ import { Field, Input, Select } from "./form";
 import { Button } from "./ui/button";
 import { Failure, Loading } from "./feedback";
 import { ModelPicker } from "./model-picker";
-import type { Agent, Model } from "../api/generated/types.gen";
+import type { BotDefaults, Environment, Model } from "../api/generated/types.gen";
 
 export function AgentCreateDialog({ onClose }: { onClose: () => void }) {
-  const agentId = useAgentId();
-  const settings = useAgentSettings(agentId);
+  const settings = useQuery(getSettingsOptions());
+  const models = useQuery(listModelsOptions());
+  const environments = useQuery(listEnvironmentsOptions());
+  const error = settings.error ?? environments.error;
 
-  return settings.data ? (
-    <CreateForm initial={settings.data.agent} onClose={onClose} />
+  return settings.data && environments.data ? (
+    <CreateForm
+      defaults={settings.data.defaults}
+      models={models.data?.models}
+      environments={environments.data.environments}
+      onClose={onClose}
+    />
   ) : (
     <Modal title="Create bot" onClose={onClose} footer={<Button onClick={onClose}>Cancel</Button>}>
-      {settings.isError ? <Failure error={settings.error} /> : <Loading />}
+      {error ? <Failure error={error} /> : <Loading />}
     </Modal>
   );
 }
 
-function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void }) {
+function CreateForm({
+  defaults,
+  models,
+  environments,
+  onClose,
+}: {
+  defaults: BotDefaults;
+  models: Model[] | undefined;
+  environments: Environment[];
+  onClose: () => void;
+}) {
   const [name, setName] = useState("");
-  const [model, setModel] = useState({ provider: initial.provider, modelId: initial.modelId });
-  const [modelName, setModelName] = useState(initial.modelId || "Choose model");
-  const [environmentId, setEnvironmentId] = useState("");
-  const environmentsQuery = useQuery(listEnvironmentsOptions());
-  const environments = environmentsQuery.data?.environments ?? [];
+  const [model, setModel] = useState({ provider: defaults.provider, modelId: defaults.modelId });
+  const [modelName, setModelName] = useState<string | null>(null);
+
+  const [fallback, setFallback] = useState({
+    provider: defaults.fallbackProvider,
+    modelId: defaults.fallbackModelId,
+  });
+
+  const [fallbackName, setFallbackName] = useState<string | null>(null);
+
+  const [environmentId, setEnvironmentId] = useState(
+    environments.some((env) => env.id === defaults.environmentId) ? defaults.environmentId : "",
+  );
+
   const navigate = useNavigate();
 
   const create = useMutation({
@@ -48,6 +76,13 @@ function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void 
   });
 
   const trimmed = name.trim();
+
+  const primaryLabel =
+    modelName ?? (model.modelId ? findModel(model.provider, model.modelId, models).label : "Choose model");
+
+  const fallbackLabel =
+    fallbackName ??
+    (fallback.modelId ? findModel(fallback.provider, fallback.modelId, models).label : "None");
 
   return (
     <Modal
@@ -80,9 +115,12 @@ function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void 
             create.mutate({
               body: {
                 name: trimmed,
-                ...model,
-                thinkingLevel: initial.thinkingLevel,
-                environmentId: environmentId || undefined,
+                provider: model.provider,
+                modelId: model.modelId,
+                thinkingLevel: defaults.thinkingLevel,
+                fallbackProvider: fallback.provider,
+                fallbackModelId: fallback.modelId,
+                environmentId,
               },
             });
         }}
@@ -103,19 +141,48 @@ function CreateForm({ initial, onClose }: { initial: Agent; onClose: () => void 
             <ModelPicker
               side="top"
               override={{
-                value: model,
-                defaultName: modelName,
-                allowDefault: false,
+                value: model.modelId ? model : null,
+                defaultName: "None",
+                clearLabel: "No primary model",
                 save: async (selected: Model | null) => {
                   if (selected) {
                     setModel({ provider: selected.provider, modelId: selected.id });
                     setModelName(selected.name);
+                  } else {
+                    setModel({ provider: "", modelId: "" });
+                    setModelName(null);
                   }
                 },
               }}
               trigger={
                 <Button id={id} variant="secondary" className="w-fit max-w-full self-start truncate">
-                  {modelName}
+                  {primaryLabel}
+                </Button>
+              }
+            />
+          )}
+        </Field>
+        <Field label="Fallback model">
+          {({ id }) => (
+            <ModelPicker
+              side="top"
+              override={{
+                value: fallback.modelId ? fallback : null,
+                defaultName: "None",
+                clearLabel: "No fallback model",
+                save: async (selected: Model | null) => {
+                  if (selected) {
+                    setFallback({ provider: selected.provider, modelId: selected.id });
+                    setFallbackName(selected.name);
+                  } else {
+                    setFallback({ provider: "", modelId: "" });
+                    setFallbackName(null);
+                  }
+                },
+              }}
+              trigger={
+                <Button id={id} variant="secondary" className="w-fit max-w-full self-start truncate">
+                  {fallbackLabel}
                 </Button>
               }
             />

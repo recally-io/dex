@@ -316,6 +316,14 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     ? findModel(own.provider ?? "", own.modelId, models.data?.models)
     : agentModel(settings.agent, models.data?.models);
 
+  const fallback = findModel(
+    settings.agent.fallbackProvider,
+    settings.agent.fallbackModelId,
+    models.data?.models,
+  );
+
+  const modelReady = model.ok || fallback.ok;
+
   // Withdrawing an answer opens its question again.
   const withdraw = useMutation({ ...withdrawMessageMutation(), onSuccess: () => void refetchChat() });
 
@@ -391,7 +399,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 3);
 
-  const reason = !model.ok
+  const reason = !modelReady
     ? "Choose an available model before you send."
     : connection !== "ready"
       ? "dex is reconnecting to the bot…"
@@ -601,7 +609,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         }
         commands={commands}
         fix={
-          model.ok ? null : settings.providers.length ? (
+          modelReady ? null : settings.providers.length ? (
             <ModelPicker
               trigger={
                 <button type="button" className="font-medium text-primary underline">
@@ -610,7 +618,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
               }
             />
           ) : (
-            <Link className="font-medium text-primary underline" to="/providers">
+            <Link className="font-medium text-primary underline" to="/settings/providers">
               Add a provider
             </Link>
           )

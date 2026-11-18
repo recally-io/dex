@@ -76,7 +76,7 @@ export function Sidebar({
           </p>
         ) : null}
       </nav>
-      <Footer />
+      <Footer active={a === "settings"} />
       {creating ? (
         <AgentContext.Provider value={openAgent ?? "default"}>
           <AgentCreateDialog onClose={() => setCreating(false)} />
@@ -86,14 +86,22 @@ export function Sidebar({
   );
 }
 
-function Footer() {
+function Footer({ active }: { active: boolean }) {
   const settings = useQuery(getSettingsOptions());
   const errors = settings.data?.providers.filter((p) => p.error).length ?? 0;
   const label = `${errors} ${errors === 1 ? "provider needs" : "providers need"} attention`;
 
   return (
     <div className="flex gap-1 border-t border-border p-2">
-      <Link to="/providers" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), row)}>
+      <Link
+        to="/settings/general"
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          buttonVariants({ variant: "ghost", size: "sm" }),
+          row,
+          active && "bg-accent font-medium text-foreground",
+        )}
+      >
         <Settings size={15} aria-hidden />
         Settings
         {errors ? (

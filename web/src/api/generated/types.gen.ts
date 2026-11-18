@@ -604,6 +604,25 @@ export type Settings = {
     apis: {
         [key: string]: string;
     };
+    defaults: BotDefaults;
+};
+
+export type BotDefaults = {
+    provider: string;
+    /**
+     * Empty when no default model is chosen.
+     */
+    modelId: string;
+    thinkingLevel: ThinkingLevel;
+    fallbackProvider: string;
+    /**
+     * Empty when no default fallback model is chosen.
+     */
+    fallbackModelId: string;
+    /**
+     * Empty or "local" means the built-in local host environment.
+     */
+    environmentId: string;
 };
 
 export type OnePasswordMode = 'off' | 'connect' | 'service-account';
@@ -742,6 +761,11 @@ export type Agent = {
      */
     modelId: string;
     thinkingLevel: ThinkingLevel;
+    fallbackProvider: string;
+    /**
+     * Empty when no fallback model is chosen.
+     */
+    fallbackModelId: string;
     instructions: string;
     /**
      * Empty means the built-in local host environment.
@@ -764,9 +788,37 @@ export type AgentInput = {
      */
     modelId: string;
     thinkingLevel: ThinkingLevel;
+    fallbackProvider?: string;
+    /**
+     * Empty when no fallback model is chosen.
+     */
+    fallbackModelId?: string;
     instructions?: string;
     /**
      * Empty or "local" selects the built-in local host environment.
+     */
+    environmentId?: string;
+};
+
+export type CreateAgentInput = {
+    /**
+     * The bot name. Trim spaces before validation.
+     */
+    name: string;
+    provider?: string;
+    /**
+     * Omitted uses the global default model. Empty chooses no model.
+     */
+    modelId?: string;
+    thinkingLevel?: ThinkingLevel;
+    fallbackProvider?: string;
+    /**
+     * Omitted uses the global default fallback model. Empty chooses none.
+     */
+    fallbackModelId?: string;
+    instructions?: string;
+    /**
+     * Omitted uses the global default execution environment. Empty or "local" selects the built-in local host environment.
      */
     environmentId?: string;
 };
@@ -1091,6 +1143,11 @@ export type AgentWritable = {
      */
     modelId: string;
     thinkingLevel: ThinkingLevel;
+    fallbackProvider: string;
+    /**
+     * Empty when no fallback model is chosen.
+     */
+    fallbackModelId: string;
     instructions: string;
     /**
      * Empty means the built-in local host environment.
@@ -1379,6 +1436,35 @@ export type GetSettingsResponses = {
 };
 
 export type GetSettingsResponse = GetSettingsResponses[keyof GetSettingsResponses];
+
+export type SetBotDefaultsData = {
+    body: BotDefaults;
+    path?: never;
+    query?: never;
+    url: '/api/settings/defaults';
+};
+
+export type SetBotDefaultsErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetBotDefaultsError = SetBotDefaultsErrors[keyof SetBotDefaultsErrors];
+
+export type SetBotDefaultsResponses = {
+    /**
+     * Saved.
+     */
+    200: BotDefaults;
+};
+
+export type SetBotDefaultsResponse = SetBotDefaultsResponses[keyof SetBotDefaultsResponses];
 
 export type GetOnePasswordData = {
     body?: never;
@@ -2252,7 +2338,7 @@ export type ListAgentsResponses = {
 export type ListAgentsResponse = ListAgentsResponses[keyof ListAgentsResponses];
 
 export type CreateAgentData = {
-    body: AgentInput;
+    body: CreateAgentInput;
     path?: never;
     query?: never;
     url: '/api/agents';

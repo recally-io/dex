@@ -14,7 +14,7 @@ export function AboutPage() {
       eyebrow="Settings for this computer"
       title="About"
       description="A personal bot that runs on this computer."
-      toolbar={<GlobalSettingsSwitcher page="/about" />}
+      toolbar={<GlobalSettingsSwitcher page="/settings/about" />}
     >
       <Section title="Appearance" caption="Applies to this browser.">
         <ThemeToggle />

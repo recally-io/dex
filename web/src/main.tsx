@@ -18,6 +18,7 @@ import { ChatPage } from "./routes/chat";
 import { AutomationPage, AutomationsPage } from "./routes/automations";
 import { SessionsPage, TurnPage } from "./routes/sessions";
 import { AgentPage, InstructionsPage } from "./routes/agent";
+import { GeneralSettingsPage } from "./routes/general-settings";
 import { ProvidersPage } from "./routes/providers";
 import { ChannelPage, ChannelsPage } from "./routes/channels";
 import { ExtensionsPage } from "./routes/extensions";
@@ -94,7 +95,11 @@ const retiredRoutes = [
   retired("/work", "/a/default"),
   retired("/inbox", "/a/default"),
   retired("/automations", "/a/default/automations"),
-  retired("/secrets", "/environment"),
+  retired("/secrets", "/settings/environment"),
+  retired("/providers", "/settings/providers"),
+  retired("/environment", "/settings/environment"),
+  retired("/archived", "/settings/archived"),
+  retired("/about", "/settings/about"),
 ] as const;
 
 const inboxDetail = page("/inbox/$runId", () => {
@@ -103,12 +108,13 @@ const inboxDetail = page("/inbox/$runId", () => {
   return <InboxResultPage runId={runId} />;
 });
 
-const providers = page("/providers", ProvidersPage);
+const generalSettings = page("/settings/general", GeneralSettingsPage);
+const providers = page("/settings/providers", ProvidersPage);
 
 const extensions = agentPage("/extensions", ExtensionsPage);
-const environment = page("/environment", EnvironmentPage);
-const archived = page("/archived", ArchivedPage);
-const about = page("/about", AboutPage);
+const environment = page("/settings/environment", EnvironmentPage);
+const archived = page("/settings/archived", ArchivedPage);
+const about = page("/settings/about", AboutPage);
 
 const channel = createRoute({
   getParentRoute: () => agentPages,
@@ -134,9 +140,7 @@ function ChannelRoute() {
 // Old addresses from the single settings page.
 const legacy = new Map<string, string>([
   ["model", "/agent"],
-  ["providers", "/providers"],
   ["telegram", "/channels/telegram"],
-  ["about", "/about"],
 ]);
 
 const settings = createRoute({
@@ -147,7 +151,7 @@ const settings = createRoute({
 
     if (!to) throw notFound();
     throw redirect({
-      href: to.startsWith("/channels") || to === "/agent" ? `/a/default${to}` : to,
+      href: `/a/default${to}`,
       replace: true,
     });
   },
@@ -157,7 +161,7 @@ const defaultSettings = createRoute({
   getParentRoute: () => root,
   path: "/settings",
   beforeLoad: () => {
-    throw redirect({ href: "/a/default/agent", replace: true });
+    throw redirect({ href: "/settings/general", replace: true });
   },
 });
 
@@ -237,6 +241,7 @@ const router = createRouter({
     tasks,
     ...retiredRoutes,
     inboxDetail,
+    generalSettings,
     providers,
     environment,
     archived,
