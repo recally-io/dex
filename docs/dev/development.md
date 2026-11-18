@@ -125,5 +125,3 @@ and its PNG in the same change.
 
 - [CI and releases](releasing.md): CI shards, `mise run release:bump`, and the
   release workflow.
-- [Real-provider agent evals](evals.md): running and updating the 19-task
-  agent evaluation suite.

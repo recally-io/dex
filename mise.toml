@@ -49,11 +49,6 @@ description = "Build the embedded web UI"
 dir = "web"
 run = "bunx --no-install vp build"
 
-[tasks."generate:api-web"]
-description = "Generate the web API client from OpenAPI"
-dir = "web"
-run = "bunx --no-install openapi-ts"
-
 [tasks."dev:web"]
 description = "Start the web UI with the local API proxy"
 dir = "web"

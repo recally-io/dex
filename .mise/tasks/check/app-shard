@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Run one partition of the app race tests and record test timings"
-set -euo pipefail
-mise run check:go-shard ./internal/app "$@"

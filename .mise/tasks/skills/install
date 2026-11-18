@@ -10,3 +10,4 @@ install() {
 
 install JetBrains/go-modern-guidelines use-modern-go v0.1.1
 install markdown-viewer/skills documd-visuals 2672b6920f6c055caf72a916b414ede62ecbfc2e
+install e2e-inc/e2e e2e 902f044b49d1ca90bf12af80ccb53f5277305f9f
