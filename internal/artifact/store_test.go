@@ -1,6 +1,8 @@
 package artifact_test
 
 import (
+	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,9 +11,32 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
+func localWorkspaceReader(dataDir string) artifact.WorkspaceReader {
+	return func(_ context.Context, agentID, relPath string, maxBytes int64) ([]byte, error) {
+		root, err := os.OpenRoot(filepath.Join(dataDir, "agents", agentID, "workspace"))
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = root.Close() }()
+		info, err := root.Lstat(relPath)
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() || info.Size() > maxBytes {
+			return nil, os.ErrInvalid
+		}
+		f, err := root.Open(relPath)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = f.Close() }()
+		return io.ReadAll(io.LimitReader(f, maxBytes))
+	}
+}
+
 func TestUserKeepsEachBotsDirectorySeparate(t *testing.T) {
 	data := t.TempDir()
-	service := artifact.New(data)
+	service := artifact.New(data, localWorkspaceReader(data))
 	for _, bot := range []string{"a", "b"} {
 		directory := filepath.Join(data, "agents", bot, "artifacts")
 		if err := os.MkdirAll(directory, 0700); err != nil {
@@ -48,7 +73,7 @@ func TestUserCannotEscapeTheBotArtifactDirectory(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(directory, "link.md")); err != nil {
 		t.Fatal(err)
 	}
-	service := artifact.New(data)
+	service := artifact.New(data, localWorkspaceReader(data))
 	if rows, err := service.List("default"); err != nil || len(rows) != 0 {
 		t.Fatalf("link listed=%+v err=%v", rows, err)
 	}
@@ -98,7 +123,7 @@ func TestUserCannotDeliverOutsideWorkspaceOrOverTheLimit(t *testing.T) {
 	if err := os.Truncate(large, artifact.MaxSize+1); err != nil {
 		t.Fatal(err)
 	}
-	service := artifact.New(data)
+	service := artifact.New(data, localWorkspaceReader(data))
 	for _, path := range []string{"../outside.md", outside, "link", "large.bin"} {
 		if _, err := service.Deliver(t.Context(), engine.TaskContext{AgentID: "default"}, path); err == nil {
 			t.Fatalf("delivered %s", path)

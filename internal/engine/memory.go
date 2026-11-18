@@ -23,7 +23,7 @@ import (
 	"github.com/recally-io/dex/internal/execenv"
 )
 
-type MemoryRepo struct {
+type memoryRepo struct {
 	Dir         string
 	environment []string
 	mu          sync.Mutex
@@ -31,8 +31,8 @@ type MemoryRepo struct {
 	noGit       bool
 }
 
-func NewMemoryRepo(path string, environment map[string]string) *MemoryRepo {
-	m := &MemoryRepo{Dir: path, environment: []string{}}
+func newMemoryRepo(path string, environment map[string]string) *memoryRepo {
+	m := &memoryRepo{Dir: path, environment: []string{}}
 	for key, value := range environment {
 		if !strings.HasPrefix(key, "GIT_") {
 			m.environment = append(m.environment, key+"="+value)
@@ -41,7 +41,7 @@ func NewMemoryRepo(path string, environment map[string]string) *MemoryRepo {
 	return m
 }
 
-func (m *MemoryRepo) Open(ctx context.Context) error {
+func (m *memoryRepo) Open(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.ready {
@@ -82,7 +82,7 @@ func (m *MemoryRepo) Open(ctx context.Context) error {
 	return nil
 }
 
-func (m *MemoryRepo) git(ctx context.Context, args ...string) (string, error) {
+func (m *memoryRepo) git(ctx context.Context, args ...string) (string, error) {
 	operation := args[0]
 	// Agent files must not run Git hooks or monitors with the dex process environment.
 	args = append([]string{"-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false"}, args...)
@@ -96,13 +96,13 @@ func (m *MemoryRepo) git(ctx context.Context, args ...string) (string, error) {
 	return string(out), nil
 }
 
-func (m *MemoryRepo) Commit(ctx context.Context, message string) (bool, error) {
+func (m *memoryRepo) Commit(ctx context.Context, message string) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.commit(ctx, message)
 }
 
-func (m *MemoryRepo) commit(ctx context.Context, message string) (bool, error) {
+func (m *memoryRepo) commit(ctx context.Context, message string) (bool, error) {
 	if m.noGit {
 		return false, nil
 	}
@@ -122,7 +122,7 @@ const (
 	memorySearchMax     = 200
 )
 
-func (m *MemoryRepo) Extension(agentID string, source func(context.Context, durable.ConversationId) (string, error)) *durable.Extension {
+func (m *memoryRepo) Extension(agentID string, source func(context.Context, durable.ConversationId) (string, error)) *durable.Extension {
 	return &durable.Extension{
 		Name: "memory",
 		Sections: []*durable.PromptSection{
@@ -157,7 +157,7 @@ type memoryToolAPI struct {
 
 func (a memoryToolAPI) Env() durableenv.ExecutionEnv { return a.env }
 
-func (m *MemoryRepo) tools(agentID string) []*durable.ToolRegistration {
+func (m *memoryRepo) tools(agentID string) []*durable.ToolRegistration {
 	searchTool := &durable.ToolRegistration{
 		Name:        "memory_search",
 		Description: "Search files inside dex's long-term memory folder. Searches shared memory and this agent's agents/<agentId>/ files; cannot access .git, symlinks, or other agents' folders.",
@@ -198,7 +198,7 @@ func (m *MemoryRepo) tools(agentID string) []*durable.ToolRegistration {
 	}
 }
 
-func (m *MemoryRepo) wrapFileTool(base *durable.ToolRegistration, name, desc, agentID string, allowCreate bool, replay durable.ToolReplay) *durable.ToolRegistration {
+func (m *memoryRepo) wrapFileTool(base *durable.ToolRegistration, name, desc, agentID string, allowCreate bool, replay durable.ToolReplay) *durable.ToolRegistration {
 	schema := base.ToolSchema
 	schema.Name = name
 	schema.Description = desc
@@ -223,7 +223,7 @@ func (m *MemoryRepo) wrapFileTool(base *durable.ToolRegistration, name, desc, ag
 	}
 }
 
-func (m *MemoryRepo) confineFile(agentID, raw string, allowCreate bool) (string, error) {
+func (m *memoryRepo) confineFile(agentID, raw string, allowCreate bool) (string, error) {
 	rel, err := resolveMemoryRelPath(agentID, raw, false)
 	if err != nil {
 		return "", err
@@ -302,7 +302,7 @@ func resolveMemoryRelPath(agentID, raw string, allowRoot bool) (string, error) {
 	return clean, nil
 }
 
-func (m *MemoryRepo) searchFiles(agentID, query, relPath string, caseSensitive bool, maxResults int) (string, error) {
+func (m *memoryRepo) searchFiles(agentID, query, relPath string, caseSensitive bool, maxResults int) (string, error) {
 	if query == "" {
 		return "", errors.New("query is required")
 	}

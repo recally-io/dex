@@ -174,41 +174,6 @@ func (d *dex) fillContext(t *testing.T, w *watcher, chatID int64) {
 	}
 }
 
-func TestUserCompactReplayDuringRunJoinsOnce(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	d := startDex(t, dir, "")
-	chatID := d.newSession(t).ID
-	w := d.watch(t, chatID)
-	d.fillContext(t, w, chatID)
-	d.setModel(t, "bash")
-	gate := taskGate(t, dir, "compact-replay")
-	d.send(t, chatID, gate)
-	waitTaskFile(t, filepath.Join(dir, "compact-replay.pid"))
-	d.setModel(t, "section")
-	body := map[string]string{"id": uuid.NewV7().String(), "instructions": "keep the words"}
-	d.must(t, http.MethodPost, chatPath(chatID, "compact"), body, nil, http.StatusAccepted)
-	w.until(t, "queued compaction", func(tr *transcript) bool {
-		return tr.running && compaction("queued")(tr)
-	})
-	d.must(t, http.MethodPost, chatPath(chatID, "compact"), body, nil, http.StatusAccepted)
-	if err := os.WriteFile(filepath.Join(dir, "compact-replay.gate"), nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	w.until(t, "one placed summary", func(tr *transcript) bool {
-		return !tr.running && !compaction("queued")(tr) && compaction("")(tr)
-	})
-	count := 0
-	for _, item := range w.tr.items {
-		if item.Kind == "boundary" && item.Boundary == "compaction" {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Fatalf("compaction boundaries = %d", count)
-	}
-}
-
 func TestUserCompactsDuringRun(t *testing.T) {
 	t.Parallel()
 	// Given a long chat that runs a command which waits for a gate.

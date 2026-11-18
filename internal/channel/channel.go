@@ -32,7 +32,6 @@ import (
 
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/engine"
 )
 
 // ErrPermanent marks a part the platform cannot accept. The sender logs and skips it.
@@ -55,8 +54,7 @@ type Status struct {
 // receiving. When ctx is cancelled, each method must stop and join the
 // goroutines, connections, and timers that it started before it returns.
 //
-// A bot can also implement GroupParts, MediaWaker, Finisher, or Controller.
-// They are optional; today only Telegram implements them.
+// A bot can also implement the optional Telegram hooks in telegram_tools.go.
 type Bot interface {
 	// Run receives platform input until ctx ends or the transport fails.
 	Run(context.Context) error
@@ -70,29 +68,6 @@ type Bot interface {
 	// it for retry. A Part variant that this adapter cannot deliver is the
 	// adapter's own decision; it does not change what other platforms support.
 	Send(ctx context.Context, peer, deliveryID string, part int, content Part) (Receipt, error)
-}
-
-// GroupParts plans native media groups for a reply before Manager freezes it.
-// File bodies are loaded for planning. Manager freezes parts before the first Send.
-type GroupParts interface {
-	GroupParts([]Part) []Part
-}
-
-// MediaWaker wakes inbound media collection after Notify.
-type MediaWaker interface {
-	WakeMedia()
-}
-
-// Finisher runs after every part of a reply is sent and before Manager marks
-// the reply delivered. An error keeps the reply for retry, so Finish must
-// tolerate a repeated call.
-type Finisher interface {
-	Finish(ctx context.Context, peer string, source chat.ChannelContext, status string) error
-}
-
-// Controller performs one agent-requested action on a confirmed remote message.
-type Controller interface {
-	Control(ctx context.Context, peer string, remote RemoteMessage, args engine.TelegramRequest) (Receipt, error)
 }
 
 type runtime struct {
@@ -196,7 +171,7 @@ func (m *Manager) Notify(key string) {
 		if key != chat.MainKey && platform != name {
 			continue
 		}
-		if media, ok := r.bot.(MediaWaker); ok {
+		if media, ok := r.bot.(telegramBot); ok {
 			media.WakeMedia()
 		}
 		select {
@@ -204,6 +179,11 @@ func (m *Manager) Notify(key string) {
 		default:
 		}
 	}
+}
+
+// SetTelegramRetryAt persists a FloodWait retry deadline for Telegram polling.
+func (m *Manager) SetTelegramRetryAt(ctx context.Context, token string, until int64) error {
+	return m.q.SetTelegramRetryAt(ctx, sqlc.SetTelegramRetryAtParams{AgentID: m.agentID, Token: token, RetryAt: until})
 }
 
 // ReceivedSource reports stored platform input, including input received by a previous agent.
@@ -312,12 +292,9 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	if group {
 		answer = "/clear and /new clear only this group sender session or this topic. /stop stops only its work. Private bot management, files and routines are not available."
 	}
-	switch {
-	case c.ChannelKey != chat.MainKey && !group:
-		// A saved peer command cannot acquire main's scope after an upgrade.
-		answer = "This command is from an earlier version. Send a new command if needed."
+	switch c.Command {
 	// Rows saved before /clear existed hold /new.
-	case c.Command == "/clear" || c.Command == "/new":
+	case "/clear", "/new":
 		var err error
 		if group {
 			err = m.chats.ClearGroup(ctx, m.agentID, target.ID, "channel:"+c.SourceKey, c.Peer, identity)
@@ -338,7 +315,7 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 		default:
 			answer = "Context cleared."
 		}
-	case c.Command == "/stop":
+	case "/stop":
 		answer = c.Answer
 		if answer == "" {
 			if !group {
@@ -493,7 +470,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 			}
 			r.ChannelGroupFallback, r.ChannelGroupCursor = 0, 0
 		}
-		if finished, ok := bot.(Finisher); ok {
+		if finished, ok := bot.(telegramBot); ok {
 			allowed, err := m.authorizedReply(ctx, name, r)
 			if err != nil {
 				return err

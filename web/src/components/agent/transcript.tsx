@@ -156,10 +156,6 @@ function entryName(origin?: string) {
   }
 }
 
-function Shimmer({ children }: { children: ReactNode }) {
-  return <span className="truncate text-[13px] font-medium text-muted-foreground">{children}</span>;
-}
-
 function Trace({ children }: { children: ReactNode }) {
   return (
     <div className="relative mt-1 ml-[5px] animate-[fade-in_200ms_ease-out_both] pl-4">
@@ -521,7 +517,7 @@ const answerPrefix = "Answer to: ";
  * The server wraps an ask_user answer as "Answer to: <question>\n<answer>". The question is one line,
  * so the first line splits it from the answer. Other text returns null and shows as it is.
  */
-export function splitAnswer(text: string): { question: string; answer: string } | null {
+function splitAnswer(text: string): { question: string; answer: string } | null {
   if (!text.startsWith(answerPrefix)) return null;
 
   const end = text.indexOf("\n");
@@ -637,7 +633,7 @@ function BoundaryItem({ item }: { item: Extract<Item, { kind: "boundary" }> }) {
   }
 }
 
-export function TranscriptItem({
+function TranscriptItem({
   item,
   live,
   retry,
@@ -936,9 +932,9 @@ export function RetryNotice({ retry }: { retry: Retry }) {
       role="status"
       className="flex max-w-[640px] flex-col gap-1 rounded-md bg-muted px-3.5 py-3 shadow-card"
     >
-      <Shimmer>
+      <span className="truncate text-[13px] font-medium text-muted-foreground">
         Provider error · retry {retry.attempt} in {Math.max(0, Math.ceil((retry.at - now) / 1000))} s
-      </Shimmer>
+      </span>
       <p className="text-[12.5px] text-muted-foreground [overflow-wrap:anywhere]">{retry.reason}</p>
     </div>
   );

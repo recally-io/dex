@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/app"
@@ -41,6 +43,9 @@ type fakeFeishu struct {
 	textAttempts         int
 	resourceStatus       int
 	resourceSize         int
+	expireFirstToken     bool
+	tokenRequests        int
+	replyAuthHeaders     []string
 	deliveries           []channelSend
 	destinations         map[string]string
 }
@@ -136,7 +141,11 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "/open-apis/auth/v3/tenant_access_token/internal":
-		_, _ = w.Write([]byte(`{"code":0,"tenant_access_token":"tenant-token","expire":7200}`))
+		f.mu.Lock()
+		f.tokenRequests++
+		token := fmt.Sprintf("tenant-token-%d", f.tokenRequests)
+		f.mu.Unlock()
+		_, _ = fmt.Fprintf(w, `{"code":0,"tenant_access_token":%q,"expire":7200}`, token)
 	default:
 		if strings.Contains(r.URL.Path, "/resources/") {
 			f.mu.Lock()
@@ -164,6 +173,13 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		f.mu.Lock()
 		defer f.mu.Unlock()
+		auth := r.Header.Get("Authorization")
+		f.replyAuthHeaders = append(f.replyAuthHeaders, auth)
+		if f.expireFirstToken && auth == "Bearer tenant-token-1" {
+			f.expireFirstToken = false
+			_, _ = w.Write([]byte(`{"code":99991663,"msg":"token expired"}`))
+			return
+		}
 		if f.fail {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"code":1}`))
@@ -734,5 +750,211 @@ func TestUserCancelsFeishuSetupWhileAccountsServiceWaits(t *testing.T) {
 				t.Fatal("late credentials restored a canceled channel")
 			}
 		})
+	}
+}
+
+func TestUserFeishuDisconnectDoesNotStrandDurableAdmission(t *testing.T) {
+	t.Parallel()
+	// Given native admission paused for maintenance.
+	f := newFakeFeishu(t)
+	f.pingInterval = 1
+	dataDir := t.TempDir()
+	d := startFeishu(t, f, dataDir)
+	pairFeishu(t, d, f)
+	d.must(t, http.MethodPost, "/api/maintenance", nil, nil)
+	conn := controlWriteDB(t, dataDir)
+	webChat := d.newSession(t)
+	webID := uuid.NewV7().String()
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", webChat.ID), map[string]string{"id": webID, "text": "web input during maintenance"}, nil, http.StatusConflict)
+	var webReceipts int
+	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE id=?", webID).Scan(&webReceipts); err != nil {
+		t.Fatal(err)
+	}
+	if webReceipts != 0 {
+		t.Fatal("maintenance rejection saved a web receipt")
+	}
+	state := func(source string) string {
+		var status string
+		err := conn.QueryRowContext(t.Context(), "SELECT status FROM submissions WHERE source_key = ?", source).Scan(&status)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "absent"
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return status
+	}
+	body, err := json.Marshal(map[string]any{
+		"header": map[string]string{"event_type": "im.message.receive_v1"},
+		"event": map[string]any{
+			"sender":  map[string]any{"sender_type": "user", "sender_id": map[string]string{"open_id": "owner"}},
+			"message": map[string]string{"message_id": "cancel-window", "chat_type": "p2p", "message_type": "text", "content": `{"text":"stored before disconnect"}`},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.events <- body
+	eventually(t, "Feishu receipt stored while native admission is paused", func() (bool, any) {
+		s := state("feishu:app:cancel-window")
+		return s == "pending", s
+	})
+	// When the input socket closes after the database commit but before native admission.
+	f.mu.Lock()
+	socket, before := f.conn, f.connections
+	f.mu.Unlock()
+	if err := socket.CloseNow(); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "Feishu reconnect after a durable receipt", func() (bool, any) { f.mu.Lock(); defer f.mu.Unlock(); return f.connections > before, f.connections })
+	var admitted sql.NullInt64
+	if err := conn.QueryRowContext(t.Context(), "SELECT admitted_at FROM submissions WHERE source_key=?", "feishu:app:cancel-window").Scan(&admitted); err != nil {
+		t.Fatal(err)
+	}
+	if admitted.Valid {
+		t.Fatal("maintenance receipt claims native admission")
+	}
+	// Repeat the platform event while the original receipt still lacks admission.
+	f.text(t, "cancel-window", "owner", "p2p", "stored before disconnect")
+	d.must(t, http.MethodDelete, "/api/maintenance", nil, nil)
+	f.text(t, "after-window", "owner", "p2p", "after maintenance")
+	f.waitReply(t, "echo: after maintenance")
+	// The platform repeats the original event after reconnect.
+	f.text(t, "cancel-window", "owner", "p2p", "stored before disconnect")
+	f.text(t, "after-redelivery", "owner", "p2p", "after platform retry")
+	f.waitReply(t, "echo: after platform retry")
+	// Then an already stored input must reach native execution without restarting dex.
+	got := state("feishu:app:cancel-window")
+	t.Logf("original=%s later=%s after-retry=%s", got, state("feishu:app:after-window"), state("feishu:app:after-redelivery"))
+	var n int
+	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE source_key=?", "feishu:app:cancel-window").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("platform retry created %d receipts", n)
+	}
+	if got != "done" {
+		t.Fatalf("stored input was stranded after disconnect and platform retry: status=%s", got)
+	}
+}
+
+func TestUserFeishuRegistrationFollowsLarkBrandRedirect(t *testing.T) {
+	t.Parallel()
+	f := newFakeFeishu(t)
+	var polls int
+	accounts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Error(err)
+		}
+		if r.Form.Get("action") == "begin" {
+			_, _ = w.Write([]byte(`{"device_code":"dev-lark","verification_uri_complete":"https://accounts.feishu.cn/verify","interval":1,"expires_in":300}`))
+			return
+		}
+		polls++
+		if polls == 1 {
+			_, _ = w.Write([]byte(`{"user_info":{"tenant_brand":"lark"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"client_id":"lark-app","client_secret":"lark-secret","user_info":{"open_id":"lark-owner","tenant_brand":"lark"}}`))
+	}))
+	defer accounts.Close()
+	d := startDexWith(t, app.Config{DataDir: t.TempDir(), FeishuAPIURL: f.server.URL, FeishuAccountsURL: accounts.URL})
+	d.setModel(t, "echo")
+	var setup struct {
+		Session string `json:"session"`
+		Status  string `json:"status"`
+	}
+	d.must(t, http.MethodPost, "/api/agents/default/channels/feishu/registration", map[string]string{"brand": "feishu"}, &setup)
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
+	for setup.Status != "created" {
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			t.Fatal("lark registration did not finish")
+		}
+		d.must(t, http.MethodPost, "/api/agents/default/channels/feishu/registration/poll", map[string]string{"session": setup.Session}, &setup)
+	}
+	if polls != 2 {
+		t.Fatalf("poll attempts = %d, want 2 (redirected for lark)", polls)
+	}
+	var status struct {
+		Brand  string `json:"brand"`
+		Paired bool   `json:"paired"`
+	}
+	d.must(t, http.MethodGet, "/api/agents/default/channels/feishu", nil, &status)
+	if status.Brand != "lark" || !status.Paired {
+		t.Fatalf("feishu status after lark redirect = %+v", status)
+	}
+	f.text(t, "lark-hello", "lark-owner", "p2p", "hello lark")
+	f.waitReply(t, "echo: hello lark")
+}
+
+func TestUserFeishuReceivesLocalizedPostAndRefreshesExpiredToken(t *testing.T) {
+	t.Parallel()
+	f := newFakeFeishu(t)
+	f.expireFirstToken = true
+	dataDir := t.TempDir()
+	d := startFeishu(t, f, dataDir)
+	pairFeishu(t, d, f)
+
+	postBody, err := json.Marshal(map[string]any{
+		"zh_cn": map[string]any{
+			"title": "Build",
+			"content": [][]map[string]any{
+				{
+					{"tag": "text", "text": "@_user_1 check "},
+					{"tag": "code_block", "language": "go", "text": "fmt.Println(1)"},
+					{"tag": "img", "image_key": "post-img-key"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawEvent, err := json.Marshal(map[string]any{
+		"header": map[string]string{"event_type": "im.message.receive_v1"},
+		"event": map[string]any{
+			"sender": map[string]any{"sender_type": "user", "sender_id": map[string]string{"open_id": "owner"}},
+			"message": map[string]any{
+				"message_id":   "post-1",
+				"chat_type":    "p2p",
+				"message_type": "post",
+				"content":      string(postBody),
+				"mentions":     []map[string]string{{"key": "@_user_1"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.events <- rawEvent
+	select {
+	case <-f.ack:
+	case <-time.After(15 * time.Second):
+		t.Fatal("post event was not admitted")
+	}
+	f.waitReply(t, "echo: Build")
+
+	conn := sessionDB(t, d)
+	var content string
+	if err := conn.QueryRowContext(t.Context(), "SELECT content FROM submissions WHERE source_key = 'feishu:app:post-1'").Scan(&content); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(content, "@_user_1") || !strings.Contains(content, "Build") || !strings.Contains(content, "```go\nfmt.Println(1)\n```") {
+		t.Fatalf("parsed post content = %q", content)
+	}
+	files, err := filepath.Glob(filepath.Join(dataDir, "agents", "default", "workspace", "uploads", "*", "image.png"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("downloaded post image = %v err=%v", files, err)
+	}
+	f.mu.Lock()
+	tokenReqs, headers := f.tokenRequests, append([]string(nil), f.replyAuthHeaders...)
+	f.mu.Unlock()
+	if tokenReqs < 2 || !strings.Contains(strings.Join(headers, ","), "Bearer tenant-token-2") {
+		t.Fatalf("expired tenant token was not refreshed: tokenReqs=%d headers=%v", tokenReqs, headers)
 	}
 }

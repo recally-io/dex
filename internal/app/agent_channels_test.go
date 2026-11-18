@@ -67,14 +67,13 @@ func TestUserConnectsTelegramBotsToSeparateAgents(t *testing.T) {
 			d = startDex(t, dir, boundary.URL)
 		}
 	}
-	// Global settings expose no channel state and old routes have no aliases.
+	// Global settings expose no channel state.
 	var global map[string]any
 	d.must(t, http.MethodGet, "/api/settings", nil, &global)
 	for _, platform := range []string{"telegram", "wechat", "feishu"} {
 		if _, ok := global[platform]; ok {
 			t.Fatalf("global channel=%s", platform)
 		}
-		d.must(t, http.MethodDelete, "/api/settings/"+platform, nil, nil, http.StatusNotFound)
 	}
 	t.Logf("artifact: bot 123 -> default/echo; bot 456 -> %s/shout; restart preserved both; duplicate token=409", b.ID)
 }

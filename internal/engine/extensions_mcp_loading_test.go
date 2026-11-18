@@ -6,13 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/MichaelKinsy/PiG/ai"
-	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/recally-io/dex/internal/mcptest"
 )
 
@@ -47,13 +44,13 @@ func TestUserMCPDisconnectDuringLoadingKeepsFailedStatus(t *testing.T) {
 	}
 
 	// Given two real stdio servers and later disabled and invalid entries.
-	a, _, data := extensionFixture(t)
+	home, data := t.TempDir(), t.TempDir()
 	dir := t.TempDir()
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(a.workspace, 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(data, "agents", "a", "workspace"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	servers := map[string]any{}
@@ -76,6 +73,7 @@ func TestUserMCPDisconnectDuringLoadingKeepsFailedStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	extensionFile(t, filepath.Join(data, ".agents", "mcp.json"), string(encoded))
+	agents := coreEngine(t, Config{DataDir: data, Home: home})
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 
@@ -83,7 +81,7 @@ func TestUserMCPDisconnectDuringLoadingKeepsFailedStatus(t *testing.T) {
 	coordinated := make(chan error, 1)
 	go func() {
 		defer func() {
-			// Release the child even if coordination fails; Load still has its deadline.
+			// Release the child even if coordination fails; Reload still has its deadline.
 			_ = os.WriteFile(filepath.Join(dir, "release"), nil, 0600)
 		}()
 		if err := waitMCPLoadingFile(ctx, filepath.Join(dir, "connecting")); err != nil {
@@ -96,10 +94,7 @@ func TestUserMCPDisconnectDuringLoadingKeepsFailedStatus(t *testing.T) {
 		}
 		coordinated <- waitMCPLoadingFile(ctx, filepath.Join(dir, "disconnected"))
 	}()
-	loaded, err := a.Load(ctx)
-	if loaded != nil {
-		defer loaded.Close(t.Context())
-	}
+	err = agents.Reload(ctx, "a")
 	if coordinationErr := <-coordinated; coordinationErr != nil {
 		t.Fatal(coordinationErr)
 	}
@@ -109,7 +104,7 @@ func TestUserMCPDisconnectDuringLoadingKeepsFailedStatus(t *testing.T) {
 
 	// Then status queries retain the failure and the later server's tools still work.
 	for {
-		info, err := a.Info(ctx)
+		info, err := agents.Extensions(ctx, "a")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -133,13 +128,10 @@ func TestUserMCPDisconnectDuringLoadingKeepsFailedStatus(t *testing.T) {
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
-	index := slices.IndexFunc(loaded.Extension.Tools, func(tool *durable.ToolRegistration) bool { return tool.Name == "mcp__b_later__append" })
-	if index < 0 {
-		t.Fatal("later server's append tool is absent")
-	}
-	result, err := loaded.Extension.Tools[index].Execute(ctx, map[string]any{"text": "loaded after disconnect"}, nil)
-	if err != nil || !strings.Contains(ai.ContentText(result.Output), "appended 1") {
-		t.Fatalf("later server tool: %#v %v", result, err)
+	ref := coreCreate(t, agents, "a", coreOptions("tool"))
+	outcome := coreWait(t, coreSubmit(t, agents, ref, "append", `mcp__b_later__append {"text":"loaded after disconnect"}`, "tool"))
+	if outcome.Status != "done" || !strings.Contains(outcome.Answer, "appended 1") {
+		t.Fatalf("later server tool: %+v", outcome)
 	}
 	artifact := filepath.Join(dir, "notes.txt")
 	raw, err := os.ReadFile(artifact)

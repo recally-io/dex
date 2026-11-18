@@ -2,7 +2,7 @@ import type { Environment, EnvironmentConfig, SshHostEntry } from "../api/genera
 
 export type SandboxPreset = "cloud" | "local" | "custom";
 
-export function isCustomE2BConfig(cfg: EnvironmentConfig): boolean {
+function isCustomE2BConfig(cfg: EnvironmentConfig): boolean {
   return !!(cfg.apiUrl || cfg.domain || cfg.envdUrl);
 }
 

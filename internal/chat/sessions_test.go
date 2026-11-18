@@ -154,10 +154,10 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	asChild := engine.TaskContext{AgentID: "bot", ConversationID: childRef.ID, SourceRequestID: turnID(source.Key), Key: "bot/child-new"}
-	if _, err := r.service.ToolSessionNew(t.Context(), asChild, engine.SessionNewArgs{Title: "Grandchild", Message: "no"}); !errors.Is(err, ErrSessionInvalid) {
+	if _, err := r.service.ToolSessionNew(t.Context(), asChild, engine.SessionNewArgs{Title: "Grandchild", Message: "no"}); !errors.Is(err, errSessionInvalid) {
 		t.Fatalf("child new: %v", err)
 	}
-	if _, err := r.service.ToolSessionSend(t.Context(), asChild, engine.SessionSendArgs{ID: child.ID, Message: "no"}); !errors.Is(err, ErrSessionInvalid) {
+	if _, err := r.service.ToolSessionSend(t.Context(), asChild, engine.SessionSendArgs{ID: child.ID, Message: "no"}); !errors.Is(err, errSessionInvalid) {
 		t.Fatalf("child send: %v", err)
 	}
 	// A child may read.

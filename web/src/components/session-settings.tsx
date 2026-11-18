@@ -1,10 +1,11 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { useAgentId } from "../lib/agent-scope";
 import type { Chat, ChatSettings, Model, ThinkingLevel } from "../api/generated/types.gen";
-import { listModelsOptions, setChatSettingsMutation } from "../api/generated/@tanstack/react-query.gen";
+import { setChatSettings } from "../api/generated/sdk.gen";
+import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { findModel, thinkingNames } from "../lib/agent";
 import { refreshChats } from "../lib/queries";
 import { ChatProject } from "./chat-project";
@@ -37,7 +38,6 @@ function changed(
 export function SessionSettings({ chat, settings }: { chat: Chat; settings: Settings }) {
   const agentId = useAgentId();
   const models = useQuery(listModelsOptions());
-  const save = useMutation(setChatSettingsMutation());
   const saving = useRef(false);
   const [pending, setPending] = useState(false);
   const own = chat.settings;
@@ -50,7 +50,7 @@ export function SessionSettings({ chat, settings }: { chat: Chat; settings: Sett
     setPending(true);
 
     try {
-      await save.mutateAsync({ path: { agentId, chatId: chat.id }, body: next });
+      await setChatSettings({ path: { agentId, chatId: chat.id }, body: next, throwOnError: true });
       await refreshChats(agentId);
     } finally {
       saving.current = false;

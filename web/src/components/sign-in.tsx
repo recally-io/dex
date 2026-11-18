@@ -18,7 +18,6 @@ export function SignIn() {
       description="This dex accepts network connections, so it requires its access token."
     >
       <Section
-        n={1}
         title="Access token"
         caption="On the dex host, run dex token to print it. If you started dex with DEX_TOKEN, use that token."
       >

@@ -35,15 +35,7 @@ const botPages = [
 ] as const;
 
 /** The pages of a bot's settings. */
-export function BotSettingsSwitcher({
-  segment: active,
-  channels = 0,
-  draft = false,
-}: {
-  segment: string | undefined;
-  channels?: number;
-  draft?: boolean;
-}) {
+export function BotSettingsSwitcher({ segment: active }: { segment: string | undefined }) {
   const agentId = useAgentId();
 
   return (
@@ -60,12 +52,6 @@ export function BotSettingsSwitcher({
             className={segment(current)}
           >
             {page.label}
-            {page.segment === "channels" && channels ? (
-              <span className="text-[11px] text-muted-foreground tabular-nums">{channels}</span>
-            ) : null}
-            {page.segment === "instructions" && draft ? (
-              <span role="img" aria-label="Unsaved draft" className="size-1.5 rounded-full bg-orange" />
-            ) : null}
           </Link>
         );
       })}
@@ -82,7 +68,7 @@ export const globalPages = [
   { to: "/settings/about", label: "About" },
 ] as const;
 
-export type GlobalPage = (typeof globalPages)[number]["to"];
+type GlobalPage = (typeof globalPages)[number]["to"];
 
 export function GlobalSettingsSwitcher({ page: active }: { page: GlobalPage }) {
   return (

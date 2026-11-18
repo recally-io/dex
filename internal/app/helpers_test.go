@@ -168,3 +168,29 @@ WHERE c.parent_id = ? AND c.title = ? ORDER BY c.id DESC, s.rowid DESC LIMIT 1`,
 	})
 	return e
 }
+
+func childJSON(t *testing.T, value any) string {
+	t.Helper()
+	return taskJSON(t, value)
+}
+
+// controlWriteDB opens control.sqlite for writing, to break one write of the control process.
+func controlWriteDB(t *testing.T, dir string) *sql.DB {
+	t.Helper()
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn
+}
+
+func sessionDB(t *testing.T, d *dex) *sql.DB {
+	t.Helper()
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(d.dataDir(t), "control.sqlite")+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn
+}

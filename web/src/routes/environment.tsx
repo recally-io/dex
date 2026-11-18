@@ -12,10 +12,10 @@ export function EnvironmentPage() {
       toolbar={<GlobalSettingsSwitcher page="/settings/environment" />}
       description="Tools of all bots start from your login shell environment, then these keys. Configure execution environments and 1Password here, or set keys for one bot in its Tools tab. Changes apply automatically when all bots are idle."
     >
-      <EnvKeys target={{ scope: "dex" }} n={1} />
-      <ExecutionEnvironments n={2} />
-      <OnePasswordSettings n={3} />
-      <Section n={4} title="Secret storage">
+      <EnvKeys target={{ scope: "dex" }} />
+      <ExecutionEnvironments />
+      <OnePasswordSettings />
+      <Section title="Secret storage">
         <Note tone="warn">
           Use mode 0600 for .env files and keep them out of Git. The model can read the files or run env. Tool
           output becomes part of the transcript. dex stores credentials as plain text. With 1Password, bots

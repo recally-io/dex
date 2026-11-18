@@ -186,7 +186,9 @@ export function ProviderDialog({
             {listingError ? "Close" : "Cancel"}
           </Button>
           <Button onClick={submit} disabled={save.isPending}>
-            {save.isPending ? <Spinner className="border-background/40 border-t-canvas" /> : null}
+            {save.isPending ? (
+              <Spinner className="border-primary-foreground/30 border-t-primary-foreground" />
+            ) : null}
             {save.isPending ? "Saving and listing models…" : existing ? "Save changes" : "Save provider"}
           </Button>
         </>

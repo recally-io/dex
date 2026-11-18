@@ -48,7 +48,6 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 
 	mgr := execenv.NewManager(execenv.ManagerConfig{
 		DataDir:    dataDir,
-		Home:       t.TempDir(),
 		Queries:    q,
 		SSHProgram: sshFix.SSHProgram,
 	})
@@ -106,7 +105,6 @@ func TestUserProbesUnsavedPiEnvWithoutPollutingKnownHosts(t *testing.T) {
 
 	mgr := execenv.NewManager(execenv.ManagerConfig{
 		DataDir:    dataDir,
-		Home:       t.TempDir(),
 		SSHProgram: sshFix.SSHProgram,
 	})
 	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
@@ -114,7 +112,6 @@ func TestUserProbesUnsavedPiEnvWithoutPollutingKnownHosts(t *testing.T) {
 	// When probing an unsaved SSH environment (saved == nil), connectivity succeeds
 	// without writing into <dataDir>/ssh_known_hosts.
 	probe, err := mgr.ProbeEnvironment(t.Context(), nil, execenv.EnvironmentSpec{
-		Name:   "Unsaved SSH",
 		Kind:   execenv.KindPiEnv,
 		Config: `{"host":"preview.internal","workspaceDir":"~/work"}`,
 	})
@@ -166,7 +163,6 @@ func TestUserPiEnvUsesLoginShellByDefaultAndRespectsOptOut(t *testing.T) {
 
 	mgr := execenv.NewManager(execenv.ManagerConfig{
 		DataDir:    dataDir,
-		Home:       t.TempDir(),
 		Queries:    q,
 		SSHProgram: sshFix.SSHProgram,
 	})
@@ -240,7 +236,6 @@ func TestUserPiEnvBuildsDaemonOutsideModuleCheckout(t *testing.T) {
 
 	mgr := execenv.NewManager(execenv.ManagerConfig{
 		DataDir:    dataDir,
-		Home:       t.TempDir(),
 		Queries:    q,
 		SSHProgram: sshFix.SSHProgram,
 	})

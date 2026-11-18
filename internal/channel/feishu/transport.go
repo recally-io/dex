@@ -16,7 +16,6 @@ import (
 )
 
 type connectionConfig struct {
-	ReconnectCount    int `json:"ReconnectCount"`
 	ReconnectInterval int `json:"ReconnectInterval"`
 	ReconnectNonce    int `json:"ReconnectNonce"`
 	PingInterval      int `json:"PingInterval"`
@@ -30,8 +29,8 @@ type fragments struct {
 
 // Listen runs the long connection. handle must return only after durable admission.
 // report receives safe status errors; it must not block.
-func (c *Client) Listen(ctx context.Context, handle func(context.Context, []byte) error, report func(error)) error {
-	conf := connectionConfig{ReconnectCount: -1, ReconnectInterval: 120, ReconnectNonce: 30, PingInterval: 120}
+func (c *client) Listen(ctx context.Context, handle func(context.Context, []byte) error, report func(error)) error {
+	conf := connectionConfig{ReconnectInterval: 120, ReconnectNonce: 30, PingInterval: 120}
 	attempts := 0
 	connected := false
 	for {
@@ -64,7 +63,7 @@ func (c *Client) Listen(ctx context.Context, handle func(context.Context, []byte
 	}
 }
 
-func (c *Client) connection(ctx context.Context, handle func(context.Context, []byte) error, conf *connectionConfig, report func(error)) error {
+func (c *client) connection(ctx context.Context, handle func(context.Context, []byte) error, conf *connectionConfig, report func(error)) error {
 	data, err := c.request(ctx, http.MethodPost, "/callback/ws/endpoint", map[string]string{"AppID": c.cfg.AppID, "AppSecret": c.cfg.AppSecret}, "")
 	if err != nil {
 		return err

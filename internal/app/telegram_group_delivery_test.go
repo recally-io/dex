@@ -1,8 +1,11 @@
 package app_test
 
 import (
+	"bytes"
 	"encoding/json/v2"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
 	"strings"
@@ -133,4 +136,53 @@ func TestUserReceivesNativeTelegramMediaGroup(t *testing.T) {
 		n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND delivered_at IS NOT NULL AND delivered_parts=2 AND json_array_length(channel_remote_ids)=3")
 		return n == 1, n
 	})
+}
+
+func TestUserReceivesTelegramPhotoVideoAlbum(t *testing.T) {
+	t.Parallel()
+	// Given a valid photo and an MP4 result in one native turn.
+	data := t.TempDir()
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, data, 42)
+	d.setModel(t, "files")
+	var imageBytes bytes.Buffer
+	if err := png.Encode(&imageBytes, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	telegramSource(t, data, "photo.png", imageBytes.Bytes())
+	telegramSource(t, data, "video.mp4", []byte("\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"))
+	f.message(1, 42, 7, `["photo.png","video.mp4"]`)
+	group := nextTelegramGroup(t, f.groupSent)
+	kinds := map[string]string{}
+	for _, file := range group.Files {
+		kinds[file.Name] = file.Method
+	}
+	if kinds["photo.png"] != "photo" || kinds["video.mp4"] != "video" {
+		t.Fatalf("mixed visual album=%v", kinds)
+	}
+}
+
+func TestUserUnsupportedTelegramAlbumKindsKeepNativeSingleMethods(t *testing.T) {
+	t.Parallel()
+	// Given voice and animation, which Telegram does not accept as InputMedia group types.
+	data := t.TempDir()
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, data, 42)
+	d.setModel(t, "files")
+	telegramSource(t, data, "voice.ogg", []byte("OggS\x00\x00OpusHead"))
+	telegramSource(t, data, "animation.gif", []byte("GIF89a\x02\x00\x02\x00"))
+	f.message(1, 42, 7, `["voice.ogg","animation.gif"]`)
+	methods := map[string]string{}
+	for range 2 {
+		file := nextTelegramMedia(t, f.mediaSent)
+		methods[file.Name] = file.Method
+	}
+	if methods["voice.ogg"] != "sendVoice" || methods["animation.gif"] != "sendAnimation" {
+		t.Fatalf("single native methods=%v", methods)
+	}
+	select {
+	case group := <-f.groupAttempts:
+		t.Fatalf("unsupported group=%+v", group)
+	default:
+	}
 }

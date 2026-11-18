@@ -1527,7 +1527,6 @@ type WithdrawnMessage struct {
 
 // Work defines model for Work.
 type Work struct {
-	Agents      []Agent          `json:"agents"`
 	Automations []WorkAutomation `json:"automations"`
 	Inbox       []InboxItem      `json:"inbox"`
 	Sessions    []WorkSession    `json:"sessions"`
@@ -1535,11 +1534,9 @@ type Work struct {
 
 // WorkAutomation defines model for WorkAutomation.
 type WorkAutomation struct {
-	AgentId    string          `json:"agentId"`
-	Automation Automation      `json:"automation"`
-	Runs       []AutomationRun `json:"runs"`
-	Scheduled  []int64         `json:"scheduled"`
-	Setup      bool            `json:"setup"`
+	AgentId    string     `json:"agentId"`
+	Automation Automation `json:"automation"`
+	Setup      bool       `json:"setup"`
 }
 
 // WorkSession defines model for WorkSession.
@@ -1660,12 +1657,6 @@ type ListDirectoriesParams struct {
 // ListInboxParams defines parameters for ListInbox.
 type ListInboxParams struct {
 	IncludeDismissed *bool `form:"includeDismissed,omitempty" json:"includeDismissed,omitempty"`
-}
-
-// GetWorkParams defines parameters for GetWork.
-type GetWorkParams struct {
-	From int64 `form:"from" json:"from"`
-	To   int64 `form:"to" json:"to"`
 }
 
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
@@ -2437,9 +2428,6 @@ type ServerInterface interface {
 	// (POST /api/inbox/{runId}/read)
 	ReadInboxItem(w http.ResponseWriter, r *http.Request, runId string)
 
-	// (POST /api/inbox/{runId}/restore)
-	RestoreInboxItem(w http.ResponseWriter, r *http.Request, runId string)
-
 	// (DELETE /api/maintenance)
 	ReleaseMaintenance(w http.ResponseWriter, r *http.Request)
 
@@ -2495,7 +2483,7 @@ type ServerInterface interface {
 	SetProvider(w http.ResponseWriter, r *http.Request, providerId string)
 
 	// (GET /api/work)
-	GetWork(w http.ResponseWriter, r *http.Request, params GetWorkParams)
+	GetWork(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -4464,32 +4452,6 @@ func (siw *ServerInterfaceWrapper) ReadInboxItem(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
-// RestoreInboxItem operation middleware
-func (siw *ServerInterfaceWrapper) RestoreInboxItem(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "runId" -------------
-	var runId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "runId", r.PathValue("runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RestoreInboxItem(w, r, runId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // ReleaseMaintenance operation middleware
 func (siw *ServerInterfaceWrapper) ReleaseMaintenance(w http.ResponseWriter, r *http.Request) {
 
@@ -4817,40 +4779,8 @@ func (siw *ServerInterfaceWrapper) SetProvider(w http.ResponseWriter, r *http.Re
 // GetWork operation middleware
 func (siw *ServerInterfaceWrapper) GetWork(w http.ResponseWriter, r *http.Request) {
 
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetWorkParams
-
-	// ------------- Required query parameter "from" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
-		}
-		return
-	}
-
-	// ------------- Required query parameter "to" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
-		}
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetWork(w, r, params)
+		siw.Handler.GetWork(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4984,7 +4914,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox", wrapper.ListInbox)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/read", wrapper.ReadInboxItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/dismiss", wrapper.DismissInboxItem)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/restore", wrapper.RestoreInboxItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/session", wrapper.CreateSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/maintenance", wrapper.ReleaseMaintenance)
@@ -8847,45 +8776,6 @@ func (response ReadInboxItemdefaultJSONResponse) VisitReadInboxItemResponse(w ht
 	return err
 }
 
-type RestoreInboxItemRequestObject struct {
-	RunId string `json:"runId"`
-}
-
-type RestoreInboxItemResponseObject interface {
-	VisitRestoreInboxItemResponse(w http.ResponseWriter) error
-}
-
-type RestoreInboxItem200JSONResponse Ok
-
-func (response RestoreInboxItem200JSONResponse) VisitRestoreInboxItemResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RestoreInboxItemdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response RestoreInboxItemdefaultJSONResponse) VisitRestoreInboxItemResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type ReleaseMaintenanceRequestObject struct {
 }
 
@@ -9824,7 +9714,6 @@ func (response SetProviderdefaultJSONResponse) VisitSetProviderResponse(w http.R
 }
 
 type GetWorkRequestObject struct {
-	Params GetWorkParams
 }
 
 type GetWorkResponseObject interface {
@@ -10056,9 +9945,6 @@ type StrictServerInterface interface {
 
 	// (POST /api/inbox/{runId}/read)
 	ReadInboxItem(ctx context.Context, request ReadInboxItemRequestObject) (ReadInboxItemResponseObject, error)
-
-	// (POST /api/inbox/{runId}/restore)
-	RestoreInboxItem(ctx context.Context, request RestoreInboxItemRequestObject) (RestoreInboxItemResponseObject, error)
 
 	// (DELETE /api/maintenance)
 	ReleaseMaintenance(ctx context.Context, request ReleaseMaintenanceRequestObject) (ReleaseMaintenanceResponseObject, error)
@@ -11995,32 +11881,6 @@ func (sh *strictHandler) ReadInboxItem(w http.ResponseWriter, r *http.Request, r
 	}
 }
 
-// RestoreInboxItem operation middleware
-func (sh *strictHandler) RestoreInboxItem(w http.ResponseWriter, r *http.Request, runId string) {
-	var request RestoreInboxItemRequestObject
-
-	request.RunId = runId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.RestoreInboxItem(ctx, request.(RestoreInboxItemRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "RestoreInboxItem")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(RestoreInboxItemResponseObject); ok {
-		if err := validResponse.VisitRestoreInboxItemResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // ReleaseMaintenance operation middleware
 func (sh *strictHandler) ReleaseMaintenance(w http.ResponseWriter, r *http.Request) {
 	var request ReleaseMaintenanceRequestObject
@@ -12515,10 +12375,8 @@ func (sh *strictHandler) SetProvider(w http.ResponseWriter, r *http.Request, pro
 }
 
 // GetWork operation middleware
-func (sh *strictHandler) GetWork(w http.ResponseWriter, r *http.Request, params GetWorkParams) {
+func (sh *strictHandler) GetWork(w http.ResponseWriter, r *http.Request) {
 	var request GetWorkRequestObject
-
-	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetWork(ctx, request.(GetWorkRequestObject))

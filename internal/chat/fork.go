@@ -105,7 +105,7 @@ func (s *Service) fork(ctx context.Context, conv sqlc.Conversation, entryID int6
 	}
 	defer func() { _ = tx.Rollback() }()
 	fork, err := q.CreateFork(ctx, sqlc.CreateForkParams{
-		AgentID: conv.AgentID, ChannelKey: ChatPrefix + uuid.NewV7().String(), Title: title, ExecutionScope: conv.ExecutionScope, ScopeContext: conv.ScopeContext,
+		AgentID: conv.AgentID, ChannelKey: chatPrefix + uuid.NewV7().String(), Title: title, ExecutionScope: conv.ExecutionScope, ScopeContext: conv.ScopeContext,
 		ModelProvider: conv.ModelProvider, ModelID: conv.ModelID, ThinkingLevel: conv.ThinkingLevel, Cwd: conv.Cwd,
 		ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: copied}, ForkedFrom: sql.NullInt64{Int64: conv.ID, Valid: true}, ParentID: conv.ParentID,
 		CreatedAt: s.now().UnixMilli(),

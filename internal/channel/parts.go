@@ -146,7 +146,7 @@ func (m *Manager) replyParts(ctx context.Context, bot Bot, r sqlc.ListChannelRep
 			parts = append(parts, Part{File: &File{Key: f.OperationKey, Name: f.Name, MimeType: f.MimeType, Size: f.Size.Int64}})
 		}
 	}
-	if group, ok := bot.(GroupParts); ok {
+	if group, ok := bot.(telegramBot); ok {
 		for i := range parts {
 			if file := parts[i].File; file != nil {
 				var err error

@@ -7,8 +7,8 @@ import { errorText } from "./queries";
 import { newId } from "./utils";
 
 // The limits of control: internal/upload.MaxSize and the attachments of MessageInput.
-export const maxFiles = 10;
-export const maxSize = 20 << 20;
+const maxFiles = 10;
+const maxSize = 20 << 20;
 
 // The image types that GET /api/agents/{agentId}/uploads/{id} serves inline.
 const inline = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);

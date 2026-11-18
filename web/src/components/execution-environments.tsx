@@ -32,7 +32,7 @@ import { ImportSshConfigDialog } from "./ssh-import-dialog";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 
-export function ExecutionEnvironments({ n }: { n: number }) {
+export function ExecutionEnvironments() {
   const query = useQuery(listEnvironmentsOptions());
   const agentsQuery = useQuery(listAgentsOptions());
   const sshConfigQuery = useQuery(discoverSshConfigOptions());
@@ -56,7 +56,6 @@ export function ExecutionEnvironments({ n }: { n: number }) {
 
   return (
     <Section
-      n={n}
       title="Execution environments"
       caption={
         envs.length
@@ -156,7 +155,6 @@ function EnvironmentCard({
   const { notify } = useApp();
   const [probe, setProbe] = useState<EnvironmentTestResult | null>(null);
   const isE2B = env.kind === "e2b";
-  const isLocalSandbox = isE2B && detectSandboxPreset(env.config) === "local";
   const isCustomEndpoint = isE2B && detectSandboxPreset(env.config) !== "cloud";
 
   const test = useMutation({
@@ -229,7 +227,7 @@ function EnvironmentCard({
               className={
                 env.secretSet
                   ? "h-5 bg-green-tint px-2 text-[11px] text-green"
-                  : isCustomEndpoint || isLocalSandbox
+                  : isCustomEndpoint
                     ? "h-5 px-2 text-[11px] text-muted-foreground"
                     : "h-5 bg-orange-tint px-2 text-[11px] text-orange"
               }

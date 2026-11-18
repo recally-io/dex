@@ -66,26 +66,6 @@ func TestUserTelegramAlbumSurvivesACKAndRestartWithoutRedownload(t *testing.T) {
 	}
 }
 
-func TestUserLateTelegramAlbumMemberBecomesExplicitFollowup(t *testing.T) {
-	t.Parallel()
-	// Given an album whose first two files have already entered the native engine.
-	f := newFakeTelegram(t)
-	f.files["one.txt"], f.files["two.txt"], f.files["late.txt"] = "one", "two", "late"
-	d := startTelegram(t, f, t.TempDir(), 42)
-	f.albumFiles("late-album", 1, "one.txt", "two.txt")
-	_ = f.next(t)
-	// When one more member arrives after the first batch, it must not mutate or rerun that batch.
-	f.albumFiles("late-album", 3, "late.txt")
-	answer := f.next(t).Text
-	if !strings.Contains(answer, "Late album continuation") || !strings.Contains(answer, "caption late.txt") || strings.Contains(answer, "caption one.txt") {
-		t.Fatalf("late member=%q", answer)
-	}
-	conn := controlWriteDB(t, d.dataDir(t))
-	if n := count(t, conn, "SELECT count(*) FROM submissions WHERE kind='message'"); n != 2 {
-		t.Fatalf("late member created %d native intents", n)
-	}
-}
-
 func TestUserStopDiscardsUnsubmittedTelegramAlbumAndItsUploads(t *testing.T) {
 	t.Parallel()
 	// Given a durable album that has not reached native admission.

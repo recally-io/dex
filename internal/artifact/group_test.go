@@ -19,7 +19,7 @@ func TestUserGroupSharingCannotBorrowBotArtifactDirectory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "private.txt"), []byte("PRIVATE_ARTIFACT_CANARY"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	service := artifact.New(data)
+	service := artifact.New(data, localWorkspaceReader(data))
 	// When a scoped caller reaches the private sharing handler directly.
 	_, err := service.Deliver(t.Context(), engine.TaskContext{AgentID: "default", Scope: "tg_123_-100_7"}, "private.txt")
 	// Then no private bytes enter a public delivery or even the bot-wide artifact directory.

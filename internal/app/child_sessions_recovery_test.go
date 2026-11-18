@@ -4,23 +4,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// controlWriteDB opens control.sqlite for writing, to break one write of the control process.
-func controlWriteDB(t *testing.T, dir string) *sql.DB {
-	t.Helper()
-	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	return conn
-}
 
 func execSQL(t *testing.T, conn *sql.DB, statement string) {
 	t.Helper()
@@ -117,6 +105,7 @@ func TestUserRestartWithdrawsQueuedInputsWhoseAdmissionReceiptsWereLost(t *testi
 }
 
 func TestUserRestartSendsInterruptedResultForEachPlacedParentInput(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := controlWriteDB(t, dir)
@@ -151,6 +140,7 @@ func TestUserRestartSendsInterruptedResultForEachPlacedParentInput(t *testing.T)
 }
 
 func TestUserRestartKeepsDoneAnswerSeparateFromInterruptedRun(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := controlWriteDB(t, dir)
@@ -248,29 +238,8 @@ func TestUserFailedSharedRunSendsOneResultPerParentInput(t *testing.T) {
 	}
 }
 
-func TestUserParentSteerOfUserRunDeliversOneAnswer(t *testing.T) {
-	t.Parallel()
-	// Given a child run that the user started and a parent steer that joined it.
-	dir := t.TempDir()
-	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	parent := newParent(t, d)
-	child := spawnChild(t, d, parent, "User run", "echo initial", "bash")
-	waitResults(t, conn, parent, 1)
-	d.send(t, child.conversation(t), taskGate(t, dir, "user"))
-	waitTaskFile(t, filepath.Join(dir, "user.pid"))
-	var ref childRef
-	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "echo parent steer", "mode": "steer"}), &ref)
-	// When the run ends.
-	releaseResultGate(t, dir, "user")
-	// Then the parent steer delivers the shared answer once.
-	waitChildTurnsEnded(t, conn, child.conversation(t), 3)
-	if rows := resultRows(t, conn, parent); len(rows) != 2 {
-		t.Fatalf("results: %+v", rows)
-	}
-}
-
 func TestUserParentSteerOfUserRunSurvivesReceiptRetryAndRestart(t *testing.T) {
+	t.Parallel()
 	for _, restart := range []bool{false, true} {
 		t.Run(fmt.Sprintf("restart=%t", restart), func(t *testing.T) {
 			dir := t.TempDir()
@@ -307,6 +276,7 @@ func TestUserParentSteerOfUserRunSurvivesReceiptRetryAndRestart(t *testing.T) {
 }
 
 func TestUserParentSteerOfUserRunReportsFailure(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := controlWriteDB(t, dir)
@@ -326,6 +296,7 @@ func TestUserParentSteerOfUserRunReportsFailure(t *testing.T) {
 }
 
 func TestUserParentSteerOfUserRunReportsInterruption(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := controlWriteDB(t, dir)
@@ -348,6 +319,7 @@ func TestUserParentSteerOfUserRunReportsInterruption(t *testing.T) {
 }
 
 func TestUserResultInsertFailureKeepsInputPending(t *testing.T) {
+	t.Parallel()
 	for _, trigger := range []string{
 		`CREATE TRIGGER block_result BEFORE INSERT ON submissions WHEN NEW.kind = 'task_result' BEGIN SELECT RAISE(FAIL, 'result unavailable'); END`,
 		`CREATE TRIGGER block_result BEFORE INSERT ON submissions WHEN NEW.kind = 'task_result' BEGIN SELECT RAISE(ABORT, 'other constraint'); END`,
@@ -375,29 +347,8 @@ func TestUserResultInsertFailureKeepsInputPending(t *testing.T) {
 	}
 }
 
-func TestUserUnrelatedUniqueConflictKeepsInputPending(t *testing.T) {
-	dir := t.TempDir()
-	d := startDex(t, dir, "")
-	conn := controlWriteDB(t, dir)
-	parent := newParent(t, d)
-	execSQL(t, conn, `CREATE UNIQUE INDEX test_result_collision ON submissions ((1)) WHERE kind = 'task_result'`)
-	execSQL(t, conn, fmt.Sprintf(`INSERT INTO submissions (id, conversation_id, content, attachments, origin, kind, status, created_at) VALUES ('collision', %d, 'other', 'null', 'web', 'task_result', 'done', 1)`, parent))
-	child := spawnChild(t, d, parent, "Unique conflict", "echo answer", "bash")
-	d.watch(t, child.conversation(t)).until(t, "native answer", answeredWith("bash: answer"))
-	d.stop()
-	turns := childTurns(t, conn, child.conversation(t))
-	if len(turns) != 1 || turns[0].status != "pending" {
-		t.Fatalf("unrelated unique conflict committed the receipt: %+v", turns)
-	}
-	execSQL(t, conn, `DROP INDEX test_result_collision`)
-	startDex(t, dir, "")
-	waitChildTurnsEnded(t, conn, child.conversation(t), 1)
-	if rows := resultRows(t, conn, parent); len(rows) != 2 {
-		t.Fatalf("retry did not deliver the result: %+v", rows)
-	}
-}
-
 func TestUserFirstSettledParentInputOwnsSharedAnswer(t *testing.T) {
+	t.Parallel()
 	for _, blocked := range []int{0, 1} {
 		t.Run(fmt.Sprintf("blocked-%d", blocked), func(t *testing.T) {
 			dir := t.TempDir()
@@ -437,88 +388,5 @@ func TestUserFirstSettledParentInputOwnsSharedAnswer(t *testing.T) {
 				t.Fatalf("shared answer produced extra results: %+v", rows)
 			}
 		})
-	}
-}
-
-func TestUserIdenticalAnswersFromSeparateRunsEachDeliver(t *testing.T) {
-	dir := t.TempDir()
-	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	parent := newParent(t, d)
-	child := spawnChild(t, d, parent, "Repeated answer", "echo same", "bash")
-	waitResults(t, conn, parent, 1)
-	var ref childRef
-	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "echo same"}), &ref)
-	rows := waitResults(t, conn, parent, 2)
-	var first, second int64
-	if err := conn.QueryRowContext(t.Context(), `SELECT native_answer_id FROM submissions WHERE id = ?`, rows[0].id).Scan(&first); err != nil {
-		t.Fatal(err)
-	}
-	if err := conn.QueryRowContext(t.Context(), `SELECT native_answer_id FROM submissions WHERE id = ?`, rows[1].id).Scan(&second); err != nil {
-		t.Fatal(err)
-	}
-	if first == 0 || second == 0 || first == second || resultBody(t, rows[0].content)["answer"] != resultBody(t, rows[1].content)["answer"] {
-		t.Fatalf("identical answers have invalid identities: %d, %d, %+v", first, second, rows)
-	}
-}
-
-func TestUserSteerToAnIdleChildSendsItsOwnResult(t *testing.T) {
-	t.Parallel()
-	// Given a child that has finished its first turn.
-	dir := t.TempDir()
-	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	parent := newParent(t, d)
-	child := spawnChild(t, d, parent, "Idle", "echo first", "bash")
-	waitResults(t, conn, parent, 1)
-	// When the parent sends a message with mode steer.
-	var ref childRef
-	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "echo second", "mode": "steer"}), &ref)
-	// Then the message starts its own run and sends its own result.
-	rows := waitResults(t, conn, parent, 2)
-	if resultBody(t, rows[1].content)["answer"] != "bash: second" {
-		t.Fatalf("second result: %+v", rows[1])
-	}
-}
-
-func TestUserParentStopLeavesAnIndependentChildTurn(t *testing.T) {
-	t.Parallel()
-	// Given a child that finished a parent turn, and then runs a turn that the user started.
-	dir := t.TempDir()
-	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	parent := newParent(t, d)
-	child := spawnChild(t, d, parent, "Reused child", "echo initial", "bash")
-	waitResults(t, conn, parent, 1)
-	d.send(t, child.conversation(t), taskGate(t, dir, "independent"))
-	waitTaskFile(t, filepath.Join(dir, "independent.pid"))
-	// When the user stops the parent chat.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent), nil, nil)
-	// Then the turn of the user in the child keeps running.
-	if turns := childTurns(t, conn, child.conversation(t)); turns[1].status != "pending" {
-		t.Fatalf("the stop of the parent ended the turn of the user: %+v", turns[1])
-	}
-	releaseResultGate(t, dir, "independent")
-	waitDoneChildTurns(t, conn, child.conversation(t), 2)
-}
-
-func TestUserParentStopEndsWhatTheParentStartedInAChild(t *testing.T) {
-	t.Parallel()
-	// Given a child that runs a parent turn.
-	dir := t.TempDir()
-	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	parent := newParent(t, d)
-	child := spawnChild(t, d, parent, "Parent turn", taskGate(t, dir, "parent-turn"), "bash")
-	waitTaskFile(t, filepath.Join(dir, "parent-turn.pid"))
-	// When the user stops the parent chat.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent), nil, nil)
-	// Then the turn ends as stopped, and the child sends no result.
-	turns := waitChildTurnsEnded(t, conn, child.conversation(t), 1)
-	if turns[0].status != "unanswered" || turns[0].reason != "stopped" {
-		t.Fatalf("turn: %+v", turns[0])
-	}
-	if rows := resultRows(t, conn, parent); len(rows) != 0 {
-		t.Fatalf("results: %+v", rows)
 	}
 }

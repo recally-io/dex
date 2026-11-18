@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"uuid"
 )
@@ -222,4 +223,120 @@ func TestUserReadsFailedInputAcrossClear(t *testing.T) {
 		}
 	}
 	t.Logf("artifact: failed input=%s snapshot=%+v history=%+v", input, fresh.tr.items, page.Items)
+}
+
+func TestUserMainModelAppliesToWebAndChannelInput(t *testing.T) {
+	t.Parallel()
+	// Given Main on the agent model and a paired channel.
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, t.TempDir(), 42)
+	id := d.mainChat(t)
+	if got := taskTurn(t, d, id, "one"); got != "echo: one" {
+		t.Fatal(got)
+	}
+	// When the user picks another model and thinking level for Main.
+	url := fmt.Sprintf("/api/agents/default/chats/%d/settings", id)
+	d.must(t, http.MethodPut, url, map[string]string{"provider": "faux", "modelId": "think", "thinkingLevel": "high"}, nil)
+	// Then web input and the next channel input both use them.
+	if got := taskTurn(t, d, id, "two"); got != "think high: two" {
+		t.Fatal(got)
+	}
+	f.message(1, 42, 7, "three")
+	if got := f.next(t); got.Text != "think high: three" {
+		t.Fatalf("channel answer: %+v", got)
+	}
+	// And the setting is part of Main's view.
+	var view struct {
+		Settings chatSettings `json:"settings"`
+	}
+	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &view)
+	if view.Settings.ModelID != "think" || view.Settings.ThinkingLevel != "high" {
+		t.Fatalf("settings: %+v", view.Settings)
+	}
+}
+
+func TestUserClearOrdersWithConcurrentInput(t *testing.T) {
+	t.Parallel()
+	// Given an idle timeline, then Clear and message admission start at the same time.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	d.setModel(t, "echo")
+	id := d.mainChat(t)
+	conn := taskResultDB(t, dir)
+	accepted := 0
+	for range 8 {
+		resetID, inputID := uuid.NewV7().String(), uuid.NewV7().String()
+		start := make(chan struct{})
+		type response struct {
+			status int
+			raw    string
+		}
+		cleared, sent := make(chan response, 1), make(chan response, 1)
+		go func() {
+			<-start
+			status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", id), map[string]string{"id": resetID})
+			cleared <- response{status, raw}
+		}()
+		go func() {
+			<-start
+			status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", id), map[string]string{"id": inputID, "text": "concurrent input"})
+			sent <- response{status, raw}
+		}()
+		close(start)
+		clearReply, inputReply := <-cleared, <-sent
+		if inputReply.status != http.StatusAccepted {
+			t.Fatalf("send: %d %s", inputReply.status, inputReply.raw)
+		}
+		waitResultSubmission(t, conn, inputID, "done")
+		// Then an accepted reset precedes the input; a refused reset has no stored command.
+		var resetRow int64
+		err := conn.QueryRowContext(t.Context(), "SELECT rowid FROM submissions WHERE id=?", resetID).Scan(&resetRow)
+		switch clearReply.status {
+		case http.StatusAccepted:
+			if err != nil {
+				t.Fatal(err)
+			}
+			var inputRow int64
+			if err := conn.QueryRowContext(t.Context(), "SELECT rowid FROM submissions WHERE id=?", inputID).Scan(&inputRow); err != nil {
+				t.Fatal(err)
+			}
+			if resetRow >= inputRow {
+				t.Fatal("reset passed an admitted input")
+			}
+			waitResultSubmission(t, conn, resetID, "done")
+			accepted++
+		case http.StatusConflict:
+			if err != sql.ErrNoRows {
+				t.Fatalf("refused reset changed storage: %v", err)
+			}
+		default:
+			t.Fatalf("clear: %d %s", clearReply.status, clearReply.raw)
+		}
+	}
+	t.Logf("artifact: concurrent admissions=8 accepted=%d refused=%d", accepted, 8-accepted)
+}
+
+func TestUserClearsEmptyMainWithoutModel(t *testing.T) {
+	t.Parallel()
+	// Given a new timeline without a model, Clear does not need generation settings.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	id := d.mainChat(t)
+	resetID := uuid.NewV7().String()
+	d.clearMain(t, id, resetID)
+	conn := taskResultDB(t, dir)
+	waitResultSubmission(t, conn, resetID, "done")
+	assertSubmissionOrigin(t, conn, resetID, "web")
+	// Then the divider loads and a request ID collision cannot change the context.
+	w := d.watch(t, id)
+	w.until(t, "empty context divider", func(tr *transcript) bool {
+		return len(tr.items) == 1 && tr.items[0].Kind == "boundary"
+	})
+	d.setModel(t, "echo")
+	inputID := d.send(t, id, "keep this input")
+	waitResultSubmission(t, conn, inputID, "done")
+	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", id), map[string]string{"id": inputID})
+	if status != http.StatusConflict || !strings.Contains(raw, "another input") {
+		t.Fatalf("request ID collision: %d %s", status, raw)
+	}
 }

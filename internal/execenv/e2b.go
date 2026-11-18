@@ -28,8 +28,7 @@ const (
 	e2bConnectCacheTTL       = 20 * time.Second
 )
 
-// E2BConfig holds stored JSON settings for an E2B-compatible sandbox execution environment.
-type E2BConfig struct {
+type e2bConfig struct {
 	APIURL         string `json:"apiUrl,omitempty"`
 	Domain         string `json:"domain,omitempty"`
 	EnvdURL        string `json:"envdUrl,omitempty"`
@@ -39,25 +38,22 @@ type E2BConfig struct {
 	AutoPause      *bool  `json:"autoPause,omitempty"`
 }
 
-// IsCustomEndpoint reports whether any custom E2B control or data-plane endpoint is configured.
-func (c E2BConfig) IsCustomEndpoint() bool {
+func (c e2bConfig) isCustomEndpoint() bool {
 	return c.APIURL != "" || c.Domain != "" || c.EnvdURL != ""
 }
 
-// AutoPauseEnabled reports whether server-side idle auto-pause is enabled (default true).
-func (c E2BConfig) AutoPauseEnabled() bool {
+func (c e2bConfig) autoPauseEnabled() bool {
 	return c.AutoPause == nil || *c.AutoPause
 }
 
-// ParseE2BConfig decodes and normalizes raw JSON configuration for e2b.
-func ParseE2BConfig(raw string) (E2BConfig, error) {
+func parseE2BConfig(raw string) (e2bConfig, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" || trimmed == "null" {
 		trimmed = "{}"
 	}
-	var cfg E2BConfig
+	var cfg e2bConfig
 	if err := json.Unmarshal([]byte(trimmed), &cfg); err != nil {
-		return E2BConfig{}, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+		return e2bConfig{}, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
 	cfg.APIURL = strings.TrimRight(strings.TrimSpace(cfg.APIURL), "/")
 	cfg.Domain = strings.TrimRight(strings.TrimSpace(cfg.Domain), "/")
@@ -75,8 +71,7 @@ func ParseE2BConfig(raw string) (E2BConfig, error) {
 	return cfg, nil
 }
 
-// ValidateE2BConfig validates an E2B configuration.
-func ValidateE2BConfig(cfg E2BConfig) error {
+func validateE2BConfig(cfg e2bConfig) error {
 	if cfg.APIURL != "" {
 		if err := validateE2BURL("apiUrl", cfg.APIURL); err != nil {
 			return err
@@ -136,7 +131,6 @@ func validateE2BURL(field, raw string) error {
 }
 
 type cachedE2BSession struct {
-	envID       string
 	specKey     string
 	sandboxID   string
 	accessToken string
@@ -147,7 +141,6 @@ type cachedE2BSession struct {
 }
 
 type e2bRuntime struct {
-	baseDriver
 	q          *sqlc.Queries
 	apiURL     string
 	envdURL    string
@@ -158,21 +151,16 @@ type e2bRuntime struct {
 	sessions   map[string]cachedE2BSession
 }
 
-func newE2BRuntime(q *sqlc.Queries, apiURL, envdURL string, httpClient *http.Client) *e2bRuntime {
-	if httpClient == nil {
-		httpClient = newE2BHTTPClient()
-	}
+func newE2BRuntime(q *sqlc.Queries, apiURL, envdURL string) *e2bRuntime {
 	return &e2bRuntime{
 		q:          q,
 		apiURL:     cmp.Or(strings.TrimSpace(apiURL), defaultE2BAPIURL),
 		envdURL:    strings.TrimSpace(envdURL),
-		httpClient: httpClient,
+		httpClient: newE2BHTTPClient(),
 		agentLocks: map[string]*sync.Mutex{},
 		sessions:   map[string]cachedE2BSession{},
 	}
 }
-
-func (r *e2bRuntime) canReset() bool { return true }
 
 func (r *e2bRuntime) normalizeAndValidate(_ context.Context, spec EnvironmentSpec) (string, error) {
 	cfg, err := r.validate(spec)
@@ -187,7 +175,33 @@ func (r *e2bRuntime) normalizeAndValidate(_ context.Context, spec EnvironmentSpe
 }
 
 func (r *e2bRuntime) probe(ctx context.Context, _ *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
-	return r.test(ctx, spec)
+	cfg, err := r.validate(spec)
+	if err != nil {
+		return TestResult{}, err
+	}
+	ctrl := r.control(cfg, spec.Secret)
+	sb, err := ctrl.createSandbox(ctx, cfg.Template, 60, cfg.autoPauseEnabled(), map[string]string{"dex_probe": "true"})
+	if err != nil {
+		return TestResult{OK: false, Error: err.Error()}, nil
+	}
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		_ = ctrl.killSandbox(cleanupCtx, sb.SandboxID)
+	}()
+
+	envd := ctrl.envdFor(sb)
+	envs, err := envd.getEnvs(ctx)
+	if err != nil {
+		return TestResult{OK: false, Error: err.Error()}, nil
+	}
+	home := cmp.Or(strings.TrimSpace(envs["HOME"]), "/home/user")
+	workspace := resolveE2BWorkspace(cfg.WorkspaceDir, home)
+	if err := makeEnvdDirAll(ctx, envd, workspace); err != nil {
+		return TestResult{OK: false, Home: home, Error: err.Error()}, nil
+	}
+	platform, arch := probeEnvdPlatformArch(ctx, envd)
+	return TestResult{OK: true, Platform: platform, Arch: arch, Home: home}, nil
 }
 
 func (r *e2bRuntime) lockAgent(agentID string) func() {
@@ -202,7 +216,7 @@ func (r *e2bRuntime) lockAgent(agentID string) func() {
 	return mu.Unlock
 }
 
-func (r *e2bRuntime) control(cfg E2BConfig, apiKey string) *e2bControlClient {
+func (r *e2bRuntime) control(cfg e2bConfig, apiKey string) *e2bControlClient {
 	apiURL := r.apiURL
 	switch {
 	case cfg.APIURL != "":
@@ -219,16 +233,16 @@ func (r *e2bRuntime) control(cfg E2BConfig, apiKey string) *e2bControlClient {
 	}
 }
 
-func (r *e2bRuntime) validate(spec EnvironmentSpec) (E2BConfig, error) {
-	cfg, err := ParseE2BConfig(spec.Config)
+func (r *e2bRuntime) validate(spec EnvironmentSpec) (e2bConfig, error) {
+	cfg, err := parseE2BConfig(spec.Config)
 	if err != nil {
-		return E2BConfig{}, err
+		return e2bConfig{}, err
 	}
-	if err := ValidateE2BConfig(cfg); err != nil {
-		return E2BConfig{}, err
+	if err := validateE2BConfig(cfg); err != nil {
+		return e2bConfig{}, err
 	}
-	if !cfg.IsCustomEndpoint() && strings.TrimSpace(spec.Secret) == "" {
-		return E2BConfig{}, fmt.Errorf("%w: e2b api key is required", ErrInvalidConfig)
+	if !cfg.isCustomEndpoint() && strings.TrimSpace(spec.Secret) == "" {
+		return e2bConfig{}, fmt.Errorf("%w: e2b api key is required", ErrInvalidConfig)
 	}
 	return cfg, nil
 }
@@ -307,7 +321,7 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Environme
 		}
 	}
 	if sb == nil {
-		sb, err = ctrl.createSandbox(ctx, cfg.Template, timeoutSec, cfg.AutoPauseEnabled(), map[string]string{
+		sb, err = ctrl.createSandbox(ctx, cfg.Template, timeoutSec, cfg.autoPauseEnabled(), map[string]string{
 			"dex_agent_id":       agentID,
 			"dex_environment_id": spec.ID,
 		})
@@ -342,7 +356,6 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Environme
 
 	r.mu.Lock()
 	r.sessions[agentID] = cachedE2BSession{
-		envID:       spec.ID,
 		specKey:     specKey,
 		sandboxID:   sb.SandboxID,
 		accessToken: sb.EnvdAccessToken,
@@ -368,36 +381,6 @@ func (r *e2bRuntime) open(ctx context.Context, agentID string, spec EnvironmentS
 		workspace:  workspace,
 		timeoutSec: timeoutSec,
 	}, nil
-}
-
-func (r *e2bRuntime) test(ctx context.Context, spec EnvironmentSpec) (TestResult, error) {
-	cfg, err := r.validate(spec)
-	if err != nil {
-		return TestResult{}, err
-	}
-	ctrl := r.control(cfg, spec.Secret)
-	sb, err := ctrl.createSandbox(ctx, cfg.Template, 60, cfg.AutoPauseEnabled(), map[string]string{"dex_probe": "true"})
-	if err != nil {
-		return TestResult{OK: false, Error: err.Error()}, nil
-	}
-	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		defer cancel()
-		_ = ctrl.killSandbox(cleanupCtx, sb.SandboxID)
-	}()
-
-	envd := ctrl.envdFor(sb)
-	envs, err := envd.getEnvs(ctx)
-	if err != nil {
-		return TestResult{OK: false, Error: err.Error()}, nil
-	}
-	home := cmp.Or(strings.TrimSpace(envs["HOME"]), "/home/user")
-	workspace := resolveE2BWorkspace(cfg.WorkspaceDir, home)
-	if err := makeEnvdDirAll(ctx, envd, workspace); err != nil {
-		return TestResult{OK: false, Home: home, Error: err.Error()}, nil
-	}
-	platform, arch := probeEnvdPlatformArch(ctx, envd)
-	return TestResult{OK: true, Platform: platform, Arch: arch, Home: home}, nil
 }
 
 func (r *e2bRuntime) resetAgent(ctx context.Context, agentID string) error {
@@ -427,11 +410,11 @@ func (r *e2bRuntime) resetAgent(ctx context.Context, agentID string) error {
 	if err != nil || Kind(envRow.Kind) != KindE2B {
 		return nil //nolint:nilerr // missing or non-e2b environment requires no remote kill.
 	}
-	cfg, parseErr := ParseE2BConfig(envRow.Config)
+	cfg, parseErr := parseE2BConfig(envRow.Config)
 	if parseErr != nil {
 		return nil //nolint:nilerr // malformed config should not block clearing local sandbox reference.
 	}
-	if !cfg.IsCustomEndpoint() && strings.TrimSpace(envRow.Secret) == "" {
+	if !cfg.isCustomEndpoint() && strings.TrimSpace(envRow.Secret) == "" {
 		return nil
 	}
 	return r.control(cfg, envRow.Secret).killSandbox(ctx, sandboxID)
@@ -453,11 +436,11 @@ func (r *e2bRuntime) cleanupSandbox(ctx context.Context, agentID, envID, sandbox
 	if err != nil || Kind(envRow.Kind) != KindE2B {
 		return
 	}
-	cfg, parseErr := ParseE2BConfig(envRow.Config)
+	cfg, parseErr := parseE2BConfig(envRow.Config)
 	if parseErr != nil {
 		return
 	}
-	if !cfg.IsCustomEndpoint() && strings.TrimSpace(envRow.Secret) == "" {
+	if !cfg.isCustomEndpoint() && strings.TrimSpace(envRow.Secret) == "" {
 		return
 	}
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
@@ -486,7 +469,6 @@ type e2bHandle struct {
 }
 
 func (h *e2bHandle) Kind() Kind                               { return KindE2B }
-func (h *e2bHandle) ID() string                               { return h.agentID }
 func (h *e2bHandle) Workspace() string                        { return h.workspace }
 func (h *e2bHandle) Home(ctx context.Context) (string, error) { return h.home, ctx.Err() }
 func (h *e2bHandle) Close(context.Context) error              { return nil }
@@ -505,14 +487,6 @@ func (h *e2bHandle) Env(ctx context.Context, cwd string, extraEnv map[string]str
 		home:       h.home,
 		timeoutSec: h.timeoutSec,
 		shellEnv:   maps.Clone(extraEnv),
-		acquire: func(acqCtx context.Context) (*envdClient, string, error) {
-			envd, _, _, sbID, _, err := h.rt.acquire(acqCtx, h.agentID, h.spec)
-			return envd, sbID, err
-		},
-		renew: func(renCtx context.Context, sbID string) {
-			if cfg, parseErr := ParseE2BConfig(h.spec.Config); parseErr == nil {
-				_ = h.rt.control(cfg, h.spec.Secret).setTimeout(renCtx, sbID, h.timeoutSec)
-			}
-		},
+		handle:     h,
 	}, nil
 }

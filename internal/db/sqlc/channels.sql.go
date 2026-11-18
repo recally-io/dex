@@ -165,14 +165,6 @@ WITH active AS (
 )
 SELECT a.id, a.name, a.model_provider, a.model_id, a.instructions, a.created_at, a.thinking_level, a.primary_notification_target_id, a.archived_at, a.environment_id, a.environment_sandbox_id, a.fallback_provider, a.fallback_model_id, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
     CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations,
-    (SELECT count(*) FROM automation_runs r JOIN automations routine ON routine.id = r.automation_id
-     LEFT JOIN submissions s ON s.id = r.id
-     WHERE routine.agent_id = a.id AND (r.outcome = 'failed' OR r.status = 'failed' OR s.status = 'unanswered' OR (r.outcome = 'changed' AND r.duplicate = 0))
-       AND r.read_at IS NULL AND r.dismissed_at IS NULL AND (s.status <> 'pending' OR (s.id IS NULL AND r.status = 'failed'))) AS inbox_unread,
-    (SELECT count(*) FROM automation_runs r JOIN automations routine ON routine.id = r.automation_id
-     LEFT JOIN submissions s ON s.id = r.id
-     WHERE routine.agent_id = a.id AND (r.outcome = 'failed' OR r.status = 'failed' OR s.status = 'unanswered')
-       AND r.read_at IS NULL AND r.dismissed_at IS NULL AND (s.status <> 'pending' OR (s.id IS NULL AND r.status = 'failed'))) AS inbox_failed,
     CAST(EXISTS (SELECT 1 FROM automations routine
         JOIN automation_runs r ON r.id = (SELECT latest.id FROM automation_runs latest
             WHERE latest.automation_id = routine.id ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1)
@@ -186,8 +178,6 @@ type ListAgentActivityRow struct {
 	Agent              Agent `json:"agent"`
 	ActiveSessions     int64 `json:"active_sessions"`
 	EnabledAutomations int64 `json:"enabled_automations"`
-	InboxUnread        int64 `json:"inbox_unread"`
-	InboxFailed        int64 `json:"inbox_failed"`
 	RoutineFailed      int64 `json:"routine_failed"`
 }
 
@@ -216,8 +206,6 @@ func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow
 			&i.Agent.FallbackModelID,
 			&i.ActiveSessions,
 			&i.EnabledAutomations,
-			&i.InboxUnread,
-			&i.InboxFailed,
 			&i.RoutineFailed,
 		); err != nil {
 			return nil, err

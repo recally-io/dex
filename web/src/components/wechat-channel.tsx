@@ -82,7 +82,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
 
   return (
     <>
-      <Section n={1} title="Connection" action={account.enabled ? scan : null}>
+      <Section title="Connection" action={account.enabled ? scan : null}>
         {account.enabled ? (
           <Panel>
             <Facts rows={[["Bot", <Mono key="bot">{account.botId}</Mono>]]} />
@@ -158,7 +158,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
       </Section>
       {account.enabled ? (
         <>
-          <Section n={2} title="Who can use it" caption="Only the person who confirmed the login.">
+          <Section title="Who can use it" caption="Only the person who confirmed the login.">
             <Panel>
               <Facts rows={[["Owner", <Mono key="owner">{account.owner}</Mono>]]} />
             </Panel>

@@ -41,10 +41,8 @@ type Config struct {
 	Pair    func(context.Context, string, int64) ([]int64, error)
 	Uploads *upload.Store
 	// Watch opens a chat's native preview stream.
-	Watch     func(context.Context, int64) (io.ReadCloser, error)
-	Report    func(state, reason string)
-	RetryAt   int64
-	RateLimit func(context.Context, int64) error
+	Watch   func(context.Context, int64) (io.ReadCloser, error)
+	RetryAt int64
 }
 
 // Validate checks the token format and each allowed user ID.
@@ -135,12 +133,12 @@ func (b *Bot) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil //nolint:nilerr // an error after cancel is the requested stop
 		}
-		if err == nil && b.cfg.Report != nil {
-			b.cfg.Report("running", "")
+		if err == nil && b.chats != nil {
+			b.chats.Report("telegram", channel.Status{State: "running"})
 		}
 		if err != nil {
-			if b.cfg.Report != nil {
-				b.cfg.Report("error", err.Error())
+			if b.chats != nil {
+				b.chats.Report("telegram", channel.Status{State: "error", Reason: err.Error()})
 			}
 			slog.Error("telegram: receive", "err", err)
 			select {
@@ -239,13 +237,11 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		content = fmt.Sprintf("Correction to Telegram message %d (earlier actions are not undone):\n%s", m.ID, content)
 	}
 	incoming := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: identity}
-	if selected, kind := m.selectedMedia(); selected != nil {
-		incoming.ChannelContext.FileID = selected.ID
+	if _, kind := m.selectedMedia(); kind != "" {
 		incoming.ChannelContext.MediaKind = kind
 	}
 	if m.ReplyTo != nil {
 		incoming.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
-		incoming.ChannelContext.ReplyTo = incoming.ReplyTo
 	}
 	if staged != nil {
 		incoming = *staged
@@ -364,8 +360,8 @@ func (b *Bot) request(ctx context.Context, method string, body io.Reader, conten
 				b.retryAt = until
 			}
 			b.rateMu.Unlock()
-			if b.cfg.RateLimit != nil {
-				if err := b.cfg.RateLimit(ctx, until.UnixMilli()); err != nil {
+			if b.chats != nil {
+				if err := b.chats.SetTelegramRetryAt(ctx, b.cfg.Token, until.UnixMilli()); err != nil {
 					return errors.Join(&apiError{Code: out.Code, Description: "Telegram flood control", RetryAfter: out.Parameters.RetryAfter}, fmt.Errorf("store Telegram retry window: %w", err))
 				}
 			}
@@ -418,8 +414,6 @@ type message struct {
 		SenderUser     *user       `json:"sender_user"`
 		SenderUserName string      `json:"sender_user_name"`
 		Chat           *remoteChat `json:"chat"`
-		Date           int64       `json:"date"`
-		MessageID      int64       `json:"message_id"`
 	} `json:"forward_origin"`
 	MediaGroupID string  `json:"media_group_id"`
 	Text         string  `json:"text"`

@@ -27,7 +27,13 @@ func (r *channelRegistry) Agent(id string) *channel.Manager {
 }
 
 func (r *channelRegistry) Status(agentID, platform string) channel.Status {
-	return r.Agent(agentID).Status(platform)
+	r.mu.Lock()
+	m := r.managers[agentID]
+	r.mu.Unlock()
+	if m == nil {
+		return channel.Status{State: "off"}
+	}
+	return m.Status(platform)
 }
 
 func (r *channelRegistry) Notify(key string) {

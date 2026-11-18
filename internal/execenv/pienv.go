@@ -32,8 +32,8 @@ const (
 
 var validRemoteEnvName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// PiEnvConfig holds stored JSON settings for an SSH execution environment.
-type PiEnvConfig struct {
+// piEnvConfig holds stored JSON settings for an SSH execution environment.
+type piEnvConfig struct {
 	Host         string `json:"host,omitempty"`
 	User         string `json:"user,omitempty"`
 	Port         *int   `json:"port,omitempty"`
@@ -42,20 +42,18 @@ type PiEnvConfig struct {
 	WorkspaceDir string `json:"workspaceDir,omitempty"`
 }
 
-// LoginShellEnabled reports whether SSH sessions use the remote user's login shell (default true).
-func (c PiEnvConfig) LoginShellEnabled() bool {
+func (c piEnvConfig) loginShellEnabled() bool {
 	return c.LoginShell == nil || *c.LoginShell
 }
 
-// ParsePiEnvConfig decodes and normalizes raw JSON configuration for SSH environments.
-func ParsePiEnvConfig(raw string) (PiEnvConfig, error) {
+func parsePiEnvConfig(raw string) (piEnvConfig, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" || trimmed == "null" {
 		trimmed = "{}"
 	}
-	var cfg PiEnvConfig
+	var cfg piEnvConfig
 	if err := json.Unmarshal([]byte(trimmed), &cfg); err != nil {
-		return PiEnvConfig{}, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+		return piEnvConfig{}, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
 	cfg.Host = strings.TrimSpace(cfg.Host)
 	cfg.User = strings.TrimSpace(cfg.User)
@@ -70,8 +68,7 @@ func ParsePiEnvConfig(raw string) (PiEnvConfig, error) {
 	return cfg, nil
 }
 
-// ValidatePiEnvConfig validates an SSH pi-env configuration.
-func ValidatePiEnvConfig(dataDir, envID string, cfg PiEnvConfig, sshProgram string) error {
+func validatePiEnvConfig(dataDir, envID string, cfg piEnvConfig, sshProgram string) error {
 	if cfg.Host == "" {
 		return fmt.Errorf("%w: host is required", ErrInvalidConfig)
 	}
@@ -94,10 +91,10 @@ func forgetPiEnvHostKey(dataDir, envID string) error {
 	if dataDir == "" || envID == "" {
 		return nil
 	}
-	return pienv.ForgetHostKey(sshTarget(dataDir, envID, PiEnvConfig{Host: "placeholder"}, ""))
+	return pienv.ForgetHostKey(sshTarget(dataDir, envID, piEnvConfig{Host: "placeholder"}, ""))
 }
 
-func samePiEnvEndpoint(a, b PiEnvConfig) bool {
+func samePiEnvEndpoint(a, b piEnvConfig) bool {
 	var portA, portB int
 	if a.Port != nil {
 		portA = *a.Port
@@ -108,7 +105,7 @@ func samePiEnvEndpoint(a, b PiEnvConfig) bool {
 	return a.Host == b.Host && portA == portB
 }
 
-func sshTarget(dataDir, envID string, cfg PiEnvConfig, sshProgram string) pienv.SshTarget {
+func sshTarget(dataDir, envID string, cfg piEnvConfig, sshProgram string) pienv.SshTarget {
 	return sshTargetWithKnownHosts(
 		filepath.Join(dataDir, "ssh_known_hosts"),
 		"dex-pi-env-"+envID,
@@ -117,7 +114,7 @@ func sshTarget(dataDir, envID string, cfg PiEnvConfig, sshProgram string) pienv.
 	)
 }
 
-func sshTargetWithKnownHosts(knownHostsFile, hostKeyAlias string, cfg PiEnvConfig, sshProgram string) pienv.SshTarget {
+func sshTargetWithKnownHosts(knownHostsFile, hostKeyAlias string, cfg piEnvConfig, sshProgram string) pienv.SshTarget {
 	target := pienv.SshTarget{
 		Host:           cfg.Host,
 		Port:           cfg.Port,
@@ -137,18 +134,17 @@ func sshTargetWithKnownHosts(knownHostsFile, hostKeyAlias string, cfg PiEnvConfi
 }
 
 type piEnvRuntime struct {
-	baseDriver
 	dataDir    string
 	sshProgram string
 	buildMu    sync.Mutex
 }
 
 func (r *piEnvRuntime) normalizeAndValidate(_ context.Context, spec EnvironmentSpec) (string, error) {
-	cfg, err := ParsePiEnvConfig(spec.Config)
+	cfg, err := parsePiEnvConfig(spec.Config)
 	if err != nil {
 		return "", err
 	}
-	if err := ValidatePiEnvConfig(r.dataDir, cmp.Or(spec.ID, "probe"), cfg, r.sshProgram); err != nil {
+	if err := validatePiEnvConfig(r.dataDir, cmp.Or(spec.ID, "probe"), cfg, r.sshProgram); err != nil {
 		return "", err
 	}
 	encoded, err := json.Marshal(cfg)
@@ -159,11 +155,11 @@ func (r *piEnvRuntime) normalizeAndValidate(_ context.Context, spec EnvironmentS
 }
 
 func (r *piEnvRuntime) open(ctx context.Context, agentID string, spec EnvironmentSpec) (Handle, error) {
-	cfg, err := ParsePiEnvConfig(spec.Config)
+	cfg, err := parsePiEnvConfig(spec.Config)
 	if err != nil {
 		return nil, err
 	}
-	if err := ValidatePiEnvConfig(r.dataDir, spec.ID, cfg, r.sshProgram); err != nil {
+	if err := validatePiEnvConfig(r.dataDir, spec.ID, cfg, r.sshProgram); err != nil {
 		return nil, err
 	}
 	target := sshTarget(r.dataDir, spec.ID, cfg, r.sshProgram)
@@ -175,7 +171,7 @@ func (r *piEnvRuntime) open(ctx context.Context, agentID string, spec Environmen
 	if err != nil {
 		return nil, err
 	}
-	loginShell := cfg.LoginShellEnabled()
+	loginShell := cfg.loginShellEnabled()
 	conn, detected, err := pienv.ConnectSsh(ctx, pienv.SshConnectOptions{
 		SshTarget:  target,
 		Binary:     &binary,
@@ -218,20 +214,20 @@ func (r *piEnvRuntime) open(ctx context.Context, agentID string, spec Environmen
 }
 
 func (r *piEnvRuntime) probe(ctx context.Context, saved *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
-	cfg, err := ParsePiEnvConfig(spec.Config)
+	cfg, err := parsePiEnvConfig(spec.Config)
 	if err != nil {
 		return TestResult{}, err
 	}
 	ephemeralKnownHosts := true
 	envID := ""
 	if saved != nil && saved.Kind == KindPiEnv && saved.ID != "" {
-		if oldCfg, parseErr := ParsePiEnvConfig(saved.Config); parseErr == nil && samePiEnvEndpoint(oldCfg, cfg) {
+		if oldCfg, parseErr := parsePiEnvConfig(saved.Config); parseErr == nil && samePiEnvEndpoint(oldCfg, cfg) {
 			ephemeralKnownHosts = false
 			envID = saved.ID
 		}
 	}
 	probeAlias := cmp.Or(envID, "probe")
-	if err := ValidatePiEnvConfig(r.dataDir, probeAlias, cfg, r.sshProgram); err != nil {
+	if err := validatePiEnvConfig(r.dataDir, probeAlias, cfg, r.sshProgram); err != nil {
 		return TestResult{}, err
 	}
 
@@ -261,7 +257,7 @@ func (r *piEnvRuntime) probe(ctx context.Context, saved *EnvironmentSpec, spec E
 	conn, detected, err := pienv.ConnectSsh(ctx, pienv.SshConnectOptions{
 		SshTarget:  target,
 		Binary:     &binary,
-		LoginShell: cfg.LoginShellEnabled(),
+		LoginShell: cfg.loginShellEnabled(),
 	})
 	if err != nil {
 		return TestResult{
@@ -304,11 +300,11 @@ func (r *piEnvRuntime) onUpdated(oldSpec, newSpec EnvironmentSpec) error {
 	if r.dataDir == "" || newSpec.ID == "" {
 		return nil
 	}
-	oldCfg, err := ParsePiEnvConfig(oldSpec.Config)
+	oldCfg, err := parsePiEnvConfig(oldSpec.Config)
 	if err != nil {
 		return nil //nolint:nilerr // malformed prior config should still clear host key on endpoint update.
 	}
-	newCfg, err := ParsePiEnvConfig(newSpec.Config)
+	newCfg, err := parsePiEnvConfig(newSpec.Config)
 	if err != nil || !samePiEnvEndpoint(oldCfg, newCfg) {
 		return forgetPiEnvHostKey(r.dataDir, newSpec.ID)
 	}
@@ -583,7 +579,6 @@ type piEnvHandle struct {
 }
 
 func (h *piEnvHandle) Kind() Kind                               { return KindPiEnv }
-func (h *piEnvHandle) ID() string                               { return h.id }
 func (h *piEnvHandle) Workspace() string                        { return h.workspace }
 func (h *piEnvHandle) Home(ctx context.Context) (string, error) { return h.home, ctx.Err() }
 

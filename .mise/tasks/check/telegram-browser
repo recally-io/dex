@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Check Telegram group settings in an isolated browser"
-#MISE depends=["build:web"]
-set -euo pipefail
-
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
-go build -tags dex_e2e -o "$tmp/dex" ./cmd/dex
-node web/tools/telegram-browser.mjs "$tmp/dex" "$@"

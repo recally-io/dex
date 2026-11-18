@@ -57,7 +57,7 @@ func TestUserSeesAWarningWhenTheLoginShellFails(t *testing.T) {
 	env := newToolEnv(home, map[string]string{"PATH": "/usr/bin:/bin"}, func(context.Context, map[string]string) (map[string]string, error) {
 		return nil, errors.New("exit status 1")
 	})
-	a := newAgentExtensions(home, data, "a", env)
+	a := newAgentExtensions(home, data, "a", nil, env)
 	loaded, err := a.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +80,7 @@ func TestUserLoginShellIsCapturedAgainAfterAnRcEdit(t *testing.T) {
 	env := newToolEnv(home, nil, func(context.Context, map[string]string) (map[string]string, error) {
 		return map[string]string{"FROM_RC": value}, nil
 	})
-	a := newAgentExtensions(home, data, "a", env)
+	a := newAgentExtensions(home, data, "a", nil, env)
 	loaded, err := a.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +111,7 @@ func TestUserBotUsesOnePasswordThroughTheCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := newToolEnv(home, map[string]string{"PATH": bin, "OP_CONNECT_HOST": "http://shell", "OP_CONNECT_TOKEN": "shell-token"}, nil)
-	a := newAgentExtensions(home, data, "a", env)
+	a := newAgentExtensions(home, data, "a", nil, env)
 	before := a.stamp()
 	// When the user selects a service account.
 	env.setOnePassword(OnePassword{Mode: "service-account", ServiceAccountToken: "ops-token"})
@@ -134,7 +134,7 @@ func TestUserBotUsesOnePasswordThroughTheCLI(t *testing.T) {
 	// When op is not installed, then the prompt does not mention it and the page warns.
 	env = newToolEnv(home, map[string]string{"PATH": t.TempDir()}, nil)
 	env.setOnePassword(OnePassword{Mode: "connect", ConnectHost: "http://connect", ConnectToken: "c-token"})
-	a = newAgentExtensions(home, data, "a", env)
+	a = newAgentExtensions(home, data, "a", nil, env)
 	missing, err := a.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)

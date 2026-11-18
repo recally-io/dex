@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/recally-io/dex/internal/execenv"
 )
@@ -29,7 +30,6 @@ type RunningTool struct {
 }
 
 type Activity struct {
-	LastAction     string
 	LastActivityAt *int64
 	ToolStartedAt  *int64
 	RunningTools   []RunningTool
@@ -72,7 +72,7 @@ type Input struct {
 	// returns ErrBusy.
 	WhenBusy string
 }
-type InputMetadata struct {
+type inputMetadata struct {
 	Scope       string       `json:"scope,omitempty"`
 	RequestID   string       `json:"requestId"`
 	Content     string       `json:"content"`
@@ -100,6 +100,7 @@ type Config struct {
 	// FallbackModel returns the current fallback model for an agent, or an empty ModelRef.
 	FallbackModel func(ctx context.Context, agentID string) ModelRef
 	FakeModel     bool
+	BashTimeout   time.Duration
 	Tasks         TaskTools
 	Routines      RoutineTools
 	Bots          BotTools

@@ -11,18 +11,16 @@ const itemClass =
   "flex h-8 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent";
 
 // An anchored, non-modal list of the levels that pi-ai supports for the model. It saves like
-// ModelPicker. With clearable, the first item "Default" clears the chat's level (save(null)).
+// ModelPicker.
 export function ThinkingPicker({
   trigger,
   value,
   levels,
-  clearable,
   save,
 }: {
   trigger: ReactElement;
   value: ThinkingLevel | null;
   levels: ThinkingLevel[];
-  clearable?: boolean;
   save: (level: ThinkingLevel | null) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -31,8 +29,8 @@ export function ThinkingPicker({
   const pending = mutation.isPending ? mutation.variables : undefined;
   const current = value ?? "default";
 
-  const pick = (level: ThinkingLevel | null) => {
-    if ((level ?? "default") === current) setOpen(false);
+  const pick = (level: ThinkingLevel) => {
+    if (level === current) setOpen(false);
     else mutation.mutate(level);
   };
 
@@ -56,20 +54,6 @@ export function ThinkingPicker({
       >
         <Command ref={root} defaultValue={current} label="Thinking level" className="outline-none">
           <CommandList className="p-1">
-            {clearable ? (
-              <CommandItem
-                value="default"
-                data-checked={current === "default"}
-                disabled={pending !== undefined}
-                onSelect={() => pick(null)}
-                className={itemClass}
-              >
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
-                  Default
-                </span>
-                <Mark checked={current === "default"} saving={pending === null} />
-              </CommandItem>
-            ) : null}
             {levels.map((level) => (
               <CommandItem
                 key={level}

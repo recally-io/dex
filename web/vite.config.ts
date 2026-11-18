@@ -7,22 +7,14 @@ export default defineConfig({
   // SAFETY: react and tailwindcss each return a plugin array, which the config flattens.
   // vite-plus 1.3.0 types the nested array too deeply for TypeScript 6 to compare.
   plugins: [react(), tailwindcss()] as PluginOption[],
-  // The registry uses cn; the project supplies it with clsx and tailwind-merge.
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
-      cn: fileURLToPath(new URL("./src/lib/utils.ts", import.meta.url)),
     },
   },
   server: { host: "127.0.0.1", proxy: { "/api": process.env.DEX_API_URL ?? "http://127.0.0.1:18787" } },
   lint: {
-    ignorePatterns: [
-      "dist/**",
-      "src/api/generated/**",
-      "src/components/atoms/**",
-      "src/components/primitives/**",
-      "tools/oxlint/anti-slop/**",
-    ],
+    ignorePatterns: ["dist/**", "src/api/generated/**", "tools/oxlint/anti-slop/**"],
     categories: { correctness: "error", suspicious: "error", perf: "error" },
     plugins: ["react", "typescript"],
     jsPlugins: [{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" }],
@@ -52,14 +44,7 @@ export default defineConfig({
     },
   },
   fmt: {
-    ignorePatterns: [
-      "dist/**",
-      "src/api/generated/**",
-      "src/components/atoms/**",
-      "src/components/primitives/**",
-      "tools/oxlint/anti-slop/**",
-      "bun.lock",
-    ],
+    ignorePatterns: ["dist/**", "src/api/generated/**", "tools/oxlint/anti-slop/**", "bun.lock"],
     printWidth: 110,
   },
   test: { include: ["src/**/*.test.ts"] },

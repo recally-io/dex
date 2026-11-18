@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -42,11 +41,6 @@ var ErrInvalid = errors.New("invalid automation")
 
 // ErrNotFound means that the automation does not exist.
 var ErrNotFound = errors.New("automation not found")
-
-// Poster stores a run and its durable input intent together.
-type Poster interface {
-	EnqueueAutomation(context.Context, chat.AutomationInput) (int64, bool, error)
-}
 
 // Input is what the user sets.
 type Input struct {
@@ -88,14 +82,18 @@ type Run struct {
 
 // Service manages automations for all agents.
 type Service struct {
-	q     *sqlc.Queries
-	chats Poster
-	now   func() time.Time
+	q       *sqlc.Queries
+	enqueue func(context.Context, chat.AutomationInput) (int64, bool, error)
+	now     func() time.Time
 }
 
 // New returns a Service. Call Check every minute.
-func New(q *sqlc.Queries, chats Poster, now func() time.Time) *Service {
-	return &Service{q: q, chats: chats, now: now}
+func New(q *sqlc.Queries, chats *chat.Service, now func() time.Time) *Service {
+	var enqueue func(context.Context, chat.AutomationInput) (int64, bool, error)
+	if chats != nil {
+		enqueue = chats.EnqueueAutomation
+	}
+	return &Service{q: q, enqueue: enqueue, now: now}
 }
 
 // ChatAutomation returns the ID of the automation that started the chat with channelKey.
@@ -176,40 +174,6 @@ func millis(times []time.Time) []int64 {
 		out[i] = t.UnixMilli()
 	}
 	return out
-}
-
-// Scheduled returns future scheduled times in the half-open range [from, to).
-func (s *Service) Scheduled(a Automation, from, to int64) ([]int64, error) {
-	out := []int64{}
-	if !a.Enabled || len(a.NextRuns) == 0 {
-		return out, nil
-	}
-	loc, err := location(a.TimeZone)
-	if err != nil {
-		return nil, err
-	}
-	anchor := time.UnixMilli(a.NextRuns[0])
-	start := time.UnixMilli(from)
-	if now := s.now(); now.After(start) {
-		start = now.Add(time.Millisecond)
-	}
-	next := anchor
-	if next.Before(start) {
-		var ok bool
-		next, ok = a.Schedule.next(start.Add(-time.Millisecond), anchor, loc)
-		if !ok {
-			return out, nil
-		}
-	}
-	for next.UnixMilli() < to {
-		out = append(out, next.UnixMilli())
-		times := a.Schedule.upcoming(next, anchor, loc, 1)
-		if len(times) == 0 {
-			break
-		}
-		next = times[0]
-	}
-	return out, nil
 }
 
 // Create stores a new automation.
@@ -375,15 +339,10 @@ func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, er
 
 // Runs returns the newest runs of an automation, at most limit.
 func (s *Service) Runs(ctx context.Context, agentID string, id string, limit int64) ([]Run, error) {
-	return s.RunsInRange(ctx, agentID, id, 0, math.MaxInt64, limit)
-}
-
-// RunsInRange returns runs whose planned or creation time is in [from, to).
-func (s *Service) RunsInRange(ctx context.Context, agentID, id string, from, to, limit int64) ([]Run, error) {
 	if _, err := s.get(ctx, agentID, id); err != nil {
 		return nil, err
 	}
-	rows, err := s.q.ListAutomationRuns(ctx, sqlc.ListAutomationRunsParams{AutomationID: id, RangeStart: sql.NullInt64{Int64: from, Valid: true}, RangeEnd: sql.NullInt64{Int64: to, Valid: true}, RowLimit: limit})
+	rows, err := s.q.ListAutomationRuns(ctx, sqlc.ListAutomationRunsParams{AutomationID: id, RowLimit: limit})
 	if err != nil {
 		return nil, err
 	}
@@ -520,7 +479,7 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 	if due.Valid {
 		input.Expected = &row
 	}
-	chatID, created, err := s.chats.EnqueueAutomation(ctx, input)
+	chatID, created, err := s.enqueue(ctx, input)
 	if created {
 		run.Status, run.ChatID = "running", chatID
 	}

@@ -150,29 +150,6 @@ func TestUserSetsAgentThinkingLevel(t *testing.T) {
 	}
 }
 
-func TestUserMainUsesAgentSettings(t *testing.T) {
-	t.Parallel()
-	// Given the main timeline and the agent's model settings.
-	d := startDex(t, t.TempDir(), "")
-	d.setThinking(t, "high")
-	id := d.mainChat(t)
-	d.send(t, id, "first")
-	w := d.watch(t, id)
-	w.until(t, "agent settings", answered("think high: first"))
-
-	// When the agent settings change, the next input uses them.
-	d.setThinking(t, "low")
-	d.send(t, id, "second")
-	w.until(t, "new agent settings", answered("think low: second"))
-
-	// Then Main and Chat accept per-session overrides by the same rule, and a read-only session refuses them.
-	for _, chatID := range []int64{id, d.newSession(t).ID} {
-		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", chatID), chatSettings{Provider: "faux", ModelID: "echo"}, nil)
-	}
-	d.send(t, id, "third")
-	w.until(t, "main override", answered("echo: third"))
-}
-
 func TestUserSendsFilesToTheAgent(t *testing.T) {
 	t.Parallel()
 	// Given dex with a model

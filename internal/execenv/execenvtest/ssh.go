@@ -17,13 +17,13 @@ import (
 // DispatchHelperMain handles --dex-fake-ssh subprocess invocations from TestMain.
 func DispatchHelperMain() {
 	if len(os.Args) >= 3 && os.Args[1] == "--dex-fake-ssh" {
-		os.Exit(RunFakeSSH(os.Args[2], os.Args[3:]))
+		os.Exit(runFakeSSH(os.Args[2], os.Args[3:]))
 	}
 }
 
 // FakeSSHFixture holds a simulated SSH server backed by a local shell + host-key file.
 type FakeSSHFixture struct {
-	StateDir   string
+	stateDir   string
 	RemoteHome string
 	SSHProgram string
 }
@@ -41,7 +41,7 @@ func NewFakeSSH(t *testing.T) *FakeSSHFixture {
 		t.Fatal(err)
 	}
 	f := &FakeSSHFixture{
-		StateDir:   stateDir,
+		stateDir:   stateDir,
 		RemoteHome: remoteHome,
 		SSHProgram: filepath.Join(stateDir, "fake-ssh"),
 	}
@@ -66,13 +66,12 @@ func (f *FakeSSHFixture) RotateHostKey(t *testing.T) {
 	wire = append(wire, 0, 0, 0, 32)
 	wire = append(wire, pub...)
 	line := "ssh-ed25519 " + base64.StdEncoding.EncodeToString(wire) + "\n"
-	if err := os.WriteFile(filepath.Join(f.StateDir, "pubkey"), []byte(line), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(f.stateDir, "pubkey"), []byte(line), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// RunFakeSSH emulates OpenSSH StrictHostKeyChecking (accept-new / yes) and runs the remote command in stateDir/home.
-func RunFakeSSH(stateDir string, sshArgs []string) int {
+func runFakeSSH(stateDir string, sshArgs []string) int {
 	if len(sshArgs) == 0 {
 		return 255
 	}

@@ -28,7 +28,7 @@ import (
 // 256 MiB bounds download and extraction memory; raise when a release needs more.
 const maxAsset = 256 << 20
 
-var ErrBusy = errors.New("update is busy")
+var errBusy = errors.New("update is busy")
 
 type Options struct {
 	Check, Scheduled bool
@@ -202,7 +202,7 @@ func (u *Updater) selectRelease(ctx context.Context, opt Options) (release, erro
 func (u *Updater) Run(ctx context.Context, opt Options, m service.Manager, out io.Writer) error {
 	lock, err := lockUpdate(u.executable + ".update.lock")
 	if err != nil {
-		if opt.Scheduled && errors.Is(err, ErrBusy) {
+		if opt.Scheduled && errors.Is(err, errBusy) {
 			fmt.Fprintln(out, "Update skipped: another updater is running.")
 			return nil
 		}
@@ -257,7 +257,7 @@ func (u *Updater) Run(ctx context.Context, opt Options, m service.Manager, out i
 		operation, cancel := context.WithTimeout(ctx, 90*time.Second)
 		defer cancel()
 		if err := maintenance(operation, state.Config, http.MethodPost); err != nil {
-			if opt.Scheduled && errors.Is(err, ErrBusy) {
+			if opt.Scheduled && errors.Is(err, errBusy) {
 				fmt.Fprintln(out, "Update skipped: dex is busy.")
 				return nil
 			}
@@ -439,7 +439,7 @@ func maintenance(ctx context.Context, c service.Config, method string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusConflict {
-		return ErrBusy
+		return errBusy
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("maintenance returned %s", resp.Status)

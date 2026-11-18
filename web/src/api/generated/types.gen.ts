@@ -290,7 +290,6 @@ export type Automation = AutomationInput & {
 };
 
 export type Work = {
-    agents: Array<Agent>;
     sessions: Array<WorkSession>;
     automations: Array<WorkAutomation>;
     inbox: Array<InboxItem>;
@@ -304,8 +303,6 @@ export type WorkSession = {
 export type WorkAutomation = {
     agentId: string;
     automation: Automation;
-    runs: Array<AutomationRun>;
-    scheduled: Array<number>;
     setup: boolean;
 };
 
@@ -715,8 +712,6 @@ export type Channels = {
 };
 
 export type AgentActivity = {
-    inboxUnread: number;
-    inboxFailed: number;
     routineFailed: boolean;
     activeSessions: number;
     runningChannels: number;
@@ -1106,13 +1101,6 @@ export type FeishuPoll = {
     session: string;
 };
 
-export type WorkWritable = {
-    agents: Array<AgentWritable>;
-    sessions: Array<WorkSession>;
-    automations: Array<WorkAutomation>;
-    inbox: Array<InboxItem>;
-};
-
 export type AgentWritable = {
     /**
      * The bot name. Trim spaces before validation.
@@ -1147,10 +1135,7 @@ export type EnvironmentId = string;
 export type GetWorkData = {
     body?: never;
     path?: never;
-    query: {
-        from: number;
-        to: number;
-    };
+    query?: never;
     url: '/api/work';
 };
 
@@ -1262,33 +1247,6 @@ export type DismissInboxItemResponses = {
 };
 
 export type DismissInboxItemResponse = DismissInboxItemResponses[keyof DismissInboxItemResponses];
-
-export type RestoreInboxItemData = {
-    body?: never;
-    path: {
-        runId: string;
-    };
-    query?: never;
-    url: '/api/inbox/{runId}/restore';
-};
-
-export type RestoreInboxItemErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type RestoreInboxItemError = RestoreInboxItemErrors[keyof RestoreInboxItemErrors];
-
-export type RestoreInboxItemResponses = {
-    /**
-     * State saved.
-     */
-    200: Ok;
-};
-
-export type RestoreInboxItemResponse = RestoreInboxItemResponses[keyof RestoreInboxItemResponses];
 
 export type CreateSessionData = {
     body: NewSession;

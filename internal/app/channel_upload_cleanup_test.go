@@ -59,6 +59,7 @@ func assertReceiptUpload(t *testing.T, db *sql.DB, dir, source string) {
 }
 
 func TestUserTelegramUploadRetryCleansUncommittedFile(t *testing.T) {
+	t.Parallel()
 	// Given a receipt write that fails after the document download.
 	f := newFakeTelegram(t)
 	f.files["notes.txt"] = "notes"
@@ -103,6 +104,7 @@ func TestUserTelegramUploadRetryCleansUncommittedFile(t *testing.T) {
 }
 
 func TestUserFeishuUploadRetryCleansUncommittedFile(t *testing.T) {
+	t.Parallel()
 	// Given a receipt write that fails after the file download.
 	f := newFakeFeishu(t)
 	dir := t.TempDir()
@@ -139,6 +141,7 @@ func TestUserFeishuUploadRetryCleansUncommittedFile(t *testing.T) {
 }
 
 func TestUserFeishuRejectedLaterResourceCleansEarlierUpload(t *testing.T) {
+	t.Parallel()
 	// Given a post whose second image is permanently unavailable.
 	f := newFakeFeishu(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

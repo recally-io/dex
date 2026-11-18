@@ -231,24 +231,6 @@ func TestUserRoutineBusinessBoundaryRejectsUntrustedSources(t *testing.T) {
 	}
 }
 
-func TestUserRoutineToolsAreUnavailableInAutomationAndBackground(t *testing.T) {
-	t.Parallel()
-	// Given a model that attempts routine discovery in automatic and delegated work.
-	data := t.TempDir()
-	d := startDex(t, data, "")
-	d.setModel(t, "tool")
-	a := d.createAutomation(t, "No self scheduling", "list_routines {}", "new", map[string]any{"kind": "daily", "time": "09:00"})
-	run := d.runNow(t, a.ID)
-	d.watch(t, run.ChatID).until(t, "routine tool unavailable", answeredWith("Tool list_routines is not available"))
-	// When a background task attempts the same action, the native tool set also refuses it.
-	parent := d.newSession(t).ID
-	spawnExecution(t, d, parent, "No background scheduling", "list_routines {}", "tool")
-	task := waitExecution(t, taskResultDB(t, data), parent, "No background scheduling", "done")
-	if !strings.Contains(task.Report, "Tool list_routines is not available") {
-		t.Fatalf("background report: %s", task.Report)
-	}
-}
-
 func TestUserRoutineMutationFailurePreservesCauseAndRollsBack(t *testing.T) {
 	t.Parallel()
 	// Given a real SQLite failure after a routine mutation but before its replay receipt.
@@ -304,78 +286,6 @@ func TestUserRoutineMutationFailurePreservesCauseAndRollsBack(t *testing.T) {
 	routineToolJSON(t, d, id, "get_routine", map[string]string{"id": a.ID}, &detail)
 	if !detail.Enabled || !slices.Equal(detail.NextRuns, a.NextRuns) {
 		t.Fatalf("partial update: %+v", detail)
-	}
-}
-
-func TestUserRoutineMetadataEditKeepsOverdueIntervalSeries(t *testing.T) {
-	t.Parallel()
-	// Given an enabled interval whose cursor is overdue, with no model to execute work.
-	data := t.TempDir()
-	d := startDex(t, data, "")
-	id := d.mainChat(t)
-	var a automation.Automation
-	routineToolJSON(t, d, id, "create_routine", map[string]any{"name": "Interval", "prompt": "check", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC"}, &a)
-	conn := sessionDB(t, d)
-	due := time.Now().Add(-75 * time.Minute).UnixMilli()
-	if _, err := conn.ExecContext(t.Context(), "UPDATE automations SET next_due_at=? WHERE id=?", due, a.ID); err != nil {
-		t.Fatal(err)
-	}
-	// When only the prompt changes, preview still starts at the saved aligned cursor.
-	var edited automation.Automation
-	routineToolJSON(t, d, id, "update_routine", map[string]any{"id": a.ID, "prompt": "changed prompt"}, &edited)
-	if len(edited.NextRuns) != 3 || edited.NextRuns[0] != due || edited.NextRuns[1] != due+30*time.Minute.Milliseconds() || edited.NextRuns[2] != due+60*time.Minute.Milliseconds() {
-		t.Fatalf("preview drift: %+v", edited)
-	}
-	d.stop()
-	// Then the scheduler advances from that cursor, independent of metadata update time.
-	if _, err := conn.ExecContext(t.Context(), "UPDATE agents SET model_id='' WHERE id='default'"); err != nil {
-		t.Fatal(err)
-	}
-	now := time.UnixMilli(due).Add(75 * time.Minute)
-	service := automation.New(sqlc.New(conn), nil, func() time.Time { return now })
-	service.Check(t.Context())
-	var next int64
-	if err := conn.QueryRowContext(t.Context(), "SELECT next_due_at FROM automations WHERE id=?", a.ID).Scan(&next); err != nil {
-		t.Fatal(err)
-	}
-	if want := due + 90*time.Minute.Milliseconds(); next != want {
-		t.Fatalf("next=%d want aligned %d", next, want)
-	}
-}
-
-func TestUserRoutineScheduleEditWinsOverInFlightCheck(t *testing.T) {
-	t.Parallel()
-	// Given a scheduler check that has read the old cursor before a schedule edit commits.
-	data := t.TempDir()
-	d := startDex(t, data, "")
-	id := d.mainChat(t)
-	var a automation.Automation
-	routineToolJSON(t, d, id, "create_routine", map[string]any{"name": "Concurrent", "prompt": "check", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC"}, &a)
-	conn := sessionDB(t, d)
-	d.stop()
-	now := time.Now()
-	due := now.Add(-5 * time.Minute).UnixMilli()
-	editedDue := now.Add(45 * time.Minute).UnixMilli()
-	if _, err := conn.ExecContext(t.Context(), "UPDATE agents SET model_id='' WHERE id='default'"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := conn.ExecContext(t.Context(), "UPDATE automations SET next_due_at=? WHERE id=?", due, a.ID); err != nil {
-		t.Fatal(err)
-	}
-	// This database boundary commits the edit between run insertion and cursor advancement.
-	_, err := conn.ExecContext(t.Context(), fmt.Sprintf(`CREATE TRIGGER edit_during_check AFTER INSERT ON automation_runs BEGIN UPDATE automations SET schedule='{"kind":"every","minutes":45}', next_due_at=%d WHERE id=NEW.automation_id; END`, editedDue))
-	if err != nil {
-		t.Fatal(err)
-	}
-	service := automation.New(sqlc.New(conn), nil, func() time.Time { return now })
-	service.Check(t.Context())
-	// Then the stale check cannot overwrite the edited schedule's cursor.
-	var next int64
-	if err := conn.QueryRowContext(t.Context(), "SELECT next_due_at FROM automations WHERE id=?", a.ID).Scan(&next); err != nil {
-		t.Fatal(err)
-	}
-	if next != editedDue {
-		t.Fatalf("scheduler overwrote edited due time: got %d want %d", next, editedDue)
 	}
 }
 

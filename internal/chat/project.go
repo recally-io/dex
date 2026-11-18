@@ -46,12 +46,9 @@ func ProjectPath(path string) (string, error) {
 	return path, nil
 }
 
-// ResolveProjectPath validates and normalizes a project path inside the agent's execution environment.
-func (s *Service) ResolveProjectPath(ctx context.Context, agentID, path string) (string, error) {
-	if s.engine != nil {
-		return s.engine.ResolveProjectPath(ctx, agentID, path)
-	}
-	return ProjectPath(path)
+// resolveProjectPath validates and normalizes a project path inside the agent's execution environment.
+func (s *Service) resolveProjectPath(ctx context.Context, agentID, path string) (string, error) {
+	return s.engine.ResolveProjectPath(ctx, agentID, path)
 }
 
 // SetProject saves control state first. API changes apply on the next submit.
@@ -66,7 +63,7 @@ func (s *Service) SetProject(ctx context.Context, agentID string, id int64, path
 	if !acceptsInput(conv.ChannelKey, conv.ParentID) {
 		return "", ErrProjectForbidden
 	}
-	path, err = s.ResolveProjectPath(ctx, agentID, path)
+	path, err = s.resolveProjectPath(ctx, agentID, path)
 	if err != nil {
 		return "", err
 	}
@@ -90,17 +87,5 @@ func (s *Service) RecentProjects(ctx context.Context, agentID string) ([]string,
 	if err != nil {
 		return nil, err
 	}
-	if s.engine != nil {
-		return s.engine.FilterProjectPaths(ctx, agentID, paths, 8)
-	}
-	projects := []string{}
-	for _, path := range paths {
-		if info, err := os.Stat(path); err == nil && info.IsDir() {
-			projects = append(projects, path)
-			if len(projects) == 8 {
-				break
-			}
-		}
-	}
-	return projects, nil
+	return s.engine.FilterProjectPaths(ctx, agentID, paths, 8)
 }

@@ -16,12 +16,8 @@
     "components": "@/components",
     "utils": "@/lib/utils",
     "ui": "@/components/ui",
-    "lib": "@/lib",
-    "hooks": "@/hooks"
+    "lib": "@/lib"
   },
   "menuColor": "default",
-  "menuAccent": "subtle",
-  "registries": {
-    "@beautifului": "https://www.beautifului.dev/r/{name}.json"
-  }
+  "menuAccent": "subtle"
 }

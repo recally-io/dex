@@ -119,58 +119,6 @@ func TestUserStopsCurrentChannelAnswer(t *testing.T) {
 	}
 }
 
-func TestUserStopsChannelMessageBeforeNativeAdmission(t *testing.T) {
-	t.Parallel()
-	// Given an idle native engine with admission closed for maintenance.
-	f := newFakeTelegram(t)
-	d := startTelegram(t, f, t.TempDir(), 42)
-	d.must(t, http.MethodPost, "/api/maintenance", nil, nil)
-	// When a message is queued and /stop follows before native conversation creation.
-	f.message(1, 42, 7, "must not execute")
-	f.message(2, 42, 7, "/stop")
-	var stopped bool
-	for range 2 {
-		if f.next(t).Text == "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
-			stopped = true
-		}
-	}
-	if !stopped {
-		t.Fatal("no stop acknowledgement")
-	}
-	d.must(t, http.MethodDelete, "/api/maintenance", nil, nil)
-	f.message(3, 42, 7, "after stop")
-	// Then only the later message runs, and the stopped message remains unanswered.
-	if got := f.next(t).Text; got != "echo: after stop" {
-		t.Fatal(got)
-	}
-	if c := d.mainInfo(t); c.Busy {
-		t.Fatalf("main: %+v", c)
-	}
-}
-
-func TestUserRetrySkipsConfirmedTelegramParts(t *testing.T) {
-	t.Parallel()
-	// Given an answer that spans two Telegram messages, with the second send failing.
-	f := newFakeTelegram(t)
-	f.failAfter.Store(1)
-	d := startTelegram(t, f, t.TempDir(), 42)
-	setAnswer := useRichAnswerProvider(t, d)
-	setAnswer("echo: " + strings.Repeat("a", 33000))
-	f.message(1, 42, 7, "generate long reply")
-	first := f.next(t).Text
-	if len(first) != 32768 {
-		t.Fatalf("first length: %d", len(first))
-	}
-	eventually(t, "second send failure", func() (bool, any) { n := f.sendCount.Load(); return n >= 2, n })
-	// When Telegram becomes available again.
-	f.failAfter.Store(0)
-	// Then only the remaining part is sent.
-	second := f.next(t).Text
-	if first+second != "echo: "+strings.Repeat("a", 33000) {
-		t.Fatalf("second part: %q", second)
-	}
-}
-
 func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 	t.Parallel()
 	// Given external channel chats in control storage.

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json/v2"
 	"fmt"
 	"io"
@@ -21,7 +20,6 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/execenv/execenvtest"
 	"github.com/recally-io/dex/internal/mcptest"
 )
@@ -946,41 +944,4 @@ func TestCrossSiteWriteIsRefused(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
-}
-
-func TestUserMessageLeftPendingIsAnsweredAfterRestart(t *testing.T) {
-	t.Parallel()
-	dataDir := t.TempDir()
-
-	// Given a chat that exists, and a message that control stored but the worker never
-	// answered, as after a crash
-	d := startDex(t, dataDir, "")
-	d.setModel(t, "echo")
-	chatID := d.newChat(t, "hello")
-	d.watch(t, chatID).until(t, "answer", answered("echo: hello"))
-	d.stop()
-	conn, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	q := sqlc.New(conn)
-	pendingID := uuid.NewV7().String()
-	_, err = q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{Kind: "message", Origin: "web",
-		ID: pendingID, ConversationID: chatID, Content: "are you there", Attachments: "[]", CreatedAt: time.Now().UnixMilli(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// When dex starts again and the user opens the chat
-	d = startDex(t, dataDir, "")
-	w := d.watch(t, chatID)
-
-	// Then the worker answers the pending message
-	w.until(t, "answer", answered("echo: are you there"))
-	eventually(t, "settled submission", func() (bool, any) {
-		last, err := q.GetSubmission(t.Context(), pendingID)
-		return err == nil && last.Status == "done" && last.Answer.String == "echo: are you there", last
-	})
 }

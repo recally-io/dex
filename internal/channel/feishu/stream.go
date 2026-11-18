@@ -28,9 +28,12 @@ type streamEvent struct {
 }
 
 func (b *Bot) stream(ctx context.Context, id string, chatID int64, owner string, p *preview) {
+	if b.watch == nil {
+		return
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	reader, err := b.hub.Open(ctx, chatID)
+	reader, err := b.watch(ctx, chatID)
 	if err != nil {
 		return
 	}
@@ -119,8 +122,8 @@ func (b *Bot) stream(ctx context.Context, id string, chatID int64, owner string,
 				}
 			}
 			if text.Len() > 0 {
-				parts := Parts(text.String())
-				latest = parts[0]
+				textParts := parts(text.String())
+				latest = textParts[0]
 			}
 		case <-ticker.C:
 			if latest == sent {
@@ -132,9 +135,9 @@ func (b *Bot) stream(ctx context.Context, id string, chatID int64, owner string,
 				return
 			}
 			if p.messageID == "" {
-				p.messageID, err = b.client.Send(ctx, owner, "interactive", CardContent(latest, false), deliveryUUID(id+":preview", 0))
+				p.messageID, err = b.client.Send(ctx, owner, "interactive", cardContent(latest, false), deliveryUUID(id+":preview", 0))
 			} else {
-				err = b.client.Patch(ctx, p.messageID, CardContent(latest, false))
+				err = b.client.Patch(ctx, p.messageID, cardContent(latest, false))
 			}
 			b.mu.Unlock()
 			if err != nil {

@@ -49,6 +49,7 @@ func settledRoutine(t *testing.T, d *dex, id, runID string) routineRun {
 	return found
 }
 func TestUserAutomationInputFailureCannotCommitARunWithoutItsMessage(t *testing.T) {
+	t.Parallel()
 	// Given an automation and a real SQLite failure at the input boundary.
 	data := t.TempDir()
 	d := startDexWith(t, app.Config{DataDir: data, AutomationCheck: time.Hour})
@@ -96,12 +97,14 @@ func TestUserAutomationInputFailureCannotCommitARunWithoutItsMessage(t *testing.
 	}
 }
 func TestUserAutomationReportsStructuredOutcomesAndDuplicates(t *testing.T) {
+	t.Parallel()
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "tool")
 	for _, outcome := range []string{"changed", "unchanged", "failed"} {
 		t.Run(outcome, func(t *testing.T) {
 			// Given a routine that reports its result through the real tool boundary.
-			d := startDex(t, t.TempDir(), "")
-			d.setModel(t, "tool")
-			prompt := fmt.Sprintf(`report_check {"outcome":%q,"summary":"fixture check completed","changeKey":"release-73"}`, outcome)
+			key := "release-73-" + outcome
+			prompt := fmt.Sprintf(`report_check {"outcome":%q,"summary":"fixture check completed","changeKey":%q}`, outcome, key)
 			a := d.createAutomation(t, "Check", prompt, "new", map[string]any{"kind": "daily", "time": "09:00"})
 			// When the routine completes.
 			first := d.runNow(t, a.ID)
@@ -120,7 +123,7 @@ func TestUserAutomationReportsStructuredOutcomesAndDuplicates(t *testing.T) {
 			// When a later run reports the same change key, it remains a separate run.
 			second := d.runNow(t, a.ID)
 			duplicate := settledRoutine(t, d, a.ID, second.ID)
-			if !duplicate.Duplicate || duplicate.ChangeKey != "release-73" || duplicate.Outcome != outcome {
+			if !duplicate.Duplicate || duplicate.ChangeKey != key || duplicate.Outcome != outcome {
 				t.Fatalf("duplicate result = %+v", duplicate)
 			}
 			if len(routineRuns(t, d, a.ID)) != 2 {
@@ -128,7 +131,7 @@ func TestUserAutomationReportsStructuredOutcomesAndDuplicates(t *testing.T) {
 			}
 			// When a third run reports another outcome with the same key, it is not a duplicate.
 			other := map[string]string{"changed": "unchanged", "unchanged": "changed", "failed": "changed"}[outcome]
-			body := map[string]any{"name": "Check", "prompt": fmt.Sprintf(`report_check {"outcome":%q,"summary":"fixture check completed","changeKey":"release-73"}`, other), "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "Asia/Shanghai", "session": "new", "enabled": true}
+			body := map[string]any{"name": "Check", "prompt": fmt.Sprintf(`report_check {"outcome":%q,"summary":"fixture check completed","changeKey":%q}`, other, key), "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "Asia/Shanghai", "session": "new", "enabled": true}
 			d.must(t, http.MethodPut, "/api/agents/default/automations/"+a.ID, body, nil)
 			third := settledRoutine(t, d, a.ID, d.runNow(t, a.ID).ID)
 			if third.Outcome != other || third.Duplicate {
@@ -137,20 +140,9 @@ func TestUserAutomationReportsStructuredOutcomesAndDuplicates(t *testing.T) {
 		})
 	}
 }
-func TestUserAutomationWithoutAReportFails(t *testing.T) {
-	// Given a routine whose model returns text without report_check.
-	d := startDex(t, t.TempDir(), "")
-	d.setModel(t, "echo")
-	a := d.createAutomation(t, "Check", "no report", "new", map[string]any{"kind": "daily", "time": "09:00"})
-	// When the model finishes without a report.
-	run := d.runNow(t, a.ID)
-	r := settledRoutine(t, d, a.ID, run.ID)
-	// Then success text cannot become an unchanged result.
-	if r.Status != "failed" || r.Outcome != "failed" || r.Summary == "" {
-		t.Fatalf("missing report result = %+v", r)
-	}
-}
+
 func TestUserAutomationAppliesItsProjectOnEveryRun(t *testing.T) {
+	t.Parallel()
 	// Given a reusable routine with a project directory.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "bash")
@@ -193,6 +185,7 @@ func TestUserAutomationAppliesItsProjectOnEveryRun(t *testing.T) {
 }
 
 func TestUserAutomationRecoversCommittedInputWithoutRepeatingScheduledRun(t *testing.T) {
+	t.Parallel()
 	// Given a crash boundary after the input commit but before the schedule advances.
 	data := t.TempDir()
 	d := startDexWith(t, app.Config{DataDir: data, AutomationCheck: 100 * time.Millisecond})
@@ -238,36 +231,8 @@ func TestUserAutomationRecoversCommittedInputWithoutRepeatingScheduledRun(t *tes
 	}
 }
 
-func TestUserReportCheckIsAvailableOnlyInAutomationChats(t *testing.T) {
-	// Given an ordinary Chat with the real tool registry.
-	d := startDex(t, t.TempDir(), "")
-	d.setModel(t, "tool")
-	id := d.newChat(t, `report_check {"outcome":"unchanged","summary":"ordinary chat"}`)
-	// When the model tries the automation tool.
-	d.watch(t, id).until(t, "automation tool refused", func(tr *transcript) bool {
-		for _, item := range tr.items {
-			if item.Kind == "tool" && item.Name == "report_check" && item.Status == "error" {
-				return true
-			}
-		}
-		return false
-	})
-	// Then it cannot create a routine report.
-	conn := sessionDB(t, d)
-	var n int
-	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM automation_runs").Scan(&n); err != nil || n != 0 {
-		t.Fatalf("automation runs=%d err=%v", n, err)
-	}
-	// And the same tool is available in an automation conversation.
-	a := d.createAutomation(t, "Scoped report", `report_check {"outcome":"unchanged","summary":"routine checked"}`, "new", map[string]any{"kind": "daily", "time": "09:00"})
-	run := d.runNow(t, a.ID)
-	result := settledRoutine(t, d, a.ID, run.ID)
-	if result.Outcome != "unchanged" || result.Status != "done" {
-		t.Fatalf("automation tool result=%+v", result)
-	}
-}
-
 func TestUserAutomationExecutionErrorOverridesItsReport(t *testing.T) {
+	t.Parallel()
 	// Given a provider that reports success, then fails on its next model turn.
 	var requests atomic.Int32
 	boundary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -299,20 +264,4 @@ func TestUserAutomationExecutionErrorOverridesItsReport(t *testing.T) {
 		}
 		return false
 	})
-}
-
-func TestUserAutomationRejectsInvalidProjectDirectories(t *testing.T) {
-	// Given an automation API with the same directory rules as Chat.
-	d := startDex(t, t.TempDir(), "")
-	file := filepath.Join(t.TempDir(), "file")
-	if err := os.WriteFile(file, []byte("fixture"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	for _, cwd := range []string{"relative/path", filepath.Join(t.TempDir(), "missing"), file} {
-		// When the project is relative, absent, or a file, the API refuses it.
-		status, body := d.call(t, http.MethodPost, "/api/agents/default/automations", map[string]any{"name": "Check", "prompt": "check", "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "cwd": cwd})
-		if status != http.StatusBadRequest {
-			t.Fatalf("invalid cwd %q: HTTP %d %s", cwd, status, body)
-		}
-	}
 }

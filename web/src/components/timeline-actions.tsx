@@ -65,7 +65,6 @@ export function useClearContext(chatId: number, running: boolean, onCleared: () 
 
   return {
     submit: (text = "") => clear.mutateAsync(text),
-    pending: clear.isPending,
     error: clear.error,
     refused,
   };

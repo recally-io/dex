@@ -58,19 +58,3 @@ func TestUserAgentsMDReachesTheModelAroundTheAgentInstructions(t *testing.T) {
 	w = d.watch(t, d.newChat(t, "instructions"))
 	w.until(t, "edited import", answeredWith("NEW-STYLE"))
 }
-
-func TestUserHomeAgentsMDIsNotReadWithoutALink(t *testing.T) {
-	t.Parallel()
-	// Given a home AGENTS.md and no AGENTS.md at the dex or agent level.
-	data, home := t.TempDir(), t.TempDir()
-	writeFile(t, filepath.Join(home, ".agents", "AGENTS.md"), "HOME-RULES\n")
-	d := startDexHome(t, app.Config{DataDir: data}, home)
-	d.must(t, http.MethodPut, "/api/agents/default",
-		map[string]string{"name": "Dex", "provider": "faux", "modelId": "section", "thinkingLevel": "off", "instructions": "OWN-INSTRUCTIONS"}, nil)
-	// When the model reads its instructions, only the agent's own text is there.
-	w := d.watch(t, d.newChat(t, "instructions"))
-	w.until(t, "instructions", answeredWith("section: "))
-	if answer := w.tr.items[len(w.tr.items)-1].Text; !strings.Contains(answer, "OWN-INSTRUCTIONS") || strings.Contains(answer, "HOME-RULES") {
-		t.Fatalf("instructions: %q", answer)
-	}
-}

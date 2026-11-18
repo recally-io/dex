@@ -56,6 +56,7 @@ func TestUserRejectedTelegramGroupResumesOnlyUnconfirmedFallbackFiles(t *testing
 }
 
 func TestUserUnknownTelegramGroupOutcomeRetriesWholeSnapshotWithoutFallback(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []struct {
 		name    string
 		failure platformFailure
@@ -147,6 +148,42 @@ func TestUserTelegramGroupConfirmationFailureReplaysOnlyUnconfirmedGroup(t *test
 		}
 	}
 	eventually(t, "receipt transaction repaired", func() (bool, any) {
+		n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND delivered_at IS NOT NULL AND json_array_length(channel_remote_ids)=3")
+		return n == 1, n
+	})
+}
+
+func TestUserTelegramGroupFallbackStartsOnlyAfterModeCommit(t *testing.T) {
+	t.Parallel()
+	// Given a group rejection whose durable fallback transition cannot commit.
+	data := t.TempDir()
+	f := newFakeTelegram(t)
+	for range 10 {
+		f.failures["sendMediaGroup"] = append(f.failures["sendMediaGroup"], platformFailure{Code: 400})
+	}
+	d := startTelegram(t, f, data, 42)
+	d.setModel(t, "files")
+	conn := controlWriteDB(t, data)
+	execSQL(t, conn, "CREATE TRIGGER hold_fallback_mode BEFORE UPDATE OF channel_group_fallback ON submissions WHEN NEW.channel_group_fallback=1 BEGIN SELECT RAISE(ABORT,'hold fallback mode'); END")
+	telegramSource(t, data, "one.txt", []byte("one"))
+	telegramSource(t, data, "two.txt", []byte("two"))
+	f.message(1, 42, 7, `["one.txt","two.txt"]`)
+	_ = nextTelegramGroup(t, f.groupAttempts)
+	eventually(t, "mode write failure retains an unconfirmed group", func() (bool, any) {
+		n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND channel_group_fallback=0 AND delivered_parts=1 AND channel_retry_at>0")
+		return n == 1, n
+	})
+	select {
+	case single := <-f.mediaAttempts:
+		t.Fatalf("fallback ran before its mode committed: %+v", single)
+	default:
+	}
+	// When the write is repaired, fallback is permitted and all member receipts complete.
+	execSQL(t, conn, "DROP TRIGGER hold_fallback_mode")
+	for range 2 {
+		_ = nextTelegramMedia(t, f.mediaSent)
+	}
+	eventually(t, "repaired mode transition completed", func() (bool, any) {
 		n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND delivered_at IS NOT NULL AND json_array_length(channel_remote_ids)=3")
 		return n == 1, n
 	})

@@ -188,6 +188,8 @@ func TestUserMissingConfiguredTelegramSpeechProviderDoesNotChooseAnother(t *test
 	f := newFakeTelegram(t)
 	f.files["voice.ogg"] = "OggS\x00\x00OpusHeadsynthetic"
 	d := startTelegram(t, f, t.TempDir(), 42)
+	// Speech disclosure is required before enabling STT or TTS.
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"stt": map[string]any{"enabled": true, "provider": "private", "model": "transcriber"}}}, nil, http.StatusBadRequest)
 	// An explicit model name is not proof that a provider exists or supports audio.
 	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"stt": map[string]any{"enabled": true, "allowSending": true, "provider": "missing", "model": "explicit"}}}, nil)
 	f.voice()

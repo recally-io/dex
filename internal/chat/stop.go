@@ -107,7 +107,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		prior, err := q.GetRoutineToolOperation(ctx, call.task.Key)
 		if err == nil {
 			if prior.AgentID != call.task.AgentID || prior.ConversationID != call.parent || prior.SourceRequestID != call.task.SourceRequestID || prior.Action != toolStopAction {
-				return withdrawal{}, fmt.Errorf("%w: tool key belongs to another operation", ErrSessionInvalid)
+				return withdrawal{}, fmt.Errorf("%w: tool key belongs to another operation", errSessionInvalid)
 			}
 			return withdrawal{stored: prior.Result}, nil
 		}

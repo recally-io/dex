@@ -12,14 +12,12 @@ const sandboxPresets = [
   { value: "custom", label: "Custom endpoint" },
 ] as const;
 
-export type SandboxFormController = {
+type SandboxFormController = {
   errors: Partial<
     Record<"name" | "apiUrl" | "secret" | "template" | "timeoutSeconds" | "workspaceDir", string>
   >;
   hasConfigErrors: boolean;
   hasErrors: boolean;
-  buildConfig: () => EnvironmentConfig;
-  name: string;
   submitBody: () => { name: string; kind: "e2b"; config: EnvironmentConfig; secret?: string };
   probeBody: (environmentId?: string) => {
     environmentId?: string;
@@ -179,8 +177,6 @@ export function useSandboxEnvironmentForm(
       errors.workspaceDir
     ),
     hasErrors: Object.keys(errors).length > 0,
-    buildConfig,
-    name: name.trim(),
     submitBody: () => ({
       name: name.trim(),
       kind: "e2b",

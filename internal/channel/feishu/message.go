@@ -8,19 +8,19 @@ import (
 	"strings"
 )
 
-// Resource names one attachment from a message.
-type Resource struct{ Key, Name, Type string }
+// resource names one attachment from a message.
+type resource struct{ Key, Name, Type string }
 
-// Message is an inbound private message before owner authorization.
-type Message struct {
+// message is an inbound private message before owner authorization.
+type message struct {
 	ID, Sender, ChatType, Text string
 	// ReplyTo is the ID of the message that this message quotes. It is empty for a plain message.
 	ReplyTo   string
-	Resources []Resource
+	Resources []resource
 }
 
-// ParseMessage extracts the supported content without retaining platform data.
-func ParseMessage(data []byte) (Message, error) {
+// parseMessage extracts the supported content without retaining platform data.
+func parseMessage(data []byte) (message, error) {
 	var event struct {
 		Header struct {
 			Type string `json:"event_type"`
@@ -45,15 +45,15 @@ func ParseMessage(data []byte) (Message, error) {
 		} `json:"event"`
 	}
 	if err := json.Unmarshal(data, &event); err != nil {
-		return Message{}, err
+		return message{}, err
 	}
 	if event.Header.Type != "im.message.receive_v1" || event.Event.Sender.Type != "user" {
-		return Message{}, nil
+		return message{}, nil
 	}
 	raw := event.Event.Message
-	m := Message{ID: raw.ID, Sender: event.Event.Sender.ID.OpenID, ChatType: raw.ChatType, ReplyTo: raw.ParentID}
+	m := message{ID: raw.ID, Sender: event.Event.Sender.ID.OpenID, ChatType: raw.ChatType, ReplyTo: raw.ParentID}
 	if m.ID == "" || m.Sender == "" {
-		return Message{}, errors.New("feishu message has no ID or sender")
+		return message{}, errors.New("feishu message has no ID or sender")
 	}
 	if m.ChatType != "p2p" {
 		return m, nil
@@ -76,12 +76,12 @@ func ParseMessage(data []byte) (Message, error) {
 			if content.ImageKey == "" {
 				return m, errors.New("image has no key")
 			}
-			m.Resources = []Resource{{content.ImageKey, "image.png", "image"}}
+			m.Resources = []resource{{content.ImageKey, "image.png", "image"}}
 		case "file":
 			if content.FileKey == "" || content.FileName == "" {
 				return m, errors.New("file has no key or name")
 			}
-			m.Resources = []Resource{{content.FileKey, content.FileName, "file"}}
+			m.Resources = []resource{{content.FileKey, content.FileName, "file"}}
 		}
 	case "post":
 		text, resources, err := parsePost([]byte(raw.Content))
@@ -113,7 +113,7 @@ type post struct {
 	} `json:"content"`
 }
 
-func parsePost(data []byte) (string, []Resource, error) {
+func parsePost(data []byte) (string, []resource, error) {
 	var p post
 	if err := json.Unmarshal(data, &p); err != nil {
 		return "", nil, err
@@ -143,7 +143,7 @@ func parsePost(data []byte) (string, []Resource, error) {
 	}
 	var text strings.Builder
 	text.WriteString(p.Title)
-	var resources []Resource
+	var resources []resource
 	for _, line := range p.Content {
 		if text.Len() > 0 {
 			text.WriteByte('\n')
@@ -161,7 +161,7 @@ func parsePost(data []byte) (string, []Resource, error) {
 				}
 			case "img":
 				if part.ImageKey != "" {
-					resources = append(resources, Resource{part.ImageKey, "image.png", "image"})
+					resources = append(resources, resource{part.ImageKey, "image.png", "image"})
 				}
 			}
 		}
@@ -172,8 +172,8 @@ func parsePost(data []byte) (string, []Resource, error) {
 	return text.String(), resources, nil
 }
 
-// CardContent has no buttons or tool data. Text is one platform-sized part.
-func CardContent(text string, failed bool) string {
+// cardContent has no buttons or tool data. Text is one platform-sized part.
+func cardContent(text string, failed bool) string {
 	color := "blue"
 	if failed {
 		color = "red"

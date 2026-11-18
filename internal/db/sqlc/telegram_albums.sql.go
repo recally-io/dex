@@ -63,16 +63,6 @@ func (q *Queries) DiscardPrivateTelegramAlbums(ctx context.Context, agentID stri
 	return err
 }
 
-const discardTelegramAlbums = `-- name: DiscardTelegramAlbums :exec
-UPDATE telegram_album_members SET state = 'discarded'
-WHERE agent_id = ? AND state IN ('collecting', 'sealed')
-`
-
-func (q *Queries) DiscardTelegramAlbums(ctx context.Context, agentID string) error {
-	_, err := q.db.ExecContext(ctx, discardTelegramAlbums, agentID)
-	return err
-}
-
 const discardUnauthorizedTelegramAlbums = `-- name: DiscardUnauthorizedTelegramAlbums :exec
 UPDATE telegram_album_members SET state = 'discarded'
 WHERE telegram_album_members.agent_id = ?1 AND state IN ('collecting', 'sealed')

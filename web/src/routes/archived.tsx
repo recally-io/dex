@@ -18,7 +18,7 @@ export function ArchivedPage() {
       description="An archived bot is hidden. Its channels are stopped and its routines are paused. Its chats, memory and settings stay. Restore a bot to use it again."
     >
       {archived.data ? (
-        <Section n={1} title="Bots" caption={`${archived.data.agents.length} archived`}>
+        <Section title="Bots" caption={`${archived.data.agents.length} archived`}>
           {archived.data.agents.length ? (
             <Panel>
               <ul className="divide-y divide-border">

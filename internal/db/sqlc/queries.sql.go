@@ -1182,17 +1182,13 @@ SELECT
 FROM automation_runs r
 LEFT JOIN submissions s ON s.id = r.id
 WHERE r.automation_id = ?1
-    AND coalesce(r.due_at, r.created_at) >= ?2
-    AND coalesce(r.due_at, r.created_at) < ?3
 ORDER BY r.created_at DESC, r.id DESC
-LIMIT ?4
+LIMIT ?2
 `
 
 type ListAutomationRunsParams struct {
-	AutomationID string        `json:"automation_id"`
-	RangeStart   sql.NullInt64 `json:"range_start"`
-	RangeEnd     sql.NullInt64 `json:"range_end"`
-	RowLimit     int64         `json:"row_limit"`
+	AutomationID string `json:"automation_id"`
+	RowLimit     int64  `json:"row_limit"`
 }
 
 type ListAutomationRunsRow struct {
@@ -1214,12 +1210,7 @@ type ListAutomationRunsRow struct {
 
 // The newest runs of an automation, with the message of each started run.
 func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRunsParams) ([]ListAutomationRunsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listAutomationRuns,
-		arg.AutomationID,
-		arg.RangeStart,
-		arg.RangeEnd,
-		arg.RowLimit,
-	)
+	rows, err := q.db.QueryContext(ctx, listAutomationRuns, arg.AutomationID, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -1505,54 +1496,6 @@ func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt6
 			&i.Cwd,
 			&i.NotificationRoute,
 			&i.NotificationTargetID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listOpenSubmissions = `-- name: ListOpenSubmissions :many
-SELECT id, content, attachments, origin, status, reason, created_at FROM submissions
-WHERE conversation_id = ? AND status != 'done' AND kind = 'message'
-ORDER BY created_at
-`
-
-type ListOpenSubmissionsRow struct {
-	ID          string         `json:"id"`
-	Content     string         `json:"content"`
-	Attachments string         `json:"attachments"`
-	Origin      string         `json:"origin"`
-	Status      string         `json:"status"`
-	Reason      sql.NullString `json:"reason"`
-	CreatedAt   int64          `json:"created_at"`
-}
-
-// The messages of a chat that have no answer: pending, or unanswered with a reason.
-func (q *Queries) ListOpenSubmissions(ctx context.Context, conversationID int64) ([]ListOpenSubmissionsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listOpenSubmissions, conversationID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListOpenSubmissionsRow{}
-	for rows.Next() {
-		var i ListOpenSubmissionsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Content,
-			&i.Attachments,
-			&i.Origin,
-			&i.Status,
-			&i.Reason,
-			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

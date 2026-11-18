@@ -64,7 +64,7 @@ export function ProvidersPage() {
       {data ? (
         <>
           <Connections {...data} onEdit={setDialog} onRemove={setRemove} />
-          <Section n={2} title="Keys" caption="Write-only.">
+          <Section title="Keys" caption="Write-only.">
             <Panel>
               <Facts
                 rows={[
@@ -122,7 +122,6 @@ function Connections({
 
   return (
     <Section
-      n={1}
       title="Connections"
       caption={
         settings.providers.length

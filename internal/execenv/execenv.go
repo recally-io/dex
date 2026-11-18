@@ -26,15 +26,9 @@ var ErrInvalidPath = errors.New("invalid project directory")
 // ErrInvalidConfig is returned when an execution environment configuration is invalid.
 var ErrInvalidConfig = errors.New("invalid execution environment configuration")
 
-// StampProvider computes a configuration stamp for an agent's execution environment.
-type StampProvider interface {
-	Stamp(ctx context.Context, agentID string) (string, bool)
-}
-
 // Handle represents an opened execution environment bound to one agent.
 type Handle interface {
 	Kind() Kind
-	ID() string
 	Workspace() string
 	Home(ctx context.Context) (string, error)
 	Env(ctx context.Context, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, error)
@@ -44,14 +38,6 @@ type Handle interface {
 // Provider opens and manages agent execution environment handles.
 type Provider interface {
 	Open(ctx context.Context, agentID string) (Handle, error)
+	Stamp(ctx context.Context, agentID string) (string, bool)
 	Close(ctx context.Context) error
 }
-
-// ProviderFunc adapts a function into a Provider with a no-op Close.
-type ProviderFunc func(ctx context.Context, agentID string) (Handle, error)
-
-func (f ProviderFunc) Open(ctx context.Context, agentID string) (Handle, error) {
-	return f(ctx, agentID)
-}
-
-func (f ProviderFunc) Close(context.Context) error { return nil }

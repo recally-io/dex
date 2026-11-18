@@ -1,7 +1,6 @@
 package execenvtest
 
 import (
-	"context"
 	"encoding/binary"
 	"encoding/json/v2"
 	"errors"
@@ -50,7 +49,6 @@ type FakeE2BServer struct {
 	lastAutoPause      bool
 	lastAutoResume     bool
 	connectUnsupported bool
-	returnDomain       string
 	sandboxes          map[string]*fakeSandbox
 	procs              map[uint32]*exec.Cmd
 }
@@ -85,13 +83,8 @@ func NewFakeE2B(t *testing.T, apiKey string) *FakeE2BServer {
 		s.counts.Created++
 		s.lastAutoPause = createReq.AutoPause
 		s.lastAutoResume = createReq.AutoResume != nil && createReq.AutoResume.Enabled
-		domain := s.returnDomain
 		s.mu.Unlock()
-		resp := map[string]any{"sandboxID": id, "envdAccessToken": tok}
-		if domain != "" {
-			resp["domain"] = domain
-		}
-		writeTestJSON(w, http.StatusCreated, resp)
+		writeTestJSON(w, http.StatusCreated, map[string]any{"sandboxID": id, "envdAccessToken": tok})
 	}))
 	apiMux.HandleFunc("POST /v2/sandboxes/{id}/connect", s.withAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -110,13 +103,8 @@ func NewFakeE2B(t *testing.T, apiKey string) *FakeE2BServer {
 		sb.paused = false
 		s.counts.Connected++
 		tok := sb.token
-		domain := s.returnDomain
 		s.mu.Unlock()
-		resp := map[string]any{"sandboxID": id, "envdAccessToken": tok}
-		if domain != "" {
-			resp["domain"] = domain
-		}
-		writeTestJSON(w, http.StatusOK, resp)
+		writeTestJSON(w, http.StatusOK, map[string]any{"sandboxID": id, "envdAccessToken": tok})
 	}))
 	apiMux.HandleFunc("GET /sandboxes/{id}", s.withAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -128,13 +116,8 @@ func NewFakeE2B(t *testing.T, apiKey string) *FakeE2BServer {
 			return
 		}
 		tok := sb.token
-		domain := s.returnDomain
 		s.mu.Unlock()
-		resp := map[string]any{"sandboxID": id, "envdAccessToken": tok}
-		if domain != "" {
-			resp["domain"] = domain
-		}
-		writeTestJSON(w, http.StatusOK, resp)
+		writeTestJSON(w, http.StatusOK, map[string]any{"sandboxID": id, "envdAccessToken": tok})
 	}))
 	apiMux.HandleFunc("POST /sandboxes/{id}/timeout", s.withAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -224,12 +207,6 @@ func (s *FakeE2BServer) SetConnectUnsupported(v bool) {
 	s.mu.Unlock()
 }
 
-func (s *FakeE2BServer) SetReturnDomain(domain string) {
-	s.mu.Lock()
-	s.returnDomain = domain
-	s.mu.Unlock()
-}
-
 func (s *FakeE2BServer) LastCreateAutoPause() (autoPause, autoResume bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -258,17 +235,6 @@ func (s *FakeE2BServer) SimulateExpire(sandboxID string) {
 		sb.killed = true
 	}
 	s.mu.Unlock()
-}
-
-// HostPath maps a sandbox POSIX path inside sandboxID onto the underlying temp directory.
-func (s *FakeE2BServer) HostPath(sandboxID, sandboxPath string) string {
-	s.mu.Lock()
-	sb := s.sandboxes[sandboxID]
-	s.mu.Unlock()
-	if sb == nil {
-		return ""
-	}
-	return filepath.Join(sb.root, filepath.FromSlash(strings.TrimPrefix(path.Clean("/"+sandboxPath), "/")))
 }
 
 func (s *FakeE2BServer) withAPIKey(next http.HandlerFunc) http.HandlerFunc {
@@ -653,6 +619,3 @@ func writeTestJSON(w http.ResponseWriter, status int, v any) {
 	b, _ := json.Marshal(v)
 	_, _ = w.Write(b)
 }
-
-// Unused context check helper so context import stays used if refactored.
-var _ = context.Background

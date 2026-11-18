@@ -92,11 +92,7 @@ export function GeneralSettingsPage() {
           />
         </div>
       ) : defaults && settings.data ? (
-        <Section
-          n={1}
-          title="Bot defaults"
-          caption="The default bot uses them, and a new bot starts with a copy."
-        >
+        <Section title="Bot defaults" caption="The default bot uses them, and a new bot starts with a copy.">
           <Panel>
             <div className="flex flex-wrap items-center gap-3 px-4 py-3.5">
               <div className="min-w-0 flex-1">

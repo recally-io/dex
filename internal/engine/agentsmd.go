@@ -36,11 +36,6 @@ type agentsMDReader struct {
 	warnings []string
 }
 
-// readAgentsMD reads path and the files that it imports with `@path` tokens on the local host.
-func readAgentsMD(targetPath, home, confine string) agentsMD {
-	return readAgentsMDLocal(context.Background(), targetPath, home, confine)
-}
-
 func readAgentsMDLocal(ctx context.Context, targetPath, home, confine string) agentsMD {
 	env := envnode.NewNodeExecutionEnv(envnode.NodeExecutionEnvOptions{Cwd: filepath.Dir(targetPath)})
 	return readAgentsMDEnv(ctx, env, targetPath, home, confine)
@@ -231,13 +226,6 @@ func maskCodeSpans(line string) string {
 		i = end
 	}
 	return string(b)
-}
-
-// instructions returns the model instructions of an agent: the dex AGENTS.md, the agent
-// AGENTS.md, the agent's own instructions, then the AGENTS.md in cwd. The most specific text comes
-// last. Without any AGENTS.md the result is own. An empty cwd means the agent workspace.
-func (a *agentExtensions) instructions(cwd, own string) string {
-	return a.instructionsContext(context.Background(), cwd, own)
 }
 
 func (a *agentExtensions) instructionsContext(ctx context.Context, cwd, own string) string {

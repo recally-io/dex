@@ -43,7 +43,7 @@ func TestUserQuestionIsRefusedWhenItCannotBeAnswered(t *testing.T) {
 		t.Fatal(err)
 	}
 	source.Key = "bot/spawn-2"
-	if _, err := r.service.ToolAskUser(t.Context(), source, askArgs); !errors.Is(err, ErrQuestionOpen) {
+	if _, err := r.service.ToolAskUser(t.Context(), source, askArgs); !errors.Is(err, errQuestionOpen) {
 		t.Fatalf("second question: %v", err)
 	}
 

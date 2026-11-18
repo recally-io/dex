@@ -22,7 +22,7 @@ type Level = Extensions["env"][number]["scope"];
  * The .env keys of one writable level and the wider levels it inherits. A bot writes its own
  * file and reads dex. The global page writes dex. Values never show.
  */
-export type EnvTarget = { scope: "agent"; agentId: string } | { scope: "dex" };
+type EnvTarget = { scope: "agent"; agentId: string } | { scope: "dex" };
 
 const titles: Record<Level, string> = { agent: "This bot", dex: "All bots" };
 
@@ -36,7 +36,7 @@ const hintLabels: Record<Hint, string> = {
   "op-reference": "op:// reference",
 };
 
-export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
+export function EnvKeys({ target }: { target: EnvTarget }) {
   const { notify } = useApp();
   // The dex file does not depend on the bot, so any bot can read and write it. The default bot
   // always exists.
@@ -102,7 +102,6 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
   return (
     <>
       <Section
-        n={n}
         title="Environment keys"
         caption={
           target.scope === "agent"
@@ -177,7 +176,7 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
         ) : null}
       </Section>
       {catalog ? (
-        <Section n={n + 1} title="Saved keys" caption="Names only. A narrower level wins.">
+        <Section title="Saved keys" caption="Names only. A narrower level wins.">
           <div className="space-y-4">
             {levels.map((level) => {
               const entries = catalog.env.filter((entry) => entry.scope === level);

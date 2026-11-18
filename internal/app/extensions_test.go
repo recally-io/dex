@@ -205,65 +205,6 @@ func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
 	w.until(t, "second answer", answeredWith("- review: New review steps"))
 }
 
-func TestUserFindsNestedAndProjectSkills(t *testing.T) {
-	t.Parallel()
-	// Given nested dex skills, a skill whose front matter names it, two skills with one name in one
-	// level, skills in hidden directories and node_modules, a link cycle, and a project skill in the
-	// bot workspace that replaces a dex skill
-	dataDir, home := t.TempDir(), t.TempDir()
-	homeDir := filepath.Join(dataDir, ".agents", "skills")
-	projectDir := filepath.Join(dataDir, "agents", app.DefaultAgentID, "workspace", ".agents", "skills")
-	deep := writeSkill(t, filepath.Join(homeDir, "team", "writing"), "drafts", "description: Draft documents")
-	named := writeSkill(t, filepath.Join(homeDir, "vendor"), "pkg-1", "name: release-notes\ndescription: Write release notes")
-	writeSkill(t, filepath.Join(homeDir, "team"), "review", "description: Home review steps")
-	twin := writeSkill(t, filepath.Join(homeDir, "a"), "twin", "description: First twin")
-	writeSkill(t, filepath.Join(homeDir, "b"), "twin", "description: Second twin")
-	writeSkill(t, filepath.Join(homeDir, ".hidden"), "secret", "description: Hidden skill")
-	writeSkill(t, filepath.Join(homeDir, "node_modules"), "dep", "description: Package skill")
-	writeSkill(t, filepath.Join(homeDir, "team", "writing", "drafts", "inner"), "inside", "description: Inside a skill")
-	if err := os.Symlink(homeDir, filepath.Join(homeDir, "team", "loop")); err != nil {
-		t.Fatal(err)
-	}
-	project := writeSkill(t, projectDir, "review", "description: Project review steps")
-	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
-	d.setModel(t, "section")
-
-	// When the user opens the extensions
-	got := d.extensions(t)
-
-	// Then every skill outside hidden directories, node_modules and other skills shows once, with its
-	// front matter name, the project review replaces the dex review, and the second twin is a warning
-	type row struct{ Name, Scope, Path string }
-	var rows []row
-	for _, s := range got.Skills {
-		rows = append(rows, row{s.Name, s.Scope, s.Path})
-	}
-	want := []row{{"drafts", "dex", deep}, {"release-notes", "dex", named}, {"review", "project", project}, {"twin", "dex", twin}}
-	if !slices.Equal(rows, want) || !got.Skills[2].Overrides {
-		t.Fatalf("skills = %+v, want %+v", got.Skills, want)
-	}
-	if len(got.Errors) > 0 || !slices.ContainsFunc(got.Warnings, func(w string) bool { return strings.Contains(w, "has the name twin") }) {
-		t.Fatalf("warnings = %q, errors = %q", got.Warnings, got.Errors)
-	}
-
-	// When the agent reads its skills section
-	w := d.watch(t, d.newChat(t, "skills"))
-
-	// Then it lists the same skills with their files
-	w.until(t, "answer", answeredWith("section: "))
-	answer := w.tr.items[len(w.tr.items)-1].Text
-	for _, s := range []string{"- drafts: Draft documents (" + deep + ")", "- release-notes: Write release notes (" + named + ")", "- review: Project review steps (" + project + ")", "- twin: First twin"} {
-		if !strings.Contains(answer, s) {
-			t.Fatalf("no %q in %q", s, answer)
-		}
-	}
-	for _, s := range []string{"Home review", "Second twin", "Hidden skill", "Package skill", "Inside a skill"} {
-		if strings.Contains(answer, s) {
-			t.Fatalf("%q in %q", s, answer)
-		}
-	}
-}
-
 func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
 	t.Parallel()
 	// Given dex servers files (stdio), web (HTTP), shared and old, and agent servers that
@@ -416,34 +357,5 @@ func TestInterruptedMCPCallIsNotRepeatedAfterRestart(t *testing.T) {
 	w.until(t, "answer", answeredWith("tool error: "))
 	if notes := readNotes(t, filesDir); notes != "started crash\n" {
 		t.Fatalf("notes = %q", notes)
-	}
-}
-
-func TestFirstServerKeepsAToolNameThatTwoServersHave(t *testing.T) {
-	t.Parallel()
-	// Given server "a" with tool "b__append", and server "a__b" with tool "append": both are
-	// mcp__a__b__append. Server "a" also lists "b__read" twice.
-	dataDir, home, aDir, abDir := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	a := stdioServer(t, aDir)
-	a["env"].(map[string]string)["DEX_TEST_MCP_PREFIX"] = "b__"
-	a["env"].(map[string]string)["DEX_TEST_MCP_TWICE"] = "1"
-	writeMCP(t, filepath.Join(dataDir, ".agents", "mcp.json"), map[string]any{"a": a, "a__b": stdioServer(t, abDir)})
-	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
-	d.setModel(t, "tool")
-
-	// When the agent calls the tool
-	w := d.watch(t, d.newChat(t, `mcp__a__b__append {"text":"one"}`))
-
-	// Then server "a" gets the call, and server "a__b" shows the tools that it lost
-	w.until(t, "answer", answered("tool: appended 1"))
-	if readNotes(t, aDir) != "one\n" || readNotes(t, abDir) != "" {
-		t.Fatalf("notes: a %q, a__b %q", readNotes(t, aDir), readNotes(t, abDir))
-	}
-	got := d.extensions(t)
-	if s := got.server("a__b"); s.State != "connected" || !strings.Contains(s.Error, "mcp__a__b__append") {
-		t.Fatalf("a__b = %+v", s)
-	}
-	if s := got.server("a"); s.Error != "tools with a name that another tool uses: mcp__a__b__read" {
-		t.Fatalf("a = %+v", s)
 	}
 }

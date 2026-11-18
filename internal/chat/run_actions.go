@@ -86,7 +86,7 @@ func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, ins
 			}
 		}
 	}
-	_, err = s.engine.Compact(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}, instructions, requestID, chatOptions(agent, conv))
+	err = s.engine.Compact(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}, instructions, requestID, chatOptions(agent, conv))
 	if err == nil {
 		s.signal(chatID)
 	}

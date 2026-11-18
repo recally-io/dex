@@ -22,10 +22,6 @@ export function applySavedTheme() {
   document.documentElement.classList.toggle("dark", isDarkFor(choice()));
 }
 
-function isDark() {
-  return document.documentElement.classList.contains("dark");
-}
-
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
@@ -52,8 +48,7 @@ export function useSystemTheme() {
 
 /** Three choices keep the stored browser preference explicit while preserving the existing compact control. */
 export function ThemeToggle() {
-  const dark = useSyncExternalStore(subscribe, isDark, () => false);
-  const selected = choice();
+  const selected = useSyncExternalStore(subscribe, choice, (): ThemeChoice => "system");
   const options: Array<{ value: ThemeChoice; label: string; icon: typeof Sun }> = [
     { value: "light", label: "Light mode", icon: Sun },
     { value: "system", label: "System mode", icon: Monitor },
@@ -76,7 +71,7 @@ export function ThemeToggle() {
           key={value}
           type="button"
           aria-label={label}
-          aria-pressed={selected === value || (value === "system" && selected === "system" && !dark)}
+          aria-pressed={selected === value}
           onClick={() => pick(value)}
           className={`relative z-10 flex size-8 items-center justify-center rounded-none transition-colors duration-150 ${selected === value ? "text-foreground" : "text-muted-foreground hover:text-muted-foreground"}`}
         >

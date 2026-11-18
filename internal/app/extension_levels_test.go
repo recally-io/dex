@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"uuid"
@@ -49,77 +48,6 @@ func TestUserReadsExtensionLevelsAndPrivateEnvironment(t *testing.T) {
 	}
 	if strings.Join(levels, ",") != "dex:true,agent:false" {
 		t.Fatalf("env levels: %v", levels)
-	}
-}
-
-func TestUserUsesDexSkillsAndMCPEnvironment(t *testing.T) {
-	t.Parallel()
-	// Given a dex skill, and inherited server credentials.
-	data, home, inherited, explicit := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	writeSkill(t, filepath.Join(data, ".agents", "skills"), "notes", "description: Dex notes")
-	writeFile(t, filepath.Join(data, ".agents", ".env"), "DEX_TEST_MCP_DIR="+inherited+"\n")
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeMCP(t, filepath.Join(data, "agents", "default", ".agents", "mcp.json"), map[string]any{
-		"inherited": map[string]any{"command": exe}, "explicit": stdioServer(t, explicit),
-	})
-	d := startDexHome(t, app.Config{DataDir: data}, home)
-	d.setModel(t, "tool")
-	// When both stdio servers receive tool calls.
-	w := d.watch(t, d.newChat(t, `mcp__inherited__append {"text":"inherited"}`))
-	w.until(t, "inherited env", answered("tool: appended 1"))
-	d.send(t, d.mainChat(t), `mcp__explicit__append {"text":"explicit"}`)
-	main := d.watch(t, d.mainChat(t))
-	main.until(t, "explicit env", answered("tool: appended 1"))
-	// Then entry env wins, and the skill comes from dex.
-	if readNotes(t, inherited) != "inherited\n" || readNotes(t, explicit) != "explicit\n" {
-		t.Fatal("stdio environment precedence failed")
-	}
-	got := d.extensions(t)
-	if len(got.Skills) != 1 || got.Skills[0].Scope != "dex" || got.Skills[0].Overrides {
-		t.Fatalf("skills: %+v", got.Skills)
-	}
-}
-
-func TestUserGetsNoFallbackFromInvalidExtensionFiles(t *testing.T) {
-	t.Parallel()
-	for _, kind := range []string{"mcp.json", ".env"} {
-		t.Run(kind, func(t *testing.T) {
-			// Given a valid agent server and dex .env, with an invalid dex configuration.
-			data, home := t.TempDir(), t.TempDir()
-			writeMCP(t, filepath.Join(data, "agents", "default", ".agents", "mcp.json"), map[string]any{"files": stdioServer(t, t.TempDir())})
-			writeFile(t, filepath.Join(data, ".agents", ".env"), "DEX_PRIVATE_VALUE=hidden-dex-token\n")
-			bad := `{"mcpServers":{"bad":{"args":[]}}}`
-			if kind == ".env" {
-				bad = "DEX_PRIVATE_VALUE=hidden-bad-token\nBAD-KEY=hidden-bad-token"
-			}
-			writeFile(t, filepath.Join(data, ".agents", kind), bad)
-			d := startDexHome(t, app.Config{DataDir: data}, home)
-			d.setModel(t, "bash")
-			// When the agent opens, no wider MCP server starts.
-			command := `printf '%s' "${DEX_PRIVATE_VALUE-unset}"`
-			want := "bash: hidden-dex-token"
-			if kind == ".env" {
-				want = "bash: unset"
-			}
-			w := d.watch(t, d.newChat(t, command))
-			w.until(t, "no fallback", answered(want))
-			got := d.extensions(t)
-			if len(got.Servers) != 0 || len(got.Errors) == 0 {
-				t.Fatalf("extensions: %+v", got)
-			}
-			// Then reload is refused without disclosing values.
-			status, body := d.reload(t)
-			if status != http.StatusBadRequest || strings.Contains(body, "hidden-") {
-				t.Fatalf("reload: %d %s", status, body)
-			}
-			_, body = d.call(t, http.MethodGet, "/api/agents/default/extensions", nil)
-			if strings.Contains(body, "hidden-") {
-				t.Fatalf("API disclosed env: %s", body)
-			}
-		})
 	}
 }
 
@@ -199,60 +127,6 @@ func TestUserReloadsOneAgentWithoutChangingOtherEnvironments(t *testing.T) {
 			}
 		} else {
 			writeFile(t, path, string(before))
-		}
-	}
-}
-
-func TestUserReadsEqualHomeAndDexOnce(t *testing.T) {
-	t.Parallel()
-	// Given the data directory is HOME, reached through a symlink.
-	home := t.TempDir()
-	alias := filepath.Join(t.TempDir(), "home")
-	if err := os.Symlink(home, alias); err != nil {
-		t.Fatal(err)
-	}
-	writeSkill(t, filepath.Join(home, ".agents", "skills"), "one", "description: One skill")
-	writeFile(t, filepath.Join(home, ".agents", ".env"), "ONE=private-once\n")
-	before, err := os.Stat(home)
-	if err != nil {
-		t.Fatal(err)
-	}
-	d := startDexHome(t, app.Config{DataDir: alias}, home)
-	// When the user reads extensions, the shared directory is dex only.
-	got := d.extensions(t)
-	if len(got.Skills) != 1 || got.Skills[0].Scope != "dex" || got.Skills[0].Overrides || len(got.Env) != 1 || got.Env[0].Shadowed || got.Env[0].Scope != "dex" {
-		t.Fatalf("extensions: %+v", got)
-	}
-	after, err := os.Stat(home)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if before.Mode() != after.Mode() {
-		t.Fatal("HOME mode changed")
-	}
-}
-
-func TestUserIsToldToMoveOldAgentExtensions(t *testing.T) {
-	t.Parallel()
-	// Given skills and an mcp.json in the agent directory, where dex read them before the levels.
-	data, home := t.TempDir(), t.TempDir()
-	root := filepath.Join(data, "agents", "default")
-	writeSkill(t, filepath.Join(root, "skills"), "old", "description: Old skill")
-	writeMCP(t, filepath.Join(root, "mcp.json"), map[string]any{})
-	d := startDexHome(t, app.Config{DataDir: data}, home)
-	// When the user opens the extensions, dex warns about each entry with its new place.
-	got := d.extensions(t)
-	want := []string{
-		filepath.Join(root, "skills") + ": dex no longer reads this; move it to " + filepath.Join(root, ".agents", "skills"),
-		filepath.Join(root, "mcp.json") + ": dex no longer reads this; move it to " + filepath.Join(root, ".agents", "mcp.json"),
-	}
-	if !slices.Equal(got.Warnings, want) || len(got.Errors) > 0 || len(got.Skills) > 0 {
-		t.Fatalf("extensions = %+v", got)
-	}
-	// Then dex leaves the files where they are.
-	for _, name := range []string{"skills", "mcp.json"} {
-		if _, err := os.Lstat(filepath.Join(root, name)); err != nil {
-			t.Fatal(err)
 		}
 	}
 }

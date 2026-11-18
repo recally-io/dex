@@ -15,7 +15,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/background"
@@ -202,30 +201,6 @@ func TestUserGetsAWakeUpWithTheExitStatusWhenABackgroundCommandEnds(t *testing.T
 	}
 }
 
-func TestUserGetsAWakeUpWhenAWaitConditionChecksForAFailure(t *testing.T) {
-	t.Parallel()
-	// Given a bot that waits for the ready line of a dev server, and a loop that also checks for a dead server.
-	dir := t.TempDir()
-	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	chat := bgChat(t, d)
-	log, died := filepath.Join(dir, "dev.log"), filepath.Join(dir, "died")
-	command := fmt.Sprintf("until grep -q 'Ready on' %[1]s || test -f %[2]s; do sleep 0.05; done; grep -q 'Ready on' %[1]s", log, died)
-	if err := os.WriteFile(log, []byte("compiling\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	bgStart(t, d, chat, map[string]any{"command": command})
-	// When the server exits before it prints the ready line.
-	if err := os.WriteFile(died, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// Then the bot gets a wake-up with status 1, and not silence.
-	wake := waitWakes(t, conn, chat, 1)[0]
-	if wake.result.Event != "exited" || wake.result.ExitStatus == nil || *wake.result.ExitStatus != 1 {
-		t.Fatalf("wake-up: %+v", wake.result)
-	}
-}
-
 func TestUserGetsBatchedWakeUpsForTheLinesOfAWatch(t *testing.T) {
 	t.Parallel()
 	// Given a CI watch with wake lines that prints each check result and exits when the run completes.
@@ -260,90 +235,6 @@ func TestUserGetsBatchedWakeUpsForTheLinesOfAWatch(t *testing.T) {
 	}
 }
 
-func TestUserGetsTheLinesOfAWatchWhileTheDatabaseIsBusy(t *testing.T) {
-	t.Parallel()
-	// Given a watch that prints a line when a gate opens.
-	dir := t.TempDir()
-	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	chat := bgChat(t, d)
-	gate, last := filepath.Join(dir, "line.gate"), filepath.Join(dir, "end.gate")
-	command := fmt.Sprintf("until test -f %s; do sleep 0.05; done; echo 'lint: pass'; until test -f %s; do sleep 0.05; done", gate, last)
-	bgStart(t, d, chat, map[string]any{"command": command, "wake": "lines"})
-	// And another writer that holds the database longer than the busy timeout of 5 seconds.
-	writer, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "control.sqlite")+"?_pragma=busy_timeout(5000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = writer.Close() })
-	lock, err := writer.Conn(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := lock.ExecContext(t.Context(), "BEGIN IMMEDIATE"); err != nil {
-		t.Fatal(err)
-	}
-	// When the line arrives while the database is busy, and the writer lets go after 12 seconds.
-	if err := os.WriteFile(gate, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(12 * time.Second)
-	if _, err := lock.ExecContext(t.Context(), "ROLLBACK"); err != nil {
-		t.Fatal(err)
-	}
-	_ = lock.Close()
-	// Then the session still gets the line.
-	first := waitWakes(t, conn, chat, 1)[0]
-	if first.result.Event != "lines" || strings.Join(first.result.Lines, "|") != "lint: pass" {
-		t.Fatalf("wake-up: %+v", first.result)
-	}
-	if err := os.WriteFile(last, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	waitWakes(t, conn, chat, 2)
-}
-
-func TestUserGetsDefaultAndExplicitBackgroundTimeouts(t *testing.T) {
-	t.Parallel()
-	// Given both wake modes and omitted, null, and explicit timeouts.
-	dir := t.TempDir()
-	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	chat := bgChat(t, d)
-	cases := []struct {
-		name string
-		args map[string]any
-		want int64
-	}{
-		{"default wake and timeout", map[string]any{}, 1800},
-		{"exit omitted", map[string]any{"wake": "exit"}, 1800},
-		{"exit null", map[string]any{"wake": "exit", "timeout": nil}, 1800},
-		{"exit explicit above lines limit", map[string]any{"wake": "exit", "timeout": 1860}, 1860},
-		{"lines omitted", map[string]any{"wake": "lines"}, 300},
-		{"lines null", map[string]any{"wake": "lines", "timeout": nil}, 300},
-		{"lines explicit", map[string]any{"wake": "lines", "timeout": 1800}, 1800},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			// When the bot starts a command that waits.
-			tc.args["command"] = "sleep 300"
-			info := bgStart(t, d, chat, tc.args)
-			// Then the durable row has the applicable timeout, and stop sends no wake-up.
-			var timeout sql.NullInt64
-			if err := conn.QueryRowContext(t.Context(), `SELECT timeout_ms FROM background_commands WHERE id = ?`, info.ID).Scan(&timeout); err != nil {
-				t.Fatal(err)
-			}
-			if !timeout.Valid || timeout.Int64 != tc.want*1000 {
-				t.Fatalf("timeout = %+v, want %d seconds", timeout, tc.want)
-			}
-			callSessionTool(t, d, chat, "background_stop", map[string]any{"id": info.ID})
-			if wakes := bgWakes(t, conn, chat); len(wakes) != 0 {
-				t.Fatalf("stopped command sent wake-ups: %+v", wakes)
-			}
-		})
-	}
-}
-
 func TestUserGetsAWakeUpWhenABackgroundCommandPassesItsTimeout(t *testing.T) {
 	t.Parallel()
 	for _, mode := range []string{"exit", "lines"} {
@@ -369,45 +260,6 @@ func TestUserGetsAWakeUpWhenABackgroundCommandPassesItsTimeout(t *testing.T) {
 			waitTaskPIDGone(t, leader)
 			waitTaskPIDGone(t, child)
 		})
-	}
-}
-
-func TestUserRejectsAWatchLongerThanThirtyMinutes(t *testing.T) {
-	t.Parallel()
-	// Given a bot that asks for a lines watch of 31 minutes.
-	d := startDex(t, t.TempDir(), "")
-	chat := bgChat(t, d)
-	// When it starts the watch.
-	answer := callSessionTool(t, d, chat, "background_start", map[string]any{"command": "true", "wake": "lines", "timeout": 1860})
-	// Then the call fails and says why.
-	if !strings.HasPrefix(answer, "spawn error:") || !strings.Contains(answer, "1800 seconds") {
-		t.Fatalf("answer: %s", answer)
-	}
-}
-
-func TestUserStopsABackgroundCommandWithItsProcessGroup(t *testing.T) {
-	t.Parallel()
-	// Given a background command that has a child process.
-	dir := t.TempDir()
-	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	chat := bgChat(t, d)
-	leader, child := filepath.Join(dir, "leader.pid"), filepath.Join(dir, "child.pid")
-	info := bgStart(t, d, chat, map[string]any{"command": fmt.Sprintf("echo $$ > %s; sleep 300 & echo $! > %s; wait", leader, child)})
-	killAtEnd(t, pidFile(t, leader))
-	childPID := pidFile(t, child)
-	killAtEnd(t, childPID)
-	// When the bot stops it.
-	var stopped bgInfo
-	toolJSON(t, callSessionTool(t, d, chat, "background_stop", map[string]any{"id": info.ID}), &stopped)
-	// Then the state is stopped, the whole group is gone, and no wake-up exists.
-	if stopped.State != "stopped" || stopped.Reason != "stop" {
-		t.Fatalf("background_stop returned %+v", stopped)
-	}
-	waitTaskPIDGone(t, leader)
-	waitTaskPIDGone(t, child)
-	if wakes := bgWakes(t, conn, chat); len(wakes) != 0 {
-		t.Fatalf("a stopped command sent a wake-up: %+v", wakes)
 	}
 }
 

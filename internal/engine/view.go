@@ -143,13 +143,13 @@ func (p projection) event() Event {
 	return e
 }
 
-func metadata(value any) InputMetadata {
+func metadata(value any) inputMetadata {
 	obj, ok := value.(durable.JsonObject)
 	if !ok || obj == nil {
-		return InputMetadata{}
+		return inputMetadata{}
 	}
 	text := func(key string) string { v, _ := obj.Get(key); s, _ := v.(string); return s }
-	m := InputMetadata{RequestID: text("requestId"), Content: text("content"), Kind: text("kind"), Origin: text("origin"), Source: text("source"), TaskID: text("taskId"), TaskTitle: text("taskTitle")}
+	m := inputMetadata{RequestID: text("requestId"), Content: text("content"), Kind: text("kind"), Origin: text("origin"), Source: text("source"), TaskID: text("taskId"), TaskTitle: text("taskTitle")}
 	raw, _ := obj.Get("attachments")
 	if list, ok := raw.([]any); ok {
 		for _, v := range list {
@@ -166,7 +166,7 @@ func metadata(value any) InputMetadata {
 	return m
 }
 
-func userItem(m InputMetadata, id string, at int64, text string) Item {
+func userItem(m inputMetadata, id string, at int64, text string) Item {
 	if len(m.Attachments) > 0 {
 		text = stripAttachedFiles(text, m.Attachments)
 	}
@@ -273,7 +273,7 @@ func (p projection) render() []Item {
 				text = strings.TrimSuffix(strings.TrimPrefix(text, summaryPrefix), summarySuffix)
 			}
 			rendered = []Item{{Kind: "boundary", ID: key, Boundary: strings.TrimPrefix(e.Kind, "pi."), At: at, Text: text}}
-		case CompactionNoteKind:
+		case compactionNoteKind:
 			note, err := durable.FromJsonValue[compactionNote](e.Data)
 			if err != nil {
 				break

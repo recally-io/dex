@@ -17,17 +17,12 @@ import (
 	"github.com/recally-io/dex/internal/upload"
 )
 
-// EventStreams opens the native transcript of a chat.
-type EventStreams interface {
-	Open(context.Context, int64) (io.ReadCloser, error)
-}
-
 // Bot connects the platform to durable admission, uploads and replies.
 type Bot struct {
 	cfg      Config
-	client   *Client
+	client   *client
 	manager  *channel.Manager
-	hub      EventStreams
+	watch    func(context.Context, int64) (io.ReadCloser, error)
 	uploads  *upload.Store
 	pair     func(context.Context, string, string) (bool, error)
 	mu       sync.Mutex // one owner's traffic; per preview if outbound latency blocks admission
@@ -36,8 +31,8 @@ type Bot struct {
 }
 
 // New creates a bot. pair atomically consumes a manual setup code.
-func New(cfg Config, manager *channel.Manager, hub EventStreams, uploads *upload.Store, pair func(context.Context, string, string) (bool, error)) *Bot {
-	return &Bot{cfg: cfg, client: NewClient(cfg), manager: manager, hub: hub, uploads: uploads, pair: pair, previews: make(map[string]*preview)}
+func New(cfg Config, manager *channel.Manager, watch func(context.Context, int64) (io.ReadCloser, error), uploads *upload.Store, pair func(context.Context, string, string) (bool, error)) *Bot {
+	return &Bot{cfg: cfg, client: newClient(cfg), manager: manager, watch: watch, uploads: uploads, pair: pair, previews: make(map[string]*preview)}
 }
 
 // Run receives events until the manager cancels it.
@@ -62,7 +57,7 @@ func (b *Bot) Run(ctx context.Context) error {
 }
 
 func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
-	m, err := ParseMessage(data)
+	m, err := parseMessage(data)
 	if err != nil {
 		slog.Warn("feishu: ignored invalid message")
 		return nil
@@ -91,7 +86,7 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 		}
 		b.cfg.OwnerID = m.Sender
 		b.manager.Report("feishu", channel.Status{State: "running"})
-		_, err = b.client.Send(sessionCtx, m.Sender, "text", TextContent("Paired. Send a message to start."), deliveryUUID("pair:"+m.ID, 0))
+		_, err = b.client.Send(sessionCtx, m.Sender, "text", textContent("Paired. Send a message to start."), deliveryUUID("pair:"+m.ID, 0))
 		return err
 	}
 	// Pairing codes are control data, including repeated setup events.
@@ -174,7 +169,7 @@ func (b *Bot) Parts(reply chat.Reply) []channel.Part {
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
 	}
-	return channel.TextParts(Parts(text))
+	return channel.TextParts(parts(text))
 }
 
 // Send patches the preview for part zero. Other parts use a stable create ID.
@@ -197,7 +192,7 @@ func (b *Bot) sendText(ctx context.Context, peer, id string, part int, text stri
 	if !ok || owner == "" || owner != b.cfg.OwnerID {
 		return "", fmt.Errorf("%w: feishu destination is not the paired owner", channel.ErrPermanent)
 	}
-	card := CardContent(text, strings.HasPrefix(text, "No answer: "))
+	card := cardContent(text, strings.HasPrefix(text, "No answer: "))
 	p := b.previews[id]
 	if p != nil && part == 0 {
 		p.cancel()
@@ -216,8 +211,8 @@ func (b *Bot) sendText(ctx context.Context, peer, id string, part int, text stri
 	}
 	uuid := deliveryUUID(id, part)
 	remote, err := b.client.Send(ctx, owner, "interactive", card, uuid)
-	if e, ok := errors.AsType[*APIError](err); ok && e.Code == 230001 && (e.Status == http.StatusBadRequest || e.Status >= 200 && e.Status < 300) {
-		remote, err = b.client.Send(ctx, owner, "text", TextContent(text), deliveryUUID(id+":text", part))
+	if e, ok := errors.AsType[*apiError](err); ok && e.Code == 230001 && (e.Status == http.StatusBadRequest || e.Status >= 200 && e.Status < 300) {
+		remote, err = b.client.Send(ctx, owner, "text", textContent(text), deliveryUUID(id+":text", part))
 	}
 	if err != nil {
 		b.manager.Report("feishu", channel.Status{State: "error", Reason: err.Error()})
@@ -239,7 +234,7 @@ func deliveryUUID(id string, part int) string {
 }
 
 func permanentAPIError(err error) bool {
-	e, ok := errors.AsType[*APIError](err)
+	e, ok := errors.AsType[*apiError](err)
 	return ok && ((e.Status >= 400 && e.Status < 500 && e.Status != http.StatusUnauthorized) ||
 		(e.Status >= 200 && e.Status < 300 && e.Code != 0)) &&
 		!retryable(e.Status, e.Code) && (e.Code < 99991600 || e.Code >= 99991700)

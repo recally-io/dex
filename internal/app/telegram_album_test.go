@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -89,4 +90,32 @@ func TestUserTelegramAlbumCaptionCannotExecuteSharedCommand(t *testing.T) {
 	if got := f.next(t).Text; !strings.Contains(got, "echo: /clear") || !strings.Contains(got, "one.txt") {
 		t.Fatalf("album caption executed a command: %q", got)
 	}
+}
+
+func TestUserTelegramAlbumOverflowKeepsTenFilesPerNativeInput(t *testing.T) {
+	t.Parallel()
+	// Given more than ten members, including a member that can arrive after a batch is sealed.
+	f := newFakeTelegram(t)
+	var names []string
+	for i := range 11 {
+		name := fmt.Sprintf("part-%02d.txt", i)
+		names = append(names, name)
+		f.files[name] = "content"
+	}
+	d := startTelegram(t, f, t.TempDir(), 42)
+	f.albumFiles("large-album", 1, names...)
+	// When the input limit seals the first batch, every member still reaches one of the two native inputs.
+	watch := d.watch(t, d.mainChat(t))
+	watch.until(t, "eleven files in bounded native inputs", func(tr *transcript) bool {
+		counts := []int{}
+		total := 0
+		for _, item := range tr.items {
+			if item.Kind != "user" {
+				continue
+			}
+			counts = append(counts, len(item.Attachments))
+			total += len(item.Attachments)
+		}
+		return len(counts) == 2 && counts[0] == 10 && counts[1] == 1 && total == 11
+	})
 }

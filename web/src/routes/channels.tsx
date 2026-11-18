@@ -59,7 +59,7 @@ function ChannelRow({ channel, text, state }: { channel: ChannelId; text: string
   );
 }
 
-export function ChannelsSection({ settings }: { settings: Settings }) {
+function ChannelsSection({ settings }: { settings: Settings }) {
   const agentId = useAgentId();
   const saved = useQuery({ ...getChannelsOptions({ path: { agentId } }), refetchInterval: 3000 });
   const current = saved.data ?? settings;
@@ -75,7 +75,7 @@ export function ChannelsSection({ settings }: { settings: Settings }) {
   });
 
   return (
-    <Section n={1} title="Connections" caption="Each channel talks to the same bot.">
+    <Section title="Connections" caption="Each channel talks to the same bot.">
       <Panel>
         <div className="divide-y divide-border">
           <ChannelRow
@@ -190,7 +190,6 @@ function Telegram({ settings }: { settings: Settings }) {
   return (
     <>
       <Section
-        n={1}
         title="Connection"
         action={
           telegram.enabled ? (
@@ -248,7 +247,7 @@ function Telegram({ settings }: { settings: Settings }) {
       </Section>
       {telegram.enabled ? (
         <>
-          <Section n={2} title="Who can use it" caption="dex ignores messages from other Telegram users.">
+          <Section title="Who can use it" caption="dex ignores messages from other Telegram users.">
             {telegram.allowedUsers.length ? (
               <Panel>
                 <Facts
@@ -403,7 +402,9 @@ function TelegramDialog({
             Cancel
           </Button>
           <Button size="sm" onClick={submit} disabled={save.isPending}>
-            {save.isPending ? <Spinner className="border-background/40 border-t-canvas" /> : null}
+            {save.isPending ? (
+              <Spinner className="border-primary-foreground/30 border-t-primary-foreground" />
+            ) : null}
             {save.isPending ? "Saving…" : "Save Telegram"}
           </Button>
         </>

@@ -11,7 +11,7 @@ import { threadState, type ThreadRef } from "../../lib/threads";
 import { Failure, Loading } from "../feedback";
 import { IconButton } from "../icon-button";
 import { LoadEarlierButton } from "../timeline-actions";
-import { ExecutionNotice, StateBadge } from "./thread";
+import { StateBadge } from "./thread";
 import { Transcript } from "./transcript";
 
 /**
@@ -157,7 +157,6 @@ export function ThreadView({
                   </button>
                 </Failure>
               ) : null}
-              <ExecutionNotice state={statusState} />
               <LoadEarlierButton chatId={chatId} before={historyBefore} onPage={onPage} />
               <Transcript chatId={chatId} items={items} running={running} retry={() => {}} canRetry={false} />
             </>

@@ -407,7 +407,7 @@ func TestUserStopKeepsToolOutputAcrossHistory(t *testing.T) {
 					return nil, err
 				}
 				for i := range withdrawn {
-					data, err := durable.ToJsonValue(InputMetadata{RequestID: fmt.Sprintf("withdrawn-%d", i), Content: "queued", Reason: "aborted"})
+					data, err := durable.ToJsonValue(inputMetadata{RequestID: fmt.Sprintf("withdrawn-%d", i), Content: "queued", Reason: "aborted"})
 					if err != nil {
 						return nil, err
 					}
@@ -476,62 +476,15 @@ func TestUserStopKeepsToolOutputAcrossHistory(t *testing.T) {
 				t.Fatal(err)
 			}
 			check("one-entry history page", page.Items)
+			older, err := agents.History(ctx, ref, int64(resultID), 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, item := range older.Items {
+				if item.Kind == "tool" && strings.Contains(item.Output, "complete marker output") {
+					t.Fatalf("exclusive cursor returned newer result %+v", item)
+				}
+			}
 		})
-	}
-}
-
-func TestUserNativeHistoryKeepsToolCallAndResultTogether(t *testing.T) {
-	// Given durable assistant calls and results in a real SQLite conversation.
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-	dir := t.TempDir()
-	agents, err := New(Config{DataDir: filepath.Join(dir, "data"), Home: filepath.Join(dir, "home"), FakeModel: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := agents.Close(context.Background()); err != nil {
-			t.Error(err)
-		}
-	})
-	ref, err := agents.Create(ctx, "test", Options{Model: ModelRef{Provider: "faux", ModelID: "echo"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	conversation, err := agents.conversation(ctx, ref)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var resultID int64
-	_, err = conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
-		call := transcriptAssistant("")
-		call.Content = []ai.AssistantContentBlock{ai.ToolCall{ID: "call", Name: "bash", Arguments: map[string]any{"command": "pwd"}}}
-		if _, err := tx.AppendEntry(conversation.Id(), durable.EntryDraft{Kind: "pi.assistant", Model: []ai.Message{call}}); err != nil {
-			return nil, err
-		}
-		result, err := tx.AppendEntry(conversation.Id(), durable.EntryDraft{Kind: "pi.toolResult", Model: []ai.Message{ai.ToolResultMessage{ToolCallID: "call", Content: []ai.ToolResultMessageContent{ai.TextContent{Text: "/workspace"}}}}})
-		resultID = int64(result.Id)
-		return nil, err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// A limit of one result extends through the matching assistant entry.
-	history, err := agents.History(ctx, ref, resultID+1, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(history.Items) != 1 || history.Items[0].ID != "call" || history.Items[0].Status != "done" || history.Items[0].Output != "/workspace" {
-		t.Fatalf("split call/result = %#v", history.Items)
-	}
-	// The cursor is exclusive and does not include that result in the older page.
-	older, err := agents.History(ctx, ref, resultID, 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, item := range older.Items {
-		if item.Kind == "tool" && strings.Contains(item.Output, "/workspace") {
-			t.Fatal("exclusive history cursor included newer result")
-		}
 	}
 }

@@ -1,6 +1,6 @@
 import type { ChatEvent, ChildEvent, HistoryPage, Item, Retry } from "../api/generated/types.gen";
 
-export type ChatState = {
+type ChatState = {
   items: Item[];
   running: boolean;
   children?: Record<number, ChildEvent["state"]>;

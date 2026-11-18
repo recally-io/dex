@@ -250,12 +250,6 @@ LEFT JOIN agents pa ON pa.id = p.agent_id
 WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id;
 
--- name: ListOpenSubmissions :many
--- The messages of a chat that have no answer: pending, or unanswered with a reason.
-SELECT id, content, attachments, origin, status, reason, created_at FROM submissions
-WHERE conversation_id = ? AND status != 'done' AND kind = 'message'
-ORDER BY created_at;
-
 -- name: ListProviders :many
 SELECT * FROM providers ORDER BY created_at;
 
@@ -401,8 +395,6 @@ SELECT
 FROM automation_runs r
 LEFT JOIN submissions s ON s.id = r.id
 WHERE r.automation_id = sqlc.arg(automation_id)
-    AND coalesce(r.due_at, r.created_at) >= sqlc.arg(range_start)
-    AND coalesce(r.due_at, r.created_at) < sqlc.arg(range_end)
 ORDER BY r.created_at DESC, r.id DESC
 LIMIT sqlc.arg(row_limit);
 

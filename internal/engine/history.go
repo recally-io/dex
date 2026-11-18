@@ -55,7 +55,7 @@ func historyBoundary(e durable.EntryRecord) bool {
 func turnStart(e durable.EntryRecord) bool {
 	// Withdrawn inputs can appear between a tool call and its result.
 	switch e.Kind {
-	case "dex.user", "dex.task_result", "pi.user", "pi.reset", "pi.compaction", CompactionNoteKind:
+	case "dex.user", "dex.task_result", "pi.user", "pi.reset", "pi.compaction", compactionNoteKind:
 		return true
 	}
 	return false

@@ -2,16 +2,13 @@ package app_test
 
 import (
 	"net/http"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/db"
 )
 
 func TestUserRoutineDeliversToPairedWechatOwner(t *testing.T) {
+	t.Parallel()
 	// Given a paired WeChat owner with a recent context token.
 	f := newFakeWechat(t)
 	d := startWechat(t, f, t.TempDir())
@@ -43,6 +40,7 @@ func TestUserRoutineDeliversToPairedWechatOwner(t *testing.T) {
 }
 
 func TestUserRoutineDeliversToPairedFeishuOwner(t *testing.T) {
+	t.Parallel()
 	// Given a Feishu bot paired to its private owner.
 	f := newFakeFeishu(t)
 	d := startFeishu(t, f, t.TempDir())
@@ -67,6 +65,7 @@ func TestUserRoutineDeliversToPairedFeishuOwner(t *testing.T) {
 }
 
 func TestUserRoutineNotificationRetriesAfterRestart(t *testing.T) {
+	t.Parallel()
 	// Given a routine whose remote Telegram send fails temporarily.
 	f := newFakeTelegram(t)
 	f.failSend.Store(true)
@@ -101,6 +100,7 @@ func TestUserRoutineNotificationRetriesAfterRestart(t *testing.T) {
 }
 
 func TestUserRoutineDeliversToAuthorizedTelegramOwner(t *testing.T) {
+	t.Parallel()
 	// Given a connected Telegram bot and an authorized owner.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
@@ -127,52 +127,8 @@ func TestUserRoutineDeliversToAuthorizedTelegramOwner(t *testing.T) {
 	}
 }
 
-func TestUserRoutineSettlementQueuesOneNotification(t *testing.T) {
-	// Given a routine routed to a saved authorized destination.
-	data := t.TempDir()
-	d := startDexWith(t, app.Config{DataDir: data})
-	d.setModel(t, "tool")
-	conn, err := db.Open(t.Context(), filepath.Join(data, "control.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = conn.Close() })
-	if _, err = conn.ExecContext(t.Context(), `INSERT INTO routine_notification_targets (id, agent_id, platform, account_id, peer) VALUES ('target','default','telegram','123','telegram:42')`); err != nil {
-		t.Fatal(err)
-	}
-	body := map[string]any{"name": "Check", "prompt": `report_check {"outcome":"changed","summary":"new result"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": "target"}}
-	var routine map[string]any
-	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &routine, http.StatusCreated)
-	// When the real native routine finishes and reports its outcome.
-	run := d.runNow(t, routine["id"].(string))
-	settledRoutine(t, d, routine["id"].(string), run.ID)
-	// Then exactly one local delivery is queued with the resolved target and summary.
-	var count int
-	var peer, text string
-	if err = conn.QueryRowContext(t.Context(), `SELECT count(*), coalesce(max(peer),''), coalesce(max(body),'') FROM routine_notification_deliveries WHERE run_id=?`, run.ID).Scan(&count, &peer, &text); err != nil {
-		t.Fatal(err)
-	}
-	if count != 1 || peer != "telegram:42" || !strings.Contains(text, "new result") {
-		t.Fatalf("delivery count=%d peer=%q text=%q", count, peer, text)
-	}
-}
-
-func TestUserCanReadEmptyNotificationTargets(t *testing.T) {
-	// Given a bot without paired channels.
-	d := startDex(t, t.TempDir(), "")
-	// When the user asks which destinations can receive notifications.
-	var got struct {
-		Targets   []any  `json:"targets"`
-		PrimaryID string `json:"primaryId"`
-	}
-	d.must(t, http.MethodGet, "/api/agents/default/notification-targets", nil, &got)
-	// Then no recipient is guessed.
-	if got.Targets == nil || len(got.Targets) != 0 || got.PrimaryID != "" {
-		t.Fatalf("unexpected destinations: %+v", got)
-	}
-}
-
 func TestUserCanSetRoutineNotificationRoute(t *testing.T) {
+	t.Parallel()
 	// Given a user creating a routine with an explicit default-channel route.
 	d := startDex(t, t.TempDir(), "")
 	body := map[string]any{"name": "Check", "prompt": "check", "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "default"}}

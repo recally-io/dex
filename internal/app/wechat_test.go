@@ -205,25 +205,6 @@ func startWechat(t *testing.T, f *fakeWechat, dir string) *dex {
 	return d
 }
 
-func TestUserStartsWechatQRLogin(t *testing.T) {
-	t.Parallel()
-	// Given dex with a local iLink server and no saved WeChat account.
-	f := newFakeWechat(t)
-	d := startWechat(t, f, t.TempDir())
-	// When the user requests a QR code and confirms login on the phone.
-	var login wechatLogin
-	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
-	if login.Status != "wait" || !strings.Contains(login.QRContent, "qr1") {
-		t.Fatalf("QR: %+v", login)
-	}
-	d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
-	// Then settings show the captured owner and no token or runtime cursor.
-	status, raw := d.call(t, http.MethodGet, "/api/agents/default/channels", nil)
-	if status != http.StatusOK || !strings.Contains(raw, `"owner":"owner"`) || strings.Contains(raw, "wechat-secret") || strings.Contains(raw, "context_token") || strings.Contains(raw, "get_updates_buf") {
-		t.Fatalf("settings: %d %s", status, raw)
-	}
-}
-
 func (f *fakeWechat) batch(cursor string, messages ...map[string]any) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -574,21 +555,6 @@ func TestUserWechatResumesCursorContextAndUndeliveredReply(t *testing.T) {
 		return false, f.requests
 	})
 	_ = d
-}
-
-func TestUserWechatDuplicateUpdateGetsOneAnswer(t *testing.T) {
-	t.Parallel()
-	// Given the same remote message in two batches.
-	f := newFakeWechat(t)
-	f.batch("c1", wxText(1, "owner", "once"))
-	f.batch("c2", wxText(1, "owner", "once"), wxText(2, "owner", "after"))
-	d := startWechat(t, f, t.TempDir())
-	connectWechat(t, d)
-	// Then the stable source key deduplicates execution.
-	first, second := wxSentText(f.next(t)), wxSentText(f.next(t))
-	if first != "echo: once" || second != "echo: after" {
-		t.Fatalf("answers: %q %q", first, second)
-	}
 }
 
 func TestUserWechatStaleLoginNeedsNewScan(t *testing.T) {

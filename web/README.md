@@ -62,63 +62,28 @@ theme in `src/styles.css`. Domain components compose those primitives. Do not
 copy a new atom or primitive. Add a component with the shadcn CLI when a stock
 primitive is missing.
 
-Every route renders one `PageHeader` from `src/components/page.tsx`. Bot pages
-put the bot identity, tabs, and chat actions in that header. Global settings
-pages use the `Settings` identity.
+Every route renders inside `FramedPage` or `MainPane` from `src/components/page.tsx`.
 
 `src/components/dialog.tsx`, `confirm.tsx`, `shell.tsx`, and `icon-button.tsx`
 own the application overlays. They compose the stock Dialog, Tooltip, and
 related primitives. Keep focus management, Escape handling, and close-on-
 navigation behavior in these domain wrappers.
 
-`src/styles.css` is the only source of tokens. It contains the preset light and
-dark semantic tokens, shared keyframes, and dex rules. The app uses JetBrains
-Mono for body text and Merriweather for headings. It does not download fonts.
+`src/styles.css` is the single source of semantic tokens, shared keyframes, and dex styles. Code blocks and monospace labels use `@fontsource-variable/jetbrains-mono` without a CDN.
 
-The theme follows the system until the user picks light or dark with the
-toggle in the sidebar. `src/components/theme.tsx` applies the theme before the
-first render.
+The theme follows the system until the user picks light or dark with the toggle in the sidebar. `src/components/theme.tsx` applies the theme before the first render.
 
-`src/components/atoms/` and `src/components/primitives/` remain for routes that
-are scheduled for later migration. Lint and format checks skip them. The app
-parts are in `src/components/`: `page.tsx` for the header and framed page,
-`form.tsx` for fields, `dialog.tsx` for modal dialogs, and `feedback.tsx` for
-errors and loading states. Model and thinking pickers still own their current
-keyboard search until their route migration.
-
-The upstream copies import `cn`. The Vite and TypeScript aliases resolve that import
-to `src/lib/utils.ts`, which uses the approved `clsx` and `tailwind-merge` packages.
-The project does not need a separate `cn` package.
-
-The install task puts a Go module boundary in `node_modules/`.
-Some npm tools contain Go examples. This boundary keeps those examples out of
-Go builds and lint checks.
+The install task puts a Go module boundary in `node_modules/`. Some npm tools contain Go examples. This boundary keeps those examples out of Go builds and lint checks.
 
 ### Stock shadcn foundation
 
-`src/components/ui/` is the owned output of the stock shadcn/ui preset
-`b4XK48HRFw` (`base-lyra`). Keep these files generic and compose them in domain
-components. Do not add route behavior to this directory. The `components.json`
-file records the preset, aliases, Base UI style, and Lucide icon library.
+`src/components/ui/` is the owned output of the stock shadcn/ui preset `b4XK48HRFw` (`base-lyra`). Keep these files generic and compose them in domain components. Do not add route behavior to this directory. The `components.json` file records the preset, aliases, Base UI style, and Lucide icon library.
 
-To update the foundation, review the preset first, then run the official CLI
-from `web/`:
+To update the foundation, review the preset first, then run the official CLI from `web/`:
 
 ```sh
 bunx --bun shadcn@latest apply b4XK48HRFw -y
-bunx --bun shadcn@latest add button badge switch toggle-group dialog popover command tooltip skeleton separator scroll-area input textarea label -y
+bunx --bun shadcn@latest add button badge switch toggle-group dialog popover command tooltip skeleton input textarea label -y
 ```
 
-Review generated diffs before committing. Keep the compatibility aliases in
-`src/styles.css` until all existing callers move to semantic tokens. Fonts are
-bundled with `@fontsource-variable/jetbrains-mono` and
-`@fontsource-variable/merriweather`, so the web UI does not need a CDN.
-
 Run `mise run check:web` after every foundation update. The check includes a guard for retired imports and token aliases.
-
-Run `mise run check:foundation-browser /tmp/dex-foundation-evidence` to start a
-real isolated app and Chrome profile. The task writes screenshots and
-`result.json` to the given directory for Chat, Inbox, Inbox details, Routines,
-routine history, the four-tab bar, bot Settings, and Providers at desktop and
-mobile widths in light and dark modes. The browser also checks Inbox read,
-dismissal, filters, and Continue in chat with the routine project.

@@ -3,22 +3,12 @@ import { instructionsLimit, useInstructions } from "../lib/instructions";
 import { Textarea } from "./form";
 import { Button } from "./ui/button";
 import { Failure, Spinner } from "./feedback";
-import { cn } from "../lib/utils";
 
 /**
- * The instructions textarea with its save row. The settings page frames it in a numbered section;
+ * The instructions textarea with its save row. The settings page frames it in a section;
  * the timeline frames it in a side panel. Both share one draft, so the text follows the user.
  */
-export function InstructionsEditor({
-  saved,
-  rows,
-  grow,
-}: {
-  saved: string;
-  rows?: number;
-  /** Fill the panel's height instead of showing a fixed number of rows. */
-  grow?: boolean;
-}) {
+export function InstructionsEditor({ saved, rows }: { saved: string; rows?: number }) {
   const status = useId();
   const { text, dirty, setDraft, save } = useInstructions(saved);
 
@@ -32,10 +22,7 @@ export function InstructionsEditor({
         maxLength={instructionsLimit}
         placeholder="For example: Reply in the language I write in."
         onChange={(e) => setDraft(e.target.value)}
-        className={cn(
-          "rounded-card font-sans text-[13.5px] leading-relaxed shadow-none focus:shadow-none",
-          grow && "h-full min-h-0 resize-none",
-        )}
+        className="rounded-card font-sans text-[13.5px] leading-relaxed shadow-none focus:shadow-none"
       />
       <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
         <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
@@ -64,7 +51,9 @@ export function InstructionsEditor({
           disabled={!dirty || save.isPending}
           onClick={() => save.mutate(text)}
         >
-          {save.isPending ? <Spinner className="border-background/40 border-t-canvas" /> : null}
+          {save.isPending ? (
+            <Spinner className="border-primary-foreground/30 border-t-primary-foreground" />
+          ) : null}
           {save.isPending ? "Saving" : "Save"}
         </Button>
       </div>

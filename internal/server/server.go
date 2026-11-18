@@ -35,15 +35,14 @@ import (
 
 // Config holds what the handler serves.
 type Config struct {
-	Chats        *chat.Service
-	Automations  *automation.Service
-	Settings     *settings.Service
-	Agents       *agent.Service
-	Artifacts    *artifact.Service
-	Live         *live.Hub
-	DataDir      string
-	Version      string
-	RuntimeReady func(context.Context) bool
+	Chats       *chat.Service
+	Automations *automation.Service
+	Settings    *settings.Service
+	Agents      *agent.Service
+	Artifacts   *artifact.Service
+	Live        *live.Hub
+	DataDir     string
+	Version     string
 	// Engine owns native execution and extensions.
 	Engine *engine.Agents
 	Envs   *execenv.Manager
@@ -218,7 +217,7 @@ var ok = api.Ok{Status: api.OkStatusOk}
 func (h *handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (api.GetHealthResponseObject, error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	ready := h.RuntimeReady != nil && h.RuntimeReady(ctx)
+	ready := h.Engine != nil && h.Engine.Health(ctx) == nil
 	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, RuntimeReady: ready}, nil
 }
 func (h *handler) AcquireMaintenance(ctx context.Context, _ api.AcquireMaintenanceRequestObject) (api.AcquireMaintenanceResponseObject, error) {
@@ -518,7 +517,7 @@ func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRe
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if err := h.Chats.SetChat(ctx, agentID(ctx), req.ChatId, *req.Body, h.Settings.CheckChat); err != nil {
+	if err := h.Chats.SetChat(ctx, agentID(ctx), req.ChatId, *req.Body); err != nil {
 		return nil, err
 	}
 	c, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId)

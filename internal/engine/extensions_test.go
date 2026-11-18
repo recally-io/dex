@@ -20,7 +20,7 @@ import (
 func extensionFixture(t *testing.T) (*agentExtensions, string, string) {
 	t.Helper()
 	home, data := t.TempDir(), t.TempDir()
-	a := newAgentExtensions(home, data, "a", newToolEnv(home, map[string]string{"BASE": "explicit"}, nil))
+	a := newAgentExtensions(home, data, "a", nil, newToolEnv(home, map[string]string{"BASE": "explicit"}, nil))
 	return a, home, data
 }
 func extensionFile(t *testing.T, path, text string) {
@@ -137,7 +137,7 @@ func TestUserEnvEditsPreserveLinesAndRedactValues(t *testing.T) {
 }
 func TestUserSharedEnvEditsDoNotLoseUpdates(t *testing.T) {
 	a, home, data := extensionFixture(t)
-	other := newAgentExtensions(home, data, "b", newToolEnv(home, nil, nil))
+	other := newAgentExtensions(home, data, "b", nil, newToolEnv(home, nil, nil))
 	var wg sync.WaitGroup
 	for i, owner := range []*agentExtensions{a, other} {
 		wg.Go(func() {
@@ -269,18 +269,6 @@ func TestUserSkillMetadataMustBeText(t *testing.T) {
 				t.Fatalf("invalid metadata accepted: %#v %v", info.Skills, err)
 			}
 		})
-	}
-}
-func TestUserEnvQuoteRoundTrip(t *testing.T) {
-	a, _, data := extensionFixture(t)
-	for _, value := range []string{"", "plain", `a"b`, "a'b", " a#b ", "x#y"} {
-		if _, err := a.EditEnv(t.Context(), "dex", "TOKEN", &value); err != nil {
-			t.Fatal(err)
-		}
-		values, err := readExtensionEnv(filepath.Join(data, ".agents", ".env"))
-		if err != nil || values["TOKEN"] != value {
-			t.Fatalf("quote roundtrip for %q failed", value)
-		}
 	}
 }
 

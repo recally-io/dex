@@ -119,20 +119,3 @@ func (q *Queries) ReadInboxItem(ctx context.Context, arg ReadInboxItemParams) (i
 	}
 	return result.RowsAffected()
 }
-
-const restoreInboxItem = `-- name: RestoreInboxItem :execrows
-UPDATE automation_runs SET dismissed_at = NULL
-WHERE automation_runs.id = ?1 AND (
-    (automation_runs.status = 'failed' AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.id = automation_runs.id)) OR
-    EXISTS (SELECT 1 FROM submissions s WHERE s.id = automation_runs.id AND s.status <> 'pending'
-        AND (outcome = 'failed' OR automation_runs.status = 'failed' OR s.status = 'unanswered' OR (outcome = 'changed' AND duplicate = 0)))
-)
-`
-
-func (q *Queries) RestoreInboxItem(ctx context.Context, id string) (int64, error) {
-	result, err := q.db.ExecContext(ctx, restoreInboxItem, id)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}

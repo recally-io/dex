@@ -30,7 +30,7 @@ type e2bSandbox struct {
 type e2bControlClient struct {
 	apiURL         string
 	defaultEnvdURL string
-	cfg            E2BConfig
+	cfg            e2bConfig
 	apiKey         string
 	httpClient     *http.Client
 }
@@ -125,7 +125,7 @@ func (c *e2bControlClient) envdFor(sb *e2bSandbox) *envdClient {
 	switch {
 	case c.cfg.EnvdURL != "":
 		baseURL = expandEnvdTemplate(c.cfg.EnvdURL, sb.SandboxID, e2bEnvdPort)
-	case !c.cfg.IsCustomEndpoint() && strings.TrimSpace(c.defaultEnvdURL) != "":
+	case !c.cfg.isCustomEndpoint() && strings.TrimSpace(c.defaultEnvdURL) != "":
 		baseURL = strings.TrimRight(c.defaultEnvdURL, "/")
 	default:
 		baseURL = c.resolveSubdomainEnvdURL(sb)

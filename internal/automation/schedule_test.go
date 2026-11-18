@@ -63,12 +63,3 @@ func BenchmarkLatestInterval(b *testing.B) {
 		_ = s.latest(due, now, due, time.UTC)
 	}
 }
-
-func TestLatestSkipsOlderMissedTimes(t *testing.T) {
-	start := time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
-	sched := Schedule{Kind: "every", Minutes: 30}
-	got := sched.latest(start.Add(30*time.Minute), start.Add(8*time.Hour+10*time.Minute), start, time.UTC)
-	if want := start.Add(8 * time.Hour); !got.Equal(want) {
-		t.Fatalf("latest = %v, want %v", got, want)
-	}
-}

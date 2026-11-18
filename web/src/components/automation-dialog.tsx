@@ -134,7 +134,9 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             form={formId}
             disabled={pending || !validSchedule || !name.trim() || !prompt.trim()}
           >
-            {pending ? <Spinner className="border-background/40 border-t-canvas" /> : null}
+            {pending ? (
+              <Spinner className="border-primary-foreground/30 border-t-primary-foreground" />
+            ) : null}
             {pending ? "Saving…" : "Save routine"}
           </Button>
         </>

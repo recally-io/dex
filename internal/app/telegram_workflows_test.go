@@ -50,6 +50,7 @@ func (f *fakeTelegram) callbackResult(t *testing.T) platformEvent {
 }
 
 func TestUserTelegramGroupMenuDoesNotEnterPrivateMain(t *testing.T) {
+	t.Parallel()
 	// Given a paired sender in a group topic and an empty private Main.
 	f := newFakeTelegram(t)
 	startTelegram(t, f, t.TempDir(), 42)
@@ -64,6 +65,7 @@ func TestUserTelegramGroupMenuDoesNotEnterPrivateMain(t *testing.T) {
 }
 
 func TestUserTelegramGroupQuestionBindsSignedAnswerToActorAudienceAndOneUse(t *testing.T) {
+	t.Parallel()
 	// Given a public question asked through the actual isolated native tool.
 	data := t.TempDir()
 	f := newFakeTelegram(t)
@@ -118,6 +120,7 @@ func TestUserTelegramGroupQuestionBindsSignedAnswerToActorAudienceAndOneUse(t *t
 }
 
 func TestUserTelegramCallbackExpiryRevocationAndClearGenerationSurviveRestart(t *testing.T) {
+	t.Parallel()
 	// Given durable menu buttons on an existing group conversation.
 	data := t.TempDir()
 	f := newFakeTelegram(t)
@@ -164,5 +167,128 @@ func TestUserTelegramCallbackExpiryRevocationAndClearGenerationSurviveRestart(t 
 	f.callback(7, 42, -100, 7, menu.ID, stale)
 	if event := f.callbackResult(t); event.Text == "Accepted." {
 		t.Fatal("old generation callback acted after clear")
+	}
+}
+
+func TestUserTelegramCallbackAcknowledgementFailureKeepsPollingSafe(t *testing.T) {
+	t.Parallel()
+	for _, scenario := range []struct {
+		name      string
+		failure   platformFailure
+		permanent bool
+	}{
+		{"rejected", platformFailure{Code: 400}, true},
+		{"service failure", platformFailure{Code: 500}, false},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
+			data := t.TempDir()
+			f := newFakeTelegram(t)
+			startTelegram(t, f, data, 42)
+			f.message(1, 42, 7, "/menu")
+			menu := f.next(t)
+			status := f.button(t, menu.ID, "Status")
+			f.mu.Lock()
+			f.failures["answerCallbackQuery"] = []platformFailure{scenario.failure, scenario.failure}
+			f.mu.Unlock()
+
+			f.callback(2, 42, 7, 0, menu.ID, status)
+			f.message(3, 42, 7, "after the button")
+
+			answers, entered := 0, false
+			for answers == 0 || !entered {
+				got := f.next(t)
+				if strings.Contains(got.Text, "Current conversation") {
+					answers++
+				}
+				if got.Text == "echo: after the button" {
+					entered = true
+					f.mu.Lock()
+					left := len(f.failures["answerCallbackQuery"])
+					f.mu.Unlock()
+					if want := map[bool]int{true: 1, false: 0}[scenario.permanent]; left != want {
+						t.Fatalf("unused acknowledgement failures=%d, want %d", left, want)
+					}
+				}
+			}
+			var intents, consumed int
+			conn := controlWriteDB(t, data)
+			if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM channel_commands WHERE source_key LIKE 'telegram-callback:%'").Scan(&intents); err != nil {
+				t.Fatal(err)
+			}
+			if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM telegram_callbacks WHERE consumed_at IS NOT NULL").Scan(&consumed); err != nil {
+				t.Fatal(err)
+			}
+			if answers != 1 || intents != 1 || consumed != 1 {
+				t.Fatalf("status answers=%d intents=%d consumed buttons=%d, want one each", answers, intents, consumed)
+			}
+		})
+	}
+}
+
+func TestUserTelegramSavedWorkflowStaysInAudienceAndUsesItsInitiatingActor(t *testing.T) {
+	t.Parallel()
+	data := t.TempDir()
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, data, 42, 43)
+	d.setModel(t, "spawn")
+	f.groupText(1, 42, -100, 7, `{"tool":"group_session","action":"start","title":"Public saved workflow","message":"{\"tool\":\"group_note\",\"text\":\"public workflow note\"}"}`)
+	for {
+		got := f.next(t)
+		if strings.Contains(got.Text, "task-result:") {
+			break
+		}
+	}
+	conn := controlWriteDB(t, data)
+	var child int64
+	var scope string
+	if err := conn.QueryRowContext(t.Context(), "SELECT id,execution_scope FROM conversations WHERE parent_id IS NOT NULL").Scan(&child, &scope); err != nil {
+		t.Fatal(err)
+	}
+	f.groupText(2, 42, -100, 7, "/workflows")
+	menu := f.next(t)
+	if !strings.Contains(menu.Text, "Public saved workflow") {
+		t.Fatalf("saved workflow missing: %+v", menu)
+	}
+	resume := f.button(t, menu.ID, "Resume")
+	f.groupText(3, 42, -100, 8, "/workflows")
+	if got := f.next(t); strings.Contains(got.Text, "Public saved workflow") {
+		t.Fatalf("workflow list crossed topic: %+v", got)
+	}
+	f.groupText(4, 42, -100, 8, fmt.Sprintf("/run %d", child))
+	if got := f.next(t); !strings.Contains(got.Text, "not available") {
+		t.Fatalf("workflow run crossed topic: %+v", got)
+	}
+	f.groupText(5, 43, -100, 7, fmt.Sprintf("/run %d", child))
+	if got := f.next(t); !strings.Contains(got.Text, "not available") {
+		t.Fatalf("workflow borrowed another actor: %+v", got)
+	}
+	d.setModel(t, "echo")
+	f.callback(6, 42, -100, 7, menu.ID, resume)
+	if event := f.callbackResult(t); event.Text != "Accepted." {
+		t.Fatalf("saved workflow callback=%+v", event)
+	}
+	for {
+		got := f.next(t)
+		if strings.Contains(got.Text, "note-") {
+			if got.ChatID != -100 || got.TopicID != 7 {
+				t.Fatalf("resumed workflow went to private Main: %+v", got)
+			}
+			break
+		}
+	}
+	var turns, private int
+	var resumedScope string
+	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE conversation_id=? AND parent_request_id IS NOT NULL", child).Scan(&turns); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.QueryRowContext(t.Context(), "SELECT execution_scope FROM conversations WHERE id=?", child).Scan(&resumedScope); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM conversations WHERE channel_key='main'").Scan(&private); err != nil {
+		t.Fatal(err)
+	}
+	if turns != 2 || resumedScope != scope || private != 0 {
+		t.Fatalf("saved workflow moved or repeated: turns=%d scope=%s privateMain=%d", turns, resumedScope, private)
 	}
 }

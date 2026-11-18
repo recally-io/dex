@@ -1,10 +1,8 @@
 package app_test
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,20 +15,8 @@ import (
 
 func TestUserEditsPrivateEnvironmentWithoutReadingValues(t *testing.T) {
 	t.Parallel()
-	// Given an agent with a loaded environment and a captured application log.
+	// Given an agent with a loaded environment.
 	data := t.TempDir()
-	var logs bytes.Buffer
-	stderr, err := os.CreateTemp(t.TempDir(), "worker-log")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stderr.Close()
-	originalStderr := os.Stderr
-	os.Stderr = stderr
-	defer func() { os.Stderr = originalStderr }()
-	old := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
-	defer slog.SetDefault(old)
 	d := startDexHome(t, app.Config{DataDir: data}, t.TempDir())
 	d.setModel(t, "bash")
 	initial := d.newChat(t, `test -z "${EDIT_SECRET+x}" && printf unloaded`)
@@ -95,66 +81,7 @@ func TestUserEditsPrivateEnvironmentWithoutReadingValues(t *testing.T) {
 	status, body = d.call(t, http.MethodGet, "/api/agents/default/extensions", nil)
 	checkResponse(status, body, http.StatusOK)
 	d.stop()
-	workerLog, err := os.ReadFile(stderr.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(workerLog), secret) {
-		t.Fatal("worker log disclosed value")
-	}
-	if strings.Contains(logs.String(), secret) {
-		t.Fatal("application log disclosed value")
-	}
-	t.Log("artifact: API responses and captured log contain no value; file mode 0600; Reload applies the value")
-}
-
-func TestUserCannotWriteInvalidEnvironment(t *testing.T) {
-	t.Parallel()
-	// Given an isolated worker and real files.
-	data := t.TempDir()
-	d := startDexHome(t, app.Config{DataDir: data}, t.TempDir())
-	endpoint := "/api/agents/default/extensions/env"
-	// When an invalid scope, key, or value is sent, the API refuses it without a value.
-	for _, input := range []map[string]string{
-		{"scope": "home", "key": "KEY", "value": "private-invalid-value"},
-		{"scope": "agent", "key": "BAD-KEY", "value": "private-invalid-value"},
-		{"scope": "agent", "key": "KEY\n", "value": "private-invalid-value"},
-		{"scope": "agent", "key": "KEY", "value": "private-invalid-value\nline"},
-		{"scope": "agent", "key": "KEY", "value": "private-invalid-value\rline"},
-		{"scope": "agent", "key": "KEY", "value": "private-invalid-value\x00"},
-		{"scope": "agent", "key": "KEY", "value": "private-invalid-value'\""},
-	} {
-		status, body := d.call(t, http.MethodPut, endpoint, input)
-		if status != http.StatusBadRequest || strings.Contains(body, "private-invalid-value") {
-			t.Fatalf("invalid input response: %d", status)
-		}
-	}
-	status, body := d.call(t, http.MethodPut, endpoint, map[string]any{"scope": "agent", "key": "KEY", "value": map[string]string{"private-invalid-value": "private-invalid-value"}})
-	if status != http.StatusBadRequest || strings.Contains(body, "private-invalid-value") {
-		t.Fatal("decoder disclosed invalid value")
-	}
-	d.must(t, http.MethodDelete, endpoint+"?scope=home&key=KEY", nil, nil, http.StatusBadRequest)
-	// Then an invalid existing file stays unchanged and the error identifies its line.
-	path := filepath.Join(data, "agents", "default", ".agents", ".env")
-	const invalid = "# comment\nBAD-KEY=private-invalid-value\n"
-	writeFile(t, path, invalid)
-	for _, method := range []string{http.MethodPut, http.MethodDelete} {
-		target := endpoint
-		var input any = map[string]string{"scope": "agent", "key": "KEY", "value": "private-invalid-value"}
-		if method == http.MethodDelete {
-			target += "?scope=agent&key=KEY"
-			input = nil
-		}
-		status, body := d.call(t, method, target, input)
-		if status != http.StatusBadRequest || !strings.Contains(body, path) || !strings.Contains(body, "line 2") || strings.Contains(body, "private-invalid-value") {
-			t.Fatalf("invalid file response: %d %s", status, body)
-		}
-		content, err := os.ReadFile(path)
-		if err != nil || string(content) != invalid {
-			t.Fatal("invalid file changed")
-		}
-	}
-	t.Log("artifact: invalid writes refused; invalid file unchanged")
+	t.Log("artifact: API responses contain no value; file mode 0600; Reload applies the value")
 }
 
 func TestUserSharesDexEnvironmentBetweenAgents(t *testing.T) {

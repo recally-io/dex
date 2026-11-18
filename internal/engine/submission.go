@@ -133,7 +133,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			}
 		}
 		_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
-			metadata := InputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
+			metadata := inputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
 			data, err := durable.ToJsonValue(metadata)
 			if err != nil {
 				return nil, err

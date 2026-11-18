@@ -48,7 +48,7 @@ func (s *Service) ToolGroupSession(ctx context.Context, r engine.TaskContext, ar
 		}
 		return out, nil
 	default:
-		return engine.GroupSessionResult{}, fmt.Errorf("%w: group action is start, list, read, send or stop", ErrSessionInvalid)
+		return engine.GroupSessionResult{}, fmt.Errorf("%w: group action is start, list, read, send or stop", errSessionInvalid)
 	}
 	if err != nil {
 		return engine.GroupSessionResult{}, err

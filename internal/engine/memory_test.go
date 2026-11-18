@@ -12,7 +12,7 @@ import (
 
 func TestUserMemoryRecoversChangesAndRefreshesPrompt(t *testing.T) {
 	// Given a new local memory repository.
-	repo := NewMemoryRepo(filepath.Join(t.TempDir(), "memory"), nil)
+	repo := newMemoryRepo(filepath.Join(t.TempDir(), "memory"), nil)
 	if err := repo.Open(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func TestUserMemoryRecoversChangesAndRefreshesPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When another owner reopens after an uncommitted edit.
-	reopened := NewMemoryRepo(repo.Dir, nil)
+	reopened := newMemoryRepo(repo.Dir, nil)
 	if err := reopened.Open(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -49,11 +49,11 @@ func TestUserMemoryRecoversChangesAndRefreshesPrompt(t *testing.T) {
 	}
 }
 func TestUserMemoryCreatesNestedRepository(t *testing.T) {
-	root := NewMemoryRepo(t.TempDir(), nil)
+	root := newMemoryRepo(t.TempDir(), nil)
 	if err := root.Open(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	nested := NewMemoryRepo(filepath.Join(root.Dir, "nested"), nil)
+	nested := newMemoryRepo(filepath.Join(root.Dir, "nested"), nil)
 	if err := nested.Open(t.Context()); err != nil {
 		t.Fatal(err)
 	}

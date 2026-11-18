@@ -51,7 +51,6 @@ export function SessionsPage() {
       description={`Conversations of ${name} apart from the main timeline. Each session has its own context. Chat sessions and the sessions that ${name} started take messages. Automation runs are read-only.`}
     >
       <Section
-        n={1}
         title="All sessions"
         caption={all.length ? `${activeSessionCount(list)} active · newest first` : undefined}
         action={

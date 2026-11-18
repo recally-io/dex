@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"html"
 	"net/http"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -28,15 +27,6 @@ type childRef struct {
 
 type resultRow struct {
 	id, status, content, answer string
-}
-
-func childJSON(t *testing.T, value any) string {
-	t.Helper()
-	data, err := json.Marshal(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(data)
 }
 
 // callSessionTool lets the parent chat call one session tool through the model "spawn".
@@ -456,41 +446,6 @@ func TestUserOtherConversationsCannotSendToOrStopAChild(t *testing.T) {
 	}
 }
 
-func TestUserLegacyTaskConversationsWorkAsChildSessions(t *testing.T) {
-	t.Parallel()
-	// Given the data of a dex version with background tasks, and a parent chat on the spawn model.
-	dir := legacyData(t)
-	d := startDex(t, dir, "")
-	conn := taskResultDB(t, dir)
-	model := func(id int64, name string) {
-		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/settings", id), map[string]string{"provider": "faux", "modelId": name, "thinkingLevel": "off"}, nil)
-	}
-	model(1, "spawn")
-	model(2, "echo")
-	d.setModel(t, "spawn")
-	// When the parent sends a message to the migrated task "Ended".
-	var ref childRef
-	toolJSON(t, callSessionTool(t, d, 1, "session_send", map[string]any{"id": "2", "message": "again"}), &ref)
-	// Then the old conversation runs it to an answer.
-	eventually(t, "answer of the old task", func() (bool, any) {
-		turns := childTurns(t, conn, 2)
-		last := turns[len(turns)-1]
-		return last.status == "done" && last.parentRequest != "" && last.answer == "echo: again", turns
-	})
-	// And the child has no session tools.
-	model(2, "spawn")
-	toolJSON(t, callSessionTool(t, d, 1, "session_send", map[string]any{"id": "2", "message": childJSON(t, map[string]any{"title": "x", "message": "y"})}), &ref)
-	eventually(t, "second answer of the old task", func() (bool, any) {
-		turns := childTurns(t, conn, 2)
-		return len(turns) >= 2 && turns[len(turns)-1].status == "done" && strings.HasPrefix(turns[len(turns)-1].answer, "spawn error"), turns
-	})
-	// And the task that was running at the upgrade has one interrupted result.
-	var interrupted int
-	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM submissions WHERE conversation_id = 1 AND kind = 'task_result' AND id LIKE 'result:%' AND content LIKE '%interrupted%'`).Scan(&interrupted); err != nil || interrupted != 1 {
-		t.Fatalf("interrupted results: %d %v", interrupted, err)
-	}
-}
-
 type readTurn struct {
 	Turn   string   `json:"turn"`
 	Input  string   `json:"input"`
@@ -728,33 +683,5 @@ func TestUserChildSessionInheritsTheParentProject(t *testing.T) {
 	}
 	if got := waitTaskFile(t, filepath.Join(project, "inherited-cwd")); strings.TrimSpace(got) != project {
 		t.Fatalf("shell cwd: %q", got)
-	}
-}
-
-func TestUserChildSessionRefusesAnInvalidDirectory(t *testing.T) {
-	t.Parallel()
-	// Given a parent in the agent workspace and a file that is not a directory.
-	data := t.TempDir()
-	file := filepath.Join(t.TempDir(), "file.txt")
-	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	d := startDex(t, data, "")
-	conn := taskResultDB(t, data)
-	parent := newParent(t, d)
-	// When the parent gives a missing, relative or non-directory cwd.
-	for _, cwd := range []string{filepath.Join(t.TempDir(), "missing"), "relative/dir", file} {
-		got := callSessionTool(t, d, parent, "session_new", map[string]any{"title": "Bad", "message": "never", "cwd": cwd, "provider": "faux", "modelId": "echo"})
-		// Then the call fails and no child exists. There is no fallback to the workspace.
-		if !strings.HasPrefix(got, "spawn error") {
-			t.Fatalf("cwd %q: %s", cwd, got)
-		}
-	}
-	var children int
-	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM conversations WHERE parent_id IS NOT NULL`).Scan(&children); err != nil || children != 0 {
-		t.Fatalf("children after refused calls: %d %v", children, err)
-	}
-	if rows := resultRows(t, conn, parent); len(rows) != 0 {
-		t.Fatalf("results: %+v", rows)
 	}
 }

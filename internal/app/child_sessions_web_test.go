@@ -70,31 +70,32 @@ func TestUserOpensTheChildSessionOfAResultLink(t *testing.T) {
 	}
 }
 
-func TestUserOpensAnOldTaskLinkAndArchivesItsSession(t *testing.T) {
+func TestUserParentStopWithdrawsParentInputQueuedBehindAUserRun(t *testing.T) {
 	t.Parallel()
-	// Given the data of a dex version with background tasks.
-	dir := legacyData(t)
-	tasks := legacyTasks(t, dir)
+	// Given a child that runs a turn of the user, with a parent input queued behind it.
+	dir := t.TempDir()
 	d := startDex(t, dir, "")
-
-	for _, k := range tasks {
-		// When the web opens the old link /tasks/<task id>.
-		var opened webChat
-		d.must(t, http.MethodGet, "/api/agents/default/turns/"+k.id, nil, &opened)
-
-		// Then it gets the task conversation as a writable child session of its parent chat, not as a Task kind.
-		if opened.ID != k.conversation || opened.ParentID == nil || *opened.ParentID != 1 || opened.ReadOnly || opened.Channel != "web" {
-			t.Fatalf("%s: %+v", k.title, opened)
-		}
+	conn := taskResultDB(t, dir)
+	parent := newParent(t, d)
+	child := spawnChild(t, d, parent, "Mixed origins", "echo initial", "bash")
+	waitResults(t, conn, parent, 1)
+	d.send(t, child.conversation(t), taskGate(t, dir, "user-active"))
+	waitTaskFile(t, filepath.Join(dir, "user-active.pid"))
+	var ref childRef
+	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "echo parent queued"}), &ref)
+	// When the user stops the parent chat.
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", parent), nil, nil)
+	releaseResultGate(t, dir, "user-active")
+	// Then the run of the user finishes, and the parent input never runs.
+	turns := waitChildTurnsEnded(t, conn, child.conversation(t), 3)
+	if turns[1].status != "done" {
+		t.Fatalf("parent Stop aborted the run of the user because a parent input was queued: %+v", turns)
 	}
-
-	// And the user can archive a finished old child, and restore it.
-	ended := tasks[0].conversation
-	if got := d.archive(t, http.MethodPut, ended, http.StatusOK); got.ArchivedAt == nil {
-		t.Fatalf("archived: %+v", got)
+	if turns[2].status != "unanswered" || turns[2].reason != "stopped" {
+		t.Fatalf("the queued parent input was not stopped: %+v", turns[2])
 	}
-	if got := d.archive(t, http.MethodDelete, ended, http.StatusOK); got.ArchivedAt != nil {
-		t.Fatalf("restored: %+v", got)
+	if rows := resultRows(t, conn, parent); len(rows) != 1 {
+		t.Fatalf("results: %+v", rows)
 	}
 }
 
