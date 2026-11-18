@@ -512,14 +512,3 @@ ON CONFLICT (id) DO UPDATE SET
     fallback_provider = excluded.fallback_provider,
     fallback_model_id = excluded.fallback_model_id,
     environment_id = excluded.environment_id;
-
--- name: ClearBotDefaultProvider :exec
-UPDATE bot_defaults SET
-    model_provider = CASE WHEN model_provider = @provider_id THEN '' ELSE model_provider END,
-    model_id = CASE WHEN model_provider = @provider_id THEN '' ELSE model_id END,
-    fallback_provider = CASE WHEN fallback_provider = @provider_id THEN '' ELSE fallback_provider END,
-    fallback_model_id = CASE WHEN fallback_provider = @provider_id THEN '' ELSE fallback_model_id END
-WHERE id = 1;
-
--- name: ClearBotDefaultEnvironment :exec
-UPDATE bot_defaults SET environment_id = '' WHERE id = 1 AND environment_id = @environment_id;

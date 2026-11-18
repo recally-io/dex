@@ -616,7 +616,7 @@ export type BotDefaults = {
     thinkingLevel: ThinkingLevel;
     fallbackProvider: string;
     /**
-     * Empty when no default fallback model is chosen.
+     * Empty when no default fallback model is chosen. Needs a default model.
      */
     fallbackModelId: string;
     /**
@@ -763,7 +763,7 @@ export type Agent = {
     thinkingLevel: ThinkingLevel;
     fallbackProvider: string;
     /**
-     * Empty when no fallback model is chosen.
+     * Empty when no fallback model is chosen. Needs a model.
      */
     fallbackModelId: string;
     instructions: string;
@@ -790,7 +790,7 @@ export type AgentInput = {
     thinkingLevel: ThinkingLevel;
     fallbackProvider?: string;
     /**
-     * Empty when no fallback model is chosen.
+     * Empty when no fallback model is chosen. Needs a model.
      */
     fallbackModelId?: string;
     instructions?: string;
@@ -1145,7 +1145,7 @@ export type AgentWritable = {
     thinkingLevel: ThinkingLevel;
     fallbackProvider: string;
     /**
-     * Empty when no fallback model is chosen.
+     * Empty when no fallback model is chosen. Needs a model.
      */
     fallbackModelId: string;
     instructions: string;

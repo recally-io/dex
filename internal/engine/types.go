@@ -43,7 +43,6 @@ type Options struct {
 	Scope         string
 	Cwd           string
 	Model         ModelRef
-	FallbackModel ModelRef
 	ThinkingLevel string
 	Instructions  string
 }

@@ -124,15 +124,24 @@ func TestUserConfiguresBotDefaultsAndCreatesReadyBots(t *testing.T) {
 		t.Fatalf("bot_create did not inherit defaults: %+v", listed.Agents)
 	}
 
-	// Deleting an unused default environment clears defaults.environmentId.
+	// A new bot skips a default environment that was deleted.
 	nextDefaults := wantDefaults
 	nextDefaults.EnvironmentID = envB.ID
 	d.must(t, http.MethodPut, "/api/settings/defaults", nextDefaults, nil)
 	d.must(t, http.MethodDelete, "/api/settings/environments/"+envB.ID, nil, nil)
-	d.must(t, http.MethodGet, "/api/settings", nil, &settingsAfter)
-	if settingsAfter.Defaults.EnvironmentID != "" {
-		t.Fatalf("deleting environment did not clear default environmentId: %+v", settingsAfter.Defaults)
+	var local api.Agent
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Local Bot"}, &local, http.StatusCreated)
+	if local.EnvironmentID != "" || local.ModelID != "echo" {
+		t.Fatalf("bot after environment deletion = %+v, want echo on this computer", local)
 	}
+
+	// A fallback model needs a model, both in the defaults and in a bot.
+	d.must(t, http.MethodPut, "/api/settings/defaults", api.BotDefaults{
+		ThinkingLevel: "off", FallbackProvider: "faux", FallbackModelID: "shout",
+	}, nil, http.StatusBadRequest)
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{
+		"name": "Fallback Only", "modelId": "", "fallbackProvider": "faux", "fallbackModelId": "shout",
+	}, nil, http.StatusBadRequest)
 }
 
 func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
@@ -189,6 +198,9 @@ func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
 	}
 
 	// When the primary provider is deleted, work remains usable and chats still answer via fallback.
+	d.must(t, http.MethodPut, "/api/settings/defaults", api.BotDefaults{
+		Provider: "flaky", ModelID: "broken-primary", ThinkingLevel: "off", FallbackProvider: "faux", FallbackModelID: "echo",
+	}, nil)
 	d.must(t, http.MethodDelete, "/api/settings/providers/flaky", nil, nil)
 
 	now := time.Now()
@@ -206,15 +218,10 @@ func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
 	missingChat := d.newChat(t, "missing provider check")
 	d.watch(t, missingChat).until(t, "fallback answer when primary missing", answered("echo: missing provider check"))
 
-	// Updating the bot's fallback model takes effect on subsequent turns even without a primary model.
-	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{
-		"name":             "Dex",
-		"provider":         "",
-		"modelId":          "",
-		"thinkingLevel":    "off",
-		"fallbackProvider": "faux",
-		"fallbackModelId":  "shout",
-	}, nil)
-	perBotChat := d.newChat(t, "per-bot fallback")
-	d.watch(t, perBotChat).until(t, "updated fallback answer", answered("shout: per-bot fallback"))
+	// When the default model is gone, a new bot uses the default fallback model as its model.
+	var promoted api.Agent
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Promoted"}, &promoted, http.StatusCreated)
+	if promoted.Provider != "faux" || promoted.ModelID != "echo" || promoted.FallbackModelID != "" {
+		t.Fatalf("bot with a removed default model = %+v, want faux/echo and no fallback", promoted)
+	}
 }

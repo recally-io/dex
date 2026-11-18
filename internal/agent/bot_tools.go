@@ -40,6 +40,11 @@ func applyPatch(a *Agent, p Patch) {
 // PatchAgent merges a patch into a saved active agent and applies the checks of SaveAgent. The
 // read and the write share one lock, so two patches cannot lose each other's fields.
 func (s *Service) PatchAgent(ctx context.Context, id string, p Patch) (Agent, error) {
+	return s.updateAgent(ctx, id, func(Agent) (Patch, error) { return p, nil })
+}
+
+// updateAgent is PatchAgent with a patch that build makes from the saved agent under the lock.
+func (s *Service) updateAgent(ctx context.Context, id string, build func(Agent) (Patch, error)) (Agent, error) {
 	var (
 		oldRow sqlc.Agent
 		out    Agent
@@ -56,6 +61,10 @@ func (s *Service) PatchAgent(ctx context.Context, id string, p Patch) (Agent, er
 			return getErr
 		}
 		a := agentView(oldRow)
+		p, err := build(a)
+		if err != nil {
+			return err
+		}
 		applyPatch(&a, p)
 		var cleanErr error
 		a, cleanErr = s.cleanAgent(ctx, a)
@@ -184,7 +193,7 @@ func (t BotTools) create(ctx context.Context, c engine.TaskContext, p engine.Bot
 	if err := t.Chats.ToolBotCaller(ctx, c, true); err != nil {
 		return engine.BotInfo{}, err
 	}
-	created, err := t.Agents.CreateAgentWithDefaults(ctx, Patch{
+	created, err := t.Agents.CreateAgent(ctx, Patch{
 		Name: p.Name, Instructions: p.Instructions, Provider: p.Provider, ModelID: p.ModelID,
 		ThinkingLevel: p.ThinkingLevel, FallbackProvider: p.FallbackProvider, FallbackModelID: p.FallbackModelID,
 		EnvironmentID: p.EnvironmentID,

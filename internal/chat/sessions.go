@@ -199,9 +199,6 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 		}
 		settings.Provider, settings.ModelID = a.Provider, a.ModelID
 	}
-	if settings.ModelID == "" && target.FallbackModelID != "" {
-		settings.Provider, settings.ModelID = target.FallbackProvider, target.FallbackModelID
-	}
 	if settings.ModelID == "" {
 		return engine.SessionRef{}, ErrNoModel
 	}

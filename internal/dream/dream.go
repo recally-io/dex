@@ -85,7 +85,7 @@ func (d *Dreamer) Check(ctx context.Context) {
 
 func (d *Dreamer) start(ctx context.Context, agentID string) error {
 	agent, err := d.q.GetAgent(ctx, agentID)
-	if err != nil || (agent.ModelID == "" && agent.FallbackModelID == "") {
+	if err != nil || agent.ModelID == "" {
 		return err
 	}
 	// Prefer a quiet moment. This is not a lock: a chat that starts during the dream runs with it,

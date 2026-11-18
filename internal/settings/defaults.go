@@ -69,6 +69,9 @@ func (s *Service) SetDefaults(ctx context.Context, d BotDefaults) (BotDefaults, 
 			return BotDefaults{}, err
 		}
 	}
+	if d.FallbackModelID != "" && d.ModelID == "" {
+		return BotDefaults{}, fmt.Errorf("%w: choose a default model before a fallback model", ErrInvalid)
+	}
 	d.EnvironmentID = strings.TrimSpace(d.EnvironmentID)
 	if d.EnvironmentID == "local" {
 		d.EnvironmentID = ""

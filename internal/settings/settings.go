@@ -290,10 +290,6 @@ func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 		s.mu.Unlock()
 		return err
 	}
-	if err := s.q.ClearBotDefaultProvider(ctx, id); err != nil {
-		s.mu.Unlock()
-		return err
-	}
 	discovery, err := s.RegisterProviders(ctx)
 	s.mu.Unlock()
 	if err != nil {

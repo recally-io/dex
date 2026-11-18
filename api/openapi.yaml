@@ -2587,7 +2587,7 @@ components:
         fallbackProvider: { type: string }
         fallbackModelId: {
           type: string,
-          description: Empty when no default fallback model is chosen.,
+          description: Empty when no default fallback model is chosen. Needs a default model.,
         }
         environmentId: {
           type: string,
@@ -2794,7 +2794,7 @@ components:
         fallbackProvider: { type: string }
         fallbackModelId: {
           type: string,
-          description: Empty when no fallback model is chosen.,
+          description: Empty when no fallback model is chosen. Needs a model.,
         }
         instructions: { type: string }
         environmentId: {
@@ -2826,7 +2826,7 @@ components:
         fallbackProvider: { type: string }
         fallbackModelId: {
           type: string,
-          description: Empty when no fallback model is chosen.,
+          description: Empty when no fallback model is chosen. Needs a model.,
         }
         instructions: { type: string }
         environmentId: {

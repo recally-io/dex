@@ -680,14 +680,7 @@ func (h *handler) SetBotDefaults(ctx context.Context, req api.SetBotDefaultsRequ
 	if err != nil {
 		return nil, err
 	}
-	if err := h.Agents.BackfillDefaultAgent(ctx, agent.Defaults{
-		Provider:         saved.Provider,
-		ModelID:          saved.ModelID,
-		ThinkingLevel:    saved.ThinkingLevel,
-		FallbackProvider: saved.FallbackProvider,
-		FallbackModelID:  saved.FallbackModelID,
-		EnvironmentID:    saved.EnvironmentID,
-	}); err != nil {
+	if err := h.Agents.BackfillDefaultAgent(ctx); err != nil {
 		return nil, err
 	}
 	return api.SetBotDefaults200JSONResponse(saved), nil

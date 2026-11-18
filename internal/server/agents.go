@@ -25,7 +25,7 @@ func (h *handler) CreateAgent(ctx context.Context, req api.CreateAgentRequestObj
 		level := string(*b.ThinkingLevel)
 		thinking = &level
 	}
-	created, err := h.Agents.CreateAgentWithDefaults(ctx, agent.Patch{
+	created, err := h.Agents.CreateAgent(ctx, agent.Patch{
 		Name:             &b.Name,
 		Provider:         b.Provider,
 		ModelID:          b.ModelId,

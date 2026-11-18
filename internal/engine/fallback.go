@@ -9,26 +9,16 @@ import (
 	"github.com/MichaelKinsy/PiG/durable"
 )
 
-func (a *Agents) setFallback(agentID string, ref ModelRef) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.fallbacks[agentID] = ref
-}
-
-func (a *Agents) fallbackFor(ctx context.Context, agentID string) ModelRef {
-	if a.config.FallbackModel != nil {
-		return a.config.FallbackModel(ctx, agentID)
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.fallbacks[agentID]
-}
-
 func (a *Agents) modelsFor(agentID string) durable.Models {
 	return &agentModels{
-		Models:   a.Catalog.Models,
-		catalog:  a.Catalog,
-		fallback: func(ctx context.Context) ModelRef { return a.fallbackFor(ctx, agentID) },
+		Models:  a.Catalog.Models,
+		catalog: a.Catalog,
+		fallback: func(ctx context.Context) ModelRef {
+			if a.config.FallbackModel == nil {
+				return ModelRef{}
+			}
+			return a.config.FallbackModel(ctx, agentID)
+		},
 	}
 }
 
@@ -87,71 +77,72 @@ func (m *agentModels) streamWithFallback(
 	options []ai.StreamOptions,
 ) {
 	primary := m.Models.StreamSimple(ctx, primaryModel, request, options...)
+	// An empty start is held back so a failover can replace the whole response.
 	var pendingStart *ai.StartEvent
-	emitted := false
-
-	for event := range primary.Events(ctx) {
-		if start, ok := startEvent(event); ok && !emitted && (start.Partial == nil || len(start.Partial.Content) == 0) {
-			pendingStart = &start
-			continue
-		}
-		if errEv, ok := errorEvent(event); ok {
-			if shouldFailover(ctx, emitted, errEv) {
-				fbOpts := fallbackStreamOptions(fallbackModel, options)
-				m.forwardFallback(ctx, out, fallbackModel, request, fbOpts)
-				return
-			}
-			if pendingStart != nil {
-				_ = out.Push(*pendingStart)
-			}
-			_ = out.Push(event)
-			out.End()
-			return
-		}
+	flush := func() {
 		if pendingStart != nil {
 			_ = out.Push(*pendingStart)
 			pendingStart = nil
 		}
+	}
+	emitted := false
+	for event := range primary.Events(ctx) {
+		switch e := event.(type) {
+		case ai.StartEvent:
+			if !emitted && (e.Partial == nil || len(e.Partial.Content) == 0) {
+				pendingStart = &e
+				continue
+			}
+		case ai.ErrorEvent:
+			if shouldFailover(ctx, emitted, e) {
+				forward(ctx, out, m.Models.StreamSimple(ctx, fallbackModel, request, fallbackStreamOptions(fallbackModel, options)...), fallbackModel)
+				return
+			}
+			flush()
+			_ = out.Push(event)
+			out.End()
+			return
+		}
+		flush()
 		emitted = true
 		_ = out.Push(event)
-		if isDoneEvent(event) {
+		if _, done := event.(ai.DoneEvent); done {
 			out.End()
 			return
 		}
 	}
-
-	if pendingStart != nil {
-		_ = out.Push(*pendingStart)
-	}
-	if res, err := primary.ResultContext(ctx); err == nil && res != nil {
-		out.End(res)
-		return
-	}
-	msg := abortedAssistantMessage(primaryModel)
-	_ = out.Push(ai.ErrorEvent{Reason: ai.StopReasonAborted, Error: msg})
-	out.End(msg)
+	flush()
+	finish(ctx, out, primary, primaryModel)
 }
 
-func (m *agentModels) forwardFallback(
-	ctx context.Context,
-	out *ai.AssistantMessageEventStream,
-	fallbackModel *ai.Model,
-	request ai.Context,
-	options []ai.StreamOptions,
-) {
-	fbStream := m.Models.StreamSimple(ctx, fallbackModel, request, options...)
-	for event := range fbStream.Events(ctx) {
+// forward copies src into out until a terminal event.
+func forward(ctx context.Context, out, src *ai.AssistantMessageEventStream, model *ai.Model) {
+	for event := range src.Events(ctx) {
 		_ = out.Push(event)
-		if isTerminalEvent(event) {
+		switch event.(type) {
+		case ai.DoneEvent, ai.ErrorEvent:
 			out.End()
 			return
 		}
 	}
-	if res, err := fbStream.ResultContext(ctx); err == nil && res != nil {
+	finish(ctx, out, src, model)
+}
+
+// finish ends out with the result of src, or as aborted when src ended without one.
+func finish(ctx context.Context, out, src *ai.AssistantMessageEventStream, model *ai.Model) {
+	if res, err := src.ResultContext(ctx); err == nil && res != nil {
 		out.End(res)
 		return
 	}
-	msg := abortedAssistantMessage(fallbackModel)
+	msg := &ai.AssistantMessage{
+		API:          model.ProviderMeta.API,
+		Provider:     model.ProviderID(),
+		Model:        model.ID,
+		Content:      []ai.AssistantContentBlock{},
+		StopReason:   ai.StopReasonAborted,
+		ErrorMessage: "Request was aborted",
+		Timestamp:    time.Now().UnixMilli(),
+	}
 	_ = out.Push(ai.ErrorEvent{Reason: ai.StopReasonAborted, Error: msg})
 	out.End(msg)
 }
@@ -160,10 +151,7 @@ func shouldFailover(ctx context.Context, emitted bool, errEv ai.ErrorEvent) bool
 	if emitted || ctx.Err() != nil || errEv.Reason != ai.StopReasonError {
 		return false
 	}
-	if errEv.Error != nil && ai.IsContextOverflow(*errEv.Error, 0) {
-		return false
-	}
-	return true
+	return errEv.Error == nil || !ai.IsContextOverflow(*errEv.Error, 0)
 }
 
 func fallbackStreamOptions(fbModel *ai.Model, options []ai.StreamOptions) []ai.StreamOptions {
@@ -175,63 +163,4 @@ func fallbackStreamOptions(fbModel *ai.Model, options []ai.StreamOptions) []ai.S
 		}
 	}
 	return fbOpts
-}
-
-func startEvent(event ai.AssistantMessageEvent) (ai.StartEvent, bool) {
-	switch e := event.(type) {
-	case ai.StartEvent:
-		return e, true
-	case *ai.StartEvent:
-		if e != nil {
-			return *e, true
-		}
-	}
-	return ai.StartEvent{}, false
-}
-
-func errorEvent(event ai.AssistantMessageEvent) (ai.ErrorEvent, bool) {
-	switch e := event.(type) {
-	case ai.ErrorEvent:
-		return e, true
-	case *ai.ErrorEvent:
-		if e != nil {
-			return *e, true
-		}
-	}
-	return ai.ErrorEvent{}, false
-}
-
-func isDoneEvent(event ai.AssistantMessageEvent) bool {
-	switch event.(type) {
-	case ai.DoneEvent, *ai.DoneEvent:
-		return true
-	}
-	return false
-}
-
-func isTerminalEvent(event ai.AssistantMessageEvent) bool {
-	if isDoneEvent(event) {
-		return true
-	}
-	_, err := errorEvent(event)
-	return err
-}
-
-func abortedAssistantMessage(model *ai.Model) *ai.AssistantMessage {
-	var api ai.API
-	var provider, id string
-	if model != nil {
-		api = model.ProviderMeta.API
-		provider = model.ProviderID()
-		id = model.ID
-	}
-	return &ai.AssistantMessage{
-		API:          api,
-		Provider:     provider,
-		Model:        id,
-		Content:      []ai.AssistantContentBlock{},
-		StopReason:   ai.StopReasonAborted,
-		ErrorMessage: "Request was aborted",
-		Timestamp:    time.Now().UnixMilli(),
-	}
 }

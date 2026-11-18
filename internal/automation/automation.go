@@ -494,7 +494,7 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 			return Run{}, err
 		}
 		switch {
-		case agent.ModelID == "" && agent.FallbackModelID == "":
+		case agent.ModelID == "":
 			skip = "the bot has no model"
 		case busy > 0:
 			skip = "the chat of the automation is busy"

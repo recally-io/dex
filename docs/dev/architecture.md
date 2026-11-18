@@ -298,7 +298,7 @@ execution environment. Omitted fields inherit global `bot_defaults` from
 local environment. `POST /api/agents` returns the created agent with a UUID v7
 ID (`201`). The ID is read-only. `GET` and `PUT` on `/api/agents/{agentId}` read
 and save one agent. Names and models use the same validation for creation and
-updates. `agentModels` wraps the runtime model catalog for each agent: if an
+updates. A fallback model needs a primary model. `agentModels` wraps the runtime model catalog for each agent: if an
 agent's primary model is missing or returns an error before any response block
 streams (excluding aborts and context-overflow errors), `agentModels` switches to
 the agent's fallback model.
@@ -352,8 +352,10 @@ providers, built-ins, APIs, and `defaults` (`bot_defaults`).
 model, thinking level, fallback model, and execution environment. When the
 built-in `default` agent still has no primary model (`model_id == ''`), saving
 global defaults also backfills the `default` agent after releasing the settings
-lock so the `agent -> settings` lock order holds. Deleting a provider or an
-execution environment clears matching references in `bot_defaults`. Channel
+lock so the `agent -> settings` lock order holds. `bot_defaults` can name a
+removed provider, model, or execution environment. Creation skips such a
+default, and promotes the default fallback model when the default primary model
+is gone. Channel
 setup and status use `/api/agents/{agentId}/channels`, with `/telegram`,
 `/wechat`, and `/feishu` for changes. The old `/api/settings/{platform}` routes
 return 404.

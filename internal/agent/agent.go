@@ -84,16 +84,6 @@ type Agent struct {
 	ArchivedAt int64 `json:"archivedAt,omitzero"`
 }
 
-// Defaults are the global default settings applied when creating a bot or backfilling the default bot.
-type Defaults struct {
-	Provider         string
-	ModelID          string
-	ThinkingLevel    string
-	FallbackProvider string
-	FallbackModelID  string
-	EnvironmentID    string
-}
-
 // Telegram describes the bot without its token.
 type Telegram struct {
 	Status       channel.Status   `json:"status"`
@@ -176,61 +166,17 @@ func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
 	return nil
 }
 
-// CreateAgent stores an agent without changing global provider configuration.
-func (s *Service) CreateAgent(ctx context.Context, a Agent) (Agent, error) {
+// CreateAgent stores an agent. Fields the patch omits come from the global bot defaults.
+func (s *Service) CreateAgent(ctx context.Context, p Patch) (Agent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	a, err := s.cleanAgent(ctx, a)
+	p, err := s.withDefaults(ctx, p)
 	if err != nil {
 		return Agent{}, err
 	}
-	row, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{
-		ID: uuid.NewV7().String(), Name: a.Name, ModelProvider: a.Provider, ModelID: a.ModelID,
-		ThinkingLevel: a.ThinkingLevel, FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
-		Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, CreatedAt: time.Now().UnixMilli(),
-	})
-	return agentView(row), err
-}
-
-// CreateAgentWithDefaults creates an agent, filling omitted model, thinking, fallback, and
-// environment fields from the saved global bot defaults.
-func (s *Service) CreateAgentWithDefaults(ctx context.Context, p Patch) (Agent, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	defs, err := s.q.GetBotDefaults(ctx)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return Agent{}, err
-	}
-	a := Agent{ThinkingLevel: cmp.Or(defs.ThinkingLevel, "off")}
-
-	if p.Provider == nil && p.ModelID == nil && defs.ModelID != "" {
-		switch err := s.checkModel(ctx, defs.ModelProvider, defs.ModelID); {
-		case err == nil:
-			a.Provider, a.ModelID = defs.ModelProvider, defs.ModelID
-		case errors.Is(err, engine.ErrModelsPending):
-			return Agent{}, err
-		}
-	}
-	if p.FallbackProvider == nil && p.FallbackModelID == nil && defs.FallbackModelID != "" {
-		switch err := s.checkModel(ctx, defs.FallbackProvider, defs.FallbackModelID); {
-		case err == nil:
-			a.FallbackProvider, a.FallbackModelID = defs.FallbackProvider, defs.FallbackModelID
-		case errors.Is(err, engine.ErrModelsPending):
-			return Agent{}, err
-		}
-	}
-	if p.EnvironmentID == nil && defs.EnvironmentID != "" {
-		if _, envErr := s.q.GetEnvironment(ctx, defs.EnvironmentID); envErr == nil {
-			a.EnvironmentID = defs.EnvironmentID
-		} else if !errors.Is(envErr, sql.ErrNoRows) {
-			return Agent{}, envErr
-		}
-	}
-
+	a := Agent{ThinkingLevel: "off"}
 	applyPatch(&a, p)
-	a, err = s.cleanAgent(ctx, a)
-	if err != nil {
+	if a, err = s.cleanAgent(ctx, a); err != nil {
 		return Agent{}, err
 	}
 	row, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{
@@ -241,59 +187,81 @@ func (s *Service) CreateAgentWithDefaults(ctx context.Context, p Patch) (Agent, 
 	return agentView(row), err
 }
 
-// BackfillDefaultAgent applies global defaults to the built-in default agent when it still has no primary model.
-func (s *Service) BackfillDefaultAgent(ctx context.Context, d Defaults) error {
-	var oldRow sqlc.Agent
-	var next Agent
-	changed, err := func() (bool, error) {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		var getErr error
-		oldRow, getErr = s.q.GetAgent(ctx, "default")
-		if errors.Is(getErr, sql.ErrNoRows) || (getErr == nil && (oldRow.ArchivedAt.Valid || oldRow.ModelID != "")) {
+var errHasModel = errors.New("the default bot has a model")
+
+// BackfillDefaultAgent applies the global bot defaults to the built-in default agent while it has
+// no model. It keeps a chosen execution environment.
+func (s *Service) BackfillDefaultAgent(ctx context.Context) error {
+	_, err := s.updateAgent(ctx, "default", func(a Agent) (Patch, error) {
+		if a.ModelID != "" {
+			return Patch{}, errHasModel
+		}
+		var p Patch
+		if a.EnvironmentID != "" {
+			p.EnvironmentID = &a.EnvironmentID
+		}
+		return s.withDefaults(ctx, p)
+	})
+	if errors.Is(err, errHasModel) || errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
+// withDefaults fills the fields that p omits from the saved bot defaults. It skips a default model
+// or environment that no longer exists. When the default model is gone, the default fallback model
+// becomes the model.
+func (s *Service) withDefaults(ctx context.Context, p Patch) (Patch, error) {
+	defs, err := s.q.GetBotDefaults(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return p, nil
+	}
+	if err != nil {
+		return Patch{}, err
+	}
+	usable := func(provider, id string) (bool, error) {
+		if id == "" {
 			return false, nil
 		}
-		if getErr != nil {
-			return false, getErr
-		}
-		orig := agentView(oldRow)
-		next = orig
-		if d.ModelID != "" {
-			next.Provider = d.Provider
-			next.ModelID = d.ModelID
-			next.ThinkingLevel = cmp.Or(d.ThinkingLevel, "off")
-		}
-		if next.FallbackModelID == "" && d.FallbackModelID != "" {
-			next.FallbackProvider = d.FallbackProvider
-			next.FallbackModelID = d.FallbackModelID
-		}
-		if next.EnvironmentID == "" && d.EnvironmentID != "" {
-			next.EnvironmentID = d.EnvironmentID
-		}
-		if next == orig {
-			return false, nil
-		}
-		var cleanErr error
-		next, cleanErr = s.cleanAgent(ctx, next)
-		if cleanErr != nil {
-			return false, cleanErr
-		}
-		if err := s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
-			ModelProvider: next.Provider, ModelID: next.ModelID, ThinkingLevel: next.ThinkingLevel,
-			FallbackProvider: next.FallbackProvider, FallbackModelID: next.FallbackModelID,
-			Instructions: next.Instructions, EnvironmentID: next.EnvironmentID, ID: "default", Name: next.Name,
-		}); err != nil {
+		err := s.checkModel(ctx, provider, id)
+		if errors.Is(err, engine.ErrModelsPending) {
 			return false, err
 		}
-		return true, nil
-	}()
-	if err != nil || !changed {
-		return err
+		return err == nil, nil
 	}
-	if oldRow.EnvironmentID != next.EnvironmentID && s.OnEnvironmentChanged != nil {
-		s.OnEnvironmentChanged(ctx, "default", oldRow.EnvironmentID, oldRow.EnvironmentSandboxID)
+	primaryOK, err := usable(defs.ModelProvider, defs.ModelID)
+	if err != nil {
+		return Patch{}, err
 	}
-	return nil
+	fallbackOK, err := usable(defs.FallbackProvider, defs.FallbackModelID)
+	if err != nil {
+		return Patch{}, err
+	}
+	fallbackOmitted := p.FallbackProvider == nil && p.FallbackModelID == nil
+	if p.Provider == nil && p.ModelID == nil {
+		switch {
+		case primaryOK:
+			p.Provider, p.ModelID = &defs.ModelProvider, &defs.ModelID
+		case fallbackOK && fallbackOmitted:
+			p.Provider, p.ModelID = &defs.FallbackProvider, &defs.FallbackModelID
+			fallbackOK = false
+		}
+	}
+	if fallbackOK && fallbackOmitted && p.ModelID != nil && *p.ModelID != "" {
+		p.FallbackProvider, p.FallbackModelID = &defs.FallbackProvider, &defs.FallbackModelID
+	}
+	if p.ThinkingLevel == nil {
+		level := cmp.Or(defs.ThinkingLevel, "off")
+		p.ThinkingLevel = &level
+	}
+	if p.EnvironmentID == nil && defs.EnvironmentID != "" {
+		if _, err := s.q.GetEnvironment(ctx, defs.EnvironmentID); err == nil {
+			p.EnvironmentID = &defs.EnvironmentID
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return Patch{}, err
+		}
+	}
+	return p, nil
 }
 
 func (s *Service) cleanAgent(ctx context.Context, a Agent) (Agent, error) {
@@ -332,6 +300,9 @@ func (s *Service) cleanAgent(ctx context.Context, a Agent) (Agent, error) {
 		}
 	} else {
 		a.FallbackProvider = ""
+	}
+	if a.FallbackModelID != "" && a.ModelID == "" {
+		return a, fmt.Errorf("%w: choose a model before a fallback model", ErrInvalid)
 	}
 	return a, nil
 }

@@ -20,7 +20,7 @@ func TestUserSavesSettingsForEachAgent(t *testing.T) {
 	q := sqlc.New(conn)
 	s := agent.New(q, nil, "", nil)
 	for _, name := range []string{"First", "Second"} {
-		if _, err := s.CreateAgent(t.Context(), agent.Agent{Name: name, ThinkingLevel: "off"}); err != nil {
+		if _, err := s.CreateAgent(t.Context(), agent.Patch{Name: &name}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -41,7 +41,7 @@ func TestUserSavesSettingsForEachAgent(t *testing.T) {
 	if err != nil || second.Name != "Changed" || second.Instructions != "Second only" || second.ThinkingLevel != "high" {
 		t.Fatalf("second=%+v err=%v", second, err)
 	}
-	if _, err := s.CreateAgent(t.Context(), agent.Agent{Name: " ", ThinkingLevel: "off"}); !errors.Is(err, agent.ErrInvalid) {
+	if _, err := s.CreateAgent(t.Context(), agent.Patch{Name: new(" ")}); !errors.Is(err, agent.ErrInvalid) {
 		t.Fatalf("invalid name: %v", err)
 	}
 	listed, err := s.ListAgents(t.Context())

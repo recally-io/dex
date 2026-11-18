@@ -138,29 +138,6 @@ func (q *Queries) ArchiveChat(ctx context.Context, arg ArchiveChatParams) error 
 	return err
 }
 
-const clearBotDefaultEnvironment = `-- name: ClearBotDefaultEnvironment :exec
-UPDATE bot_defaults SET environment_id = '' WHERE id = 1 AND environment_id = ?1
-`
-
-func (q *Queries) ClearBotDefaultEnvironment(ctx context.Context, environmentID string) error {
-	_, err := q.db.ExecContext(ctx, clearBotDefaultEnvironment, environmentID)
-	return err
-}
-
-const clearBotDefaultProvider = `-- name: ClearBotDefaultProvider :exec
-UPDATE bot_defaults SET
-    model_provider = CASE WHEN model_provider = ?1 THEN '' ELSE model_provider END,
-    model_id = CASE WHEN model_provider = ?1 THEN '' ELSE model_id END,
-    fallback_provider = CASE WHEN fallback_provider = ?1 THEN '' ELSE fallback_provider END,
-    fallback_model_id = CASE WHEN fallback_provider = ?1 THEN '' ELSE fallback_model_id END
-WHERE id = 1
-`
-
-func (q *Queries) ClearBotDefaultProvider(ctx context.Context, providerID string) error {
-	_, err := q.db.ExecContext(ctx, clearBotDefaultProvider, providerID)
-	return err
-}
-
 const conversationAgentArchived = `-- name: ConversationAgentArchived :one
 SELECT CAST(EXISTS (SELECT 1 FROM conversations c JOIN agents a ON a.id = c.agent_id
     WHERE c.id = ?1 AND a.archived_at IS NOT NULL) AS INTEGER)
