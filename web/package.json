@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": {},
+  "scripts": {
+    "test:e2e": "e2e run"
+  },
   "dependencies": {
     "@base-ui/react": "1.9.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
@@ -23,6 +25,7 @@
     "tw-animate-css": "^1.4.0"
   },
   "devDependencies": {
+    "@e2e-dev/web": "^0.16.0",
     "@hey-api/openapi-ts": "0.99.0",
     "@oxlint/plugins": "1.92.0",
     "@tailwindcss/vite": "4.3.5",
@@ -31,6 +34,7 @@
     "@types/react-dom": "19.3.0",
     "@typescript/native": "npm:typescript@7.0.2",
     "@vitejs/plugin-react": "6.2.1",
+    "e2e": "^0.23.1",
     "tailwindcss": "4.3.5",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "vite-plus": "1.5.0"

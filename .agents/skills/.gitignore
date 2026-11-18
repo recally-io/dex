@@ -1,3 +1,4 @@
 # Upstream skills. `mise run skills:install` installs them at pinned versions.
 use-modern-go/
 documd-visuals/
+e2e/

@@ -16,3 +16,5 @@ designs/
 
 # Cloudflare CLI cache
 .cloudflare/
+# e2e test outputs and isolated test data
+.e2e/
