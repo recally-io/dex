@@ -197,7 +197,7 @@ try {
     `(() => {
     const nav = document.querySelector('aside[aria-label="Sidebar"]');
     return !!nav.querySelector('nav[aria-label="Bots"] a[href="/a/default"][aria-current="page"]') &&
-      !!nav.querySelector('a[href="/providers"]') && !nav.querySelector('a[href="/about"]') &&
+      !!nav.querySelector('a[href="/settings/general"]') && !nav.querySelector('a[href="/settings/about"]') &&
       !nav.querySelector('button[aria-label^="More"]') && !nav.querySelector('a[data-tab="Main"]') &&
       !!nav.querySelector('button[aria-label="New bot"]') &&
       !nav.querySelector('a[href="/work"], a[href="/needs-you"], a[href="/automations"], input');
@@ -1590,7 +1590,7 @@ try {
     "(() => { const t = document.querySelector('textarea[aria-label^=\"Message\"]'); t.select(); document.execCommand('delete'); })()",
   );
   await ui("composer cleared", "document.querySelector('textarea[aria-label^=\"Message\"]').value === ''");
-  await visit("/providers");
+  await visit("/settings/providers");
   await check(
     "a global settings page is not part of the agent",
     "!document.querySelector('aside[aria-label=\"Sidebar\"] a[data-tab]') && document.querySelector('nav[aria-label=\"Bots\"] a[href=\"/a/default\"]').getAttribute('aria-current') === null",
@@ -1613,7 +1613,9 @@ try {
     "![...document.querySelectorAll('a')].some(a => a.textContent.trim() === 'Open conversation')",
   );
   await visit("/settings");
-  await ui("old settings address redirects", "location.pathname === '/a/default/agent'");
+  await ui("settings address redirects to general", "location.pathname === '/settings/general'");
+  await visit("/settings/model");
+  await ui("old model settings address redirects", "location.pathname === '/a/default/agent'");
 
   await visit("/a/default");
   await ui("renamed composer", "!!document.querySelector('textarea[aria-label=\"Message Browser Bot\"]')");
@@ -1699,8 +1701,8 @@ try {
   await evaluate("document.querySelector('button[aria-label^=\"Open navigation\"]').click()");
   await ui("mobile agent row", "!!document.querySelector('[role=dialog] a[href=\"/a/default\"]')");
   await shot("09-mobile-nav");
-  await openGlobal('[role="dialog"]', "/providers");
-  await ui("mobile global settings opened", "location.pathname === '/providers'");
+  await openGlobal('[role="dialog"]', "/settings/general");
+  await ui("mobile global settings opened", "location.pathname === '/settings/general'");
   await evaluate("document.querySelector('button[aria-label^=\"Open navigation\"]').click()");
   await ui("mobile drawer reopened", "!!document.querySelector('[role=dialog]')");
   await tap('[role="dialog"] button[aria-label="Close navigation"]');
@@ -1900,7 +1902,7 @@ try {
   );
   await check(
     "tool levels and secrecy",
-    `['dex', 'agent', 'The model can', 'Tool output becomes part of the transcript', 'MCP servers'].every(text => document.body.innerText.includes(text)) && !!document.querySelector('main a[href="/environment"]') && !!document.querySelector('[data-env-key="EXTENSION_DEMO_KEY"][data-env-scope="agent"]') && !document.body.innerText.includes('never-show-this-value')`,
+    `['dex', 'agent', 'The model can', 'Tool output becomes part of the transcript', 'MCP servers'].every(text => document.body.innerText.includes(text)) && !!document.querySelector('main a[href="/settings/environment"]') && !!document.querySelector('[data-env-key="EXTENSION_DEMO_KEY"][data-env-scope="agent"]') && !document.body.innerText.includes('never-show-this-value')`,
   );
   await shot("13a-agent-extensions-desktop");
   await viewport(390, 844);
@@ -2023,10 +2025,10 @@ try {
   );
 
   // The global page writes the dex file and names no bot.
-  await tap('main a[href="/environment"]');
+  await tap('main a[href="/settings/environment"]');
   await ui(
     "environment form ready",
-    `location.pathname === '/environment' && !!document.querySelector('input[name="key"]') && !!document.querySelector('[data-env-scope="dex"]')`,
+    `location.pathname === '/settings/environment' && !!document.querySelector('input[name="key"]') && !!document.querySelector('[data-env-scope="dex"]')`,
   );
   await check(
     "environment names no bot",
@@ -2062,24 +2064,32 @@ try {
   const globalText = async (bot, path) => {
     await tap(`aside a[href="${bot}"]`);
     await ui(`${bot} open`, `location.pathname === '${bot}'`);
-    await openGlobal('aside[aria-label="Sidebar"]', "/providers");
+    await openGlobal('aside[aria-label="Sidebar"]', "/settings/general");
     await ui(
-      `${path} from ${bot}`,
-      "location.pathname === '/providers' && document.body.innerText.includes('Connections')",
+      `settings general from ${bot}`,
+      "location.pathname === '/settings/general' && document.body.innerText.includes('Bot defaults')",
     );
 
-    if (path === "/environment") {
-      await tap('nav[aria-label="Settings pages"] a[href="/environment"]');
+    if (path === "/settings/providers") {
+      await tap('nav[aria-label="Settings pages"] a[href="/settings/providers"]');
+      await ui(
+        `${path} from ${bot}`,
+        "location.pathname === '/settings/providers' && document.body.innerText.includes('Connections')",
+      );
+    }
+
+    if (path === "/settings/environment") {
+      await tap('nav[aria-label="Settings pages"] a[href="/settings/environment"]');
       await ui(
         `${path} keys from ${bot}`,
-        "location.pathname === '/environment' && !!document.querySelector('[data-env-scope=\"dex\"]')",
+        "location.pathname === '/settings/environment' && !!document.querySelector('[data-env-scope=\"dex\"]')",
       );
     }
 
     return evaluate("document.querySelector('main').innerText");
   };
 
-  for (const path of ["/providers", "/environment"]) {
+  for (const path of ["/settings/general", "/settings/providers", "/settings/environment"]) {
     assert.equal(
       await globalText(secondPath, path),
       await globalText("/a/default", path),
@@ -2170,7 +2180,7 @@ try {
   results.push("seven agent Chat visits leave ordinary New session requests working");
   await shot("16-seven-agents");
 
-  await visit("/providers");
+  await visit("/settings/providers");
   await ui(
     "global provider page ready",
     "document.querySelector('#page-title')?.textContent === 'Providers'",
@@ -2196,8 +2206,8 @@ try {
     "agent tabs, kept composer, instructions draft, trimmed name, phone tabs and drawer, stable main ID",
   );
   await visit("/secrets");
-  await ui("secrets redirects to environment", "location.pathname === '/environment'");
-  results.push("/secrets redirects to /environment");
+  await ui("secrets redirects to environment", "location.pathname === '/settings/environment'");
+  results.push("/secrets redirects to /settings/environment");
 
   // A real question with a long session title remains usable in the narrow drawer.
   const questionBot = await api("/api/agents", {

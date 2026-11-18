@@ -6,12 +6,13 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   getMainChatOptions,
   listEnvironmentsOptions,
+  listModelsOptions,
   resetAgentEnvironmentMutation,
   setChatSettingsMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { errorText, refreshChats, refreshEnvironments } from "../lib/queries";
 
-import { saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
+import { findModel, saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { environmentBotHint, environmentOptionLabel } from "../lib/environments";
 import { ModelPicker } from "../components/model-picker";
@@ -29,7 +30,12 @@ import { cn } from "../lib/utils";
 export function AgentPage() {
   const agentId = useAgentId();
   const saved = useAgentSettings(agentId);
+  const models = useQuery(listModelsOptions());
   const model = useAgentModel(saved.data);
+
+  const fallback = saved.data
+    ? findModel(saved.data.agent.fallbackProvider, saved.data.agent.fallbackModelId, models.data?.models)
+    : undefined;
 
   return (
     <FramedPage
@@ -37,7 +43,7 @@ export function AgentPage() {
       description={`The name and the model of ${saved.data?.agent.name ?? "dex"}. The timeline, its channels and its routines use them.`}
       toolbar={<BotSettingsSwitcher segment="agent" />}
       badge={
-        model && !model.ok ? (
+        model && !model.ok && !fallback?.ok ? (
           <Badge variant="secondary" className="h-5 bg-orange-tint px-2 text-[11.5px] text-orange">
             No available model
           </Badge>
@@ -73,7 +79,15 @@ export function InstructionsPage() {
 function Agent({ settings }: { settings: Settings }) {
   const agentId = useAgentId();
   const { notify } = useApp();
+  const models = useQuery(listModelsOptions());
   const model = useAgentModel(settings);
+
+  const fallback = findModel(
+    settings.agent.fallbackProvider,
+    settings.agent.fallbackModelId,
+    models.data?.models,
+  );
+
   const provider = settings.providers.find((p) => p.id === settings.agent.provider);
 
   return (
@@ -178,7 +192,9 @@ function Agent({ settings }: { settings: Settings }) {
                 {provider
                   ? `${provider.name} does not list this model now.`
                   : "The provider of this model is removed."}{" "}
-                New messages stay off until you choose an available model. Stop still works.
+                {fallback.ok
+                  ? `Messages use the fallback model (${fallback.label}) until you choose an available primary model.`
+                  : "New messages stay off until you choose an available model. Stop still works."}
               </Note>
             </div>
           ) : null}
@@ -186,12 +202,76 @@ function Agent({ settings }: { settings: Settings }) {
             <div className="border-t border-border px-4 py-3">
               <Note>
                 Add a provider first.{" "}
-                <Link className="font-medium text-primary underline" to="/providers">
+                <Link className="font-medium text-primary underline" to="/settings/providers">
                   Go to Providers
                 </Link>
               </Note>
             </div>
           ) : null}
+          <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3.5">
+            <div className="min-w-0 flex-1">
+              <p
+                className={cn(
+                  "truncate text-[14px] font-medium",
+                  settings.agent.fallbackModelId && !fallback.ok ? "text-orange" : "text-foreground",
+                )}
+              >
+                {settings.agent.fallbackModelId ? `Fallback: ${fallback.label}` : "No fallback model"}
+              </p>
+              {settings.agent.fallbackModelId ? (
+                <p className="mt-0.5 truncate font-mono text-[11.5px] text-muted-foreground">
+                  {settings.agent.fallbackProvider}/{settings.agent.fallbackModelId}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+                  Used automatically when the primary model is unavailable or fails before answering.
+                </p>
+              )}
+            </div>
+            <ModelPicker
+              override={{
+                value: settings.agent.fallbackModelId
+                  ? {
+                      provider: settings.agent.fallbackProvider,
+                      modelId: settings.agent.fallbackModelId,
+                    }
+                  : null,
+                defaultName: "None",
+                clearLabel: "No fallback model",
+                save: async (selected) => {
+                  await saveAgent(agentId, (agent) => ({
+                    ...agent,
+                    fallbackProvider: selected?.provider ?? "",
+                    fallbackModelId: selected?.id ?? "",
+                  }));
+                  notify(
+                    selected
+                      ? `Fallback model is now ${selected.name}. It applies from the next message.`
+                      : "Cleared the fallback model.",
+                  );
+                },
+              }}
+              trigger={
+                <Button variant="secondary" aria-label="Fallback model" disabled={!settings.agent.modelId}>
+                  {settings.agent.fallbackModelId ? "Change fallback" : "Choose fallback"}
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                    className="text-muted-foreground"
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </Button>
+              }
+            />
+          </div>
           <ExecutionEnvironmentRow environmentId={settings.agent.environmentId} />
         </Panel>
       </Section>
@@ -327,7 +407,7 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
               : missingSelection
                 ? `Configured environment (${environmentId}) is missing.`
                 : "Runs tools and workspaces on this computer."}{" "}
-            <Link className="font-medium text-primary underline" to="/environment">
+            <Link className="font-medium text-primary underline" to="/settings/environment">
               Manage environments
             </Link>
           </p>

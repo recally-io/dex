@@ -27,7 +27,15 @@ function usersOf(agents: Agent[]): Users {
   const users: Users = new Map();
 
   for (const agent of agents) {
-    if (agent.modelId) users.set(agent.provider, [...(users.get(agent.provider) ?? []), agent]);
+    const providers = new Set<string>();
+
+    if (agent.modelId) providers.add(agent.provider);
+
+    if (agent.fallbackModelId) providers.add(agent.fallbackProvider);
+
+    for (const provider of providers) {
+      users.set(provider, [...(users.get(provider) ?? []), agent]);
+    }
   }
 
   return users;
@@ -49,7 +57,7 @@ export function ProvidersPage() {
     <FramedPage
       eyebrow="Settings for this computer"
       title="Providers"
-      toolbar={<GlobalSettingsSwitcher page="/providers" />}
+      toolbar={<GlobalSettingsSwitcher page="/settings/providers" />}
       description="A provider is a saved connection to a model service. Each bot chooses its model from one of them."
       actions={<Button onClick={() => setDialog("new")}>Add provider</Button>}
     >
@@ -172,7 +180,15 @@ function ProviderCard({
   const { notify } = useApp();
   const models = useQuery(listModelsOptions());
   const own = models.data?.models.filter((m) => m.provider === p.id);
-  const used = new Set(users.map((agent) => agent.modelId));
+
+  const used = new Set(
+    users.flatMap((agent) =>
+      [
+        agent.provider === p.id ? agent.modelId : "",
+        agent.fallbackProvider === p.id ? agent.fallbackModelId : "",
+      ].filter(Boolean),
+    ),
+  );
 
   // A save with an empty key keeps the saved key, and makes the worker list the models again.
   const retry = useMutation({
@@ -331,11 +347,30 @@ function RemoveProvider({
 
       await Promise.all(
         users.map((user) =>
-          saveAgent(user.id!, (agent) =>
-            agent.provider === provider.id
-              ? { ...agent, provider: model?.provider ?? "", modelId: model?.id ?? "" }
-              : agent,
-          ),
+          saveAgent(user.id!, (agent) => {
+            const none = { provider: "", modelId: "" };
+
+            const fallback =
+              agent.fallbackProvider === provider.id
+                ? none
+                : { provider: agent.fallbackProvider, modelId: agent.fallbackModelId };
+
+            if (agent.provider !== provider.id) {
+              return { ...agent, fallbackProvider: fallback.provider, fallbackModelId: fallback.modelId };
+            }
+
+            // Without a replacement, the fallback model becomes the model.
+            const primary = model ? { provider: model.provider, modelId: model.id } : fallback;
+            const rest = model ? fallback : none;
+
+            return {
+              ...agent,
+              provider: primary.provider,
+              modelId: primary.modelId,
+              fallbackProvider: rest.provider,
+              fallbackModelId: rest.modelId,
+            };
+          }),
         ),
       );
     },

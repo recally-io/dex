@@ -197,6 +197,7 @@ try {
 
   // 3. The archived list restores it.
   await visit("/archived");
+  await poll("archived redirect", () => evaluate("location.pathname === '/settings/archived'"));
   await poll("archived list", () => evaluate("document.querySelector('main').innerText.includes('Coder')"));
   await shot("4-archived-list");
   await click("Restore");

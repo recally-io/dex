@@ -9,7 +9,10 @@ import { cn } from "../lib/utils";
  */
 function Track({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <nav aria-label={label} className="inline-flex items-center gap-0.5 rounded-card bg-accent p-0.5">
+    <nav
+      aria-label={label}
+      className="inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-card bg-accent p-0.5"
+    >
       {children}
     </nav>
   );
@@ -72,10 +75,11 @@ export function BotSettingsSwitcher({
 
 /** The pages that belong to the whole installation rather than to one bot. */
 export const globalPages = [
-  { to: "/providers", label: "Providers" },
-  { to: "/environment", label: "Environment" },
-  { to: "/archived", label: "Archived bots" },
-  { to: "/about", label: "About" },
+  { to: "/settings/general", label: "General" },
+  { to: "/settings/providers", label: "Providers" },
+  { to: "/settings/environment", label: "Environment" },
+  { to: "/settings/archived", label: "Archived bots" },
+  { to: "/settings/about", label: "About" },
 ] as const;
 
 export type GlobalPage = (typeof globalPages)[number]["to"];

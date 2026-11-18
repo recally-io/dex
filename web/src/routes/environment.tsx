@@ -9,7 +9,7 @@ export function EnvironmentPage() {
     <FramedPage
       eyebrow="Settings for this computer"
       title="Environment"
-      toolbar={<GlobalSettingsSwitcher page="/environment" />}
+      toolbar={<GlobalSettingsSwitcher page="/settings/environment" />}
       description="Tools of all bots start from your login shell environment, then these keys. Configure execution environments and 1Password here, or set keys for one bot in its Tools tab. Changes apply automatically when all bots are idle."
     >
       <EnvKeys target={{ scope: "dex" }} n={1} />

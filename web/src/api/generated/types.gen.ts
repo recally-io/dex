@@ -742,6 +742,11 @@ export type Agent = {
      */
     modelId: string;
     thinkingLevel: ThinkingLevel;
+    fallbackProvider: string;
+    /**
+     * Empty when no fallback model is chosen. Needs a model.
+     */
+    fallbackModelId: string;
     instructions: string;
     /**
      * Empty means the built-in local host environment.
@@ -764,9 +769,37 @@ export type AgentInput = {
      */
     modelId: string;
     thinkingLevel: ThinkingLevel;
+    fallbackProvider?: string;
+    /**
+     * Empty when no fallback model is chosen. Needs a model.
+     */
+    fallbackModelId?: string;
     instructions?: string;
     /**
      * Empty or "local" selects the built-in local host environment.
+     */
+    environmentId?: string;
+};
+
+export type CreateAgentInput = {
+    /**
+     * The bot name. Trim spaces before validation.
+     */
+    name: string;
+    provider?: string;
+    /**
+     * Omitted copies the default bot's model. Empty chooses no model.
+     */
+    modelId?: string;
+    thinkingLevel?: ThinkingLevel;
+    fallbackProvider?: string;
+    /**
+     * Omitted copies the default bot's fallback model. Empty chooses none.
+     */
+    fallbackModelId?: string;
+    instructions?: string;
+    /**
+     * Omitted copies the default bot's execution environment. Empty or "local" selects the built-in local host environment.
      */
     environmentId?: string;
 };
@@ -1091,6 +1124,11 @@ export type AgentWritable = {
      */
     modelId: string;
     thinkingLevel: ThinkingLevel;
+    fallbackProvider: string;
+    /**
+     * Empty when no fallback model is chosen. Needs a model.
+     */
+    fallbackModelId: string;
     instructions: string;
     /**
      * Empty means the built-in local host environment.
@@ -2252,7 +2290,7 @@ export type ListAgentsResponses = {
 export type ListAgentsResponse = ListAgentsResponses[keyof ListAgentsResponses];
 
 export type CreateAgentData = {
-    body: AgentInput;
+    body: CreateAgentInput;
     path?: never;
     query?: never;
     url: '/api/agents';

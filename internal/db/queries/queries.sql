@@ -9,6 +9,8 @@ UPDATE agents SET
     model_provider = @model_provider,
     model_id = @model_id,
     thinking_level = @thinking_level,
+    fallback_provider = @fallback_provider,
+    fallback_model_id = @fallback_model_id,
     instructions = @instructions,
     environment_sandbox_id = CASE WHEN environment_id = @environment_id THEN environment_sandbox_id ELSE '' END,
     environment_id = @environment_id
@@ -69,8 +71,8 @@ WHERE agents.id = @agent_id AND archived_at IS NULL AND agents.id <> 'default'
 UPDATE agents SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL;
 
 -- name: CreateAgent :one
-INSERT INTO agents (id, name, model_provider, model_id, thinking_level, instructions, environment_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO agents (id, name, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, instructions, environment_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: EnsureConversation :one

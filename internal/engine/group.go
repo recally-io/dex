@@ -196,7 +196,7 @@ func (a *Agents) openGroup(ctx context.Context, ref Ref) (_ *agentResources, res
 	if err := registry.Install(extension); err != nil {
 		return nil, err
 	}
-	h, err = harness.OpenHarness(ctx, store, harness.HarnessOptions{Models: a.Catalog.Models, Registry: registry, Settings: func() *harness.HarnessSettings {
+	h, err = harness.OpenHarness(ctx, store, harness.HarnessOptions{Models: a.modelsFor(ref.AgentID), Registry: registry, Settings: func() *harness.HarnessSettings {
 		return &harness.HarnessSettings{Extensions: []*durable.Extension{extension}, AfterFailedRun: durable.AfterFailedRunContinue, SteeringMode: durable.QueueAll}
 	}})
 	if err != nil {

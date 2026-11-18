@@ -147,10 +147,18 @@ try {
       );
     }
 
-    // Opened from the default bot, Providers still lists every bot that uses the provider.
+    // Opened from the default bot, Global settings > Providers still lists every bot that uses the provider.
     await visit("/a/default");
-    await tap('aside[aria-label="Sidebar"] a[href="/providers"]');
-    await poll("client navigation to providers", () => evaluate("location.pathname === '/providers'"));
+    await tap('aside[aria-label="Sidebar"] a[href="/settings/general"]');
+    await poll("client navigation to settings general", () =>
+      evaluate(
+        "location.pathname === '/settings/general' && document.body.innerText.includes('Bot defaults')",
+      ),
+    );
+    await tap('nav[aria-label="Settings pages"] a[href="/settings/providers"]');
+    await poll("client navigation to providers", () =>
+      evaluate("location.pathname === '/settings/providers'"),
+    );
     await poll("provider users shown", () =>
       evaluate("document.body.innerText.includes('Used by Audit Bot, Second Audit Bot')"),
     );
@@ -183,6 +191,7 @@ try {
 
     try {
       await visit("/providers");
+      await poll("providers redirect", () => evaluate("location.pathname === '/settings/providers'"));
       await click("Add provider");
       await tap('[role="dialog"] button[aria-label="Custom endpoint"]');
       await type('[role="dialog"] input[placeholder="LM Studio"]', "Lan");
@@ -288,6 +297,7 @@ try {
     );
 
     await visit("/environment");
+    await poll("environment redirect", () => evaluate("location.pathname === '/settings/environment'"));
     await poll("ssh config import button visible", () =>
       evaluate(
         "!![...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Import SSH config')",
@@ -388,7 +398,7 @@ try {
       evaluate("document.body.innerText.includes('Sandbox reset')"),
     );
 
-    await visit("/environment");
+    await visit("/settings/environment");
     await poll("used by badge visible on bound environment", () =>
       evaluate("document.body.innerText.includes('Used by')"),
     );
@@ -423,6 +433,70 @@ try {
       envId: createdEnv.id,
       customEnvId: customEnv.id,
       importedSshId: importedSsh.id,
+    });
+  }
+
+  if (scenario === "all" || scenario === "defaults") {
+    await api(
+      "/api/settings/providers/defaults-gw",
+      {
+        api: "openai-completions",
+        name: "Defaults Gateway",
+        baseUrl: "http://127.0.0.1:9/v1",
+        models: ["default-primary", "default-fallback"],
+      },
+      "PUT",
+    );
+
+    await visit("/settings/general");
+    await poll("general settings ready", () =>
+      evaluate(
+        "location.pathname === '/settings/general' && !!document.querySelector('button[aria-label=\"Default model\"]')",
+      ),
+    );
+
+    await tap('button[aria-label="Default model"]');
+    await poll("default model picker open", () =>
+      evaluate("!!document.querySelector('[cmdk-item][data-value=\"defaults-gw/default-primary\"]')"),
+    );
+    await tap('[cmdk-item][data-value="defaults-gw/default-primary"]');
+    await poll("default primary picker closed", () => evaluate("!document.querySelector('[cmdk-input]')"));
+    await poll(
+      "default primary saved",
+      async () => (await api("/api/agents/default")).modelId === "default-primary",
+    );
+
+    await tap('button[aria-label="Default fallback model"]');
+    await poll("default fallback picker open", () =>
+      evaluate("!!document.querySelector('[cmdk-item][data-value=\"defaults-gw/default-fallback\"]')"),
+    );
+    await tap('[cmdk-item][data-value="defaults-gw/default-fallback"]');
+    await poll("default fallback picker closed", () => evaluate("!document.querySelector('[cmdk-input]')"));
+    await poll(
+      "default fallback saved",
+      async () => (await api("/api/agents/default")).fallbackModelId === "default-fallback",
+    );
+
+    await tap('aside button[aria-label="New bot"]');
+    await poll("create bot dialog prefilled", () =>
+      evaluate(
+        "!!document.querySelector('form#create-bot input') && document.querySelector('form#create-bot').innerText.includes('default-primary') && document.querySelector('form#create-bot').innerText.includes('default-fallback')",
+      ),
+    );
+    await type("form#create-bot input", "Defaults Bot");
+    await tap('button[form="create-bot"]');
+
+    const created = await poll("defaults bot created", async () =>
+      (await api("/api/agents")).agents.find((agent) => agent.name === "Defaults Bot"),
+    );
+
+    assert.equal(created.provider, "defaults-gw");
+    assert.equal(created.modelId, "default-primary");
+    assert.equal(created.fallbackProvider, "defaults-gw");
+    assert.equal(created.fallbackModelId, "default-fallback");
+    results.push({
+      scenario: "new bots copy the default bot's primary and fallback models from /settings/general",
+      botId: created.id,
     });
   }
 

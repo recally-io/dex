@@ -370,7 +370,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		}
 	}()
 	h, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{
-		Models: a.Catalog.Models, Registry: registry,
+		Models: a.modelsFor(agentID), Registry: registry,
 		Settings: func() *harness.HarnessSettings {
 			return &harness.HarnessSettings{Extensions: extensions, AfterFailedRun: durable.AfterFailedRunContinue, SteeringMode: durable.QueueAll}
 		},

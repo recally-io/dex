@@ -1,10 +1,13 @@
-import type { AgentSettings as Settings } from "../lib/agent-scope";
-import { useAgentSettings, useAgentId } from "../lib/agent-scope";
+import { useAgentId } from "../lib/agent-scope";
 import { useState, type ReactElement } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
-import type { Model, ThinkingLevel } from "../api/generated/types.gen";
+import {
+  getAgentOptions,
+  getSettingsOptions,
+  listModelsOptions,
+} from "../api/generated/@tanstack/react-query.gen";
+import type { Model, Settings, ThinkingLevel } from "../api/generated/types.gen";
 import { saveModel, thinkingNames } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -62,10 +65,11 @@ function search(list: Group[], query: string): Group[] {
   });
 }
 
-/** The model of one chat. null follows the bot's model; save reports its own success. */
+/** The model of one chat or override field. null clears or follows the default. */
 export type ModelOverride = {
   value: { provider: string; modelId: string } | null;
   defaultName: string;
+  clearLabel?: string;
   allowDefault?: boolean;
   save: (model: Model | null) => Promise<void>;
 };
@@ -160,34 +164,37 @@ function ModelList({
   onLeave: () => void;
 }) {
   const agentId = useAgentId();
-  const settings = useAgentSettings(agentId);
+  const settings = useQuery(getSettingsOptions());
+  const agentQuery = useQuery({ ...getAgentOptions({ path: { agentId } }), enabled: !override });
   const models = useQuery({ ...listModelsOptions(), refetchOnMount: "always" });
   const { draft } = useApp();
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState("");
-  const agent = settings.data?.agent;
+  const agent = override ? undefined : agentQuery.data;
   const chosen = override ? override.value : agent?.modelId ? agent : null;
   const current = chosen ? `${chosen.provider}/${chosen.modelId}` : "";
   const all = models.data?.models ?? [];
   const dirty = !override && draft !== null && draft !== agent?.instructions;
   const busy = pending !== undefined || thinking?.pending === true;
 
-  if (settings.isPending || models.isPending)
+  if (settings.isPending || models.isPending || (!override && agentQuery.isPending))
     return (
       <div role="status" className="flex items-center gap-2 p-3 text-[12.5px] text-muted-foreground">
         <Spinner /> Loading models…
       </div>
     );
 
-  if (settings.isError || models.isError)
+  if (settings.isError || models.isError || (!override && agentQuery.isError))
     return (
       <div className="p-2">
         <Failure
           title="Could not load the models"
-          error={settings.error ?? models.error}
+          error={settings.error ?? models.error ?? (!override ? agentQuery.error : null)}
           retry={() => {
             void settings.refetch();
             void models.refetch();
+
+            if (!override) void agentQuery.refetch();
           }}
         />
       </div>
@@ -197,7 +204,7 @@ function ModelList({
     return (
       <p className="p-3 text-[12.5px] text-muted-foreground">
         No providers yet.{" "}
-        <Link className="font-medium text-primary underline" to="/providers" onClick={onLeave}>
+        <Link className="font-medium text-primary underline" to="/settings/providers" onClick={onLeave}>
           Add a provider
         </Link>{" "}
         to see its models.
@@ -279,7 +286,7 @@ function ModelList({
                   className="mb-1 flex h-8 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left transition-colors duration-100 data-[disabled=true]:cursor-wait data-[selected=true]:bg-accent"
                 >
                   <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
-                    Use default ({override.defaultName})
+                    {override.clearLabel ?? `Use default (${override.defaultName})`}
                   </span>
                   <Mark checked={!current} saving={pending === null} />
                 </CommandItem>

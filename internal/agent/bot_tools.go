@@ -14,7 +14,27 @@ import (
 
 // Patch changes the fields that are not nil.
 type Patch struct {
-	Name, Instructions, Provider, ModelID, ThinkingLevel, EnvironmentID *string
+	Name, Instructions, Provider, ModelID, ThinkingLevel, FallbackProvider, FallbackModelID, EnvironmentID *string
+}
+
+func applyPatch(a *Agent, p Patch) {
+	for _, f := range []struct {
+		dst *string
+		src *string
+	}{
+		{&a.Name, p.Name},
+		{&a.Instructions, p.Instructions},
+		{&a.Provider, p.Provider},
+		{&a.ModelID, p.ModelID},
+		{&a.ThinkingLevel, p.ThinkingLevel},
+		{&a.FallbackProvider, p.FallbackProvider},
+		{&a.FallbackModelID, p.FallbackModelID},
+		{&a.EnvironmentID, p.EnvironmentID},
+	} {
+		if f.src != nil {
+			*f.dst = *f.src
+		}
+	}
 }
 
 // PatchAgent merges a patch into a saved active agent and applies the checks of SaveAgent. The
@@ -36,22 +56,16 @@ func (s *Service) PatchAgent(ctx context.Context, id string, p Patch) (Agent, er
 			return getErr
 		}
 		a := agentView(oldRow)
-		for _, f := range []struct {
-			dst *string
-			src *string
-		}{{&a.Name, p.Name}, {&a.Instructions, p.Instructions}, {&a.Provider, p.Provider}, {&a.ModelID, p.ModelID}, {&a.ThinkingLevel, p.ThinkingLevel}, {&a.EnvironmentID, p.EnvironmentID}} {
-			if f.src != nil {
-				*f.dst = *f.src
-			}
-		}
+		applyPatch(&a, p)
 		var cleanErr error
 		a, cleanErr = s.cleanAgent(ctx, a)
 		if cleanErr != nil {
 			return cleanErr
 		}
 		if err := s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
-			ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions,
-			EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
+			ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel,
+			FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
+			Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
 		}); err != nil {
 			return err
 		}
@@ -104,7 +118,11 @@ type BotTools struct {
 }
 
 func botInfo(a Agent) engine.BotInfo {
-	return engine.BotInfo{ID: a.ID, Name: a.Name, Provider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel, Instructions: a.Instructions, EnvironmentID: a.EnvironmentID}
+	return engine.BotInfo{
+		ID: a.ID, Name: a.Name, Provider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel,
+		FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
+		Instructions: a.Instructions, EnvironmentID: a.EnvironmentID,
+	}
 }
 
 // Handlers returns the engine callbacks.
@@ -166,16 +184,11 @@ func (t BotTools) create(ctx context.Context, c engine.TaskContext, p engine.Bot
 	if err := t.Chats.ToolBotCaller(ctx, c, true); err != nil {
 		return engine.BotInfo{}, err
 	}
-	a := Agent{ThinkingLevel: "off"}
-	for _, f := range []struct {
-		dst *string
-		src *string
-	}{{&a.Name, p.Name}, {&a.Instructions, p.Instructions}, {&a.Provider, p.Provider}, {&a.ModelID, p.ModelID}, {&a.ThinkingLevel, p.ThinkingLevel}} {
-		if f.src != nil {
-			*f.dst = *f.src
-		}
-	}
-	created, err := t.Agents.CreateAgent(ctx, a)
+	created, err := t.Agents.CreateAgent(ctx, Patch{
+		Name: p.Name, Instructions: p.Instructions, Provider: p.Provider, ModelID: p.ModelID,
+		ThinkingLevel: p.ThinkingLevel, FallbackProvider: p.FallbackProvider, FallbackModelID: p.FallbackModelID,
+		EnvironmentID: p.EnvironmentID,
+	})
 	return botInfo(created), err
 }
 
@@ -187,7 +200,11 @@ func (t BotTools) update(ctx context.Context, c engine.TaskContext, p engine.Bot
 	if err != nil {
 		return engine.BotInfo{}, err
 	}
-	updated, err := t.Agents.PatchAgent(ctx, target.ID, Patch{Name: p.Name, Instructions: p.Instructions, Provider: p.Provider, ModelID: p.ModelID, ThinkingLevel: p.ThinkingLevel})
+	updated, err := t.Agents.PatchAgent(ctx, target.ID, Patch{
+		Name: p.Name, Instructions: p.Instructions, Provider: p.Provider, ModelID: p.ModelID,
+		ThinkingLevel: p.ThinkingLevel, FallbackProvider: p.FallbackProvider, FallbackModelID: p.FallbackModelID,
+		EnvironmentID: p.EnvironmentID,
+	})
 	return botInfo(updated), err
 }
 

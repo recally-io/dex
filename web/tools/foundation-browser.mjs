@@ -522,12 +522,13 @@ try {
     ["inbox-detail", `/inbox/${resultRun}`],
     ["routine-history", `/a/default/automations/${routineId}`],
     ["bot-settings", "/a/default/agent"],
-    ["providers", "/providers"],
+    ["settings-general", "/settings/general"],
+    ["providers", "/settings/providers"],
     ["routines", "/a/default/automations"],
     ["extensions", "/a/default/extensions"],
     ["channels", "/a/default/channels"],
-    ["environment", "/environment"],
-    ["about", "/about"],
+    ["environment", "/settings/environment"],
+    ["about", "/settings/about"],
   ];
   for (const theme of ["light", "dark"])
     for (const [name, path] of pages.filter(

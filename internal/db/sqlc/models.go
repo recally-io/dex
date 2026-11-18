@@ -25,6 +25,8 @@ type Agent struct {
 	ArchivedAt                  sql.NullInt64  `json:"archived_at"`
 	EnvironmentID               string         `json:"environment_id"`
 	EnvironmentSandboxID        string         `json:"environment_sandbox_id"`
+	FallbackProvider            string         `json:"fallback_provider"`
+	FallbackModelID             string         `json:"fallback_model_id"`
 }
 
 type Artifact struct {

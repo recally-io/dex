@@ -12,11 +12,13 @@ import (
 
 // BotInfo is what bot_list and bot_get return. It holds no .env value.
 type BotInfo struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Provider      string `json:"provider,omitempty"`
-	ModelID       string `json:"modelId,omitempty"`
-	ThinkingLevel string `json:"thinkingLevel,omitempty"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Provider         string `json:"provider,omitempty"`
+	ModelID          string `json:"modelId,omitempty"`
+	ThinkingLevel    string `json:"thinkingLevel,omitempty"`
+	FallbackProvider string `json:"fallbackProvider,omitempty"`
+	FallbackModelID  string `json:"fallbackModelId,omitempty"`
 	// Instructions is the first line in bot_list and the full text in bot_get.
 	Instructions    string   `json:"instructions"`
 	EnvironmentID   string   `json:"environmentId,omitempty"`
@@ -27,12 +29,15 @@ type BotInfo struct {
 
 // BotPatch is the input of bot_create and bot_update. Omitted fields stay as they are.
 type BotPatch struct {
-	Bot           string  `json:"bot,omitempty"`
-	Name          *string `json:"name,omitempty"`
-	Instructions  *string `json:"instructions,omitempty"`
-	Provider      *string `json:"provider,omitempty"`
-	ModelID       *string `json:"modelId,omitempty"`
-	ThinkingLevel *string `json:"thinkingLevel,omitempty"`
+	Bot              string  `json:"bot,omitempty"`
+	Name             *string `json:"name,omitempty"`
+	Instructions     *string `json:"instructions,omitempty"`
+	Provider         *string `json:"provider,omitempty"`
+	ModelID          *string `json:"modelId,omitempty"`
+	ThinkingLevel    *string `json:"thinkingLevel,omitempty"`
+	FallbackProvider *string `json:"fallbackProvider,omitempty"`
+	FallbackModelID  *string `json:"fallbackModelId,omitempty"`
+	EnvironmentID    *string `json:"environmentId,omitempty"`
 }
 
 // BotDeleteArgs is the input of bot_delete.
@@ -87,15 +92,18 @@ func botManageExtension(agentID string, h BotTools) *durable.Extension {
 	fields := func() map[string]any {
 		return map[string]any{
 			"name": str, "instructions": str,
-			"provider":      map[string]any{"type": "string", "description": "Provider of the model. Empty with an empty modelId means no model."},
-			"modelId":       str,
-			"thinkingLevel": map[string]any{"type": "string", "enum": []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}},
+			"provider":         map[string]any{"type": "string", "description": "Provider of the model. Empty with an empty modelId means no model."},
+			"modelId":          str,
+			"thinkingLevel":    map[string]any{"type": "string", "enum": []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}},
+			"fallbackProvider": map[string]any{"type": "string", "description": "Provider of the fallback model. Empty with an empty fallbackModelId means no fallback."},
+			"fallbackModelId":  str,
+			"environmentId":    map[string]any{"type": "string", "description": "Execution environment ID. Empty or \"local\" selects this computer."},
 		}
 	}
 	update := fields()
 	update["bot"] = map[string]any{"type": "string", "description": "Bot ID or name."}
 	tools := []*durable.ToolRegistration{
-		botTool(agentID, "bot_create", "Create a bot with the same checks as the web create dialog. It gets no channels, skills, MCP servers, or .env values.",
+		botTool(agentID, "bot_create", "Create a bot with the same checks as the web create dialog. Omitted model, thinking, fallback, and environment fields use global bot defaults. It gets no channels, skills, MCP servers, or .env values.",
 			map[string]any{"type": "object", "properties": fields(), "required": []string{"name"}, "additionalProperties": false},
 			func(ctx context.Context, c TaskContext, a BotPatch) (any, error) {
 				if h.Create == nil {

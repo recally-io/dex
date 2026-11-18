@@ -662,7 +662,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/AgentInput" }
+            schema: { $ref: "#/components/schemas/CreateAgentInput" }
       responses:
         "201":
           description: The created agent with a UUID v7 ID.
@@ -2718,6 +2718,8 @@ components:
         provider,
         modelId,
         thinkingLevel,
+        fallbackProvider,
+        fallbackModelId,
         instructions,
         environmentId,
       ]
@@ -2737,6 +2739,11 @@ components:
         provider: { type: string }
         modelId: { type: string, description: Empty when no model is chosen. }
         thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
+        fallbackProvider: { type: string }
+        fallbackModelId: {
+          type: string,
+          description: Empty when no fallback model is chosen. Needs a model.,
+        }
         instructions: { type: string }
         environmentId: {
           type: string,
@@ -2764,10 +2771,42 @@ components:
         provider: { type: string }
         modelId: { type: string, description: Empty when no model is chosen. }
         thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
+        fallbackProvider: { type: string }
+        fallbackModelId: {
+          type: string,
+          description: Empty when no fallback model is chosen. Needs a model.,
+        }
         instructions: { type: string }
         environmentId: {
           type: string,
           description: Empty or "local" selects the built-in local host environment.,
+        }
+
+    CreateAgentInput:
+      type: object
+      required: [name]
+      properties:
+        name: {
+          type: string,
+          minLength: 1,
+          maxLength: 40,
+          description: The bot name. Trim spaces before validation.,
+        }
+        provider: { type: string }
+        modelId: {
+          type: string,
+          description: Omitted copies the default bot's model. Empty chooses no model.,
+        }
+        thinkingLevel: { $ref: "#/components/schemas/ThinkingLevel" }
+        fallbackProvider: { type: string }
+        fallbackModelId: {
+          type: string,
+          description: Omitted copies the default bot's fallback model. Empty chooses none.,
+        }
+        instructions: { type: string }
+        environmentId: {
+          type: string,
+          description: Omitted copies the default bot's execution environment. Empty or "local" selects the built-in local host environment.,
         }
 
     ThinkingLevel:

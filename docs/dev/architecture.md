@@ -291,11 +291,17 @@ counts sessions and automations across all agents. A child session counts when i
 counts once. Channel counts come from the app registry. The web polls this
 list every three seconds and shares its cache across agent pages. The same
 response includes per-agent `inboxUnread`, `inboxFailed`, and `routineFailed`.
-These fields come from the activity SQL query. `POST /api/agents` accepts a name,
-provider, model ID, thinking level, and optional instructions. It returns the
-agent with a UUID v7 ID (`201`). The ID is read-only. `GET` and `PUT` on
-`/api/agents/{agentId}` read and save one agent. Names and models use the same
-validation for creation and updates.
+These fields come from the activity SQL query. `POST /api/agents` accepts a name
+and optional primary model, thinking level, fallback model, instructions, and
+execution environment. Omitted fields copy the built-in `default` agent; a model
+that is no longer available is not copied. Empty strings choose no model or the
+local environment. `POST /api/agents` returns the created agent with a UUID v7
+ID (`201`). The ID is read-only. `GET` and `PUT` on `/api/agents/{agentId}` read
+and save one agent. Names and models use the same validation for creation and
+updates. A fallback model needs a primary model. `agentModels` wraps the runtime model catalog for each agent: if an
+agent's primary model is missing or returns an error before any response block
+streams (excluding aborts and context-overflow errors), `agentModels` switches to
+the agent's fallback model.
 
 Agent resources are under `/api/agents/{agentId}`: main, chats and their
 settings, messages, clear, history, abort and events; turn lookup; uploads;
@@ -340,10 +346,12 @@ with the saved agent ID. See [Extensions](#extensions) for the reload lifecycle.
 
 The web UI uses the nested agent routes, including live events and upload
 links. Agent resources require an explicit ID, including the default agent.
-The old un-nested API routes return 404. `GET /api/settings` returns only global
-settings and has no agent or channel fields. Channel setup and status use
-`/api/agents/{agentId}/channels`, with `/telegram`, `/wechat`, and `/feishu`
-for changes. The old `/api/settings/{platform}` routes return 404.
+The old un-nested API routes return 404. `GET /api/settings` returns global
+providers, built-ins, and APIs. `/settings/general` edits the `default` agent
+through `PUT /api/agents/default`; there is no separate defaults table. Channel
+setup and status use `/api/agents/{agentId}/channels`, with `/telegram`,
+`/wechat`, and `/feishu` for changes. The old `/api/settings/{platform}` routes
+return 404.
 
 ## Memory
 

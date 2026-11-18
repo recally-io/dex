@@ -192,6 +192,7 @@ type item struct {
 	ID      string `json:"id"`
 	EntryID int64  `json:"entryId"`
 	Text    string `json:"text"`
+	Model   string `json:"model"`
 	Queued  bool   `json:"queued"`
 	Steer   bool   `json:"steer"`
 	Failure string `json:"failure"`

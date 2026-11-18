@@ -882,6 +882,27 @@ type ChildEventState string
 // ChildEventType defines model for ChildEvent.Type.
 type ChildEventType string
 
+// CreateAgentInput defines model for CreateAgentInput.
+type CreateAgentInput struct {
+	// EnvironmentId Omitted copies the default bot's execution environment. Empty or "local" selects the built-in local host environment.
+	EnvironmentId *string `json:"environmentId,omitempty"`
+
+	// FallbackModelId Omitted copies the default bot's fallback model. Empty chooses none.
+	FallbackModelId  *string `json:"fallbackModelId,omitempty"`
+	FallbackProvider *string `json:"fallbackProvider,omitempty"`
+	Instructions     *string `json:"instructions,omitempty"`
+
+	// ModelId Omitted copies the default bot's model. Empty chooses no model.
+	ModelId *string `json:"modelId,omitempty"`
+
+	// Name The bot name. Trim spaces before validation.
+	Name     string  `json:"name"`
+	Provider *string `json:"provider,omitempty"`
+
+	// ThinkingLevel pi-ai's ModelThinkingLevel. pi-ai sends the nearest level that the model supports.
+	ThinkingLevel *ThinkingLevel `json:"thinkingLevel,omitempty"`
+}
+
 // Environment defines model for Environment.
 type Environment struct {
 	Config    EnvironmentConfig `json:"config"`
@@ -1648,7 +1669,7 @@ type GetWorkParams struct {
 }
 
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
-type CreateAgentJSONRequestBody = AgentInput
+type CreateAgentJSONRequestBody = CreateAgentInput
 
 // UpdateAgentJSONRequestBody defines body for UpdateAgent for application/json ContentType.
 type UpdateAgentJSONRequestBody = AgentInput

@@ -195,7 +195,10 @@ export function EnvKeys({ target, n }: { target: EnvTarget; n: number }) {
                       </p>
                     </div>
                     {level === "dex" && !writable ? (
-                      <Link to="/environment" className="text-[12px] text-muted-foreground underline">
+                      <Link
+                        to="/settings/environment"
+                        className="text-[12px] text-muted-foreground underline"
+                      >
                         Edit in Environment
                       </Link>
                     ) : null}
