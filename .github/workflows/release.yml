@@ -1,10 +1,18 @@
 name: Release
 
-# Push a tag such as v0.1.0 to release. A tag with a hyphen, such as v0.1.0-rc.1, makes a
-# prerelease.
+# Update VERSION on main (or push a v* tag) to release.
+# A version with a hyphen, such as 0.17.0-rc.1, makes a prerelease.
 on:
   push:
+    branches: [main]
+    paths: ["VERSION"]
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional tag to release (defaults to v<VERSION>)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -18,35 +26,100 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      should_release: ${{ steps.resolve.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - id: resolve
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
+            tag="${{ inputs.tag }}"
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            tag="${{ github.ref_name }}"
+          else
+            ver="$(tr -d '[:space:]' < VERSION)"
+            tag="v${ver#v}"
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ github.ref_type }}" != "tag" ]] && git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "Tag $tag already exists; skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   check:
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
     uses: ./.github/workflows/check.yml
 
   goreleaser:
     name: GoReleaser
-    needs: check
-    # Go cross-compiles the native agent runtime and control.
-    runs-on: macos-26
+    needs: [prepare, check]
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
     steps:
       # Go reads the version from the tag; that needs the tags and a clean tree.
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+      - name: Ensure release tag exists
+        run: |
+          if ! git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
+            git push origin "$RELEASE_TAG"
+          fi
       - uses: jdx/mise-action@v5.2.7
         with:
           install: true
           cache: true
       - run: mise run install
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        run: |
+          if [[ -f CHANGELOG.md ]]; then
+            awk -v tag="$RELEASE_TAG" '
+              $0 ~ "^## \\[" tag "\\]" { found=1; next }
+              found && /^## \[/ { exit }
+              found { print }
+            ' CHANGELOG.md > /tmp/release-notes.md
+          fi
+          if [[ -s /tmp/release-notes.md ]]; then
+            echo "has_notes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_notes=false" >> "$GITHUB_OUTPUT"
+          fi
       # The release is a draft until the smoke tests pass.
-      - run: goreleaser release --clean
+      - name: Run GoReleaser
+        run: |
+          if [[ "${{ steps.notes.outputs.has_notes }}" == "true" ]]; then
+            goreleaser release --clean --release-notes=/tmp/release-notes.md
+          else
+            goreleaser release --clean
+          fi
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
   smoke:
     name: Smoke ${{ matrix.target }}
-    needs: goreleaser
+    needs: [prepare, goreleaser]
+    if: needs.prepare.outputs.should_release == 'true'
     # Each binary runs on its own platform.
     strategy:
       fail-fast: false
@@ -63,11 +136,12 @@ jobs:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
     steps:
       - name: Download
         run: |
-          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-            --pattern "dex_${GITHUB_REF_NAME}_${{ matrix.target }}.tar.gz" --pattern checksums.txt
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "dex_${RELEASE_TAG}_${{ matrix.target }}.tar.gz" --pattern checksums.txt
           grep "_${{ matrix.target }}.tar.gz" checksums.txt | shasum -a 256 -c
           tar -xzf dex_*.tar.gz
       - name: Smoke test
@@ -81,7 +155,7 @@ jobs:
             sleep 0.2
           done
           echo "$health"
-          test "$(jq -r .version <<<"$health")" = "$GITHUB_REF_NAME"
+          test "$(jq -r .version <<<"$health")" = "$RELEASE_TAG"
           # The model list comes from the native agent runtime.
           curl -fsS http://127.0.0.1:18787/api/models | jq -e .models
           page="$(curl -fsS http://127.0.0.1:18787/)"
@@ -89,12 +163,14 @@ jobs:
 
   publish:
     name: Publish
-    needs: smoke
+    needs: [prepare, smoke]
+    if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
     steps:
-      - run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
