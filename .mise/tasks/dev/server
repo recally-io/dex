@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-#MISE description="Run dex locally; configure it in the web UI under Settings"
+#MISE description="Run dex for development on port 18787 with data in ~/.dex-dev"
+#MISE depends=["build:web"]
 set -euo pipefail
 
-go run ./cmd/dex "$@"
+# Later flags win: `mise run dev:server -- --data-dir <dir>` uses other data.
+go run ./cmd/dex --port 18787 --data-dir "$HOME/.dex-dev" "$@"
