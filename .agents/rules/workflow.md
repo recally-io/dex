@@ -45,3 +45,5 @@ with `--body-file`. Use the templates in `.github/`.
   checks you did not run.
 - Merge only when the user authorizes it, with
   `gh pr merge --match-head-commit <reviewed sha>`.
+- Releases: follow [releasing](../../docs/dev/releasing.md) (`mise run
+  release:bump` updates `VERSION` and `CHANGELOG.md`).

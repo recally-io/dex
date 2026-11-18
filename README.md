@@ -204,9 +204,6 @@ There is no purge command.
 
 ## Documents
 
+- [Changelog](CHANGELOG.md): release history and upcoming changes.
 - [Product](docs/product.md): users, scope, and non-goals.
-- [Architecture](docs/dev/architecture.md): how business services and the native engine fit
-  together.
-- [Development](docs/dev/development.md): tasks, tests, and debugging.
-- [Decisions](docs/dev/decisions/): ADRs.
-- [Agent instructions](AGENTS.md).
+- [Development](docs/dev/development.md): building, testing, and debugging from source.

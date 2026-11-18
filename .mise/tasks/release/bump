@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#MISE description="Bump VERSION and roll CHANGELOG.md [Unreleased] into a new release section"
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  echo "Usage: mise run release:bump <patch|minor|major|X.Y.Z|X.Y.Z-rc.N>" >&2
+  exit 1
+fi
+
+target="$1"
+current="$(tr -d '[:space:]' < VERSION)"
+current="${current#v}"
+
+IFS='.-' read -r major minor patch _rest <<< "$current"
+
+case "$target" in
+  major) next="$((major + 1)).0.0" ;;
+  minor) next="${major}.$((minor + 1)).0" ;;
+  patch) next="${major}.${minor}.$((patch + 1))" ;;
+  *)
+    next="${target#v}"
+    if [[ ! "$next" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+      echo "Invalid version: $target (expected patch, minor, major, or SemVer)" >&2
+      exit 1
+    fi
+    ;;
+esac
+
+if [[ "$next" == "$current" ]]; then
+  echo "Version is already $current" >&2
+  exit 1
+fi
+
+prev_tag="v${current}"
+next_tag="v${next}"
+today="$(date +%Y-%m-%d)"
+
+printf '%s\n' "$next" > VERSION
+
+if [[ -f CHANGELOG.md ]]; then
+  repo_url="$(awk -F': ' '/^\[Unreleased\]:/ { sub(/\/compare\/.*/, "", $2); print $2; exit }' CHANGELOG.md)"
+  repo_url="${repo_url:-https://github.com/recally-io/dex}"
+
+  tmp="$(mktemp)"
+  awk -v next_tag="$next_tag" -v prev_tag="$prev_tag" -v today="$today" -v repo_url="$repo_url" '
+    /^## \[Unreleased\]/ {
+      print "## [Unreleased]"
+      print ""
+      print "## [" next_tag "] - " today
+      next
+    }
+    /^\[Unreleased\]:/ {
+      print "[Unreleased]: " repo_url "/compare/" next_tag "...HEAD"
+      print "[" next_tag "]: " repo_url "/compare/" prev_tag "..." next_tag
+      next
+    }
+    { print }
+  ' CHANGELOG.md > "$tmp"
+  mv "$tmp" CHANGELOG.md
+fi
+
+echo "Updated VERSION: $current -> $next"
+echo "Updated CHANGELOG.md for $next_tag ($today)"
+echo
+echo "Commits since $prev_tag:"
+git log "${prev_tag}..HEAD" --oneline 2>/dev/null || true
+echo
+echo "Next steps:"
+echo "  1. Review CHANGELOG.md and VERSION (git diff)"
+echo "  2. Run dprint fmt && mise run check:quick"
+echo "  3. Commit and open a PR to main (merging it triggers Release for $next_tag)"
