@@ -9,7 +9,7 @@ drift, web, Go lint and tests, and native checks and cross-builds.
 Six app-test jobs partition all discovered top-level tests. Each job runs
 its partition with the race detector. The Go job uses `check:go without-app`
 for all other packages; local `check:go` still runs every package.
-Run `mise run check:app-shard 0 6` to repeat the first partition locally.
+Run `mise run check:go-shard ./internal/app 0 6` to repeat the first partition locally.
 Each app job saves its test list and JSON timings as a seven-day artifact.
 The jobs share the main Go cache without saving duplicate archives.
 The native job builds darwin and linux for amd64 and arm64 without cgo.

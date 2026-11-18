@@ -15,7 +15,7 @@ The dev server sends `/api` requests to `http://127.0.0.1:18787`, the address of
 `mise run dev:server`.
 Set `DEX_API_URL` when the backend uses another address.
 
-After an API change, run `mise run generate:api-web`.
+After an API change, run `mise run generate:api`.
 Run `mise run check:web` to check types, lint, format, and the event reducer.
 Git does not track `dist/`. Build and Go check tasks generate the embedded UI.
 Run `mise run build:web` to build it separately.

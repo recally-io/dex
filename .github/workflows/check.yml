@@ -118,7 +118,7 @@ jobs:
             go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-
             go-test-${{ runner.os }}-
       - run: mise run install
-      - run: mise run check:app-shard ${{ strategy.job-index }} ${{ strategy.job-total }}
+      - run: mise run check:go-shard ./internal/app ${{ strategy.job-index }} ${{ strategy.job-total }}
       - if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
