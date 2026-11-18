@@ -14,6 +14,9 @@ areas, read each matching rule. Do not load all rule files by default.
 
 ## Reference docs
 
+Keep user-facing docs in [README.md](README.md) and agent or engineering
+references here.
+
 - [Product](docs/product.md): users, scope, and non-goals.
 - [Architecture](docs/dev/architecture.md): business services and native engine.
 - [Development](docs/dev/development.md): local setup, tasks, tests, and debug.
