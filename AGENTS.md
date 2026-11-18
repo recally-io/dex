@@ -11,7 +11,9 @@ areas, read each matching rule. Do not load all rule files by default.
 - Selecting checks or completing work: [verification](.agents/rules/verification.md).
 
 Start with [architecture](docs/dev/architecture.md) to learn how business services
-and the native engine fit together.
+and the native engine fit together. Other developer guides:
+[development](docs/dev/development.md), [releasing](docs/dev/releasing.md), and
+[evals](docs/dev/evals.md).
 
 Repository skills live in `.agents/skills/`. Run `mise run skills:install` to
 install the upstream skills. Read a skill when a rule links to it. If a skill

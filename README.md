@@ -208,7 +208,5 @@ There is no purge command.
 - [Architecture](docs/dev/architecture.md): how business services and the native engine fit
   together.
 - [Development](docs/dev/development.md): tasks, tests, and debugging.
-- [Releasing](docs/dev/releasing.md): CI checks and release process.
-- [Evals](docs/dev/evals.md): real-provider agent evaluations.
 - [Decisions](docs/dev/decisions/): ADRs.
 - [Agent instructions](AGENTS.md).
