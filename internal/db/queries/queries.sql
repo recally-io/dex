@@ -181,6 +181,17 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending'
 ORDER BY s.rowid;
 
+-- name: HasDifferentAdmittedOrigin :one
+SELECT EXISTS (
+    SELECT 1
+    FROM submissions
+    WHERE conversation_id = @conversation_id
+      AND status = 'pending'
+      AND admitted_at IS NOT NULL
+      AND origin != @origin
+      AND id != @id
+);
+
 -- name: ListChats :many
 -- The sessions of one bot, and the children of its sessions that belong to another bot.
 SELECT

@@ -246,7 +246,9 @@ func (s *Service) reconcileAgent(ctx context.Context, agentID string) error {
 		}
 		if err := s.admit(ctx, p); err != nil {
 			blocked[p.ConversationID] = true
-			errs = append(errs, err)
+			if !errors.Is(err, errOriginBusy) {
+				errs = append(errs, err)
+			}
 		}
 	}
 	return errors.Join(errs...)
@@ -254,6 +256,8 @@ func (s *Service) reconcileAgent(ctx context.Context, agentID string) error {
 
 // ErrMessageID means a message ID was reused for a different request.
 var ErrMessageID = errors.New("the message ID belongs to another input")
+
+var errOriginBusy = errors.New("conversation is busy with another origin")
 
 // Post stores the message id with content on channelKey and returns the chat ID. It does not wait
 // for the answer. A new chat gets the title title, or the start of content when title is empty.
@@ -757,6 +761,19 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if current.Status != "pending" {
 		return nil
 	}
+	if p.Kind != "context_reset" && p.WhenBusy != "reject" && !current.AdmittedAt.Valid {
+		otherOrigin, err := s.q.HasDifferentAdmittedOrigin(ctx, sqlc.HasDifferentAdmittedOriginParams{
+			ConversationID: p.ConversationID,
+			Origin:         p.Origin,
+			ID:             p.ID,
+		})
+		if err != nil {
+			return err
+		}
+		if otherOrigin {
+			return errOriginBusy
+		}
+	}
 	if p.Kind == "context_reset" {
 		if err = s.engine.Reset(ctx, ref, p.ID, p.Content); err != nil {
 			return s.admissionError(ctx, p.ID, err)
@@ -870,10 +887,10 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 	s.retryDelay = 0
 	s.retryMu.Unlock()
 	s.signal(reply.ConversationID)
+	s.Wake()
 	if parent != 0 {
 		// The result is a new input of the parent session. Admission takes it from the database.
 		s.signal(parent)
-		s.Wake()
 	}
 	// A parent turn has no channel to answer: its result goes to the parent session.
 	if s.notify != nil && reply.Origin != "task" {

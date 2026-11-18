@@ -10,6 +10,26 @@ import (
 	"database/sql"
 )
 
+const consumeBackgroundWake = `-- name: ConsumeBackgroundWake :execrows
+DELETE FROM submissions
+WHERE id = ?1 AND conversation_id = ?2 AND status = 'pending' AND admitted_at IS NULL
+`
+
+type ConsumeBackgroundWakeParams struct {
+	ID             string `json:"id"`
+	ConversationID int64  `json:"conversation_id"`
+}
+
+// Removes an un-admitted pending background wake when background_wait observes the command's
+// terminal state in-turn, preventing a redundant post-turn wake.
+func (q *Queries) ConsumeBackgroundWake(ctx context.Context, arg ConsumeBackgroundWakeParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, consumeBackgroundWake, arg.ID, arg.ConversationID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const countRunningBackgroundCommands = `-- name: CountRunningBackgroundCommands :one
 SELECT count(*) FROM background_commands b
 JOIN conversations c ON c.id = b.conversation_id
@@ -66,8 +86,8 @@ func (q *Queries) CreateBackgroundCommand(ctx context.Context, arg CreateBackgro
 }
 
 const createBackgroundWake = `-- name: CreateBackgroundWake :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, parent_request_id)
-SELECT ?1, b.conversation_id, ?2, 'null', ?1, s.origin, 'task_result', 'pending', ?3, s.parent_request_id
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
+SELECT ?1, b.conversation_id, ?2, 'null', ?1, s.origin, 'task_result', 'pending', ?3
 FROM background_commands b
 JOIN submissions s ON s.id = b.source_request_id
 JOIN conversations c ON c.id = b.conversation_id
@@ -84,10 +104,10 @@ type CreateBackgroundWakeParams struct {
 }
 
 // A wake-up is a durable input of the owning session, like the result of a child session. It keeps
-// the origin and the parent link of the input that started the command, so a reply reaches the
-// same channel and a child session still reports to its parent. The ID follows the event, so a
-// replay does not store a second input. An archived bot takes no input: the condition is part of
-// the insert, so an archive cannot slip between a check and the write.
+// the origin of the input that started the command, without copying parent_request_id so a child's
+// background wake only wakes the child itself and never auto-escalates to its parent. The ID
+// follows the event, so a replay does not store a second input. An archived bot takes no input: the
+// condition is part of the insert, so an archive cannot slip between a check and the write.
 func (q *Queries) CreateBackgroundWake(ctx context.Context, arg CreateBackgroundWakeParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, createBackgroundWake,
 		arg.ID,

@@ -39,6 +39,7 @@ import (
 const (
 	WakeExit  = "exit"
 	WakeLines = "lines"
+	WakeNone  = "none"
 )
 
 // States of a background command.
@@ -231,9 +232,12 @@ type proc struct {
 	run  runningProcess
 	done chan struct{} // closed when the final state is stored
 
-	// mu guards reason so the first termination reason wins until the final state is stored.
-	mu     sync.Mutex
-	reason string
+	// mu guards reason and waiter state so the first termination reason wins and finish() skips
+	// creating an end wake-up when an active Wait call is observing the command.
+	mu             sync.Mutex
+	reason         string
+	waiters        int
+	wakeSuppressed bool
 
 	// Lines state. eventMu orders wake-ups.
 	eventMu      sync.Mutex
@@ -264,8 +268,8 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 		return sqlc.BackgroundCommand{}, fmt.Errorf("%w: the command is empty", ErrInvalid)
 	}
 	p.Wake = cmp.Or(p.Wake, WakeExit)
-	if p.Wake != WakeExit && p.Wake != WakeLines {
-		return sqlc.BackgroundCommand{}, fmt.Errorf("%w: wake is exit or lines", ErrInvalid)
+	if p.Wake != WakeExit && p.Wake != WakeLines && p.Wake != WakeNone {
+		return sqlc.BackgroundCommand{}, fmt.Errorf("%w: wake is exit, lines, or none", ErrInvalid)
 	}
 	if p.Timeout < 0 {
 		return sqlc.BackgroundCommand{}, fmt.Errorf("%w: the timeout is negative", ErrInvalid)
@@ -460,8 +464,12 @@ func (m *Manager) storeEnd(ctx context.Context, p *proc, state string, status in
 // an ended row without its wake-up.
 func (m *Manager) finish(p *proc, state string, status int, reason, tailText string) {
 	ctx := context.Background()
+	p.mu.Lock()
+	suppressWake := p.waiters > 0
+	p.wakeSuppressed = suppressWake
+	p.mu.Unlock()
 	var wake *sqlc.CreateBackgroundWakeParams
-	if reason != reasonStop {
+	if reason != reasonStop && p.row.Wake != WakeNone && !suppressWake {
 		params, err := m.wakeParams(p, "end", endBody(p.row, state, status, reason, m.limits, tailText))
 		if err != nil {
 			slog.Error("encode background end wake-up", "id", p.row.ID, "err", err)
@@ -568,6 +576,119 @@ func (m *Manager) stopAll(ids []string) {
 // List returns the commands of a session, the newest first.
 func (m *Manager) List(ctx context.Context, conversationID int64) ([]sqlc.BackgroundCommand, error) {
 	return m.q.ListBackgroundCommands(ctx, conversationID)
+}
+
+const defaultWaitTimeout = 60 * time.Second
+
+// Wait blocks until every specified background command of a session reaches a terminal state or
+// timeout elapses, returning the latest rows and whether the wait timed out. Any terminal exit
+// wake for an observed command is consumed so the session does not receive a redundant wake.
+func (m *Manager) Wait(ctx context.Context, conversationID int64, ids []string, timeout time.Duration) ([]sqlc.BackgroundCommand, bool, error) {
+	if len(ids) == 0 {
+		return nil, false, fmt.Errorf("%w: no background command IDs", ErrInvalid)
+	}
+	if timeout < 0 {
+		return nil, false, fmt.Errorf("%w: the timeout is negative", ErrInvalid)
+	}
+	timeout = cmp.Or(timeout, defaultWaitTimeout)
+
+	uniqueIDs := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+	}
+
+	var watched []*proc
+	for _, id := range uniqueIDs {
+		row, err := m.owned(ctx, conversationID, id)
+		if err != nil {
+			releaseWaiters(watched)
+			return nil, false, err
+		}
+		if row.State != StateStarting && row.State != stateRunning {
+			continue
+		}
+		m.mu.Lock()
+		p := m.procs[id]
+		m.mu.Unlock()
+		if p != nil {
+			p.mu.Lock()
+			p.waiters++
+			p.mu.Unlock()
+			watched = append(watched, p)
+		}
+	}
+
+	timedOut := false
+	if len(watched) > 0 {
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+		for _, p := range watched {
+			if timedOut {
+				break
+			}
+			select {
+			case <-p.done:
+			case <-timer.C:
+				timedOut = true
+			case <-ctx.Done():
+				releaseWaiters(watched)
+				return nil, false, ctx.Err()
+			}
+		}
+		for _, p := range watched {
+			p.mu.Lock()
+			p.waiters--
+			suppressed := p.wakeSuppressed
+			p.mu.Unlock()
+			if suppressed {
+				<-p.done
+			}
+		}
+	}
+
+	rows := make([]sqlc.BackgroundCommand, 0, len(ids))
+	byID := make(map[string]sqlc.BackgroundCommand, len(uniqueIDs))
+	for _, id := range uniqueIDs {
+		row, err := m.owned(ctx, conversationID, id)
+		if err != nil {
+			return nil, false, err
+		}
+		if isTerminalState(row.State) {
+			if _, err := m.q.ConsumeBackgroundWake(ctx, sqlc.ConsumeBackgroundWakeParams{
+				ID:             "background:" + id + ":end",
+				ConversationID: conversationID,
+			}); err != nil {
+				return nil, false, err
+			}
+		}
+		byID[id] = row
+	}
+	for _, id := range ids {
+		rows = append(rows, byID[id])
+	}
+	return rows, timedOut, nil
+}
+
+func releaseWaiters(watched []*proc) {
+	for _, p := range watched {
+		p.mu.Lock()
+		p.waiters--
+		p.mu.Unlock()
+	}
+}
+
+func isTerminalState(state string) bool {
+	switch state {
+	case StateExited, StateStopped, StateTimedOut, StateUnknown:
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *Manager) owned(ctx context.Context, conversationID int64, id string) (sqlc.BackgroundCommand, error) {

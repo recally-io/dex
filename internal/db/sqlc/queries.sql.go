@@ -1032,6 +1032,31 @@ func (q *Queries) GetTelegramSettings(ctx context.Context, agentID string) (Tele
 	return i, err
 }
 
+const hasDifferentAdmittedOrigin = `-- name: HasDifferentAdmittedOrigin :one
+SELECT EXISTS (
+    SELECT 1
+    FROM submissions
+    WHERE conversation_id = ?1
+      AND status = 'pending'
+      AND admitted_at IS NOT NULL
+      AND origin != ?2
+      AND id != ?3
+)
+`
+
+type HasDifferentAdmittedOriginParams struct {
+	ConversationID int64  `json:"conversation_id"`
+	Origin         string `json:"origin"`
+	ID             string `json:"id"`
+}
+
+func (q *Queries) HasDifferentAdmittedOrigin(ctx context.Context, arg HasDifferentAdmittedOriginParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasDifferentAdmittedOrigin, arg.ConversationID, arg.Origin, arg.ID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const latestDream = `-- name: LatestDream :one
 SELECT
     d.id,

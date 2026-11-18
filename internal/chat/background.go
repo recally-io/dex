@@ -89,6 +89,25 @@ func (s *Service) ToolBackgroundStop(ctx context.Context, r engine.TaskContext, 
 	return backgroundInfo(row), nil
 }
 
+func (s *Service) ToolBackgroundWait(ctx context.Context, r engine.TaskContext, a engine.BackgroundWaitArgs) (engine.BackgroundWaitResult, error) {
+	if s.background == nil {
+		return engine.BackgroundWaitResult{}, errors.New("background commands are unavailable")
+	}
+	conv, err := s.toolCaller(ctx, r)
+	if err != nil {
+		return engine.BackgroundWaitResult{}, err
+	}
+	rows, timedOut, err := s.background.Wait(ctx, conv.ID, a.IDs, time.Duration(a.Timeout)*time.Second)
+	if err != nil {
+		return engine.BackgroundWaitResult{}, fmt.Errorf("wait for background commands: %w", err)
+	}
+	list := make([]engine.BackgroundInfo, 0, len(rows))
+	for _, row := range rows {
+		list = append(list, backgroundInfo(row))
+	}
+	return engine.BackgroundWaitResult{Commands: list, TimedOut: timedOut}, nil
+}
+
 func backgroundInfo(row sqlc.BackgroundCommand) engine.BackgroundInfo {
 	info := engine.BackgroundInfo{
 		ID: row.ID, Label: row.Label, Command: row.Command, Wake: row.Wake, State: row.State, Reason: row.Reason,
