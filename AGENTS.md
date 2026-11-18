@@ -22,6 +22,7 @@ references here.
 - [Development](docs/dev/development.md): local setup, tasks, tests, and debug.
 - [Releasing](docs/dev/releasing.md): CI shards and release workflow.
 - [Evals](docs/dev/evals.md): real-provider agent evaluations.
+- [Web UI](web/AGENTS.md): frontend routes, state, and shadcn conventions.
 - [Decisions](docs/dev/decisions/): architecture decision records (ADRs).
 
 ## Skills
