@@ -3,6 +3,8 @@
 Read the rules that match the task before acting. If a task spans several
 areas, read each matching rule. Do not load all rule files by default.
 
+## Rules
+
 - Every task, Git commits, issues and PRs: [workflow](.agents/rules/workflow.md).
 - Code, dependencies, native execution and data: [implementation](.agents/rules/implementation.md).
 - Database schema, migrations and queries: [database](.agents/rules/database.md).
@@ -10,10 +12,16 @@ areas, read each matching rule. Do not load all rule files by default.
 - Documents and diagrams: [documentation](.agents/rules/documentation.md).
 - Selecting checks or completing work: [verification](.agents/rules/verification.md).
 
-Start with [architecture](docs/dev/architecture.md) to learn how business services
-and the native engine fit together. Other developer guides:
-[development](docs/dev/development.md), [releasing](docs/dev/releasing.md), and
-[evals](docs/dev/evals.md).
+## Reference docs
+
+- [Product](docs/product.md): users, scope, and non-goals.
+- [Architecture](docs/dev/architecture.md): business services and native engine.
+- [Development](docs/dev/development.md): local setup, tasks, tests, and debug.
+- [Releasing](docs/dev/releasing.md): CI shards and release workflow.
+- [Evals](docs/dev/evals.md): real-provider agent evaluations.
+- [Decisions](docs/dev/decisions/): architecture decision records (ADRs).
+
+## Skills
 
 Repository skills live in `.agents/skills/`. Run `mise run skills:install` to
 install the upstream skills. Read a skill when a rule links to it. If a skill
