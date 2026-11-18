@@ -1,0 +1,3 @@
+[mcp_servers.e2e]
+args = ["e2e", "mcp"]
+command = "bunx"

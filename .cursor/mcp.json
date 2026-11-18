@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "e2e": {
+      "command": "bunx",
+      "args": [
+        "e2e",
+        "mcp"
+      ]
+    }
+  }
+}
