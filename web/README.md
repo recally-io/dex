@@ -11,7 +11,8 @@ Do not edit the generated client in `src/api/generated/`.
 2. Run `mise run dev:server` in one terminal.
 3. Run `mise run dev:web` in another terminal.
 
-The dev server sends `/api` requests to `http://127.0.0.1:8787`.
+The dev server sends `/api` requests to `http://127.0.0.1:18787`, the address of
+`mise run dev:server`.
 Set `DEX_API_URL` when the backend uses another address.
 
 After an API change, run `mise run generate:api-web`.

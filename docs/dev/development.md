@@ -14,8 +14,10 @@ Check: `mise run check` passes.
 
 ## Run
 
-1. Run `mise run dev:server`.
-2. Open <http://127.0.0.1:8787>. The default agent timeline opens.
+1. Run `mise run dev:server`. It builds the web UI, then runs
+   `dex --port 18787 --data-dir ~/.dex-dev`, so it does not touch an installed
+   dex on port 8787 or its data in `~/.dex`.
+2. Open <http://127.0.0.1:18787>. The default agent timeline opens.
 3. On Providers, add a built-in provider with its API key, or a custom one with its
    API (OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages), base
    URL, and key. Add more providers if you want.
@@ -26,7 +28,7 @@ writes it.
 
 To change the web UI with hot reload, run `mise run dev:server` and
 `mise run dev:web` in two terminals, and open the address that `dev:web`
-shows. It sends `/api/` to the server on port 8787. The binary embeds
+shows. It sends `/api/` to the server on port 18787. The binary embeds
 `web/dist`. Build and Go check tasks generate it; Git does not track it.
 
 To try the UI without a provider, start the server with `DEX_FAKE_MODEL=1`
@@ -35,9 +37,18 @@ and choose `faux/echo`, or `faux/bash` to see tool calls.
 For channel setup, see the [product scope](../product.md#scope) and the
 selected agent's Channels page under Settings.
 
-The optional environment variables are `DEX_DATA_DIR` (default `~/.dex`) and
-`DEX_ADDR` (default `127.0.0.1:8787`). Use a separate `DEX_DATA_DIR` to try
-settings without changing your own.
+Every `dev:server` run shares `~/.dex-dev`. For isolated data, such as a
+second checkout or a clean first run, pass another data directory; later flags
+win:
+
+```sh
+mise run dev:server -- --data-dir ~/.dex-dev-settings
+mise run dev:server -- --data-dir "$(mktemp -d)" --port 18788
+```
+
+Use another `--port` when two dev servers run at once, and set `DEX_API_URL`
+for `dev:web`. Outside `dev:server`, dex reads `DEX_DATA_DIR` (default `~/.dex`)
+and `DEX_ADDR` (default `127.0.0.1:8787`).
 
 ## Legacy checkout cleanup
 
@@ -134,8 +145,8 @@ from a browser download; run `xattr -d com.apple.quarantine dex` first.
 
 - Engine, model, and MCP errors use the dex process log. Logs must not expose
   credentials or substituted headers.
-- Start `mise run dev:server` with a separate `DEX_DATA_DIR` and
-  `DEX_FAKE_MODEL=1` to inspect native execution without provider credentials.
+- Start `DEX_FAKE_MODEL=1 mise run dev:server -- --data-dir <dir>` to inspect
+  native execution without provider credentials.
 - Inspect business receipts in `control.sqlite`. Use engine history and watch
   methods to inspect execution state. Business code must not query agent
   execution tables.

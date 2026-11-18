@@ -14,7 +14,7 @@ export default defineConfig({
       cn: fileURLToPath(new URL("./src/lib/utils.ts", import.meta.url)),
     },
   },
-  server: { host: "127.0.0.1", proxy: { "/api": process.env.DEX_API_URL ?? "http://127.0.0.1:8787" } },
+  server: { host: "127.0.0.1", proxy: { "/api": process.env.DEX_API_URL ?? "http://127.0.0.1:18787" } },
   lint: {
     ignorePatterns: [
       "dist/**",
