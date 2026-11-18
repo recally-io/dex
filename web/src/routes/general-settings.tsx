@@ -125,7 +125,7 @@ export function GeneralSettingsPage() {
                     await updateDefaults(
                       selected
                         ? { provider: selected.provider, modelId: selected.id }
-                        : { provider: "", modelId: "" },
+                        : { provider: "", modelId: "", fallbackProvider: "", fallbackModelId: "" },
                       selected ? `Default model is now ${selected.name}.` : "Cleared the default model.",
                     );
                   },
@@ -212,7 +212,11 @@ export function GeneralSettingsPage() {
                   },
                 }}
                 trigger={
-                  <Button variant="secondary" aria-label="Default fallback model">
+                  <Button
+                    variant="secondary"
+                    aria-label="Default fallback model"
+                    disabled={!defaults.modelId}
+                  >
                     {defaults.fallbackModelId ? "Change fallback" : "Choose fallback"}
                     <Chevron />
                   </Button>

@@ -348,24 +348,28 @@ function RemoveProvider({
       await Promise.all(
         users.map((user) =>
           saveAgent(user.id!, (agent) => {
-            const usesPrimary = agent.provider === provider.id;
-            const usesFallback = agent.fallbackProvider === provider.id;
+            const none = { provider: "", modelId: "" };
 
-            if (!usesPrimary && !usesFallback) return agent;
+            const fallback =
+              agent.fallbackProvider === provider.id
+                ? none
+                : { provider: agent.fallbackProvider, modelId: agent.fallbackModelId };
 
-            const updated = { ...agent };
-
-            if (usesPrimary) {
-              updated.provider = model?.provider ?? "";
-              updated.modelId = model?.id ?? "";
+            if (agent.provider !== provider.id) {
+              return { ...agent, fallbackProvider: fallback.provider, fallbackModelId: fallback.modelId };
             }
 
-            if (usesFallback) {
-              updated.fallbackProvider = "";
-              updated.fallbackModelId = "";
-            }
+            // Without a replacement, the fallback model becomes the model.
+            const primary = model ? { provider: model.provider, modelId: model.id } : fallback;
+            const rest = model ? fallback : none;
 
-            return updated;
+            return {
+              ...agent,
+              provider: primary.provider,
+              modelId: primary.modelId,
+              fallbackProvider: rest.provider,
+              fallbackModelId: rest.modelId,
+            };
           }),
         ),
       );

@@ -252,7 +252,7 @@ function Agent({ settings }: { settings: Settings }) {
                 },
               }}
               trigger={
-                <Button variant="secondary" aria-label="Fallback model">
+                <Button variant="secondary" aria-label="Fallback model" disabled={!settings.agent.modelId}>
                   {settings.agent.fallbackModelId ? "Change fallback" : "Choose fallback"}
                   <svg
                     width="11"
