@@ -38,8 +38,11 @@ See [ADR 0011](decisions/0011-native-pig-runtime.md).
 
 `cmd/dex` runs the foreground server or manages a per-user launchd or systemd
 service. A host that is not loopback makes the API require the access token
-([ADR 0007](decisions/0007-network-access-token.md)). Definitions store serve arguments, PATH, and a
-configuration record that permits partial reinstall across template changes.
+([ADR 0007](decisions/0007-network-access-token.md)). Definitions store serve
+arguments, a small service PATH, and a configuration record that permits partial
+reinstall across template changes. Install does not copy the shell PATH. Daily
+updates add only the selected `gh` directory. Agent tools use the login shell
+environment separately. See [ADR 0024](decisions/0024-service-environment.md).
 
 `internal/update` verifies GitHub release assets, stages beside the executable,
 and retains `dex.previous`. `chat.Service` owns a two-minute maintenance lease.

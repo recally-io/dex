@@ -130,10 +130,57 @@ func TestUserReinstallKeepsStoredOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// When reinstall supplies only the port, retain all omitted configuration.
+	// When reinstall supplies only the port, retain boot options but replace the old PATH.
+	t.Setenv("PATH", "/transient/install-shell/bin")
 	got, err := parseInstallConfig(m, []string{"--port", "18788"})
 	stored.Port = 18788
+	stored.Path = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+	if runtime.GOOS == "darwin" {
+		stored.Path = "/opt/homebrew/bin:" + stored.Path
+	}
 	if err != nil || got != stored {
 		t.Fatalf("reinstall lost stored options: %+v: %v", got, err)
+	}
+}
+
+func TestUserDailyUpdatesKeepOnlyTheGitHubCLIDirectory(t *testing.T) {
+	// Given the real gh executable exposed through an install-shell PATH with unrelated tools.
+	gh, err := exec.LookPath("gh")
+	if err != nil {
+		t.Skip("gh is not installed")
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("DEX_ADDR", "")
+	t.Setenv("DEX_DATA_DIR", "")
+	dir := t.TempDir()
+	if err := os.Symlink(gh, filepath.Join(dir, "gh")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+":/transient/unrelated-tools")
+	m, err := service.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// When daily updates are enabled, retain gh discovery but not the install-shell PATH.
+	c, err := parseInstallConfig(m, []string{"--auto-update"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(c.Path, dir+":") || strings.Contains(c.Path, "/transient/") {
+		t.Fatalf("daily updates have the wrong service PATH: %s", c.Path)
+	}
+
+	// When daily updates are disabled, the service no longer needs the gh directory.
+	c, err = parseInstallConfig(m, []string{"--auto-update=false"})
+	if err != nil || strings.Contains(c.Path, dir) {
+		t.Fatalf("disabled updates retained the gh directory: %s: %v", c.Path, err)
+	}
+
+	// When gh is unavailable, reject daily updates before changing the installed service.
+	t.Setenv("PATH", t.TempDir())
+	if _, err := parseInstallConfig(m, []string{"--auto-update"}); err == nil {
+		t.Fatal("daily updates accepted a PATH without gh")
 	}
 }

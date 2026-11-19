@@ -9,7 +9,10 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -24,6 +27,29 @@ type Config struct {
 	Path       string `json:"path"`
 	AutoUpdate bool   `json:"autoUpdate"`
 	Channel    string `json:"channel"`
+}
+
+// EnvironmentPath keeps service commands separate from the agent's login shell environment.
+// Daily updates also need the gh executable selected by the install command.
+func EnvironmentPath(autoUpdate bool) (string, error) {
+	path := "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+	if runtime.GOOS == "darwin" {
+		path = "/opt/homebrew/bin:" + path
+	}
+	if !autoUpdate {
+		return path, nil
+	}
+	gh, err := exec.LookPath("gh")
+	if err != nil {
+		return "", fmt.Errorf("automatic updates need gh on the install shell PATH: %w", err)
+	}
+	gh, err = filepath.Abs(gh)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Dir(gh)
+	dirs := slices.DeleteFunc(filepath.SplitList(path), func(value string) bool { return value == dir })
+	return strings.Join(append([]string{dir}, dirs...), string(os.PathListSeparator)), nil
 }
 
 // Defaults resolves the environment before command flags override its parts.

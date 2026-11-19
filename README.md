@@ -64,8 +64,11 @@ Prefer a Tailscale address to `0.0.0.0` on a shared network.
 `service install` accepts `--host`, `--port`, and `--data-dir`. A reinstall
 keeps options that you omit and restarts dex. A new data directory selects
 another directory; it does not move data. The service saves these values as
-`serve` arguments. It also saves PATH from the install shell. It saves no
-credentials or other shell variables. Change the service with the CLI.
+`serve` arguments. The service PATH contains only system directories and common
+package-manager directories. It does not copy PATH from the install shell.
+Agent tools get their environment from the interactive login shell instead.
+The definition saves no credentials or other shell variables. Change the service
+with the CLI.
 The configuration record is the source of boot options. Reads accept definitions
 from earlier releases. After an update,
 run `dex service install` to apply new template defaults.
@@ -158,9 +161,12 @@ dex service install --auto-update --channel prerelease
 
 Updates come from the `recally-io/dex` GitHub repository. Manual updates
 use GH_TOKEN, then GITHUB_TOKEN, then stored `gh auth` credentials. Automatic
-updates require `gh` on the installed PATH and credentials in its default
-store. Run `gh auth login --hostname github.com` first. Shell-only tokens
-cannot enable automatic updates. dex never saves a token in a definition or log.
+updates require `gh` and credentials in its default store. When you enable
+automatic updates, install adds the selected `gh` directory to the service PATH.
+It does not add other directories from the install shell. If you move or remove
+that `gh` installation, run `dex service install` again.
+Run `gh auth login --hostname github.com` first. Shell-only tokens cannot enable
+automatic updates. dex never saves a token in a definition or log.
 
 Automatic updates are off by default. macOS checks daily at 10:00 local time.
 Linux uses a persistent daily timer with a random delay of up to one hour.
