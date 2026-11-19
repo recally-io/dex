@@ -883,6 +883,11 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 	if s.notify != nil && reply.Origin != "task" {
 		s.notify(reply.Origin)
 	}
+	if s.notify != nil {
+		if info, err := s.q.GetRoutineOutboxInfo(ctx, id); err == nil {
+			s.notify(info.Peer)
+		}
+	}
 	return nil
 }
 

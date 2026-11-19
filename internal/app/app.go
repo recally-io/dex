@@ -226,6 +226,17 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 				return chats.ToolRecentOutbox(ctx, ref)
 			},
 		},
+		Timers: engine.TimerTools{
+			Set: func(ctx context.Context, c engine.TaskContext, a engine.TimerSetArgs) (engine.TimerInfo, error) {
+				return chats.ToolTimerSet(ctx, c, a)
+			},
+			List: func(ctx context.Context, c engine.TaskContext) ([]engine.TimerInfo, error) {
+				return chats.ToolTimerList(ctx, c)
+			},
+			Cancel: func(ctx context.Context, c engine.TaskContext, id string) (engine.TimerInfo, error) {
+				return chats.ToolTimerCancel(ctx, c, id)
+			},
+		},
 	}
 	routines := engine.RoutineTools{
 		List: func(ctx context.Context, c engine.TaskContext) ([]engine.RoutineInfo, error) {
@@ -400,6 +411,13 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	if err := jobs.Every("automations", cmp.Or(cfg.AutomationCheck, time.Minute), automations.Check); err != nil {
+		return nil, err
+	}
+	if err := jobs.Every("followup-timers", min(cmp.Or(cfg.AutomationCheck, 5*time.Second), 5*time.Second), func(ctx context.Context) {
+		if err := chats.FireDueTimers(ctx); err != nil && ctx.Err() == nil {
+			slog.Error("fire due followup timers", "err", err)
+		}
+	}); err != nil {
 		return nil, err
 	}
 	// Polling keeps one mechanism for page saves and hand edits; use file events if 3 s is slow.

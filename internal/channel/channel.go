@@ -566,7 +566,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 			}
 		}
 	}
-	return m.flushNotifications(ctx, name, bot)
+	return nil
 }
 
 // rememberQuestionMessage links a sent message to the question that its input asked.

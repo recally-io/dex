@@ -162,6 +162,9 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		if err := q.DismissQuestions(ctx, sqlc.DismissQuestionsParams{ConversationID: c.ID, Now: now}); err != nil {
 			return withdrawal{}, err
 		}
+		if _, err := q.CancelFollowupTimersByConversation(ctx, sqlc.CancelFollowupTimersByConversationParams{ConversationID: c.ID, UpdatedAt: now.Int64}); err != nil {
+			return withdrawal{}, err
+		}
 		// A child of another bot is not aborted here. Its bot has its own delivery gate, and this call
 		// holds one gate only. The abort request above is durable, and the dispatcher of that bot
 		// carries it out. Holding two gates could deadlock two parents that stop each other's children.

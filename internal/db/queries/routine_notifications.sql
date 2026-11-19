@@ -11,6 +11,16 @@ SELECT * FROM routine_notification_targets WHERE id = ? AND agent_id = ?;
 -- name: SetPrimaryNotificationTarget :execrows
 UPDATE agents SET primary_notification_target_id = ? WHERE id = ?;
 
+-- name: GetRoutineOutboxInfo :one
+SELECT r.id AS run_id, r.automation_id, a.agent_id, t.platform, t.account_id, t.peer,
+       CAST(a.name || ': ' || r.outcome || char(10) || CASE WHEN r.summary != '' THEN r.summary ELSE coalesce(r.reason, '') END AS TEXT) AS body
+FROM automation_runs r
+JOIN automations a ON a.id = r.automation_id
+JOIN agents agent ON agent.id = a.agent_id
+JOIN routine_notification_targets t ON t.agent_id = a.agent_id AND t.id =
+    CASE a.notification_route WHEN 'default' THEN agent.primary_notification_target_id WHEN 'target' THEN a.notification_target_id END
+WHERE r.id = ? AND r.outcome IN ('changed', 'failed') AND r.duplicate = 0 AND agent.archived_at IS NULL;
+
 -- name: QueueRoutineNotification :exec
 INSERT INTO routine_notification_deliveries (run_id, agent_id, target_id, platform, account_id, peer, body)
 SELECT r.id, a.agent_id, t.id, t.platform, t.account_id, t.peer,

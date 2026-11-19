@@ -42,6 +42,7 @@ type TaskTools struct {
 	SetProject       func(context.Context, TaskContext, string) (string, error)
 	AskUser          func(context.Context, TaskContext, AskUserArgs) (QuestionInfo, error)
 	Outbox           OutboxTools
+	Timers           TimerTools
 	Sessions         SessionTools
 	Background       BackgroundTools
 }

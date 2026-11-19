@@ -73,15 +73,16 @@ backend readiness and maintenance lifecycle.
 
 ## Sources of truth
 
-| Data                                 | Owner             | Location                                                                                               |
-| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |
-| Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                              |
-| Transcripts, runs, tool calls, usage | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                                                  |
-| Agent files                          | the agent's tools | `<data dir>/agents/<id>/workspace/` (or remote `pi-env` / `e2b` workspace)                             |
-| Bot artifact files                   | disk              | `<data dir>/agents/<id>/artifacts/<name>`                                                              |
-| Uploaded files                       | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>` (staged to remote workspace when remote) |
-| Memory (git repo)                    | control / tools   | `<data dir>/memory/` (`memory_*` tools)                                                                |
-| Skills and MCP servers               | the user's files  | `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/`                                               |
+| Data                                 | Owner             | Location                                                                                                                                   |
+| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                                                                  |
+| Transcripts, runs, tool calls, usage | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                                                                                      |
+| Agent files                          | the agent's tools | `<data dir>/agents/<id>/workspace/` (or remote `pi-env` / `e2b` workspace)                                                                 |
+| Bot artifact files                   | disk              | `<data dir>/agents/<id>/artifacts/<name>`                                                                                                  |
+| Uploaded files                       | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>` (staged to remote workspace when remote)                                     |
+| Memory (git repo)                    | control / tools   | `<data dir>/memory/` (`memory_*` tools)                                                                                                    |
+| Skills and MCP servers               | the user's files  | `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/`                                                                                   |
+| Outbox messages and follow-up timers | control           | `outbox_messages`, `outbox_files`, `followup_timers` in `control.sqlite` ([ADR 0023](decisions/0023-always-on-inbox-outbox-and-timers.md)) |
 
 Control stores the parent of a child session in `conversations.parent_id` and the
 turn that created work for it in `submissions.parent_request_id`. A child session is a

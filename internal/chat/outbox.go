@@ -443,3 +443,44 @@ func outboxInitialStatus(peer string, channelRevoked int64, now int64) (string, 
 	}
 	return "pending", sql.NullInt64{}
 }
+
+func queueRoutineOutbox(ctx context.Context, q *sqlc.Queries, runID string, convID int64, now int64) error {
+	info, err := q.GetRoutineOutboxInfo(ctx, runID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	topicKey := "routine:" + info.AutomationID
+	if _, err := q.SupersedeOutboxTopic(ctx, sqlc.SupersedeOutboxTopicParams{
+		ConversationID: convID,
+		Peer:           info.Peer,
+		TopicKey:       topicKey,
+	}); err != nil {
+		return err
+	}
+	chCtx, err := json.Marshal(struct {
+		AccountID string `json:"accountId"`
+	}{AccountID: info.AccountID})
+	if err != nil {
+		return err
+	}
+	_, err = q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
+		ID:                 "routine:" + info.RunID,
+		DedupKey:           "routine:" + info.RunID,
+		AgentID:            info.AgentID,
+		ConversationID:     convID,
+		SourceSubmissionID: sql.NullString{String: runID, Valid: true},
+		Kind:               "routine",
+		Peer:               info.Peer,
+		ChannelContext:     string(chCtx),
+		TopicKey:           topicKey,
+		Body:               info.Body,
+		Reason:             "",
+		Status:             "pending",
+		CreatedAt:          now,
+		DeliveredAt:        sql.NullInt64{},
+	})
+	return err
+}
