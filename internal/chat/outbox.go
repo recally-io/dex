@@ -297,7 +297,7 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 			}
 			dedupKey := "reply:" + sub.ID
 			if event.AnswerID > 0 {
-				dedupKey = fmt.Sprintf("reply:%d:%d", conv.ID, event.AnswerID)
+				dedupKey = fmt.Sprintf("reply:%d:%d:%s", conv.ID, event.AnswerID, peer)
 			}
 			status, deliveredAt := outboxInitialStatus(peer, sub.ChannelRevoked, now)
 			inserted, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{

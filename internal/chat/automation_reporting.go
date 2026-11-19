@@ -104,7 +104,7 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 			return 0, 0, err
 		}
 	}
-	if parent == 0 && conv.ParentID.Valid && !sub.ParentRequestID.Valid && event.Status == "unanswered" && event.Reason != "stopped" && event.Reason != "withdrawn" && event.Reason != "aborted" {
+	if parent == 0 && conv.ParentID.Valid && !sub.ParentRequestID.Valid && !isUserOrigin(sub.Origin) && event.Status == "unanswered" && event.Reason != "stopped" && event.Reason != "withdrawn" && event.Reason != "aborted" {
 		if archived, aerr := q.ConversationAgentArchived(ctx, conv.ParentID.Int64); aerr != nil {
 			return 0, 0, aerr
 		} else if archived == 0 {
