@@ -8,6 +8,7 @@ import { setChatSettings } from "../api/generated/sdk.gen";
 import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { findModel, thinkingNames } from "../lib/agent";
 import { refreshChats } from "../lib/queries";
+import { ChatActivity } from "./chat-activity";
 import { ChatProject } from "./chat-project";
 import { ModelPicker } from "./model-picker";
 import { Button } from "./ui/button";
@@ -65,6 +66,7 @@ export function SessionSettings({ chat, settings }: { chat: Chat; settings: Sett
       className="flex min-w-0 items-center gap-0.5 overflow-hidden"
     >
       <ChatProject chatId={chat.id} cwd={chat.cwd} />
+      <ChatActivity chatId={chat.id} writable={!chat.readOnly} />
       <ModelPicker
         side="top"
         thinking={{

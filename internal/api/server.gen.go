@@ -287,6 +287,30 @@ func (e ExtensionsEnvHints) Valid() bool {
 	}
 }
 
+// Defines values for FollowupTimerState.
+const (
+	Cancelled FollowupTimerState = "cancelled"
+	Expired   FollowupTimerState = "expired"
+	Fired     FollowupTimerState = "fired"
+	Scheduled FollowupTimerState = "scheduled"
+)
+
+// Valid indicates whether the value is a known member of the FollowupTimerState enum.
+func (e FollowupTimerState) Valid() bool {
+	switch e {
+	case Cancelled:
+		return true
+	case Expired:
+		return true
+	case Fired:
+		return true
+	case Scheduled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	HealthStatusOk HealthStatus = "ok"
@@ -428,6 +452,60 @@ func (e OnePasswordMode) Valid() bool {
 	case OnePasswordModeOff:
 		return true
 	case OnePasswordModeServiceAccount:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OutboxMessageKind.
+const (
+	Proactive   OutboxMessageKind = "proactive"
+	Question    OutboxMessageKind = "question"
+	Reply       OutboxMessageKind = "reply"
+	Routine     OutboxMessageKind = "routine"
+	SystemError OutboxMessageKind = "system_error"
+)
+
+// Valid indicates whether the value is a known member of the OutboxMessageKind enum.
+func (e OutboxMessageKind) Valid() bool {
+	switch e {
+	case Proactive:
+		return true
+	case Question:
+		return true
+	case Reply:
+		return true
+	case Routine:
+		return true
+	case SystemError:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OutboxMessageStatus.
+const (
+	OutboxMessageStatusDelivered  OutboxMessageStatus = "delivered"
+	OutboxMessageStatusFailed     OutboxMessageStatus = "failed"
+	OutboxMessageStatusPending    OutboxMessageStatus = "pending"
+	OutboxMessageStatusRevoked    OutboxMessageStatus = "revoked"
+	OutboxMessageStatusSuperseded OutboxMessageStatus = "superseded"
+)
+
+// Valid indicates whether the value is a known member of the OutboxMessageStatus enum.
+func (e OutboxMessageStatus) Valid() bool {
+	switch e {
+	case OutboxMessageStatusDelivered:
+		return true
+	case OutboxMessageStatusFailed:
+		return true
+	case OutboxMessageStatusPending:
+		return true
+	case OutboxMessageStatusRevoked:
+		return true
+	case OutboxMessageStatusSuperseded:
 		return true
 	default:
 		return false
@@ -1061,6 +1139,25 @@ type FeishuPoll struct {
 // FeishuSetup defines model for FeishuSetup.
 type FeishuSetup = agent.FeishuSetup
 
+// FollowupTimer defines model for FollowupTimer.
+type FollowupTimer struct {
+	ChainDepth int                `json:"chainDepth"`
+	CreatedAt  int64              `json:"createdAt"`
+	DueAt      int64              `json:"dueAt"`
+	Id         string             `json:"id"`
+	Prompt     string             `json:"prompt"`
+	State      FollowupTimerState `json:"state"`
+	TimeZone   string             `json:"timeZone"`
+}
+
+// FollowupTimerState defines model for FollowupTimer.State.
+type FollowupTimerState string
+
+// FollowupTimerList defines model for FollowupTimerList.
+type FollowupTimerList struct {
+	Timers []FollowupTimer `json:"timers"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	DataDir      string       `json:"dataDir"`
@@ -1204,6 +1301,32 @@ type OnePasswordInput struct {
 
 // OnePasswordMode defines model for OnePasswordMode.
 type OnePasswordMode string
+
+// OutboxMessage defines model for OutboxMessage.
+type OutboxMessage struct {
+	Body        string              `json:"body"`
+	CreatedAt   int64               `json:"createdAt"`
+	DeliveredAt int64               `json:"deliveredAt"`
+	Error       string              `json:"error"`
+	Id          string              `json:"id"`
+	Kind        OutboxMessageKind   `json:"kind"`
+	Peer        string              `json:"peer"`
+	Reason      string              `json:"reason"`
+	RetryAt     int64               `json:"retryAt"`
+	Status      OutboxMessageStatus `json:"status"`
+	TopicKey    string              `json:"topicKey"`
+}
+
+// OutboxMessageKind defines model for OutboxMessage.Kind.
+type OutboxMessageKind string
+
+// OutboxMessageStatus defines model for OutboxMessage.Status.
+type OutboxMessageStatus string
+
+// OutboxMessageList defines model for OutboxMessageList.
+type OutboxMessageList struct {
+	Messages []OutboxMessage `json:"messages"`
+}
 
 // Provider defines model for Provider.
 type Provider struct {
@@ -2368,11 +2491,20 @@ type ServerInterface interface {
 	// (POST /api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw)
 	WithdrawMessage(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, messageId string)
 
+	// (GET /api/agents/{agentId}/chats/{chatId}/outbox)
+	ListChatOutbox(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
 	// (PUT /api/agents/{agentId}/chats/{chatId}/project)
 	SetChatProject(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
 	// (PUT /api/agents/{agentId}/chats/{chatId}/settings)
 	SetChatSettings(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
+	// (GET /api/agents/{agentId}/chats/{chatId}/timers)
+	ListChatTimers(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
+	// (DELETE /api/agents/{agentId}/chats/{chatId}/timers/{timerId})
+	CancelChatTimer(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, timerId string)
 
 	// (POST /api/agents/{agentId}/environment/reset)
 	ResetAgentEnvironment(w http.ResponseWriter, r *http.Request, agentId string)
@@ -3876,6 +4008,41 @@ func (siw *ServerInterfaceWrapper) WithdrawMessage(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ListChatOutbox operation middleware
+func (siw *ServerInterfaceWrapper) ListChatOutbox(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListChatOutbox(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetChatProject operation middleware
 func (siw *ServerInterfaceWrapper) SetChatProject(w http.ResponseWriter, r *http.Request) {
 
@@ -3937,6 +4104,85 @@ func (siw *ServerInterfaceWrapper) SetChatSettings(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetChatSettings(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListChatTimers operation middleware
+func (siw *ServerInterfaceWrapper) ListChatTimers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListChatTimers(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelChatTimer operation middleware
+func (siw *ServerInterfaceWrapper) CancelChatTimer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "timerId" -------------
+	var timerId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "timerId", r.PathValue("timerId"), &timerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "timerId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelChatTimer(w, r, agentId, chatId, timerId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4975,6 +5221,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/history", wrapper.GetChatHistory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/items/{itemId}", wrapper.GetChatItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/abort", wrapper.AbortChat)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/timers", wrapper.ListChatTimers)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/timers/{timerId}", wrapper.CancelChatTimer)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/outbox", wrapper.ListChatOutbox)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/events", wrapper.WatchChat)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/uploads", wrapper.CreateUpload)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/uploads/{uploadId}", wrapper.GetUpload)
@@ -7602,6 +7851,60 @@ func (response WithdrawMessagedefaultJSONResponse) VisitWithdrawMessageResponse(
 	return err
 }
 
+type ListChatOutboxRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  ChatId `json:"chatId"`
+}
+
+type ListChatOutboxResponseObject interface {
+	VisitListChatOutboxResponse(w http.ResponseWriter) error
+}
+
+type ListChatOutbox200JSONResponse OutboxMessageList
+
+func (response ListChatOutbox200JSONResponse) VisitListChatOutboxResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatOutbox404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListChatOutbox404JSONResponse) VisitListChatOutboxResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatOutboxdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListChatOutboxdefaultJSONResponse) VisitListChatOutboxResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SetChatProjectRequestObject struct {
 	AgentId string `json:"agentId"`
 	ChatId  ChatId `json:"chatId"`
@@ -7757,6 +8060,129 @@ type SetChatSettingsdefaultJSONResponse struct {
 }
 
 func (response SetChatSettingsdefaultJSONResponse) VisitSetChatSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatTimersRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  ChatId `json:"chatId"`
+}
+
+type ListChatTimersResponseObject interface {
+	VisitListChatTimersResponse(w http.ResponseWriter) error
+}
+
+type ListChatTimers200JSONResponse FollowupTimerList
+
+func (response ListChatTimers200JSONResponse) VisitListChatTimersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatTimers404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListChatTimers404JSONResponse) VisitListChatTimersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatTimersdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListChatTimersdefaultJSONResponse) VisitListChatTimersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelChatTimerRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  ChatId `json:"chatId"`
+	TimerId string `json:"timerId"`
+}
+
+type CancelChatTimerResponseObject interface {
+	VisitCancelChatTimerResponse(w http.ResponseWriter) error
+}
+
+type CancelChatTimer200JSONResponse FollowupTimer
+
+func (response CancelChatTimer200JSONResponse) VisitCancelChatTimerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelChatTimer403JSONResponse struct{ ErrorJSONResponse }
+
+func (response CancelChatTimer403JSONResponse) VisitCancelChatTimerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelChatTimer404JSONResponse Error
+
+func (response CancelChatTimer404JSONResponse) VisitCancelChatTimerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelChatTimerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CancelChatTimerdefaultJSONResponse) VisitCancelChatTimerResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -9886,11 +10312,20 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/chats/{chatId}/messages/{messageId}/withdraw)
 	WithdrawMessage(ctx context.Context, request WithdrawMessageRequestObject) (WithdrawMessageResponseObject, error)
 
+	// (GET /api/agents/{agentId}/chats/{chatId}/outbox)
+	ListChatOutbox(ctx context.Context, request ListChatOutboxRequestObject) (ListChatOutboxResponseObject, error)
+
 	// (PUT /api/agents/{agentId}/chats/{chatId}/project)
 	SetChatProject(ctx context.Context, request SetChatProjectRequestObject) (SetChatProjectResponseObject, error)
 
 	// (PUT /api/agents/{agentId}/chats/{chatId}/settings)
 	SetChatSettings(ctx context.Context, request SetChatSettingsRequestObject) (SetChatSettingsResponseObject, error)
+
+	// (GET /api/agents/{agentId}/chats/{chatId}/timers)
+	ListChatTimers(ctx context.Context, request ListChatTimersRequestObject) (ListChatTimersResponseObject, error)
+
+	// (DELETE /api/agents/{agentId}/chats/{chatId}/timers/{timerId})
+	CancelChatTimer(ctx context.Context, request CancelChatTimerRequestObject) (CancelChatTimerResponseObject, error)
 
 	// (POST /api/agents/{agentId}/environment/reset)
 	ResetAgentEnvironment(ctx context.Context, request ResetAgentEnvironmentRequestObject) (ResetAgentEnvironmentResponseObject, error)
@@ -11320,6 +11755,33 @@ func (sh *strictHandler) WithdrawMessage(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// ListChatOutbox operation middleware
+func (sh *strictHandler) ListChatOutbox(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
+	var request ListChatOutboxRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListChatOutbox(ctx, request.(ListChatOutboxRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListChatOutbox")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListChatOutboxResponseObject); ok {
+		if err := validResponse.VisitListChatOutboxResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // SetChatProject operation middleware
 func (sh *strictHandler) SetChatProject(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
 	var request SetChatProjectRequestObject
@@ -11381,6 +11843,61 @@ func (sh *strictHandler) SetChatSettings(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetChatSettingsResponseObject); ok {
 		if err := validResponse.VisitSetChatSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListChatTimers operation middleware
+func (sh *strictHandler) ListChatTimers(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
+	var request ListChatTimersRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListChatTimers(ctx, request.(ListChatTimersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListChatTimers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListChatTimersResponseObject); ok {
+		if err := validResponse.VisitListChatTimersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelChatTimer operation middleware
+func (sh *strictHandler) CancelChatTimer(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, timerId string) {
+	var request CancelChatTimerRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+	request.TimerId = timerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelChatTimer(ctx, request.(CancelChatTimerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelChatTimer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelChatTimerResponseObject); ok {
+		if err := validResponse.VisitCancelChatTimerResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -1337,6 +1337,68 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/chats/{chatId}/timers:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    get:
+      operationId: listChatTimers
+      description: Returns scheduled and recent follow-up timers for this session.
+      responses:
+        "200":
+          description: Follow-up timers ordered with scheduled timers first.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FollowupTimerList" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/timers/{timerId}:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+      - in: path
+        name: timerId
+        required: true
+        schema: { type: string }
+    delete:
+      operationId: cancelChatTimer
+      description: Cancels a scheduled follow-up timer of this session.
+      responses:
+        "200":
+          description: The updated timer record.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FollowupTimer" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/outbox:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    get:
+      operationId: listChatOutbox
+      description: Returns recent outbound messages and delivery states for this session.
+      responses:
+        "200":
+          description: Recent outbox messages, newest first.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OutboxMessageList" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/chats/{chatId}/events:
     parameters:
       - in: path
@@ -3165,3 +3227,65 @@ components:
       required: [session]
       properties:
         session: { type: string }
+
+    FollowupTimer:
+      type: object
+      required: [id, dueAt, timeZone, prompt, state, chainDepth, createdAt]
+      properties:
+        id: { type: string }
+        dueAt: { type: integer, format: int64 }
+        timeZone: { type: string }
+        prompt: { type: string }
+        state:
+          type: string
+          enum: [scheduled, fired, cancelled, expired]
+        chainDepth: { type: integer }
+        createdAt: { type: integer, format: int64 }
+
+    FollowupTimerList:
+      type: object
+      required: [timers]
+      properties:
+        timers:
+          type: array
+          items: { $ref: "#/components/schemas/FollowupTimer" }
+
+    OutboxMessage:
+      type: object
+      required: [
+        id,
+        kind,
+        peer,
+        topicKey,
+        body,
+        reason,
+        status,
+        error,
+        retryAt,
+        createdAt,
+        deliveredAt,
+      ]
+      properties:
+        id: { type: string }
+        kind:
+          type: string
+          enum: [reply, proactive, question, routine, system_error]
+        peer: { type: string }
+        topicKey: { type: string }
+        body: { type: string }
+        reason: { type: string }
+        status:
+          type: string
+          enum: [pending, delivered, superseded, revoked, failed]
+        error: { type: string }
+        retryAt: { type: integer, format: int64 }
+        createdAt: { type: integer, format: int64 }
+        deliveredAt: { type: integer, format: int64 }
+
+    OutboxMessageList:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items: { $ref: "#/components/schemas/OutboxMessage" }

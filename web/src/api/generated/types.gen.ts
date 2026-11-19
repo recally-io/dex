@@ -1101,6 +1101,38 @@ export type FeishuPoll = {
     session: string;
 };
 
+export type FollowupTimer = {
+    id: string;
+    dueAt: number;
+    timeZone: string;
+    prompt: string;
+    state: 'scheduled' | 'fired' | 'cancelled' | 'expired';
+    chainDepth: number;
+    createdAt: number;
+};
+
+export type FollowupTimerList = {
+    timers: Array<FollowupTimer>;
+};
+
+export type OutboxMessage = {
+    id: string;
+    kind: 'reply' | 'proactive' | 'question' | 'routine' | 'system_error';
+    peer: string;
+    topicKey: string;
+    body: string;
+    reason: string;
+    status: 'pending' | 'delivered' | 'superseded' | 'revoked' | 'failed';
+    error: string;
+    retryAt: number;
+    createdAt: number;
+    deliveredAt: number;
+};
+
+export type OutboxMessageList = {
+    messages: Array<OutboxMessage>;
+};
+
 export type AgentWritable = {
     /**
      * The bot name. Trim spaces before validation.
@@ -3232,6 +3264,107 @@ export type AbortChatResponses = {
 };
 
 export type AbortChatResponse = AbortChatResponses[keyof AbortChatResponses];
+
+export type ListChatTimersData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/timers';
+};
+
+export type ListChatTimersErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListChatTimersError = ListChatTimersErrors[keyof ListChatTimersErrors];
+
+export type ListChatTimersResponses = {
+    /**
+     * Follow-up timers ordered with scheduled timers first.
+     */
+    200: FollowupTimerList;
+};
+
+export type ListChatTimersResponse = ListChatTimersResponses[keyof ListChatTimersResponses];
+
+export type CancelChatTimerData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+        timerId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/timers/{timerId}';
+};
+
+export type CancelChatTimerErrors = {
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CancelChatTimerError = CancelChatTimerErrors[keyof CancelChatTimerErrors];
+
+export type CancelChatTimerResponses = {
+    /**
+     * The updated timer record.
+     */
+    200: FollowupTimer;
+};
+
+export type CancelChatTimerResponse = CancelChatTimerResponses[keyof CancelChatTimerResponses];
+
+export type ListChatOutboxData = {
+    body?: never;
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/outbox';
+};
+
+export type ListChatOutboxErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListChatOutboxError = ListChatOutboxErrors[keyof ListChatOutboxErrors];
+
+export type ListChatOutboxResponses = {
+    /**
+     * Recent outbox messages, newest first.
+     */
+    200: OutboxMessageList;
+};
+
+export type ListChatOutboxResponse = ListChatOutboxResponses[keyof ListChatOutboxResponses];
 
 export type WatchChatData = {
     body?: never;
