@@ -248,6 +248,44 @@ func (q *Queries) InsertOutboxMessage(ctx context.Context, arg InsertOutboxMessa
 	return result.RowsAffected()
 }
 
+const insertStoppedOutboxForConversation = `-- name: InsertStoppedOutboxForConversation :exec
+INSERT INTO outbox_messages (
+    id, dedup_key, agent_id, conversation_id, source_submission_id,
+    kind, peer, channel_context, topic_key, body, reason, status, created_at
+)
+SELECT
+    s.id,
+    'reply:' || s.id,
+    ?1,
+    s.conversation_id,
+    s.id,
+    'reply',
+    s.origin,
+    s.channel_context,
+    '',
+    '',
+    'stopped',
+    CASE WHEN s.channel_revoked != 0 THEN 'revoked' ELSE 'pending' END,
+    ?2
+FROM submissions s
+WHERE s.conversation_id = ?3
+  AND s.status = 'pending'
+  AND s.kind = 'message'
+  AND s.origin LIKE '%:%'
+ON CONFLICT(dedup_key) DO NOTHING
+`
+
+type InsertStoppedOutboxForConversationParams struct {
+	AgentID string `json:"agent_id"`
+	Now     int64  `json:"now"`
+	ChatID  int64  `json:"chat_id"`
+}
+
+func (q *Queries) InsertStoppedOutboxForConversation(ctx context.Context, arg InsertStoppedOutboxForConversationParams) error {
+	_, err := q.db.ExecContext(ctx, insertStoppedOutboxForConversation, arg.AgentID, arg.Now, arg.ChatID)
+	return err
+}
+
 const listOutboxFiles = `-- name: ListOutboxFiles :many
 SELECT operation_key, name, mime_type, length(body) AS size FROM outbox_files
 WHERE outbox_id = ? ORDER BY rowid
@@ -389,6 +427,7 @@ SELECT id, kind, peer, topic_key, body, reason, delivered_at, created_at
 FROM outbox_messages
 WHERE conversation_id = ?1
   AND status = 'delivered'
+  AND kind != 'reply'
 ORDER BY coalesce(delivered_at, created_at) DESC, rowid DESC
 LIMIT 5
 `

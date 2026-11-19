@@ -230,21 +230,22 @@ func TestUserChildSessionSendRunsAgainAndSendsAnotherResult(t *testing.T) {
 	created := f.next(t).Text
 	var child childRef
 	toolJSON(t, created, &child)
-	if got := f.next(t).Text; !strings.HasPrefix(got, "task-result: ") || !strings.Contains(got, "echo: first") {
-		t.Fatalf("first result in the channel: %q", got)
-	}
 	var parent int64
 	if err := conn.QueryRowContext(t.Context(), `SELECT parent_id FROM conversations WHERE id = ?`, child.conversation(t)).Scan(&parent); err != nil {
 		t.Fatal(err)
+	}
+	firstRows := waitResults(t, conn, parent, 1)
+	if !strings.HasPrefix(firstRows[0].answer, "task-result: ") || !strings.Contains(firstRows[0].answer, "echo: first") {
+		t.Fatalf("first result processed internally: %+v", firstRows[0])
 	}
 	// When the parent sends another message to the same child.
 	f.message(2, 42, 7, childJSON(t, map[string]any{"tool": "session_send", "id": child.ID, "message": "second"}))
 	f.next(t)
 	// Then the child keeps its context, answers again, and sends a second result with another ID.
-	if got := f.next(t).Text; !strings.Contains(got, "echo: second") {
-		t.Fatalf("second result in the channel: %q", got)
-	}
 	rows := waitResults(t, conn, parent, 2)
+	if !strings.Contains(rows[1].answer, "echo: second") {
+		t.Fatalf("second result processed internally: %+v", rows[1])
+	}
 	if rows[0].id == rows[1].id {
 		t.Fatalf("results share an ID: %+v", rows)
 	}

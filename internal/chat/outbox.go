@@ -339,7 +339,7 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 			return "", nil
 		}
 
-		if event.Reason == "stopped" || event.Reason == "withdrawn" || sub.ChannelRevoked != 0 {
+		if event.Reason == "withdrawn" || sub.ChannelRevoked != 0 {
 			return "", nil
 		}
 		status, deliveredAt := outboxInitialStatus(peer, sub.ChannelRevoked, now)

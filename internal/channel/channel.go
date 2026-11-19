@@ -401,6 +401,9 @@ func (m *Manager) sendPart(ctx context.Context, bot Bot, peer, id string, index 
 		if stored := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: id, Reason: err.Error()}); stored != nil {
 			return Receipt{}, stored
 		}
+		if stored := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: id, Reason: err.Error()}); stored != nil {
+			return Receipt{}, stored
+		}
 		return Receipt{}, nil
 	}
 	if err == nil && len(part.Buttons) > 0 && len(receipt.MessageIDs) == 1 {

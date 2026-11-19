@@ -112,6 +112,7 @@ SELECT id, kind, peer, topic_key, body, reason, delivered_at, created_at
 FROM outbox_messages
 WHERE conversation_id = @conversation_id
   AND status = 'delivered'
+  AND kind != 'reply'
 ORDER BY coalesce(delivered_at, created_at) DESC, rowid DESC
 LIMIT 5;
 
@@ -124,3 +125,29 @@ WHERE id = @id AND status = 'pending';
 SELECT EXISTS (
     SELECT 1 FROM outbox_messages WHERE source_submission_id = ? AND status IN ('pending', 'delivered')
 );
+
+-- name: InsertStoppedOutboxForConversation :exec
+INSERT INTO outbox_messages (
+    id, dedup_key, agent_id, conversation_id, source_submission_id,
+    kind, peer, channel_context, topic_key, body, reason, status, created_at
+)
+SELECT
+    s.id,
+    'reply:' || s.id,
+    @agent_id,
+    s.conversation_id,
+    s.id,
+    'reply',
+    s.origin,
+    s.channel_context,
+    '',
+    '',
+    'stopped',
+    CASE WHEN s.channel_revoked != 0 THEN 'revoked' ELSE 'pending' END,
+    @now
+FROM submissions s
+WHERE s.conversation_id = @chat_id
+  AND s.status = 'pending'
+  AND s.kind = 'message'
+  AND s.origin LIKE '%:%'
+ON CONFLICT(dedup_key) DO NOTHING;
