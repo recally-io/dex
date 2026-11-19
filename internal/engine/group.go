@@ -198,7 +198,7 @@ func (a *Agents) openGroup(ctx context.Context, ref Ref) (_ *agentResources, res
 		return nil, err
 	}
 	h, err = harness.OpenHarness(ctx, store, harness.HarnessOptions{Models: a.modelsFor(ref.AgentID), Registry: registry, Settings: func() *harness.HarnessSettings {
-		return &harness.HarnessSettings{Extensions: []*durable.Extension{extension}, AfterFailedRun: durable.AfterFailedRunContinue, SteeringMode: durable.QueueAll}
+		return &harness.HarnessSettings{Extensions: []*durable.Extension{extension}, AfterFailedRun: durable.AfterFailedRunContinue, SteeringMode: durable.QueueAll, FollowUpMode: durable.QueueAll}
 	}})
 	if err != nil {
 		return nil, err

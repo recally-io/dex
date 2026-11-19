@@ -205,6 +205,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			Stop: func(ctx context.Context, c engine.TaskContext, id string) (engine.BackgroundInfo, error) {
 				return chats.ToolBackgroundStop(ctx, c, id)
 			},
+			Wait: func(ctx context.Context, c engine.TaskContext, a engine.BackgroundWaitArgs) (engine.BackgroundWaitResult, error) {
+				return chats.ToolBackgroundWait(ctx, c, a)
+			},
 		},
 		AskUser: func(ctx context.Context, c engine.TaskContext, a engine.AskUserArgs) (engine.QuestionInfo, error) {
 			return chats.ToolAskUser(ctx, c, a)

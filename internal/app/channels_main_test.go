@@ -256,13 +256,10 @@ func TestUserChannelMainBusyInputsKeepAdmissionOrder(t *testing.T) {
 		})
 	}
 	web := d.send(t, main, "printf web-only")
-	d.watch(t, main).until(t, "queued channel entry marks", func(tr *transcript) bool {
-		for _, origin := range []string{"telegram:7", "telegram:8"} {
-			if !slices.ContainsFunc(tr.items, func(it item) bool { return it.Kind == "user" && it.Origin == origin && it.Queued }) {
-				return false
-			}
-		}
-		return true
+	eventually(t, "web queued in control store", func() (bool, any) {
+		var count int
+		err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE id=? AND status='pending'", web).Scan(&count)
+		return err == nil && count == 1, count
 	})
 	// Wall time is deliberately opposite to admission order.
 	if _, err := conn.ExecContext(t.Context(), "UPDATE submissions SET created_at=CASE origin WHEN 'telegram:7' THEN 300 WHEN 'telegram:8' THEN 200 ELSE 100 END WHERE status='pending'"); err != nil {

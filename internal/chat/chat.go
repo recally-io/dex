@@ -246,7 +246,11 @@ func (s *Service) reconcileAgent(ctx context.Context, agentID string) error {
 		}
 		if err := s.admit(ctx, p); err != nil {
 			blocked[p.ConversationID] = true
-			errs = append(errs, err)
+			if errors.Is(err, engine.ErrOriginBusy) {
+				s.scheduleRetry()
+			} else {
+				errs = append(errs, err)
+			}
 		}
 	}
 	return errors.Join(errs...)
@@ -870,10 +874,10 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 	s.retryDelay = 0
 	s.retryMu.Unlock()
 	s.signal(reply.ConversationID)
+	s.Wake()
 	if parent != 0 {
 		// The result is a new input of the parent session. Admission takes it from the database.
 		s.signal(parent)
-		s.Wake()
 	}
 	// A parent turn has no channel to answer: its result goes to the parent session.
 	if s.notify != nil && reply.Origin != "task" {

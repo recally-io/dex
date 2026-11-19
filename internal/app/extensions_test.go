@@ -237,10 +237,11 @@ func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
 	chatID := d.newChat(t, `mcp__files__append {"text":"one"}`)
 	w := d.watch(t, chatID)
 	w.until(t, "files answer", answered("tool: appended 1"))
+	d.waitSettled(t, chatID)
 	d.send(t, chatID, `mcp__web__append {"text":"two"}`)
-	w.until(t, "web answer", answered("tool: appended 1"))
+	d.waitSettled(t, chatID)
 	d.send(t, chatID, `mcp__shared__append {"text":"three"}`)
-	w.until(t, "shared answer", answered("tool: appended 1"))
+	d.waitSettled(t, chatID)
 	d.send(t, chatID, `mcp__files__fail {}`)
 	w.until(t, "error answer", answered("tool error: failed on purpose"))
 

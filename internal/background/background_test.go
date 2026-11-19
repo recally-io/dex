@@ -144,7 +144,7 @@ func (f *fixture) wakes() []wake {
 	return out
 }
 
-func (f *fixture) waitWakes(n int) []wake {
+func (f *fixture) waitWakes(n int) []wake { //nolint:unparam // parameterized for callers expecting n wakes
 	f.t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
 	for {
@@ -470,5 +470,60 @@ func TestAStopDuringTheSweepEndsTheCommandAsStopped(t *testing.T) {
 	}
 	if got := f.wakes(); len(got) != 0 {
 		t.Fatalf("wake-ups: %+v", got)
+	}
+}
+
+func TestWakeNoneProducesNoWake(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, background.Limits{})
+	row := f.start("echo quiet", background.WakeNone)
+	f.waitExited(row.ID)
+	if got := f.wakes(); len(got) != 0 {
+		t.Fatalf("wake=none must produce 0 wake-ups, got %+v", got)
+	}
+}
+
+func TestWaitSuppressesEndWakeAndTimeoutReenablesWake(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, background.Limits{})
+
+	// Given a fast wake=exit command that finishes while Wait is watching.
+	fast := f.start("sleep 0.05 && echo fast", background.WakeExit)
+	rows, timedOut, err := f.m.Wait(t.Context(), f.conv, []string{fast.ID}, 5*time.Second)
+	if err != nil || timedOut || len(rows) != 1 || rows[0].State != background.StateExited {
+		t.Fatalf("wait fast: rows=%+v timedOut=%v err=%v", rows, timedOut, err)
+	}
+	if got := f.wakes(); len(got) != 0 {
+		t.Fatalf("Wait must suppress observed exit wake, got %+v", got)
+	}
+
+	// Given a slow wake=exit command where Wait times out before exit.
+	gate := filepath.Join(f.dir, "wait.gate")
+	slow := f.start("until test -f "+gate+"; do sleep 0.02; done; echo slow", background.WakeExit)
+	rows, timedOut, err = f.m.Wait(t.Context(), f.conv, []string{slow.ID}, 50*time.Millisecond)
+	if err != nil || !timedOut || len(rows) != 1 {
+		t.Fatalf("wait timeout: rows=%+v timedOut=%v err=%v", rows, timedOut, err)
+	}
+	if err := os.WriteFile(gate, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wakes := f.waitWakes(1)
+	if wakes[0].ID != "background:"+slow.ID+":end" {
+		t.Fatalf("expected exit wake after Wait timed out, got %+v", wakes)
+	}
+}
+
+func TestWaitConsumesAlreadyFinishedWake(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, background.Limits{})
+	row := f.start("echo already-done", background.WakeExit)
+	f.waitWakes(1)
+
+	rows, timedOut, err := f.m.Wait(t.Context(), f.conv, []string{row.ID}, 5*time.Second)
+	if err != nil || timedOut || len(rows) != 1 || rows[0].State != background.StateExited {
+		t.Fatalf("wait already-finished: rows=%+v timedOut=%v err=%v", rows, timedOut, err)
+	}
+	if got := f.wakes(); len(got) != 0 {
+		t.Fatalf("Wait must consume un-admitted pending exit wake, got %+v", got)
 	}
 }

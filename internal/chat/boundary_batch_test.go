@@ -195,3 +195,72 @@ func TestUserInputAfterStopSnapshotSurvives(t *testing.T) {
 		t.Fatalf("late user input was lost: %+v", got)
 	}
 }
+
+func TestUserFollowUpQueueAllBatchesSameOriginWakes(t *testing.T) {
+	r := startNative(t, "echo")
+	parent, source := taskParent(t, r)
+	entered, release := make(chan struct{}), make(chan struct{})
+	releaseRun := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(releaseRun)
+
+	var calls int
+	provider := ai.NewFauxProvider(ai.FauxConfig{
+		ProviderID:      "followup-batch",
+		Models:          []ai.FauxModelDefinition{{ID: "model"}},
+		TokensPerSecond: 10000,
+	})
+	provider.SetResponses([]ai.FauxResponseStep{
+		ai.FauxResponseFactory(func(ai.TranscriptContext, ai.StreamOptions, *ai.FauxProviderState, *ai.Model) (ai.AssistantMessage, error) {
+			calls++
+			close(entered)
+			<-release
+			return ai.FauxAssistantMessage(ai.FauxContentString("first done"), ai.FauxAssistantMessageOptions{}), nil
+		}),
+		ai.FauxResponseFactory(func(ai.TranscriptContext, ai.StreamOptions, *ai.FauxProviderState, *ai.Model) (ai.AssistantMessage, error) {
+			calls++
+			return ai.FauxAssistantMessage(ai.FauxContentString("batched followup"), ai.FauxAssistantMessageOptions{}), nil
+		}),
+	})
+	r.agents.Catalog.Models.SetProvider(provider.Provider())
+	if _, err := r.conn.ExecContext(t.Context(), `UPDATE agents SET model_provider=?, model_id=? WHERE id='bot'`, "followup-batch", "model"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "first-msg", "start"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.service.admit(t.Context(), taskInput(t, r, "first-msg")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-t.Context().Done():
+		t.Fatal(t.Context().Err())
+	}
+
+	_ = source
+	var wakeIDs []string
+	for i := range 3 {
+		id := fmt.Sprintf("bg-wake-%d", i)
+		wakeIDs = append(wakeIDs, id)
+		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
+			ID: id, ConversationID: parent, Content: fmt.Sprintf("wake %d", i),
+			Attachments: "null", Origin: "web", Kind: "task_result", CreatedAt: int64(i + 1),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.service.admit(t.Context(), taskInput(t, r, id)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	releaseRun()
+	awaitReceipt(t, r, "first-msg")
+	for _, id := range wakeIDs {
+		got := awaitReceipt(t, r, id)
+		if got.Status != "done" || got.Answer.String != "batched followup" {
+			t.Fatalf("wake %s did not settle in single FollowUp batch: %+v", id, got)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("expected 2 LLM runs (1 initial + 1 QueueAll followUp batch), got %d", calls)
+	}
+}

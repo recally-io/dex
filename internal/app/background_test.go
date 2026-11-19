@@ -400,27 +400,21 @@ func TestUserDoesNotSeeAWithdrawnWakeUpAsTheirOwnMessage(t *testing.T) {
 	check("the history", history.Items)
 }
 
-func TestUserParentReadsTheCutAnswerOfAChildWakeUp(t *testing.T) {
+func TestUserParentReadsTheCutAnswerOfAChildTurn(t *testing.T) {
 	t.Parallel()
-	// Given a child session that started a background command whose output makes the answer to its wake-up long.
+	// Given a child session whose bash output makes its parent-turn answer exceed the inline limit.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
 	parent := newParent(t, d)
-	done := filepath.Join(dir, "child.done")
-	command := fmt.Sprintf("until test -f %s; do sleep 0.02; done; for i in $(seq 1 20); do head -c 300 /dev/zero | tr '\\0' z; echo; done", done)
-	message := childJSON(t, map[string]any{"tool": "background_start", "command": command})
-	child := spawnChild(t, d, parent, "Builder", message, "spawn")
-	waitResults(t, conn, parent, 1)
-	if err := os.WriteFile(done, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// When the wake-up turn of the child ends, the parent gets a result with a cut answer.
+	command := "for i in $(seq 1 20); do head -c 300 /dev/zero | tr '\\0' z; echo; done"
+	child := spawnChild(t, d, parent, "Builder", command, "bash")
+	// When the turn of the child ends, the parent gets a result with a cut answer.
 	var turn string
-	eventually(t, "a cut result of the wake-up", func() (bool, any) {
+	eventually(t, "a cut result of the child turn", func() (bool, any) {
 		rows := resultRows(t, conn, parent)
 		for _, row := range rows {
-			if strings.Contains(row.content, "background:") && strings.Contains(row.content, "The answer is cut") {
+			if strings.Contains(row.content, "The answer is cut") {
 				var body struct {
 					Result struct {
 						Turn string `json:"turn"`
@@ -442,6 +436,37 @@ func TestUserParentReadsTheCutAnswerOfAChildWakeUp(t *testing.T) {
 	toolJSON(t, answer, &page)
 	if page.Text == "" {
 		t.Fatalf("session_read returned no text: %s", answer)
+	}
+}
+
+func TestUserChildBackgroundWakeDoesNotAutoEscalateToParent(t *testing.T) {
+	t.Parallel()
+	// Given a child session that starts a background command with wake=exit.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	parent := newParent(t, d)
+	done := filepath.Join(dir, "child.done")
+	command := fmt.Sprintf("until test -f %s; do sleep 0.02; done; echo bg-finished", done)
+	message := childJSON(t, map[string]any{"tool": "background_start", "command": command})
+	child := spawnChild(t, d, parent, "Worker", message, "spawn")
+	waitResults(t, conn, parent, 1)
+	if err := os.WriteFile(done, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// When the background command finishes, the child receives its wake-up,
+	// and the parent receives no extra auto-escalated task_result.
+	childID, err := strconv.ParseInt(child.ID, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wakes := waitWakes(t, conn, childID, 1)
+	if wakes[0].result.Event != "exited" {
+		t.Fatalf("expected child exit wake, got %+v", wakes[0].result)
+	}
+	rows := resultRows(t, conn, parent)
+	if len(rows) != 1 {
+		t.Fatalf("parent must only have the initial spawn result, got %d: %+v", len(rows), rows)
 	}
 }
 
