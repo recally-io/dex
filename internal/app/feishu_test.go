@@ -41,6 +41,9 @@ type fakeFeishu struct {
 	disconnectAfterEvent bool
 	cardFailures         int
 	textAttempts         int
+	textFailures         int
+	lostAccepts          int
+	uuids                []string
 	resourceStatus       int
 	resourceSize         int
 	expireFirstToken     bool
@@ -166,6 +169,7 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Content   string `json:"content"`
 			ReceiveID string `json:"receive_id"`
+			UUID      string `json:"uuid"`
 		}
 		if err := json.UnmarshalRead(r.Body, &body); err != nil {
 			http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -173,6 +177,9 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		f.mu.Lock()
 		defer f.mu.Unlock()
+		if body.UUID != "" {
+			f.uuids = append(f.uuids, body.UUID)
+		}
 		auth := r.Header.Get("Authorization")
 		f.replyAuthHeaders = append(f.replyAuthHeaders, auth)
 		if f.expireFirstToken && auth == "Bearer tenant-token-1" {
@@ -195,6 +202,12 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 				}
 			} else {
 				f.textAttempts++
+				if f.textFailures > 0 {
+					f.textFailures--
+					w.WriteHeader(http.StatusServiceUnavailable)
+					_, _ = w.Write([]byte(`{"code":1}`))
+					return
+				}
 			}
 		}
 		if f.rejectCards && strings.Contains(body.Content, `"elements"`) {
@@ -205,6 +218,12 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 		f.methods = append(f.methods, r.Method)
 		f.messages = append(f.messages, body.Content)
 		f.next++
+		if r.Method == http.MethodPost && f.lostAccepts > 0 && !strings.Contains(body.Content, "Thinking") && !strings.Contains(body.Content, "Paired.") {
+			f.lostAccepts--
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"code":500,"msg":"lost response after remote accept"}`))
+			return
+		}
 		peer := "feishu:" + body.ReceiveID
 		if r.Method == http.MethodPatch {
 			peer = f.destinations[strings.TrimPrefix(r.URL.Path, "/open-apis/im/v1/messages/")]

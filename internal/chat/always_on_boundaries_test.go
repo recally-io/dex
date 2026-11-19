@@ -1,0 +1,150 @@
+package chat
+
+import (
+	"database/sql"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/engine"
+)
+
+func TestUserSystemTurnToolsRejectBotMutations(t *testing.T) {
+	r := startNative(t, "echo")
+	main, err := r.service.Main(t.Context(), "bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, err := r.service.Post(t.Context(), "bot", MainKey, "", "u-root", "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	awaitReceipt(t, r, "u-root")
+	conv, err := r.service.q.GetConversation(t.Context(), userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Inject both a timer System Turn and a background wake System Turn.
+	for _, tc := range []struct {
+		id     string
+		origin string
+		kind   string
+	}{
+		{id: "timer:t1:fire", origin: "timer", kind: "task_result"},
+		{id: "background:b1:end", origin: "task", kind: "task_result"},
+	} {
+		if _, err := r.service.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
+			ID:             tc.id,
+			ConversationID: main.ID,
+			Content:        "system event",
+			Attachments:    "null",
+			Origin:         tc.origin,
+			Kind:           tc.kind,
+			CreatedAt:      r.service.now().UnixMilli(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		call := engine.TaskContext{
+			AgentID:         "bot",
+			ConversationID:  conv.ExecutionID.Int64,
+			SourceRequestID: tc.id,
+			Key:             "bot/mut-" + tc.id,
+		}
+		if err := r.service.ToolBotCaller(t.Context(), call, true); err == nil {
+			t.Fatalf("%s: expected error for bot mutation from system turn, got nil", tc.id)
+		}
+	}
+}
+
+func TestUserTimerFireCommitBeforeWakeRecoversOnce(t *testing.T) {
+	r := startNative(t, "echo")
+	main, err := r.service.Main(t.Context(), "bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "u-timer-rec", "start"); err != nil {
+		t.Fatal(err)
+	}
+	awaitReceipt(t, r, "u-timer-rec")
+	conv, err := r.service.q.GetConversation(t.Context(), main.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	r.service.now = func() time.Time { return now }
+	call := engine.TaskContext{
+		AgentID:         "bot",
+		ConversationID:  conv.ExecutionID.Int64,
+		SourceRequestID: "u-timer-rec",
+		Key:             "bot/t-rec-1",
+	}
+	info, err := r.service.ToolTimerSet(t.Context(), call, engine.TimerSetArgs{DelaySeconds: 120, Prompt: "recover once"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Advance clock past due_at and fire the timer.
+	now = now.Add(3 * time.Minute)
+	if err := r.service.FireDueTimers(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	// Re-running FireDueTimers must not double-fire or create a second submission.
+	if err := r.service.FireDueTimers(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	row, err := r.service.q.GetFollowupTimer(t.Context(), info.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.State != "fired" || !row.FireSubmissionID.Valid {
+		t.Fatalf("expected fired timer with submission ID, got %+v", row)
+	}
+
+	// Simulate crash before native admission settled by checking that reconcile settles it exactly once,
+	// and produces zero unsolicited outbox rows (fail-quiet System Turn).
+	if err := r.service.reconcileAgent(t.Context(), "bot"); err != nil {
+		t.Fatal(err)
+	}
+	sub := awaitReceipt(t, r, row.FireSubmissionID.String)
+	if sub.Status != "done" {
+		t.Fatalf("expected timer submission done, got %+v", sub)
+	}
+	var outboxCount int
+	if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages WHERE source_submission_id = ?`, row.FireSubmissionID.String).Scan(&outboxCount); err != nil {
+		t.Fatal(err)
+	}
+	if outboxCount != 0 {
+		t.Fatalf("expected 0 outbox messages for quiet timer turn, got %d", outboxCount)
+	}
+}
+
+func TestUserTopLevelLostAdmissionReceiptReconcilesWithoutDuplicateOutbox(t *testing.T) {
+	r := startNative(t, "echo")
+	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "u-lost-admit", "ping"); err != nil {
+		t.Fatal(err)
+	}
+	awaitReceipt(t, r, "u-lost-admit")
+
+	// Simulate a crash between engine.Submit and markAdmitted by resetting admitted_at=NULL and status='pending'
+	// on an already-settled native submission, then running reconcileAgent.
+	if _, err := r.conn.ExecContext(t.Context(), `UPDATE submissions SET status = 'pending', admitted_at = NULL, settled_at = NULL, answer = NULL WHERE id = 'u-lost-admit'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.service.reconcileAgent(t.Context(), "bot"); err != nil {
+		t.Fatal(err)
+	}
+	sub := awaitReceipt(t, r, "u-lost-admit")
+	if sub.Status != "done" {
+		t.Fatalf("expected reconciled submission done, got %+v", sub)
+	}
+	var outboxCount int
+	if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages WHERE source_submission_id = 'u-lost-admit'`).Scan(&outboxCount); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal(err)
+	}
+	if outboxCount != 1 {
+		t.Fatalf("expected exactly 1 deduplicated outbox row after lost admission reconcile, got %d", outboxCount)
+	}
+}
