@@ -1,0 +1,56 @@
+@startuml
+skinparam RectangleBackgroundColor #eef2fb
+skinparam RectangleBorderColor #5b6b8c
+skinparam RectangleFontColor #1f2937
+skinparam DatabaseBackgroundColor #eef2fb
+skinparam DatabaseBorderColor #5b6b8c
+skinparam DatabaseFontColor #1f2937
+skinparam PackageBackgroundColor #eef2fb
+skinparam PackageBorderColor #5b6b8c
+skinparam DefaultFontColor #1f2937
+skinparam ArrowColor #5b6b8c
+skinparam ArrowFontColor #1f2937
+skinparam NoteBackgroundColor #dfe5fb
+skinparam NoteBorderColor #5b6b8c
+skinparam NoteFontColor #1f2937
+skinparam BackgroundColor #ffffff
+title dex: always-on agent inbox, run exit modes, outbox, and timers
+top to bottom direction
+
+rectangle "User inputs\nWeb / Telegram / Feishu / WeChat" as user_in
+rectangle "Internal producers\nChild results + background wakes + Routines" as sys_in
+database "followup_timers\nBounded chain (depth <= 6, >= 60s)" as timers
+rectangle "Scheduler\nFire due timers in 1h grace" as sched
+
+database "Agent Inbox (submissions)\nDurable receipts + source dedup" as inbox
+
+package "Native PiG session run (QueueAll boundary batching)" as run {
+  rectangle "User Turn\nlive.Run.Inputs has user message\nLive stream + auto reply on settle" as user_turn
+  rectangle "System Turn\nOnly task / background / timer / routine\nFail-quiet trace by default" as sys_turn
+}
+
+rectangle "Explicit exit tools\nnotify_user / ask_user / report_parent\nstay_silent (Terminate: true)" as tools
+database "Agent Outbox (outbox_messages)\nDeduplicated + topic superseding" as outbox
+rectangle "Channel Dispatcher + Web UI\nAt-least-once parts + Attention Inbox" as dispatch
+
+timers --> sched : Due check
+sched --> inbox : timer:<id>:fire
+user_in --> inbox : message
+sys_in --> inbox : task_result / wake
+
+inbox --> user_turn : Batch includes user message
+inbox --> sys_turn : System events only
+
+user_turn --> outbox : Auto reply or ask_user
+sys_turn --> tools : Optional call
+tools --> outbox : notify_user / ask_user
+tools --> timers : timer_set (bounded)
+sys_turn ..> outbox : System error fallback only
+
+outbox --> dispatch : Deliver to peer + Web view
+note right of sys_turn
+  In-turn background_wait and wake="none"
+  consume helper exits before queuing.
+  Silent System Turns emit 0 channel messages.
+end note
+@enduml
