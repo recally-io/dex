@@ -9,9 +9,11 @@ import (
 func TestUserFeishuPostAcceptLostResponseReusesSameUUID(t *testing.T) {
 	t.Parallel()
 	// Given a Feishu channel where the first final send is accepted remotely but its response is lost.
+	dir := t.TempDir()
 	f := newFakeFeishu(t)
-	d := startFeishu(t, f, t.TempDir())
+	d := startFeishu(t, f, dir)
 	pairFeishu(t, d, f)
+	conn := controlWriteDB(t, dir)
 
 	f.mu.Lock()
 	f.uuids = nil
@@ -21,7 +23,10 @@ func TestUserFeishuPostAcceptLostResponseReusesSameUUID(t *testing.T) {
 	// Use a >4000B payload so part 1 is always sent via POST with deliveryUUID(id, 1) (not preview PATCH).
 	long := strings.Repeat("lost-resp ", 500) + "TAIL_MARKER"
 	f.text(t, "lost-resp-1", "owner", "p2p", long)
-	f.waitReply(t, "TAIL_MARKER")
+	eventually(t, "feishu outbox delivered after lost response retry", func() (bool, any) {
+		n := count(t, conn, "SELECT count(*) FROM outbox_messages WHERE status='delivered' AND peer='feishu:owner'")
+		return n == 1, n
+	})
 
 	// Then the retried POST reused the exact same delivery UUID so Feishu can deduplicate within its window.
 	f.mu.Lock()
