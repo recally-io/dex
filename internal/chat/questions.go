@@ -181,6 +181,15 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engin
 	if err := q.CreateQuestion(ctx, params); err != nil {
 		return engine.QuestionInfo{}, err
 	}
+	inputIDs := r.RunInputIDs
+	if len(inputIDs) == 0 {
+		inputIDs = []string{source.ID}
+	}
+	for _, inputID := range inputIDs {
+		if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: inputID, ExitAction: "ask_user"}); err != nil {
+			return engine.QuestionInfo{}, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return engine.QuestionInfo{}, err
 	}

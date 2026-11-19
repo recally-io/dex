@@ -40,13 +40,90 @@ func turnEndingCall(ctx context.Context, api durable.ToolExecutionApi, agentID, 
 	return toolCall(ctx, api, agentID)
 }
 
-// toolCall names the agent, the conversation, the source input, and the tool operation key of a call.
+// toolCall names the agent, the conversation, the source input, live run inputs, and the tool operation key of a call.
 func toolCall(ctx context.Context, api durable.ToolExecutionApi, agentID string) (TaskContext, error) {
 	requestID, err := taskSource(ctx, api)
 	if err != nil {
 		return TaskContext{}, err
 	}
-	return TaskContext{AgentID: agentID, ConversationID: int64(api.ConversationId()), SourceRequestID: requestID, Key: fmt.Sprintf("%s/%d", agentID, api.TaskId())}, nil
+	inputIDs, err := runInputRequestIDs(ctx, api)
+	if err != nil {
+		return TaskContext{}, err
+	}
+	if len(inputIDs) == 0 {
+		inputIDs = []string{requestID}
+	}
+	return TaskContext{AgentID: agentID, ConversationID: int64(api.ConversationId()), SourceRequestID: requestID, RunInputIDs: inputIDs, Key: fmt.Sprintf("%s/%d", agentID, api.TaskId())}, nil
+}
+
+func runInputRequestIDs(ctx context.Context, api durable.ToolExecutionApi) ([]string, error) {
+	val, err := api.Commit(ctx, func(tx durable.Tx) (any, error) {
+		liveDoc, err := tx.Doc(harness.LiveDoc, api.ConversationId())
+		if err != nil {
+			return nil, err
+		}
+		live, err := durable.FromJsonValue[harness.LiveState](liveDoc.Snapshot())
+		if err != nil || live.Run == nil || len(live.Run.Inputs) == 0 {
+			return []string(nil), err
+		}
+		need := make(map[durable.SubmissionId]struct{}, len(live.Run.Inputs))
+		for _, subID := range live.Run.Inputs {
+			need[subID] = struct{}{}
+		}
+		found := make(map[durable.SubmissionId]string, len(need))
+		var cursor durable.Cursor
+		for len(found) < len(need) {
+			page, err := tx.ScanEntries(durable.EntryQuery{
+				ConversationId: api.ConversationId(),
+				Order:          new(durable.ScanDescending),
+			}, 100, cursor)
+			if err != nil {
+				return nil, err
+			}
+			for _, entry := range page.Items {
+				if entry.Kind != "dex.user" && entry.Kind != "dex.task_result" {
+					continue
+				}
+				data, err := durable.FromJsonValue[struct {
+					RequestID string `json:"requestId"`
+				}](entry.Data)
+				if err != nil {
+					return nil, err
+				}
+				if data.RequestID == "" {
+					continue
+				}
+				sub, err := tx.SubmissionByRequest(api.ConversationId(), data.RequestID)
+				if err != nil {
+					return nil, err
+				}
+				if sub != nil {
+					if _, ok := need[sub.Id]; ok {
+						found[sub.Id] = data.RequestID
+						if len(found) == len(need) {
+							break
+						}
+					}
+				}
+			}
+			if page.Next == nil {
+				break
+			}
+			cursor = *page.Next
+		}
+		ids := make([]string, 0, len(found))
+		for _, subID := range live.Run.Inputs {
+			if reqID, ok := found[subID]; ok {
+				ids = append(ids, reqID)
+			}
+		}
+		return ids, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	ids, _ := val.([]string)
+	return ids, nil
 }
 
 // askUserExtension adds the question tool. Only Main and Chat sessions have it. The question is

@@ -347,6 +347,9 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := registry.Install(frontDeskExtension()); err != nil {
 		return nil, err
 	}
+	if err := errors.Join(registry.Install(outboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(childOutboxExtension(agentID, a.config.Tasks.Outbox))); err != nil {
+		return nil, err
+	}
 	if err := registry.Install(askUserExtension(agentID, a.config.Tasks.AskUser)); err != nil {
 		return nil, err
 	}

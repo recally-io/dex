@@ -212,6 +212,20 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		AskUser: func(ctx context.Context, c engine.TaskContext, a engine.AskUserArgs) (engine.QuestionInfo, error) {
 			return chats.ToolAskUser(ctx, c, a)
 		},
+		Outbox: engine.OutboxTools{
+			NotifyUser: func(ctx context.Context, c engine.TaskContext, a engine.NotifyUserArgs) (string, error) {
+				return chats.ToolNotifyUser(ctx, c, a)
+			},
+			ReportParent: func(ctx context.Context, c engine.TaskContext, a engine.ReportParentArgs) (string, error) {
+				return chats.ToolReportParent(ctx, c, a)
+			},
+			StaySilent: func(ctx context.Context, c engine.TaskContext, a engine.StaySilentArgs) error {
+				return chats.ToolStaySilent(ctx, c, a)
+			},
+			RecentOutbox: func(ctx context.Context, ref engine.Ref) ([]engine.OutboxSummary, error) {
+				return chats.ToolRecentOutbox(ctx, ref)
+			},
+		},
 	}
 	routines := engine.RoutineTools{
 		List: func(ctx context.Context, c engine.TaskContext) ([]engine.RoutineInfo, error) {

@@ -147,6 +147,11 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 				return withdrawal{}, err
 			}
 		}
+		if !c.ParentID.Valid {
+			if err := q.InsertStoppedOutboxForConversation(ctx, sqlc.InsertStoppedOutboxForConversationParams{AgentID: c.AgentID, ChatID: c.ID, Now: now.Int64}); err != nil {
+				return withdrawal{}, err
+			}
+		}
 		if _, err := q.StopConversationSubmissions(ctx, sqlc.StopConversationSubmissionsParams{ChatID: c.ID, Now: now}); err != nil {
 			return withdrawal{}, err
 		}

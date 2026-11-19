@@ -618,14 +618,8 @@ func TestUserWechatCommandsStop(t *testing.T) {
 	f.batch("c3", wxText(4, "owner", fmt.Sprintf("touch '%s'; sleep 60", marker)))
 	eventually(t, "WeChat run starts", func() (bool, any) { _, err := os.Stat(marker); return err == nil, err })
 	f.batch("c4", wxText(5, "owner", "/stop"))
-	var stopped bool
-	for range 2 {
-		if wxSentText(f.next(t)) == "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
-			stopped = true
-		}
-	}
-	if !stopped {
-		t.Fatal("no stop acknowledgement")
+	if got := wxSentText(f.next(t)); got != "Stop requested. Earlier actions are not undone. Processes and remote work may continue." {
+		t.Fatalf("unexpected stop acknowledgement: %q", got)
 	}
 }
 

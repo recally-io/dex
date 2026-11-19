@@ -115,7 +115,7 @@ func TestUserMissingTelegramSnapshotIsNotReopenedFromArtifacts(t *testing.T) {
 	_ = nextTelegramMedia(t, f.mediaAttempts)
 	d.stop()
 	conn := controlWriteDB(t, data)
-	execSQL(t, conn, "DELETE FROM channel_reply_files")
+	execSQL(t, conn, "DELETE FROM outbox_files; DELETE FROM channel_reply_files")
 	// When control restarts, a later file can deliver, but the missing bytes are not reloaded by name.
 	f.failMedia.Store(false)
 	d = startDex(t, data, f.srv.URL)

@@ -220,11 +220,17 @@ func TestUserChannelMainTaskResultsFollowTheirSource(t *testing.T) {
 			waitResultSubmission(t, conn, web, "done")
 			webTask := waitExecution(t, conn, main, "Web result", "done")
 			webResult := waitResultSubmission(t, conn, webTask.ResultID, "done")
-			// When the old channel work completes, its result returns to its source peer.
+			// When the old channel work completes, its task_result keeps its source peer without auto-sending to the channel.
 			resultID := work.ResultID
 			result := waitResultSubmission(t, conn, resultID, "done")
-			e.wait(t, result.answer)
 			assertSubmissionOrigin(t, conn, resultID, e.peer)
+			var outboxCount int
+			if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM outbox_messages WHERE source_submission_id IN (?, ?)", resultID, webTask.ResultID).Scan(&outboxCount); err != nil {
+				t.Fatal(err)
+			}
+			if outboxCount != 0 {
+				t.Fatalf("fail-quiet task_result must not auto-queue outbox messages, got %d", outboxCount)
+			}
 			for _, sent := range e.sends() {
 				if sent.Text == webResult.answer {
 					t.Fatalf("web task result reached channel: %+v", sent)
