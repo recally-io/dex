@@ -133,6 +133,25 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			}
 		}
 		_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+			if whenBusy == durable.WhenBusyFollowUp {
+				inbox, err := durable.TxDoc[harness.InboxState](tx, harness.InboxDoc, conversation.Id())
+				if err != nil {
+					return nil, err
+				}
+				queue, err := durable.DecodeDoc[harness.InboxState](inbox.Snapshot())
+				if err != nil {
+					return nil, err
+				}
+				for _, item := range queue.Items {
+					if item.Mode != harness.InboxFollowUp || item.Entry == nil {
+						continue
+					}
+					data, _ := item.Entry.Get("data")
+					if m := metadata(data); m.Origin != input.Origin {
+						return nil, ErrOriginBusy
+					}
+				}
+			}
 			metadata := inputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
 			data, err := durable.ToJsonValue(metadata)
 			if err != nil {

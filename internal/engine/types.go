@@ -10,6 +10,7 @@ import (
 
 var (
 	ErrBusy         = errors.New("conversation is busy")
+	ErrOriginBusy   = errors.New("follow-up queue holds another origin")
 	ErrMaintenance  = errors.New("engine admission is paused")
 	ErrClosed       = errors.New("engine is closed")
 	ErrInvalidInput = errors.New("invalid engine input")
