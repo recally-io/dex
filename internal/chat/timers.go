@@ -19,7 +19,7 @@ const (
 	minTimerDelay        = 60 * time.Second
 	maxTimerHorizon      = 7 * 24 * time.Hour
 	maxTimerChainDepth   = 6
-	maxActiveTimers      = 8
+	maxActiveTimers      = 32
 	timerFireGraceWindow = time.Hour
 )
 

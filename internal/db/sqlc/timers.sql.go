@@ -278,7 +278,7 @@ const listFollowupTimersByConversation = `-- name: ListFollowupTimersByConversat
 SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at FROM followup_timers
 WHERE conversation_id = ?
 ORDER BY CASE WHEN state = 'scheduled' THEN 0 ELSE 1 END, due_at ASC, rowid DESC
-LIMIT 20
+LIMIT 50
 `
 
 func (q *Queries) ListFollowupTimersByConversation(ctx context.Context, conversationID int64) ([]FollowupTimer, error) {

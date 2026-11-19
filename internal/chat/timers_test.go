@@ -41,7 +41,7 @@ func TestUserFollowupTimersBoundsChainDepthAndAuthority(t *testing.T) {
 		t.Fatal("expected error for delay > 7d")
 	}
 
-	// Enforces 8 active timers per conversation and allows cancel + re-add.
+	// Enforces 32 active timers per conversation and allows cancel + re-add.
 	var firstTimerID string
 	for i := range maxActiveTimers {
 		call.Key = fmt.Sprintf("bot/t-cap-%d", i)

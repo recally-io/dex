@@ -1,7 +1,7 @@
 # 0023: Always-on agent inbox, outbox, and follow-up timers
 
 Date: 2026-11-18
-Status: Proposed. Refs #158.
+Status: Accepted. Refs #158.
 
 ## Context
 
@@ -77,10 +77,13 @@ Keep `submissions` as the single durable Agent Inbox. Do not add a second
 - **Batch queued follow-ups at run boundaries.** Set
   `FollowUpMode: durable.QueueAll` alongside `SteeringMode: durable.QueueAll` in
   [agents.go](../../../internal/engine/agents.go). While a session is busy,
-  queued user messages and queued system events enter the next run together as
-  one batch. Every native submission placed in that batch settles with the same
-  answer entry; Outbox deduplication and `(result_child_id, native_answer_id)`
-  uniqueness emit at most one outbound record per batch.
+  queued same-origin user messages and queued system events enter the next run
+  together as one batch, while `Agents.Submit` enforces an atomic
+  `harness.InboxDoc` follow-up origin guard (`ErrOriginBusy`) so different peers
+  on shared `main` never batch into the same run. Every native submission placed
+  in that batch settles with the same answer entry; per-peer Outbox
+  deduplication and `(result_child_id, native_answer_id)` uniqueness emit at
+  most one outbound record per peer per batch.
 
 ### 2. Run exit modes: interactive User Turns vs fail-quiet System Turns
 
@@ -100,7 +103,8 @@ run-input lookup as `taskSource` in
   unchanged. When the run settles `done` and did not end through `ask_user` or
   `notify_user(final=true)`, settlement inserts one `reply` row into
   `outbox_messages` with the final answer and binds queued reply files. An
-  `unanswered` run (except `stopped` and `withdrawn`) inserts an error reply.
+  `unanswered` run (including `stopped`, but excluding `withdrawn` and revoked
+  inputs) inserts an error reply.
 - **System Turn (fail-quiet by default).** Starts no channel preview. Thinking,
   tool calls, and plain assistant text stay in the native transcript as internal
   trace. In the Web timeline, internal trace under a `task` or `timer` mark
@@ -159,9 +163,10 @@ Dispatcher and continuity rules:
   `outcome IN ('changed', 'failed')` and `duplicate = 0`. `unchanged` runs send
   no channel notification.
 - **Reported-message continuity.** Prompt assembly renders a bounded
-  `recent-outbox` section with the last five delivered Outbox entries of the
-  conversation so the model knows what the user already received, including
-  after context compaction.
+  `recent-outbox` section with the last five delivered proactive Outbox entries
+  (`kind != 'reply'`) of the conversation so the model knows what proactive
+  notices the user already received across compactions without mutating the
+  system prompt on regular interactive replies.
 - **Upgrade drain.** A Goose migration copies any undelivered channel replies
   from `submissions` and pending `routine_notification_deliveries` rows into
   `outbox_messages` so `channel.Manager` reads one Outbox queue without losing
@@ -183,8 +188,8 @@ Add `followup_timers` in `control.sqlite`:
   - A System Turn (`task_result`, `background`, or `timer`) inherits
     `root_request_id` and sets `chain_depth = prior_depth + 1`.
   - Hard limits: `chain_depth <= 6`, minimum delay `60s`, maximum horizon `7d`,
-    and at most `8` `scheduled` timers per conversation. A new user `message` in
-    the conversation starts new chains at `chain_depth = 0`.
+    and at most `32` `scheduled` timers per conversation. A new user `message`
+    in the conversation starts new chains at `chain_depth = 0`.
 - **Scheduler, cancellation, and authority.**
   - `scheduler` claims due rows in a writer transaction after checking
     `state = 'scheduled'`, conversation not archived, and `db.RequireActive`.

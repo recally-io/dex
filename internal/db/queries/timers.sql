@@ -30,7 +30,7 @@ LIMIT 1;
 SELECT * FROM followup_timers
 WHERE conversation_id = ?
 ORDER BY CASE WHEN state = 'scheduled' THEN 0 ELSE 1 END, due_at ASC, rowid DESC
-LIMIT 20;
+LIMIT 50;
 
 -- name: ListDueFollowupTimers :many
 SELECT * FROM followup_timers
