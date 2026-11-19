@@ -643,6 +643,69 @@ func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject)
 	return api.AbortChat200JSONResponse{Status: api.OkStatusOk}, nil
 }
 
+func (h *handler) ListChatTimers(ctx context.Context, req api.ListChatTimersRequestObject) (api.ListChatTimersResponseObject, error) {
+	timers, err := h.Chats.ListTimers(ctx, agentID(ctx), req.ChatId)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.FollowupTimer, len(timers))
+	for i, t := range timers {
+		out[i] = api.FollowupTimer{
+			Id:         t.ID,
+			DueAt:      t.DueAt,
+			TimeZone:   t.TimeZone,
+			Prompt:     t.Prompt,
+			State:      api.FollowupTimerState(t.State),
+			ChainDepth: t.ChainDepth,
+			CreatedAt:  t.CreatedAt,
+		}
+	}
+	return api.ListChatTimers200JSONResponse{Timers: out}, nil
+}
+
+func (h *handler) CancelChatTimer(ctx context.Context, req api.CancelChatTimerRequestObject) (api.CancelChatTimerResponseObject, error) {
+	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+		return nil, err
+	}
+	t, err := h.Chats.CancelTimer(ctx, agentID(ctx), req.ChatId, req.TimerId)
+	if err != nil {
+		return nil, err
+	}
+	return api.CancelChatTimer200JSONResponse{
+		Id:         t.ID,
+		DueAt:      t.DueAt,
+		TimeZone:   t.TimeZone,
+		Prompt:     t.Prompt,
+		State:      api.FollowupTimerState(t.State),
+		ChainDepth: t.ChainDepth,
+		CreatedAt:  t.CreatedAt,
+	}, nil
+}
+
+func (h *handler) ListChatOutbox(ctx context.Context, req api.ListChatOutboxRequestObject) (api.ListChatOutboxResponseObject, error) {
+	rows, err := h.Chats.ListOutbox(ctx, agentID(ctx), req.ChatId)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.OutboxMessage, len(rows))
+	for i, r := range rows {
+		out[i] = api.OutboxMessage{
+			Id:          r.ID,
+			Kind:        api.OutboxMessageKind(r.Kind),
+			Peer:        r.Peer,
+			TopicKey:    r.TopicKey,
+			Body:        r.Body,
+			Reason:      r.Reason,
+			Status:      api.OutboxMessageStatus(r.Status),
+			Error:       r.Error,
+			RetryAt:     r.RetryAt,
+			CreatedAt:   r.CreatedAt,
+			DeliveredAt: r.DeliveredAt,
+		}
+	}
+	return api.ListChatOutbox200JSONResponse{Messages: out}, nil
+}
+
 func (h *handler) WatchChat(ctx context.Context, req api.WatchChatRequestObject) (api.WatchChatResponseObject, error) {
 	body, err := h.Live.Open(ctx, agentID(ctx), req.ChatId)
 	if err != nil {

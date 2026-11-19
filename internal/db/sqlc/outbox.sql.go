@@ -286,6 +286,63 @@ func (q *Queries) InsertStoppedOutboxForConversation(ctx context.Context, arg In
 	return err
 }
 
+const listOutboxByConversation = `-- name: ListOutboxByConversation :many
+SELECT id, kind, peer, topic_key, body, reason, status, error, retry_at, created_at, delivered_at
+FROM outbox_messages
+WHERE conversation_id = ?1
+ORDER BY created_at DESC, rowid DESC
+LIMIT 30
+`
+
+type ListOutboxByConversationRow struct {
+	ID          string        `json:"id"`
+	Kind        string        `json:"kind"`
+	Peer        string        `json:"peer"`
+	TopicKey    string        `json:"topic_key"`
+	Body        string        `json:"body"`
+	Reason      string        `json:"reason"`
+	Status      string        `json:"status"`
+	Error       string        `json:"error"`
+	RetryAt     int64         `json:"retry_at"`
+	CreatedAt   int64         `json:"created_at"`
+	DeliveredAt sql.NullInt64 `json:"delivered_at"`
+}
+
+func (q *Queries) ListOutboxByConversation(ctx context.Context, conversationID int64) ([]ListOutboxByConversationRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOutboxByConversation, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOutboxByConversationRow{}
+	for rows.Next() {
+		var i ListOutboxByConversationRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Peer,
+			&i.TopicKey,
+			&i.Body,
+			&i.Reason,
+			&i.Status,
+			&i.Error,
+			&i.RetryAt,
+			&i.CreatedAt,
+			&i.DeliveredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOutboxFiles = `-- name: ListOutboxFiles :many
 SELECT operation_key, name, mime_type, length(body) AS size FROM outbox_files
 WHERE outbox_id = ? ORDER BY rowid

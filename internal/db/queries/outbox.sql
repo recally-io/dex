@@ -151,3 +151,10 @@ WHERE s.conversation_id = @chat_id
   AND s.kind = 'message'
   AND s.origin LIKE '%:%'
 ON CONFLICT(dedup_key) DO NOTHING;
+
+-- name: ListOutboxByConversation :many
+SELECT id, kind, peer, topic_key, body, reason, status, error, retry_at, created_at, delivered_at
+FROM outbox_messages
+WHERE conversation_id = @conversation_id
+ORDER BY created_at DESC, rowid DESC
+LIMIT 30;

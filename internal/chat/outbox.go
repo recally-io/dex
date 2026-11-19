@@ -275,6 +275,49 @@ func (s *Service) ToolRecentOutbox(ctx context.Context, ref engine.Ref) ([]engin
 	return out, nil
 }
 
+// OutboxEntry is one outbound delivery record visible to the Web UI for a conversation.
+type OutboxEntry struct {
+	ID          string `json:"id"`
+	Kind        string `json:"kind"`
+	Peer        string `json:"peer"`
+	TopicKey    string `json:"topicKey"`
+	Body        string `json:"body"`
+	Reason      string `json:"reason"`
+	Status      string `json:"status"`
+	Error       string `json:"error"`
+	RetryAt     int64  `json:"retryAt"`
+	CreatedAt   int64  `json:"createdAt"`
+	DeliveredAt int64  `json:"deliveredAt"`
+}
+
+// ListOutbox returns recent outbound messages for a conversation.
+func (s *Service) ListOutbox(ctx context.Context, agentID string, chatID int64) ([]OutboxEntry, error) {
+	if _, err := s.Get(ctx, agentID, chatID); err != nil {
+		return nil, err
+	}
+	rows, err := s.q.ListOutboxByConversation(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]OutboxEntry, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, OutboxEntry{
+			ID:          row.ID,
+			Kind:        row.Kind,
+			Peer:        row.Peer,
+			TopicKey:    row.TopicKey,
+			Body:        row.Body,
+			Reason:      row.Reason,
+			Status:      row.Status,
+			Error:       row.Error,
+			RetryAt:     row.RetryAt,
+			CreatedAt:   row.CreatedAt,
+			DeliveredAt: row.DeliveredAt.Int64,
+		})
+	}
+	return out, nil
+}
+
 func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submission, conv sqlc.Conversation, event engine.Outcome, now int64) (string, error) {
 	if conv.ParentID.Valid {
 		return "", nil

@@ -206,6 +206,55 @@ func (s *Service) ToolTimerCancel(ctx context.Context, r engine.TaskContext, id 
 	return timerInfo(row), nil
 }
 
+// ListTimers returns active and recent follow-up timers of a chat.
+func (s *Service) ListTimers(ctx context.Context, agentID string, chatID int64) ([]engine.TimerInfo, error) {
+	if _, err := s.Get(ctx, agentID, chatID); err != nil {
+		return nil, err
+	}
+	rows, err := s.q.ListFollowupTimersByConversation(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]engine.TimerInfo, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, timerInfo(row))
+	}
+	return out, nil
+}
+
+// CancelTimer cancels one scheduled follow-up timer of a chat.
+func (s *Service) CancelTimer(ctx context.Context, agentID string, chatID int64, timerID string) (engine.TimerInfo, error) {
+	if _, err := s.Get(ctx, agentID, chatID); err != nil {
+		return engine.TimerInfo{}, err
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, q, err := s.writeTransaction(ctx)
+	if err != nil {
+		return engine.TimerInfo{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := q.CancelFollowupTimer(ctx, sqlc.CancelFollowupTimerParams{
+		ID:             timerID,
+		ConversationID: chatID,
+		UpdatedAt:      s.now().UnixMilli(),
+	}); err != nil {
+		return engine.TimerInfo{}, err
+	}
+	row, err := q.GetFollowupTimer(ctx, timerID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && row.ConversationID != chatID) {
+		return engine.TimerInfo{}, ErrNotFound
+	}
+	if err != nil {
+		return engine.TimerInfo{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return engine.TimerInfo{}, err
+	}
+	s.signal(chatID)
+	return timerInfo(row), nil
+}
+
 // FireDueTimers claims due scheduled timers and delivers them as durable system inputs.
 func (s *Service) FireDueTimers(ctx context.Context) error {
 	now := s.now()
