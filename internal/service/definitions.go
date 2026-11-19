@@ -2,47 +2,39 @@ package service
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/xml"
 	"fmt"
 	"strings"
+	"text/template"
 )
 
 func plist(c Config, home, log string) []byte {
 	return launchPlist(label, c.args(), c.Path, home, log, c.record(), false)
 }
-func launchPlist(name string, args []string, path, home, log, record string, scheduled bool) []byte {
-	var b bytes.Buffer
-	b.WriteString(xml.Header)
-	if record != "" {
-		fmt.Fprintf(&b, "<!-- dex-config: %s -->\n", record)
-	}
-	b.WriteString(`<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict>`)
-	str := func(value string) {
-		b.WriteString("<string>")
+
+//go:embed launchd.plist.tmpl
+var launchPlistSource string
+
+var launchPlistTemplate = template.Must(template.New("launchd").Funcs(template.FuncMap{
+	"xml": func(value string) string {
+		var b bytes.Buffer
 		_ = xml.EscapeText(&b, []byte(value))
-		b.WriteString("</string>")
+		return b.String()
+	},
+}).Parse(launchPlistSource))
+
+func launchPlist(name string, args []string, path, home, log, record string, scheduled bool) []byte {
+	data := struct {
+		Name, Path, Home, Log, Record string
+		Args                          []string
+		Scheduled                     bool
+	}{name, path, home, log, record, args, scheduled}
+	var b bytes.Buffer
+	// The embedded template has fixed fields and writes only to a bytes.Buffer.
+	if err := launchPlistTemplate.Execute(&b, data); err != nil {
+		panic(err)
 	}
-	b.WriteString("<key>Label</key>")
-	str(name)
-	b.WriteString("<key>ProgramArguments</key><array>")
-	for _, arg := range args {
-		str(arg)
-	}
-	b.WriteString("</array>")
-	b.WriteString("<key>WorkingDirectory</key>")
-	str(home)
-	if scheduled {
-		b.WriteString("<key>RunAtLoad</key><false/><key>StartCalendarInterval</key><dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>")
-	} else {
-		b.WriteString("<key>RunAtLoad</key><true/><key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict><key>ExitTimeOut</key><integer>60</integer>")
-	}
-	b.WriteString("<key>StandardOutPath</key>")
-	str(log)
-	b.WriteString("<key>StandardErrorPath</key>")
-	str(log)
-	b.WriteString("<key>EnvironmentVariables</key><dict><key>PATH</key>")
-	str(path)
-	b.WriteString("</dict></dict></plist>\n")
 	return b.Bytes()
 }
 

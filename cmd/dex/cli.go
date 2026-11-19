@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -55,7 +54,11 @@ func parseInstallConfig(m service.Manager, args []string) (service.Config, error
 	f := flags("service install")
 	f.BoolVar(&c.AutoUpdate, "auto-update", c.AutoUpdate, "Enable daily updates (requires stored gh credentials)")
 	f.StringVar(&c.Channel, "channel", c.Channel, "Update channel: stable or prerelease")
-	return c, configured(f, args, &c)
+	if err := configured(f, args, &c); err != nil {
+		return c, err
+	}
+	c.Path, err = service.EnvironmentPath(c.AutoUpdate)
+	return c, err
 }
 func usage() {
 	fmt.Fprintln(os.Stderr, "Usage: dex [serve|version|service|update|open|doctor|token] [options]\n  No command: serve in the foreground.\n  dex service install: start now and at login.\n  Use dex <command> --help for options.")
@@ -126,7 +129,6 @@ func serviceCommand(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		c.Path = os.Getenv("PATH")
 		if c.AutoUpdate {
 			if _, err := update.Access(ctx, true); err != nil {
 				return err
@@ -354,18 +356,7 @@ func doctor(ctx context.Context, m service.Manager, c service.Config) error {
 	if !s.Installed {
 		report("skipped", "PATH", "no installed definition")
 	} else {
-		dirs := filepath.SplitList(s.Config.Path)
-		common := false
-		for _, dir := range dirs {
-			if dir == "/usr/local/bin" || dir == "/opt/homebrew/bin" || strings.HasSuffix(dir, "/.local/bin") {
-				common = true
-			}
-		}
-		if common {
-			report("ok", "PATH", "contains common user tool directories")
-		} else {
-			report("warn", "PATH", "no /usr/local/bin, /opt/homebrew/bin, or ~/.local/bin; reinstall from your shell if tools are missing")
-		}
+		report("ok", "service PATH", s.Config.Path+"; agent tools use the login shell environment")
 	}
 	if runtime.GOOS == "linux" {
 		enabled, err := lingering(ctx)

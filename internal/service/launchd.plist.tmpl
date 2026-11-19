@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+{{if .Record}}<!-- dex-config: {{.Record}} -->
+{{end}}<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+	<dict>
+		<key>Label</key>
+		<string>{{xml .Name}}</string>
+		<key>ProgramArguments</key>
+		<array>{{range .Args}}
+			<string>{{xml .}}</string>{{end}}
+		</array>
+		<key>WorkingDirectory</key>
+		<string>{{xml .Home}}</string>
+{{if .Scheduled}}		<key>RunAtLoad</key>
+		<false/>
+		<key>StartCalendarInterval</key>
+		<dict>
+			<key>Hour</key>
+			<integer>10</integer>
+			<key>Minute</key>
+			<integer>0</integer>
+		</dict>
+{{else}}		<key>RunAtLoad</key>
+		<true/>
+		<key>KeepAlive</key>
+		<dict>
+			<key>SuccessfulExit</key>
+			<false/>
+		</dict>
+		<key>ExitTimeOut</key>
+		<integer>60</integer>
+{{end}}		<key>StandardOutPath</key>
+		<string>{{xml .Log}}</string>
+		<key>StandardErrorPath</key>
+		<string>{{xml .Log}}</string>
+		<key>EnvironmentVariables</key>
+		<dict>
+			<key>PATH</key>
+			<string>{{xml .Path}}</string>
+		</dict>
+	</dict>
+</plist>
