@@ -985,11 +985,11 @@ Tools run through [`internal/execenv`](../../internal/execenv) using the
 built-in `local` provider, a remote `pi-env` SSH connection, an `e2b`
 sandbox endpoint, or a machine service connection
 ([ADR 0022](decisions/0022-execution-environments.md)). The
-[remote machine](../remote-machines.md) opens an outbound WebSocket to a
-separate Dex TLS listener and uses the public PiG execution API on the target.
-Dex pins its own certificate in the install command, stores the SHA-256 digest
-of the machine public key in `control.sqlite`, and keeps live connections in
-memory. The socket carries JSON-RPC 2.0 calls from
+[remote machine](../remote-machines.md) opens an outbound WebSocket to Dex
+behind the same HTTPS front as the web UI, and uses the public PiG execution API
+on the target. Enrollment trades a one-time code for a machine token; Dex stores
+the SHA-256 digest of that token in `control.sqlite` and keeps live connections
+in memory. The socket carries JSON-RPC 2.0 calls from
 [`sourcegraph/jsonrpc2`](https://github.com/sourcegraph/jsonrpc2): one call per
 operation, one operation at a time, and a `cancel` notification for the call
 that the user stopped. The library owns call correlation, reply routing, and

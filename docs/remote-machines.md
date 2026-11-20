@@ -1,48 +1,60 @@
 # Connect a remote machine
 
 dex runner runs tools on a machine that Dex cannot reach over SSH. The machine opens an
-outbound TLS connection to Dex, so the machine needs no `sshd` and no inbound port, and the
-install command pins the Dex public key, so it needs no CA bundle and no public domain.
+outbound HTTPS connection to Dex, so it needs no `sshd` and no inbound port.
+
+Dex does not terminate TLS itself. Put it behind the same HTTPS front that serves the web UI:
+nginx, Caddy, Tailscale Serve, or a cloud load balancer. The machine then trusts that front
+with the system CA bundle, and the proxy configuration is the ordinary one.
 
 Use a machine environment only with bots you trust. A bot can read the files and credentials
 that the service account can read.
 
-## The machine listener
+## Put Dex behind HTTPS
 
-Dex opens the machine listener by itself when its host is not loopback: the port is the port
-after the web UI port, so `dex serve --host 0.0.0.0 --port 8787` accepts machines on
-`8788`. The web UI keeps its own socket, and Dex keeps its certificate in
-`<data dir>/machine-tls.pem`. Dex creates the certificate on the first start.
+The machine reads the installer and its token from the address of the web UI, so that address
+must be an HTTPS origin without a path. Open the UI at that address and get the install command
+from there.
 
-A loopback-only Dex has no address that a machine can reach, so it does not open the listener.
-Set the address yourself when you need another port, another interface, or a loopback UI with
-a reachable machine port:
+Tailscale already has a certificate for every device, so one command is enough:
 
 ```sh
-dex serve --host 127.0.0.1 --port 8787 --machine-listen 0.0.0.0:8788
+tailscale serve --bg https / http://127.0.0.1:8787
 ```
 
-`dex service install --machine-listen 0.0.0.0:8788` writes the flag into the service definition.
+Dex opens the UI on `http://127.0.0.1:8787`, and Tailscale serves it at
+`https://<machine>.<tailnet>.ts.net`.
 
-The machine port must be reachable from the target machine. A firewall rule or a NAT rule can
-forward the port. A TLS proxy in front of the web UI does not serve machines: the machine
-checks the Dex certificate pin, and that proxy has a different certificate.
+nginx needs the WebSocket upgrade that every streaming service needs:
+
+```nginx
+location / {
+  proxy_pass http://127.0.0.1:8787;
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+  proxy_set_header Host $host;
+}
+```
+
+A machine session carries a token in a header. Do not publish Dex over plain HTTP: anyone who
+can read the traffic can read that token.
 
 ## Install a machine
 
 1. In Dex, open **Settings → Execution environments** and add a **dex runner**.
-2. Select **Get install command**. Dex shows the address it offers to machines. Change this
-   address when the machine reaches Dex through another network.
+2. Select **Get install command**. Dex issues a one-time code and shows the command that uses
+   the address of the page. The code expires after ten minutes and works once.
 3. Copy the command and run it in a terminal on the target machine. The account needs `sudo`.
-   The command expires after ten minutes and works once.
 
 The command does four things:
 
-- It downloads `install-machine.sh` from Dex and verifies the pinned Dex public key.
+- It downloads `install-machine.sh` from Dex.
 - It downloads the release archive for the machine architecture, and checks the release
   SHA-256 checksum.
 - It creates the `dex-agent` system account, installs the binary and the systemd unit, and
-  enrolls the machine certificate with the one-time code from the command.
+  trades the one-time code for the machine token. Dex stores only the SHA-256 digest of that
+  token, and the token goes to `/var/lib/dex-agent/device.json` with mode `0600`.
 - It starts the service. The machine comes online in Dex within a few seconds.
 
 4. In Dex, select **Test**. Then select the environment in the settings of one bot, and send a
@@ -55,15 +67,15 @@ If the service does not start, run `sudo journalctl -u dex-agent -n 30` on the t
 
 ## Replace, revoke, or remove a machine
 
-Select **Revoke machine** in Dex to close the active connection and to refuse the old machine
-certificate. Then generate a new install command. To connect the same machine again, stop the
-service and remove `/var/lib/dex-agent/device.json` after the revocation. The workspace stays in
-the state directory. Workspaces do not move between machines.
+Select **Revoke machine** in Dex to close the active connection and to refuse the old token.
+Then generate a new install command. To connect the same machine again, stop the service and
+remove `/var/lib/dex-agent/device.json` after the revocation. The workspace stays in the state
+directory. Workspaces do not move between machines.
 
 To uninstall, first revoke the machine and move the bot to another environment. On the target,
 disable the systemd unit, then remove `/usr/local/bin/dex-agent` and
 `/etc/systemd/system/dex-agent.service`. Keep the state directory until you have copied the work
-you need. The state directory holds the machine key and the workspace.
+you need. The state directory holds the machine token and the workspace.
 
 For foreground use, run `dex-agent run -state /var/lib/dex-agent` as the `dex-agent` account.
 
